@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -70,15 +69,16 @@ namespace Nethermind.Core.Crypto
                 ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in a)),
                 ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in b)));
 
-        public override int GetHashCode() => GetChainedHashCode(SpanExtensions.InstanceRandom);
+        public override int GetHashCode() => Bytes.FastHash();
 
         public long GetHashCode64() => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes)));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetChainedHashCode(uint previousHash) => (int)BitOperations.Crc32C(previousHash, (uint)Bytes.FastHash());
+        public int GetChainedHashCode(uint previousHash) => GetChainedHashCode((ulong)previousHash);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetChainedHashCode(ulong previousHash) => (int)BitOperations.Crc32C((uint)previousHash, (previousHash & ~(ulong)uint.MaxValue) | (uint)Bytes.FastHash());
+        public int GetChainedHashCode(ulong previousHash) =>
+            SpanExtensions.CombineHash((uint)previousHash, (previousHash & ~(ulong)uint.MaxValue) | (uint)Bytes.FastHash());
 
         public int CompareTo(ValueHash256 other) => Extensions.Bytes.BytesComparer.Compare(Bytes, other.Bytes);
 

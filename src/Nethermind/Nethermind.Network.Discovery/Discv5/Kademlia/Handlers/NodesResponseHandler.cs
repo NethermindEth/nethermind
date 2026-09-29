@@ -24,7 +24,7 @@ internal sealed class NodesResponseHandler(
 
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Node[] _nodes = new Node[MaxNodesResponseRecords];
-    private readonly Hash256?[] _seenNodeIds = new Hash256?[SeenNodeIdsCapacity];
+    private readonly CompressedPublicKey?[] _seenNodeIds = new CompressedPublicKey?[SeenNodeIdsCapacity];
     private readonly bool _allowNonRoutableRelays = receiver.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal;
 
     private readonly Lock _lock = new();
@@ -116,24 +116,37 @@ internal sealed class NodesResponseHandler(
         for (int i = 0; i < nodes.Records.Count && _nodeCount < MaxNodesResponseRecords; i++)
         {
             NodeRecord record = nodes.Records[i];
-            if (!KademliaAdapter.TryGetAcceptableNode(record, _allowNonRoutableRelays, localIp, out Node? node) ||
-                !TryMarkSeen(node.Id.Hash) ||
-                !MatchesRequestedDistance(node, requestedDistances))
+            if (!KademliaAdapter.TryGetAcceptableDiscoveryEndpoint(record, _allowNonRoutableRelays, localIp, preferredEndpoint: null, out IPEndPoint? endpoint))
             {
                 continue;
             }
 
+            CompressedPublicKey? compressedKey = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
+            if (compressedKey is null || !TryMarkSeen(compressedKey))
+            {
+                continue;
+            }
+
+            PublicKey key = compressedKey.Decompress();
+            if (!MatchesRequestedDistance(key.Hash, requestedDistances))
+            {
+                continue;
+            }
+
+            Node node = Node.FromDiscoveryEnr(record, key, endpoint);
             node.SetVerifiedEnr(record);
             _nodes[_nodeCount++] = node;
         }
     }
 
-    private bool TryMarkSeen(Hash256 nodeId)
+    private bool TryMarkSeen(CompressedPublicKey nodeId)
     {
+        // Skip the compressed key's 0x02/0x03 prefix when choosing a bucket.
+        int hash = nodeId.GetHashCode() >>> 8;
         for (int i = 0; i < SeenNodeIdsCapacity; i++)
         {
-            int index = (nodeId.GetHashCode() + i) & SeenNodeIdsMask;
-            Hash256? current = _seenNodeIds[index];
+            int index = (hash + i) & SeenNodeIdsMask;
+            CompressedPublicKey? current = _seenNodeIds[index];
             if (current is null)
             {
                 _seenNodeIds[index] = nodeId;
@@ -174,9 +187,9 @@ internal sealed class NodesResponseHandler(
         return true;
     }
 
-    private bool MatchesRequestedDistance(Node node, Distances requestedDistances)
+    private bool MatchesRequestedDistance(Hash256 nodeId, Distances requestedDistances)
     {
-        int distance = distanceCalculator.CalculateLogDistance(receiver.Id.Hash.ValueHash256, node.Id.Hash.ValueHash256);
+        int distance = distanceCalculator.CalculateLogDistance(receiver.Id.Hash.ValueHash256, nodeId.ValueHash256);
         for (int i = 0; i < requestedDistances.Count; i++)
         {
             if (requestedDistances[i] == distance)

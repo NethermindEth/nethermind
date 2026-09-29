@@ -129,7 +129,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 _logger.Trace($"Downgrading {_protocolHandler} due to {reason}");
         }
 
-        public void ReportPooledTransactionRequest(ReadOnlySpan<Hash256> hashes)
+        public void ReportPooledTransactionRequest(ReadOnlySpan<ValueHash256> hashes)
         {
             DisconnectRequest? disconnectRequest;
             lock (_accountingLock)
@@ -302,7 +302,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             public long RequestedHashes { get; private set; }
 
             public void ReportRequest(
-                ReadOnlySpan<Hash256> hashes,
+                ReadOnlySpan<ValueHash256> hashes,
                 Random random,
                 byte[] fingerprintKey)
             {
@@ -416,7 +416,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             public bool IsUseful { get; private set; }
 
             public void Set(
-                ReadOnlySpan<Hash256> hashes,
+                ReadOnlySpan<ValueHash256> hashes,
                 long sequence,
                 byte[] fingerprintKey)
             {
@@ -434,7 +434,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 for (int i = 0; i < hashes.Length; i++)
                 {
                     _fingerprints[i] = GetPooledTransactionFingerprint(
-                        hashes[i].ValueHash256,
+                        hashes[i],
                         fingerprintKey);
                 }
 
@@ -475,6 +475,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             public void AddCreditsTo(Dictionary<ulong, int> creditedFingerprints)
             {
+                int returnedCount = 0;
+                for (int i = 0; i < _count; i++)
+                {
+                    if (_returned[i]) returnedCount++;
+                }
+                int capacity = creditedFingerprints.EnsureCapacity(0);
+                int requiredCapacity = creditedFingerprints.Count + returnedCount;
+                if (requiredCapacity > capacity)
+                {
+                    creditedFingerprints.EnsureCapacity(Math.Max(requiredCapacity, capacity * 2));
+                }
                 for (int i = 0; i < _count; i++)
                 {
                     if (_returned[i])

@@ -9,6 +9,10 @@ using DotNetty.Transport.Channels;
 
 namespace Nethermind.Network.Rlpx
 {
+    /// <summary>
+    /// Encodes pre-framed messages for the split-pipeline test oracle.
+    /// </summary>
+    /// <remarks>Production channels use the combined <see cref="ZeroPacketSplitter"/> encoder.</remarks>
     public class ZeroFrameEncoder(
         IFrameCipher frameCipher,
         IFrameMacProcessor frameMacProcessor)

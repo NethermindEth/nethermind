@@ -10,10 +10,10 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using NSubstitute;
 using NUnit.Framework;
@@ -47,7 +47,7 @@ public class IndexTableHandlerTests
     }
 
     [Test]
-    public void Higher_level_table_that_cannot_be_built_throws_InvalidBlockException()
+    public void Higher_level_table_that_cannot_be_built_throws_InvalidOperationException()
     {
         IndexTableStore store = new();
         // One block short of the range the level-2 table covers.
@@ -55,7 +55,7 @@ public class IndexTableHandlerTests
 
         (IndexTableHandler handler, ITransactionProcessor processor) = BuildHandler(store);
 
-        Assert.Throws<InvalidBlockException>(() =>
+        Assert.Throws<InvalidOperationException>(() =>
             handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], BuildSpec(), NullTxTracer.Instance));
 
         // The level-2 root must not be committed against an incomplete table.
@@ -245,7 +245,9 @@ public class IndexTableHandlerTests
 
         siblingHeader0.Hash = siblingHash0;
         Block siblingBlock0 = new(siblingHeader0);
-        handler.RollbackBlock(siblingBlock0);
+        IndexTableHandler siblingHandler = new(processor, store, branchSpecProvider, blockTree: blockTree);
+        siblingHandler.CommitIndexTableRoots(siblingBlock0, [], BuildSpec(), NullTxTracer.Instance);
+        siblingHandler.RollbackBlock(siblingBlock0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -284,7 +286,7 @@ public class IndexTableHandlerTests
     }
 
     [Test]
-    public void Missing_history_on_higher_level_table_throws_InvalidBlockException()
+    public void Missing_history_on_higher_level_table_throws_InvalidOperationException()
     {
         IndexTableStore store = new();
         // Only store block 16 onward — blocks 0–15 are missing (post-sync scenario)
@@ -297,8 +299,8 @@ public class IndexTableHandlerTests
         IndexTableHandler handler = new(processor, store, specProvider);
 
         // Block 19 triggers level-2 publication for blocks 0–15. When those cannot be built,
-        // it must throw InvalidBlockException rather than silently skipping the state-mutating system call.
-        Assert.Throws<InvalidBlockException>(() =>
+        // it must throw InvalidOperationException rather than silently skipping the state-mutating system call.
+        Assert.Throws<InvalidOperationException>(() =>
             handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], spec, NullTxTracer.Instance));
     }
 
@@ -365,5 +367,54 @@ public class IndexTableHandlerTests
 
         Assert.Throws<InvalidOperationException>(() =>
             handler.CommitIndexTableRoots(BuildBlock(1), [], badSpec, NullTxTracer.Instance));
+    }
+
+    [Test]
+    public void ExecuteSystemCall_skips_when_no_contract_code_at_address()
+    {
+        IndexTableStore store = new();
+        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.IsContract(TestItem.AddressA).Returns(false);
+
+        IReleaseSpec spec = BuildSpec();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        IndexTableHandler handler = new(processor, store, specProvider, worldState);
+
+        handler.CommitIndexTableRoots(BuildBlock(1), [], spec, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Entries are still stored (computation is independent of contract deployment)
+            Assert.That(store.Get(0, 1), Is.Not.Null);
+            // But no system call is executed because the contract has no code
+            processor.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        }
+    }
+
+    [Test]
+    public void RollbackBlock_ignores_blocks_committed_by_another_handler_instance()
+    {
+        IndexTableStore store = new();
+
+        ITransactionProcessor processorA = Substitute.For<ITransactionProcessor>();
+        ITransactionProcessor processorB = Substitute.For<ITransactionProcessor>();
+        IReleaseSpec spec = BuildSpec();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        IndexTableHandler handlerA = new(processorA, store, specProvider);
+        IndexTableHandler handlerB = new(processorB, store, specProvider);
+
+        Block blockA = BuildBlock(1);
+        handlerA.CommitIndexTableRoots(blockA, [], spec, NullTxTracer.Instance);
+        Assert.That(store.Get(0, 1, blockA.Hash), Is.Not.Null);
+
+        // Handler B never committed block 1, so rolling it back should be a no-op
+        handlerB.RollbackBlock(blockA);
+
+        Assert.That(store.Get(0, 1, blockA.Hash), Is.Not.Null,
+            "Rollback from a different handler instance must not remove entries it did not commit");
     }
 }

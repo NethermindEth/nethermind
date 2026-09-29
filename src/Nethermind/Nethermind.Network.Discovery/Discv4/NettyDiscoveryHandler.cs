@@ -13,7 +13,6 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -77,12 +76,18 @@ public class NettyDiscoveryHandler(
 
     public override void ChannelReadComplete(IChannelHandlerContext context) => context.Flush();
 
-    public async Task SendMsg(DiscoveryMsg discoveryMsg)
+    public Task SendMsg(DiscoveryMsg discoveryMsg)
+        => Channel.EventLoop.InEventLoop
+            ? SendMsgCore(discoveryMsg)
+            : Channel.EventLoop.SubmitAsync(static (handler, message) =>
+                ((NettyDiscoveryHandler)handler).SendMsgCore((DiscoveryMsg)message), this, discoveryMsg).Unwrap();
+
+    private async Task SendMsgCore(DiscoveryMsg discoveryMsg)
     {
         IByteBuffer msgBuffer;
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
+            if (_logger.IsTrace) TraceSending(discoveryMsg);
             msgBuffer = Serialize(discoveryMsg, Channel.Allocator);
         }
         catch (Exception e)
@@ -113,7 +118,7 @@ public class NettyDiscoveryHandler(
         }
         catch (Exception e)
         {
-            if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {e}");
+            if (_logger.IsTrace) TraceSendFailure(discoveryMsg, e);
         }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
@@ -121,13 +126,19 @@ public class NettyDiscoveryHandler(
         Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv4", FastEnum.GetName(discoveryMsg.MsgType)!));
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceSending(DiscoveryMsg message) => _logger.Trace($"Sending message: {message}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceSendFailure(DiscoveryMsg message, Exception exception) =>
+        _logger.Trace($"Error when sending a discovery message Msg: {message} ,Exp: {exception}");
+
     private bool TryAcceptPacket(DatagramPacket packet, out MsgType type, out bool shouldForward, out EndPoint address)
     {
         type = default;
         shouldForward = true;
 
         IByteBuffer content = packet.Content;
-        // Mirrors NettyDiscoveryV5Handler.NormalizeEndpoint.
         address = packet.Sender is IPEndPoint senderEndpoint ? NormalizeEndpoint(senderEndpoint) : packet.Sender;
 
         int size = content.ReadableBytes;
@@ -199,7 +210,7 @@ public class NettyDiscoveryHandler(
     protected virtual MsgType? FromMsgTypeByte(byte b) =>
         FastEnum.IsDefined((MsgType)b) ? (MsgType)b : null;
 
-    private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg) => type switch
+    private DiscoveryMsg Deserialize(MsgType type, IByteBuffer msg) => type switch
     {
         MsgType.Ping => _msgSerializationService.Deserialize<PingMsg>(msg),
         MsgType.Pong => _msgSerializationService.Deserialize<PongMsg>(msg),
@@ -303,11 +314,6 @@ public class NettyDiscoveryHandler(
     private bool TryAcceptInbound(IPEndPoint remoteEndpoint)
         => _inboundMessageLimiter.TryAccept(remoteEndpoint.Address);
 
-    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
-        => endpoint.Address.IsIPv4MappedToIPv6
-            ? new IPEndPoint(endpoint.Address.MapToIPv4(), endpoint.Port)
-            : endpoint;
-
     private async Task LogDisconnectFailureAsync(Task disconnectTask)
     {
         try
@@ -392,24 +398,34 @@ public class NettyDiscoveryHandler(
         msg = null;
         IByteBuffer content = packet.Packet.Content;
         int readerIndex = content.ReaderIndex;
-        using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(packet.Size, out byte[] msgBytes);
-        content.GetBytes(readerIndex, msgBytes, 0, packet.Size);
+        IByteBuffer msgBuffer = content.RetainedSlice(readerIndex, packet.Size);
 
         try
         {
-            msg = Deserialize(packet.Type, new ArraySegment<byte>(msgBytes, 0, packet.Size));
+            msg = Deserialize(packet.Type, msgBuffer);
             msg.FarAddress = (IPEndPoint)packet.Address;
             return true;
         }
         catch (Exception e)
         {
-            if (_logger.IsTrace) TraceDeserializationFailure(packet, msgBytes, e);
+            if (_logger.IsTrace) TraceDeserializationFailure(packet, msgBuffer, e);
             return false;
+        }
+        finally
+        {
+            msgBuffer.Release();
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceDeserializationFailure(InboundDiscoveryPacket failedPacket, byte[] messageBytes, Exception exception) =>
-            _logger.Trace($"Error during deserialization of the message, type: {failedPacket.Type}, sender: {failedPacket.Address}, msg: {messageBytes.AsSpan(0, failedPacket.Size).ToHexString()}, {exception.Message}");
+        void TraceDeserializationFailure(InboundDiscoveryPacket failedPacket, IByteBuffer messageBuffer, Exception exception) =>
+            _logger.Trace($"Error during deserialization of the message, type: {failedPacket.Type}, sender: {failedPacket.Address}, msg: {GetBytes(messageBuffer).AsSpan().ToHexString()}, {exception.Message}");
+
+        static byte[] GetBytes(IByteBuffer messageBuffer)
+        {
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(messageBuffer.ReadableBytes);
+            messageBuffer.GetBytes(messageBuffer.ReaderIndex, bytes);
+            return bytes;
+        }
     }
 
     private static void ForwardPacket(InboundDiscoveryPacket packet)

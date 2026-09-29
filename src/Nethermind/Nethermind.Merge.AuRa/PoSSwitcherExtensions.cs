@@ -9,8 +9,8 @@ namespace Nethermind.Merge.AuRa;
 
 internal static class PoSSwitcherExtensions
 {
-    // Not HasEverReachedTerminalBlock(): that flag is true on a fresh archive DB with
-    // Merge.FinalTotalDifficulty in config, even at genesis.
+    // Check the current head rather than HasEverReachedTerminalBlock(): this disposer depends on
+    // whether the head is post-merge, not only on durable TTD evidence from the chain's history.
     public static bool IsHeadPostMerge(this IPoSSwitcher poSSwitcher, IBlockTree blockTree)
     {
         BlockHeader? head = blockTree.Head?.Header;

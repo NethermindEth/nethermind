@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -27,9 +28,10 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
+public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, GCKeeper gcKeeper) : IJsonRpcService
 {
     private const int MaxPooledParameterCount = 8;
+    private const int MaxReportedExceptionChainDepth = 8;
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
@@ -38,11 +40,20 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
-        (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method) = Validate(rpcRequest, context);
+        if (context.IsAuthenticated && rpcRequest?.Method?.StartsWith("engine_newPayload", StringComparison.Ordinal) == true)
+            gcKeeper.CancelPendingGC();
+
+        (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method, bool operatorActionable) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
         {
             if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
-            return ValueTask.FromResult<JsonRpcResponse>(GetErrorResponse(methodName, errorCode.Value, errorMessage, null, in rpcRequest.IdRef));
+            JsonRpcErrorResponse errorResponse = GetErrorResponse(methodName, errorCode.Value, errorMessage, null, in rpcRequest.IdRef);
+            if (operatorActionable && errorResponse.Error is not null)
+            {
+                errorResponse.Error.OperatorActionable = true;
+            }
+
+            return ValueTask.FromResult<JsonRpcResponse>(errorResponse);
         }
 
         try
@@ -88,7 +99,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         };
 
         if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(rpcRequest, ex)}", ex);
-        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
+        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : GetExceptionText(ex), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
     // Formatting the request parses and stringifies its params, which for engine_newPayload is a
@@ -297,10 +308,42 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         catch (Exception e)
         {
             ReturnParameters(parameters, returnParametersToPool);
-            if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
+            // A fault the params cannot cause is a condition of this node, and the catch is deliberately broad
+            // enough to swallow one. It keeps the operator's line, and marks the response so the processor does
+            // not demote it either - -32602 alone would otherwise read as the caller's fault at both sites.
+            if (IsNodeFault(e))
+            {
+                // Formatting the params would allocate on an already exhausted heap, so they are omitted and the
+                // exception is passed to the logger rather than interpolated (same reason as DescribeForErrorLog).
+                if (_logger.IsError) _logger.Error($"Failed to bind JSON RPC parameters for {methodName}", e);
+                JsonRpcErrorResponse nodeFault = GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
+                if (nodeFault.Error is not null) nodeFault.Error.OperatorActionable = true;
+                return nodeFault;
+            }
+
+            // Caller-supplied params that fail to bind are answered with -32602; the echo of the params and the
+            // exception (with its stack trace) is Debug-only detail, not an operator warning (#13156).
+            if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
             string message = GetSafePublicMessage(e) ?? "Invalid params";
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
+    }
+
+    /// <summary>
+    /// Whether the fault is a condition of this node rather than something the caller's params can cause.
+    /// </summary>
+    /// <remarks>
+    /// A deny-list of two, not an allow-list of expected binding failures: a converter can throw anything, and
+    /// promoting an unanticipated caller-fault type back into a per-request WARN is what #13156 was about.
+    /// </remarks>
+    private static bool IsNodeFault(Exception e)
+    {
+        for (Exception? ex = e; ex is not null; ex = ex.InnerException)
+        {
+            if (ex is OutOfMemoryException or ObjectDisposedException) return true;
+        }
+
+        return false;
     }
 
     private JsonRpcErrorResponse? PrepareUtf8Parameters(
@@ -552,14 +595,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // "invalid params" (or a generic internal error) for history the node does not hold reads as a
             // retry-forever signal to indexers. EIP-4444 defines the accurate code.
             ResourceNotFoundException or TargetInvocationException { InnerException: ResourceNotFoundException } =>
-                GetErrorResponse(methodName, ErrorCodes.PrunedHistoryUnavailable,
-                    ErrorMessages.PrunedHistoryUnavailable, GetExceptionText(ex), in request.IdRef, returnAction),
+                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.PrunedHistoryUnavailable,
+                    ErrorMessages.PrunedHistoryUnavailable, GetExceptionText(ex), in request.IdRef, returnAction)),
 
             TargetParameterCountException or ArgumentException =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, ex.ToString(), in request.IdRef, returnAction),
+                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
 
             JsonException or TargetInvocationException and { InnerException: JsonException } =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction),
+                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
@@ -573,7 +616,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction, suppressWarning: true),
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), ex.ToString(), in request.IdRef, returnAction),
+                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), GetExceptionText(ex), in request.IdRef, returnAction)),
 
             InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, description, null, in request.IdRef, returnAction),
@@ -581,22 +624,44 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, in request.IdRef, returnAction),
 
+            // Only state this node legitimately does not hold is -32002. A corrupt or untrusted history row is wrapped
+            // the same way but must fall through to HandleMissingTrieNode, whose WARN is its only sign at default log level.
+            MissingTrieNodeException { InnerException: StateNotRetainedException inner } =>
+                HandleStateNotRetained(inner, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: MissingTrieNodeException { InnerException: StateNotRetainedException inner } } =>
+                HandleStateNotRetained(inner, methodName, request, returnAction),
+
             MissingTrieNodeException e =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
 
             TargetInvocationException { InnerException: MissingTrieNodeException e } =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
 
+            StateNotRetainedException e =>
+                HandleStateNotRetained(e, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: StateNotRetainedException e } =>
+                HandleStateNotRetained(e, methodName, request, returnAction),
+
             _ => HandleException(ex, methodName, request, returnAction)
         };
+
+        // GetExceptionText drops the stack trace from error.data on purpose, so the arms that answer with it and log
+        // nothing else of their own would leave the trace recoverable nowhere - a diagnosis regression, not part of
+        // the leak fix. Debug, because those arms are the caller's fault (#13156). HandleException logs at Error for
+        // itself and is deliberately not routed through here: a second line would be duplicate, not detail.
+        JsonRpcErrorResponse KeepTrace(Exception ex, JsonRpcErrorResponse response)
+        {
+            _logger.DebugError($"Exception during {methodName} execution", ex);
+            return response;
+        }
 
         JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(request, ex)}", ex);
-            return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), in request.IdRef, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", GetExceptionText(ex), in request.IdRef, returnAction);
         }
-
-        static string GetExceptionText(Exception ex) => (ex as TargetInvocationException)?.InnerException?.ToString() ?? ex.ToString();
 
         static string GetInsufficientBalanceMessage(Exception ex) =>
             (ex as InsufficientBalanceException ?? ex.InnerException as InsufficientBalanceException)!.Message;
@@ -607,8 +672,31 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // after a successful guard. Surface as -32000 (Geth wire parity) and warn so operators
             // can investigate whether it's a legitimate pruning gap or a deeper issue.
             if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.Message}");
-            return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, ex.ToString(), in request.IdRef, returnAction);
+            // The Warn above carries the message but not the exception, so the trace still needs KeepTrace.
+            return KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
         }
+
+        JsonRpcErrorResponse HandleStateNotRetained(StateNotRetainedException ex, string methodName, JsonRpcRequest request, Action? returnAction) =>
+            KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
+    }
+
+    /// <summary>Renders an exception chain for <c>error.data</c> without exposing its stack trace.</summary>
+    /// <remarks>
+    /// <c>error.data</c> is returned to unauthenticated callers, and <see cref="Exception.ToString"/> embeds the
+    /// stack trace, which these builds render with the build machine's absolute source paths and with the internal
+    /// call graph. Only the chain's types and messages are reported here; the full trace is written to the node log.
+    /// </remarks>
+    private static string GetExceptionText(Exception ex)
+    {
+        StringBuilder text = new();
+        Exception? current = (ex as TargetInvocationException)?.InnerException ?? ex;
+        for (int depth = 0; current is not null && depth < MaxReportedExceptionChainDepth; current = current.InnerException, depth++)
+        {
+            if (text.Length != 0) text.Append(" ---> ");
+            text.Append(current.GetType()).Append(": ").Append(current.Message);
+        }
+
+        return text.ToString();
     }
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
@@ -977,8 +1065,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // rejections reach this point along two distinct paths (module rental before invocation,
         // and the override-environment cap during invocation), and their warnings are suppressed
         // by design — without a counter operators cannot see that callers are being shed.
-        // suppressWarning scopes the count to exactly those shedding sites: batch-size and
-        // response-body caps also produce LimitExceeded but keep their warnings.
+        // suppressWarning scopes the count to exactly those shedding sites. The batch-size cap keeps its own Warn,
+        // and the response-body cap's entries never reached CreateSingleRequestEntry's WARN at all (the HTTP sink
+        // warns when it trips); the one -32005 that WARN now demotes is eth_getLogs' "Too many logs requested".
         if (suppressWarning && errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
         {
             Metrics.IncrementJsonRpcOverloadRejections();
@@ -997,17 +1086,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return response;
     }
 
-    private (int? ErrorType, string? ErrorMessage, string MethodName, ResolvedMethodInfo? Method) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
+    private (int? ErrorType, string? ErrorMessage, string MethodName, ResolvedMethodInfo? Method, bool OperatorActionable) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
     {
         if (rpcRequest is null)
         {
-            return (ErrorCodes.InvalidRequest, "Invalid request", string.Empty, null);
+            return (ErrorCodes.InvalidRequest, "Invalid request", string.Empty, null, false);
         }
 
         string methodName = rpcRequest.Method;
         if (string.IsNullOrWhiteSpace(methodName))
         {
-            return (ErrorCodes.InvalidRequest, "Method is required", methodName, null);
+            return (ErrorCodes.InvalidRequest, "Method is required", methodName, null, false);
         }
 
         string trimmedMethodName = methodName.Trim();
@@ -1015,22 +1104,26 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ModuleResolution result = _rpcModuleProvider.Check(trimmedMethodName, context, out string? module, out ResolvedMethodInfo? method);
         if (result == ModuleResolution.Enabled)
         {
-            return (null, null, trimmedMethodName, method);
+            return (null, null, trimmedMethodName, method, false);
         }
 
-        (int? errorType, string errorMessage) = GetErrorResult(trimmedMethodName, context, result, module);
-        return (errorType, errorMessage, methodName, null);
+        (int? errorType, string errorMessage, bool operatorActionable) = GetErrorResult(trimmedMethodName, context, result, module);
+        return (errorType, errorMessage, methodName, null, operatorActionable);
 
+        // OperatorActionable is decided here, at the only place that knows *why* the request failed. A namespace
+        // that is disabled for this URL or this endpoint is a fact about the node's configuration, not about the
+        // request, and its message tells the operator how to fix it - so it must not be demoted with the rest of
+        // the -32600 traffic. Unknown methods and failed authentication are genuine caller faults.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
+        static (int? ErrorType, string ErrorMessage, bool OperatorActionable) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
         {
-            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(methodName)),
+            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(methodName), false),
             ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
-                $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL."),
+                $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL.", true),
             ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
-                $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
-            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
-            _ => (null, null)
+                $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}.", true),
+            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated.", false),
+            _ => (null, null, false)
         };
     }
 }

@@ -19,7 +19,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -33,8 +32,6 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
-
-using ValidationCompletion = TaskCompletionSource<(NewPayloadHandler.ValidationResult? validationResult, string? validationMessage)>;
 
 /// <summary>
 /// Provides an execution payload handler as defined in Engine API
@@ -82,7 +79,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
-        IEthereumEcdsa ecdsa,
+        RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
         ILogManager logManager)
@@ -100,13 +97,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txValidator = txValidator;
-        _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
+        _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
         if (mergeConfig.NewPayloadCacheSize > 0)
             _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+        _processingQueue.BlockExecuted += GetProcessingQueueOnBlockExecuted;
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
@@ -125,9 +123,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        // Overlap ecrecover with root computation, hash validation and block tree insertion;
-        // the processing queue's RecoverSignatures then short-circuits on recovered senders.
-        Task senderRecoveryTask = StartSenderRecovery(request);
+        // Every wait this request takes comes out of one budget, taken here.
+        long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
+
+        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
+        // recovers inline whatever it reaches before the background recovery does.
+        StartSenderRecovery(request);
 
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
@@ -145,6 +146,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             _lastBlockGasLimit = block.Header.GasLimit;
         }
 
+        // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
+        // below come from TryGetBlock, which derives them from the payload's own body, so a matching header hash
+        // binds the body to the header and the validator need not recompute any of them. See the caveat on
+        // IBlockValidator.ValidateSuggestedBlock for payload types that take those roots off the wire instead.
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
@@ -179,6 +184,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
+            // Keep full orphan validation because ValidateOrphanedBlock is also used without this handler's hash gate.
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));
@@ -238,6 +244,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Syncing;
         }
 
+        // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
+        // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
+        // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
+        if (!await WaitForParentCommitAsync(parentHeader, deadline)) return NewPayloadV1Result.Syncing;
+
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
             if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out string? error, validateHashes: false))
@@ -287,9 +298,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
-        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-        // Try to execute block
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, senderRecoveryTask);
+        // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
+        // thread only waits for the verdict - and a boost held across that await would resume on another thread and
+        // never be restored.
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline);
 
         switch (result)
         {
@@ -457,48 +469,77 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private Task StartSenderRecovery(ExecutionPayload request)
+    private void StartSenderRecovery(ExecutionPayload request)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
-        // the senders; they recover in the processing queue as before. On rejected payloads the
-        // task is deliberately fire-and-forget — see the catch below.
+        // the senders; they recover in the processing queue as before.
         if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
-            return Task.CompletedTask;
+            return;
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
             // TryGetBlock reports the decoding error; nothing to recover otherwise.
-            return Task.CompletedTask;
+            return;
 
-        Transaction[] txs = transactions.Data;
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
-        return Task.Run(() =>
+        try
         {
-            try
-            {
-                _senderRecovery.RecoverData(txs, spec);
-            }
-            catch (Exception e)
-            {
-                // Best-effort: the processing-queue preprocessor recovers anything still missing.
-                if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
-            }
-        });
+            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+        }
+        catch (Exception e)
+        {
+            // Best-effort: the processing-queue preprocessor recovers anything still missing, so failing
+            // to queue the early recovery must not fail an otherwise valid payload.
+            if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed to start for block {request.BlockNumber}: {e}");
+        }
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
+    /// <summary>
+    /// Waits, within the request's budget, for a parent that is still in the processing queue; <c>false</c> when it
+    /// did not leave in time, which is answered SYNCING as an unprocessed parent always was.
+    /// </summary>
+    private async Task<bool> WaitForParentCommitAsync(BlockHeader parent, long deadline)
+    {
+        Hash256 parentHash = parent.GetOrCalculateHash();
+        if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
+
+        bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline));
+        if (!inTime && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
+        return inTime;
+    }
+
+    /// <summary>What is left of one request's <see cref="IMergeConfig.NewPayloadBlockProcessingTimeout"/>.</summary>
+    /// <remarks>
+    /// Every wait a request takes comes out of this one budget, so a payload holds the engine API's lock for that
+    /// long whatever it waited on, rather than for the sum of a wait for its parent and a wait for itself.
+    /// </remarks>
+    private TimeSpan RemainingBudget(long deadline)
+    {
+        TimeSpan left = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline);
+        return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+    }
+
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
+
+        ValidationCompletion? completion = null;
 
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
         {
             // Cache terminal outcomes only; SYNCING isn't terminal (we haven't processed the block yet).
             if (result is ValidationResult.Invalid or ValidationResult.Valid or ValidationResult.InclusionListUnsatisfied)
+            {
                 _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest));
+                // The verdict is given before the commit, so the block can be gone without committing by the time
+                // this runs. Whichever of the two marks the completion first, the other takes the entry back out.
+                if (completion?.MarkAnswerCached() == false) _latestBlocks?.Delete(block.GetOrCalculateHash());
+            }
             return result;
         }
 
         (ValidationResult? result, string? validationMessage) = (null, null);
+        ValidationResult terminalResult = ValidationResult.Syncing;
 
         // If duplicate, reuse results
         if (_latestBlocks is not null
@@ -518,26 +559,37 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        ValidationCompletion blockProcessed =
-            _blockValidationTasks.GetOrAdd(
-                block.Hash!,
-                static (k) => new(TaskCreationOptions.RunContinuationsAsynchronously));
+        ValidationCompletion blockProcessed = _blockValidationTasks.GetOrAdd(block.Hash!, static _ => new());
+        completion = blockProcessed;
 
         try
         {
             using CancellationTokenSource cts = new();
-            Task timeoutTask = Task.Delay(_timeout, cts.Token);
+            Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
 
-            // the tree insert reads only the raw payload bytes, never the recovered senders,
-            // so it can safely overlap the remainder of sender recovery
-            Task<AddBlockResult> suggestTask = senderRecoveryTask.IsCompleted
-                ? _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask()
-                : Task.Run(() => _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask());
+            AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask().TimeoutOn(timeoutTask);
 
-            // recovery must complete before Enqueue — the prewarmer needs all senders up front
-            await senderRecoveryTask;
-
-            AddBlockResult addResult = await suggestTask.TimeoutOn(timeoutTask);
+            // A payload sent again while its first copy is between verdict and removal is known, and marked processed
+            // only part way through that window. Queued again before the copy is gone it would be skipped as not
+            // better than head and answered INVALID, or answered by the copy's removal without its own inclusion
+            // list ever judged, so let the first copy finish first. Only a copy that has its verdict is worth waiting
+            // for; one that is merely queued is left to answer this request through the shared completion, as before,
+            // and a copy already gone costs nothing here.
+            if (addResult == AddBlockResult.AlreadyKnown)
+            {
+                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: true).AsTask();
+                if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
+                // The first copy's own verdict and removal land on whatever completion is registered for the hash,
+                // so if they consumed this one it must not stand in for the answer to this request. A fault is that
+                // copy's failure, and stands: the CL's next retry re-processes.
+                if (blockProcessed.Task.IsFaulted) await blockProcessed.Task;
+                if (blockProcessed.Task.IsCompleted)
+                {
+                    blockProcessed = new();
+                    completion = blockProcessed;
+                    _blockValidationTasks[block.Hash!] = blockProcessed;
+                }
+            }
 
             result = addResult switch
             {
@@ -567,7 +619,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                await _processingQueue.Enqueue(block, processingOptions);
+                // Off this thread: the processing queue's channel allows synchronous continuations
+                // (BlockchainProcessor._blockQueue), so with the queue empty the processor runs the block inside
+                // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
+                // verdict this request only needs to see. The processing loop raises its own thread's priority, so
+                // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
+                _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -583,21 +640,87 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         finally
         {
-            // Blocks that exit before the processing queue publishes BlockRemoved would otherwise
-            // leave their completion source pinned in _blockValidationTasks forever.
+            // Cached before the completion is dropped, so a block that fails to commit meanwhile still has
+            // something to hand the entry back through. Afterwards the removal deletes the entry directly.
+            // Dropping it also keeps blocks that exit before the queue publishes BlockRemoved - a timeout, a
+            // throw - from pinning their completion in _blockValidationTasks forever.
+            terminalResult = TryCacheResult(result ?? ValidationResult.Syncing, validationMessage);
             _blockValidationTasks.TryRemove(block.Hash!, out _);
         }
 
-        return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
+        return (terminalResult, validationMessage);
+    }
+
+    /// <summary>
+    /// The verdict, delivered as soon as the block is executed and validated: the commit and the chain update it
+    /// still has ahead of it do not change the answer, and the CL's next call waits for them where it has to
+    /// (<see cref="IBlockProcessingQueue.WaitUntilExecutedCopyRemovedAsync"/>). Any other outcome still comes through
+    /// <see cref="GetProcessingQueueOnBlockRemoved"/>, and a verdict already given makes that a no-op.
+    /// </summary>
+    private void GetProcessingQueueOnBlockExecuted(object? o, BlockVerdictEventArgs e)
+    {
+        // Left in place rather than taken: the request has its answer but not its cache entry yet, and a commit
+        // that fails next needs the completion to stop that entry from standing.
+        if (!_blockValidationTasks.TryGetValue(e.BlockHash, out ValidationCompletion? blockProcessed)) return;
+
+        ValidationResult result = e.ProcessingResult == ProcessingResult.InclusionListUnsatisfied
+            ? ValidationResult.InclusionListUnsatisfied
+            : ValidationResult.Valid;
+        blockProcessed.MarkVerdictGiven();
+        if (blockProcessed.TrySetResult((result, null))) e.Answered = true;
+    }
+
+    /// <summary>Whether the tree has the block as processed, so a removal that failed was some other copy's.</summary>
+    /// <remarks>
+    /// Read only when there is an entry to delete, which is a handful of recently answered blocks, so the header
+    /// lookup is not on the path of every skipped block.
+    /// </remarks>
+    private bool HasCommitted(Hash256 blockHash) =>
+        _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { Number: ulong number }
+        && _blockTree.WasProcessed(number, blockHash);
+
+    private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed)
+    {
+        try
+        {
+            await _processingQueue.Enqueue(block, processingOptions);
+        }
+        catch (Exception e)
+        {
+            // A failure once the block is counted in reaches the request as BlockRemoved(QueueException), which has
+            // completed it already. One before that raises no removal, and the request would otherwise wait out its
+            // budget holding the engine API's lock; it fails now instead, as it did when Enqueue ran on its thread. Its
+            // own completion, not the hash's: by now a re-sent payload may have registered a fresh one.
+            if (_logger.IsDebug) _logger.Debug($"Enqueueing {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
+            blockProcessed.TrySetException(e);
+        }
     }
 
     private void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
     {
-        if (!_blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed))
+        // Anything but a block that reached the chain. Which failure it is does not matter once execution has
+        // answered: the commit, the prewarm join and the BlockProcessed subscribers all arrive here as an exception,
+        // including the one kind that would otherwise have been reported as the block being invalid. Any of them
+        // leaves a VALID that was already given standing for a block that is not there.
+        bool failed = e.ProcessingResult is not (ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied);
+        bool found = _blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed);
+
+        // The completion that received the verdict arbitrates with its own request over the cache entry, below.
+        // Every other shape has to be judged against the cache directly: the request may be done and gone, or a
+        // re-submission may have swapped in a completion of its own, which never saw the first copy's verdict and
+        // so would let its answer stand. The exception is a second copy skipped as no better than a head the first
+        // copy became - that block did commit, and its answer is worth keeping.
+        if (failed && (!found || !blockProcessed!.VerdictGiven)
+            && _latestBlocks is not null && _latestBlocks.TryGet(e.BlockHash, out _) && !HasCommitted(e.BlockHash))
         {
-            // If we don't have a task for this block, it means it was already processed or removed.
-            return;
+            _latestBlocks.Delete(e.BlockHash);
         }
+
+        if (!found || blockProcessed is null) return;
+
+        // Still in flight, so this request is between its verdict and its cache write. Whichever of the two marks
+        // the completion first, the other takes the entry out.
+        if (failed && blockProcessed.VerdictGiven && blockProcessed.MarkBlockUncommitted()) _latestBlocks?.Delete(e.BlockHash);
 
         if (e.ProcessingResult == ProcessingResult.Exception)
         {
@@ -688,7 +811,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return true;
     }
 
-    public void Dispose() => _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+    public void Dispose()
+    {
+        _processingQueue.BlockExecuted -= GetProcessingQueueOnBlockExecuted;
+        _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+    }
 
     internal enum ValidationResult
     {
@@ -696,6 +823,36 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Valid,
         Syncing,
         InclusionListUnsatisfied
+    }
+
+    /// <summary>One request's completion, and the arbiter of whether its answer may stay cached.</summary>
+    /// <remarks>
+    /// The verdict reaches the request before the block is committed, so a commit that then fails races the
+    /// request's own cache write. Both mark here, and whichever arrives second finds the other's mark and deletes
+    /// the entry, so an uncommitted block never leaves a terminal answer for the next request to be answered from.
+    /// </remarks>
+    private sealed class ValidationCompletion()
+        : TaskCompletionSource<(ValidationResult? validationResult, string? validationMessage)>(TaskCreationOptions.RunContinuationsAsynchronously)
+    {
+        private const int Cached = 1;
+        private const int Uncommitted = 2;
+        private int _state;
+        private volatile bool _verdictGiven;
+
+        /// <summary>Whether execution already answered this request, so anything else the removal says is a failure
+        /// that came after it.</summary>
+        public bool VerdictGiven => _verdictGiven;
+
+        /// <summary>Records that execution has answered this request.</summary>
+        public void MarkVerdictGiven() => _verdictGiven = true;
+
+        /// <summary>Marks the answer as cached.</summary>
+        /// <returns><c>false</c> when the block has already failed to commit, so the entry must be deleted.</returns>
+        public bool MarkAnswerCached() => Interlocked.Exchange(ref _state, Cached) != Uncommitted;
+
+        /// <summary>Marks the block as gone without committing.</summary>
+        /// <returns><c>true</c> when the answer is already cached, so the entry must be deleted.</returns>
+        public bool MarkBlockUncommitted() => Interlocked.Exchange(ref _state, Uncommitted) == Cached;
     }
 
     // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.

@@ -147,6 +147,7 @@ public class KademliaSimulation
         {
             TestNode[] nodesClosest = await mainNode.LookupNodesClosest(targetNode, cts.Token);
             HashSet<ValueHash256> expectedNodeClosestK = nodeIds
+                .Append(mainNodeHash)
                 .Order(Comparer<ValueHash256>.Create((n1, n2) => ValueHash256KademliaDistance.Instance.Compare(n1, n2, targetNode)))
                 .Take(_config.KSize)
                 .ToHashSet();

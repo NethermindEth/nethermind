@@ -80,7 +80,7 @@ public class ReceiptsRegenerationTests
             _chain.Container.Resolve<ILifetimeScope>(),
             [.. _chain.Container.Resolve<IEnumerable<IBlockValidationModule>>()]);
         _envSource = factory.Create(maxConcurrent: 2);
-        _regenerator = new ReceiptsRegenerator(_envSource, _chain.BlockFinder, _chain.SpecProvider, _chain.EthereumEcdsa, _chain.PoSSwitcher, LimboLogs.Instance);
+        _regenerator = new ReceiptsRegenerator(_envSource, _chain.SpecProvider, _chain.EthereumEcdsa, _chain.PoSSwitcher, LimboLogs.Instance);
     }
 
     [OneTimeTearDown]
@@ -133,7 +133,7 @@ public class ReceiptsRegenerationTests
     }
 
     private ReceiptsRegenerator Regenerator(IPoSSwitcher poSSwitcher) => new(
-        _envSource, _chain.BlockFinder, _chain.SpecProvider, _chain.EthereumEcdsa, poSSwitcher, LimboLogs.Instance);
+        _envSource, _chain.SpecProvider, _chain.EthereumEcdsa, poSSwitcher, LimboLogs.Instance);
 
     private static PoSSwitcher RealSwitcher(IBlockTree blockTree) => new(
         new MergeConfig(),
@@ -220,7 +220,6 @@ public class ReceiptsRegenerationTests
         // guard must short-circuit before touching the env or block tree — hence the bare substitutes.
         ReceiptsRegenerator regenerator = new(
             Substitute.For<IShareableOverridableEnvSource<ReceiptsRegenerationEnv>>(),
-            Substitute.For<IBlockFinder>(),
             new TestSpecProvider(Frontier.Instance),
             Substitute.For<IEthereumEcdsa>(),
             NoPoS.Instance,
@@ -239,7 +238,6 @@ public class ReceiptsRegenerationTests
         // A regenerator that always refuses (pre-EIP-658 rules), paired with an inner finder that has nothing stored.
         ReceiptsRegenerator refusing = new(
             Substitute.For<IShareableOverridableEnvSource<ReceiptsRegenerationEnv>>(),
-            Substitute.For<IBlockFinder>(),
             new TestSpecProvider(Frontier.Instance),
             Substitute.For<IEthereumEcdsa>(),
             NoPoS.Instance,

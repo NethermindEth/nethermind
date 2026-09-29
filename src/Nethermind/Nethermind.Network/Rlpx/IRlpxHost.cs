@@ -3,6 +3,7 @@
 
 using System;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -21,7 +22,7 @@ namespace Nethermind.Network.Rlpx
     public interface IRlpxHost
     {
         Task Init();
-        Task<bool> ConnectAsync(Node node);
+        Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default);
         Task Shutdown();
         int LocalPort { get; }
 

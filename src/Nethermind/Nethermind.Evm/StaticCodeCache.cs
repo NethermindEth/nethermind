@@ -20,7 +20,7 @@ public sealed class StaticCodeCache(int maxCapacity) : ICodeCache
 
     public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
     {
-        codeInfo.CodeHash = codeHash;
+        codeInfo.StampCodeHash(in codeHash);
         _cache.Set(in codeHash, codeInfo);
     }
 

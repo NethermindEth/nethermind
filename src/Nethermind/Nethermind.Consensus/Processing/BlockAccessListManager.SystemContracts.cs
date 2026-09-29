@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
@@ -9,6 +10,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -33,7 +35,24 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
+        BlockhashStore blockhashStore = new(preExecution.WorldState);
+        if (!spec.IsEip8037Enabled)
+        {
+            blockhashStore.ApplyBlockhashStateChanges(header, spec);
+            return;
+        }
+
+        if (!blockhashStore.TryGetHistoryContract(header, spec, out Address? historyContract)) return;
+
+        // EIP-2935 runs whatever code the account holds; a direct storage write matches only the canonical bytecode.
+        SystemCall transaction = new()
+        {
+            GasLimit = Eip8037Constants.SystemCallGasLimit,
+            Data = header.ParentHash!.Bytes.ToArray(),
+            To = historyContract,
+            SenderAddress = Address.SystemUser,
+        };
+        preExecution.TxProcessor.Execute(transaction, NullTxTracer.Instance);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
@@ -65,30 +84,22 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
+        if (!spec.IsEip8304Enabled)
+        {
+            return;
+        }
+
+        if (indexTableHandlerFactory is null)
+        {
+            throw new InvalidOperationException("EIP-8304 is enabled but no IIndexTableHandlerFactory was provided to BlockAccessListManager.");
+        }
+
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        _indexTableHandler = (indexTableHandlerFactory ?? IndexTableHandlerFactory.Default).Create(postExecution.TxProcessor);
+        _indexTableHandler = indexTableHandlerFactory.Create(postExecution.TxProcessor, postExecution.WorldState);
         _indexTableHandler.CommitIndexTableRoots(block, receipts, spec, tracer);
     }
 
-    public void RollbackBlock(Block block)
-    {
-        if (_indexTableHandler is not null)
-        {
-            _indexTableHandler.RollbackBlock(block);
-        }
-        else
-        {
-            IIndexTableStore? store = indexTableHandlerFactory?.Store;
-            if (store is not null)
-            {
-                store.Remove(0, (long)block.Number, block.Hash);
-                IndexTableMergeScheduler.GetTablesForBlock((long)block.Number, (level, firstBlock, _) =>
-                {
-                    store.Remove(level, firstBlock, block.Hash);
-                });
-            }
-        }
-    }
+    public void RollbackBlock(Block block) => _indexTableHandler?.RollbackBlock(block);
 
     public void UpdateFinalBlockHash(Block block) => _indexTableHandler?.UpdateFinalBlockHash(block);
 }

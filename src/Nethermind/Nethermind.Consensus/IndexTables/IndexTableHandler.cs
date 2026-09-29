@@ -9,9 +9,9 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -39,6 +39,7 @@ public class IndexTableHandler(
     ITransactionProcessor processor,
     IIndexTableStore store,
     ISpecProvider specProvider,
+    IWorldState? worldState = null,
     IBlockTree? blockTree = null,
     IReceiptStorage? receiptStorage = null,
     ILogManager? logManager = null) : IIndexTableHandler
@@ -83,8 +84,7 @@ public class IndexTableHandler(
         IndexTableMergeScheduler.GetTablesForBlock((long)block.Number, (level, firstBlock, tableSize) =>
         {
             List<IndexEntry> merged = BuildTable(level, firstBlock, block.Header, ancestorCache)
-                ?? throw new InvalidBlockException(
-                    block,
+                ?? throw new InvalidOperationException(
                     $"Cannot build the EIP-8304 level-{level} index table for blocks {firstBlock}–{firstBlock + tableSize - 1}: " +
                     $"historical entries are unavailable. At least {Eip8304Constants.SyncRecoveryBlocks} blocks of index history must be retained.");
 
@@ -126,20 +126,27 @@ public class IndexTableHandler(
     /// <inheritdoc />
     public void RollbackBlock(Block block)
     {
+        if (_lastCommittedEntries is null || (long)block.Number != _lastCommittedBlockNumber)
+            return;
+
         store.Remove(0, (long)block.Number, block.Hash);
-        if (_lastCommittedBlockHash is not null && _lastCommittedBlockHash != block.Hash && (long)block.Number == _lastCommittedBlockNumber)
+        if (_lastCommittedBlockHash is not null && _lastCommittedBlockHash != block.Hash)
         {
             store.Remove(0, (long)block.Number, _lastCommittedBlockHash);
         }
 
-        IndexTableMergeScheduler.GetTablesForBlock((long)block.Number, (level, firstBlock, tableSize) =>
+        foreach ((int level, long firstBlock, _) in _lastCommittedHigherTables)
         {
             store.Remove(level, firstBlock, block.Hash);
-            if (_lastCommittedBlockHash is not null && _lastCommittedBlockHash != block.Hash && (long)block.Number == _lastCommittedBlockNumber)
+            if (_lastCommittedBlockHash is not null && _lastCommittedBlockHash != block.Hash)
             {
                 store.Remove(level, firstBlock, _lastCommittedBlockHash);
             }
-        });
+        }
+
+        _lastCommittedEntries = null;
+        _lastCommittedBlockHash = null;
+        _lastCommittedHigherTables.Clear();
     }
 
     private bool IsForkActiveAt(
@@ -302,6 +309,9 @@ public class IndexTableHandler(
         if (contractAddress is null)
             return;
 
+        if (worldState is not null && !worldState.IsContract(contractAddress))
+            return;
+
         byte[] calldata = new byte[Eip8304Constants.CalldataLength];
         Span<byte> calldataSpan = calldata;
 
@@ -318,7 +328,7 @@ public class IndexTableHandler(
             Data = calldata,
             To = contractAddress,
             SenderAddress = Address.SystemUser,
-            GasLimit = (long)Eip8304Constants.GasLimit,
+            GasLimit = spec.IsEip8037Enabled ? Eip8037Constants.SystemCallGasLimit : Eip8304Constants.GasLimit,
             GasPrice = 0,
         };
 

@@ -62,7 +62,7 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Host part of the network node.
         /// </summary>
-        public string Host => _host ??= FormatHost(Address.Address);
+        public string Host => _host ??= Address.Address.ToString();
         private string? _host;
 
         /// <summary>
@@ -675,7 +675,9 @@ namespace Nethermind.Stats.Model
         [MemberNotNull(nameof(Address))]
         private void SetIPEndPoint(IPEndPoint address)
         {
-            Address = address;
+            Address = address.Address.IsIPv4MappedToIPv6
+                ? new IPEndPoint(address.Address.MapToIPv4(), address.Port)
+                : address;
             _host = null;
             _enodeHost = null;
             _paddedHost = null;
@@ -744,15 +746,20 @@ namespace Nethermind.Stats.Model
                 return false;
             }
 
+            node = FromDiscoveryEnr(enr, key, discoveryEndpoint);
+            return true;
+        }
+
+        internal static Node FromDiscoveryEnr(NodeRecord enr, PublicKey key, IPEndPoint discoveryEndpoint)
+        {
             IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(discoveryEndpoint.Address.AddressFamily, out IPEndPoint? foundTcpEndpoint)
                 ? foundTcpEndpoint
                 : new IPEndPoint(discoveryEndpoint.Address, 0);
 
-            node = new Node(key, tcpEndpoint, discoveryEndpoint.Port)
+            return new Node(key, tcpEndpoint, discoveryEndpoint.Port)
             {
                 Enr = enr
             };
-            return true;
         }
 
         private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr, AddressFamily addressFamily)
@@ -766,9 +773,6 @@ namespace Nethermind.Stats.Model
                 node.ClearDiscoveryEndpoint();
             }
         }
-
-        private static string FormatHost(IPAddress address)
-            => address.IsIPv4MappedToIPv6 ? address.MapToIPv4().ToString() : address.ToString();
 
         // xxx.xxx.xxx.xxx = 15
         private string PaddedHost => _paddedHost ??= Host.PadLeft(15, ' ');

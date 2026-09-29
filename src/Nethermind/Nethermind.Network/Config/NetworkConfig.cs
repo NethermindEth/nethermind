@@ -17,6 +17,9 @@ namespace Nethermind.Network.Config
         /// <inheritdoc/>
         public string? ExternalIpV6 { get; set; }
 
+        /// <inheritdoc/>
+        public bool EnableExternalIpResolution { get; set; } = true;
+
         public string? LocalIp { get; set; }
         public string? StaticPeers { get; set; }
         public string? DiscoveryDns { get; set; }

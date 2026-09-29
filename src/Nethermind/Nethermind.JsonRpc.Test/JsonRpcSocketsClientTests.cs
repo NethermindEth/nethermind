@@ -96,9 +96,9 @@ public class JsonRpcSocketsClientTests
         [Explicit("Takes too long to run")]
         public async Task Can_handle_very_large_objects()
         {
-            IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
+            using Socket listener = ListenOnLoopback(out IPEndPoint ipEndPoint);
 
-            Task<int> receiveBytes = OneShotServer(ipEndPoint, CountNumberOfBytes);
+            Task<int> receiveBytes = OneShotServer(listener, CountNumberOfBytes);
 
             JsonRpcSuccessResponse bigObject = RandomSuccessResponse(200_000);
             Task<int> sendJsonRpcResult = Task.Run(async () =>
@@ -150,9 +150,9 @@ public class JsonRpcSocketsClientTests
                 return messages;
             }
 
-            IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
+            using Socket listener = ListenOnLoopback(out IPEndPoint ipEndPoint);
 
-            Task<int> receiveMessages = OneShotServer(ipEndPoint, CountNumberOfMessages);
+            Task<int> receiveMessages = OneShotServer(listener, CountNumberOfMessages);
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -386,12 +386,12 @@ public class JsonRpcSocketsClientTests
                 return messages;
             }
 
-            IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
+            using Socket listener = ListenOnLoopback(out IPEndPoint ipEndPoint);
 
             List<byte[]> sentMessages = [];
             List<byte[]> receivedMessages = [];
 
-            Task<int> receiveMessages = OneShotServer(ipEndPoint, socket => ReadMessages(socket, receivedMessages));
+            Task<int> receiveMessages = OneShotServer(listener, socket => ReadMessages(socket, receivedMessages));
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -509,13 +509,34 @@ public class JsonRpcSocketsClientTests
             return processor;
         }
 
-        private static async Task<T> OneShotServer<T>(IPEndPoint ipEndPoint, Func<Socket, Task<T>> func)
+        /// <summary>
+        /// Binds a loopback listener on an OS-assigned port and reports the endpoint it actually got, so two
+        /// concurrent runs of this assembly cannot collide on one port.
+        /// </summary>
+        /// <remarks>
+        /// Binding happens here rather than inside <c>OneShotServer</c> so that the listener is already
+        /// accepting before the test's client task starts connecting.
+        /// </remarks>
+        private static Socket ListenOnLoopback(out IPEndPoint boundEndPoint)
         {
-            using Socket socket = new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            socket.Bind(ipEndPoint);
-            socket.Listen();
+            Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            try
+            {
+                listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+                listener.Listen();
+                boundEndPoint = (IPEndPoint)listener.LocalEndPoint!;
+                return listener;
+            }
+            catch
+            {
+                listener.Dispose();
+                throw;
+            }
+        }
 
-            Socket handler = await socket.AcceptAsync();
+        private static async Task<T> OneShotServer<T>(Socket listener, Func<Socket, Task<T>> func)
+        {
+            Socket handler = await listener.AcceptAsync();
 
             return await func(handler);
         }
@@ -542,11 +563,12 @@ public class JsonRpcSocketsClientTests
         {
             using CancellationTokenSource cts = new();
 
-            Task<int> receiveMessages = OneShotServer("http://localhost:1337/", webSocket => CountMessages(webSocket, cts.Token));
+            int port = FindFreeLoopbackPort();
+            Task<int> receiveMessages = OneShotServer($"http://localhost:{port}/", webSocket => CountMessages(webSocket, cts.Token));
 
             Task<int> sendMessages = Task.Run(async () =>
             {
-                using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync();
+                using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync(port);
                 using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000), default);
 
                 for (int i = 0; i < messageCount; i++)
@@ -570,11 +592,12 @@ public class JsonRpcSocketsClientTests
         {
             using CancellationTokenSource cts = new();
 
-            Task<int> server = OneShotServer("http://localhost:1337/", webSocket => CountMessages(webSocket, cts.Token));
+            int port = FindFreeLoopbackPort();
+            Task<int> server = OneShotServer($"http://localhost:{port}/", webSocket => CountMessages(webSocket, cts.Token));
 
             Task sendCollection = Task.Run(async () =>
             {
-                using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync();
+                using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync(port);
                 await SendRandomBatchAsync(ws.Stream, RpcEndpoint.Ws, maxBatchResponseBodySize: null, elements, 100);
                 await Task.Delay(100);
                 await cts.CancelAsync();
@@ -590,11 +613,12 @@ public class JsonRpcSocketsClientTests
         {
             using CancellationTokenSource cts = new();
 
-            Task<long> receiveBytes = OneShotServer("http://localhost:1337/", webSocket => CountBytes(webSocket, cts.Token));
+            int port = FindFreeLoopbackPort();
+            Task<long> receiveBytes = OneShotServer($"http://localhost:{port}/", webSocket => CountBytes(webSocket, cts.Token));
 
             Task<int> sendCollection = Task.Run(async () =>
             {
-                using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync(maxBatchResponseBodySize: maxByteCount);
+                using TestClient<WebSocketMessageStream> ws = await TestClient.ConnectWsAsync(port, maxBatchResponseBodySize: maxByteCount);
                 int sent = (int)await SendRandomBatchAsync(ws.Stream, RpcEndpoint.Ws, maxByteCount, 10, 100);
                 await Task.Delay(100);
                 await cts.CancelAsync();
@@ -644,6 +668,22 @@ public class JsonRpcSocketsClientTests
                 webSocket.Dispose();
             }
             return value;
+        }
+
+        /// <summary>
+        /// Returns a loopback port that was free a moment ago.
+        /// </summary>
+        /// <remarks>
+        /// Inherently racy: <see cref="HttpListener"/> prefixes cannot ask for port 0, so the port has to be named
+        /// before the listener exists, and nothing holds it in between. It is better than a hard-coded port and no
+        /// more than that. These cases are <c>[Explicit]</c> and do not run in CI, which is why this is tolerable
+        /// here and not in <see cref="ListenOnLoopback"/>.
+        /// </remarks>
+        private static int FindFreeLoopbackPort()
+        {
+            using Socket probe = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            probe.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            return ((IPEndPoint)probe.LocalEndPoint!).Port;
         }
 
         private static async Task<T> OneShotServer<T>(string uri, Func<WebSocket, Task<T>> func)
@@ -782,10 +822,10 @@ public class JsonRpcSocketsClientTests
             return new TestClient<IpcSocketMessageStream>(stream, owner: socket);
         }
 
-        public static async Task<TestClient<WebSocketMessageStream>> ConnectWsAsync(long? maxBatchResponseBodySize = null)
+        public static async Task<TestClient<WebSocketMessageStream>> ConnectWsAsync(int port, long? maxBatchResponseBodySize = null)
         {
             ClientWebSocket socket = new();
-            await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
+            await socket.ConnectAsync(new Uri($"ws://localhost:{port}/"), CancellationToken.None);
             WebSocketMessageStream stream = new(socket, NullLogManager.Instance);
             return new TestClient<WebSocketMessageStream>(stream, RpcEndpoint.Ws, maxBatchResponseBodySize: maxBatchResponseBodySize, owner: socket);
         }

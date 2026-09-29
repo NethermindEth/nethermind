@@ -30,6 +30,8 @@ public abstract class VirtualMachineTestsBase
     protected const string SampleHexData2 = "b15678";
     protected const string HexZero = "00";
     protected const ulong DefaultBlockGasLimit = 8000000;
+    protected const ulong DefaultBlockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
+    protected const ulong DefaultTimestamp = 0UL;
 
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
@@ -49,8 +51,8 @@ public abstract class VirtualMachineTestsBase
     protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
-    protected virtual ulong BlockNumber { get; private set; } = MainnetSpecProvider.ByzantiumBlockNumber;
-    protected virtual ulong Timestamp { get; private set; } = 0UL;
+    protected virtual ulong BlockNumber { get; private set; } = DefaultBlockNumber;
+    protected virtual ulong Timestamp { get; private set; } = DefaultTimestamp;
 
     /// <summary>Applies a signed <paramref name="adjustment"/> to a block number, e.g. to target just before/after a fork.</summary>
     protected static ulong AdjustBlockNumber(ulong blockNumber, long adjustment) => (ulong)((long)blockNumber + adjustment);
@@ -62,6 +64,9 @@ public abstract class VirtualMachineTestsBase
     [SetUp]
     public virtual void Setup()
     {
+        BlockNumber = DefaultBlockNumber;
+        Timestamp = DefaultTimestamp;
+
         ILogManager logManager = GetLogManager();
 
         _stateDb = new MemDb();
@@ -117,8 +122,13 @@ public abstract class VirtualMachineTestsBase
     protected GethLikeTxTrace ExecuteAndTraceToFile(Action<GethTxFileTraceEntry> dumpCallback, byte[] code, GethTraceOptions options)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
-        GethLikeTxFileTracer tracer = new(dumpCallback, options);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        GethLikeTxFileTracer tracer = new(
+            dumpCallback,
+            options,
+            (long)spec.GasCosts.DestroyRefund,
+            IntrinsicGasCalculator.Calculate(transaction, spec, block.Header.GasLimit).Standard);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
         return tracer.BuildResult();
     }
 
@@ -348,15 +358,20 @@ public abstract class VirtualMachineTestsBase
 
     protected void AssertGas(TestAllTracerWithOutput receipt, ulong gas) => Assert.That(receipt.GasSpent, Is.EqualTo(gas), "gas");
 
-    protected void AssertStorage(UInt256 address, Address value) => Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes.PadLeft(32)), "storage");
+    protected void AssertStorage(UInt256 address, Address value) => AssertStorage(address, value.Bytes);
 
-    protected void AssertStorage(UInt256 address, Hash256 value) => Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.BytesToArray()), "storage");
+    protected void AssertStorage(UInt256 address, Hash256 value) => AssertStorage(address, value.Bytes);
 
-    protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value) => Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.PadLeft(32)), "storage");
+    protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
+    {
+        TestState.Get(new StorageCell(Recipient, address), out UInt256 actual);
+        Assert.That(actual.ToBigEndian(), Is.EqualTo(value.PadLeft(32)), "storage");
+    }
 
     protected void AssertStorage(UInt256 address, BigInteger expectedValue)
     {
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
+        TestState.Get(new StorageCell(Recipient, address), out UInt256 storageValue1);
+        byte[] actualValue = storageValue1.ToMinimalBigEndian();
         byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
         Assert.That(actualValue, Is.EqualTo(expected), "storage");
     }
@@ -365,7 +380,8 @@ public abstract class VirtualMachineTestsBase
     {
         byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
 
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
+        TestState.Get(new StorageCell(Recipient, address), out UInt256 storageValue2);
+        byte[] actualValue = storageValue2.ToMinimalBigEndian();
         Assert.That(actualValue, Is.EqualTo(bytes), "storage");
     }
 
@@ -380,7 +396,8 @@ public abstract class VirtualMachineTestsBase
         }
         else
         {
-            byte[] actualValue = TestState.Get(storageCell).ToArray();
+            TestState.Get(storageCell, out UInt256 storageValue3);
+            byte[] actualValue = storageValue3.ToMinimalBigEndian();
             Assert.That(actualValue, Is.EqualTo(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray()), $"storage {storageCell}, call {_callIndex}");
         }
     }

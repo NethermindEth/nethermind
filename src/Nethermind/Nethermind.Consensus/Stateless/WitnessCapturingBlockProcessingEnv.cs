@@ -6,6 +6,8 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -88,7 +90,9 @@ public sealed class WitnessCapturingBlockProcessingEnv(
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
-                ctx.Resolve<BalTxProcessorFactory>()))
+                ctx.Resolve<BalTxProcessorFactory>(),
+                executionRequestsProcessorFactory: ctx.ResolveOptional<IExecutionRequestsProcessorFactory>(),
+                indexTableHandlerFactory: ctx.ResolveOptional<IIndexTableHandlerFactory>()))
             // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
             .AddModule(validationModules));
 

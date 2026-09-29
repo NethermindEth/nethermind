@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -69,11 +68,18 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        // ADD and SUB run on the stack's own big-endian limbs on every target. Going through UInt256
-        // costs three full-word endianness conversions around a vectorised carry chain that, on the
-        // 256-bit path, also has a data-dependent branch and a table lookup for the carry fix-up.
-        // Swapping each limb as it is read is cheaper than converting the words, and the carry chain
-        // is four dependent adds either way.
+        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated &&
+            (typeof(TOpMath) == typeof(OpAdd) || typeof(TOpMath) == typeof(OpSub)))
+        {
+            if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte arithmeticTopRef = ref stack.Pop1Peek32BytesUnchecked();
+            ref UInt256 arithmeticB = ref As<byte, UInt256>(ref arithmeticTopRef);
+            ref UInt256 arithmeticA = ref Add(ref arithmeticB, 1);
+            TOpMath.Operation(in arithmeticA, in arithmeticB, out arithmeticB);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref arithmeticTopRef);
+            return EvmExceptionType.None;
+        }
+
         if (typeof(TOpMath) == typeof(OpAdd))
         {
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
@@ -81,19 +87,29 @@ public static partial class EvmInstructions
 
             ref ulong top = ref As<byte, ulong>(ref addTopRef);
             ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
-            System.UInt128 sum = (System.UInt128)BinaryPrimitives.ReverseEndianness(Add(ref top, 3)) +
-                BinaryPrimitives.ReverseEndianness(Add(ref popped, 3));
-            Add(ref top, 3) = BinaryPrimitives.ReverseEndianness((ulong)sum);
-            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(Add(ref top, 2)) +
-                BinaryPrimitives.ReverseEndianness(Add(ref popped, 2));
-            Add(ref top, 2) = BinaryPrimitives.ReverseEndianness((ulong)sum);
-            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(Add(ref top, 1)) +
-                BinaryPrimitives.ReverseEndianness(Add(ref popped, 1));
-            Add(ref top, 1) = BinaryPrimitives.ReverseEndianness((ulong)sum);
-            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(top) +
-                BinaryPrimitives.ReverseEndianness(popped);
-            top = BinaryPrimitives.ReverseEndianness((ulong)sum);
-
+            // Limb layout: limb 0 is the least significant, so the carry runs upward. It is tracked
+            // in a ulong rather than through UInt128, whose shift down by 64 reaches a software
+            // helper on the guest.
+            ulong augend = top;
+            ulong limb = augend + popped;
+            ulong carry = limb < augend ? 1UL : 0UL;
+            top = limb;
+            // Spelled out rather than looped, so the guest gets straight-line code. The two carries
+            // are mutually exclusive: a wrap on augend + addend leaves a result below both, which
+            // cannot then be ulong.MaxValue and wrap again on the incoming carry.
+            augend = Add(ref top, 1);
+            limb = augend + Add(ref popped, 1);
+            ulong wrapped = limb < augend ? 1UL : 0UL;
+            limb += carry;
+            carry = wrapped + (limb < carry ? 1UL : 0UL);
+            Add(ref top, 1) = limb;
+            augend = Add(ref top, 2);
+            limb = augend + Add(ref popped, 2);
+            wrapped = limb < augend ? 1UL : 0UL;
+            limb += carry;
+            carry = wrapped + (limb < carry ? 1UL : 0UL);
+            Add(ref top, 2) = limb;
+            Add(ref top, 3) = Add(ref top, 3) + Add(ref popped, 3) + carry;
             if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
             return EvmExceptionType.None;
         }
@@ -105,29 +121,24 @@ public static partial class EvmInstructions
 
             ref ulong subtrahend = ref As<byte, ulong>(ref subtractTopRef);
             ref ulong minuend = ref Add(ref subtrahend, EvmStack.WordSize / sizeof(ulong));
-            ulong minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 3));
-            ulong difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 3));
+            // Limb layout: limb 0 is the least significant, so the borrow runs upward.
+            ulong minuendPart = minuend;
+            ulong difference = minuendPart - subtrahend;
             ulong borrow = difference > minuendPart ? 1UL : 0UL;
-            Add(ref subtrahend, 3) = BinaryPrimitives.ReverseEndianness(difference);
-
-            minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 2));
-            difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 2));
+            subtrahend = difference;
+            minuendPart = Add(ref minuend, 1);
+            difference = minuendPart - Add(ref subtrahend, 1);
             ulong withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 2) = BinaryPrimitives.ReverseEndianness(difference);
-
-            minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 1));
-            difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 1));
+            Add(ref subtrahend, 1) = difference;
+            minuendPart = Add(ref minuend, 2);
+            difference = minuendPart - Add(ref subtrahend, 2);
             withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 1) = BinaryPrimitives.ReverseEndianness(difference);
-
-            difference = BinaryPrimitives.ReverseEndianness(minuend) -
-                BinaryPrimitives.ReverseEndianness(subtrahend) - borrow;
-            subtrahend = BinaryPrimitives.ReverseEndianness(difference);
-
+            Add(ref subtrahend, 2) = difference;
+            Add(ref subtrahend, 3) = Add(ref minuend, 3) - Add(ref subtrahend, 3) - borrow;
             if (TTracingInst.IsActive) stack.ReportPushWord(ref subtractTopRef);
             return EvmExceptionType.None;
         }
@@ -166,9 +177,8 @@ public static partial class EvmInstructions
     }
 
     /// <remarks>
-    /// Limbs are tested for equality where they lie, which needs no byte order. Only the pair that
-    /// differs is swapped into host order. Most operands are small and agree in their high limbs,
-    /// so the usual cost is one swap pair instead of four.
+    /// Limbs lie in host order, most significant last; the comparison starts from that end and
+    /// stops at the first pair that differs.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
@@ -177,29 +187,25 @@ public static partial class EvmInstructions
         bool signed = typeof(TOpMath) == typeof(OpSLt) || typeof(TOpMath) == typeof(OpSGt);
         bool lessThan = typeof(TOpMath) == typeof(OpLt) || typeof(TOpMath) == typeof(OpSLt);
 
-        // Only the most significant limb carries the sign; the rest always compare unsigned.
-        if (a != b)
+        // Limb layout: limb 3 is the most significant and the only one that carries the sign; the
+        // rest always compare unsigned.
+        ulong aHigh = Add(ref a, 3);
+        ulong bHigh = Add(ref b, 3);
+        if (aHigh != bHigh)
         {
-            ulong aHigh = BinaryPrimitives.ReverseEndianness(a);
-            ulong bHigh = BinaryPrimitives.ReverseEndianness(b);
             bool less = signed ? (long)aHigh < (long)bHigh : aHigh < bHigh;
             return lessThan ? less : !less;
         }
-
-        if (Add(ref a, 1) != Add(ref b, 1))
-            return CompareLimb(Add(ref a, 1), Add(ref b, 1), lessThan);
         if (Add(ref a, 2) != Add(ref b, 2))
             return CompareLimb(Add(ref a, 2), Add(ref b, 2), lessThan);
-        return CompareLimb(Add(ref a, 3), Add(ref b, 3), lessThan);
+        if (Add(ref a, 1) != Add(ref b, 1))
+            return CompareLimb(Add(ref a, 1), Add(ref b, 1), lessThan);
+        return CompareLimb(a, b, lessThan);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool CompareLimb(ulong a, ulong b, bool lessThan)
-    {
-        ulong aPart = BinaryPrimitives.ReverseEndianness(a);
-        ulong bPart = BinaryPrimitives.ReverseEndianness(b);
-        return lessThan ? aPart < bPart : aPart > bPart;
-    }
+        => lessThan ? a < b : a > b;
 
     /// <summary>
     /// Implements addition of two 256-bit unsigned integers.

@@ -78,13 +78,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
-    private readonly IFinalizedStateProvider _finalizedStateProvider;
+    private readonly IStateHeaderProvider _finalizedStateProvider;
 
     public TrieStore(
         INodeStorage nodeStorage,
         IPruningStrategy pruningStrategy,
         IPersistenceStrategy persistenceStrategy,
-        IFinalizedStateProvider finalizedStateProvider,
+        IStateHeaderProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
         ILogManager logManager)
     {
@@ -253,16 +253,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
     }
 
-    private int GetNodeShardIdx(in TreePath path, Hash256 hash)
-    {
+    private int GetNodeShardIdx(in TreePath path, Hash256 hash) =>
         // When enabled, the shard have dictionaries for tracking past path hash also.
         // So the same path need to be in the same shard for the remove logic to work.
-        uint hashCode = (uint)(_pastKeyTrackingEnabled
-            ? path.GetHashCode()
-            : hash.GetHashCode());
+        _pastKeyTrackingEnabled ? GetPathShardIdx(path) : (int)((uint)hash.GetHashCode() & _shardMask);
 
-        return (int)(hashCode & _shardMask);
-    }
+    private int GetPathShardIdx(in TreePath path) => (int)((uint)path.GetHashCode() & _shardMask);
 
     private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key.Path, key.Keccak)];
 
@@ -811,7 +807,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             using ArrayPoolListRef<BlockCommitSet> commitSetsAtFinalizedBlock = _commitSetQueue.GetCommitSetsAtBlockNumber(effectiveFinalizedBlockNumber);
 
             BlockCommitSet? finalizedBlockCommitSet = null;
-            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(effectiveFinalizedBlockNumber);
+            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedHeader(effectiveFinalizedBlockNumber)?.StateRoot;
             if (finalizedStateRoot is not null)
             {
                 foreach (BlockCommitSet blockCommitSet in commitSetsAtFinalizedBlock)
@@ -869,21 +865,26 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (treePath.Length <= TinyTreePath.MaxNibbleLength)
         {
-            Hash256 keccak = tn.Keccak ?? ThrowUnknownHash(tn);
-            int shardIdx = GetNodeShardIdx(treePath, keccak);
+            // Only wired when past keys are tracked, so shards are keyed by path and a hash is not required here.
+            int shardIdx = GetPathShardIdx(treePath);
 
             HashAndTinyPath key = new(address, new TinyTreePath(treePath));
-            RecordPersistedHash(_persistedHashes[shardIdx], key, keccak, _deleteOldNodes);
+            RecordPersistedHash(_persistedHashes[shardIdx], key, tn.Keccak, _deleteOldNodes);
         }
-
-        [DoesNotReturn, StackTraceHidden]
-        static Hash256 ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known when recording persisted nodes.");
     }
 
+    /// <summary>
+    /// Records the hash persisted at <paramref name="key"/> so <see cref="PruneCache"/> can drop cached nodes that the
+    /// path no longer points to.
+    /// </summary>
+    /// <remarks>
+    /// A null <paramref name="hash"/> marks the path ambiguous, which keeps every cached node under it. Nodes inlined in
+    /// their parent (RLP shorter than 32 bytes) have no hash of their own and are recorded this way.
+    /// </remarks>
     internal static void RecordPersistedHash(
         ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes,
         in HashAndTinyPath key,
-        Hash256 hash,
+        Hash256? hash,
         bool deleteOldNodes)
     {
         if (persistedHashes.TryAdd(key, hash) || !deleteOldNodes)
@@ -932,7 +933,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         ParallelUnbalancedWork.For(
             0,
             _dirtyNodes.Length,
-            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            RuntimeInformation.ParallelOptionsLogicalCores,
             (prunePersisted, forceRemovePersistedNodes, dirtyNodes: _dirtyNodes, persistedHashes: _persistedHashes, nodeStorage),
             static (index, state) =>
             {
@@ -976,7 +977,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             ParallelUnbalancedWork.For(
                 0,
                 shardCountToPrune,
-                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                RuntimeInformation.ParallelOptionsLogicalCores,
                 (dirtyNodes: _dirtyNodes, shardedCount: _shardedDirtyNodeCount, startShardIdx),
                 static (i, state) =>
                 {

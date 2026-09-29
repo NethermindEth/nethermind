@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -10,12 +11,11 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -39,7 +39,7 @@ public partial class BlockAccessListManager
 {
     private interface ITxProcessorWithWorldStateManager : IDisposable
     {
-        void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot);
+        void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan);
         TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0u);
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
@@ -66,9 +66,10 @@ public partial class BlockAccessListManager
         }
 
         private Block? _currentBlock;
+        private Hash256? _parentStateRoot;
         private BlockExecutionContext _currentCtx;
         private int _lastBalIndex;
-        private BlockHeader? _parentStateHeader;
+        private BalReadStoragePlan? _readPlan;
 
         // _inUse[i] is the processor currently bound to balIndex i.
         private TxProcessorWithWorldState?[] _inUse = new TxProcessorWithWorldState?[DefaultTxCount];
@@ -103,16 +104,12 @@ public partial class BlockAccessListManager
             }
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
         {
+            _readPlan = readPlan;
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
-            _parentStateHeader = null;
-            if (_parentReaderEnvPool is not null)
-            {
-                if (parentStateRoot is null) ThrowNotInitialized(nameof(parentStateRoot));
-                _parentStateHeader = CreateParentStateHeader(block, parentStateRoot);
-            }
+            _parentStateRoot = parentStateRoot;
 
             int previousSize = _lastBalIndex + 1;
             int newLastBalIndex = block.Transactions.Length + 1;
@@ -140,13 +137,13 @@ public partial class BlockAccessListManager
             if (existing is not null) return existing;
 
             TxProcessorWithWorldState processor = RentProcessor();
-            ParentReaderLease? parentReader = RentParentReader();
+            ParentReaderLease? parentReader = RentParentReader(_currentBlock.Header);
 
             try
             {
                 // Install a fresh BAL before Setup so the worker has somewhere to record changes.
                 processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessListAtIndex>.Rent());
-                processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader);
+                processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader, _readPlan);
                 _inUse[idx] = processor;
                 return processor;
             }
@@ -176,7 +173,9 @@ public partial class BlockAccessListManager
             TxProcessorWithWorldState? processor = _inUse[idx];
             if (processor is null) return;
 
-            _perTxBal[idx] = processor.WorldState.GetGeneratingBlockAccessList();
+            BlockAccessListAtIndex? slice = processor.WorldState.GetGeneratingBlockAccessList();
+            if (slice is not null) slice.CoveredStorageReads = processor.WorldState.ReadCoverage?.ChargeableReadCount ?? 0;
+            _perTxBal[idx] = slice;
             processor.WorldState.SetGeneratingBlockAccessList(null);
             processor.ClearParentReader();
             _inUse[idx] = null;
@@ -242,26 +241,27 @@ public partial class BlockAccessListManager
             _processors.Enqueue(p);
         }
 
-        private ParentReaderLease? RentParentReader()
+        private ParentReaderLease? RentParentReader(BlockHeader targetBlock)
         {
             if (_parentReaderEnvPool is null)
             {
                 return null;
             }
 
-            if (_parentStateHeader is null) ThrowNotInitialized(nameof(_parentStateHeader));
-
             IReadOnlyTxProcessorSource source = _parentReaderEnvPool.Get();
-            try
-            {
-                return new ParentReaderLease(source, _parentReaderEnvPool, source.Build(_parentStateHeader));
-            }
-            catch
+            if (!source.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? scope))
             {
                 _parentReaderEnvPool.Return(source);
-                throw;
+                ThrowParentStateUnavailable(targetBlock);
             }
+
+            Debug.Assert(scope.WorldState.StateRoot == _parentStateRoot, "parent readers must read the pre-state the block executes on");
+            return new ParentReaderLease(source, _parentReaderEnvPool, scope);
         }
+
+        [DoesNotReturn]
+        private static void ThrowParentStateUnavailable(BlockHeader targetBlock)
+            => throw new StateNotRetainedException($"Parent state is unavailable for block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 
         private void ReclaimAndResize(int size, int previousSize)
         {
@@ -291,7 +291,7 @@ public partial class BlockAccessListManager
             DefaultObjectPoolProvider provider = new() { MaximumRetained = ProcessorPoolSize };
             if (prewarmerEnvFactory is not null && preBlockCaches is not null)
             {
-                return provider.Create(new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(prewarmerEnvFactory, preBlockCaches));
+                return provider.Create(new PrewarmerEnvPooledObjectPolicy(prewarmerEnvFactory, preBlockCaches));
             }
 
             return readOnlyTxProcessingEnvFactory is not null
@@ -299,23 +299,6 @@ public partial class BlockAccessListManager
                 : null;
         }
 
-        private static BlockHeader CreateParentStateHeader(Block block, Hash256 stateRoot)
-        {
-            Hash256 parentHash = block.ParentHash ?? Keccak.Zero;
-            return new BlockHeader(
-                parentHash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                UInt256.Zero,
-                block.Number == 0 ? 0 : block.Number - 1,
-                0,
-                0,
-                [])
-            {
-                StateRoot = stateRoot,
-                Hash = parentHash,
-            };
-        }
     }
 
     private class SequentialTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
@@ -331,8 +314,16 @@ public partial class BlockAccessListManager
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot)
-            => _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null);
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
+        {
+            if (readPlan is not null)
+                ThrowReadCoverageUnavailable();
+            _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null);
+        }
+
+        [DoesNotReturn]
+        private static void ThrowReadCoverageUnavailable()
+            => throw new InvalidOperationException("Read coverage requires parallel execution.");
 
         public TxProcessorWithWorldState Get(uint? _)
             => _txProcessorWithWorldState;
@@ -362,6 +353,7 @@ public partial class BlockAccessListManager
         public readonly ITransactionProcessorAdapter TxProcessorAdapter;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
+        private BalReadCoverage? _readCoverage;
 
         public TxProcessorWithWorldState(
             bool parallel,
@@ -382,7 +374,7 @@ public partial class BlockAccessListManager
             (TxProcessor, TxProcessorAdapter) = txProcessorFactory.Create(WorldState, parallel);
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader, BalReadStoragePlan? readPlan = null)
         {
             if (_parentReader is not null) ThrowParentReaderStillAttached();
 
@@ -395,12 +387,18 @@ public partial class BlockAccessListManager
             {
                 if (parentReader is null) ThrowParentReaderUnavailable();
                 _balWorldState.SetParentReader(parentReader.WorldState);
-                _balWorldState.Setup(block);
+                if (readPlan is not null && !ReferenceEquals(_readCoverage?.Plan, readPlan))
+                    _readCoverage = readPlan.CreateCoverage();
+                BalReadCoverage? coverage = readPlan is null ? null : _readCoverage;
+                coverage?.StartSlice();
+                WorldState.ReadCoverage = coverage;
+                _balWorldState.Setup(block, coverage);
             }
         }
 
         public void ClearParentReader()
         {
+            WorldState.ReadCoverage = null;
             _balWorldState?.ClearParentReader();
             _parentReader?.Dispose();
             _parentReader = null;
@@ -452,6 +450,14 @@ public partial class BlockAccessListManager
         IReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
         public IReadOnlyTxProcessorSource Create() => envFactory.Create();
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+    }
+
+    /// <remarks>The parent reader only reads state, so the env's access-list hints are of no use here.</remarks>
+    private sealed class PrewarmerEnvPooledObjectPolicy(
+        PrewarmerEnvFactory envFactory, PreBlockCaches preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create(preBlockCaches);
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 }

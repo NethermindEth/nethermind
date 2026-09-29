@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using NSubstitute;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -18,6 +19,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
@@ -70,6 +74,89 @@ namespace Nethermind.Hive.Test
             ITxPoolConfig txPoolConfig = container.Resolve<ITxPoolConfig>();
 
             Assert.That(txPoolConfig.ProofsTranslationEnabled, Is.True);
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Configures_flat_db_for_expected_deep_reorgs()
+        {
+            const string variable = "HIVE_EXPECT_DEEP_REORGS";
+            string previous = Environment.GetEnvironmentVariable(variable);
+            try
+            {
+                Environment.SetEnvironmentVariable(variable, "1");
+                FlatDbConfig config = new();
+
+                using IContainer container = new ContainerBuilder()
+                    .AddModule(new TestNethermindModule(config))
+                    .AddModule(new HiveModule())
+                    .Build();
+
+                Assert.That(container.Resolve<IFlatDbConfig>().MinReorgDepth, Is.EqualTo(544UL));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(variable, previous);
+            }
+        }
+
+        [Test]
+        public void Skips_evm_warmup_for_hive()
+        {
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new InitConfig()))
+                .AddModule(new HiveModule())
+                .Build();
+
+            Assert.That(container.Resolve<IInitConfig>().EvmWarmupEnabled, Is.False);
+        }
+
+        [Test]
+        public void Supplies_an_ephemeral_node_key_when_no_identity_is_configured()
+        {
+            string nodeKey = ResolveHiveKeyStoreConfig(new KeyStoreConfig()).TestNodeKey;
+            string next = ResolveHiveKeyStoreConfig(new KeyStoreConfig()).TestNodeKey;
+
+            Assert.That(nodeKey, Is.Not.Empty);
+
+            using PrivateKey parsed = new(nodeKey);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parsed.ToString(), Is.EqualTo(nodeKey));
+                Assert.That(next, Is.Not.EqualTo(nodeKey), "each container gets its own key");
+            }
+        }
+
+        [Test]
+        public void Keeps_a_configured_test_node_key()
+        {
+            const string configured = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
+
+            Assert.That(ResolveHiveKeyStoreConfig(new KeyStoreConfig { TestNodeKey = configured }).TestNodeKey, Is.EqualTo(configured));
+        }
+
+        // NodeKeyManager.LoadNodeKey prefers TestNodeKey over both, so supplying one would bypass them.
+        [TestCaseSource(nameof(ConfiguredEnodeIdentities))]
+        public void Defers_to_a_configured_enode_identity(KeyStoreConfig configured) =>
+            Assert.That(ResolveHiveKeyStoreConfig(configured).TestNodeKey, Is.Null.Or.Empty);
+
+        private static IEnumerable<TestCaseData> ConfiguredEnodeIdentities()
+        {
+            yield return new TestCaseData(new KeyStoreConfig { EnodeAccount = TestItem.AddressA.ToString() })
+                .SetName("Defers to a configured enode account");
+            yield return new TestCaseData(new KeyStoreConfig { EnodeKeyFile = "enode.key" })
+                .SetName("Defers to a configured enode key file");
+        }
+
+        private static IKeyStoreConfig ResolveHiveKeyStoreConfig(KeyStoreConfig keyStoreConfig)
+        {
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(keyStoreConfig))
+                .AddModule(new HiveModule())
+                .Build();
+
+            return container.Resolve<IKeyStoreConfig>();
         }
 
         [Test]

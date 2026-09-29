@@ -248,6 +248,7 @@ public class SimulateTxExecutor<TTrace>(
             {
                 TransactionResult.ErrorType.BlockGasLimitExceeded => ErrorCodes.BlockGasLimitReached,
                 TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => ErrorCodes.IntrinsicGas,
+                TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap => ErrorCodes.InvalidInput,
                 TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
                     or TransactionResult.ErrorType.InsufficientSenderBalance => ErrorCodes.InsufficientFunds,
                 TransactionResult.ErrorType.MalformedTransaction => ErrorCodes.InternalError,

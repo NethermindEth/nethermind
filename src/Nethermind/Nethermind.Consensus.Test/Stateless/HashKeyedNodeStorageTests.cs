@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -98,19 +103,60 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Separates_keys_that_share_their_leading_bytes()
+    public void Separates_keys_that_share_a_hash_code([Range(0, 7)] int half)
     {
-        // The hash code is the keccak's leading four bytes, so equality is what has to tell these apart.
-        byte[] first = new byte[32];
-        byte[] second = new byte[32];
-        second[31] = 1;
+        (ValueHash256 first, ValueHash256 second) = FindHashCodeCollision(half);
 
         HashKeyedNodeStorage storage = Storage();
-        storage.Set(null, TreePath.Empty, new ValueHash256(first), [0x01]);
-        storage.Set(null, TreePath.Empty, new ValueHash256(second), [0x02]);
+        storage.Set(null, TreePath.Empty, first, [0x01]);
+        storage.Set(null, TreePath.Empty, second, [0x02]);
 
-        Assert.That(storage.Get(null, TreePath.Empty, new ValueHash256(first)), Is.EqualTo(new byte[] { 0x01 }));
-        Assert.That(storage.Get(null, TreePath.Empty, new ValueHash256(second)), Is.EqualTo(new byte[] { 0x02 }));
+        Assert.That(storage.Get(null, TreePath.Empty, first), Is.EqualTo(new byte[] { 0x01 }));
+        Assert.That(storage.Get(null, TreePath.Empty, second), Is.EqualTo(new byte[] { 0x02 }));
+    }
+
+    [Test]
+    public void Resolves_colliding_witness_buckets_before_and_after_writes([Values(2, 8, 9, 16)] int count)
+    {
+        int mask = (int)BitOperations.RoundUpToPowerOf2((uint)count + 1) - 1;
+        int bucket = ((int)(BitConverter.ToUInt32(Keccak.EmptyTreeHash.Bytes) & (uint)mask) + 1) & mask;
+        byte[][] nodes = new byte[count + 1][];
+        int found = 0;
+        for (int candidate = 0; found < nodes.Length; candidate++)
+        {
+            byte[] node = BitConverter.GetBytes(candidate);
+            if ((BitConverter.ToUInt32(HashOf(node).Bytes) & (uint)mask) == bucket) nodes[found++] = node;
+        }
+        HashKeyedNodeStorage storage = new(nodes.AsSpan(0, count));
+
+        for (int phase = 0; phase < 2; phase++)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(storage.Get(null, TreePath.Empty, HashOf(nodes[i])), Is.EqualTo(nodes[i]));
+                    Assert.That(storage.KeyExists(null, TreePath.Empty, HashOf(nodes[i])), Is.True);
+                }
+            }
+            Assert.That(storage.Get(null, TreePath.Empty, HashOf(nodes[^1])), Is.Null);
+            storage.Set(null, TreePath.Empty, UnknownHash, [0x01]);
+        }
+        storage.Set(null, TreePath.Empty, HashOf(nodes[0]), null);
+        Assert.That(storage.Get(null, TreePath.Empty, HashOf(nodes[0])), Is.Null);
+        Assert.That(storage.KeyExists(null, TreePath.Empty, HashOf(nodes[0])), Is.False);
+    }
+
+    [Test]
+    public void Duplicate_witness_nodes_resolve_and_can_be_evicted([Values(1, 9)] int count)
+    {
+        byte[][] nodes = new byte[count][];
+        Array.Fill(nodes, Nodes[1]);
+        HashKeyedNodeStorage storage = Storage(nodes);
+        ValueHash256 hash = HashOf(Nodes[1]);
+        Assert.That(storage.Get(null, TreePath.Empty, hash), Is.EqualTo(Nodes[1]));
+        storage.Set(null, TreePath.Empty, hash, null);
+        Assert.That(storage.Get(null, TreePath.Empty, hash), Is.Null);
     }
 
     [Test]
@@ -165,4 +211,48 @@ public class HashKeyedNodeStorageTests
             storage.Set(null, TreePath.Empty, hash, data);
         }
     }
+
+    /// <summary>
+    /// Finds two keys the store buckets together that differ in <paramref name="half"/> alone - one
+    /// 4-byte half of one of the four words equality compares - so that word's comparison is what
+    /// tells them apart, and only the half of it that varies can do so.
+    /// </summary>
+    /// <remarks>
+    /// Searched rather than hard-coded: the hash code is seeded, so no fixed pair collides across runs.
+    /// One half rather than one whole word, because a pair differing across the whole word is separated
+    /// by any partial read of it: for word <c>w</c>, dropping its comparison fails halves <c>2w</c> and
+    /// <c>2w + 1</c>, while narrowing it to the low or high 32 bits fails the half it stops reading -
+    /// <c>2w + 1</c> and <c>2w</c> respectively. A pair differing anywhere else would still be separated
+    /// by the words that remain. A 32-bit birthday collision is overwhelmingly likely well inside
+    /// <c>Attempts</c>.
+    /// <para>
+    /// <see cref="NodeKeyHashCode"/> mirrors the store's private hash. Should the two ever drift apart,
+    /// the pair no longer shares a bucket and this test passes without reaching equality at all, rather
+    /// than failing.
+    /// </para>
+    /// </remarks>
+    private static (ValueHash256, ValueHash256) FindHashCodeCollision(int half)
+    {
+        const int Attempts = 1 << 19;
+        Dictionary<int, ValueHash256> seen = [];
+
+        for (int i = 0; i < Attempts; i++)
+        {
+            ValueHash256 candidate = default;
+            BinaryPrimitives.WriteInt32LittleEndian(candidate.BytesAsSpan[(half * sizeof(uint))..], i);
+            int hashCode = NodeKeyHashCode(in candidate);
+
+            // Distinct i give distinct candidates, so the first repeated hash code is the collision.
+            if (seen.TryGetValue(hashCode, out ValueHash256 previous)) return (previous, candidate);
+
+            seen[hashCode] = candidate;
+        }
+
+        Assert.Fail($"No hash-code collision within {Attempts} keys.");
+        return default;
+    }
+
+    /// <summary>Mirrors the store's private key hash so the search targets the same buckets.</summary>
+    private static int NodeKeyHashCode(in ValueHash256 hash) =>
+        (int)SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in hash)));
 }

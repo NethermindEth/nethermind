@@ -7,8 +7,8 @@ namespace Nethermind.Db;
 
 public class FlatDbConfig : IFlatDbConfig
 {
-    public bool Enabled { get; set; } = false;
-    public bool EnablePreimageRecording { get; set; } = false;
+    public bool Enabled { get; set; } = true;
+    public FlatDbOnRepair OnRepair { get; set; } = FlatDbOnRepair.Resync;
     public bool HistoryEnabled { get; set; } = false;
     public HistoryRetentionMode HistoryRetention { get; set; } = HistoryRetentionMode.None;
     public ulong HistoryRetentionBlocks { get; set; } = 0;
@@ -19,7 +19,24 @@ public class FlatDbConfig : IFlatDbConfig
     public bool HistoryVerifyEveryBlock { get; set; } = false;
     public int HistoryVerifySegments { get; set; } = 0;
     public long HistoryVerifyMaxRows { get; set; } = 0;
+    public bool HistoryTransactionIndexEnabled { get; set; } = false;
+    public int HistoryTransactionIndexTraceParallelism { get; set; } = 0;
+    public int HistoryTransactionIndexDutyCyclePercent { get; set; } = 25;
+    public ulong HistoryTransactionIndexRetrofitFromBlock { get; set; } = 0;
+    public int HistoryTransactionIndexWorkers { get; set; } = 1;
+    public bool HistoryTransactionIndexBulkFillEnabled { get; set; } = false;
+    public int HistoryTransactionIndexBulkFillMaxGiB { get; set; } = 1024;
+    public bool ArchiveProofServeEnabled { get; set; } = false;
+    public bool ArchiveProofBuildEnabled { get; set; } = false;
+    public int ArchiveProofFanOut { get; set; } = 8;
+    public long ArchiveProofMaxScannedRows { get; set; } = 0;
+    public int ArchiveProofCheckpointIntervalLog2 { get; set; } = 0;
+    public bool ArchiveProofDiscardMismatchedLayout { get; set; } = false;
+    public int ArchiveProofEpochLog2 { get; set; } = 0;
+    public int ArchiveProofRecentEpochs { get; set; } = 0;
+    public int ArchiveProofFineEpochs { get; set; } = 0;
     public bool ImportFromPruningTrieState { get; set; } = false;
+    public bool DropPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
@@ -30,6 +47,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong MinReorgDepth { get; set; } = 128;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
     public int TrieWarmerWorkerCount { get; set; } = -1;
+    public bool EnableCarryForwardCache { get; set; } = true;
     public int WarmReadConcurrency { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;

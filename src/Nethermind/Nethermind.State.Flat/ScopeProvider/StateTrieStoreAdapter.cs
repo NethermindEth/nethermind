@@ -52,7 +52,19 @@ internal sealed class StateTrieStoreWarmerAdapter(
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStateRlp(path, hash, flags);
+        GetMatchingRlp(bundle.TryLoadStateRlp(path, hash, flags), hash);
+
+    /// <summary>Returns <paramref name="rlp"/> only when it hashes to <paramref name="hash"/>, else <c>null</c>.</summary>
+    /// <remarks>
+    /// The persistence read behind both warmer adapters is keyed by path alone, so it can answer with another
+    /// version of the node at that path. <see cref="TrieNode"/> stores whatever bytes it is handed under the
+    /// requested hash, and reader-side guards compare against that claimed hash, so these two <c>TryLoadRlp</c>
+    /// overrides are what stops foreign bytes entering a node in the first place; a warmer node is checked again
+    /// before promotion into the shared cache, because it can be rewritten after this point. A mismatch is
+    /// staleness, so it reads as a miss.
+    /// </remarks>
+    internal static byte[]? GetMatchingRlp(byte[]? rlp, Hash256 hash) =>
+        rlp is null || ValueKeccak.Compute(rlp) == hash ? rlp : null;
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
@@ -106,5 +118,5 @@ internal sealed class StorageTrieStoreWarmerAdapter(
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+        StateTrieStoreWarmerAdapter.GetMatchingRlp(bundle.TryLoadStorageRlp(addressHash, in path, hash, flags), hash);
 }

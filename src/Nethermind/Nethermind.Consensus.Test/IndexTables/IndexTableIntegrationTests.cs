@@ -212,15 +212,13 @@ public class IndexTableIntegrationTests
         IIndexTableStore store = chain.Container.Resolve<IIndexTableStore>();
 
         Block parent = chain.BlockTree.Head!;
-        for (ulong i = 1; i <= 3; i++)
-        {
-            Block b = Build.A.Block.WithParent(parent).WithTimestamp(i * 10).TestObject;
-            parent = chain.BranchProcessor.Process(parent.Header, [b], ProcessingOptions.NoValidation, NullBlockTracer.Instance)[0];
-        }
+        Block b1 = Build.A.Block.WithParent(parent).WithTimestamp(10).TestObject;
+        Block b2 = Build.A.Block.WithParent(b1).WithTimestamp(20).TestObject;
+        Block b3 = Build.A.Block.WithParent(b2).WithTimestamp(30).TestObject;
+        Block block4 = Build.A.Block.WithParent(b3).WithTimestamp(1050).TestObject;
 
-        Block block4 = Build.A.Block.WithParent(parent).WithTimestamp(1050).TestObject;
-        Block processed4 = chain.BranchProcessor.Process(parent.Header, [block4], ProcessingOptions.NoValidation, NullBlockTracer.Instance)[0];
+        Block[] processed = chain.BranchProcessor.Process(parent.Header, [b1, b2, b3, block4], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 
-        Assert.That(store.Get(1, 0, processed4.Hash), Is.Null, "Level-1 table covering block 0 should not be published because fork was inactive at block 0");
+        Assert.That(store.Get(1, 0, processed[3].Hash), Is.Null, "Level-1 table covering block 0 should not be published because fork was inactive at block 0");
     }
 }

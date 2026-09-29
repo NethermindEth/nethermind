@@ -61,6 +61,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         builder
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
             .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}-{discoveryVersion}"));
+        builder.RegisterInstance(Substitute.For<IPeerManager>()).As<IPeerManager>();
         builder.RegisterInstance(forkInfo).As<IForkInfo>();
         return builder.Build();
     }

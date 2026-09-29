@@ -297,6 +297,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV1(getPayloadResult.ExecutionPayload);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await chain.WaitForCommitted(getPayloadResult.ExecutionPayload.BlockHash);
 
         BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.ExecutionPayload.BlockHash);
         UInt256 finalBalance = chain.StateReader.GetBalance(payloadBlock, feeRecipient);
@@ -673,7 +674,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.ReleaseSpec);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(chain,
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD, input.Withdrawals);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
@@ -743,7 +744,7 @@ public partial class EngineModuleTests
 
         // Block without withdrawals, Timestamp = 2
         ExecutionPayload executionPayload =
-            CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+            await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
@@ -898,7 +899,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV2(IEngineRpcModule rpc, MergeTestBlockchain chain,
         Withdrawal[]? withdrawals)
     {
-        ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV2(executionPayload);
 
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));

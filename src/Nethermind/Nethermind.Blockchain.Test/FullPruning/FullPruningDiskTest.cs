@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -175,6 +176,8 @@ public class FullPruningDiskTest
         Assert.That(args.Status, Is.EqualTo(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace));
     }
 
+    private static readonly TimeSpan PruningWaitBudget = TimeSpan.FromMilliseconds(Timeout.LongTestTime / 4);
+
     private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
     {
         chain.FullPruner.WaitHandle.Reset();
@@ -188,7 +191,8 @@ public class FullPruningDiskTest
 
         HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
         bool pruningFinished = false;
-        for (int i = 0; i < 100 && !pruningFinished; i++)
+        long waitStart = Stopwatch.GetTimestamp();
+        while (!pruningFinished && Stopwatch.GetElapsedTime(waitStart) < PruningWaitBudget)
         {
             pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(100));
             await chain.AddBlockDoNotWaitForHead();

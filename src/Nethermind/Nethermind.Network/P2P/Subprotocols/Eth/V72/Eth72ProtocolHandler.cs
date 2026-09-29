@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -12,6 +13,7 @@ using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -191,7 +193,7 @@ public class Eth72ProtocolHandler(
                     ReportIn(pooledTransactions, size);
                     if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), requestedHashes))
                     {
-                        ClearPreHashes(pooledTransactions.EthMessage.Transactions.AsSpan());
+                        ReturnUnsubmittedTransactions(pooledTransactions.EthMessage.Transactions.AsSpan());
                         pooledTransactions.Dispose();
                         IgnorePooledTransactionResponse();
                         throw new SubprotocolException($"Mismatched {nameof(PooledTransactionsMessage66)} response ID {pooledTransactions.RequestId}.");
@@ -311,10 +313,9 @@ public class Eth72ProtocolHandler(
             return base.ShouldNotifyTransactionCore(tx);
         }
 
-        // Light entries persisted before the consensus-size field was added cannot produce a
-        // spec-compliant eth/72 size announcement.
-        // Such transactions keep propagating via eth/68-71 sessions until they churn out.
-        if (tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() == 0)
+        // Light entries persisted before the versioned consensus-size field cannot derive a safe eth/72
+        // announcement size. They keep propagating via eth/68-71 sessions until they churn out.
+        if (tx is LightTransaction lightTx && lightTx.GetElidedNetworkEncodingSize() == 0)
         {
             return false;
         }
@@ -400,31 +401,33 @@ public class Eth72ProtocolHandler(
 
     private void Handle(NewPooledTransactionHashesMessage72 msg)
     {
-        if (msg.Hashes.Length > NewPooledTransactionHashesMessage72.MaxCount)
+        ReadOnlySpan<ValueHash256> hashes = msg.Hashes.AsSpan();
+        ReadOnlySpan<byte> types = msg.Types.AsSpan();
+        ReadOnlySpan<int> sizes = msg.Sizes.AsSpan();
+
+        if (hashes.Length > NewPooledTransactionHashesMessage72.MaxCount)
         {
-            throw new SubprotocolException(
-                $"Too many hashes in {nameof(NewPooledTransactionHashesMessage72)}: {msg.Hashes.Length}, maximum {NewPooledTransactionHashesMessage72.MaxCount}.");
+            ThrowTooManyAnnouncementHashes(hashes.Length);
         }
 
-        if (msg.Hashes.Length != msg.Types.Length || msg.Hashes.Length != msg.Sizes.Length)
+        if (hashes.Length != types.Length || hashes.Length != sizes.Length)
         {
-            throw new SubprotocolException(
-                $"Wrong format of {nameof(NewPooledTransactionHashesMessage72)} message. Hashes count: {msg.Hashes.Length} Types count: {msg.Types.Length} Sizes count: {msg.Sizes.Length}");
+            ThrowMismatchedAnnouncementCounts(hashes.Length, types.Length, sizes.Length);
         }
 
-        BlobCellMask announcementMask = ExtractAnnouncementMask(msg);
-        AddNotifiedTransactions(msg.Hashes.AsSpan());
-        TxPool.Metrics.PendingTransactionsHashesReceived += msg.Hashes.Length;
+        BlobCellMask announcementMask = ExtractAnnouncementMask(msg, types);
+        AddNotifiedTransactions(hashes);
+        TxPool.Metrics.PendingTransactionsHashesReceived += hashes.Length;
 
         int packetSizeLeft = TransactionsMessage.MaxPacketSize;
         int toRequestCount = 0;
-        ArrayPoolList<Hash256>? hashesToRequest = null;
+        ArrayPoolList<ValueHash256>? hashesToRequest = null;
 
-        for (int i = 0; i < msg.Hashes.Length; i++)
+        for (int i = 0; i < hashes.Length; i++)
         {
-            Hash256 hash = msg.Hashes[i];
-            TxType txType = (TxType)msg.Types[i];
-            int txSize = msg.Sizes[i];
+            ValueHash256 hash = hashes[i];
+            TxType txType = (TxType)types[i];
+            int txSize = sizes[i];
             if (!CanRequestPooledTransaction(txType) || txSize <= 0)
             {
                 continue;
@@ -437,35 +440,37 @@ public class Eth72ProtocolHandler(
             }
 
             bool supportsBlobs = txType.SupportsBlobs();
-            bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash.ValueHash256);
+            Hash256? blobHash = null;
+            bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash);
             if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
             {
-                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, announcementMask);
+                blobHash = hash.ToHash256();
+                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, blobHash, announcementMask);
                 if (!recorded
                     && (!_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask) || !localMask.IsFull))
                 {
                     continue;
                 }
 
-                if (_countedBlobAnnouncements.Set(hash.ValueHash256, 1))
+                if (_countedBlobAnnouncements.Set(hash, 1))
                 {
                     Interlocked.Increment(ref _blobAnnouncementsReceived);
                 }
             }
 
             bool shouldRequestTx = !_txPool.IsKnown(hash)
-                && _txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired;
+                && _txPool.NotifyAboutTx(in hash, this) is AnnounceResult.RequestRequired;
 
             if (shouldRequestTx
                 && (_blobSupportEnabled || !supportsBlobs))
             {
                 TxShapeAnnouncements.Set(hash, (txSize, txType));
-                hashesToRequest ??= new(Math.Min(msg.Hashes.Length - i, 256));
+                hashesToRequest ??= new(Math.Min(hashes.Length - i, 256));
 
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
                 {
                     SendPooledTransactionsRequest(hashesToRequest);
-                    hashesToRequest = new ArrayPoolList<Hash256>(Math.Min(msg.Hashes.Length - i, 256));
+                    hashesToRequest = new ArrayPoolList<ValueHash256>(Math.Min(hashes.Length - i, 256));
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     toRequestCount = 0;
                 }
@@ -475,12 +480,12 @@ public class Eth72ProtocolHandler(
                 toRequestCount++;
             }
 
-            if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
+            if (blobHash is not null)
             {
-                BlobCellMask requestMask = _sparseBlobPoolPeerRegistry.GetRequestMask(hash, announcementMask, _providerProbabilityPercent);
+                BlobCellMask requestMask = _sparseBlobPoolPeerRegistry.GetRequestMask(blobHash, announcementMask, _providerProbabilityPercent);
                 if (!requestMask.IsEmpty)
                 {
-                    RequestCellsWhenReady(hash, requestMask);
+                    RequestCellsWhenReady(blobHash, requestMask);
                 }
             }
         }
@@ -491,22 +496,28 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private async Task<PooledTransactionsMessage66> Handle(GetPooledTransactionsMessage66 getPooledTransactions, CancellationToken cancellationToken)
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowTooManyAnnouncementHashes(int count) =>
+        throw new SubprotocolException(
+            $"Too many hashes in {nameof(NewPooledTransactionHashesMessage72)}: {count}, maximum {NewPooledTransactionHashesMessage72.MaxCount}.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowMismatchedAnnouncementCounts(int hashesCount, int typesCount, int sizesCount) =>
+        throw new SubprotocolException(
+            $"Wrong format of {nameof(NewPooledTransactionHashesMessage72)} message. Hashes count: {hashesCount} Types count: {typesCount} Sizes count: {sizesCount}");
+
+    private async ValueTask<PooledTransactionsMessage66> Handle(GetPooledTransactionsMessage66 getPooledTransactions, CancellationToken cancellationToken)
     {
         using GetPooledTransactionsMessage66 message = getPooledTransactions;
         PooledTransactionsMessage65 pooledTransactions = await FulfillPooledTransactionsRequest(message.EthMessage, cancellationToken);
         return new PooledTransactionsMessage66(message.RequestId, pooledTransactions);
     }
 
-    private void SendPooledTransactionsRequest(IOwnedReadOnlyList<Hash256> hashes)
+    private void SendPooledTransactionsRequest(IOwnedReadOnlyList<ValueHash256> hashes)
     {
         GetPooledTransactionsMessage66 message = GetPooledTransactionsMessage66.New(hashes);
-        ValueHash256[] requestedHashes = new ValueHash256[hashes.Count];
-        ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
-        for (int i = 0; i < hashesSpan.Length; i++)
-        {
-            requestedHashes[i] = hashesSpan[i].ValueHash256;
-        }
+        ReadOnlySpan<ValueHash256> hashesSpan = hashes.AsSpan();
+        ValueHash256[] requestedHashes = hashesSpan.ToArray();
 
         _sentPooledTransactionRequests.Set(message.RequestId, requestedHashes);
         ReportPooledTransactionRequest(hashesSpan);
@@ -548,13 +559,13 @@ public class Eth72ProtocolHandler(
 
     // eth/72 strips blob payloads from pooled transaction responses, so they are served from
     // the sidecar-free record instead of materializing blobs from persistent storage.
-    protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
         => _txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx);
 
     /// <inheritdoc/>
     public override void HandleMessage(PooledTransactionRequestMessage message)
     {
-        ArrayPoolList<Hash256> hashes = new(1) { new Hash256(message.TxHash) };
+        ArrayPoolList<ValueHash256> hashes = new(1) { message.TxHash };
         SendPooledTransactionsRequest(hashes);
     }
 
@@ -574,7 +585,7 @@ public class Eth72ProtocolHandler(
 
         int requestHashCount = Math.Min(message.Hashes.Length, MaxCellsRequestHashes);
         int responseCapacity = Math.Min(requestHashCount, MaxCellsResponseHashes);
-        List<Hash256> responseHashes = new(responseCapacity);
+        List<ValueHash256> responseHashes = new(responseCapacity);
         List<byte[][]> cellsByTx = new(responseCapacity);
         HashSet<ValueHash256> seenHashes = new(requestHashCount);
         int hashesContentLength = 0;
@@ -587,12 +598,13 @@ public class Eth72ProtocolHandler(
                 break;
             }
 
-            Hash256 hash = message.Hashes[i];
-            if (!seenHashes.Add(hash.ValueHash256))
+            ValueHash256 valueHash = message.Hashes[i];
+            if (!seenHashes.Add(valueHash))
             {
                 continue;
             }
 
+            Hash256 hash = valueHash.ToHash256();
             if (!TryGetCellsResponseMetadata(
                     hash,
                     requestedMask,
@@ -621,7 +633,7 @@ public class Eth72ProtocolHandler(
                 continue;
             }
 
-            responseHashes.Add(hash);
+            responseHashes.Add(valueHash);
             cellsByTx.Add(cells);
             hashesContentLength = nextHashesContentLength;
             cellsContentLength = nextCellsContentLength;
@@ -711,12 +723,12 @@ public class Eth72ProtocolHandler(
             return;
         }
 
-        if (message.Hashes.Length != 1 || message.Hashes[0].ValueHash256 != sentRequest.Hash)
+        if (message.Hashes.Length != 1 || message.Hashes[0] != sentRequest.Hash)
         {
             ThrowMalformedCellsResponse(sentRequest, $"Wrong format of {nameof(CellsMessage72)} message. Response does not match requested blob cells.");
         }
 
-        Hash256 hash = message.Hashes[0];
+        Hash256 hash = message.Hashes[0].ToHash256();
         ValueHash256 key = hash.ValueHash256;
         BlobCellMask requestedMask = sentRequest.Mask;
         if ((responseMask & requestedMask) != responseMask)
@@ -848,36 +860,43 @@ public class Eth72ProtocolHandler(
                     throw new SubprotocolException("invalid pooled tx type or size");
                 }
 
+                // Both submission and sparse-blob assembly may retain the transaction, even on failure.
+                currentIdx++;
                 if (!tx.SupportsBlobs)
                 {
                     PrepareAndSubmitTransaction(tx, isTrace);
                 }
-                else if (tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 })
+                else if (tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper)
                 {
-                    if (tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.HasFullBlobs())
+                    Hash256? hash = tx.Hash;
+                    bool hasFullBlobs = wrapper.HasFullBlobs();
+                    if (hasFullBlobs)
                     {
                         PrepareAndSubmitTransaction(tx, isTrace);
                     }
 
-                    if (tx.Hash is not null)
+                    if (hash is not null)
                     {
-                        RemoveCellState(tx.Hash.ValueHash256);
-                        _sparseBlobPoolPeerRegistry.Clear(tx.Hash);
+                        RemoveCellState(hash.ValueHash256);
+                        _sparseBlobPoolPeerRegistry.Clear(hash);
+                    }
+
+                    if (!hasFullBlobs)
+                    {
+                        ReturnUnsubmittedTransactions(transactionsSpan.Slice(currentIdx - 1, 1));
                     }
                 }
                 else
                 {
                     PrepareAndMaybeSubmitSparseBlobTransaction(tx, isTrace);
                 }
-
-                currentIdx++;
             }
         }
         finally
         {
             if (!isTransferred)
             {
-                ClearPreHashes(transactionsSpan[currentIdx..]);
+                ReturnUnsubmittedTransactions(transactionsSpan[currentIdx..]);
                 transactions.Dispose();
             }
         }
@@ -1058,7 +1077,7 @@ public class Eth72ProtocolHandler(
 
         ValueHash256 key = hash.ValueHash256;
         BlobCellMask sentMask = GetSentCellRequestMask(key, requestMask);
-        GetCellsMessage72 message = new([hash], sentMask.ToBytes());
+        GetCellsMessage72 message = new([hash.ValueHash256], sentMask.ToBytes());
         AddSentCellRequest(key, sentMask, message.RequestId);
         Send(message);
 
@@ -1087,7 +1106,7 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        ArrayPoolList<Hash256> hashes = new(1) { hash };
+        ArrayPoolList<ValueHash256> hashes = new(1) { hash };
         SendPooledTransactionsRequest(hashes);
         return true;
     }
@@ -1607,12 +1626,12 @@ public class Eth72ProtocolHandler(
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private BlobCellMask ExtractAnnouncementMask(NewPooledTransactionHashesMessage72 message)
+    private BlobCellMask ExtractAnnouncementMask(NewPooledTransactionHashesMessage72 message, ReadOnlySpan<byte> types)
     {
         bool containsBlobTransaction = false;
-        for (int i = 0; i < message.Types.Length; i++)
+        for (int i = 0; i < types.Length; i++)
         {
-            if (((TxType)message.Types[i]).SupportsBlobs())
+            if (((TxType)types[i]).SupportsBlobs())
             {
                 containsBlobTransaction = true;
                 break;
@@ -1642,6 +1661,7 @@ public class Eth72ProtocolHandler(
 
     private void PrepareAndMaybeSubmitSparseBlobTransaction(Transaction tx, bool isTrace)
     {
+        PooledBlobBuffers.Disown(tx);
         if (tx.Hash is not null)
         {
             NotifiedTransactions.Set(tx.Hash.ValueHash256);
@@ -1804,7 +1824,7 @@ public class Eth72ProtocolHandler(
         int count = txs.Count;
         ArrayPoolList<byte> types = new(count);
         ArrayPoolList<int> sizes = new(count);
-        ArrayPoolList<Hash256> hashes = new(count);
+        ArrayPoolList<ValueHash256> hashes = new(count);
 
         for (int i = 0; i < count; i++)
         {
@@ -1817,7 +1837,7 @@ public class Eth72ProtocolHandler(
 
             types.Add((byte)tx.Type);
             sizes.Add(announcementSize);
-            hashes.Add(tx.Hash!);
+            hashes.Add(tx.Hash!.ValueHash256);
             TxPool.Metrics.PendingTransactionsHashesSent++;
         }
 
@@ -1840,33 +1860,18 @@ public class Eth72ProtocolHandler(
             return tx.GetLength();
         }
 
-        int consensusEncodingSize = tx is LightTransaction lightTx
-            ? lightTx.GetConsensusEncodingSize()
-            : tx.GetLength(shouldCountBlobs: false);
-        if (consensusEncodingSize <= 0)
-        {
-            return 0;
-        }
-
-        return tx.NetworkWrapper is ShardBlobNetworkWrapper
-            || tx is LightTransaction { ProofVersion: not null, BlobVersionedHashes.Length: > 0 }
-            ? consensusEncodingSize
-            : 0;
+        // eth/72 peers size-check the blob-elided bytes served in PooledTransactions and geth disconnects for
+        // larger mismatches. The current devp2p text still says consensus encoding; its correction is tracked at
+        // https://github.com/ethereum/devp2p/pull/281
+        return tx.GetElidedNetworkEncodingSize();
     }
 
-    // Devp2p specifies consensus size, while sparse-v2 geth announces its elided wrapper estimate.
+    // Stay lenient on receive: peers still announcing the bare consensus size (or the geth wrapper estimate)
+    // are accepted rather than disconnected, so a mixed-version network keeps propagating blob txs.
     // https://github.com/healthykim/go-ethereum/blob/fdce1ff22f2c2bde0e6a8d1921168f4b7036781f/eth/protocols/eth/broadcast.go#L140-L143
     protected override bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize)
         => MatchesAnnouncedSize(tx, announcedSize)
         || tx.SupportsBlobs && tx.GetLength(shouldCountBlobs: false) == announcedSize;
-
-    private static void ClearPreHashes(ReadOnlySpan<Transaction> transactions)
-    {
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            transactions[i].ClearPreHash();
-        }
-    }
 
     private readonly record struct SentCellRequest(
         ValueHash256 Hash,

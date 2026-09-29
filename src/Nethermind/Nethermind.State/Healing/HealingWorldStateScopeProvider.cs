@@ -9,10 +9,21 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingWorldStateScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, ILogManager logManager) : TrieStoreScopeProvider(trieStore, codeDb, logManager, codeDbIsPersistent: true)
+public class HealingWorldStateScopeProvider(
+    ITrieStore trieStore,
+    IKeyValueStoreWithBatching codeDb,
+    INodeStorage nodeStorage,
+    Lazy<IPathRecovery> recovery,
+    Lazy<ICodeRecovery> codeRecovery,
+    IStateHeaderProvider stateHeaderProvider,
+    ILogManager logManager)
+    : TrieStoreScopeProvider(trieStore, new HealingCodeDb(codeDb, codeRecovery), stateHeaderProvider, logManager, codeDbIsPersistent: true)
 {
     private readonly ILogManager _logManager = logManager;
     private readonly ITrieStore _trieStore = trieStore;
+
+    // The healing trees fetch any node missing locally, the root included, so a scope can open on a root the trie store does not hold.
+    protected override bool CanBeginScope(BlockHeader? baseBlock) => true;
 
     protected override StateTree CreateStateTree() => new HealingStateTree(_trieStore, nodeStorage, recovery, _logManager);
 

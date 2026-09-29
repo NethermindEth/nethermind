@@ -75,6 +75,7 @@ public static partial class EvmInstructions
     /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
     public static EvmExceptionType InstructionCallDataCopy<TGasPolicy, TTracingInst>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>

@@ -75,7 +75,10 @@ public static class WitnessExtensions
                     if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))
                         throw new InvalidOperationException("Witness headers are not contiguous");
 
-                    previousHeaderHash = ValueKeccak.Compute(headers[i]);
+                    if (i + 1 < headersSpan.Length)
+                    {
+                        previousHeaderHash = ValueKeccak.Compute(headers[i]);
+                    }
                 }
 
                 return decodedHeaders;

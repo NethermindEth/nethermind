@@ -6,13 +6,14 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
+using TransactionDecoder = Nethermind.Serialization.Rlp.TxDecoder;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
-        private static readonly Nethermind.Serialization.Rlp.TxDecoder TxDecoder = Nethermind.Serialization.Rlp.TxDecoder.Instance;
+        private static readonly TransactionDecoder TxDecoder = TransactionDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
@@ -55,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 for (int i = 0; i < length; i++)
                 {
-                    result.Add(TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm));
+                    result.Add(TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers));
                 }
                 ctx.Check(checkPosition);
                 return result;
@@ -63,7 +64,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             catch
             {
                 foreach (Transaction tx in result)
+                {
                     tx.ClearPreHash();
+                    TransactionDecoder.TxObjectPool.Return(tx);
+                }
                 result.Dispose();
                 throw;
             }

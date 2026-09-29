@@ -104,6 +104,7 @@ public static partial class EvmInstructions
     /// Push operation for two bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
     public static EvmExceptionType InstructionPush2<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -1148,6 +1149,16 @@ public static partial class EvmInstructions
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
         ulong dataSize = (ulong)length;
         if (!TGasPolicy.TryConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
+
+        if (vm.TxExecutionContext.SuppressLogs)
+        {
+            // Instruction tracers can inspect the expanded memory even when they do not collect logs.
+            if (DispatchFlags.ConstTracing && vm.TxExecutionContext.MaterializeLogMemory
+                && !vmState.Memory.TryLoad(in position, length, out _)) goto OutOfGas;
+            for (int i = 0; i < TOpCount.Count; i++)
+                if (!stack.PopLimbo()) goto StackUnderflow;
+            return EvmExceptionType.None;
+        }
 
         // Load the log data from memory.
         if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))

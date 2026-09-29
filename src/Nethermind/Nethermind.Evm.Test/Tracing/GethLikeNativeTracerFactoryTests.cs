@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using NSubstitute;
 using NUnit.Framework;
@@ -19,25 +20,34 @@ public class GethLikeNativeTracerFactoryTests
     private readonly Block _block = Build.A.Block.TestObject;
     private readonly Transaction _tx = Build.A.Transaction.TestObject;
 
-    [Test]
-    public void CreateTracer_NativeTracerExists()
+    [TestCase(Native4ByteTracer.FourByteTracer, typeof(Native4ByteTracer))]
+    [TestCase(NativeNoopTracer.NoopTracer, typeof(NativeNoopTracer))]
+    [TestCase(NativeStateGasTracer.StateGasTracer, typeof(NativeStateGasTracer))]
+    public void CreateTracer_NativeTracerExists(string tracerName, Type expectedTracer)
     {
-        GethTraceOptions options = new() { Tracer = Native4ByteTracer.FourByteTracer };
+        GethTraceOptions options = new() { Tracer = tracerName };
 
-        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
+        GethLikeNativeTxTracer nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
-        Assert.That(nativeTracer is Native4ByteTracer, Is.True);
+        Assert.That(nativeTracer, Is.InstanceOf(expectedTracer));
     }
 
     [Test]
-    public void CreateTracer_StateGasTracerExists()
+    public void CreateTracer_NoopTracer_TracesNothingButTheReceipt()
     {
-        GethTraceOptions options = new() { Tracer = NativeStateGasTracer.StateGasTracer };
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        GethTraceOptions options = new() { Tracer = NativeNoopTracer.NoopTracer };
 
-        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, spec);
+        GethLikeNativeTxTracer nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
-        Assert.That(nativeTracer is NativeStateGasTracer, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nativeTracer.IsTracingInstructions, Is.False);
+            Assert.That(nativeTracer.IsTracingActions, Is.False);
+            Assert.That(nativeTracer.IsTracingStack, Is.False);
+            Assert.That(nativeTracer.IsTracingMemory, Is.False);
+            Assert.That(nativeTracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(nativeTracer.IsTracingReceipt, Is.True);
+        }
     }
 
     [Test]

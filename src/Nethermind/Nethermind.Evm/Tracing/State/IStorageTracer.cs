@@ -8,6 +8,12 @@ namespace Nethermind.Evm.Tracing.State;
 
 public interface IStorageTracer
 {
+    /// <summary>Reports a committed storage clear before slot changes from the same transaction; reverted clears are excluded.</summary>
+    void ReportStorageClear(Address address) { }
+
+    /// <summary>Reports a slot restored to its original value after a committed clear, which is not a net storage change.</summary>
+    void ReportStorageRestore(in StorageCell storageCell, byte[] value) { }
+
     /// <summary>
     /// Controls tracing of storage
     /// </summary>

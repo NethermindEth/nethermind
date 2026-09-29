@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -32,18 +33,33 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
-    public async Task Test_task_will_execute()
+    public async Task Test_task_will_execute([Values(ThreadPriority.AboveNormal, ThreadPriority.Highest, ThreadPriority.Normal)] ThreadPriority priority)
     {
-        TaskCompletionSource tcs = new();
+        System.Threading.Tasks.TaskCompletionSource<(ThreadPriority Before, ThreadPriority Boosted, ThreadPriority After)> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
         scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
         {
-            tcs.SetResult(1);
+            Thread thread = Thread.CurrentThread;
+            ThreadPriority before = thread.Priority;
+            ThreadPriority boosted;
+            using (priority switch
+            {
+                ThreadPriority.AboveNormal => thread.BoostPriority(),
+                ThreadPriority.Highest => thread.SetHighestPriority(),
+                _ => thread.SetNormalPriority()
+            }) boosted = thread.Priority;
+            tcs.SetResult((before, boosted, thread.Priority));
             return Task.CompletedTask;
         });
 
-        await tcs.Task;
+        (ThreadPriority before, ThreadPriority boosted, ThreadPriority after) = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(OperatingSystem.IsLinux() ? ThreadPriority.Normal : ThreadPriority.BelowNormal));
+            Assert.That(boosted, Is.EqualTo(OperatingSystem.IsLinux() ? before : priority));
+            Assert.That(after, Is.EqualTo(before));
+        }
     }
 
     [Test]
@@ -54,6 +70,54 @@ public class BackgroundTaskSchedulerTests
         Assert.DoesNotThrowAsync(
             async () => await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
             "DisposeAsync did not complete within timeout - possible deadlock in background task scheduler");
+    }
+
+    public enum CancellationCause
+    {
+        Deadline,
+        BlockProcessing,
+        Shutdown
+    }
+
+    [Test]
+    public async Task Completed_request_token_is_not_cancelled_by_later_request([Values] CancellationCause cause)
+    {
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 16, LimboLogs.Instance);
+        System.Threading.Tasks.TaskCompletionSource<CancellationToken> firstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        System.Threading.Tasks.TaskCompletionSource<CancellationToken> secondStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        System.Threading.Tasks.TaskCompletionSource secondFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
+        {
+            firstStarted.SetResult(token);
+            return Task.CompletedTask;
+        }), Is.True);
+        CancellationToken firstToken = await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(scheduler.TryScheduleTask(default(TestRequest), async (_, token) =>
+        {
+            secondStarted.SetResult(token);
+            await Task.Delay(Timeout.InfiniteTimeSpan, token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            secondFinished.SetResult();
+        }, cause == CancellationCause.Deadline ? TimeSpan.FromSeconds(1) : TimeSpan.FromSeconds(30)), Is.True);
+        CancellationToken secondToken = await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(secondToken.IsCancellationRequested, Is.False);
+
+        if (cause == CancellationCause.BlockProcessing)
+        {
+            RaiseBlocksProcessing();
+        }
+        else if (cause == CancellationCause.Shutdown)
+        {
+            await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        await secondFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondToken.IsCancellationRequested, Is.True);
+            Assert.That(firstToken.IsCancellationRequested, Is.False);
+        }
     }
 
     [Test]

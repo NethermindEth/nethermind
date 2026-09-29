@@ -149,16 +149,25 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
         => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    /// <inheritdoc/>
+    /// <param name="blockGasLimit">Unused by the Ethereum intrinsic gas policy, with or without memoization.</param>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options)
     {
         if (transaction is LightTransaction)
         {
             return TxErrorMessages.InvalidTransactionForm;
         }
 
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = (options & TxValidationOptions.SkipIntrinsicGasMemo) != 0
+            ? EthereumGasPolicy.CalculateIntrinsicGasWithoutMemo(transaction, releaseSpec)
+            : EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
         if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {
-            return IntrinsicGasError(TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
+            return IntrinsicGasError((options & TxValidationOptions.SkipErrorDetails) != 0
+                ? TxErrorMessages.IntrinsicGasTooLow
+                : TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
         }
 
         return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit

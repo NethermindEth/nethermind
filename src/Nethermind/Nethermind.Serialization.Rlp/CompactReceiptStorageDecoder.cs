@@ -21,16 +21,13 @@ namespace Nethermind.Serialization.Rlp
         protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
-            {
-                decoderContext.ReadByte();
-                return null;
-            }
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
             TxReceipt txReceipt = new();
-            int receiptEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            rlp.ReadSequenceLength(ref position, out int receiptLength);
+            int receiptEnd = position + receiptLength;
 
-            byte[] firstItem = decoderContext.DecodeByteArray();
+            rlp.DecodeByteArray(ref position, out byte[] firstItem);
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -40,11 +37,12 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            txReceipt.Sender = decoderContext.DecodeAddressOrNull();
-            txReceipt.GasUsedTotal = decoderContext.DecodeULong();
+            txReceipt.Sender = rlp.DecodeAddressOrNull(ref position);
+            txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int lastCheck = sequenceLength + decoderContext.Position;
+            rlp.ReadSequenceLength(ref position, out int sequenceLength);
+            int lastCheck = position + sequenceLength;
+            decoderContext.Position = position;
 
             // Don't know the size exactly, I'll just assume its just an address and add some margin
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
@@ -64,7 +62,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (!allowExtraBytes)
             {
-                decoderContext.Check(lastCheck);
+                RlpHelpers.Check(decoderContext.Position, lastCheck);
             }
 
             // Handle any remaining extra bytes

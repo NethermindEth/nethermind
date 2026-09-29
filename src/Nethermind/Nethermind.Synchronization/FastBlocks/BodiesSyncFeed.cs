@@ -9,9 +9,11 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Proofs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
@@ -239,10 +241,11 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
+        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, Hash256? rejectedBodyTxRoot, out Block? block)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
-            if (_blockValidator.ValidateBodyAgainstHeader(header, blockBody, out _))
+            if ((rejectedBodyTxRoot is null || rejectedBodyTxRoot == header.TxRoot)
+                && _blockValidator.ValidateBodyAgainstHeader(header, blockBody, out _))
             {
                 block = new Block(header, blockBody);
             }
@@ -259,6 +262,7 @@ namespace Nethermind.Synchronization.FastBlocks
             int validResponsesCount = 0;
             BlockBody[]? responses = batch.Response?.Bodies ?? [];
             int responseIndex = 0;
+            Hash256? rejectedBodyTxRoot = null;
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
@@ -278,21 +282,27 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (responseIndex < responses.Length)
                     {
                         responseIndex++;
+                        rejectedBodyTxRoot = null;
                     }
 
                     _syncStatusList.MarkPending(blockInfo);
                     continue;
                 }
 
-                if (TryPrepareBlock(blockInfo, body, out Block? block))
+                if (TryPrepareBlock(blockInfo, body, rejectedBodyTxRoot, out Block? block))
                 {
                     responseIndex++;
+                    rejectedBodyTxRoot = null;
                     validResponsesCount++;
                     InsertOneBlock(block!);
                 }
                 else
                 {
-                    // Body responses can be sparse, so an invalid body may belong to a later requested header.
+                    // Body responses can be sparse, so a rejected body may belong to a later requested
+                    // header. Remember its transaction root so a header carrying a different one is ruled
+                    // out by a hash compare; a header whose root matches still goes to the validator, which
+                    // rebuilds the trie and may reject the body on uncles or withdrawals.
+                    rejectedBodyTxRoot ??= TxTrie.CalculateRoot(body.Transactions);
                     _syncStatusList.MarkPending(blockInfo);
                 }
             }

@@ -17,6 +17,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -144,15 +145,14 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task GetBlobsV2_should_handle_empty_request()
+    public async Task GetBlobs_should_handle_empty_request([Values(2, 3)] int version)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2([]);
+        string response = await RpcTest.TestSerializedRequest(rpcModule, $"engine_getBlobsV{version}", (object)Array.Empty<byte[]>());
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.EqualTo(ArraySegment<BlobAndProofV2>.Empty));
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
     }
 
     [Test]

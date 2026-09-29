@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -19,6 +18,7 @@ public static class KeyedNonceManager
     private const int SlotPreimageLength = 2 * 32;
     /// <summary>Batch width of <see cref="KeccakHash.ComputeHash64Bytes8Avx512"/>.</summary>
     private const int HashBatchSize = 8;
+    private const int MinHashBatchSize = 2;
 
     public static StorageCell StorageSlot(Address sender, in UInt256 nonceKey)
     {
@@ -42,7 +42,7 @@ public static class KeyedNonceManager
 
     private static ulong CurrentNonceSeq(IWorldState state, in StorageCell slot)
     {
-        UInt256 stored = new(state.Get(slot), isBigEndian: true);
+        state.Get(slot, out UInt256 stored);
         // Clamp so a crafted high-bit slot cannot false-match a valid nonce_seq < MAX_NONCE_SEQ.
         return stored > Eip8250Constants.MaxNonceSeq ? ulong.MaxValue : (ulong)stored;
     }
@@ -58,11 +58,9 @@ public static class KeyedNonceManager
             return;
         }
 
-        Span<byte> buffer = stackalloc byte[32];
-        ((UInt256)nonceSeq + UInt256.One).ToBigEndian(buffer);
-        byte[] nextSeq = buffer.WithoutLeadingZeros().ToArray();
+        UInt256 nextSeq = (UInt256)nonceSeq + UInt256.One;
 
-        if (Avx512F.IsSupported && nonceKeys.Length is >= HashBatchSize and <= Eip8250Constants.MaxNonceKeys)
+        if (Avx512F.IsSupported && nonceKeys.Length is >= MinHashBatchSize and <= Eip8250Constants.MaxNonceKeys)
         {
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
             StorageIndices(sender, nonceKeys, indices);
@@ -131,7 +129,7 @@ public static class KeyedNonceManager
         }
 
         // A well-formed multi-key set is bounded and cannot contain key 0, so every key uses a storage slot.
-        if (Avx512F.IsSupported && nonceKeys.Length >= HashBatchSize)
+        if (Avx512F.IsSupported && nonceKeys.Length >= MinHashBatchSize)
         {
             Debug.Assert(!nonceKeys[0].IsZero, "key 0 cannot appear in a well-formed multi-key set");
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
@@ -165,33 +163,34 @@ public static class KeyedNonceManager
         Debug.Assert(indices.Length >= nonceKeys.Length);
 
         int keyIndex = 0;
-        if (Avx512F.IsSupported && nonceKeys.Length >= HashBatchSize)
+        if (Avx512F.IsSupported && nonceKeys.Length >= MinHashBatchSize)
         {
             Span<byte> preimages = stackalloc byte[SlotPreimageLength * HashBatchSize];
             Span<byte> hashes = stackalloc byte[Keccak.Size * HashBatchSize];
+            preimages.Clear();
 
             for (int i = 0; i < HashBatchSize; i++)
             {
                 Span<byte> senderBlock = preimages.Slice(i * SlotPreimageLength, 32);
-                senderBlock[..(32 - Address.Size)].Clear();
                 sender.Bytes.CopyTo(senderBlock[(32 - Address.Size)..]);
             }
 
             do
             {
-                for (int i = 0; i < HashBatchSize; i++)
+                int count = Math.Min(HashBatchSize, nonceKeys.Length - keyIndex);
+                for (int i = 0; i < count; i++)
                 {
                     nonceKeys[keyIndex + i].ToBigEndian(preimages.Slice(i * SlotPreimageLength + 32, 32));
                 }
 
                 KeccakHash.ComputeHash64Bytes8Avx512(ref preimages[0], ref hashes[0]);
-                for (int i = 0; i < HashBatchSize; i++)
+                for (int i = 0; i < count; i++)
                 {
                     indices[keyIndex + i] = new UInt256(hashes.Slice(i * Keccak.Size, Keccak.Size), isBigEndian: true);
                 }
 
-                keyIndex += HashBatchSize;
-            } while (keyIndex <= nonceKeys.Length - HashBatchSize);
+                keyIndex += count;
+            } while (keyIndex <= nonceKeys.Length - MinHashBatchSize);
         }
 
         for (; keyIndex < nonceKeys.Length; keyIndex++)

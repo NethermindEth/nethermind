@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.OverridableEnv;
 using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
@@ -55,6 +56,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             SyncConfig syncConfig = new()
             {
                 FastSync = true,
+                SnapSync = true,
                 PivotNumber = hasPivot ? pivot.Number : 0,
                 PivotHash = hasPivotHash ? pivot.Hash!.ToString() : null
             };
@@ -93,7 +95,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             BlockHeader pivot = CoreBuild.A.BlockHeader.WithNumber(25_000_000)
                 .WithTimestamp(MainnetSpecProvider.OsakaBlockTimestamp).TestObject;
-            SyncConfig syncConfig = new() { FastSync = true, PivotNumber = pivot.Number, PivotHash = pivot.Hash!.ToString() };
+            SyncConfig syncConfig = new() { FastSync = true, SnapSync = true, PivotNumber = pivot.Number, PivotHash = pivot.Hash!.ToString() };
             using IContainer container = CreateWarmupEnvironment(syncConfig, MainnetSpecProvider.BPO2BlockTimestamp);
             EvmWarmer warmer = container.Resolve<EvmWarmer>();
             container.Resolve<IHeaderStore>().Insert(pivot);
@@ -107,6 +109,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 Assert.That(activation, Is.EqualTo(new ForkActivation(pivot.Number, pivot.Timestamp)));
                 Assert.That(levels.LoadLevel(pivot.Number), Is.Null);
             }
+        }
+
+        [Test]
+        public async Task Warmup_does_nothing_when_disabled()
+        {
+            IOverridableEnvFactory envFactory = Substitute.For<IOverridableEnvFactory>();
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new SyncConfig(), new InitConfig { EvmWarmupEnabled = false }))
+                .AddSingleton(envFactory)
+                .AddSingleton<EvmWarmer>()
+                .Build();
+
+            await container.Resolve<EvmWarmer>().Execute(CancellationToken.None);
+
+            envFactory.DidNotReceive().Create();
         }
 
         private static IContainer CreateWarmupEnvironment(SyncConfig syncConfig, ulong now) => new ContainerBuilder()

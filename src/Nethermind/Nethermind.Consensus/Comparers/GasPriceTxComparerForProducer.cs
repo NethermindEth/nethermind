@@ -15,10 +15,9 @@ namespace Nethermind.Consensus.Comparers
         ISpecProvider specProvider)
         : IComparer<Transaction>
     {
-        public int Compare(Transaction? x, Transaction? y)
-        {
-            bool isEip1559Enabled = specProvider.GetSpecFor1559(blockPreparationContext.BlockNumber).IsEip1559Enabled;
-            return GasPriceTxComparerHelper.Compare(x, y, blockPreparationContext.BaseFee, isEip1559Enabled);
-        }
+        private readonly bool _isEip1559Enabled = specProvider.GetSpecFor1559(blockPreparationContext.BlockNumber).IsEip1559Enabled;
+
+        public int Compare(Transaction? x, Transaction? y) =>
+            GasPriceTxComparerHelper.Compare(x, y, blockPreparationContext.BaseFee, _isEip1559Enabled);
     }
 }

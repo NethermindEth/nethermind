@@ -97,6 +97,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
     public void ReportActionError(EvmExceptionType exceptionType) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportActionRemainingGas(ulong gas) => throw new OperationCanceledException(ErrorMessage);
     public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new OperationCanceledException(ErrorMessage);

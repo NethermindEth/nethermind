@@ -83,6 +83,7 @@ public static partial class EvmInstructions
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -259,7 +260,7 @@ public static partial class EvmInstructions
                     state.SubtractFromBalance(caller, in callValue, spec);
                     vm.AddTransferLog<TEip7708>(caller, target, in callValue);
                 }
-                state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
+                state.AddToBalanceAndCreateIfNotEmpty(target, TOpCall.ExecutionType, in callValue, spec);
             }
             vm.MetricsCounters.IncrementEmptyCalls();
             return EvmExceptionType.None;
@@ -290,6 +291,7 @@ public static partial class EvmInstructions
 #else
     [MethodImpl(MethodImplOptions.NoInlining)]
 #endif
+    [SkipLocalsInit]
     private static EvmExceptionType CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
@@ -380,6 +382,7 @@ public static partial class EvmInstructions
     /// declines (returns <c>false</c>) so the call flows through its dedicated <c>InlinePrecompileCall</c> path.
     /// </remarks>
     /// <returns><c>true</c> when the call was handled inline (with the outcome in <paramref name="result"/>); otherwise <c>false</c>.</returns>
+    [SkipLocalsInit]
     private static partial bool TryInlineStaticPrecompileCall<TGasPolicy, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,

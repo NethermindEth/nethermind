@@ -79,5 +79,10 @@ namespace Nethermind.Trie
                 spin.SpinOnce(); // CAS failed — another writer raced; back off before retry
             }
         }
+
+        /// <summary>Whether a resolved, persisted child is dropped back to its hash once traversed.</summary>
+        /// <remarks>Worth it for a long-lived process, whose node cache would otherwise retain every deep
+        /// persisted path it has ever walked. See <c>TrieNode.zkevm.cs</c> for why the guest declines.</remarks>
+        private const bool PruneTraversedChildren = true;
     }
 }

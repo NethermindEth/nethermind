@@ -2,30 +2,48 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
-    [NonParallelizable]
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
-        private bool _previousStrictHexFormat;
+        // Strictness is a property of the converter, so each test names the strictness it wants in the options it
+        // parses with and touches no shared state. An options-level converter takes precedence over the
+        // [JsonConverter] attribute on BlockParameter.
+        //
+        // EthereumJsonSerializer.StrictHexFormat must not be used for this instead: it is process-global, so a
+        // fixture holding it at one value makes every concurrent block-parameter parse in the assembly read that
+        // value, which is #13204. [NonParallelizable] is not a fix - NUnit only keeps such a test off a worker
+        // thread, it does not stop the rest of the assembly from running alongside it.
+        /// <summary>
+        /// Options whose strictness is pinned on the converter instances rather than read from
+        /// <see cref="EthereumJsonSerializer.StrictHexFormat"/>, so these cases do not depend on process state.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Hash256Converter"/> is included because <see cref="BlockParameter"/> can hold a hash, and an
+        /// instance-registered converter takes precedence over the type attribute - so leaving it out would let the
+        /// hash half of the type fall back to the global while the number half does not.
+        /// </remarks>
+        private static JsonSerializerOptions OptionsWithStrictness(bool strictQuantity) =>
+            new()
+            {
+                Converters =
+                {
+                    new BlockParameterConverter(strictQuantity),
+                    new Hash256Converter(strictQuantity)
+                }
+            };
 
-        [SetUp]
-        public void SetUp()
-        {
-            _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
-            EthereumJsonSerializer.StrictHexFormat = false;
-        }
-
-        [TearDown]
-        public void TearDown() =>
-            EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
+        private static BlockParameter? Deserialize(string input, bool strictQuantity) =>
+            JsonSerializer.Deserialize<BlockParameter>(input, OptionsWithStrictness(strictQuantity));
 
         [TestCase("0", 0UL)]
         [TestCase("100", 100UL)]
@@ -37,8 +55,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{ \"blockNumber\": \"0xa\" }", 10UL)]
         public void Can_read_block_number(string input, ulong output)
         {
-            IJsonSerializer serializer = new EthereumJsonSerializer();
-            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
+            BlockParameter blockParameter = Deserialize(input, strictQuantity: false)!;
 
             Assert.That(blockParameter.BlockNumber, Is.EqualTo(output));
         }
@@ -55,23 +72,30 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{ \"blockNumber\": \"100\" }", true)]
         public void Cant_read_block_number_when_strict_hex_format_is_enabled(string input, bool throws)
         {
-            bool original = EthereumJsonSerializer.StrictHexFormat;
-            try
-            {
-                EthereumJsonSerializer.StrictHexFormat = true;
-                IJsonSerializer serializer = new EthereumJsonSerializer();
+            Func<BlockParameter?> action = () => Deserialize(input, strictQuantity: true);
 
-                Func<BlockParameter?> action = () => serializer.Deserialize<BlockParameter>(input);
+            if (throws)
+                Assert.That(action, Throws.InstanceOf<FormatException>());
+            else
+                Assert.That(action, Throws.Nothing);
+        }
 
-                if (throws)
-                    Assert.That(action, Throws.InstanceOf<FormatException>());
-                else
-                    Assert.That(action, Throws.Nothing);
-            }
-            finally
-            {
-                EthereumJsonSerializer.StrictHexFormat = original;
-            }
+        // Strictness is a property of the converter instance, not of process state, so two of them can hold
+        // different answers at once - which is what stops one caller's setting from changing another's parse
+        // (#13204). A leading-zero hex quantity is refused under EIP-1474 and accepted leniently, so it separates
+        // the two.
+        [Test]
+        public void Two_converters_can_hold_different_strictness()
+        {
+            JsonSerializerOptions strict = OptionsWithStrictness(strictQuantity: true);
+            JsonSerializerOptions lenient = OptionsWithStrictness(strictQuantity: false);
+
+            Assert.That(
+                () => JsonSerializer.Deserialize<BlockParameter>("\"0x0a\"", strict),
+                Throws.InstanceOf<FormatException>());
+            Assert.That(
+                JsonSerializer.Deserialize<BlockParameter>("\"0x0a\"", lenient)!.BlockNumber,
+                Is.EqualTo(10UL));
         }
 
         [TestCase("null", BlockParameterType.Latest)]

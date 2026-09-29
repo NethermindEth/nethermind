@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -38,6 +39,49 @@ public static class TracerExtensions
             }
         }
         return null;
+    }
+
+    internal static bool Any<T>(this ITxTracer txTracer, Func<T, bool> predicate)
+        where T : class, ITxTracer
+    {
+        if (txTracer is T foundTracer && predicate(foundTracer))
+            return true;
+
+        if (txTracer is ITxTracerWrapper txTracerWrapper && Any(txTracerWrapper.InnerTracer, predicate))
+            return true;
+
+        if (txTracer is CompositeTxTracer compositeTxTracer)
+        {
+            foreach (ITxTracer tracer in compositeTxTracer._txTracers)
+            {
+                if (Any(tracer, predicate))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal static void ForEach<T, TState>(this ITxTracer txTracer, Func<T, bool> predicate, TState state, Action<T, TState> action)
+        where T : class, ITxTracer
+    {
+        if (txTracer is T foundTracer && predicate(foundTracer))
+        {
+            action(foundTracer, state);
+            return;
+        }
+
+        if (txTracer is ITxTracerWrapper txTracerWrapper)
+        {
+            ForEach(txTracerWrapper.InnerTracer, predicate, state, action);
+        }
+        else if (txTracer is CompositeTxTracer compositeTxTracer)
+        {
+            foreach (ITxTracer tracer in compositeTxTracer._txTracers)
+            {
+                ForEach(tracer, predicate, state, action);
+            }
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

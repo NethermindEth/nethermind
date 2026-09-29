@@ -5,6 +5,7 @@ using System;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
 using DotNetty.Common;
+using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -17,18 +18,13 @@ namespace Nethermind.Network.Benchmarks
 {
     public class OutFlowBenchmarks
     {
-        private static byte[] _expectedResult = Bytes.FromHexString("96cf8b950a261eae89f0e0cd0432c7d16aa615fd0633fb0375a5db932fd65a23fc4acc5efc408b693073fe8bfb82068dfcf279d80dafce41dbc4f658d92add3bb276063415c4dbacf81bbd2b0a1254eb858522b77417c9e3d6d36d67454c6c45188c642657ffdd5a67c0e2dabd5db24cd8702662f6d041ff896dcf1ef958fa37ef49187302c9ec43ea5cf3828119e84658d397b4646316636dbe4295c5e5b2df69e72c75b32fc03a1e0ec227d3b94fcd4e1f5b593e3dca74d0d327cc2a31402e57f2e62d3b721a8131d40a35e7c2d1babfe3578814f51444b518917e940721eebeabac4b70ad82c21e5270c7434907a92543914698a0cc6c692a33ad6fafc591be2de18e6c297d07a5992cc68adb27cec4705dc9ac0acb01b65674577932766c");
-        private byte[] _actualResult = new byte[_expectedResult.Length];
         private IByteBuffer _snappyBuffer = PooledByteBufferAllocator.Default.Buffer(MemorySizes.MiB);
-        private IByteBuffer _splitterBuffer = PooledByteBufferAllocator.Default.Buffer(MemorySizes.MiB);
-        private IByteBuffer _encoderBuffer = PooledByteBufferAllocator.Default.Buffer(MemorySizes.MiB);
         private IByteBuffer _outputBuffer = PooledByteBufferAllocator.Default.Buffer(MemorySizes.MiB);
 
         private NewBlockMessageSerializer _newBlockMessageSerializer;
         private Block _block;
         private TestZeroSplitter _zeroSplitter;
-        private TestZeroEncoder _zeroEncoder;
-        private TestZeroSnappy _zeroSnappyEncoder;
+        private FrameMacProcessor _frameMacProcessor;
         private NewBlockMessage _newBlockMessage;
         private MessageSerializationService _serializationService;
 
@@ -38,28 +34,22 @@ namespace Nethermind.Network.Benchmarks
             SetupAll();
             Current();
             Check();
-            SetupAll(true);
+            SetupAll();
         }
 
-        private void SetupAll(bool useLimboOutput = false)
+        private void SetupAll()
         {
             (EncryptionSecrets A, EncryptionSecrets B) secrets = NetTestVectors.GetSecretsPair();
 
             FrameCipher frameCipher = new(secrets.A.AesSecret);
-            FrameMacProcessor frameMacProcessor = new(TestItem.IgnoredPublicKey, secrets.A);
-            _zeroSplitter = new TestZeroSplitter();
-            _zeroSplitter.DisableFraming();
-            _zeroEncoder = new TestZeroEncoder(frameCipher, frameMacProcessor);
-            _zeroSnappyEncoder = new TestZeroSnappy();
+            _frameMacProcessor?.Dispose();
+            _frameMacProcessor = new(TestItem.IgnoredPublicKey, secrets.A);
+            _zeroSplitter = new TestZeroSplitter(frameCipher, _frameMacProcessor);
+            _zeroSplitter.EnableSnappy(LimboLogs.Instance);
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
             _block = Build.A.Block.WithTransactions(a, b).TestObject;
             _newBlockMessageSerializer = new NewBlockMessageSerializer();
-            if (useLimboOutput)
-            {
-                _outputBuffer = new MockBuffer();
-            }
-
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;
             _serializationService = new MessageSerializationService(
@@ -68,48 +58,65 @@ namespace Nethermind.Network.Benchmarks
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 
-        private class TestZeroEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
-            : ZeroFrameEncoder(frameCipher, frameMacProcessor)
-        {
-            public void Encode(IByteBuffer message, IByteBuffer buffer) => base.Encode(null, message, buffer);
-        }
-
-        private class TestZeroSplitter : ZeroPacketSplitter
+        private class TestZeroSplitter(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+            : ZeroPacketSplitter(frameCipher, frameMacProcessor)
         {
             public void Encode(IByteBuffer input, IByteBuffer output) => base.Encode(null, input, output);
         }
 
-        public class TestZeroSnappy : ZeroSnappyEncoder
-        {
-            public TestZeroSnappy()
-                : base(LimboLogs.Instance)
-            {
-            }
-
-            public void TestEncode(IByteBuffer input, IByteBuffer output) => Encode(null, input, output);
-        }
-
         private void Check()
         {
-            if (_outputBuffer.ReadableBytes != _expectedResult.Length)
+            (EncryptionSecrets secrets, _) = NetTestVectors.GetSecretsPair();
+            using FrameMacProcessor mac = new(TestItem.IgnoredPublicKey, secrets);
+            ZeroPacketSplitter splitter = new();
+            splitter.DisableFraming();
+            EmbeddedChannel oracle = new(
+                new ZeroFrameEncoder(new FrameCipher(secrets.AesSecret), mac),
+                splitter,
+                new ZeroSnappyEncoder(LimboLogs.Instance));
+            try
             {
-                throw new Exception($"Length wrong - expected:{_expectedResult.Length} - was:{_outputBuffer.ReadableBytes}");
+                IByteBuffer input = Unpooled.Buffer();
+                _newBlockMessageSerializer.Serialize(input, _newBlockMessage);
+                oracle.WriteOutbound(input);
+                IByteBuffer expected = oracle.ReadOutbound<IByteBuffer>();
+                try
+                {
+                    byte[] expectedBytes = new byte[expected.ReadableBytes];
+                    byte[] actualBytes = new byte[_outputBuffer.ReadableBytes];
+                    expected.ReadBytes(expectedBytes);
+                    _outputBuffer.ReadBytes(actualBytes);
+                    if (!Bytes.AreEqual(actualBytes, expectedBytes))
+                    {
+                        throw new Exception("Combined encoding differs from the split-pipeline oracle.");
+                    }
+                }
+                finally
+                {
+                    expected.Release();
+                }
             }
-
-            _outputBuffer.ReadBytes(_actualResult, 0, _outputBuffer.ReadableBytes);
-            if (!Bytes.AreEqual(_actualResult, _expectedResult))
+            finally
             {
-                throw new Exception($"Different - expected:{_expectedResult.ToHexString()} - was:{_actualResult.ToHexString()}");
+                oracle.FinishAndReleaseAll();
             }
         }
 
         [Benchmark(Baseline = true)]
         public void Current()
         {
+            _snappyBuffer.Clear();
+            _outputBuffer.Clear();
             _newBlockMessageSerializer.Serialize(_snappyBuffer, _newBlockMessage);
-            _zeroSnappyEncoder.TestEncode(_snappyBuffer, _splitterBuffer);
-            _zeroSplitter.Encode(_splitterBuffer, _encoderBuffer);
-            _zeroEncoder.Encode(_encoderBuffer, _outputBuffer);
+            _zeroSplitter.Encode(_snappyBuffer, _outputBuffer);
+        }
+
+        [GlobalCleanup]
+        public void Cleanup()
+        {
+            _frameMacProcessor?.Dispose();
+            _snappyBuffer.Release();
+            _outputBuffer.Release();
         }
     }
 }

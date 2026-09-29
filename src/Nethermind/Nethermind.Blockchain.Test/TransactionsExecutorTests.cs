@@ -446,9 +446,16 @@ namespace Nethermind.Blockchain.Test
     }
 
     public class WorldStateStab()
-        : WorldStateDecorator(Substitute.For<IWorldState>())
+        : WorldStateDecorator(ScopedSubstitute())
     {
         public static IReadOnlyStateProvider GetUntrackedReader() => TestReadOnlyStateProvider.Instance;
+
+        private static IWorldState ScopedSubstitute()
+        {
+            IWorldState worldState = Substitute.For<IWorldState>();
+            worldState.TryBeginScope(Arg.Any<BlockHeader?>(), out Arg.Any<IDisposable?>()).Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
+            return worldState;
+        }
 
         public override bool TryGetAccount(Address address, out AccountStruct account)
         {

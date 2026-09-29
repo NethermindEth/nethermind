@@ -13,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -69,6 +70,9 @@ public class XdcKademliaAdapterTests
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
             new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback)));
+        NetworkListenerState listenerState = new(new NetworkConfig { LocalIp = "0.0.0.0" }, ipResolver, LimboLogs.Instance);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+        listenerState.SetRlpxAddress(IPAddress.Any);
         _nodeStatsManager = Substitute.For<INodeStatsManager>();
         _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
@@ -90,7 +94,8 @@ public class XdcKademliaAdapterTests
             _timestamper,
             Substitute.For<IProcessExitSource>(),
             new Ecdsa(),
-            LimboLogs.Instance)
+            LimboLogs.Instance,
+            listenerState)
         {
             MsgSender = _msgSender,
         };

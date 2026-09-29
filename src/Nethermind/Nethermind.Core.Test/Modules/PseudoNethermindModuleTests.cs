@@ -1,7 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Receipts;
 using Nethermind.Config;
@@ -9,6 +17,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
+using Nethermind.Facade.Find;
 using Nethermind.Init.Modules;
 using Nethermind.Db;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -20,6 +31,76 @@ namespace Nethermind.Core.Test.Modules;
 
 public class PseudoNethermindModuleTests
 {
+    [Test]
+    public void Default_backend_follows_suite_selection([Range(0, 3)] int constructor)
+    {
+        bool expectedFlatDb = Environment.GetEnvironmentVariable(TestStateBackend.UseTrieEnvironmentVariable) != "1";
+        TestNethermindModule module = constructor switch
+        {
+            0 => new TestNethermindModule(Osaka.Instance),
+            1 => new TestNethermindModule(Array.Empty<IConfig>()),
+            2 => new TestNethermindModule(new ChainSpec()),
+            _ => TestNethermindModule.CreateWithRealChainSpec()
+        };
+        using IContainer container = new ContainerBuilder().AddModule(module).Build();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestStateBackend.UseFlatDb, Is.EqualTo(expectedFlatDb));
+            Assert.That(container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(expectedFlatDb));
+        }
+    }
+
+    [Test]
+    public void Explicit_backend_is_preserved([Values] bool enabled, [Values] bool historyEnabled, [Values] bool useProvider)
+    {
+        FlatDbConfig flatDbConfig = new() { Enabled = enabled, HistoryEnabled = historyEnabled };
+        TestNethermindModule module = useProvider
+            ? new TestNethermindModule(new ConfigProvider(flatDbConfig))
+            : new TestNethermindModule(flatDbConfig);
+        using IContainer container = new ContainerBuilder().AddModule(module).Build();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
+            Assert.That(container.Resolve<IFlatDbConfig>().HistoryEnabled, Is.EqualTo(historyEnabled));
+        }
+    }
+
+    [Test]
+    public async Task Test_blockchain_preserves_explicit_backend([Values] bool enabled, [Values] bool historyEnabled)
+    {
+        using BackendTestBlockchain chain = new(new FlatDbConfig { Enabled = enabled, HistoryEnabled = historyEnabled });
+        chain.UseFlatDb = !enabled;
+        await chain.Initialize();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
+            Assert.That(chain.Container.Resolve<IFlatDbConfig>().HistoryEnabled, Is.EqualTo(historyEnabled));
+        }
+    }
+
+    [Test]
+    public async Task Test_blockchain_applies_backend_property([Values] bool enabled)
+    {
+        using BackendTestBlockchain chain = new(null);
+        Assert.That(chain.UseFlatDb, Is.EqualTo(TestStateBackend.UseFlatDb));
+        chain.UseFlatDb = enabled;
+        await chain.Initialize();
+
+        Assert.That(chain.Container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
+    }
+
+    private sealed class BackendTestBlockchain(FlatDbConfig? flatDbConfig) : BasicTestBlockchain
+    {
+        public Task<TestBlockchain> Initialize() => Build();
+
+        protected override IEnumerable<IConfig> CreateConfigs() => flatDbConfig is null
+            ? base.CreateConfigs()
+            : [.. base.CreateConfigs(), flatDbConfig];
+    }
+
     // Regeneration re-executes a block, so it must stay unreachable from everything that is not a read-only query:
     // peer-facing serving, and consensus components that read receipts while processing (AuRa validator contract,
     // Shutter). Those resolve the unkeyed registration, which must therefore never become the regenerating one.
@@ -95,5 +176,51 @@ public class PseudoNethermindModuleTests
         Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
         Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
         Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+    }
+
+    [Test]
+    public void Rpc_log_finder_is_range_limited_with_or_without_the_log_index([Values] bool logIndexEnabled)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new LogIndexConfig { Enabled = logIndexEnabled }))
+            .Build();
+
+        // The index exempts a query from the limit per request, by how much of it the index can answer,
+        // so the limiter stays in front of both finders.
+        Assert.That(container.Resolve<IRpcLogFinder>(), Is.InstanceOf<RangeLimitedLogFinder>());
+    }
+
+    [Test]
+    public void Rpc_log_finder_goes_through_a_plain_log_finder_decorator([Values] bool logIndexEnabled)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new LogIndexConfig { Enabled = logIndexEnabled }))
+            .AddDecorator<ILogFinder, RecordingLogFinder>()
+            .Build();
+
+        BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
+        LogFilter filter = new(0, new BlockParameter(1UL), new BlockParameter(1UL),
+            new AddressFilter(TestItem.AddressA), SequenceTopicsFilter.AnyTopic);
+        _ = container.Resolve<IRpcLogFinder>().FindLogs(filter, head, head);
+
+        Assert.That(((RecordingLogFinder)container.Resolve<ILogFinder>()).Calls, Is.EqualTo(1),
+            "a plugin decorator implements ILogFinder only, so the RPC finder has to forward to it rather than cast");
+    }
+
+    private sealed class RecordingLogFinder(ILogFinder logFinder) : ILogFinder
+    {
+        public int Calls { get; private set; }
+
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return logFinder.FindLogs(filter, cancellationToken);
+        }
+
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
+        }
     }
 }

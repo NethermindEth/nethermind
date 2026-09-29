@@ -16,9 +16,9 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// Imports state from trie-based persistence to flat persistence.
 ///
-/// This importer uses SetAccountRaw/SetStorageRawEncoded with hash-based keys. For PreimageFlat mode,
-/// wrap the persistence with PreimageRecordingPersistence and provide a previously recorded
-/// preimage database - it will automatically translate raw operations to preimage-keyed operations.
+/// This importer uses SetAccountRaw/SetStorageRawEncoded with hash-based keys, so it cannot target a
+/// preimage layout, which keys on the raw address and slot. <see cref="Nethermind.Db.FlatLayout.PreimageFlat"/>
+/// and <see cref="Nethermind.Db.FlatLayout.PreimageFlatV1"/> are rejected before the import starts.
 /// </summary>
 public class Importer(
     INodeStorage nodeStorage,
@@ -80,6 +80,11 @@ public class Importer(
         }, cancellationToken)));
 
         await Task.WhenAll(tasks.AsSpan());
+
+        // The ingest batches use DisableWAL and are only crash-durable once flushed. Flush before advancing the
+        // WAL-durable pointer, so a crash can't leave CurrentState at `to` over unflushed (holed) data, which
+        // FlatDb.DropPruningTrieState would then treat as a finished import and delete the trie it came from.
+        persistence.Flush();
 
         // An empty write batch from→to advances the persisted state ID to `to` without writing any data entries.
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, to);

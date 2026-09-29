@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Core;
@@ -29,6 +30,7 @@ public static class GethLikeNativeTracerFactory
     private static void RegisterNativeTracers()
     {
         _tracers.Add(Native4ByteTracer.FourByteTracer, static (options, _, transaction, _, _) => new Native4ByteTracer(transaction, options));
+        _tracers.Add(NativeNoopTracer.NoopTracer, static (options, _, transaction, _, _) => new NativeNoopTracer(transaction, options));
         _tracers.Add(NativePrestateTracer.PrestateTracer, static (options, block, transaction, worldState, _) => new NativePrestateTracer(worldState, options, transaction.Hash, transaction.SenderAddress, transaction.To, block.Beneficiary));
         _tracers.Add(NativeCallTracer.CallTracer, static (options, _, transaction, _, releaseSpec) => new NativeCallTracer(transaction, releaseSpec, options));
         _tracers.Add(NativeStateGasTracer.StateGasTracer, static (options, _, transaction, _, releaseSpec) => new NativeStateGasTracer(transaction, releaseSpec, options));

@@ -7,6 +7,8 @@ using System.Runtime.CompilerServices;
 using InlineIL;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
@@ -36,6 +38,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     /// <summary>The dispatch table the running transaction uses, resolved once by <c>PrepareOpcodes</c>.</summary>
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] _opcodeHandlers = null!;
+
+    private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? _filteredOpcodeHandlers;
+    private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? _filteredTracedSource;
+    private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? _filteredSilentSource;
+    private UInt256 _filteredInstructionMask;
+
+    private struct SilentInstructionFlag : IFlag
+    {
+        public static bool IsActive => true;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]
@@ -81,6 +93,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         _executionHandlers = table.GetExecutionHandlers(spec);
         _opcodeHandlers = table.GetHandlers<TTracingInst, TCancelable>(spec);
+        if (TTracingInst.IsActive && _txTracer is IInstructionTracingFilter filter)
+        {
+            UInt256 mask = filter.InstructionMask;
+            if (mask != UInt256.MaxValue)
+                PrepareFilteredOpcodes(mask, table.GetHandlers<SilentInstructionFlag, TCancelable>(spec));
+        }
+    }
+
+    private void PrepareFilteredOpcodes(UInt256 mask,
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] silent)
+    {
+        if (_filteredTracedSource != _opcodeHandlers || _filteredSilentSource != silent || _filteredInstructionMask != mask)
+        {
+            _filteredOpcodeHandlers ??= new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[256];
+            _filteredTracedSource = _opcodeHandlers;
+            _filteredSilentSource = silent;
+            _filteredInstructionMask = mask;
+            for (int opcode = 0; opcode < _filteredOpcodeHandlers.Length; opcode++)
+            {
+                _filteredOpcodeHandlers[opcode] = (mask & (UInt256.One << opcode)) != UInt256.Zero
+                    ? _opcodeHandlers[opcode]
+                    : silent[opcode];
+            }
+        }
+        _opcodeHandlers = _filteredOpcodeHandlers!;
     }
 
     private sealed unsafe class OpcodeTable
@@ -89,6 +126,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? NoTraceCancelable;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? Traced;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? TracedCancelable;
+        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? Silent;
+        public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? SilentCancelable;
 
         private ExecutionHandlers? _executionHandlers;
 
@@ -108,7 +147,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TCancelable : struct, IFlag
         {
             ref delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]? table =
-                ref TTracingInst.IsActive
+                ref typeof(TTracingInst) == typeof(SilentInstructionFlag)
+                    ? ref (TCancelable.IsActive ? ref SilentCancelable : ref Silent)
+                    : ref TTracingInst.IsActive
                     ? ref (TCancelable.IsActive ? ref TracedCancelable : ref Traced)
                     : ref (TCancelable.IsActive ? ref NoTraceCancelable : ref NoTrace);
 
@@ -219,7 +260,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TContinuable : struct, IFlag
     {
         // Only a traced run reads the opcode out of the bytecode. The read costs two dependent loads.
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
         {
             Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
             state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
@@ -265,7 +306,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         Debug.Assert(state.Vm.ReturnData is null,
             "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             state.Vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
         // Reaching here means the halt check passed, so the status is None and gas is valid: the exit
@@ -324,7 +365,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         VirtualMachine<TGasPolicy> vm = state.Vm;
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
         {
             Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
             vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
@@ -344,7 +385,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         Debug.Assert(vm.ReturnData is null,
             "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
         if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0)
