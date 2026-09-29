@@ -187,9 +187,7 @@ public class VmState<TGasPolicy> : IDisposable
         }
         _isDisposed = false;
 
-#if DEBUG
-        _creationStackTrace = new StackTrace();
-#endif
+        PooledObjectLeakDetector.OnRent(this, nameof(VmState<>));
         [DoesNotReturn, StackTraceHidden]
         static void ThrowIsInUse() => throw new InvalidOperationException("Already in use");
     }
@@ -217,6 +215,7 @@ public class VmState<TGasPolicy> : IDisposable
             return;
         }
         _isDisposed = true;
+        PooledObjectLeakDetector.OnReturn(this);
 
         if (DataStack is not null)
         {
@@ -238,24 +237,7 @@ public class VmState<TGasPolicy> : IDisposable
         StateGasRefundAdvanced = 0;
 
         _statePool.Enqueue(this);
-
-#if DEBUG
-        GC.SuppressFinalize(this);
-#endif
     }
-
-#if DEBUG
-
-    private StackTrace? _creationStackTrace;
-
-    ~VmState()
-    {
-        if (!_isDisposed)
-        {
-            Console.Error.WriteLine($"Warning: {nameof(VmState<>)} was not disposed. Created at: {_creationStackTrace}");
-        }
-    }
-#endif
 
     /// <summary>Builds the frame's EVM stack over <paramref name="codeSpan"/>, renting the data stack on first use.</summary>
     /// <param name="codeSpan">
