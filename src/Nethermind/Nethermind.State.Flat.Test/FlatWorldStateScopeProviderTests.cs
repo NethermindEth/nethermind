@@ -825,6 +825,25 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(next.Scope.AppliesStorageWritesEarly, Is.False);
     }
 
+    [Test]
+    public void EarlyStorageApply_WakesTheParkedThread()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+
+        // With nothing queued, the thread parks rather than polling.
+        Assert.That(() => scope.EarlyApplier.IsParked, Is.True.After(5000, 10));
+
+        // The next committed write wakes it.
+        storageTree.HintSet(1, 1);
+        Assert.That(() => storageTree.EarlyWritesDrained, Is.True.After(5000, 10));
+        Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1));
+    }
+
     // The gap is process-wide, like the thread it gates, so a test that changes it puts back the value it found.
     private static IDisposable SetMinIdleGap(TimeSpan gap)
     {
