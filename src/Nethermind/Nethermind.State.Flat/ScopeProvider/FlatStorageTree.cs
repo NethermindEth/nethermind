@@ -145,6 +145,9 @@ public sealed class FlatStorageTree(
         GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
     }
 
+    // Matches PatriciaTree.Commit, which splits the commit, hashing included, across threads above 4 writes.
+    private const int MinWritesToHashInParallel = 4;
+
     // No trees means nothing was written, so there is nothing to commit.
     public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
 
@@ -157,8 +160,10 @@ public sealed class FlatStorageTree(
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported valid.
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, GetTrees().Tree, onRootUpdated, _address, commit: !_config.DeferStorageTrieCommit);
+        // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported
+        // valid. The hash then goes parallel from the size at which a commit would split the tree across threads.
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, GetTrees().Tree, onRootUpdated, _address,
+            commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel);
         return new StorageTreeBulkWriteBatch(trieBatch, this);
     }
 
