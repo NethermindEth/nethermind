@@ -167,6 +167,36 @@ public sealed unsafe class BloomFilter : IDisposable
         return lineIndex * CacheLineBytes;
     }
 
+    /// <summary>
+    /// <see cref="Add"/> without the atomics, for a filter that a single thread fills before publishing it.
+    /// </summary>
+    /// <remarks>
+    /// Must not race another add or a query: a plain read-modify-write can lose a concurrent add's bit, which
+    /// would be a false negative. Publishing the filter with a release write (e.g. <see cref="Volatile.Write{T}(ref T, T)"/>)
+    /// makes every bit visible to readers that acquire it.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AddUnsynchronized(ulong key)
+    {
+        if (_disposed != 0)
+            throw new ObjectDisposedException(nameof(BloomFilter));
+
+        GetLineAndHashState(key, NumBlocks, out long lineIndex, out uint h);
+
+        ulong* lanes = (ulong*)(_data + lineIndex * CacheLineBytes);
+
+        const int shift = 32 - 9; // log2(512)=9
+        int k = K;
+        for (int i = 0; i < k; i++)
+        {
+            int bit = (int)(h >> shift);
+            lanes[bit >> 6] |= 1UL << (bit & 63);
+            h *= Mul32;
+        }
+
+        _count++;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool MightContain(ulong key)
     {
