@@ -127,6 +127,40 @@ public class OptimismEngineRpcModuleTest
             payload, blobVersionedHashes, Hash256.Zero, executionRequests);
     }
 
+    [Test]
+    public async Task NewPayloadV3_RPC_binds_Optimism_payload()
+    {
+        IEngineRpcModule engineRpcModule = Substitute.For<IEngineRpcModule>();
+        ExecutionPayloadV3? delegatedPayload = null;
+        engineRpcModule.engine_newPayloadV3(
+                Arg.Do<ExecutionPayloadV3>(payload => delegatedPayload = payload),
+                Arg.Any<Hash256?[]>(),
+                Arg.Any<Hash256?>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
+        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(
+            engineRpcModule, Substitute.For<IOptimismSignalSuperchainV1Handler>());
+        OptimismExecutionPayloadV3 payload = new()
+        {
+            Withdrawals = [],
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0
+        };
+
+        _ = await RpcTest.TestSerializedRequest(
+            rpcModule, nameof(IOptimismEngineRpcModule.engine_newPayloadV3), payload, new Hash256?[] { }, Hash256.Zero);
+
+        Assert.That(delegatedPayload, Is.TypeOf<OptimismExecutionPayloadV3>());
+        OptimismReleaseSpec spec = new()
+        {
+            IsEip4844Enabled = true,
+            IsOpIsthmusEnabled = true,
+            IsEip6110Enabled = false
+        };
+        Assert.That(
+            delegatedPayload!.ValidateForkOnNewPayload(new TestSingleReleaseSpecProvider(spec), EngineApiVersions.NewPayload.V3),
+            Is.False);
+    }
+
     [TestCase(false, false, EngineApiVersions.NewPayload.V3, true)]
     [TestCase(false, false, EngineApiVersions.NewPayload.V4, false)]
     [TestCase(true, false, EngineApiVersions.NewPayload.V3, false)]
