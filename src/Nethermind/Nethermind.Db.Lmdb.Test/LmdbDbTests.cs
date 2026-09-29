@@ -592,4 +592,31 @@ public class LmdbDbTests
             if (Directory.Exists(path)) Directory.Delete(path, true);
         }
     }
+
+    [Test]
+    public void TakeAndResetDiagnostics_reports_call_counts_and_resets_between_calls()
+    {
+        _db.Set([1], [1]);
+        _db.Get([1]);
+        _db.Get([1]);
+        using (IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot()) { }
+
+        LmdbDb.DiagnosticsSnapshot first = _db.TakeAndResetDiagnostics();
+        Assert.That(first.GetCount, Is.EqualTo(2));
+        Assert.That(first.WriteWaveCount, Is.EqualTo(1));
+        Assert.That(first.CreateSnapshotCount, Is.EqualTo(1));
+        Assert.That(first.AvgGetMicros, Is.GreaterThanOrEqualTo(0));
+        Assert.That(first.AvgCreateSnapshotMicros, Is.GreaterThanOrEqualTo(0));
+        Assert.That(first.AvgWriteWaveMicros, Is.GreaterThanOrEqualTo(0));
+        Assert.That(first.MapGrowthCount, Is.EqualTo(0));
+
+        // A second call with no activity in between must report an empty interval, not the same counts again -
+        // this is what makes the periodic logger's "last ~30s" numbers meaningful on a long-running node.
+        LmdbDb.DiagnosticsSnapshot second = _db.TakeAndResetDiagnostics();
+        Assert.That(second, Is.EqualTo(new LmdbDb.DiagnosticsSnapshot(0, 0, 0, 0, 0, 0, 0)));
+
+        _db.Get([1]);
+        LmdbDb.DiagnosticsSnapshot third = _db.TakeAndResetDiagnostics();
+        Assert.That(third.GetCount, Is.EqualTo(1));
+    }
 }

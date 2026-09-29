@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -37,6 +38,19 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     /// this lock is held outside of <see cref="DrainIfLeader"/>'s own write-transaction section.
     /// </summary>
     private readonly Lock _writeCommitGate = new();
+
+    // Diagnostics only (see GetDiagnostics/LmdbColumnsDbAdapter's periodic logger) - counts and total elapsed
+    // ticks per operation kind, so a live run can report call volume and average latency for each without needing
+    // an external profiler attached. Interlocked rather than a lock: these are updated on every single Get/
+    // CreateSnapshot/write-wave, so any added synchronization here would itself skew exactly the latency this
+    // exists to measure.
+    private long _getCount;
+    private long _getElapsedTicks;
+    private long _createSnapshotCount;
+    private long _createSnapshotElapsedTicks;
+    private long _writeWaveCount;
+    private long _writeWaveElapsedTicks;
+    private long _mapGrowthCount;
 
     public string Name { get; }
 
@@ -79,9 +93,13 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
+        long start = Stopwatch.GetTimestamp();
         using LightningTransaction tx = BeginReadOnlyTransaction();
         (MDBResultCode rc, _, MDBValue value) = tx.Get(_database, key);
-        return rc == MDBResultCode.Success ? value.CopyToNewArray() : null;
+        byte[]? result = rc == MDBResultCode.Success ? value.CopyToNewArray() : null;
+        Interlocked.Increment(ref _getCount);
+        Interlocked.Add(ref _getElapsedTicks, Stopwatch.GetTimestamp() - start);
+        return result;
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
@@ -203,6 +221,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     /// </remarks>
     public IKeyValueStoreSnapshot CreateSnapshot()
     {
+        long start = Stopwatch.GetTimestamp();
         LightningTransaction[] pool = new LightningTransaction[SnapshotReaderPoolSize];
         int opened = 0;
         try
@@ -222,6 +241,8 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             throw;
         }
 
+        Interlocked.Increment(ref _createSnapshotCount);
+        Interlocked.Add(ref _createSnapshotElapsedTicks, Stopwatch.GetTimestamp() - start);
         return new LmdbDbSnapshot(pool, _database);
     }
 
@@ -240,6 +261,39 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             using LightningTransaction tx = BeginReadOnlyTransaction();
             return tx.GetEntriesCount(_database);
         }
+    }
+
+    /// <summary>Call volume and average latency, for the interval since the last call to
+    /// <see cref="TakeAndResetDiagnostics"/>, for the three operation kinds most likely to matter for the open
+    /// "why does this feel slow" question (see PLAN-LMDB.md "Validation methodology") - point reads, snapshot
+    /// creation (the potentially-expensive one: opens <see cref="SnapshotReaderPoolSize"/> transactions per
+    /// call), and physical write-wave commits. Consumed by <see cref="LmdbColumnsDbAdapter"/>'s periodic logger;
+    /// not itself logged by <see cref="LmdbDb"/>.</summary>
+    internal readonly record struct DiagnosticsSnapshot(
+        long GetCount, double AvgGetMicros,
+        long CreateSnapshotCount, double AvgCreateSnapshotMicros,
+        long WriteWaveCount, double AvgWriteWaveMicros,
+        long MapGrowthCount);
+
+    /// <summary>Atomically reads and zeroes every counter, so each call reports only the interval since the
+    /// previous one rather than a lifetime-since-process-start average that would dilute an early spike into
+    /// invisibility over a long-running node. Each operation's count and elapsed-ticks pair is reset via two
+    /// separate <see cref="Interlocked.Exchange(ref long, long)"/> calls, not one atomic pair - a call landing in
+    /// the narrow window between them can be undercounted or miscounted into the wrong interval. Acceptable for a
+    /// rough diagnostic signal; not a billing-grade counter.</summary>
+    internal DiagnosticsSnapshot TakeAndResetDiagnostics()
+    {
+        long getCount = Interlocked.Exchange(ref _getCount, 0);
+        long createSnapshotCount = Interlocked.Exchange(ref _createSnapshotCount, 0);
+        long writeWaveCount = Interlocked.Exchange(ref _writeWaveCount, 0);
+        return new DiagnosticsSnapshot(
+            getCount, AvgMicros(Interlocked.Exchange(ref _getElapsedTicks, 0), getCount),
+            createSnapshotCount, AvgMicros(Interlocked.Exchange(ref _createSnapshotElapsedTicks, 0), createSnapshotCount),
+            writeWaveCount, AvgMicros(Interlocked.Exchange(ref _writeWaveElapsedTicks, 0), writeWaveCount),
+            Interlocked.Exchange(ref _mapGrowthCount, 0));
+
+        static double AvgMicros(long totalTicks, long count) =>
+            count == 0 ? 0 : totalTicks * 1_000_000.0 / Stopwatch.Frequency / count;
     }
 
     public IDbMeta.DbMetric GatherMetric()
@@ -369,6 +423,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     /// </remarks>
     private void CommitWaveWithMapGrowthRetry(List<PendingWrite> wave)
     {
+        long start = Stopwatch.GetTimestamp();
         bool durable = false;
         foreach (PendingWrite w in wave) durable |= w.WantsDurability;
 
@@ -401,7 +456,13 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
                         commitRc = tx.Commit();
                     }
 
-                    if (commitRc == MDBResultCode.Success) return;
+                    if (commitRc == MDBResultCode.Success)
+                    {
+                        Interlocked.Increment(ref _writeWaveCount);
+                        Interlocked.Add(ref _writeWaveElapsedTicks, Stopwatch.GetTimestamp() - start);
+                        return;
+                    }
+
                     failure = commitRc;
                 }
                 else
@@ -419,6 +480,8 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             {
                 _env.MapSize *= 2;
             }
+
+            Interlocked.Increment(ref _mapGrowthCount);
         }
     }
 

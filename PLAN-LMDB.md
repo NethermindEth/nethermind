@@ -304,6 +304,29 @@ cursor fails partway through.
 This is arguably worth reporting upstream to `CoreyKaylor/Lightning.NET` — a failed `BeginTransaction` should
 not leave unmanaged/tracked state that only a later GC can (fatally) discover.
 
+**Rejected fix: `ReaderWriterLockSlim` for `_writeCommitGate` made concurrent `CreateSnapshot` *slower*, not
+faster — reverted after benchmarking, kept here so it isn't tried again without re-measuring.** Reported
+symptom: a real snap-sync run felt "quite slow." Hypothesis: `_writeCommitGate` is one plain `Lock` shared by
+`CreateSnapshot`'s pool-opening loop and `DrainIfLeader`'s commit, so concurrent `CreateSnapshot` calls (snap
+sync issues many, each bypassing `CachedReaderPersistence`'s cache via `ReaderFlags.Sync`) fully serialize
+against *each other*, not just against commits - even though read-only LMDB transactions never need to block
+one another. Fix tried: `ReaderWriterLockSlim`, with `CreateSnapshot` taking a shared read lock and
+commit/map-growth taking the exclusive write lock. Benchmarked directly against the real `LmdbDb` class
+(throwaway console benchmark, not committed; 200k `CreateSnapshot`+`Dispose` calls, serial vs. 2/4/8/16
+concurrent threads): **the original plain `Lock` scaled flat (~350k calls/sec regardless of thread count,
+1.0-1.1x "speedup" at every thread count - i.e. no degradation), while the `ReaderWriterLockSlim` version
+degraded steadily with more threads (350k → 143k calls/sec at 16 threads, dropping to 0.4x of serial
+throughput)**. `ReaderWriterLockSlim`'s per-acquisition bookkeeping overhead is worse than a plain mutex when
+critical sections are this short (a handful of `BeginTransaction` calls) and there's no real writer contention
+to justify the extra complexity. Reverted to the plain `Lock`, matching BTDB's original design. The
+lock-granularity theory for the reported slowness is therefore disproven, at least in this synthetic,
+single-machine, tiny-dataset benchmark - real production Account/Storage data with deep B+tree pages and
+actual disk I/O could behave differently, but that needs live profiling to establish, not more speculative
+locking changes. Added lightweight built-in diagnostics instead (`LmdbDb.TakeAndResetDiagnostics`, logged
+every ~30s by `LmdbColumnsDbAdapter` alongside the existing key-count line) - call counts and average
+latencies for `Get`, `CreateSnapshot`, and write-wave commits, specifically so a future "quite slow" report
+comes with real numbers instead of requiring a fresh round of guessing.
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,

@@ -23,12 +23,19 @@ public sealed class LmdbColumnsDbAdapter(IColumnsDb<FlatDbColumns> inner, LmdbDb
     private LmdbDb Storage => storage;
 
     /// <summary>
-    /// Periodically logs Account/Storage key counts and on-disk size - see PLAN-LMDB.md "Validation methodology".
-    /// Unlike BTDB, LMDB has no separate resident-index allocator to query (the OS page cache decides what stays
-    /// resident, not the library), so there is no "native RAM bytes" figure to log alongside these - see
-    /// PLAN-LMDB.md's explanation of why that comparison doesn't carry over. Read-only and O(1) per tick (LMDB's
-    /// own <c>mdb_stat</c> entry count) - no interaction with the write path this logs alongside.
+    /// Periodically logs Account/Storage key counts, on-disk size, and call-volume/latency diagnostics - see
+    /// PLAN-LMDB.md "Validation methodology". Unlike BTDB, LMDB has no separate resident-index allocator to query
+    /// (the OS page cache decides what stays resident, not the library), so there is no "native RAM bytes" figure
+    /// to log alongside these - see PLAN-LMDB.md's explanation of why that comparison doesn't carry over.
     /// </summary>
+    /// <remarks>
+    /// The latency/volume half of this line exists specifically to turn "this feels slow" into actual numbers
+    /// without needing a profiler attached to a live sync - see <see cref="LmdbDb.GetDiagnostics"/>. Watch, in
+    /// particular, whether <c>CreateSnapshot</c>'s call count tracks one-per-sync-request during snap sync (it
+    /// bypasses <c>CachedReaderPersistence</c>'s cache via <c>ReaderFlags.Sync</c>) and whether its average
+    /// latency is disproportionate to <c>Get</c>'s - that would point at the pool-of-readers cost genuinely
+    /// dominating, as opposed to something upstream of this plugin entirely.
+    /// </remarks>
     private readonly Timer _keyCountLogTimer = new(
         _ => LogKeyCounts(account, storage, logManager.GetClassLogger<LmdbColumnsDbAdapter>()),
         null,
@@ -47,7 +54,14 @@ public sealed class LmdbColumnsDbAdapter(IColumnsDb<FlatDbColumns> inner, LmdbDb
         logger.Info(
             $"Lmdb key counts - Account: {accountCount:N0} keys ({FormatBytes(accountSize)} on disk), " +
             $"Storage: {storageCount:N0} keys ({FormatBytes(storageSize)} on disk)");
+        logger.Info($"Lmdb diagnostics (last ~30s) - Account: {FormatDiagnostics(account.TakeAndResetDiagnostics())}, Storage: {FormatDiagnostics(storage.TakeAndResetDiagnostics())}");
     }
+
+    private static string FormatDiagnostics(LmdbDb.DiagnosticsSnapshot d) =>
+        $"Get x{d.GetCount:N0} (avg {d.AvgGetMicros:F1}us), " +
+        $"CreateSnapshot x{d.CreateSnapshotCount:N0} (avg {d.AvgCreateSnapshotMicros:F1}us), " +
+        $"WriteWave x{d.WriteWaveCount:N0} (avg {d.AvgWriteWaveMicros:F1}us), " +
+        $"MapGrowths {d.MapGrowthCount:N0}";
 
     private static string FormatBytes(long bytes) => $"{bytes / (1024.0 * 1024 * 1024):F2} GiB";
 
