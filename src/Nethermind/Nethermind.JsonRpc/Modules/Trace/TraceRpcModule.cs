@@ -38,8 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     /// <summary>
     /// All methods that receive transaction from users uses ITransactionProcessor.Trace
-    /// As user might send transaction without gas and/or sender we can't charge gas fees here
-    /// So at the end stateDiff will be a bit incorrect
+    /// A transaction priced at zero pays no gas fee and runs with a zero base fee, as eth_call does; a priced one is charged for gas
     ///
     /// All methods that traces transactions from chain uses ITransactionProcessor.Execute
     /// From-chain transactions should have stateDiff as we got during normal execution. Also we are sure that sender have enough funds to pay gas
@@ -99,7 +98,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public static ResultWrapper<T> PendingNotSupported<T>() => ResultWrapper<T>.Fail("Pending block is not supported for tracing", ErrorCodes.InvalidParams);
 
         /// <summary>
-        /// Traces one transaction. Doesn't charge fees.
+        /// Traces one transaction. A call priced at zero runs with a zero base fee and pays no gas fee; a priced call is charged for gas.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null)
         {
@@ -114,14 +113,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
-            Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(headerSearch.Object!));
+            Result<Transaction> txResult = ToCallTransaction(call, specProvider.GetSpec(headerSearch.Object!));
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
                 : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
         }
 
         /// <summary>
-        /// Traces list of transactions. Doesn't charge fees.
+        /// Traces list of transactions, each on the state the previous ones leave. Each call priced at zero runs with a
+        /// zero base fee and pays no gas fee; a priced call sees the block's base fee and is charged for gas.
         /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TraceCallManyRequest request, BlockParameter? blockParameter = null)
         {
@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Transaction[] txs = new Transaction[calls.Count];
             for (int i = 0; i < calls.Count; i++)
             {
-                Result<Transaction> txResult = calls[i].Transaction.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header));
+                Result<Transaction> txResult = ToCallTransaction(calls[i].Transaction, specProvider.GetSpec(header));
                 if (!txResult.Success(out Transaction? tx, out string? error))
                 {
                     return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(error, ErrorCodes.InvalidInput);
@@ -190,6 +190,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
+        /// Converts <paramref name="call"/> for trace_call and trace_callMany, rejecting a priority fee above the fee cap as eth_call does.
+        /// </summary>
+        private Result<Transaction> ToCallTransaction(TransactionForRpc call, IReleaseSpec spec)
+        {
+            Result<Transaction> result = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: spec);
+            return result.Success(out Transaction? tx, out _) && tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap
+                ? Result<Transaction>.Fail(tipAboveFeeCap)
+                : result;
+        }
+
+        /// <summary>
         /// Returns an error message when <paramref name="call"/> sets a <c>chainId</c> for another chain, otherwise <see langword="null"/>.
         /// </summary>
         /// <remarks>
@@ -204,7 +215,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// Traces one raw transaction. Doesn't charge fees.
+        /// Traces one raw transaction. A transaction priced at zero runs with a zero base fee and pays no gas fee; a priced one is charged for gas.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
@@ -258,35 +269,35 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces one transaction. As it replays existing transaction will charge gas
         /// </summary>
-        public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
+        public ResultWrapper<ParityTxTraceFromReplay?> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
         {
             if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
             {
-                return InvalidTraceTypes<ParityTxTraceFromReplay>();
+                return InvalidTraceTypes<ParityTxTraceFromReplay?>();
             }
 
-            SearchResult<Hash256> blockHashSearch = receiptFinder.SearchForReceiptBlockHash(txHash);
-            if (blockHashSearch.IsError)
+            Hash256? blockHash = receiptFinder.FindBlockHash(txHash);
+            if (blockHash is null)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(blockHashSearch);
+                return ResultWrapper<ParityTxTraceFromReplay?>.Success(null);
             }
 
-            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object!, requireCanonical: !traceNonCanonical));
+            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(new BlockParameter(blockHash, requireCanonical: !traceNonCanonical));
             if (blockSearch.IsError)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(blockSearch);
+                return ResultWrapper<ParityTxTraceFromReplay?>.Fail(blockSearch);
             }
 
             Block block = blockSearch.Object!;
             SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
             if (parentSearch.IsError)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(parentSearch);
+                return ResultWrapper<ParityTxTraceFromReplay?>.Fail(parentSearch);
             }
 
             if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
             {
-                return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object);
+                return GetStateFailureResult<ParityTxTraceFromReplay?>(parentSearch.Object);
             }
 
             BlockHeader parentHeader = parentSearch.Object!;
@@ -378,6 +389,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 if (IsPending(fromBlock) || IsPending(toBlock))
                 {
                     return PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
+                }
+
+                if (blockFinder.IsRangeInFuture(fromBlock, toBlock))
+                {
+                    return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
                 }
 
                 // Collect the whole range first so search errors (e.g. from > to) take precedence over state checks.
