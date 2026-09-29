@@ -118,6 +118,46 @@ public class RangeSyncPeerSelectionTests
         }
     }
 
+    /// <summary>The sync gate fails a job on any log line containing "Exception", so a failed batch is logged by its cause, not its exception type.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_failed_batch_is_logged_by_its_cause_rather_than_its_exception_type(CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 12, 13);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        int calls = 0;
+        StubPeer peer = new("slow", 13, (start, count) => ++calls <= 1 ? throw new TimeoutException("slow") : chainBlocks, earliestAvailableSlot: 0);
+        AllLevelsCapture log = new();
+        RangeSync sync = new(new StubPool(peer), new OneLoggerLogManager(new ILogger(log)), new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        await foreach (ForkedSignedBeaconBlock _ in sync.Run(anchorRoot, AnchorSlot, () => 13, token))
+        {
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.Lines, Has.Some.Contains("request timed out"), "the failed batch is logged");
+            Assert.That(log.Lines, Has.None.Contains("Exception"));
+        }
+    }
+
+    private sealed class AllLevelsCapture : InterfaceLogger
+    {
+        public List<string> Lines { get; } = [];
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => true;
+        public bool IsError => true;
+
+        public void Info(string text) => Lines.Add(text);
+        public void Warn(string text) => Lines.Add(text);
+        public void Debug(string text) => Lines.Add(text);
+        public void Trace(string text) => Lines.Add(text);
+        public void Error(string text, Exception? ex = null) => Lines.Add(text);
+    }
+
     /// <summary>Failures shrink the batch; the fallback window stays the default batch, so the peer serving from slot 20 is still asked after the shrink.</summary>
     [Test]
     [CancelAfter(30_000)]
