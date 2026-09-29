@@ -110,8 +110,9 @@ public static class InclusionListValidator
     /// <summary>Whether an appended transaction's worst-case block gas still fits.</summary>
     /// <remarks>EIP-8037 admits a transaction only if both its execution and its state reservation fit the
     /// matching dimension, so measuring it against the header's max(execution, state) rejects transactions the
-    /// spec judges includable. Without the per-dimension totals — a block executed elsewhere — that max is all
-    /// there is, and both dimensions fall back to it.</remarks>
+    /// spec judges includable. The dimensions reach a payload through the block it was processed as, so only a
+    /// re-check outliving that — a restart, or the payload cache evicting the block — is left with the max
+    /// alone, and reports the censorship this measures as absent.</remarks>
     private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec)
     {
         // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the

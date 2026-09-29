@@ -59,7 +59,21 @@ public class BlockHeader
     public Bloom? Bloom { get; set; }
     public UInt256 Difficulty;
     public ulong Number { get; set; }
-    public ulong GasUsed { get; set; }
+    private ulong _gasUsed;
+
+    /// <summary>Total block gas, which under EIP-8037 is the maximum of <see cref="GasUsedPerDimension"/>.</summary>
+    /// <remarks>Assigning drops the dimensions it summarises, so a header cloned and reset for a call cannot
+    /// carry dimensions that contradict it; record the dimensions after this, never before.</remarks>
+    public ulong GasUsed
+    {
+        get => _gasUsed;
+        set
+        {
+            _gasUsed = value;
+            GasUsedPerDimension = null;
+        }
+    }
+
     public ulong GasLimit { get; set; }
 
     /// <summary>EIP-8037 per-dimension block gas totals, which <see cref="GasUsed"/> reduces to their maximum.</summary>

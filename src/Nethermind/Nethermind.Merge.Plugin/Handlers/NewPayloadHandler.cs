@@ -417,12 +417,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
 
+        Hash256 hash = block.GetOrCalculateHash();
+        // A decoded payload has no EIP-8037 dimensions, and the state root does not carry them, so without
+        // what execution recorded this answers on a coarser gas rule than the processing path — the same
+        // block and list could be judged either way. An entry cached under a different list still holds them.
+        if (_latestBlocks is not null && _latestBlocks.TryGet(hash, out CachedPayloadResult executed))
+            block.Header.GasUsedPerDimension = executed.GasUsedPerDimension;
+
         ValidationResult result = InclusionListValidator.IsSatisfied(
             block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
             ? ValidationResult.Valid
             : ValidationResult.InclusionListUnsatisfied;
 
-        _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, null, ComputeInclusionListDigest(block)));
+        _latestBlocks?.Set(hash, new CachedPayloadResult(result, null, ComputeInclusionListDigest(block), block.Header.GasUsedPerDimension));
         return result == ValidationResult.Valid
             ? NewPayloadV1Result.Valid(block.Hash)
             : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
@@ -586,7 +593,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // Cache terminal outcomes only; SYNCING isn't terminal (we haven't processed the block yet).
             if (result is ValidationResult.Invalid or ValidationResult.Valid or ValidationResult.InclusionListUnsatisfied)
             {
-                _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest));
+                _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest, block.Header.GasUsedPerDimension));
                 // The verdict is given before the commit, so the block can be gone without committing by the time
                 // this runs. Whichever of the two marks the completion first, the other takes the entry back out.
                 if (completion?.MarkAnswerCached() == false) _latestBlocks?.Delete(block.GetOrCalculateHash());
@@ -916,5 +923,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     }
 
     // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
-    private readonly record struct CachedPayloadResult(ValidationResult Result, string? Message, ValueHash256 InclusionListDigest);
+    /// <param name="GasUsedPerDimension">What execution recorded for this block, so a re-validation under a
+    /// different inclusion list judges appendability on the same EIP-8037 gas the processing path did.</param>
+    private readonly record struct CachedPayloadResult(
+        ValidationResult Result,
+        string? Message,
+        ValueHash256 InclusionListDigest,
+        (ulong Execution, ulong State)? GasUsedPerDimension);
 }
