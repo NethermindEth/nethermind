@@ -38,6 +38,39 @@ public static class SignatureSets
         return bytes;
     }
 
+    /// <summary>Upper bound on the indices of an indexed attestation: <c>MAX_VALIDATORS_PER_COMMITTEE * MAX_COMMITTEES_PER_SLOT</c>.</summary>
+    internal const int MaxAttestingIndices = Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot;
+
+    /// <summary>
+    /// Resolves a validator index taken from a message to its cached public key, which must be in the prime-order subgroup.
+    /// </summary>
+    /// <returns><c>false</c> when the index is not cached (a negative or past-the-end index included) or its key fails <c>KeyValidate</c>.</returns>
+    internal static bool TryGetValidatorKey(PubkeyCache pubkeys, ulong validatorIndex, out G1Affine key)
+    {
+        if (validatorIndex >= (ulong)pubkeys.Count)
+        {
+            key = default;
+            return false;
+        }
+
+        return pubkeys.TryGetValidPublicKey((int)validatorIndex, out key);
+    }
+
+    /// <summary>Writes the sum of the attesting validators' keys into <paramref name="sum"/>; <c>false</c> for an oversized list, an uncached index or a key outside G1.</summary>
+    internal static bool TrySumAttestingKeys(PubkeyCache pubkeys, ulong[]? attestingIndices, Span<long> sum)
+    {
+        ReadOnlySpan<ulong> indices = attestingIndices;
+        if (indices.Length > MaxAttestingIndices)
+            return false;
+        foreach (ulong index in indices)
+        {
+            if (index >= (ulong)pubkeys.Count)
+                return false;
+        }
+
+        return pubkeys.TrySumValidPublicKeys(indices, sum);
+    }
+
     /// <summary>
     /// Verifies the aggregate attester signature of an indexed attestation over
     /// <c>DOMAIN_BEACON_ATTESTER</c> at the attestation's target epoch (the signature half of
@@ -47,7 +80,7 @@ public static class SignatureSets
     public static bool VerifyIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
         Span<long> sum = stackalloc long[Bls.P1.Sz];
-        if (!pubkeys.TrySumValidPublicKeys(attestation.AttestingIndices, sum))
+        if (!TrySumAttestingKeys(pubkeys, attestation.AttestingIndices, sum))
             return false;
         BlsSigner.AggregatedPublicKey aggregate = new(sum);
 
@@ -82,7 +115,7 @@ public static class SignatureSets
         BeaconBlockHeader header = signedHeader.Message!;
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(header.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
-        return pubkeys.TryGetValidPublicKey((int)header.ProposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedHeader.Signature, signingRoot, deferral);
+        return TryGetValidatorKey(pubkeys, header.ProposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedHeader.Signature, signingRoot, deferral);
     }
 
     /// <summary>Verifies the proposer's RANDAO reveal: a signature over the epoch number under <c>DOMAIN_RANDAO</c>.</summary>
@@ -94,7 +127,7 @@ public static class SignatureSets
 
         Hash256 domain = state.GetDomain(DomainType.Randao, epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(epochRoot), domain);
-        return pubkeys.TryGetValidPublicKey(proposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, reveal, signingRoot, deferral);
+        return TryGetValidatorKey(pubkeys, (ulong)proposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, reveal, signingRoot, deferral);
     }
 
     /// <summary>Verifies a voluntary exit signature over the EIP-7044 fork-agnostic Capella domain.</summary>
@@ -103,7 +136,7 @@ public static class SignatureSets
         VoluntaryExit exit = signedExit.Message!;
         Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).CapellaForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
-        return pubkeys.TryGetValidPublicKey((int)exit.ValidatorIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedExit.Signature, signingRoot, deferral);
+        return TryGetValidatorKey(pubkeys, exit.ValidatorIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedExit.Signature, signingRoot, deferral);
     }
 
     /// <summary>
@@ -158,9 +191,12 @@ public static class SignatureSets
     /// A repeated member is added once per bit, so the adds are sequential: <see cref="PubkeyCache.SumPublicKeys"/>
     /// requires distinct indices. The aggregate itself may be infinity, which the verification refuses.
     /// </remarks>
-    /// <returns>The participant count, or -1 when a member key fails <c>KeyValidate</c>.</returns>
+    /// <returns>The participant count, or -1 when a member key fails <c>KeyValidate</c> or an input is not <c>SYNC_COMMITTEE_SIZE</c> long.</returns>
     internal static int AggregateSyncParticipants(BitArray bits, BlsPublicKey[] committee, int[] committeeIndices, PubkeyCache pubkeys, Bls.P1 participants)
     {
+        if (bits.Length != Presets.SyncCommitteeSize || committee.Length != Presets.SyncCommitteeSize || committeeIndices.Length != Presets.SyncCommitteeSize)
+            return -1;
+
         G1Affine decoded = new(stackalloc long[G1Affine.Sz]);
         int participantCount = 0;
         for (int i = 0; i < bits.Length; i++)
