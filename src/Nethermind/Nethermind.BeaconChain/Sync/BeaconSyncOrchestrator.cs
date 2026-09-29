@@ -302,6 +302,9 @@ public sealed class BeaconSyncOrchestrator(
         if (_logger.IsInfo) _logger.Info($"Beacon sync starting from anchor slot {_anchorSlot} ({anchorRoot}); kicking execution layer with forkchoiceUpdated(head=safe=finalized={_anchorExecutionHash})");
         PayloadStatusV1 kick = await KickExecutionAsync(anchorRoot).WaitAsync(token);
         if (_logger.IsInfo) _logger.Info($"Engine kick returned {kick.Status}{(kick.Status == PayloadStatus.Syncing ? " - execution layer is syncing toward the anchor" : "")}");
+
+        // A run stopped during the kick must not start the work that follows it.
+        token.ThrowIfCancellationRequested();
         afterEngineKick?.Invoke();
 
         await ReplayStoredBlocksAsync(token);

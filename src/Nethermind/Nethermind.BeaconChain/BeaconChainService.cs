@@ -67,10 +67,13 @@ public sealed class BeaconChainService(
 
     private async Task RunAsync((ForkedBeaconState State, ForkedSignedBeaconBlock? Block, Hash256 BlockRoot)? persistedAnchor)
     {
+        CancellationToken token = _cancellationTokenSource.Token;
+        using CancellationTokenSource warmUpSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task warmUp = Task.CompletedTask;
         try
         {
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.EffectiveCheckpointSyncUrl}");
-            (ForkedBeaconState state, ForkedSignedBeaconBlock? block, Hash256 blockRoot) = persistedAnchor ?? await CheckpointSyncAsync(_cancellationTokenSource.Token);
+            (ForkedBeaconState state, ForkedSignedBeaconBlock? block, Hash256 blockRoot) = persistedAnchor ?? await CheckpointSyncAsync(token);
             Validator[] validators = state switch
             {
                 ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
@@ -79,20 +82,48 @@ public sealed class BeaconChainService(
             };
             if (block is null)
             {
-                InitializePubkeyCache(validators);
+                InitializePubkeyCache(validators, token);
                 if (_logger.IsWarn) _logger.Warn("Anchor block is unavailable (state-file-only bootstrap); the sync orchestrator cannot start.");
                 return;
             }
 
             // The cache build runs behind the first forkchoiceUpdated so the execution layer does not wait for it.
-            await orchestrator.RunAsync(state, block, blockRoot, _cancellationTokenSource.Token, () => InitializePubkeyCache(validators));
+            // The subgroup checks are warmed off the orchestrator worker, so the first epoch of imports does not pay for them.
+            await orchestrator.RunAsync(state, block, blockRoot, token, () =>
+            {
+                InitializePubkeyCache(validators, token);
+                warmUp = Task.Run(() => WarmSubgroupChecks(warmUpSource.Token));
+            });
         }
-        catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
         }
         catch (Exception e)
         {
             if (_logger.IsError) _logger.Error("Embedded beacon chain driver failed.", e);
+        }
+        finally
+        {
+            // Awaited so StopAsync returns only after the warm-up has left the cache.
+            await warmUpSource.CancelAsync();
+            await warmUp;
+        }
+    }
+
+    private void WarmSubgroupChecks(CancellationToken cancellationToken)
+    {
+        try
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            pubkeyCache.WarmSubgroupChecks(cancellationToken);
+            if (_logger.IsInfo) _logger.Info($"Checked the subgroup of {pubkeyCache.Count} cached pubkeys in {stopwatch.Elapsed.TotalSeconds:F1} s");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Warming the pubkey subgroup checks failed.", e);
         }
     }
 
@@ -129,8 +160,10 @@ public sealed class BeaconChainService(
         return (anchor.State, anchor.Block, anchor.BlockRoot);
     }
 
-    private void InitializePubkeyCache(Validator[] validators)
+    private void InitializePubkeyCache(Validator[] validators, CancellationToken token)
     {
+        // A run stopped before the build must not spend seconds on it or persist it.
+        token.ThrowIfCancellationRequested();
         Stopwatch stopwatch = Stopwatch.StartNew();
         if (pubkeyCache.TryLoad(store, validators))
         {
