@@ -194,6 +194,26 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Engine.FcuCalls.Select(static call => call.Head), Is.EqualTo(new[] { TestItem.KeccakB, TestItem.KeccakD, TestItem.KeccakB }));
     }
 
+    /// <summary>
+    /// The anchor kick goes through the same send state as the head steps, so a head step that finds the anchor still the head
+    /// does not send it again within the resend interval.
+    /// </summary>
+    [Test]
+    public async Task The_anchor_kick_is_not_repeated_by_a_head_step_that_finds_the_anchor_still_the_head()
+    {
+        Harness harness = CreateHarness();
+
+        await harness.Orchestrator.KickExecutionAsync(TestItem.KeccakA);
+        Hash256 anchorExecutionHash = harness.Engine.FcuCalls.Single().Head;
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: 0, execHash: anchorExecutionHash) with { JustifiedExecutionHash = null, FinalizedExecutionHash = null };
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Engine.FcuCalls, Is.EqualTo((List<(Hash256, Hash256, Hash256)>)[(anchorExecutionHash, anchorExecutionHash, anchorExecutionHash)]), "head, safe and finalized are all the anchor payload, sent once");
+        }
+    }
+
     [Test]
     public async Task An_invalid_verdict_is_never_reused_for_an_unchanged_head()
     {

@@ -71,19 +71,21 @@ public sealed class BeaconChainService(
         {
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.EffectiveCheckpointSyncUrl}");
             (ForkedBeaconState state, ForkedSignedBeaconBlock? block, Hash256 blockRoot) = persistedAnchor ?? await CheckpointSyncAsync(_cancellationTokenSource.Token);
-            InitializePubkeyCache(state switch
+            Validator[] validators = state switch
             {
                 ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
                 ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
                 _ => throw new NotSupportedException($"Unhandled anchor state {state.GetType().Name}"),
-            });
+            };
             if (block is null)
             {
+                InitializePubkeyCache(validators);
                 if (_logger.IsWarn) _logger.Warn("Anchor block is unavailable (state-file-only bootstrap); the sync orchestrator cannot start.");
                 return;
             }
 
-            await orchestrator.RunAsync(state, block, blockRoot, _cancellationTokenSource.Token);
+            // The cache build runs behind the first forkchoiceUpdated so the execution layer does not wait for it.
+            await orchestrator.RunAsync(state, block, blockRoot, _cancellationTokenSource.Token, () => InitializePubkeyCache(validators));
         }
         catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
         {
