@@ -7,7 +7,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 
-namespace Nethermind.Eez.Follower;
+namespace Nethermind.Eez;
 
 /// <summary>Starts the EEZ driver once the blockchain and the engine it drives are initialized.</summary>
 /// <remarks>

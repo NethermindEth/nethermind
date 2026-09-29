@@ -14,6 +14,9 @@ public interface IWitnessRecorder
 
     /// <returns>The stored witness, or one generated now when it was not captured; the caller disposes it.</returns>
     Witness Get(BlockHeader parent, Block block);
+
+    /// <summary>Drops the witnesses of every block at or below <paramref name="finalized"/>, which no batch settles again.</summary>
+    void ForgetThrough(ulong finalized);
 }
 
 /// <summary>
@@ -29,6 +32,8 @@ public sealed class WitnessRecorder(IWitnessGeneratingBlockProcessingEnvFactory 
     }
 
     public Witness Get(BlockHeader parent, Block block) => store.Find(block.Number, block.Hash!) ?? Generate(parent, block);
+
+    public void ForgetThrough(ulong finalized) => store.PruneBelow(finalized + 1);
 
     private Witness Generate(BlockHeader parent, Block block)
     {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -235,6 +236,49 @@ public class EezFollowerTests
         Assert.That(sequencer.ReceivedCalls(), Is.Empty, "a batch posted from a cursor L1 already moved past would revert");
     }
 
+    [TestCase(300, 300, TestName = "SequencerDueFirst")]
+    [TestCase(5_000, 2_000, TestName = "PollDueFirst")]
+    public async Task Step_CaughtUp_WakesForWhicheverIsDueFirst(int sequencerDueMs, int wakeMs)
+    {
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(1_000));
+        DateTimeOffset now = clock.UtcNowOffset;
+        _config.L1PollingIntervalMs = 2_000;
+        IEezSequencer sequencer = Substitute.For<IEezSequencer>();
+        sequencer.Advance(Arg.Any<FollowerHeads>(), Arg.Any<EezL1Block?>(), Arg.Any<CancellationToken>()).Returns(now + TimeSpan.FromMilliseconds(sequencerDueMs));
+        await using EezDriver driver = Driver(sequencer, clock: clock);
+        await _follower.Boot(CancellationToken.None);
+
+        (DateTimeOffset nextPoll, DateTimeOffset wake) = await driver.Step(default, CancellationToken.None);
+
+        Assert.That((nextPoll, wake), Is.EqualTo((now + TimeSpan.FromSeconds(2), now + TimeSpan.FromMilliseconds(wakeMs))),
+            "L1 is polled on its interval and a slot is composed on time, not at the next poll");
+    }
+
+    [Test]
+    public async Task Step_BeforeTheNextPoll_LeavesL1Alone()
+    {
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(1_000));
+        await using EezDriver driver = Driver(Substitute.For<IEezSequencer>(), clock: clock);
+        await _follower.Boot(CancellationToken.None);
+        _l1.ClearReceivedCalls();
+
+        await driver.Step(clock.UtcNowOffset + TimeSpan.FromSeconds(1), CancellationToken.None);
+
+        await _l1.DidNotReceiveWithAnyArgs().GetLatestBlock(default);
+    }
+
+    [Test]
+    public async Task Step_SequencerMissesL1ForAMoment_RetriesOnTheNextStep()
+    {
+        IEezSequencer sequencer = Substitute.For<IEezSequencer>();
+        sequencer.Advance(Arg.Any<FollowerHeads>(), Arg.Any<EezL1Block?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<DateTimeOffset>(new L1SourceIncompleteException(5, "not served")));
+        await using EezDriver driver = Driver(sequencer);
+        await _follower.Boot(CancellationToken.None);
+
+        Assert.DoesNotThrowAsync(() => driver.Step(default, CancellationToken.None), "an L1 read that fails now is retried, not a reason to stop the node");
+    }
+
     [Test]
     public async Task Start_L1OnAnotherChain_StopsTheNode()
     {
@@ -256,8 +300,8 @@ public class EezFollowerTests
         Assert.DoesNotThrowAsync(async () => await driver.DisposeAsync(), "the stopper and the container may both release the driver");
     }
 
-    private EezDriver Driver(IEezSequencer? sequencer, IProcessExitSource? processExit = null) =>
-        new(_follower, sequencer, _config, Timestamper.Default, processExit ?? Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+    private EezDriver Driver(IEezSequencer? sequencer, IProcessExitSource? processExit = null, ITimestamper? clock = null) =>
+        new(_follower, sequencer, _config, clock ?? Timestamper.Default, processExit ?? Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
 
     private Task<BlockHeader> Settled(CallInfo call, ulong l2Block)
     {

@@ -19,7 +19,7 @@ public class OptimisticLedgerTests
     public void Blocks_BatchAboveTheCursorSettledByItsObserver_StillBlocks()
     {
         _ledger.Begin(Batch(12));
-        _ledger.MarkSettled(12);
+        _ledger.MarkSettled(12, 20);
 
         Assert.That(_ledger.Blocks(6), Is.True, "only the cursor passing the batch lets the next one start from it");
     }
@@ -52,7 +52,7 @@ public class OptimisticLedgerTests
     public void MarkFailed_AfterSettled_KeepsTheVerdict()
     {
         _ledger.Begin(Batch(12));
-        _ledger.MarkSettled(12);
+        _ledger.MarkSettled(12, 20);
 
         _ledger.MarkFailed(12, slotSkipped: false);
 
@@ -66,12 +66,35 @@ public class OptimisticLedgerTests
         _ledger.Begin(Batch(12));
         if (settled)
         {
-            _ledger.MarkSettled(12);
+            _ledger.MarkSettled(12, 20);
         }
 
         _ledger.RollBack(6);
 
         Assert.That(_ledger.Blocks(6), Is.EqualTo(blocks), "a settled batch the reorganization took out is posted again; a pending one is left to its observer");
+    }
+
+    [TestCase(20UL, true, TestName = "FollowerReadTheBlock")]
+    [TestCase(19UL, false, TestName = "FollowerNotThereYet")]
+    public void ExpireUnconfirmed_SettledInABlockTheCursorNeverReached_FailsItOnceTheFollowerReadThatBlock(ulong followed, bool expired)
+    {
+        _ledger.Begin(Batch(12));
+        _ledger.MarkSettled(12, 20);
+
+        _ledger.ExpireUnconfirmed(6, followed);
+
+        Assert.That(_ledger.TakeFailed(6).HasValue, Is.EqualTo(expired), "the block it settled in left the chain before the follower read it, so it is recovered");
+        Assert.That(_ledger.Blocks(6), Is.EqualTo(!expired), "once recovered it no longer holds the next batch back");
+    }
+
+    [Test]
+    public void ExpireUnconfirmed_StillPending_IsLeftToItsObserver()
+    {
+        _ledger.Begin(Batch(12));
+
+        _ledger.ExpireUnconfirmed(6, 100);
+
+        Assert.That(_ledger.Blocks(6), Is.True, "a batch the observer has not seen settle may still land");
     }
 
     private static PostedBatch Batch(ulong height) =>

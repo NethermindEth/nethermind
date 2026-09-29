@@ -119,6 +119,7 @@ public class RollupTimingTests
         new(new RollupTiming(2_000, 2_000, 500, 100), "at least 2 L2 blocks") { TestName = "OneBlockSlot" },
         new(new RollupTiming(12_000, 2_000, 10_000, 3_000), "below the L1 block time") { TestName = "ProofLongerThanTheSlot" },
         new(new RollupTiming(4_000, 2_000, 3_000, 100), "of blocks before the Sync block") { TestName = "ProofLongerThanTheFutureRegion" },
+        new(new RollupTiming(12_000, 2_000, 1_900, 100), "to compose the Sync block in") { TestName = "NoTimeLeftToComposeTheSyncBlock" },
         new(new RollupTiming(0, 2_000, 4_000, 100), "must be positive") { TestName = "ZeroL1" },
         new(new RollupTiming(12_000, 0, 4_000, 100), "must be positive") { TestName = "ZeroL2" },
         new(new RollupTiming(12_000, 2_000, 0, 100), "must be positive") { TestName = "ZeroProof" },

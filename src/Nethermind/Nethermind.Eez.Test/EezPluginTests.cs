@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
+using Nethermind.KeyStore.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
@@ -47,13 +49,13 @@ public class EezPluginTests
         Assert.That(() => EezPlugin.EnsureFollowerConfig(new EezConfig()), Throws.Nothing, "a node that only executes EEZ blocks needs no L1");
 
     [TestCaseSource(nameof(IncompleteSequencerConfigs))]
-    public void EnsureSequencerConfig_FieldMissingOrInvalid_RefusesToStart(EezConfig config, string field) =>
-        Assert.That(() => EezPlugin.EnsureSequencerConfig(config), Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains(field),
+    public void EnsureSequencerConfig_FieldMissingOrInvalid_RefusesToStart(EezConfig config, KeyStoreConfig keyStoreConfig, string field) =>
+        Assert.That(() => EezPlugin.EnsureSequencerConfig(config, keyStoreConfig), Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains(field),
             "a sequencer that cannot confirm, prove or post its batches must not start");
 
     [Test]
     public void EnsureSequencerConfig_Complete_Starts() =>
-        Assert.That(() => EezPlugin.EnsureSequencerConfig(SequencerConfig()), Throws.Nothing, "every field the sequencer needs is set");
+        Assert.That(() => EezPlugin.EnsureSequencerConfig(SequencerConfig(), new KeyStoreConfig()), Throws.Nothing, "every field the sequencer needs is set");
 
     private static EezConfig SequencerConfig()
     {
@@ -61,6 +63,7 @@ public class EezPluginTests
         config.SequencerEnabled = true;
         config.Provers = ["http://127.0.0.1:50061=0x70997970c51812dc3a010c7d01b50e0d17dc79c8=0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"];
         config.PosterAddress = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+        config.PosterPasswordFile = "poster.pass";
         return config;
     }
 
@@ -73,15 +76,23 @@ public class EezPluginTests
             Case(static c => c.Provers = [], nameof(IEezConfig.Provers), "NoProvers"),
             Case(static c => c.Provers = ["http://127.0.0.1:50061=0x7099"], nameof(IEezConfig.Provers), "MalformedProver"),
             Case(static c => c.Provers = [.. c.Provers, c.Provers[0]], "more than one", "DuplicateProofSystem"),
+            Case(static c => c.Provers = [.. Enumerable.Range(1, 17).Select(static i => $"http://127.0.0.1:50061=0x70997970c51812dc3a010c7d01b50e0d17dc79c8=0x{i:x40}")],
+                nameof(IEezConfig.Provers), "MoreProversThanAQuorumTakes"),
             Case(static c => c.PosterAddress = null, nameof(IEezConfig.PosterAddress), "NoPoster"),
+            Case(static c => c.PosterPasswordFile = null, nameof(IEezConfig.PosterPasswordFile), "NoPosterPassword"),
+            Case(static c => c.SequencerFeeRecipient = "0x1234", nameof(IEezConfig.SequencerFeeRecipient), "FeeRecipientNotAnAddress"),
             Case(static c => c.ProofTimeMs = 12_000, "timing", "ProofLongerThanTheSlot"),
+            Case(static c => (c.ProofTimeMs, c.SubmissionSlackMs) = (1_900, 100), "timing", "NoTimeToComposeTheSyncBlock"),
+            Case(static c => c.MaxPostBatchGas = 100_000, nameof(IEezConfig.MaxPostBatchGas), "NoGasForTransactions"),
+            Case(static _ => { }, nameof(IKeyStoreConfig.UnlockAccounts), "PosterUnlockedInTheWallet",
+                new KeyStoreConfig { UnlockAccounts = ["0xF39FD6E51AAD88F6F4CE6AB8827279CFFFB92266"] }),
         ];
 
-        static TestCaseData Case(Action<EezConfig> spoil, string field, string name)
+        static TestCaseData Case(Action<EezConfig> spoil, string field, string name, KeyStoreConfig? keyStoreConfig = null)
         {
             EezConfig config = SequencerConfig();
             spoil(config);
-            return new TestCaseData(config, field) { TestName = name };
+            return new TestCaseData(config, keyStoreConfig ?? new KeyStoreConfig(), field) { TestName = name };
         }
     }
 

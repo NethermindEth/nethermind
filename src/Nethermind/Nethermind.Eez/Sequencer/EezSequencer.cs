@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Eez.Follower;
 using Nethermind.Eez.Posting;
@@ -21,7 +22,8 @@ public interface IEezSequencer
 
 /// <summary>
 /// Schedules the sequencer on the L1 slots. Each new L1 block N arms a slot whose Sync block has the timestamp of block
-/// N + 1 and whose height follows from the genesis timestamp; a newer block replaces a slot not yet composed. Between
+/// N + 1 and whose height follows from the genesis timestamp; another block, newer or one a reorganization put in its
+/// place, replaces a slot not yet composed. An L1 block off the genesis's grid of L2 timestamps stops the sequencer. Between
 /// slots a Live block is produced every L2 block time while the head is below the slot's Live region. At N's timestamp
 /// plus the proof window the slot is composed: the Live and Future blocks still missing, then the Sync block, or a
 /// grid-aligned catch-up when the head is far behind. A slot too late for its proof gets an empty Sync block and no
@@ -29,7 +31,7 @@ public interface IEezSequencer
 /// </summary>
 public sealed class EezSequencer(
     RollupTiming timing,
-    ulong genesisTimestamp,
+    IBlockTree blockTree,
     ISequencedBlocks blocks,
     ISyncSlotComposer composer,
     ITimestamper clock,
@@ -46,7 +48,7 @@ public sealed class EezSequencer(
 
     public async Task<DateTimeOffset> Advance(FollowerHeads heads, EezL1Block? latestL1, CancellationToken token)
     {
-        if (latestL1 is { } l1 && (_slot is null || l1.Number > _slot.Anchor.Number || (l1.Number == _slot.Anchor.Number && l1.Hash != _slot.Anchor.Hash)))
+        if (latestL1 is { } l1 && (_slot is null || l1.Hash != _slot.Anchor.Hash))
         {
             Arm(l1);
         }
@@ -73,8 +75,20 @@ public sealed class EezSequencer(
             _logger.Warn($"The slot anchored at L1 block {superseded.Anchor.Number} was not composed before block {anchor.Number} arrived.");
         }
 
+        ulong genesisTimestamp = blockTree.Genesis!.Timestamp;
         ulong syncTimestamp = anchor.Timestamp + timing.L1BlockTimeMs / 1000;
-        ulong syncHeight = syncTimestamp > genesisTimestamp ? (syncTimestamp - genesisTimestamp) / _l2BlockSeconds : 0;
+        if (syncTimestamp <= genesisTimestamp)
+        {
+            return;
+        }
+
+        if ((syncTimestamp - genesisTimestamp) % _l2BlockSeconds != 0)
+        {
+            throw new EezSequencerException($"L1 block {anchor.Number} is at {anchor.Timestamp}, off the grid of {_l2BlockSeconds} s L2 blocks from the genesis at " +
+                $"{genesisTimestamp}: no Sync block can carry the next L1 block's timestamp.");
+        }
+
+        ulong syncHeight = (syncTimestamp - genesisTimestamp) / _l2BlockSeconds;
         _slot = new Slot(anchor, DateTimeOffset.FromUnixTimeSeconds((long)anchor.Timestamp) + timing.ProofWindowOpen, syncTimestamp, syncHeight);
     }
 
@@ -110,7 +124,7 @@ public sealed class EezSequencer(
                     return;
                 }
 
-                await composer.Compose(head, BundleTarget.NextBlock, SyncSlotMode.Catchup, heads, token);
+                await composer.Compose(head, SlotPlan.Catchup(slot.Anchor.Number), heads, token);
                 _offGridSkips = 0;
                 return;
             default:
@@ -135,9 +149,10 @@ public sealed class EezSequencer(
                     return;
                 }
 
-                bool late = clock.UtcNowOffset.ToUnixTimeMilliseconds() + timing.ProofTimeMs > (long)slot.SyncTimestamp * 1000 - timing.SubmissionSlackMs;
-                await composer.Compose(head, late ? BundleTarget.NextBlock : new BundleTarget(slot.Anchor.Number + 1, slot.SyncTimestamp),
-                    late ? SyncSlotMode.Empty : SyncSlotMode.Steady, heads, token);
+                long lateBy = clock.UtcNowOffset.ToUnixTimeMilliseconds() + timing.ProofTimeMs - ((long)slot.SyncTimestamp * 1000 - timing.SubmissionSlackMs);
+                if (lateBy > 0 && _logger.IsWarn) _logger.Warn($"The slot of Sync block {slot.SyncHeight} is composed {lateBy} ms too late for a proof; it posts nothing.");
+                await composer.Compose(head, lateBy > 0 ? SlotPlan.Empty(slot.Anchor.Number) : SlotPlan.Steady(new BundleTarget(slot.Anchor.Number + 1, slot.SyncTimestamp), slot.Anchor.Number),
+                    heads, token);
                 _offGridSkips = 0;
                 return;
         }

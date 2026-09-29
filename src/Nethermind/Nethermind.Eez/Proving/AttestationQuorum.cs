@@ -26,8 +26,9 @@ public sealed record QuorumRegistration(int Threshold, ValueHash256[] Verificati
 /// Collects the proofs a batch needs. Every registered attester is asked in parallel with the batch naming only its
 /// own proof system, and each proof is checked before it counts: 65 bytes, a recovery byte of 27 or 28, a low s, and
 /// the attester's key over the public inputs hash computed here, since one invalid proof reverts the whole batch on
-/// L1. Once the threshold is met, proofs arriving within <paramref name="grace"/> are kept too, so the same fastest
-/// attesters are not the only ones ever recorded; the rest are cancelled.
+/// L1. Once the threshold is met, proofs arriving within <paramref name="grace"/>, cut short for a pinned batch so it
+/// still reaches its block, are kept too, so the same fastest attesters are not the only ones ever recorded; the rest
+/// are cancelled.
 /// </summary>
 public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveRetry retry, TimeSpan grace, ILogManager logManager)
 {
@@ -38,11 +39,12 @@ public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveR
     private static readonly byte[] HalfCurveOrder = Convert.FromHexString("7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0");
 
     private readonly IAttester[] _attesters = [.. attesters.OrderBy(static a => a.ProofSystem)];
+    private readonly Address[] _proofSystems = [.. attesters.Select(static a => a.ProofSystem).Order()];
     private readonly EthereumEcdsa _ecdsa = new(0);
     private readonly ILogger _logger = logManager.GetClassLogger<AttestationQuorum>();
 
     /// <summary>The proof systems of the configured attesters, ascending, which is the order a batch lists them in.</summary>
-    public Address[] ProofSystems => [.. _attesters.Select(static a => a.ProofSystem)];
+    public Address[] ProofSystems => _proofSystems;
 
     public IReadOnlyList<IAttester> Attesters => _attesters;
 
@@ -90,7 +92,7 @@ public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveR
 
             if (tally.Attestations.Count >= registration.Threshold)
             {
-                graceOver ??= Task.Delay(grace, token);
+                graceOver ??= Task.Delay(retry.Grace(target, grace), token);
             }
             else if (tally.Verdict(pending.Count) is { } verdict)
             {
@@ -118,7 +120,7 @@ public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveR
             {
                 await task;
             }
-            catch (ProveException)
+            catch (Exception e) when (e is ProveException or OperationCanceledException)
             {
             }
         }
@@ -136,6 +138,10 @@ public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveR
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             throw new ProveException(ProveFailureKind.Retryable, $"Attester {attester.Signer} was cancelled.");
+        }
+        catch (Exception e) when (e is not (ProveException or OperationCanceledException))
+        {
+            throw new ProveException(ProveFailureKind.Backend, $"Attester {attester.Signer} failed: {e.Message}");
         }
 
         return Validity(proof, expected, attester.Signer) is { } invalid

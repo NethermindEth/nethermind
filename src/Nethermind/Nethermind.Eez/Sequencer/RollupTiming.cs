@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Eez.Config;
 
 namespace Nethermind.Eez.Sequencer;
 
@@ -18,6 +19,12 @@ public readonly record struct RollupTiming(uint L1BlockTimeMs, uint L2BlockTimeM
 {
     /// <summary>The most blocks one catch-up composition produces, so its output settles in one postBatch.</summary>
     public const ulong MaxBlocksPerCatchup = 300;
+
+    /// <summary>The least time between composing a slot and the last moment its proof may start, for producing the Sync block.</summary>
+    public const uint MinComposeMarginMs = 100;
+
+    public static RollupTiming From(IEezConfig config) =>
+        new(config.L1BlockTimeMs, (uint)Math.Min(config.L2BlockTimeSeconds * 1000, uint.MaxValue), config.ProofTimeMs, config.SubmissionSlackMs);
 
     public uint K => L1BlockTimeMs / L2BlockTimeMs;
 
@@ -66,8 +73,15 @@ public readonly record struct RollupTiming(uint L1BlockTimeMs, uint L2BlockTimeM
         }
 
         ulong room = (K - 1UL) * L2BlockTimeMs;
-        return budget > room
-            ? $"the proof time ({ProofTimeMs} ms) plus the submission slack ({SubmissionSlackMs} ms) must fit the {room} ms of blocks before the Sync block"
+        if (budget > room)
+        {
+            return $"the proof time ({ProofTimeMs} ms) plus the submission slack ({SubmissionSlackMs} ms) must fit the {room} ms of blocks before the Sync block";
+        }
+
+        ulong margin = (FutureCount + 1UL) * L2BlockTimeMs - budget;
+        return margin < MinComposeMarginMs
+            ? $"the proof time ({ProofTimeMs} ms) plus the submission slack ({SubmissionSlackMs} ms) must leave at least {MinComposeMarginMs} ms of the Future " +
+              $"blocks to compose the Sync block in, not {margin} ms"
             : null;
     }
 

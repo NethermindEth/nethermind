@@ -53,8 +53,8 @@ public interface IEezConfig : IConfig
     [ConfigItem(Description = "The L1 block time in milliseconds; an L1 slot holds this over the L2 block time L2 blocks.", DefaultValue = "12000")]
     uint L1BlockTimeMs { get; set; }
 
-    [ConfigItem(Description = "The most time attesters take to prove a slot, in milliseconds: the slot is composed this long, plus the " +
-        "submission slack, before the next L1 block.", DefaultValue = "2000")]
+    [ConfigItem(Description = "The most time attesters take to prove a slot, in milliseconds: the slot is composed at least this long, plus " +
+        "the submission slack and a margin to produce the Sync block, before the next L1 block, rounded up to whole L2 blocks.", DefaultValue = "2000")]
     uint ProofTimeMs { get; set; }
 
     [ConfigItem(Description = "How long before the next L1 block a proven batch must reach the builder, in milliseconds.", DefaultValue = "100")]
@@ -68,9 +68,14 @@ public interface IEezConfig : IConfig
         "not the only ones ever recorded.", DefaultValue = "250")]
     int AttestationGraceMs { get; set; }
 
-    [ConfigItem(Description = "The L1 account that signs the batches, unlocked through `KeyStore.UnlockAccounts`. Required when " +
-        "`Eez.SequencerEnabled` is set.", DefaultValue = "null")]
+    [ConfigItem(Description = "The L1 account that signs the batches, read from the keystore with `Eez.PosterPasswordFile`. It must not be in " +
+        "`KeyStore.UnlockAccounts`, where the node's JSON-RPC signing methods would reach it. Required when `Eez.SequencerEnabled` is set.",
+        DefaultValue = "null")]
     string? PosterAddress { get; set; }
+
+    [ConfigItem(Description = "The file holding the keystore password of `Eez.PosterAddress`. Required when `Eez.SequencerEnabled` is set.",
+        DefaultValue = "null")]
+    string? PosterPasswordFile { get; set; }
 
     [ConfigItem(Description = "The builder that takes each batch as a bundle pinned to its L1 block. Without one, batches go to the L1 mempool, " +
         "which cannot pin them to their slot.", DefaultValue = "null")]
@@ -79,16 +84,18 @@ public interface IEezConfig : IConfig
     [ConfigItem(Description = "The priority fee of a batch transaction, in wei.", DefaultValue = "10000000000")]
     ulong PostBatchPriorityFee { get; set; }
 
-    [ConfigItem(Description = "The gas limit of a batch transaction; a batch that needs more is cut down.", DefaultValue = "16777216")]
+    [ConfigItem(Description = "The gas limit of a batch transaction. Each block's transactions are kept to the DA one slot's batch fits in, " +
+        "and a longer backlog that needs more is settled in chunks ending on the slot grid.", DefaultValue = "16777216")]
     ulong MaxPostBatchGas { get; set; }
 
     [ConfigItem(Description = "The most L2 blocks one batch settles; a longer backlog is settled in chunks ending on the slot grid. Rounded down " +
-        "to whole slots.", DefaultValue = "300")]
+        "to whole slots, and at least one.", DefaultValue = "300")]
     ulong MaxBlocksPerBatch { get; set; }
 
     [ConfigItem(Description = "How many blocks the sequencer may build above what L1 settled before it waits; 0 for no limit.", DefaultValue = "64")]
     ulong MaxSpeculativeDepth { get; set; }
 
-    [ConfigItem(Description = "The beneficiary of the blocks the sequencer produces; the batch's DA carries it.", DefaultValue = "null")]
+    [ConfigItem(Description = "The beneficiary of the blocks the sequencer produces; the batch's DA carries it. The zero address when not set.",
+        DefaultValue = "null")]
     string? SequencerFeeRecipient { get; set; }
 }

@@ -18,6 +18,7 @@ using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Posting;
 using Nethermind.Eez.Proving;
 using Nethermind.Eez.Sequencer;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -28,6 +29,9 @@ public class ProvingTests
 {
     private const string Window = "captured-devnet-anchor-43722";
     private static readonly RollupTiming Timing = new(12_000, 2_000, 5_000, 100);
+
+    /// <summary>For attesters that fail until the budget ends, so the retries end quickly.</summary>
+    private static readonly RollupTiming ShortProofTime = new(12_000, 2_000, 300, 100);
 
     [Test]
     public async Task Attest_OneRemoteAttesterOnARecordedWindow_ReturnsItsValidProof()
@@ -90,8 +94,8 @@ public class ProvingTests
         RefusedEffect effect = new(true, 3, Keccak.Compute("outbound").ValueHash256);
         IAttester[] attesters = [Refusing(1, effect), Failing(2, ProveFailureKind.Retryable), Signing(3, TestItem.PrivateKeyA)];
 
-        ProveException e = Assert.ThrowsAsync<ProveException>(() => Quorum(attesters).Attest(SyntheticRequest(), Keys(3, threshold: 2), BundleTarget.NextBlock,
-            CancellationToken.None))!;
+        ProveException e = Assert.ThrowsAsync<ProveException>(() => Quorum(ShortProofTime, attesters).Attest(SyntheticRequest(), Keys(3, threshold: 2),
+            BundleTarget.NextBlock, CancellationToken.None))!;
 
         Assert.That(e.Kind, Is.EqualTo(ProveFailureKind.Backend), "one attester alone cannot evict an effect the others did not refuse");
     }
@@ -132,25 +136,115 @@ public class ProvingTests
     }
 
     [Test]
-    public void WitnessStore_PutThenFind_ReturnsTheSameWitnessUntilPruned()
+    public void WitnessStore_PutThenFind_ReadsBackEveryList()
     {
         WitnessStore store = new(new MemDb());
-        BlockHeader first = Build.A.BlockHeader.WithNumber(5).TestObject;
-        BlockHeader second = Build.A.BlockHeader.WithNumber(6).TestObject;
-        store.Put(first, Witness([0x01, 0x02], [0x03]));
-        store.Put(second, Witness([0x04], [0x05, 0x06]));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).TestObject;
+        using Witness stored = Witness([0x01, 0x02], [0x03], [0x04], [0x05, 0x06]);
+        store.Put(header, stored);
 
-        using Witness found = store.Find(5, first.Hash!)!;
-        store.PruneBelow(6);
+        using Witness found = store.Find(5, header.Hash!)!;
 
-        Assert.That((found.State.ToArray(), found.Codes.ToArray()), Is.EqualTo((new byte[][] { [0x01, 0x02] }, new byte[][] { [0x03] })),
-            "the witness reads back list by list");
-        Assert.That(store.Find(5, first.Hash!), Is.Null, "a block below the pruning height is gone");
-        Assert.That(store.Find(6, second.Hash!), Is.Not.Null, "the pruning height itself is kept");
+        Assert.That((found.State.ToArray(), found.Codes.ToArray(), found.Keys.ToArray(), found.Headers.ToArray()),
+            Is.EqualTo((new byte[][] { [0x01, 0x02] }, new byte[][] { [0x03] }, new byte[][] { [0x04] }, new byte[][] { [0x05, 0x06] })),
+            "state, codes, keys and headers read back each as its own list");
     }
 
-    private AttestationQuorum Quorum(params IAttester[] attesters) =>
-        new(attesters, new ProveRetry(Timing, Timestamper.Default), TimeSpan.Zero, LimboLogs.Instance);
+    [Test]
+    public void WitnessStore_PruneBelow_DropsEveryLowerBlockAndKeepsTheRest()
+    {
+        WitnessStore store = new(new MemDb());
+        BlockHeader[] headers = [.. Enumerable.Range(4, 3).Select(static n => Build.A.BlockHeader.WithNumber(n).TestObject)];
+        foreach (BlockHeader header in headers)
+        {
+            using Witness witness = Witness([0x01], [0x02], [], []);
+            store.Put(header, witness);
+        }
+
+        store.PruneBelow(6);
+        store.PruneBelow(5);
+
+        Assert.That(headers.Select(h => store.Find((ulong)h.Number, h.Hash!) is { } w && Dispose(w)), Is.EqualTo(new[] { false, false, true }),
+            "blocks below the pruning height are gone, a lower height later prunes nothing back, and the height itself is kept");
+    }
+
+    [Test]
+    public void ForgetThrough_Finalized_PrunesEverythingUpToIt()
+    {
+        IWitnessStore store = Substitute.For<IWitnessStore>();
+
+        new WitnessRecorder(Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>(), store).ForgetThrough(9);
+
+        store.Received(1).PruneBelow(10);
+    }
+
+    [TestCase(Mutation.None, null, TestName = "Valid")]
+    [TestCase(Mutation.Truncated, "bytes", TestName = "NotSixtyFiveBytes")]
+    [TestCase(Mutation.RecoveryByte, "recovery byte", TestName = "RecoveryByteNot27Or28")]
+    [TestCase(Mutation.HighS, "high s", TestName = "HighS")]
+    [TestCase(Mutation.OtherDigest, "recovers to", TestName = "SignedOverAnotherHash")]
+    public void Validity_Proof_IsRefusedWhenL1WouldRejectIt(Mutation mutation, string? reason)
+    {
+        ValueHash256 digest = Keccak.Compute("public inputs").ValueHash256;
+        byte[] proof = new EezAttestationSigner(TestItem.PrivateKeyA).Sign(mutation == Mutation.OtherDigest ? Keccak.Compute("other").ValueHash256 : digest);
+        proof = mutation switch
+        {
+            Mutation.Truncated => proof[..64],
+            Mutation.RecoveryByte => [.. proof[..64], 29],
+            Mutation.HighS => Malleated(proof),
+            _ => proof,
+        };
+
+        string? invalid = Quorum().Validity(proof, digest, TestItem.PrivateKeyA.Address);
+
+        Assert.That(invalid, reason is null ? Is.Null : Does.Contain(reason), "only a proof the EEZ contract accepts counts toward the quorum");
+    }
+
+    [TestCase(true, 800, 250, 250, TestName = "PinnedWithTimeToSpare")]
+    [TestCase(true, 250, 250, 150, TestName = "PinnedCutToTheSubmission")]
+    [TestCase(true, 50, 250, 0, TestName = "PinnedPastTheSubmission")]
+    [TestCase(false, 50, 250, 250, TestName = "Unpinned")]
+    public void Grace_PinnedBatch_EndsBeforeItMustBeSubmitted(bool pinned, int msBeforeTheSlot, int graceMs, int expectedMs)
+    {
+        DateTimeOffset slot = DateTimeOffset.FromUnixTimeSeconds(1_000);
+        ManualTimestamper clock = new((slot - TimeSpan.FromMilliseconds(msBeforeTheSlot)).UtcDateTime);
+        BundleTarget target = pinned ? new BundleTarget(10, 1_000) : BundleTarget.NextBlock;
+
+        TimeSpan grace = new ProveRetry(Timing, clock).Grace(target, TimeSpan.FromMilliseconds(graceMs));
+
+        Assert.That(grace, Is.EqualTo(TimeSpan.FromMilliseconds(expectedMs)), "collecting more proofs never costs a pinned batch its block");
+    }
+
+    public enum Mutation
+    {
+        None,
+        Truncated,
+        RecoveryByte,
+        HighS,
+        OtherDigest,
+    }
+
+    /// <summary>The same signature with s replaced by n - s and the recovery byte flipped: it recovers to the same signer.</summary>
+    private static byte[] Malleated(byte[] proof)
+    {
+        UInt256 order = new(Convert.FromHexString("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"), isBigEndian: true);
+        UInt256 s = new(proof.AsSpan(32, 32), isBigEndian: true);
+        byte[] malleated = [.. proof];
+        (order - s).ToBigEndian().CopyTo(malleated.AsSpan(32, 32));
+        malleated[64] = (byte)(proof[64] == 27 ? 28 : 27);
+        return malleated;
+    }
+
+    private static bool Dispose(Witness witness)
+    {
+        witness.Dispose();
+        return true;
+    }
+
+    private static AttestationQuorum Quorum(params IAttester[] attesters) => Quorum(Timing, attesters);
+
+    private static AttestationQuorum Quorum(RollupTiming timing, params IAttester[] attesters) =>
+        new(attesters, new ProveRetry(timing, Timestamper.Default), TimeSpan.Zero, LimboLogs.Instance);
 
     private static ProveRequest RecordedRequest()
     {
@@ -205,11 +299,11 @@ public class ProvingTests
         return attester;
     }
 
-    private static Witness Witness(byte[] state, byte[] code) => new()
+    private static Witness Witness(byte[] state, byte[] code, byte[] key, byte[] header) => new()
     {
         State = new ArrayPoolList<byte[]>(1) { state },
         Codes = new ArrayPoolList<byte[]>(1) { code },
-        Keys = new ArrayPoolList<byte[]>(0),
-        Headers = new ArrayPoolList<byte[]>(0),
+        Keys = key.Length == 0 ? new ArrayPoolList<byte[]>(0) : new ArrayPoolList<byte[]>(1) { key },
+        Headers = header.Length == 0 ? new ArrayPoolList<byte[]>(0) : new ArrayPoolList<byte[]>(1) { header },
     };
 }

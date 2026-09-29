@@ -10,11 +10,13 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Follower;
+using Nethermind.Eez.Posting;
 using Nethermind.Eez.Sequencer;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -39,7 +41,7 @@ public class LiveBlockProducerTests
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
             .AddModule(new EezModule(new EezConfig())));
         _context = new EezSettlementContext(1, _chain.SpecProvider.ChainId, Address.Zero, default, 2, _chain.BlockTree.Head!.GasLimit);
-        _producer = new LiveBlockProducer(_chain.Container.Resolve<IBlockProducerEnvFactory>(), _chain.SpecProvider, _context, Beneficiary);
+        _producer = Producer(int.MaxValue);
     }
 
     [TearDown]
@@ -73,6 +75,21 @@ public class LiveBlockProducerTests
         Assert.That(DerivedHeader.Mismatch(block, parent, _chain.SpecProvider.GetSpec(block.Header), _context), Is.Null, "an empty block still has the derived header");
     }
 
+    [TestCase(0, 1, TestName = "FitsExactly")]
+    [TestCase(-1, 0, TestName = "OneByteShort")]
+    public void Produce_TransactionsOverTheDaBudget_AreLeftOut(int slack, int included)
+    {
+        Transaction first = Transfer(nonce: 0);
+        Transaction second = Transfer(nonce: 1);
+        Assert.That((_chain.TxPool.SubmitTx(first, TxHandlingOptions.None), _chain.TxPool.SubmitTx(second, TxHandlingOptions.None)),
+            Is.EqualTo((AcceptTxResult.Accepted, AcceptTxResult.Accepted)), "precondition: the pool takes both transfers");
+        int oneTransfer = TxDecoder.Instance.GetLength(first, RlpBehaviors.SkipTypedWrapping) + PostBatchGas.DaTransactionOverhead;
+
+        Block block = Producer(oneTransfer + slack).Produce(_chain.BlockTree.Head!.Header, CancellationToken.None)!;
+
+        Assert.That(block.Transactions, Has.Length.EqualTo(included), "a block carries no more DA than its share of one slot's batch");
+    }
+
     [Test]
     public void Execute_DerivedBlock_KeepsTheTotalDifficultyALiveBlockOnItNeeds()
     {
@@ -86,6 +103,9 @@ public class LiveBlockProducerTests
 
         Assert.That(derived.TotalDifficulty, Is.EqualTo(parent.TotalDifficulty), "the chain processor refuses a block on a parent without one");
     }
+
+    private LiveBlockProducer Producer(int daBytesPerBlock) =>
+        new(_chain.Container.Resolve<IBlockProducerEnvFactory>(), _chain.SpecProvider, _context, Beneficiary, daBytesPerBlock);
 
     private static Transaction Transfer(ulong nonce) =>
         Build.A.Transaction.WithTo(TestItem.AddressC).WithValue(1).WithNonce(nonce).WithGasLimit(21_000).WithMaxFeePerGas(20.GWei)

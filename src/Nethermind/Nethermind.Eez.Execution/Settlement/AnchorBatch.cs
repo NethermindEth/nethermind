@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Eez.Execution.Settlement;
 
@@ -31,5 +32,24 @@ public static class AnchorBatch
 
         return new PostBatch([], [anchor], [], 1, 0, proofSystems, [new RollupProofSystems(rollupId, indexes)], [],
             DaPayloadCodec.Encode(rollupId, span, []), [], 0, false);
+    }
+
+    /// <summary>The span as the batch's DA carries it: each block's beneficiary, extra data and every transaction.</summary>
+    public static DaBlock[] Da(IReadOnlyList<Block> span)
+    {
+        DaBlock[] da = new DaBlock[span.Count];
+        for (int i = 0; i < da.Length; i++)
+        {
+            Block block = span[i];
+            byte[][] transactions = new byte[block.Transactions.Length][];
+            for (int j = 0; j < transactions.Length; j++)
+            {
+                transactions[j] = TxDecoder.Instance.Encode(block.Transactions[j], RlpBehaviors.SkipTypedWrapping).Bytes;
+            }
+
+            da[i] = new DaBlock(block.Beneficiary!, block.Header.ExtraData, transactions);
+        }
+
+        return da;
     }
 }

@@ -63,6 +63,10 @@ public sealed class RemoteAttester(GrpcChannel channel, Address proofSystem, Add
             ProveResponse response = await call.ResponseAsync;
             return response.Signature.ToByteArray();
         }
+        catch (RpcException e) when (e.StatusCode == StatusCode.Cancelled && token.IsCancellationRequested)
+        {
+            throw new OperationCanceledException($"Prove {request.FromBlock}-{request.ToBlock} was cancelled.", e, token);
+        }
         catch (RpcException e)
         {
             throw Classify(e, request);

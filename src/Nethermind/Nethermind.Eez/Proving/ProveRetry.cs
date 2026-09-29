@@ -24,7 +24,8 @@ public sealed class ProveRetry(RollupTiming timing, ITimestamper clock)
     /// <exception cref="ProveException">The attester refused the batch, or did not sign it within the budget.</exception>
     public async Task<byte[]> Prove(IAttester attester, ProveRequest request, BundleTarget target, CancellationToken token)
     {
-        DateTimeOffset deadline = clock.UtcNowOffset + Budget(target, clock.UtcNowOffset);
+        DateTimeOffset now = clock.UtcNowOffset;
+        DateTimeOffset deadline = now + Budget(target, now);
         for (int attempt = 1; ; attempt++)
         {
             ProveException failure;
@@ -74,6 +75,18 @@ public sealed class ProveRetry(RollupTiming timing, ITimestamper clock)
         return now <= cutoff
             ? cutoff - now
             : throw new ProveException(ProveFailureKind.Retryable, $"The proof for L1 block {target.Block} can no longer start in time.");
+    }
+
+    /// <summary>How long to keep collecting proofs past the threshold: <paramref name="grace"/>, cut to what is left before a pinned batch must be submitted.</summary>
+    internal TimeSpan Grace(BundleTarget target, TimeSpan grace)
+    {
+        if (!target.IsPinned)
+        {
+            return grace;
+        }
+
+        TimeSpan left = DateTimeOffset.FromUnixTimeSeconds((long)target.Timestamp) - TimeSpan.FromMilliseconds(timing.SubmissionSlackMs) - clock.UtcNowOffset;
+        return left <= TimeSpan.Zero ? TimeSpan.Zero : left < grace ? left : grace;
     }
 
     internal static TimeSpan Backoff(int failedAttempt, int seed)

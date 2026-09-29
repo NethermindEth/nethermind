@@ -16,7 +16,7 @@ namespace Nethermind.Eez.Sequencer;
 public interface ISequencedBlocks
 {
     /// <summary>A block of pool transactions on <paramref name="parent"/>.</summary>
-    /// <exception cref="EezFollowerException">The node cannot produce a block on <paramref name="parent"/>.</exception>
+    /// <exception cref="EezSequencerException">The node cannot produce a block on <paramref name="parent"/>.</exception>
     Task<BlockHeader> Live(BlockHeader parent, FollowerHeads heads, CancellationToken token);
 
     /// <summary>An empty block on <paramref name="parent"/>, as a Sync block with nothing cross-chain in it is.</summary>
@@ -36,7 +36,7 @@ public sealed class SequencedBlocks(
 
     public async Task<BlockHeader> Live(BlockHeader parent, FollowerHeads heads, CancellationToken token)
     {
-        Block block = live.Produce(parent, token) ?? throw new EezFollowerException($"The node did not produce a block on {parent.ToString(BlockHeader.Format.Short)}.");
+        Block block = live.Produce(parent, token) ?? throw new EezSequencerException($"The node did not produce a block on {parent.ToString(BlockHeader.Format.Short)}.");
         await Commit(parent, block, heads);
         return block.Header;
     }

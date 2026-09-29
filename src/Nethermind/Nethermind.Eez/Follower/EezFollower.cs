@@ -52,7 +52,7 @@ public sealed class EezFollower(
     private Hash256? _followedLatest;
     private ulong _nextL1;
 
-    public FollowerHeads Heads => _heads;
+    internal FollowerHeads Heads => _heads;
 
     /// <summary>The latest L1 block the last poll saw, or <see langword="null"/> before the first.</summary>
     public EezL1Block? LatestL1 { get; private set; }
@@ -61,7 +61,7 @@ public sealed class EezFollower(
     public Task<bool> TryBoot(CancellationToken token) => Attempt(Boot, token);
 
     /// <summary>Finds where to resume from, on L1 and on the local chain.</summary>
-    public async Task Boot(CancellationToken token)
+    internal async Task Boot(CancellationToken token)
     {
         ulong chainId = await l1.GetChainId(token) ?? throw new L1SourceIncompleteException(0, "L1 does not report its chain ID.");
         if (chainId != config.L1ChainId)
@@ -76,7 +76,7 @@ public sealed class EezFollower(
 
     /// <summary>One poll: what L1 settled since the last one, then the sequencer's head.</summary>
     /// <returns>Whether L1 has more blocks to scan right away.</returns>
-    public async Task<bool> Poll(CancellationToken token)
+    internal async Task<bool> Poll(CancellationToken token)
     {
         engine.EnsureSoleDriver();
         bool behind = await Attempt(FollowL1, token) && _followedLatest is null;

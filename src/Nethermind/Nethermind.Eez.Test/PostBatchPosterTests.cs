@@ -43,16 +43,42 @@ public class PostBatchPosterTests
     [Test]
     public async Task Sign_Calldata_IsAPosterSignedCallToTheRegistry()
     {
-        _posting.GetPendingNonce(PosterKey.Address, Arg.Any<CancellationToken>()).Returns(42UL);
+        _posting.GetNonce(PosterKey.Address, Arg.Any<CancellationToken>()).Returns(42UL);
 
         SignedPostBatch signed = await Poster().Sign([0xca, 0xfe], CancellationToken.None);
 
         Transaction decoded = TxDecoder.Instance.Decode(signed.Raw, RlpBehaviors.SkipTypedWrapping)!;
         Assert.That((decoded.Nonce, decoded.To, decoded.GasLimit, decoded.ChainId), Is.EqualTo((42UL, (Address?)Registry, 16_777_216UL, (ulong?)ChainId)),
-            "the poster's pending nonce, the registry, the whole postBatch gas budget, the L1 chain");
+            "the poster's confirmed nonce, the registry, the whole postBatch gas budget, the L1 chain");
         Assert.That((decoded.MaxPriorityFeePerGas, decoded.MaxFeePerGas), Is.EqualTo((Tip, 2 * (UInt256)7 + Tip)), "a fee cap of twice the base fee plus the tip");
         Assert.That(new EthereumEcdsa(ChainId).RecoverAddress(decoded), Is.EqualTo(PosterKey.Address), "signed by the poster");
         Assert.That(signed.Hash, Is.EqualTo(Keccak.Compute(signed.Raw)), "the hash L1 will report the transaction under");
+    }
+
+    [Test]
+    public async Task Sign_AgainAtTheSameNonce_PaysEnoughToReplaceTheFirst()
+    {
+        _posting.GetNonce(PosterKey.Address, Arg.Any<CancellationToken>()).Returns(42UL);
+        PostBatchPoster poster = Poster();
+        Transaction first = Decode(await poster.Sign([0x01], CancellationToken.None));
+
+        Transaction second = Decode(await poster.Sign([0x02], CancellationToken.None));
+
+        Assert.That(second.Nonce, Is.EqualTo(first.Nonce), "precondition: the first batch never landed");
+        Assert.That((second.MaxPriorityFeePerGas > first.MaxPriorityFeePerGas * 110 / 100, second.MaxFeePerGas > first.MaxFeePerGas * 110 / 100), Is.EqualTo((true, true)),
+            "a batch still pending in the mempool at that nonce is replaced, not queued behind");
+    }
+
+    [Test]
+    public async Task Sign_NextNonce_PaysTheUsualFees()
+    {
+        _posting.GetNonce(PosterKey.Address, Arg.Any<CancellationToken>()).Returns(42UL, 43UL);
+        PostBatchPoster poster = Poster();
+        await poster.Sign([0x01], CancellationToken.None);
+
+        Transaction next = Decode(await poster.Sign([0x02], CancellationToken.None));
+
+        Assert.That((next.MaxPriorityFeePerGas, next.MaxFeePerGas), Is.EqualTo((Tip, 2 * (UInt256)7 + Tip)), "nothing to replace once the previous batch landed");
     }
 
     [Test]
@@ -101,9 +127,9 @@ public class PostBatchPosterTests
         _l1.GetLogs(Registry, L1BatchScanner.L2ExecutionPerformedTopic, L1BatchScanner.RollupTopic(RollupId), 11, 11, Arg.Any<CancellationToken>())
             .Returns([new EezL1Log { BlockHash = landedIn, BlockNumber = 11, Data = stored }]);
 
-        PostOutcome outcome = await Poster().Observe(PostBatch, 11, new BundleTarget(11, 1_000), SyncBlock, CancellationToken.None);
+        PostResult result = await Poster().Observe(PostBatch, 11, new BundleTarget(11, 1_000), SyncBlock, CancellationToken.None);
 
-        Assert.That(outcome, Is.EqualTo(expected), "a landed batch settles only when L1's commitment is the Sync block it carries");
+        Assert.That(result, Is.EqualTo(new PostResult(expected, 11)), "a landed batch settles only when L1's commitment is the Sync block it carries, in the block it landed in");
     }
 
     [TestCase(1_000UL, PostOutcome.Failed, TestName = "BuiltAtThePinWithoutIt")]
@@ -112,10 +138,12 @@ public class PostBatchPosterTests
     {
         _l1.GetBlockByNumber(11, Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = 11, Timestamp = builtAt, Transactions = [Keccak.Compute("other")] });
 
-        PostOutcome outcome = await Poster().Observe(PostBatch, 11, new BundleTarget(11, 1_000), SyncBlock, CancellationToken.None);
+        PostResult result = await Poster().Observe(PostBatch, 11, new BundleTarget(11, 1_000), SyncBlock, CancellationToken.None);
 
-        Assert.That(outcome, Is.EqualTo(expected), "a slot that was never there does not count against the batch's transactions");
+        Assert.That(result.Outcome, Is.EqualTo(expected), "a slot that was never there does not count against the batch's transactions");
     }
+
+    private static Transaction Decode(SignedPostBatch signed) => TxDecoder.Instance.Decode(signed.Raw, RlpBehaviors.SkipTypedWrapping)!;
 
     private PostBatchPoster Poster() =>
         new(_posting, _l1, new Signer(ChainId, PosterKey, LimboLogs.Instance), new PostingSettings(ChainId, Registry, RollupId, PosterKey.Address, Tip, 16_777_216, true),

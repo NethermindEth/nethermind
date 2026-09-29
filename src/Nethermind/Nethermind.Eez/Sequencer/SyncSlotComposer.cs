@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Follower;
@@ -31,19 +30,33 @@ public enum SyncSlotMode
     Empty,
 }
 
+/// <summary>What one slot's Sync block is composed for.</summary>
+/// <param name="Target">The L1 block the batch settles in; only a steady slot is pinned.</param>
+/// <param name="L1Followed">An L1 block the follower has read, so a batch the observer saw settle at or below it and
+/// the cursor has not reached did not stay on L1.</param>
+public readonly record struct SlotPlan(SyncSlotMode Mode, BundleTarget Target, ulong L1Followed)
+{
+    public static SlotPlan Steady(BundleTarget target, ulong l1Followed) => new(SyncSlotMode.Steady, target, l1Followed);
+
+    public static SlotPlan Catchup(ulong l1Followed) => new(SyncSlotMode.Catchup, BundleTarget.NextBlock, l1Followed);
+
+    public static SlotPlan Empty(ulong l1Followed) => new(SyncSlotMode.Empty, BundleTarget.NextBlock, l1Followed);
+}
+
 /// <summary>Produces a slot's Sync block and posts the batch that settles it.</summary>
 public interface ISyncSlotComposer
 {
     /// <returns>The Sync block, committed as the head.</returns>
-    Task<BlockHeader> Compose(BlockHeader parent, BundleTarget target, SyncSlotMode mode, FollowerHeads heads, CancellationToken token);
+    Task<BlockHeader> Compose(BlockHeader parent, SlotPlan plan, FollowerHeads heads, CancellationToken token);
 }
 
 /// <summary>
 /// Produces a slot's Sync block and the batch that settles everything since the cursor with it. With nothing
-/// cross-chain to carry, the Sync block is empty and the batch is anchor-only. A batch still above the cursor, a backlog
-/// longer than one batch settles, or a late slot each leave the Sync block empty with nothing posted: a second batch
-/// from the same cursor would revert, a backlog is settled in grid-aligned chunks first, and a late proof misses its
-/// block. Before any attester is asked, the batch passes the same settlement check the attesters run.
+/// cross-chain to carry, the Sync block is empty and the batch is anchor-only. A batch still above the cursor or a late
+/// slot leaves the Sync block empty with nothing posted: a second batch from the same cursor would revert, and a late
+/// proof misses its block. A backlog longer than one batch settles, in blocks or in gas, is settled in grid-aligned
+/// chunks first, to whichever L1 block takes them. Before any attester is asked, the batch passes the same settlement
+/// check the attesters run.
 /// </summary>
 public sealed class SyncSlotComposer(
     IBlockTree blockTree,
@@ -53,17 +66,16 @@ public sealed class SyncSlotComposer(
     AttestationQuorum quorum,
     IQuorumRegistrationReader registrations,
     IPostBatchPoster poster,
-    ISpecProvider specProvider,
+    IBatchCheck check,
     EezSettlementContext context,
     RollupTiming timing,
     ComposerSettings settings,
     ILogManager logManager) : ISyncSlotComposer
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SyncSlotComposer>();
-    private readonly ILogManager _logManager = logManager;
     private ulong _lastCursor;
 
-    public async Task<BlockHeader> Compose(BlockHeader parent, BundleTarget target, SyncSlotMode mode, FollowerHeads heads, CancellationToken token)
+    public async Task<BlockHeader> Compose(BlockHeader parent, SlotPlan plan, FollowerHeads heads, CancellationToken token)
     {
         BlockHeader cursor = heads.Safe;
         if (cursor.Number < _lastCursor)
@@ -73,6 +85,8 @@ public sealed class SyncSlotComposer(
 
         _lastCursor = cursor.Number;
         ledger.ConfirmThrough(cursor.Number);
+        ledger.ExpireUnconfirmed(cursor.Number, plan.L1Followed);
+        witnesses.ForgetThrough(heads.Finalized.Number);
         if (ledger.TakeFailed(cursor.Number) is { } failed)
         {
             if (_logger.IsWarn) _logger.Warn($"The batch settling L2 block {failed.Batch.SyncHeight} did not settle{(failed.SlotSkipped ? " in its skipped slot" : "")}; the next slot posts again.");
@@ -81,6 +95,7 @@ public sealed class SyncSlotComposer(
 
         if (ledger.Blocks(cursor.Number))
         {
+            if (_logger.IsDebug) _logger.Debug($"A batch above the cursor {cursor.Number} is still unsettled; the Sync block at {parent.Number + 1} posts nothing.");
             return await blocks.Empty(parent, heads);
         }
 
@@ -92,9 +107,9 @@ public sealed class SyncSlotComposer(
         }
 
         BlockHeader sync = await blocks.Empty(parent, heads);
-        if (mode != SyncSlotMode.Empty)
+        if (plan.Mode != SyncSlotMode.Empty)
         {
-            await Settle(cursor, sync, mode == SyncSlotMode.Steady ? target : BundleTarget.NextBlock, token);
+            await Settle(cursor, sync, plan.Target, token);
         }
 
         return sync;
@@ -124,18 +139,24 @@ public sealed class SyncSlotComposer(
         try
         {
             List<Block> span = Span(cursor, last);
-            PostBatch batch = AnchorBatch.Build(context.RollupId, cursor.Hash!, last.Hash!, Da(span), quorum.ProofSystems);
-            ulong gas = PostBatchGas.Needed(batch, quorum.ProofSystems.Length);
-            if (gas > settings.MaxPostBatchGas)
+            PostBatch batch = AnchorBatch.Build(context.RollupId, cursor.Hash!, last.Hash!, AnchorBatch.Da(span), quorum.ProofSystems);
+            if (PostBatchGas.Needed(batch, quorum.ProofSystems.Length) > settings.MaxPostBatchGas)
             {
-                if (_logger.IsWarn) _logger.Warn($"The batch settling L2 blocks {cursor.Number + 1}-{last.Number} needs {gas} gas, over the {settings.MaxPostBatchGas} limit.");
-                return;
+                if (FittingPrefix(cursor, span) is not { } fitting)
+                {
+                    if (_logger.IsError) _logger.Error($"No chunk of L2 blocks {cursor.Number + 1}-{last.Number} ending on the slot grid fits the {settings.MaxPostBatchGas} gas of one batch.");
+                    return;
+                }
+
+                if (_logger.IsInfo) _logger.Info($"L2 blocks {cursor.Number + 1}-{last.Number} need more than one batch's gas; settling up to {fitting.Last.Number} first.");
+                (span, batch, last, target) = (fitting.Span, fitting.Batch, fitting.Last, BundleTarget.NextBlock);
             }
 
-            proved = Prove(cursor, span);
+            proved = new ProvedBlock[span.Count];
+            Prove(cursor, span, proved);
             ProveRequest request = new(context.RollupId, cursor.Number + 1, last.Number, batch, proved);
             QuorumRegistration registration = await registrations.Read(quorum.Attesters, token);
-            CheckLocally(request, registration);
+            check.Check(request, registration, quorum.Attesters);
             Attestation[] attestations = await quorum.Attest(request, registration, target, token);
             await Post(batch, attestations, last, target, token);
         }
@@ -153,11 +174,31 @@ public sealed class SyncSlotComposer(
         }
         finally
         {
-            foreach (ProvedBlock block in proved)
+            foreach (ProvedBlock? block in proved)
             {
-                block.Witness.Dispose();
+                block?.Witness.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// The longest start of <paramref name="span"/> that ends on the slot grid of its last block and fits one batch's
+    /// gas, since derivation rebuilds a Sync block by its position. Each Live block's DA budget makes one slot fit.
+    /// </summary>
+    private (List<Block> Span, PostBatch Batch, BlockHeader Last)? FittingPrefix(BlockHeader cursor, List<Block> span)
+    {
+        for (int count = span.Count - (int)timing.K; count > 0; count -= (int)timing.K)
+        {
+            List<Block> prefix = span[..count];
+            BlockHeader last = prefix[^1].Header;
+            PostBatch batch = AnchorBatch.Build(context.RollupId, cursor.Hash!, last.Hash!, AnchorBatch.Da(prefix), quorum.ProofSystems);
+            if (PostBatchGas.Needed(batch, quorum.ProofSystems.Length) <= settings.MaxPostBatchGas)
+            {
+                return (prefix, batch, last);
+            }
+        }
+
+        return null;
     }
 
     private async Task Post(PostBatch batch, Attestation[] attestations, BlockHeader last, BundleTarget target, CancellationToken token)
@@ -188,16 +229,16 @@ public sealed class SyncSlotComposer(
         try
         {
             ulong block = await poster.Submit([signed.Raw], target, token);
-            PostOutcome outcome = await poster.Observe(signed.Hash, block, target, settles.ValueHash256, token);
-            if (outcome == PostOutcome.Settled)
+            PostResult result = await poster.Observe(signed.Hash, block, target, settles.ValueHash256, token);
+            if (result.Outcome == PostOutcome.Settled)
             {
-                ledger.MarkSettled(height);
-                if (_logger.IsInfo) _logger.Info($"Batch {signed.Hash} settled L2 block {height} in L1 block {block}.");
+                ledger.MarkSettled(height, result.L1Block);
+                if (_logger.IsInfo) _logger.Info($"Batch {signed.Hash} settled L2 block {height} in L1 block {result.L1Block}.");
             }
             else
             {
-                ledger.MarkFailed(height, outcome == PostOutcome.SlotSkipped);
-                if (_logger.IsWarn) _logger.Warn($"Batch {signed.Hash} settling L2 block {height} missed L1 block {block}: {outcome}.");
+                ledger.MarkFailed(height, result.Outcome == PostOutcome.SlotSkipped);
+                if (_logger.IsWarn) _logger.Warn($"Batch {signed.Hash} settling L2 block {height} missed L1 block {block}: {result.Outcome}.");
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -208,35 +249,6 @@ public sealed class SyncSlotComposer(
             ledger.MarkFailed(height, false);
             if (_logger.IsWarn) _logger.Warn($"Batch {signed.Hash} settling L2 block {height} was not posted: {e.Message}");
         }
-    }
-
-    /// <summary>
-    /// Runs the attesters' own check on the batch the first registered attester is sent, so a batch nobody can attest
-    /// is caught here. It re-executes the span statelessly from the same witnesses the attesters get.
-    /// </summary>
-    /// <exception cref="EezSettlementException">The batch claims something the span does not show.</exception>
-    /// <exception cref="EezStatelessException">The span does not re-execute from its witnesses.</exception>
-    private void CheckLocally(ProveRequest request, QuorumRegistration registration)
-    {
-        int first = Array.FindIndex(registration.VerificationKeys, static k => k != default);
-        if (first < 0)
-        {
-            throw new ProveException(ProveFailureKind.Backend, "No configured attester is registered on the rollup manager.");
-        }
-
-        IAttester attester = quorum.Attesters[first];
-        ProveRequest own = request.For(attester.ProofSystem);
-        SettlementCheck check = new(specProvider, context with { ProofSystem = attester.ProofSystem, VerificationKey = registration.VerificationKeys[first] }, _logManager);
-        EezStatelessBlock[] statelessBlocks = new EezStatelessBlock[own.Blocks.Count];
-        (Hash256, Hash256)[] claims = new (Hash256, Hash256)[own.Blocks.Count];
-        for (int i = 0; i < statelessBlocks.Length; i++)
-        {
-            statelessBlocks[i] = new EezStatelessBlock(own.Blocks[i].Rlp, own.Blocks[i].Witness);
-            claims[i] = (own.Blocks[i].Hash, own.Blocks[i].ParentHash);
-        }
-
-        byte[] calldata = EezCalldata.EncodePostAndVerifyBatch(own.Batch);
-        check.Verify(calldata, check.Execute(calldata, statelessBlocks, claims, own.FromBlock));
     }
 
     /// <summary>The blocks after <paramref name="cursor"/> up to <paramref name="last"/>, oldest first, by parent hash.</summary>
@@ -261,9 +273,9 @@ public sealed class SyncSlotComposer(
         return span;
     }
 
-    private ProvedBlock[] Prove(BlockHeader cursor, List<Block> span)
+    /// <summary>Fills <paramref name="proved"/> block by block, so the witnesses already read are disposed if a later one fails.</summary>
+    private void Prove(BlockHeader cursor, List<Block> span, ProvedBlock[] proved)
     {
-        ProvedBlock[] proved = new ProvedBlock[span.Count];
         BlockHeader parent = cursor;
         for (int i = 0; i < span.Count; i++)
         {
@@ -271,26 +283,6 @@ public sealed class SyncSlotComposer(
             proved[i] = new ProvedBlock(block.Number, block.Hash!, block.ParentHash!, Rlp.Encode(block).Bytes, witnesses.Get(parent, block));
             parent = block.Header;
         }
-
-        return proved;
-    }
-
-    private static DaBlock[] Da(List<Block> span)
-    {
-        DaBlock[] da = new DaBlock[span.Count];
-        for (int i = 0; i < da.Length; i++)
-        {
-            Block block = span[i];
-            byte[][] transactions = new byte[block.Transactions.Length][];
-            for (int j = 0; j < transactions.Length; j++)
-            {
-                transactions[j] = TxDecoder.Instance.Encode(block.Transactions[j], RlpBehaviors.SkipTypedWrapping).Bytes;
-            }
-
-            da[i] = new DaBlock(block.Beneficiary!, block.Header.ExtraData, transactions);
-        }
-
-        return da;
     }
 }
 

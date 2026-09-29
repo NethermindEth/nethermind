@@ -28,6 +28,7 @@ public class EezConfig : IEezConfig
     public string[] Provers { get; set; } = [];
     public int AttestationGraceMs { get; set; } = 250;
     public string? PosterAddress { get; set; }
+    public string? PosterPasswordFile { get; set; }
     public string? L1BuilderRpcUrl { get; set; }
     public ulong PostBatchPriorityFee { get; set; } = 10_000_000_000;
     public ulong MaxPostBatchGas { get; set; } = PostBatchGas.DefaultLimit;

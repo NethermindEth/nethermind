@@ -108,7 +108,7 @@ public sealed class QuorumRegistrationReader(IEezL1Api l1, Address registry, ulo
     private async Task<byte[]> Read(Address to, byte[] data, int size, CancellationToken token)
     {
         byte[]? result = await l1.Call(to, data, token);
-        return result is { Length: var length } && length >= size
+        return result is not null && result.Length >= size
             ? result
             : throw new ProveException(ProveFailureKind.Retryable, $"L1 did not serve the view call to {to}.");
     }

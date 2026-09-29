@@ -8,10 +8,11 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Eez.Config;
+using Nethermind.Eez.Follower;
 using Nethermind.Eez.Sequencer;
 using Nethermind.Logging;
 
-namespace Nethermind.Eez.Follower;
+namespace Nethermind.Eez;
 
 /// <summary>
 /// The one loop that drives the node's engine for the rollup: it follows L1 and, on a sequencer, produces blocks on
@@ -33,6 +34,9 @@ public sealed class EezDriver(
     private int _stopped;
 
     public string Description => "EEZ driver";
+
+    /// <summary>Whether the loop sequences the rollup as well as following it.</summary>
+    internal bool Sequences => sequencer is not null;
 
     /// <summary>Starts driving; the returned task runs until the node stops.</summary>
     /// <remarks>Every failure is handled inside: transient ones are retried, the rest stop the node.</remarks>

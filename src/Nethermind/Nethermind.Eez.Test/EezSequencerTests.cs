@@ -72,10 +72,10 @@ public class EezSequencerTests
         await sequencer.Advance(_heads, anchor, CancellationToken.None);
 
         Assert.That(_composer.Calls, Has.Count.EqualTo(1), "one Sync block for the slot");
-        (BlockHeader parent, BundleTarget target, SyncSlotMode mode) = _composer.Calls[0];
+        (BlockHeader parent, SlotPlan plan) = _composer.Calls[0];
         Assert.That((parent.Number, parent.Timestamp), Is.EqualTo((5UL, _genesisTimestamp + 10)), "the Live blocks still missing and the Future block before it");
-        Assert.That((target, mode), Is.EqualTo((new BundleTarget(11, _genesisTimestamp + 12), SyncSlotMode.Steady)),
-            "pinned to the next L1 block, whose timestamp the Sync block carries");
+        Assert.That(plan, Is.EqualTo(SlotPlan.Steady(new BundleTarget(11, _genesisTimestamp + 12), 10)),
+            "pinned to the next L1 block, whose timestamp the Sync block carries, with the anchor as what the follower has read");
     }
 
     [Test]
@@ -86,7 +86,7 @@ public class EezSequencerTests
 
         await sequencer.Advance(_heads, Anchor(secondsAfterGenesis: 0), CancellationToken.None);
 
-        Assert.That(_composer.Calls[0].Mode, Is.EqualTo(SyncSlotMode.Empty), "a proof started 2 s before the slot's block cannot land in it");
+        Assert.That(_composer.Calls[0].Plan.Mode, Is.EqualTo(SyncSlotMode.Empty), "a proof started 2 s before the slot's block cannot land in it");
     }
 
     [Test]
@@ -97,10 +97,10 @@ public class EezSequencerTests
 
         await sequencer.Advance(_heads, Anchor(secondsAfterGenesis: 1_200), CancellationToken.None);
 
-        (BlockHeader parent, BundleTarget target, SyncSlotMode mode) = _composer.Calls[0];
+        (BlockHeader parent, SlotPlan plan) = _composer.Calls[0];
         Assert.That((parent.Number + 1) % Timing.K, Is.Zero, "the catch-up ends at a Sync height derivation rebuilds by position");
         Assert.That(parent.Number + 1, Is.LessThanOrEqualTo(RollupTiming.MaxBlocksPerCatchup), "one catch-up settles in one batch");
-        Assert.That((target, mode), Is.EqualTo((BundleTarget.NextBlock, SyncSlotMode.Catchup)), "past blocks settle in whichever L1 block takes them");
+        Assert.That(plan, Is.EqualTo(SlotPlan.Catchup(10)), "past blocks settle in whichever L1 block takes them");
     }
 
     [Test]
@@ -138,18 +138,38 @@ public class EezSequencerTests
         Assert.That(_composer.Calls[0].Parent.Number + 1, Is.EqualTo(12), "the newest L1 block anchors the slot, whose Sync block is at height 12");
     }
 
-    private EezSequencer Sequencer(ulong maxDepth = 0) => new(Timing, _genesisTimestamp, _blocks, _composer, _clock, maxDepth, LimboLogs.Instance);
+    [TestCase(11UL, 12UL, 10UL, 0UL, 6UL, TestName = "ReorganizedToALowerBlock")]
+    [TestCase(10UL, 0UL, 10UL, 12UL, 12UL, TestName = "ReplacedAtTheSameHeight")]
+    public async Task Advance_AnotherBlockReplacesTheAnchor_ReArmsOnIt(ulong firstNumber, ulong firstSeconds, ulong replacementNumber, ulong replacementSeconds,
+        ulong syncHeight)
+    {
+        EezSequencer sequencer = Sequencer();
+        await sequencer.Advance(_heads, Anchor(firstSeconds, firstNumber), CancellationToken.None);
+        EezL1Block replacement = Anchor(replacementSeconds, replacementNumber) with { Hash = Keccak.Compute("replacement") };
+        _clock.Add(TimeSpan.FromSeconds(replacementSeconds + 8));
+
+        await sequencer.Advance(_heads, replacement, CancellationToken.None);
+
+        Assert.That(_composer.Calls[0].Parent.Number + 1, Is.EqualTo(syncHeight), "the block L1 now has at that point anchors the slot, and so its Sync height");
+    }
+
+    [Test]
+    public void Advance_L1BlockOffTheGenesisGrid_StopsTheSequencer() =>
+        Assert.That(() => Sequencer().Advance(_heads, Anchor(secondsAfterGenesis: 1), CancellationToken.None), Throws.TypeOf<EezSequencerException>(),
+            "no Sync block can carry the timestamp of an L1 block an odd second after a genesis of 2 s blocks");
+
+    private EezSequencer Sequencer(ulong maxDepth = 0) => new(Timing, _chain, _blocks, _composer, _clock, maxDepth, LimboLogs.Instance);
 
     private EezL1Block Anchor(ulong secondsAfterGenesis, ulong number = 10) =>
         new() { Number = number, Hash = Keccak.Compute($"L1 block {number}"), Timestamp = _genesisTimestamp + secondsAfterGenesis };
 
     private sealed class FakeComposer(FakeSequencedBlocks blocks) : ISyncSlotComposer
     {
-        public List<(BlockHeader Parent, BundleTarget Target, SyncSlotMode Mode)> Calls { get; } = [];
+        public List<(BlockHeader Parent, SlotPlan Plan)> Calls { get; } = [];
 
-        public Task<BlockHeader> Compose(BlockHeader parent, BundleTarget target, SyncSlotMode mode, FollowerHeads heads, CancellationToken token)
+        public Task<BlockHeader> Compose(BlockHeader parent, SlotPlan plan, FollowerHeads heads, CancellationToken token)
         {
-            Calls.Add((parent, target, mode));
+            Calls.Add((parent, plan));
             return blocks.Empty(parent, heads);
         }
     }

@@ -2,18 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.Security;
 using Autofac;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Follower;
+using Nethermind.Eez.Posting;
 using Nethermind.Eez.Proving;
 using Nethermind.Eez.Sequencer;
 using Nethermind.Merge.Plugin;
@@ -21,6 +26,7 @@ using NSubstitute;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.KeyStore;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -77,6 +83,28 @@ public class EezModuleTests
     [Test]
     public void Resolve_SequencerEnabled_BuildsEverythingThatProducesProvesAndPosts()
     {
+        using IContainer container = SequencerContainer(Result.Success);
+
+        Assert.That(container.Resolve<EezDriver>().Sequences, Is.True, "the driver runs the sequencer after the follower");
+        Assert.That(container.Resolve<ISyncSlotComposer>(), Is.Not.Null, "the composer, the quorum, the registration reader and the poster resolve");
+        Assert.That(container.Resolve<ILiveBlockProducer>(), Is.Not.Null, "the Live block producer opens its producer environment");
+        Assert.That(container.Resolve<AttestationQuorum>().ProofSystems, Has.Length.EqualTo(1), "one attester per configured prover");
+    }
+
+    [Test]
+    public void Resolve_PosterKeyTheKeystoreDoesNotOpen_RefusesToStart()
+    {
+        using IContainer container = SequencerContainer(Result.Fail("wrong password"));
+
+        Exception e = Assert.Catch(() => container.Resolve<IPostBatchPoster>())!;
+
+        Assert.That(e.GetBaseException(), Is.TypeOf<InvalidConfigurationException>(), "a sequencer that cannot sign its batches must not start");
+    }
+
+    private static IContainer SequencerContainer(Result opened)
+    {
+        string passwordFile = Path.GetTempFileName();
+        File.WriteAllText(passwordFile, "poster");
         EezConfig config = new()
         {
             FollowerEnabled = true,
@@ -87,18 +115,19 @@ public class EezModuleTests
             RegistryDeployBlock = 1,
             RollupId = 2,
             Provers = ["http://127.0.0.1:50061=0x70997970c51812dc3a010c7d01b50e0d17dc79c8=0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"],
-            PosterAddress = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            PosterAddress = TestItem.PrivateKeyA.Address.ToString(),
+            PosterPasswordFile = passwordFile,
         };
-        using IContainer container = new ContainerBuilder()
+        IKeyStore keyStore = Substitute.For<IKeyStore>();
+        keyStore.GetProtectedKey(TestItem.PrivateKeyA.Address, Arg.Any<SecureString>())
+            .Returns((opened ? new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.GetTempPath()) : null, opened));
+        return new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .AddSingleton<IEezConfig>(config)
             .AddSingleton(Substitute.For<IEngineRpcModule>())
+            .AddSingleton(keyStore)
             .AddModule(new EezModule(config))
             .Build();
-
-        Assert.That(container.Resolve<ISyncSlotComposer>(), Is.Not.Null, "the composer, the quorum, the registration reader and the poster resolve");
-        Assert.That(container.Resolve<ILiveBlockProducer>(), Is.Not.Null, "the Live block producer opens its producer environment");
-        Assert.That(container.Resolve<AttestationQuorum>().ProofSystems, Has.Length.EqualTo(1), "one attester per configured prover");
     }
 
     [Test]

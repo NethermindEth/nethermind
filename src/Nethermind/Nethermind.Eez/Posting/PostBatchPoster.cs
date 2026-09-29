@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Eez.Follower;
+using Nethermind.Eez.Sequencer;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -30,9 +31,13 @@ public enum PostOutcome
     SlotSkipped,
 }
 
+/// <summary>What became of a batch, and the L1 block it landed in or missed.</summary>
+public readonly record struct PostResult(PostOutcome Outcome, ulong L1Block);
+
 /// <summary>Signs, submits and follows the batches the sequencer posts to L1.</summary>
 public interface IPostBatchPoster
 {
+    /// <summary>Signs with the poster's confirmed nonce, so a batch that failed in the mempool is replaced, not queued behind.</summary>
     /// <exception cref="L1SourceIncompleteException">L1 does not serve the poster's nonce or the base fee yet.</exception>
     Task<SignedPostBatch> Sign(byte[] calldata, CancellationToken token);
 
@@ -41,7 +46,7 @@ public interface IPostBatchPoster
     Task<ulong> Submit(IReadOnlyList<byte[]> bundle, BundleTarget target, CancellationToken token);
 
     /// <summary>Waits until the batch lands, or its target block passes without it.</summary>
-    Task<PostOutcome> Observe(Hash256 postBatch, ulong targetBlock, BundleTarget target, ValueHash256 settles, CancellationToken token);
+    Task<PostResult> Observe(Hash256 postBatch, ulong targetBlock, BundleTarget target, ValueHash256 settles, CancellationToken token);
 }
 
 /// <summary>
@@ -60,18 +65,24 @@ public sealed class PostBatchPoster(
 {
     private const int MethodNotFound = -32601;
     private const ulong NextBlockSlack = 2;
+
+    /// <summary>How much a replacement must pay over the transaction it replaces, above the mempool's 10% minimum.</summary>
+    private const ulong ReplacementBumpPercent = 115;
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly ILogger _logger = logManager.GetClassLogger<PostBatchPoster>();
     private readonly Hash256 _rollupTopic = L1BatchScanner.RollupTopic(settings.RollupId);
     private bool _bundlesUnsupported = !settings.HasBuilder;
+    private (ulong Nonce, UInt256 Tip, UInt256 MaxFee)? _lastSigned;
 
     public async Task<SignedPostBatch> Sign(byte[] calldata, CancellationToken token)
     {
-        ulong nonce = await posting.GetPendingNonce(settings.Poster, token)
-            ?? throw new L1SourceIncompleteException(0, $"L1 does not serve the nonce of poster {settings.Poster}.");
-        UInt256 baseFee = (await l1.GetLatestBlock(token))?.BaseFeePerGas
-            ?? throw new L1SourceIncompleteException(0, "L1 does not serve the latest base fee.");
+        Task<ulong?> nonceRead = posting.GetNonce(settings.Poster, token);
+        Task<EezL1Block?> latestRead = l1.GetLatestBlock(token);
+        await Task.WhenAll(nonceRead, latestRead);
+        ulong nonce = nonceRead.Result ?? throw new L1SourceIncompleteException(0, $"L1 does not serve the nonce of poster {settings.Poster}.");
+        UInt256 baseFee = latestRead.Result?.BaseFeePerGas ?? throw new L1SourceIncompleteException(0, "L1 does not serve the latest base fee.");
+        (UInt256 tip, UInt256 maxFee) = Fees(nonce, baseFee * 2 + settings.PriorityFee);
         Transaction transaction = new()
         {
             Type = TxType.EIP1559,
@@ -81,18 +92,37 @@ public sealed class PostBatchPoster(
             Value = UInt256.Zero,
             Data = calldata,
             GasLimit = settings.GasLimit,
-            GasPrice = settings.PriorityFee,
-            DecodedMaxFeePerGas = baseFee * 2 + settings.PriorityFee,
+            GasPrice = tip,
+            DecodedMaxFeePerGas = maxFee,
             SenderAddress = settings.Poster,
         };
         if (!signer.TrySign(transaction))
         {
-            throw new EezFollowerException($"The poster key {settings.Poster} is not unlocked; add it to KeyStore.UnlockAccounts.");
+            throw new EezSequencerException($"The poster key {settings.Poster} did not sign the batch.");
         }
 
+        _lastSigned = (nonce, tip, maxFee);
         byte[] raw = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
         return new SignedPostBatch(raw, Keccak.Compute(raw), nonce);
     }
+
+    /// <summary>
+    /// The fees of a batch at <paramref name="nonce"/>. A batch that failed in the mempool may still be pending at the
+    /// same nonce, so a new one there pays enough more to replace it.
+    /// </summary>
+    private (UInt256 Tip, UInt256 MaxFee) Fees(ulong nonce, UInt256 maxFee)
+    {
+        UInt256 tip = settings.PriorityFee;
+        if (_lastSigned is { } last && last.Nonce == nonce)
+        {
+            tip = UInt256.Max(tip, Bumped(last.Tip));
+            maxFee = UInt256.Max(maxFee, Bumped(last.MaxFee));
+        }
+
+        return (tip, UInt256.Max(maxFee, tip));
+    }
+
+    private static UInt256 Bumped(in UInt256 fee) => fee * ReplacementBumpPercent / 100 + 1;
 
     public async Task<ulong> Submit(IReadOnlyList<byte[]> bundle, BundleTarget target, CancellationToken token)
     {
@@ -130,7 +160,7 @@ public sealed class PostBatchPoster(
         return block;
     }
 
-    public async Task<PostOutcome> Observe(Hash256 postBatch, ulong targetBlock, BundleTarget target, ValueHash256 settles, CancellationToken token)
+    public async Task<PostResult> Observe(Hash256 postBatch, ulong targetBlock, BundleTarget target, ValueHash256 settles, CancellationToken token)
     {
         while (true)
         {
@@ -138,12 +168,13 @@ public sealed class PostBatchPoster(
             {
                 if (await posting.GetReceipt(postBatch, token) is { } receipt)
                 {
-                    return receipt.Status == 1 && await Settled(receipt, settles, token) ? PostOutcome.Settled : PostOutcome.Failed;
+                    bool settled = receipt.Status == 1 && await Settled(receipt, settles, token);
+                    return new PostResult(settled ? PostOutcome.Settled : PostOutcome.Failed, receipt.BlockNumber);
                 }
 
                 if (await Missed(postBatch, targetBlock, target, token) is { } missed)
                 {
-                    return missed;
+                    return new PostResult(missed, targetBlock);
                 }
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)

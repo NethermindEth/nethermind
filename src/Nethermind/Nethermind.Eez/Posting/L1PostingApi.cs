@@ -30,7 +30,8 @@ public readonly struct EezL1Receipt
 /// <summary>The L1 calls that post a batch: the poster's nonce, the submission, and what became of it.</summary>
 public interface IL1PostingApi
 {
-    Task<ulong?> GetPendingNonce(Address sender, CancellationToken token);
+    /// <returns>How many of <paramref name="sender"/>'s transactions L1 has included, pending ones aside.</returns>
+    Task<ulong?> GetNonce(Address sender, CancellationToken token);
 
     Task<RpcAnswer<Hash256>> SendRawTransaction(byte[] transaction, CancellationToken token);
 
@@ -43,8 +44,8 @@ public interface IL1PostingApi
 /// <remarks>Does not own the clients; the plugin manages their lifetimes.</remarks>
 public sealed class L1PostingApi(IJsonRpcClient l1, IJsonRpcClient builder, IJsonSerializer serializer) : IL1PostingApi
 {
-    public Task<ulong?> GetPendingNonce(Address sender, CancellationToken token) =>
-        l1.Post<ulong?>("eth_getTransactionCount", sender, "pending").WaitAsync(token);
+    public Task<ulong?> GetNonce(Address sender, CancellationToken token) =>
+        l1.Post<ulong?>("eth_getTransactionCount", sender, "latest").WaitAsync(token);
 
     public Task<RpcAnswer<Hash256>> SendRawTransaction(byte[] transaction, CancellationToken token) =>
         Answer<Hash256>(l1, "eth_sendRawTransaction", token, transaction.ToHexString(true));

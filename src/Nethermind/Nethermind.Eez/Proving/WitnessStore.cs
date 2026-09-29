@@ -27,14 +27,16 @@ public interface IWitnessStore
 }
 
 /// <summary>
-/// Stores witnesses keyed by block number then hash, so pruning is an ordered scan from the lowest block and siblings
-/// of a replaced block never collide. A witness is its four lists, state, codes, keys and headers, as an RLP sequence.
+/// Stores witnesses keyed by block number then hash, so pruning drops one key range and siblings of a replaced block
+/// never collide. A witness is its four lists, state, codes, keys and headers, as an RLP sequence.
 /// </summary>
 public sealed class WitnessStore([KeyFilter(WitnessStore.DbName)] IDb db) : IWitnessStore
 {
     public const string DbName = "EezWitnesses";
 
     private const int KeySize = sizeof(ulong) + Hash256.Size;
+
+    private ulong _prunedBelow;
 
     public void Put(BlockHeader header, Witness witness)
     {
@@ -51,16 +53,14 @@ public sealed class WitnessStore([KeyFilter(WitnessStore.DbName)] IDb db) : IWit
 
     public void PruneBelow(ulong number)
     {
-        using IWriteBatch batch = db.StartWriteBatch();
-        foreach (KeyValuePair<byte[], byte[]> entry in db.GetAll(ordered: true))
+        if (number <= _prunedBelow)
         {
-            if (BinaryPrimitives.ReadUInt64BigEndian(entry.Key) >= number)
-            {
-                break;
-            }
-
-            batch.Remove(entry.Key);
+            return;
         }
+
+        db.DeleteBlockNumberRange(_prunedBelow, number, DbName);
+        db.ReclaimBlockNumberRange(_prunedBelow, number);
+        _prunedBelow = number;
     }
 
     private static ReadOnlySpan<byte> Key(Span<byte> key, ulong number, Hash256 hash)

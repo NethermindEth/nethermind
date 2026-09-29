@@ -31,13 +31,15 @@ public sealed class OptimisticLedger
         }
     }
 
-    public void MarkSettled(ulong syncHeight)
+    /// <param name="l1Block">The L1 block the observer saw the batch settle in.</param>
+    public void MarkSettled(ulong syncHeight, ulong l1Block)
     {
         lock (_lock)
         {
             if (_batches.TryGetValue(syncHeight, out Entry? entry))
             {
                 entry.Verdict = Verdict.Settled;
+                entry.SettledIn = l1Block;
             }
         }
     }
@@ -63,6 +65,26 @@ public sealed class OptimisticLedger
             foreach (ulong height in _batches.Keys.TakeWhile(h => h <= cursor).ToArray())
             {
                 _batches.Remove(height);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Fails the batches above <paramref name="cursor"/> the observer saw settle in an L1 block at or below
+    /// <paramref name="l1Followed"/>: the follower has read that far without its cursor reaching them, so the block they
+    /// settled in left the chain before the follower saw it, and they are posted again.
+    /// </summary>
+    public void ExpireUnconfirmed(ulong cursor, ulong l1Followed)
+    {
+        lock (_lock)
+        {
+            foreach ((ulong height, Entry entry) in _batches)
+            {
+                if (height > cursor && entry.Verdict == Verdict.Settled && entry.SettledIn <= l1Followed)
+                {
+                    entry.Verdict = Verdict.Failed;
+                    entry.SlotSkipped = false;
+                }
             }
         }
     }
@@ -123,5 +145,7 @@ public sealed class OptimisticLedger
         public Verdict Verdict { get; set; }
 
         public bool SlotSkipped { get; set; }
+
+        public ulong SettledIn { get; set; }
     }
 }
