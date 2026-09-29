@@ -212,7 +212,7 @@ public class SystemConfigDeriverTests
                 Logs = [log],
                 FrameReceipts =
                 [
-                    new FrameReceiptForRpc { Status = updateFrameStatus, Logs = [log.ToLogEntry()] },
+                    new FrameReceiptForRpc { Status = updateFrameStatus, Logs = [log] },
                     new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [] },
                 ]
             }

@@ -5,6 +5,7 @@ using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -15,13 +16,15 @@ public class FrameForRpc
     /// <summary>The frame's kind, one of the <see cref="FrameMode"/> values: <c>0</c> default,
     /// <c>1</c> verify, <c>2</c> sender, <c>3</c> post-tx.</summary>
     /// <remarks>It fixes both the caller the frame runs as and where the frame may appear in the transaction.
-    /// Kept as the raw byte the JSON carries, so the wire form stays a plain number.</remarks>
+    /// Kept as the raw byte the RLP field carries, and written as a quantity.</remarks>
+    [JsonConverter(typeof(ByteConverter))]
     public byte Mode { get; set; }
 
     /// <summary>The frame's flag byte: bits 0-1 carry the approval scope
     /// (<see cref="FrameFlags.ApprovePayment"/> | <see cref="FrameFlags.ApproveExecution"/>), bit 2 is
     /// <see cref="FrameFlags.AtomicBatch"/>.</summary>
     /// <remarks>Raw for the same reason as <see cref="Mode"/>.</remarks>
+    [JsonConverter(typeof(ByteConverter))]
     public byte Flags { get; set; }
 
     /// <summary>The frame's target address; omitted from the response, and accepted as absent in a request,

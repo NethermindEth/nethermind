@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -13,6 +14,7 @@ public class FrameSignatureForRpc
 {
     /// <summary>Which of the <see cref="TxFrameSignature"/> <c>Scheme*</c> values governs how
     /// <see cref="Signature"/> is read and verified: <c>0</c> arbitrary, <c>1</c> secp256k1, <c>2</c> P-256.</summary>
+    [JsonConverter(typeof(ByteConverter))]
     public byte Scheme { get; set; }
 
     /// <summary>The address the entry is verified against; omitted from the response, and accepted as absent in
