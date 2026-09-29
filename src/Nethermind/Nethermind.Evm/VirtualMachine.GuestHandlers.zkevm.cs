@@ -495,7 +495,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
-                &ExecuteOpcode<MStoreOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+                &ExecuteOpcode<MStoreOpcode<OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>;
             return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
@@ -536,7 +536,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
-                &ExecuteOpcode<MLoadOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+                &ExecuteOpcode<MLoadOpcode<OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>;
             return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 

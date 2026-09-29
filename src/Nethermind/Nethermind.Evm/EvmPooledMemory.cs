@@ -480,6 +480,65 @@ public partial struct EvmPooledMemory
         return ref Unsafe.Add(ref GetBackingReference(), offset);
     }
 
+    /// <summary>
+    /// Returns the 32 bytes at <paramref name="offset"/> when they lie inside both the active and the initialized memory,
+    /// or a null reference when they do not.
+    /// </summary>
+    /// <param name="offset">The start of the word, below 2^32.</param>
+    /// <remarks>
+    /// A word there needs no expansion gas and no initialization, so reading it in place is the whole access.
+    /// The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ref byte GetActiveInitializedWord(ulong offset)
+    {
+        Debug.Assert(offset <= uint.MaxValue);
+        ulong end = offset + WordSize;
+        if (end > Size || end > _initializedSize) return ref Unsafe.NullRef<byte>();
+        return ref Unsafe.Add(ref GetBackingReference(), (nint)offset);
+    }
+
+    /// <summary>
+    /// The expansion gas an overwrite of the 32 bytes at <paramref name="offset"/> needs when they need no clearing and
+    /// no new backing, or <see cref="ulong.MaxValue"/>, which no gas covers, when they do.
+    /// </summary>
+    /// <param name="offset">The start of the word, below 2^32.</param>
+    /// <remarks>
+    /// A word that starts inside the initialized memory leaves no gap to clear below it, so it may extend the
+    /// initialized memory up to the backing's capacity, as <see cref="StoreWordAfterGas"/> lets it. Nothing changes;
+    /// <see cref="CommitWordOverwrite"/> does that once the cost has been charged.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ulong GetWordOverwriteCost(ulong offset)
+    {
+        Debug.Assert(offset <= uint.MaxValue);
+        ulong end = offset + WordSize;
+        ulong initializedSize = _initializedSize;
+        if (end > initializedSize && (offset > initializedSize || end > GetBackingCapacity()))
+            return ulong.MaxValue;
+
+        Debug.Assert(end <= MaxMemorySize, "The backing never reaches past the largest addressable size.");
+        ulong size = Size;
+        return end > size ? ExpansionCost(size >> 5, (end + (WordSize - 1UL)) >> 5) : 0;
+    }
+
+    /// <summary>
+    /// Makes the 32 bytes at <paramref name="offset"/> active and initialized, and returns them to be overwritten.
+    /// </summary>
+    /// <param name="offset">The start of the word, whose <see cref="GetWordOverwriteCost"/> has been charged.</param>
+    /// <remarks>
+    /// The caller must write all 32 bytes. The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ref byte CommitWordOverwrite(ulong offset)
+    {
+        ulong end = offset + WordSize;
+        if (end > Size) Size = (end + (WordSize - 1UL)) & ~(WordSize - 1UL);
+        if (end > _initializedSize) _initializedSize = end;
+        // The offset rederived rather than held through the updates, where it would take a callee-saved register.
+        return ref Unsafe.Add(ref GetBackingReference(), (nint)(end - WordSize));
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal Span<byte> LoadSpanAfterGas(in UInt256 location, ulong length)
     {

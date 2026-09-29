@@ -9,18 +9,6 @@ namespace Nethermind.Evm;
 public partial struct EvmPooledMemory
 {
     /// <summary>
-    /// Returns the 32 bytes at <paramref name="offset"/> when they lie inside both the active and the initialized memory,
-    /// or a null reference when they do not.
-    /// </summary>
-    /// <param name="offset">The start of the word, below 2^32.</param>
-    /// <remarks>
-    /// A word there needs no expansion gas and no initialization, so reading or overwriting it in place is the whole
-    /// access. The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal ref byte GetActiveInitializedWord(ulong offset) => ref GetActiveInitializedRange(offset, WordSize);
-
-    /// <summary>
     /// Returns the first of the <paramref name="length"/> bytes at <paramref name="offset"/> when they lie inside both
     /// the active and the initialized memory, or a null reference when they do not.
     /// </summary>

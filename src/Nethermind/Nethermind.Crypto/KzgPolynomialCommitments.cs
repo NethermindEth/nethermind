@@ -21,13 +21,47 @@ public static partial class KzgPolynomialCommitments
 
     public const byte KzgBlobHashVersionV1 = 1;
 
-    internal static nint CkzgSetup => _ckzgSetup;
+    /// <summary>
+    /// The loaded trusted setup handle.
+    /// </summary>
+    /// <remarks>
+    /// Blocks until an in-flight <see cref="InitializeAsync"/> completes, so a caller racing node startup
+    /// never observes an unloaded setup.
+    /// </remarks>
+    /// <exception cref="KzgSetupUnavailableException">
+    /// <see cref="InitializeAsync"/> was never called, or the load failed.
+    /// </exception>
+    internal static nint CkzgSetup
+    {
+        get
+        {
+            nint setup = Volatile.Read(ref _ckzgSetup);
+            return setup != nint.Zero ? setup : AwaitSetup();
+        }
+    }
+
+    private static nint AwaitSetup()
+    {
+        Task initialization = Volatile.Read(ref _initializeTask)
+            ?? throw new KzgSetupUnavailableException($"KZG trusted setup is not loaded; call {nameof(InitializeAsync)} first");
+
+        try
+        {
+            initialization.GetAwaiter().GetResult();
+        }
+        catch (Exception e)
+        {
+            throw new KzgSetupUnavailableException("KZG trusted setup failed to load", e);
+        }
+
+        return Volatile.Read(ref _ckzgSetup);
+    }
 
     private static nint _ckzgSetup = nint.Zero;
     private static Task? _initializeTask;
     private static readonly Lock _initializeLock = new();
 
-    public static bool IsInitialized => _ckzgSetup != nint.Zero;
+    public static bool IsInitialized => Volatile.Read(ref _ckzgSetup) != nint.Zero;
 
     public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null)
     {
@@ -53,7 +87,7 @@ public static partial class KzgPolynomialCommitments
         if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
 
-        _ckzgSetup = Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
+        Volatile.Write(ref _ckzgSetup, Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8));
 
         if (_ckzgSetup == nint.Zero)
             throw new InvalidOperationException("Failed to load trusted setup");
@@ -74,7 +108,7 @@ public static partial class KzgPolynomialCommitments
     public static void ComputeCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs)
     {
         using ArrayPoolSpan<byte> cells = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell);
-        Ckzg.ComputeCellsAndKzgProofs(cells, cellProofs, blob, _ckzgSetup);
+        Ckzg.ComputeCellsAndKzgProofs(cells, cellProofs, blob, CkzgSetup);
     }
 
     /// <summary>
@@ -84,9 +118,9 @@ public static partial class KzgPolynomialCommitments
     /// <param name="commitment">The KZG commitment for <paramref name="blob"/>. The span must be exactly <c>BYTES_PER_COMMITMENT</c> bytes.</param>
     /// <param name="proof">The output span where the <c>BYTES_PER_PROOF</c> proof is written.</param>
     public static void ComputeBlobProof(ReadOnlySpan<byte> blob, ReadOnlySpan<byte> commitment, Span<byte> proof) =>
-        Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
+        Ckzg.ComputeBlobKzgProof(proof, blob, commitment, CkzgSetup);
 
     /// <param name="blob">The input blob data.</param>
     /// <param name="cells">The output span of size <c>CELLS_PER_EXT_BLOB * BYTES_PER_CELL</c> (262144 bytes) where cells will be written.</param>
-    public static void ComputeCells(ReadOnlySpan<byte> blob, Span<byte> cells) => Ckzg.ComputeCells(cells, blob, _ckzgSetup);
+    public static void ComputeCells(ReadOnlySpan<byte> blob, Span<byte> cells) => Ckzg.ComputeCells(cells, blob, CkzgSetup);
 }
