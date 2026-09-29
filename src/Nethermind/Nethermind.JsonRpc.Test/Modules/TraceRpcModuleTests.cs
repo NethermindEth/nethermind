@@ -1689,6 +1689,25 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_rawTransaction_rejects_a_frame_transaction_for_another_chain()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.SpecProvider.ChainId;
+        Transaction transaction = FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify());
+        transaction.ChainId = chainId + 1;
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+            Assert.That(traces.Result.Error, Is.EqualTo(TxErrorMessages.InvalidTxChainId(chainId, chainId + 1)));
+        }
+    }
+
+    [Test]
     public async Task Trace_rawTransaction_accepts_a_pre_eip155_legacy_transaction()
     {
         Context context = new();

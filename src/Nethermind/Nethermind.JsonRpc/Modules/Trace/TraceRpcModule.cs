@@ -236,7 +236,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 // A frame transaction has no envelope signature.
                 string? signatureError = tx.Signature is null ? null : SignatureTxValidator.Instance.IsWellFormed(tx, spec).Error;
                 return signatureError
-                    ?? (tx.ChainId is { } txChainId && txChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, txChainId) : null);
+                    ?? (tx.ChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, tx.ChainId) : null);
             }
 
             ValidationResult result = new LegacySignatureTxValidator(chainId).IsWellFormed(tx, spec);
