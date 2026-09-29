@@ -392,6 +392,24 @@ fi
         self.assertEqual("", output["client_snapshot_dir"])
         self.assertEqual("", output["snapshot_mount_path"])
         self.assertIn("FlatDb.PersistenceWriteBufferFloor=67108864", output["additional_extra_flags"])
+        self.assertIn("FlatDb.CompactionOffset=0", output["additional_extra_flags"])
+
+    def test_compaction_offset_follows_the_floor_switch_and_keeps_a_caller_value(self):
+        code, log, output = self.run_resolver(
+            DISPATCH_CLIENT="nethermind",
+            DISPATCH_FLAT_WRITE_BUFFER_FLOOR="67108864",
+            DISPATCH_ADDITIONAL_EXTRA_FLAGS="--FlatDb.CompactionOffset=5",
+        )
+        self.assertEqual(0, code, log)
+        self.assertEqual(1, output["additional_extra_flags"].count("CompactionOffset"))
+        self.assertIn("FlatDb.CompactionOffset=5", output["additional_extra_flags"])
+
+        code, log, output = self.run_resolver(
+            DISPATCH_CLIENT="nethermind",
+            DISPATCH_FLAT_WRITE_BUFFER_FLOOR="off",
+        )
+        self.assertEqual(0, code, log)
+        self.assertNotIn("CompactionOffset", output["additional_extra_flags"])
 
     def test_empty_explicit_image_list_is_rejected_before_image_output(self):
         code, log, output = self.run_matrix(" , , ")
