@@ -1619,6 +1619,28 @@ public class TraceRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Trace_rawTransaction_rejects_a_high_s_signature(
+        [Values(TxType.Legacy, TxType.EIP1559)] TxType type, [Values] bool otherChain)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.SpecProvider.ChainId;
+        Transaction transaction = SignedTransaction(type, otherChain ? chainId + 1 : chainId);
+        Signature signature = transaction.Signature!;
+        UInt256 highS = SecP256k1Curve.N - new UInt256(signature.SAsSpan, isBigEndian: true);
+        transaction.Signature = new Signature(new UInt256(signature.RAsSpan, isBigEndian: true), highS, signature.V);
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+            Assert.That(traces.Result.Error, Is.EqualTo(TxErrorMessages.InvalidTxSignature));
+        }
+    }
+
     // As eth_sendRawTransaction, a spec that doesn't validate chain ids accepts a legacy signature for another chain,
     // and recovery then uses the signature's chain id; a typed transaction's chain id is checked regardless.
     [Test]

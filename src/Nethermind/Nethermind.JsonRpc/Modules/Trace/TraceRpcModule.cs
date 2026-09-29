@@ -206,8 +206,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// Returns an error message when eth_sendRawTransaction's chain-id check at <paramref name="spec"/> rejects signed
-        /// <paramref name="tx"/>, otherwise <see langword="null"/>.
+        /// Returns an error message when eth_sendRawTransaction's signature and chain-id checks at <paramref name="spec"/> reject
+        /// signed <paramref name="tx"/>, otherwise <see langword="null"/>.
         /// </summary>
         /// <remarks>
         /// Execution doesn't reject a transaction for its chain: sender recovery hashes a typed transaction with its own chain id,
@@ -215,19 +215,24 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// pre-EIP-155, recovering an unrelated address.
         /// A legacy transaction's chain id is in its signature <c>v</c>, so the pool's <see cref="LegacySignatureTxValidator"/>
         /// decides it and, as in eth_sendRawTransaction, accepts a pre-EIP-155 signature. A rejection names the chain when
-        /// <c>v</c> is for another one.
+        /// <c>v</c> is for another one and the signature is otherwise valid.
         /// </remarks>
-        private string? GetChainIdError(Transaction tx, IReleaseSpec spec)
+        private string? GetSignatureError(Transaction tx, IReleaseSpec spec)
         {
             ulong chainId = blockchainBridge.GetChainId();
             if (tx.Type != TxType.Legacy)
             {
-                return tx.ChainId is { } txChainId && txChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, txChainId) : null;
+                // A frame transaction has no envelope signature.
+                string? signatureError = tx.Signature is null ? null : SignatureTxValidator.Instance.IsWellFormed(tx, spec).Error;
+                return signatureError
+                    ?? (tx.ChainId is { } txChainId && txChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, txChainId) : null);
             }
 
             ValidationResult result = new LegacySignatureTxValidator(chainId).IsWellFormed(tx, spec);
             return result ? null
-                : tx.Signature?.ChainId is { } signedChainId && signedChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, signedChainId)
+                : tx.Signature?.ChainId is { } signedChainId && signedChainId != chainId
+                    && new LegacySignatureTxValidator(signedChainId).IsWellFormed(tx, spec)
+                    ? TxErrorMessages.InvalidTxChainId(chainId, signedChainId)
                 : result.Error;
         }
 
@@ -264,9 +269,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             BlockHeader header = headerSearch.Object!.Clone();
-            if (isSigned && GetChainIdError(tx, specProvider.GetSpec(header)) is { } chainError)
+            if (isSigned && GetSignatureError(tx, specProvider.GetSpec(header)) is { } signatureError)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(chainError, ErrorCodes.TransactionRejected);
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail(signatureError, ErrorCodes.TransactionRejected);
             }
 
             Block block = new(header, [tx], []);
