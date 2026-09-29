@@ -373,27 +373,49 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         AssertTrace(trace, expectedTrace);
     }
 
-    /// <summary>A CREATE2 onto an address that already holds a balance creates the contract but not the account,
-    /// so diffMode keeps the account's pre-state.</summary>
+    public enum CreateTargetState
+    {
+        Absent,
+        Funded,
+        StorageOnly,
+        FundedWithStorage
+    }
+
+    /// <summary>A CREATE or CREATE2 that lands on an existing account (a balance or storage alone does not collide
+    /// under EIP-684) keeps that account in diffMode's pre when it held a balance, while an absent or empty target,
+    /// where emptiness ignores storage, is dropped.</summary>
     [Test]
-    public void Test_PrestateTrace_Create2OntoFundedAddress_KeepsItsPrestate()
+    public void Test_PrestateTrace_CreateTarget_IsKeptInPreOnlyWhenNonEmpty(
+        [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction opcode, [Values] CreateTargetState targetState)
     {
         byte[] salt = { 4, 5, 6 };
         byte[] initCode = Prepare.EvmCode.ForInitOf([1, 2, 3]).Done;
-        Address created = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32), initCode);
+        Address created = opcode == Instruction.CREATE
+            ? ContractAddress.From(TestItem.AddressC, 0)
+            : ContractAddress.From(TestItem.AddressC, salt.PadLeft(32), initCode);
+        byte[] createCode = opcode == Instruction.CREATE
+            ? Prepare.EvmCode.Create(initCode, 0).Done
+            : Prepare.EvmCode.Create2(initCode, salt, 0).Done;
 
         TestState.CreateAccount(Address.Zero, 100.Ether);
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Create2(initCode, salt, 0).Done, Spec);
-        TestState.CreateAccount(created, 7);
+        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        UInt256 balance = targetState is CreateTargetState.Funded or CreateTargetState.FundedWithStorage ? 7u : 0u;
+        if (targetState != CreateTargetState.Absent) TestState.CreateAccount(created, balance);
+        if (targetState is CreateTargetState.StorageOnly or CreateTargetState.FundedWithStorage) TestState.Set(new StorageCell(created, 1), 5);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
         GethLikeTxTrace trace = ExecutePrestate(tracer, Prepare.EvmCode.Call(TestItem.AddressC, 50000).Done, wrapped: false);
 
         using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions));
         JsonElement pre = document.RootElement.GetProperty("pre");
-        Assert.That(pre.TryGetProperty(created.ToString(), out JsonElement account) ? account.GetProperty("balance").GetString() : null,
-            Is.EqualTo("0x7"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.GetProperty("post").GetProperty(created.ToString()).GetProperty("code").GetString(),
+                Is.EqualTo("0x010203"), "the creation must not have collided");
+            Assert.That(pre.TryGetProperty(created.ToString(), out JsonElement account) ? account.GetProperty("balance").GetString() : null,
+                Is.EqualTo(balance.IsZero ? null : balance.ToHexString(true)));
+        }
     }
 
     private const string ExpectedExistingAccountPrestateTrace = """
