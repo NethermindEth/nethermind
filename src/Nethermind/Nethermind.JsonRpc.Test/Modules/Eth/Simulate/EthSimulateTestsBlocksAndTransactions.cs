@@ -1897,8 +1897,11 @@ public class EthSimulateTestsBlocksAndTransactions
         };
 
         SimulateCallResult[] calls = SimulateSingleBlock(chain, payload);
-        Assert.That(calls[0].ReturnData, Is.EqualTo(signer));
-        Assert.That(calls[1].ReturnData, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].ReturnData, Is.EqualTo(signer));
+            Assert.That(calls[1].ReturnData, Is.Empty);
+        }
     }
 
     /// <summary>
@@ -1932,8 +1935,61 @@ public class EthSimulateTestsBlocksAndTransactions
 
         SimulateCallResult call = SimulateSingleBlock(chain, payload).Single();
 
-        Assert.That(call.Error, Is.Null);
-        Assert.That(call.ReturnData, expectReturn42 ? Is.EqualTo(new UInt256(42).ToBigEndian()) : Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Error, Is.Null);
+            Assert.That(call.ReturnData, expectReturn42 ? Is.EqualTo(new UInt256(42).ToBigEndian()) : Is.Empty);
+        }
+    }
+
+    /// <summary>
+    /// A delegation to a move destination runs empty code (EIP-7702), both from the transaction and from a nested
+    /// <c>CALL</c>, on the EIP-7928 path and on the sequential one. A plain call to the destination still runs the precompile.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_delegation_to_moved_precompile_runs_empty_code([Values] bool balPath)
+    {
+        Address movedTo = Address.FromNumber(0x123456);
+        Address delegator = new("0xc400000000000000000000000000000000000000");
+        Address nestedCaller = new("0xc500000000000000000000000000000000000000");
+        byte[] input = Bytes.FromHexString("0x1234");
+        // CALL(gas, delegator, 0, 0, 0x20, 0, 0x20) POP; return RETURNDATASIZE as a word.
+        byte[] nestedCallerCode = Bytes.Concat(
+            Bytes.FromHexString("0x60205f60205f5f73"), delegator.Bytes, Bytes.FromHexString("0x5af1503d5f5260205ff3"));
+
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { Address.FromNumber(4), new AccountOverride { MovePrecompileToAddress = movedTo } },
+                        { delegator, new AccountOverride { Code = Bytes.Concat(Eip7702Constants.DelegationHeader, movedTo.Bytes) } },
+                        { nestedCaller, new AccountOverride { Code = nestedCallerCode } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = delegator, Input = input, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = nestedCaller, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = movedTo, Input = input, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ]
+        };
+
+        SimulateCallResult[] calls = SimulateSingleBlock(chain, payload);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls.Select(static c => c.Error), Is.All.Null);
+            Assert.That(calls[0].ReturnData, Is.Empty);
+            Assert.That(calls[1].ReturnData, Is.EqualTo(UInt256.Zero.ToBigEndian()));
+            Assert.That(calls[2].ReturnData, Is.EqualTo(input));
+        }
     }
 
     /// <summary>

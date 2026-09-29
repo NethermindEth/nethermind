@@ -32,7 +32,7 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
             worldState.RecordAccountAccess(codeSource);
             if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
             {
-                return followDelegation ? GetCachedCodeInfo(delegationAddress, false, vmSpec, out _) : codeInfo;
+                return followDelegation ? OverridableCodeInfoRepository.GetDelegatedCodeInfo(this, delegationAddress, vmSpec) : codeInfo;
             }
 
             delegationAddress = null;

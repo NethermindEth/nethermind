@@ -193,6 +193,9 @@ public static partial class EvmInstructions
             codeInfo = spec.IsPrecompile(delegated)
                 ? CodeInfo.Empty
                 : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
+
+            // A precompile moved by a state override is not in the spec's set, but must not execute via delegation either.
+            if (codeInfo.IsPrecompile) codeInfo = CodeInfo.Empty;
         }
 
         // EIP-150: forward the requested gas to the child frame, capped at 63/64 of remaining.
