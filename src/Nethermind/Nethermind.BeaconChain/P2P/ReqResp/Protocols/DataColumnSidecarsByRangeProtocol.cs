@@ -35,15 +35,21 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
     /// <summary>Fixed part (2 x Uint64 + a 4-byte list offset) plus the variable columns list, bounded by NUMBER_OF_COLUMNS: an upper bound for framing, not an exact length (the columns list may be shorter).</summary>
     private const int MaxRequestLength = 2 * sizeof(ulong) + 4 + Eip7594DasConstants.NumberOfColumns * sizeof(ulong);
 
+    /// <summary>Time allowed for one expected chunk, on top of the first-byte allowance.</summary>
+    private static readonly TimeSpan PerChunkAllowance = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>Not a spec constant: bounds how long the scaled budget of one by-range reply can grow.</summary>
+    private static readonly TimeSpan MaxResponseBudget = TimeSpan.FromMinutes(2);
+
     public string Id => "/eth2/beacon_chain/req/data_column_sidecars_by_range/1/ssz_snappy";
 
     /// <exception cref="ArgumentOutOfRangeException">The columns are empty or too many; or, for a Gloas dial, the window is empty, runs past the last slot or starts before the Gloas fork.</exception>
     public async Task<ForkedDataColumnSidecars> DialAsync(IChannel downChannel, ISessionContext context, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest> dial) =>
         dial.Gloas
             ? new ForkedDataColumnSidecars([], await DialGloasAsync(downChannel, dial.Request))
-            : new ForkedDataColumnSidecars(await DialFuluAsync(downChannel, dial.Request), []);
+            : new ForkedDataColumnSidecars(await DialFuluAsync(downChannel, dial.Request, dial.OnSidecar), []);
 
-    private async Task<IReadOnlyList<DataColumnSidecar>> DialFuluAsync(IChannel downChannel, DataColumnSidecarsByRangeRequest request)
+    private async Task<IReadOnlyList<DataColumnSidecar>> DialFuluAsync(IChannel downChannel, DataColumnSidecarsByRangeRequest request, Action<DataColumnSidecar>? onSidecar)
     {
         int requestedColumns = ValidateRequestedColumns(request.Columns, nameof(request));
 
@@ -53,15 +59,33 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
             await WriteRequestAndEofAsync(downChannel, stream, DataColumnSidecarsByRangeRequest.Encode(request), cts.Token);
         }
 
-        IReadOnlyList<DataColumnSidecar> sidecars = await ReadSidecarChunksAsync(stream, MaxSidecars(request.Count, requestedColumns), Id);
-
         HashSet<ulong> requestedColumnSet = [.. request.Columns!];
-        foreach (DataColumnSidecar sidecar in sidecars)
-        {
-            ThrowIfNotRequested(request.StartSlot, request.Count, requestedColumnSet, sidecar.SignedBlockHeader!.Message!.Slot, sidecar.Index);
-        }
+        return await ReadSidecarChunksAsync(
+            stream,
+            MaxSidecars(request.Count, requestedColumns),
+            Id,
+            ResponseBudget(request.Count, requestedColumns),
+            sidecar =>
+            {
+                ThrowIfNotRequested(request.StartSlot, request.Count, requestedColumnSet, sidecar.SignedBlockHeader!.Message!.Slot, sidecar.Index);
+                onSidecar?.Invoke(sidecar);
+            });
+    }
 
-        return sidecars;
+    /// <summary>
+    /// How long a by-range reply of up to <paramref name="slots"/> x <paramref name="columns"/> chunks may take end to end: the
+    /// first-byte allowance plus a per-chunk allowance, so a slow peer that keeps delivering is not cut by a per-slot guess.
+    /// </summary>
+    /// <remarks>Each chunk must still arrive within the per-chunk read timeout, so a stalled peer is cut long before this.</remarks>
+    internal static TimeSpan ResponseBudget(ulong slots, int columns)
+    {
+        ulong bounded = Math.Min(slots, BlocksProtocolBase.MaxRequestBlocks);
+        ulong chunks = bounded * (ulong)Math.Max(columns, 0);
+        ulong maxChunks = (ulong)(MaxResponseBudget.Ticks / PerChunkAllowance.Ticks);
+        TimeSpan scaled = TimeSpan.FromTicks((long)Math.Min(chunks, maxChunks) * PerChunkAllowance.Ticks);
+        TimeSpan perSlotFloor = TimeSpan.FromSeconds(bounded);
+        TimeSpan budget = TtfbTimeout + RespTimeout + (scaled > perSlotFloor ? scaled : perSlotFloor);
+        return budget < MaxResponseBudget ? budget : MaxResponseBudget;
     }
 
     private async Task<IReadOnlyList<DataColumnSidecarGloas>> DialGloasAsync(IChannel downChannel, DataColumnSidecarsByRangeRequest request)
@@ -194,4 +218,12 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         ulong serveTo = Math.Min(lastSlot, slotClock.CurrentSlot);
         return serveFrom <= serveTo && serveFrom < pool.EarliestCompletelyServableSlot;
     }
+}
+
+/// <summary>A by-range column request that failed after delivering some sidecars; carries them so the caller keeps what arrived.</summary>
+/// <remarks>The message is the cause's, so failure classification by text is unchanged.</remarks>
+internal sealed class PartialSidecarsException(Exception cause, IReadOnlyList<DataColumnSidecar> received) : Exception(cause.GetBaseException().Message, cause)
+{
+    /// <summary>The sidecars read before the failure: structurally valid and inside the requested window, not yet verified against their blocks.</summary>
+    public IReadOnlyList<DataColumnSidecar> Received { get; } = received;
 }
