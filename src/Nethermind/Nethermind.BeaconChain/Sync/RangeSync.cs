@@ -98,17 +98,21 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
         while (!token.IsCancellationRequested && nextSlot <= targetHeadSlot())
         {
-            ulong count = Math.Min(batchSize, targetHeadSlot() - nextSlot + 1);
-            IReadOnlyList<IBeaconSyncPeer> peers = ServingFrom(peerPool.GetBestPeers(nextSlot), nextSlot);
+            ulong target = targetHeadSlot();
+            // The fallback window is the default batch, not the shrunk one, so failures cannot exclude a peer that serves from inside the range.
+            IReadOnlyList<IBeaconSyncPeer> peers = ServingFrom(peerPool.GetBestPeers(nextSlot), nextSlot, Math.Min(nextSlot + DefaultBatchSize - 1, target));
             if (peers.Count == 0)
             {
-                if (_logger.IsDebug) _logger.Debug($"No beacon chain peers with head at or past slot {nextSlot} and earliest available slot at or before it; waiting");
+                if (_logger.IsDebug) _logger.Debug($"No beacon chain peers with head at or past slot {nextSlot} and earliest available slot within the next {DefaultBatchSize} slots; waiting");
                 await Task.Delay(RetryDelay, token);
                 continue;
             }
 
             IBeaconSyncPeer peer = peers[peerCursor++ % peers.Count];
-            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot)? batch = await FetchAndVerifyBatchAsync(peer, nextSlot, count, lastRoot, token);
+            // A peer may answer ResourceUnavailable below its earliest slot (phase0/p2p-interface.md); slots under it are taken as empty and block linkage still checks that.
+            ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
+            ulong count = Math.Min(batchSize, target - from + 1);
+            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, token);
             if (batch is null)
             {
                 consecutiveFailures++;
@@ -141,7 +145,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 lastRoot = batch.Value.LastRoot;
             }
 
-            nextSlot += count;
+            nextSlot = from + count;
         }
     }
 
@@ -197,7 +201,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// Only Fulu-shaped blocks inside the data availability window are considered and the request window spans only them: a Gloas block's
     /// commitments are in its bid and its sidecars have the Gloas shape, so it has no part in a Fulu request. Each column is asked of one
     /// peer that custodies it (<see cref="AssignColumns"/>), since fulu/p2p-interface.md DataColumnSidecarsByRange serves custodied columns only.
-    /// The peers are those whose head is at or past the request's start slot and whose <c>earliest_available_slot</c> is at or before it, as that section requires.
+    /// Peers whose <c>earliest_available_slot</c> is at or before the request's start are preferred; when none is, those serving from at or before the last blob-carrying slot are asked from their earliest slot.
     /// </remarks>
     private async Task FetchColumnsForBatchAsync(IReadOnlyList<ForkedSignedBeaconBlock> blocks, CancellationToken token)
     {
@@ -205,6 +209,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         Dictionary<Hash256, BeaconBlock> blobBlocksByRoot = [];
         ulong startSlot = ulong.MaxValue;
         ulong endSlot = 0;
+        ulong lastBlobSlot = 0;
         foreach (ForkedSignedBeaconBlock block in blocks)
         {
             if (block is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { } message }
@@ -218,6 +223,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             if (message.Body?.BlobKzgCommitments is { Length: > 0 })
             {
                 blobBlocksByRoot[SszRoots.HashTreeRoot(message)] = message;
+                lastBlobSlot = Math.Max(lastBlobSlot, message.Slot);
             }
         }
 
@@ -250,12 +256,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             return;
         }
 
-        ulong count = endSlot - startSlot + 1;
-        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignColumns(missing, ServingFrom(peerPool.GetBestPeers(startSlot), startSlot), MaxColumnPeersPerBatch);
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignColumns(missing, ServingFrom([.. peerPool.GetBestPeers(startSlot).Where(p => p.Custody.CountCustodied(missing) > 0)], startSlot, lastBlobSlot), MaxColumnPeersPerBatch);
         Task<IReadOnlyList<DataColumnSidecar>?>[] responses = new Task<IReadOnlyList<DataColumnSidecar>?>[requests.Count];
         for (int i = 0; i < requests.Count; i++)
         {
-            responses[i] = RequestColumnsByRangeAsync(requests[i].Peer, startSlot, count, requests[i].Columns, token);
+            // A peer serves from its earliest slot; a request below it may be answered ResourceUnavailable (fulu/p2p-interface.md).
+            ulong from = Math.Max(startSlot, requests[i].Peer.EarliestAvailableSlot);
+            responses[i] = RequestColumnsByRangeAsync(requests[i].Peer, from, endSlot - from + 1, requests[i].Columns, token);
         }
 
         await Task.WhenAll(responses);
@@ -268,12 +275,22 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    /// <summary>The peers of <paramref name="peers"/> whose Status v2 <c>earliest_available_slot</c> is at or before <paramref name="startSlot"/>, so the range starts inside what they serve.</summary>
-    private IReadOnlyList<IBeaconSyncPeer> ServingFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong startSlot)
+    /// <summary>
+    /// The peers of <paramref name="peers"/> whose Status v2 <c>earliest_available_slot</c> is at or before <paramref name="startSlot"/>, so the range starts inside what they serve;
+    /// when none is, those whose earliest slot is at or before <paramref name="endSlot"/>, because the slots below it may be empty and a by-range reply skips empty slots (phase0/p2p-interface.md).
+    /// </summary>
+    private IReadOnlyList<IBeaconSyncPeer> ServingFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong startSlot, ulong endSlot)
     {
-        IReadOnlyList<IBeaconSyncPeer> serving = [.. peers.Where(p => p.EarliestAvailableSlot <= startSlot)];
-        if (serving.Count < peers.Count && _logger.IsDebug) _logger.Debug($"Left out {peers.Count - serving.Count} of {peers.Count} sync peers whose earliest available slot is after {startSlot}");
-        return serving;
+        IBeaconSyncPeer[] covering = [.. peers.Where(p => p.EarliestAvailableSlot <= startSlot)];
+        if (covering.Length > 0)
+        {
+            if (covering.Length < peers.Count && _logger.IsDebug) _logger.Debug($"Left out {peers.Count - covering.Length} of {peers.Count} sync peers whose earliest available slot is after {startSlot}");
+            return covering;
+        }
+
+        IBeaconSyncPeer[] overlapping = [.. peers.Where(p => p.EarliestAvailableSlot <= endSlot)];
+        if (_logger.IsDebug) _logger.Debug($"No sync peer serves from {startSlot}; {overlapping.Length} of {peers.Count} serve from at or before {endSlot}");
+        return overlapping;
     }
 
     /// <returns>The peer's sidecars, or <c>null</c> when the request failed and the peer was penalized.</returns>
