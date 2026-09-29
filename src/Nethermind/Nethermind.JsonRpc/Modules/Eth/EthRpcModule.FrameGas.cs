@@ -13,6 +13,9 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 public partial class EthRpcModule
 {
+    /// <summary>Runs <paramref name="executor"/> on the request, first filling any omitted frame gas limits.</summary>
+    /// <remarks>An omitted limit is resolved only when its frame can succeed, so a frame that always reverts fails the
+    /// call with <see cref="ErrorCodes.ExecutionReverted"/> instead of returning a result as explicit limits would.</remarks>
     private ResultWrapper<TResult> ExecuteWithFrameGas<TResult>(TxExecutor<TResult> executor, SignableTransactionForRpc request,
         BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride = null)
     {
