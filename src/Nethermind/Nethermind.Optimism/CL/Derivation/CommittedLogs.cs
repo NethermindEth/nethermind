@@ -68,7 +68,7 @@ internal static class CommittedLogs
         {
             if (frame is null) return false;
 
-            foreach (LogEntry frameLog in frame.Logs ?? [])
+            foreach (LogEntryForRpc frameLog in frame.Logs ?? [])
             {
                 if (matched == logs.Count || !IsSameLog(logs[matched], frameLog)) return false;
                 matched++;
@@ -80,7 +80,7 @@ internal static class CommittedLogs
 
     /// <summary>Whether the receipt log is the frame log the concatenation puts at its position.</summary>
     /// <remarks>The counts alone would let a payload place a committed frame's run over a reverted frame's log.</remarks>
-    private static bool IsSameLog(LogEntryForRpc log, LogEntry frameLog) =>
+    private static bool IsSameLog(LogEntryForRpc log, LogEntryForRpc frameLog) =>
         frameLog is not null
         && log.Address == frameLog.Address
         && log.Topics.AsSpan().SequenceEqual(frameLog.Topics)

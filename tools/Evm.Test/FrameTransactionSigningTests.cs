@@ -204,8 +204,8 @@ public class FrameTransactionSigningTests
                 {
                     Mode = (byte)FrameMode.Verify,
                     Flags = (byte)FrameFlags.ApproveExecutionAndPayment,
-                    ExecutionGasLimit = 50_000,
-                    StateGasLimit = 25_000,
+                    ExecutionGas = 50_000,
+                    StateGas = 25_000,
                     Value = UInt256.Zero,
                 },
             ],
