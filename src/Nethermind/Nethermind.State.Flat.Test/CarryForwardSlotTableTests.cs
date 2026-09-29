@@ -240,8 +240,11 @@ public class CarryForwardSlotTableTests
     {
         // One set and more keys than ways, so the writer both rewrites keys in place and replaces them with others.
         const int keys = OneSet + 2;
-        const int readers = 8;
-        const int readsPerReader = 2_000_000;
+        // A reader per CPU the writer leaves free, so on a small runner the reads overlap the writer rather than wait
+        // for it; the total number of reads stays the same.
+        const int totalReads = 16_000_000;
+        int readers = Math.Clamp(Environment.ProcessorCount - 1, 1, 8);
+        int readsPerReader = totalReads / readers;
         CarryForwardSlotTable table = new(OneSet);
         Address[] addresses = new Address[keys];
         for (int i = 0; i < keys; i++) addresses[i] = TestItem.Addresses[i];
