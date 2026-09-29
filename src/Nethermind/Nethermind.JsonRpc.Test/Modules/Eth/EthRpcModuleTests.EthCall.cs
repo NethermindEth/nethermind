@@ -1380,6 +1380,29 @@ public partial class EthRpcModuleTests
         }
     }
 
+    // Shaped like trace-interop's field-null-blobVersionedHashes-unpriced and field-null-authorizationList-unpriced probes.
+    [TestCase("blobVersionedHashes", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
+    [TestCase("authorizationList", TxErrorMessages.NotAllowedCreateTransaction)]
+    public async Task Eth_call_null_blob_or_authorization_list_selects_no_type(string list, string typeError)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        string call = $"\"from\":\"{TestItem.AddressA}\",\"data\":\"0x602a60005260206000f3\"";
+        using JsonDocument withNull = JsonDocument.Parse($"{{{call},\"{list}\":null}}");
+        using JsonDocument withList = JsonDocument.Parse($"{{{call},\"{list}\":[]}}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{call}}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", withNull.RootElement, "latest");
+        string typed = await ctx.Test.TestEthRpc("eth_call", withList.RootElement, "latest");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
+            Assert.That(serialized, Is.EqualTo(await ctx.Test.TestEthRpc("eth_call", omitted.RootElement, "latest")));
+            // A non-null list still selects its type, which can't create a contract.
+            Assert.That(JToken.Parse(typed)["error"]?["message"]?.Value<string>(), Does.Contain(typeError), typed);
+        }
+    }
+
     [Test]
     public async Task Eth_call_non_existent_block_returns_not_found()
     {
