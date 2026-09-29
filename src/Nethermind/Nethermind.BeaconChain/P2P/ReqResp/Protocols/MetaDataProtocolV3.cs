@@ -47,7 +47,13 @@ public sealed class MetaDataProtocolV3(LocalMetadataSource metadataSource) : Req
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
         try
         {
+            await ReqRespFraming.RejectTrailingBytesAsync(stream, cts.Token);
             await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, MetaDataV3.Encode(metadataSource.Current), cts.Token);
+        }
+        catch (Eth2ReqRespException e)
+        {
+            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)
         {
