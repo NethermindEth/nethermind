@@ -15,6 +15,41 @@ using Int256;
 
 public static partial class EvmInstructions
 {
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceDynamicMemoryGas<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ulong initialGas,
+        ulong constantCost, ulong baseCost, in UInt256 position, in UInt256 length, ulong upfrontGas = 0)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        ulong cost = constantCost;
+        string? error;
+        if (initialGas < constantCost)
+            error = "out of gas";
+        else if (!TryGetTraceMemorySize(in position, in length, out ulong size))
+            error = "gas uint64 overflow";
+        else if (initialGas - constantCost < upfrontGas)
+            error = "out of gas: out of gas";
+        else if (size > 0x1FFFFFFFE0UL)
+            error = "out of gas: gas uint64 overflow";
+        else
+        {
+            // Geth computes diagnostic gas beyond Nethermind's allocation cap without allocating memory.
+            ulong oldWords = vm.VmState.Memory.Size / 32;
+            ulong newWords = Math.Max(oldWords, (size + 31) / 32);
+            ulong memoryCost = (newWords - oldWords) * GasCostOf.Memory +
+                newWords * newWords / 512 - oldWords * oldWords / 512;
+            if (baseCost > ulong.MaxValue - memoryCost)
+                error = "out of gas: gas uint64 overflow";
+            else
+            {
+                cost = baseCost + memoryCost;
+                error = initialGas < cost ? "out of gas" : null;
+            }
+        }
+        vm.TraceOperationGasCost(cost);
+        if (error is not null) vm.TraceActionErrorDetails(error);
+        vm.TraceOperationReady(cost, error);
+    }
+
     /// <summary>
     /// Shared copy-to-memory core used by CODECOPY and CALLDATACOPY. Pops three parameters from
     /// the stack (destination offset, source offset, length), deducts the fixed + per-word gas,
@@ -229,6 +264,14 @@ public static partial class EvmInstructions
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        if (TTracingInst.IsActive)
+        {
+            ulong constantCost = spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : spec.GasCosts.ExtCodeCost;
+            ulong accessCost = vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.ExtCodeCost,
+                Eip8038.IsActive ? Eip8038Constants.WarmAccess : 0);
+            TraceDynamicMemoryGas(vm, TGasPolicy.GetRemainingGas(in gas), constantCost,
+                accessCost + GasCostOf.Memory * words, in a, in result, accessCost - constantCost);
+        }
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
