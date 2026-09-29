@@ -398,9 +398,10 @@ public sealed class BeaconP2P : IAsyncDisposable
         return await session.DialAsync<Eth2PingProtocol, ulong, ulong>(_metadataSource.Current.SeqNumber, cts.Token);
     }
 
-    public async Task<MetaDataV3> RequestMetaDataAsync(ISession session, CancellationToken token)
+    /// <param name="timeout">Bounds the request; the request timeout when omitted.</param>
+    public async Task<MetaDataV3> RequestMetaDataAsync(ISession session, CancellationToken token, TimeSpan? timeout = null)
     {
-        using CancellationTokenSource cts = Timeout(token);
+        using CancellationTokenSource cts = Timeout(token, timeout);
         return await session.DialAsync<MetaDataProtocolV3, ulong, MetaDataV3>(0, cts.Token);
     }
 

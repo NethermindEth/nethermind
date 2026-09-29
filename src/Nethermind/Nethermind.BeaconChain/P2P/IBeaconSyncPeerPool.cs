@@ -33,6 +33,9 @@ public interface IBeaconSyncPeer
     /// <summary>The head slot last advertised by the peer over <c>status</c>.</summary>
     ulong HeadSlot { get; }
 
+    /// <summary>The <c>earliest_available_slot</c> of the peer's last Status v2; 0 when it sent none (Status v1).</summary>
+    ulong EarliestAvailableSlot => 0;
+
     /// <summary>Each block has the SSZ shape of the fork its slot belongs to.</summary>
     Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token);
 
@@ -59,14 +62,14 @@ public interface IBeaconSyncPeer
     Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token);
 
     /// <summary>Records a protocol violation or failure with a closed-cardinality reason; repeated
-    /// reports get the peer pruned.</summary>
+    /// reports take the peer out of request selection until it serves a request or the failures decay.</summary>
     void ReportFailure(PeerFailureReason reason, string? detail = null);
 }
 
 /// <summary>The pool of sync-usable peers maintained by the peer manager.</summary>
 public interface IBeaconSyncPeerPool
 {
-    /// <summary>Returns peers advertising a head at or past <paramref name="minHeadSlot"/>, best head first, leaving out peers whose requests keep failing.</summary>
+    /// <summary>Returns peers advertising a head at or past <paramref name="minHeadSlot"/>, best head first, leaving out peers whose requests keep failing (see <see cref="IBeaconSyncPeer.ReportFailure"/>).</summary>
     IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot);
 }
 
