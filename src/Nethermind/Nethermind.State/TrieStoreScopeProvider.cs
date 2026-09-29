@@ -389,7 +389,7 @@ public class TrieStoreScopeProvider(
         public const int MIN_ENTRIES_TO_BATCH = 16;
 
         /// <summary>Writes above which a batch that only hashes its tree hashes it in parallel.</summary>
-        public const int MinWritesToHashInParallel = 64;
+        private const int MinWritesToHashInParallel = 64;
 
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
