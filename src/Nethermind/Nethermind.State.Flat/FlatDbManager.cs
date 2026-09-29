@@ -69,6 +69,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
+    private StateId _lastClearedPersistedStateId = StateId.PreGenesis;
+    private long _lastClearedRemovedBaseSnapshotCount;
+
     // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
     private readonly Task _clearBundleCacheTask;
 
@@ -173,12 +176,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
-        bool compacted = _snapshotCompactor.DoCompactSnapshot(stateId);
+        _snapshotCompactor.DoCompactSnapshot(stateId);
         CommitPhase?.Invoke(2);
-        if (compacted)
-        {
-            ClearReadOnlyBundleCache();
-        }
 
         // Trigger persistence job. Inline compaction under the benchmark switch runs the job on this thread too, since
         // it clears the read-only bundle cache, which the next block's bundle assembly otherwise races.
@@ -224,7 +223,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
-        ClearReadOnlyBundleCache();
+        long removedBaseSnapshotCount = _snapshotRepository.RemovedBaseSnapshotCount;
+        if (currentPersistedStateId != _lastClearedPersistedStateId
+            || removedBaseSnapshotCount != _lastClearedRemovedBaseSnapshotCount)
+        {
+            _lastClearedPersistedStateId = currentPersistedStateId;
+            _lastClearedRemovedBaseSnapshotCount = removedBaseSnapshotCount;
+            ClearReadOnlyBundleCache();
+        }
     }
 
     private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
