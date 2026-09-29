@@ -1978,6 +1978,87 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// Regression test: as in geth, precompile moves and overrides last for their own block only. The next block
+    /// starts from the spec's precompiles, even when it has no overrides.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_precompile_overrides_do_not_carry_into_next_block([Values] bool balPath)
+    {
+        Address ecrecover = Address.FromNumber(1);
+        Address identity = Address.FromNumber(4);
+        Address movedTo = Address.FromNumber(0x123456);
+        byte[] signer = Bytes.FromHexString("0x000000000000000000000000b11cad98ad3f8114e0b3a1f6e7228bc8424df48a");
+
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { ecrecover, new AccountOverride { MovePrecompileToAddress = movedTo } },
+                        { identity, new AccountOverride { Code = Return42Code } }
+                    }
+                },
+                new()
+                {
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = movedTo, Input = EcrecoverInput, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = ecrecover, Input = EcrecoverInput, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = identity, Input = EcrecoverInput, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateCallResult[] calls = result.Data![1].Calls.ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls.Select(static c => c.Error), Is.All.Null);
+            Assert.That(calls[0].ReturnData, Is.Empty);
+            Assert.That(calls[1].ReturnData, Is.EqualTo(signer));
+            Assert.That(calls[2].ReturnData, Is.EqualTo(EcrecoverInput));
+        }
+    }
+
+    /// <summary>Regression test: as in geth, a precompile cannot be moved onto an account that is overridden itself.</summary>
+    [Test]
+    public async Task eth_simulateV1_rejects_moving_precompile_onto_overridden_account()
+    {
+        Address movedTo = Address.FromNumber(0x123456);
+
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { Address.FromNumber(1), new AccountOverride { MovePrecompileToAddress = movedTo } },
+                        { movedTo, new AccountOverride { Balance = 1.Ether } }
+                    }
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.Error, Is.EqualTo($"Account {movedTo} is already overridden"));
+    }
+
+    /// <summary>
     /// Regression test: a delegation to a move destination runs empty code (EIP-7702), both from the transaction and
     /// from a nested <c>CALL</c>, on the EIP-7928 path and on the sequential one. A plain call to the destination
     /// still runs the precompile.

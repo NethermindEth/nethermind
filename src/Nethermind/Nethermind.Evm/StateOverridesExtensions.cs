@@ -23,9 +23,10 @@ public static class StateOverridesExtensions
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec)
     {
+        // As in geth, each simulated block starts from the spec's precompiles, even one without overrides.
+        overridableCodeInfoRepository.ResetPrecompileOverrides();
         if (overrides is not null)
         {
-            overridableCodeInfoRepository.ResetPrecompileOverrides();
             foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
                 if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
@@ -44,7 +45,7 @@ public static class StateOverridesExtensions
                     state.UpdateNonce(account, accountOverride, address);
                 }
 
-                state.UpdateCode(overridableCodeInfoRepository, spec, accountOverride, address);
+                state.UpdateCode(overridableCodeInfoRepository, spec, overrides, accountOverride, address);
                 state.UpdateState(accountOverride, address);
             }
         }
@@ -89,6 +90,7 @@ public static class StateOverridesExtensions
         this IWorldState stateProvider,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         IReleaseSpec currentSpec,
+        Dictionary<Address, AccountOverride> overrides,
         AccountOverride accountOverride,
         Address address)
     {
@@ -97,6 +99,12 @@ public static class StateOverridesExtensions
             if (!overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile)
             {
                 throw new ArgumentException($"Account {address} is not a precompile");
+            }
+
+            // As in geth, a precompile cannot be moved onto an account that is overridden itself.
+            if (overrides.ContainsKey(accountOverride.MovePrecompileToAddress))
+            {
+                throw new ArgumentException($"Account {accountOverride.MovePrecompileToAddress} is already overridden");
             }
 
             overridableCodeInfoRepository.MovePrecompile(

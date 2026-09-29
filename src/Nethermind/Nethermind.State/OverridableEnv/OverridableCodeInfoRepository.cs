@@ -18,6 +18,10 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     private readonly Dictionary<Address, CodeInfo> _codeOverrides = (overrides ??= new CodeOverrideStore()).Code;
     private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = overrides.Precompiles;
 
+    /// <summary>Precompile addresses whose code is overridden, moved-away origins included.</summary>
+    /// <remarks>They dispatch as code only for the block that overrides them.</remarks>
+    private readonly HashSet<Address> _overriddenPrecompileAddresses = [];
+
     public bool IsCodeOverridable => true;
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -57,12 +61,17 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value) => _codeOverrides[key] = value;
+        CodeInfo value)
+    {
+        _codeOverrides[key] = value;
+        if (vmSpec.IsPrecompile(key)) _overriddenPrecompileAddresses.Add(key);
+    }
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
         _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
         _codeOverrides[precompileAddr] = new CodeInfo(worldState.GetCode(precompileAddr));
+        _overriddenPrecompileAddresses.Add(precompileAddr);
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
@@ -79,14 +88,16 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         _precompileOverrides.Clear();
         _codeOverrides.Clear();
+        _overriddenPrecompileAddresses.Clear();
     }
 
     public void ResetPrecompileOverrides()
     {
-        foreach ((Address _, (CodeInfo codeInfo, Address initialAddr) precompileInfo) in _precompileOverrides)
+        foreach (Address address in _overriddenPrecompileAddresses)
         {
-            _codeOverrides.Remove(precompileInfo.initialAddr);
+            _codeOverrides.Remove(address);
         }
+        _overriddenPrecompileAddresses.Clear();
         _precompileOverrides.Clear();
     }
 }
