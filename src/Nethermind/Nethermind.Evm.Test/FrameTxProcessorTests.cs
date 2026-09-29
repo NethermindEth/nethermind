@@ -5054,6 +5054,7 @@ public partial class FrameTxProcessorTests
         SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
         TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
         SimulateCallResult result = blockTracer.BuildResult().Single();
+        blockTracer.ReapplyBlockHash(TestItem.KeccakH);
 
         LogEntry[] expected = batchFails
             ? [TransferLog.CreateSimulateTransfer(Sender, afterBatch, 2)]
@@ -5067,6 +5068,8 @@ public partial class FrameTxProcessorTests
                 Is.EqualTo(batchFails ? new[] { 0, 0, 0, 1 } : new[] { 0, 2, 0, 1 }));
             Assert.That(result.FrameResults.SelectMany(static frame => frame.Logs).Select(static log => log.LogIndex),
                 Is.EqualTo(result.Logs.Select(static log => log.LogIndex)));
+            Assert.That(result.FrameResults.SelectMany(static frame => frame.Logs).Select(static log => log.BlockHash),
+                Has.All.EqualTo(TestItem.KeccakH), "the processed block's hash must reach the per-frame logs");
             Assert.That(result.Logs.Select(static log => $"{log.Address}:{log.Topics[^1]}"),
                 Is.EqualTo(expected.Select(static log => $"{log.Address}:{log.Topics[^1]}")),
                 "the committed frames' transfers and logs, in emission order");

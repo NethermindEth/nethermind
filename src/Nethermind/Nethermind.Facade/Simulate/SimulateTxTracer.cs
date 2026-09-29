@@ -25,7 +25,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
     private readonly bool _isTracingTransfers;
-    private bool _hasFrameReceipts;
+    private List<Log>? _frameTxLogs;
     private FrameResult[]? _frameResults;
     private byte[]?[]? _frameOutputs;
     private int[]? _frameLogCounts;
@@ -99,8 +99,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         // The validation-prefix simulation reports an empty set, which pins no frame's outcome.
         if (frameReceipts.Length == 0) return;
 
-        _hasFrameReceipts = true;
-        List<Log> logs = BuildLogs();
+        // Built once so the call's logs and each frame's slice share instances that ReapplyBlockHash updates.
+        _frameTxLogs = BuildLogs();
         int logOffset = 0;
         _frameResults = new FrameResult[frameReceipts.Length];
         for (int i = 0; i < frameReceipts.Length; i++)
@@ -113,7 +113,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
                 GasUsed = receipt.GasUsed,
                 ExecutionGasUsed = receipt.ExecutionGasUsed,
                 StateGasUsed = receipt.StateGasUsed,
-                Logs = logs.GetRange(logOffset, logCount),
+                Logs = _frameTxLogs.GetRange(logOffset, logCount),
                 ReturnData = _frameOutputs?[i] ?? []
             };
             logOffset += logCount;
@@ -173,7 +173,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         ReturnData = _frameResults is { Length: > 0 } ? _frameResults[^1].ReturnData : output,
         FrameResults = _frameResults,
         Status = StatusCode.Success,
-        Logs = BuildLogs()
+        Logs = _frameTxLogs ?? BuildLogs()
     };
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
@@ -192,7 +192,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         FrameResults = _frameResults,
         Status = StatusCode.Failure,
         // A failed frame transaction keeps the logs of the frames that committed, as its receipt does.
-        Logs = _hasFrameReceipts ? BuildLogs() : []
+        Logs = _frameTxLogs ?? []
     };
 
     private string FailureMessage(string? error) => _frameError is { } frameError && frameError != EvmExceptionType.Revert
