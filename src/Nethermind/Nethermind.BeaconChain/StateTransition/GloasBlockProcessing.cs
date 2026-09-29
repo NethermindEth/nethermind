@@ -107,7 +107,7 @@ public static class GloasBlockProcessing
             throw new BeaconStateException($"Block proposer index {proposerIndex} has no cached public key ({pubkeys.Count} cached)");
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block), domain);
-        return BlsSigner.Verify(pubkeys.GetPublicKey((int)proposerIndex), signedBlock.Signature.Bytes, signingRoot.Bytes);
+        return pubkeys.TryGetValidPublicKey((int)proposerIndex, out G1Affine key) && BlsSigner.Verify(key, signedBlock.Signature.Bytes, signingRoot.Bytes);
     }
 
     /// <summary>Spec <c>process_block_header</c>: unchanged from Fulu except for the Gloas block/body types.</summary>
@@ -159,7 +159,7 @@ public static class GloasBlockProcessing
         System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(epochRoot, epoch);
         Hash256 domain = state.GetDomain(DomainType.Randao, epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(epochRoot), domain);
-        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey(proposerIndex), reveal, signingRoot, deferral);
+        return pubkeys.TryGetValidPublicKey(proposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, reveal, signingRoot, deferral);
     }
 
     /// <summary>Spec <c>process_eth1_data</c>: unchanged from Fulu except for the Gloas body type.</summary>
@@ -785,7 +785,7 @@ public static class GloasBlockProcessing
         if (envelope.BuilderIndex == Presets.BuilderIndexSelfBuild)
         {
             int proposerIndex = (int)state.LatestBlockHeader!.ProposerIndex;
-            return BlsSigner.Verify(pubkeys.GetPublicKey(proposerIndex), signedEnvelope.Signature.Bytes, signingRoot.Bytes);
+            return pubkeys.TryGetValidPublicKey(proposerIndex, out G1Affine proposerKey) && BlsSigner.Verify(proposerKey, signedEnvelope.Signature.Bytes, signingRoot.Bytes);
         }
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);

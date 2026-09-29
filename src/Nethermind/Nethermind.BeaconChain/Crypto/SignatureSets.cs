@@ -47,7 +47,8 @@ public static class SignatureSets
     public static bool VerifyIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
         Span<long> sum = stackalloc long[Bls.P1.Sz];
-        pubkeys.SumPublicKeys(attestation.AttestingIndices, sum);
+        if (!pubkeys.TrySumValidPublicKeys(attestation.AttestingIndices, sum))
+            return false;
         BlsSigner.AggregatedPublicKey aggregate = new(sum);
 
         Hash256 domain = state.GetDomain(DomainType.BeaconAttester, attestation.Data!.Target!.Epoch);
@@ -72,7 +73,7 @@ public static class SignatureSets
             throw new BeaconStateException($"Block proposer index {proposerIndex} has no cached public key ({pubkeys.Count} cached)");
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block), domain);
-        return Verify(pubkeys.GetPublicKey((int)block.ProposerIndex), signature, signingRoot);
+        return pubkeys.TryGetValidPublicKey((int)block.ProposerIndex, out G1Affine key) && Verify(key, signature, signingRoot);
     }
 
     /// <summary>Verifies a signed block header against its claimed proposer (used by proposer slashings).</summary>
@@ -81,7 +82,7 @@ public static class SignatureSets
         BeaconBlockHeader header = signedHeader.Message!;
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(header.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
-        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey((int)header.ProposerIndex), signedHeader.Signature, signingRoot, deferral);
+        return pubkeys.TryGetValidPublicKey((int)header.ProposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedHeader.Signature, signingRoot, deferral);
     }
 
     /// <summary>Verifies the proposer's RANDAO reveal: a signature over the epoch number under <c>DOMAIN_RANDAO</c>.</summary>
@@ -93,7 +94,7 @@ public static class SignatureSets
 
         Hash256 domain = state.GetDomain(DomainType.Randao, epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(epochRoot), domain);
-        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey(proposerIndex), reveal, signingRoot, deferral);
+        return pubkeys.TryGetValidPublicKey(proposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, reveal, signingRoot, deferral);
     }
 
     /// <summary>Verifies a voluntary exit signature over the EIP-7044 fork-agnostic Capella domain.</summary>
@@ -102,7 +103,7 @@ public static class SignatureSets
         VoluntaryExit exit = signedExit.Message!;
         Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).CapellaForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
-        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey((int)exit.ValidatorIndex), signedExit.Signature, signingRoot, deferral);
+        return pubkeys.TryGetValidPublicKey((int)exit.ValidatorIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedExit.Signature, signingRoot, deferral);
     }
 
     /// <summary>
