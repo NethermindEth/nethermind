@@ -6,8 +6,8 @@ using System;
 namespace Nethermind.BeaconChain.Engine;
 
 /// <summary>
-/// The in-process <c>engine_newPayload</c> call itself failed, so the execution layer returned no
-/// verdict on the payload.
+/// The in-process <c>engine_newPayload</c> or <c>engine_forkchoiceUpdated</c> call itself failed, so the
+/// execution layer returned no status.
 /// </summary>
 /// <remarks>
 /// Distinct from the execution layer reporting SYNCING, which is a verdict - "not rejected, not

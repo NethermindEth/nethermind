@@ -308,22 +308,29 @@ public class EngineTests
     }
 
     /// <summary>
-    /// A failed <c>forkchoiceUpdated</c> keeps reporting SYNCING. It is a statement about the head,
-    /// not a verdict on a block about to be imported, and its three call sites do not expect a throw.
+    /// A failed <c>forkchoiceUpdated</c> is no status: reporting it as SYNCING made the caller cache it as an
+    /// answer and read the execution layer as syncing, so the call was not retried.
     /// </summary>
-    [Test]
-    public async Task Engine_driver_still_reports_a_failed_forkchoiceUpdated_call_as_syncing()
+    [TestCase(0, TestName = "Failure result")]
+    [TestCase(1, TestName = "Success with no data")]
+    [TestCase(2, TestName = "Success with no payload status")]
+    public void Engine_driver_refuses_to_turn_a_failed_forkchoiceUpdated_call_into_a_status(int shape)
     {
+        ResultWrapper<ForkchoiceUpdatedV1Result> answer = shape switch
+        {
+            0 => ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("engine unavailable"),
+            1 => ResultWrapper<ForkchoiceUpdatedV1Result>.Success(null!),
+            _ => ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadStatus = null! }),
+        };
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        engine.engine_forkchoiceUpdatedV3(default!, default)
-            .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("engine unavailable")));
+        engine.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(Task.FromResult(answer));
         EngineDriver driver = new(CreateDetector(engine, out _), LimboLogs.Instance);
 
-        PayloadStatusV1 status = await driver.ForkchoiceUpdated(TestHash, TestHash, TestHash);
+        Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash));
 
         Assert.Multiple(() =>
         {
-            Assert.That(status.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(driver.LastForkchoiceStatus, Is.Null, "a failed call must not overwrite the last status");
             Assert.That(driver.HasAnsweredNewPayload, Is.False, "forkchoiceUpdated says nothing about whether a payload was ever submitted");
         });
     }

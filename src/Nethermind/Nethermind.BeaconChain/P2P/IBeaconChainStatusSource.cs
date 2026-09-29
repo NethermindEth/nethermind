@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -34,10 +35,21 @@ public class BeaconChainStatusHolder(BeaconChainSpec spec, ITimestamper timestam
     private volatile HeadSnapshot? _head;
     private volatile Hash256 _justifiedRoot = Hash256.Zero;
     private volatile bool _executionInSync;
+    private volatile Func<ulong>? _earliestAvailableSlotSource;
+
+    /// <summary>
+    /// Computes <c>earliest_available_slot</c> each time the status is read, so a Status sent between head steps never
+    /// advertises a slot whose sidecars have since been evicted; unset, the published value stands.
+    /// </summary>
+    public Func<ulong>? EarliestAvailableSlotSource
+    {
+        get => _earliestAvailableSlotSource;
+        set => _earliestAvailableSlotSource = value;
+    }
 
     public StatusMessageV2 CurrentStatus
     {
-        get => _head?.Status ?? new StatusMessageV2
+        get => WithEarliestAvailableSlot(_head?.Status) ?? new StatusMessageV2
         {
             ForkDigest = ForkDigest.Compute(spec, spec.GetEpoch(spec.GetSlotAtTime((ulong)timestamper.UnixTime.Seconds))),
             FinalizedRoot = Hash256.Zero,
@@ -46,7 +58,20 @@ public class BeaconChainStatusHolder(BeaconChainSpec spec, ITimestamper timestam
         set => _head = new HeadSnapshot(value, null);
     }
 
-    public (StatusMessageV2 Status, Hash256? FullHeadRoot) CurrentHead => _head is { } head ? (head.Status, head.FullHeadRoot) : (CurrentStatus, null);
+    public (StatusMessageV2 Status, Hash256? FullHeadRoot) CurrentHead => _head is { } head ? (WithEarliestAvailableSlot(head.Status)!, head.FullHeadRoot) : (CurrentStatus, null);
+
+    private StatusMessageV2? WithEarliestAvailableSlot(StatusMessageV2? status) =>
+        status is not null && _earliestAvailableSlotSource is { } source
+            ? new StatusMessageV2
+            {
+                ForkDigest = status.ForkDigest,
+                FinalizedRoot = status.FinalizedRoot,
+                FinalizedEpoch = status.FinalizedEpoch,
+                HeadRoot = status.HeadRoot,
+                HeadSlot = status.HeadSlot,
+                EarliestAvailableSlot = source(),
+            }
+            : status;
 
     /// <summary>Replaces the status and the FULL head root in one step, so a reader never pairs a head with another head's payload status.</summary>
     public void Publish(StatusMessageV2 status, Hash256? fullHeadRoot) => _head = new HeadSnapshot(status, fullHeadRoot);
