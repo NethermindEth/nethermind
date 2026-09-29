@@ -1306,6 +1306,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        [NonParallelizable]
         public async Task should_revalidate_after_queued_fork_reorg()
         {
             Block head = _blockTree.Head;

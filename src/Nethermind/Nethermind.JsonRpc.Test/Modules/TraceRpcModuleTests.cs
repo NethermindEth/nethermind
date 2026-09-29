@@ -136,7 +136,7 @@ public class TraceRpcModuleTests
         object transaction = new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0" };
         object[] parameters = method switch
         {
-            // An unknown hash fails the receipt lookup, so this also checks the types are validated before that.
+            // An unknown hash returns null, so this also checks the types are validated before the lookup.
             "trace_replayTransaction" => [TestItem.KeccakA, traceTypes],
             // Genesis short-circuits replay, so this also checks the types are validated before that.
             "trace_replayBlockTransactions" => ["earliest", traceTypes],
@@ -496,7 +496,7 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_transaction_and_get_return_null_for_missing_transaction([Values] bool streaming, [Values] bool pending)
+    public async Task Transaction_lookups_return_null_for_missing_transaction([Values] bool streaming, [Values] bool pending)
     {
         Context context = new();
         await context.Build();
@@ -517,11 +517,12 @@ public class TraceRpcModuleTests
             Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_transaction", txHash), Is.EqualTo(expected));
             Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", txHash, Array.Empty<string>()), Is.EqualTo(expected));
             Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", txHash, new[] { "0x0" }), Is.EqualTo(expected));
+            Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_replayTransaction", txHash, new[] { "trace" }), Is.EqualTo(expected));
         }
     }
 
     [Test]
-    public async Task Trace_transaction_and_get_keep_errors_for_unavailable_history([Values] UnavailableHistory unavailable)
+    public async Task Transaction_lookups_keep_errors_for_unavailable_history([Values] UnavailableHistory unavailable)
     {
         Context context = new();
         await context.Build();
@@ -550,6 +551,8 @@ public class TraceRpcModuleTests
             (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!), true),
             (await RpcTest.TestSerializedRequest(module, "trace_get", transaction.Hash!, Array.Empty<string>()), true),
             (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!, true), false),
+            (await RpcTest.TestSerializedRequest(module, "trace_replayTransaction", transaction.Hash!, new[] { "trace" }), true),
+            (await RpcTest.TestSerializedRequest(module, "trace_replayTransaction", transaction.Hash!, new[] { "trace" }, true), false),
         })
         {
             using JsonDocument document = JsonDocument.Parse(response);
@@ -1240,8 +1243,66 @@ public class TraceRpcModuleTests
         Assert.That(traces.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash!));
         string serialized = new EthereumJsonSerializer().Serialize(traces);
 
-        Assert.That(serialized, Is.EqualTo("[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x9a6c\",\"init\":\"0x60006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f160006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f1fd\",\"value\":\"0x1\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"subtraces\":2,\"traceAddress\":[],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"create\",\"error\":\"Reverted\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x8def\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x8d78\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[1],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"}]"), serialized.Replace("\"", "\\\""));
+        Assert.That(serialized, Is.EqualTo("[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x9a6c\",\"init\":\"0x60006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f160006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f1fd\",\"value\":\"0x1\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0xab9\",\"output\":\"0x00\"},\"subtraces\":2,\"traceAddress\":[],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"create\",\"error\":\"Reverted\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x8def\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x8d78\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[1],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"}]"), serialized.Replace("\"", "\\\""));
     }
+
+    // PUSH4 PUSH1 MSTORE (with one word of memory) PUSH1 PUSH1 REVERT: 3 + 3 + 6 + 3 + 3 = 18 gas.
+    private static readonly byte[] RevertDeadbeefCode = Prepare.EvmCode
+        .PushData("0xdeadbeef")
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .Revert(4, 28)
+        .Done;
+
+    [Test]
+    public async Task Trace_call_keeps_result_of_reverted_frame([Values] bool nested, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        byte[] data = nested ? Prepare.EvmCode.Create(RevertDeadbeefCode, 0).Op(Instruction.STOP).Done : RevertDeadbeefCode;
+        object transaction = new { from = TestItem.AddressA, gas = "0x186a0", data = data.ToHexString(true) };
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", transaction, new[] { "trace" }, "latest");
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement frame = document.RootElement.GetProperty("result").GetProperty("trace")[nested ? 1 : 0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.GetProperty("type").GetString(), Is.EqualTo("create"), response);
+            Assert.That(frame.GetProperty("error").GetString(), Is.EqualTo("Reverted"), response);
+            Assert.That(frame.GetProperty("result").GetRawText(), Is.EqualTo("""{"gasUsed":"0x12","output":"0xdeadbeef"}"""), response);
+        }
+    }
+
+    // A reverted, a successful and a halted creation in one request, so the streaming tracer reuses its frames.
+    [Test]
+    public async Task Trace_callMany_keeps_result_only_for_reverted_and_successful_frames([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        byte[] deploy = Prepare.EvmCode.ForInitOf([0x2a]).Done;
+        byte[] halt = Prepare.EvmCode.Op(Instruction.ADD).Done;
+        object[] calls = new[] { RevertDeadbeefCode, deploy, halt }
+            .Select(static object (byte[] data) => new object[] { new { from = TestItem.AddressA, gas = "0x186a0", data = data.ToHexString(true) }, new[] { "trace" } })
+            .ToArray();
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls, "latest");
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement[] frames = document.RootElement.GetProperty("result").EnumerateArray().Select(static r => r.GetProperty("trace")[0]).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frames[0].GetProperty("error").GetString(), Is.EqualTo("Reverted"), response);
+            Assert.That(frames[0].GetProperty("result").GetRawText(), Is.EqualTo("""{"gasUsed":"0x12","output":"0xdeadbeef"}"""), response);
+            Assert.That(frames[1].TryGetProperty("error", out _), Is.False, response);
+            Assert.That(frames[1].GetProperty("result").GetProperty("code").GetString(), Is.EqualTo("0x2a"), response);
+            Assert.That(frames[2].GetProperty("error").GetString(), Is.EqualTo("Stack underflow"), response);
+            Assert.That(frames[2].TryGetProperty("result", out _), Is.False, response);
+        }
+    }
+
     [Test]
     public async Task trace_timeout_is_separate_for_rpc_calls()
     {
@@ -1283,10 +1344,10 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction);
         string[] traceTypes = { "trace" };
-        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
+        ResultWrapper<ParityTxTraceFromReplay?> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(traces.Data.Action!.From, Is.EqualTo(TestItem.AddressB));
+            Assert.That(traces.Data!.Action!.From, Is.EqualTo(TestItem.AddressB));
             Assert.That(traces.Data.Action.To, Is.EqualTo(TestItem.AddressC));
             Assert.That(traces.Data.Action.CallType, Is.EqualTo("call"));
             Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
@@ -1315,10 +1376,10 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction);
         string[] traceTypes = { "rewards" };
-        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
+        ResultWrapper<ParityTxTraceFromReplay?> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(traces.Data.Action!.CallType, Is.EqualTo("reward"));
+            Assert.That(traces.Data!.Action!.CallType, Is.EqualTo("reward"));
             Assert.That(traces.Data.Action.Value, Is.EqualTo(UInt256.Parse("2000000000000000000")));
             Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
         }
@@ -2032,7 +2093,7 @@ public class TraceRpcModuleTests
     {
         TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB);
 
-        ResultWrapper<ParityTxTraceFromReplay> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"]);
+        ResultWrapper<ParityTxTraceFromReplay?> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -2057,7 +2118,7 @@ public class TraceRpcModuleTests
     {
         TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB, traceNonCanonical: true);
 
-        ResultWrapper<ParityTxTraceFromReplay> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"], traceNonCanonical: true);
+        ResultWrapper<ParityTxTraceFromReplay?> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"], traceNonCanonical: true);
 
         Assert.That(result.Result.Error, Does.Not.Contain("not canonical"), "traceNonCanonical=true must bypass the canonical block check");
     }
