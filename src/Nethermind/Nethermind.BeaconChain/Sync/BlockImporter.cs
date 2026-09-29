@@ -90,7 +90,8 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>Whether the current lineage head block is the first block of its epoch (its post-state is then a checkpoint-root candidate).</summary>
     private bool _lineageBlockStartsEpoch = true;
 
-    private Hash256 _canonicalHead;
+    /// <summary>Null until the first index update, so a restart reconciles the index even when the head is still the anchor.</summary>
+    private Hash256? _canonicalHead;
     private ulong _canonicalIndexTopSlot;
     private ulong _lastSnapshotEpoch;
 
@@ -160,7 +161,6 @@ public sealed class BlockImporter : IBlockImporter
         }
 
         _envelopes = new ExecutionPayloadEnvelopeImporter(_states, engine, pubkeys, isEnvelopeDataAvailable, logManager);
-        _canonicalHead = anchorRoot;
         store.SetCanonicalRoot(anchorBlock.Slot, anchorRoot);
         // A restart must clear what the previous run indexed above the head it replays up to.
         _canonicalIndexTopSlot = Math.Max(anchorBlock.Slot, store.GetCanonicalIndexTopSlot() ?? 0);
