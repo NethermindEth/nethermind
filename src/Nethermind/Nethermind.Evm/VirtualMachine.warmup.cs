@@ -173,7 +173,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                 using VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(
                     TGasPolicy.FromULong(ulong.MaxValue), ExecutionType.TRANSACTION, env, accessTracker, state.TakeSnapshot());
                 vm.VmState = vmState;
-                vmState.InitializeStacks(txTracer, codeInfo.CodeSpan, out EvmStack stack);
+                vmState.InitializeStacks(txTracer, codeInfo.ExecutionCodeSpan, out EvmStack stack);
 
                 for (int stackItem = 0; stackItem < 20; stackItem++)
                     stack.PushOne<TTracingInst>();

@@ -33,8 +33,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
-        PadForDispatch(ref code);
-        Code = code;
+        InitializeCode(code);
         if (code.Length == 0)
         {
             _analyzer = _emptyAnalyzer;
@@ -52,12 +51,32 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         _analyzer = null;
     }
 
-    public ReadOnlyMemory<byte> Code { get; }
+    public partial ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
 
-    /// <summary>Copies the code into a buffer dispatch may read past its end, in builds that dispatch without end-of-code tests.</summary>
-    static partial void PadForDispatch(ref ReadOnlyMemory<byte> code);
+    partial void InitializeCode(ReadOnlyMemory<byte> code);
 
+    /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
+    /// <remarks>
+    /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the
+    /// last padding byte, which is STOP.
+    /// </remarks>
+    internal const int ExecutionPadding = 33;
+
+    /// <summary>The code that dispatch runs, followed in memory by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    /// <remarks>
+    /// Untraced dispatch reads into the padding instead of checking the program counter against the code
+    /// length. The padding is never JUMPDEST, and jump destinations are bounded by the code length anyway.
+    /// </remarks>
+    internal partial ReadOnlySpan<byte> ExecutionCodeSpan { get; }
+
+    private static byte[] CreatePaddedCode(ReadOnlySpan<byte> code)
+    {
+        byte[] padded = GC.AllocateUninitializedArray<byte>(code.Length + ExecutionPadding);
+        code.CopyTo(padded);
+        padded.AsSpan(code.Length).Clear();
+        return padded;
+    }
     private Address? _delegatedAddress;
     internal Address? DelegatedAddress
     {

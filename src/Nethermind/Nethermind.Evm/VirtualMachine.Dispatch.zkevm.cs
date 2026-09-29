@@ -88,7 +88,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = _opcodeHandlers;
 
         // Safety: the 256-entry opcode table remains pinned for the complete tail-call chain. Every bytecode read
-        // lands in the code or in the padding that follows it (DispatchFlags.PaddedCode), and a byte is a valid
+        // lands in the code or in the padding that follows CodeInfo.ExecutionCodeSpan, and a byte is a valid
         // table index.
         fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>* opcodeHandlers = &handlers[0])
         {
@@ -116,8 +116,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// A checked body pays its fixed cost from the carried gas and runs on a copy of the stack that holds the carried
     /// head and bytecode, and dispatch moves the head by the body's declared growth, so neither reaches memory on the
     /// way. The frame's gas policy and head are current only around bodies that take them, and once the chain leaves.
-    /// Every code is padded (<see cref="DispatchFlags.PaddedCode"/>), so no handler tests the program counter against
-    /// the code length, and the guest neither counts opcodes nor polls for cancellation.
+    /// Every code is padded (<see cref="CodeAnalysis.CodeInfo.ExecutionCodeSpan"/>), so no handler tests the program
+    /// counter against the code length, and the guest neither counts opcodes nor polls for cancellation.
     /// </para>
     /// </remarks>
     private static partial class RawCalliHelper

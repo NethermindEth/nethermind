@@ -24,13 +24,6 @@ internal static partial class DispatchFlags
     /// <summary>Whether dispatch counts the opcodes it runs, for the opcode metric and the cancellation poll.</summary>
     public static bool CountOpcodes => true;
 
-    /// <summary>Whether every executed code is followed in memory by zero bytes that dispatch may read.</summary>
-    /// <remarks>
-    /// When set, dispatch reads the next opcode and PUSH immediates without testing the program counter against
-    /// the code length: running off the end reads STOP from the padding. See <c>CodeInfo.PadForDispatch</c>.
-    /// </remarks>
-    public static bool PaddedCode => false;
-
     /// <summary>Whether the untraced tables give some opcodes a fast path, backed by a plain copy of the table.</summary>
     /// <remarks>See <c>IOpcodeBody.HasUntracedFastPath</c> and <c>FallbackHandlersOffset</c>.</remarks>
     public static bool UntracedFastPaths => true;

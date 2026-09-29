@@ -473,7 +473,7 @@ public class HostMemoryFastPathTests
                 {
                     outcome = outcome with { OpCodeCount = plain.OpCodeCount };
                     if (outcome.Pc >= code.Length || IsFault(outcome.Exception))
-                        outcome = outcome with { Pc = IsFault(outcome.Exception) ? plain.Pc : outcome.Pc, Head = plain.Head, Stack = plain.Stack };
+                        outcome = outcome with { Pc = IsFault(outcome.Exception) || plain.Pc >= code.Length ? plain.Pc : outcome.Pc, Head = plain.Head, Stack = plain.Stack };
                 }
 
                 if (outcome != plain)
@@ -526,7 +526,7 @@ public class HostMemoryFastPathTests
                 delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>* dispatch =
                     table is Table.PlainNoTrace or Table.PlainNoTraceCancelable ? entries + VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset : entries;
 
-                EvmStack evmStack = new(head, _vm.Tracer, ref _stackBytes[_stackStart], codeInfo.CodeSpan, codeInfo);
+                EvmStack evmStack = new(head, _vm.Tracer, ref _stackBytes[_stackStart], codeInfo.ExecutionCodeSpan, codeInfo);
                 evmStack.HoistInputData(input);
                 DispatchState state = new() { OpcodeHandlers = dispatch, Vm = _vm, CancellationPollAt = CancellationPollInterval };
                 pc = 0;
@@ -546,6 +546,15 @@ public class HostMemoryFastPathTests
                 pc = state.FinalProgramCounter;
                 opCodeCount = state.OpCodeCount;
                 finalHead = evmStack.Head;
+            }
+
+            // Untraced dispatch runs off the end into the code's STOP padding, which RunByteCode reads as the implicit
+            // STOP at the end of the code.
+            if (table != Table.Traced && exception == EvmExceptionType.Stop && pc > code.Length)
+            {
+                exception = EvmExceptionType.None;
+                pc = code.Length;
+                opCodeCount--;
             }
 
             _vm.ReturnData = null;

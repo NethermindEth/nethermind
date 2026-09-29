@@ -6,6 +6,8 @@ using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
@@ -129,6 +131,39 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 Assert.That(addresses[0], Is.EqualTo(Address.Zero));
             }
         }
+
+        [Test]
+        public void Execution_code_replaces_the_callers_code([Values] bool sliced)
+        {
+            byte[] source = [0xfe, 0x60, 0x01, 0x60, 0x02, 0x01, 0xfe];
+            ReadOnlyMemory<byte> code = sliced ? source.AsMemory(1, 5) : source;
+            CodeInfo codeInfo = new(code);
+            ReadOnlyMemory<byte> earlierView = codeInfo.Code;
+
+            ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
+            ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(execution.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(padding.ToArray(), Is.All.EqualTo(0));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.CodeSpan), ref MemoryMarshal.GetReference(execution)), Is.True,
+                    "Code must be served from the padded copy rather than keep the caller's array alongside it");
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.ExecutionCodeSpan), ref MemoryMarshal.GetReference(execution)), Is.True);
+                Assert.That(earlierView.ToArray(), Is.EqualTo(code.ToArray()));
+            }
+        }
+
+        [Test]
+        public void Retains_a_whole_array_without_boxing()
+        {
+            byte[] source = [0x60, 0x01, 0x60, 0x02, 0x01];
+
+            Assert.That(CodeField(new CodeInfo(source)), Is.SameAs(source));
+        }
+
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_code")]
+        private static extern ref object CodeField(CodeInfo codeInfo);
 
         [TestCase(-1, false)]
         [TestCase(0, true)]
