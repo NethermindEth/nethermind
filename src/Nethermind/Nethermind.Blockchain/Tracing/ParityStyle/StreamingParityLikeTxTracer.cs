@@ -37,7 +37,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
     private readonly bool _fillVmTraceSlot;
-    private readonly bool _streamVmTrace;
+    private bool _streamVmTrace;
     private readonly int _flushIntervalEntries;
 
     private bool _hasPendingOp;
@@ -94,7 +94,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _fillVmTraceSlot = fillVmTraceSlot;
-        _streamVmTrace = fillVmTraceSlot && IsTracingInstructions;
+        _streamVmTrace = StreamsVmTraceOf(tx);
         _flushIntervalEntries = flushIntervalEntries;
 
         if (fillVmTraceSlot && !IsTracingInstructions)
@@ -111,6 +111,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         if (_trace.StateChanges is not null) ReturnStateChanges(_trace.StateChanges);
 
         ResetTracerState(block, tx);
+        _streamVmTrace = StreamsVmTraceOf(tx);
 
         _hasPendingOp = false;
         _pushAssigned = false;
@@ -498,44 +499,10 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         MaybeFlushToWire();
     }
 
-    private protected override void OnEnterFrame(ParityTraceAction frame)
-    {
-        if (!_streamVmTrace) { base.OnEnterFrame(frame); return; }
-
-        FinalizePendingOp(closeWithNullSub: true);
-        VmFrame root = PeekLast(_streamingFrames);
-        if (!root.JsonObjectOpened)
-        {
-            OpenFrameJson(root);
-        }
-
-        // Pending, so the frame's vmTrace is written as its sub, as a callee's is under its CALL.
-        ReleaseOpBuffers();
-        _hasPendingOp = true;
-        _pushAssigned = false;
-        _pendingPc = frame.TraceAddress.AsSpan()[0];
-        _pendingCost = frame.Gas;
-        _pendingUsed = 0;
-    }
-
-    private protected override void OnLeaveFrame(ulong gasLeft)
-    {
-        if (!_streamVmTrace) { base.OnLeaveFrame(gasLeft); return; }
-
-        _pendingUsed = gasLeft;
-        _treatGasParityStyle = false;
-    }
-
-    private protected override void OnFrameEnd(int frameIndex)
-    {
-        if (!_streamVmTrace) { base.OnFrameEnd(frameIndex); return; }
-
-        if (_hasPendingOp && _outerOpHasSubWritten)
-        {
-            _pendingPc = frameIndex;
-            FinalizePendingOp(closeWithNullSub: true);
-        }
-    }
+    /// <summary>Whether <paramref name="tx"/>'s vmTrace is written as it executes.</summary>
+    /// <remarks>An EIP-8141 frame transaction's is buffered and written once it ends: each frame's operation carries
+    /// the frame's gas limit and its receipt's gasUsed, which only the end of the transaction reports.</remarks>
+    private bool StreamsVmTraceOf(Transaction? tx) => _fillVmTraceSlot && IsTracingInstructions && tx?.Type != TxType.FrameTx;
 
     public override ParityLikeTxTrace BuildResult()
     {
@@ -545,6 +512,11 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
         ParityTraceAction? action = _trace.Action;
         ParityLikeTxTrace result = base.BuildResult();
+        if (_fillVmTraceSlot && IsTracingInstructions && !_streamVmTrace)
+        {
+            JsonSerializer.Serialize(_writer, result.VmTrace, EthereumJsonSerializer.JsonOptions);
+        }
+
         if (action is not null && result.Action is null) ReturnActionTree(action);
         return result;
     }

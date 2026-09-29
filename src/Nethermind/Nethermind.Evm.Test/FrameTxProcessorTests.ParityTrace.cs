@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -14,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -197,6 +199,10 @@ public partial class FrameTxProcessorTests
             Assert.That(flat.Count(t => t.TraceAddress.ToArray().SequenceEqual(nestedCall) && t.Action.To == Recipient), Is.EqualTo(1), "nested call");
             Assert.That(trace.VmTrace!.Code ?? [], Is.Empty, "root code");
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Pc), Is.EqualTo(framesInVm), "one root operation per frame that entered the VM");
+            // Per the execution-apis frame transaction trace profile: the frame's gas limit, less its receipt's gasUsed.
+            Assert.That(trace.VmTrace.Operations.Select(o => o.Cost), Is.EqualTo(framesInVm.Select(i => frames[i].GasLimit)), "root operation cost");
+            Assert.That(trace.VmTrace.Operations.Select(static o => o.Used),
+                Is.EqualTo(framesInVm.Select(i => frames[i].GasLimit - frameReceipts[i].GasUsed)), "root operation ex.used");
             Assert.That(trace.VmTrace.Operations.All(static o => o.Sub is not null), Is.True, "every root operation carries its frame");
             // Every frame's code opens with a PUSH, which a gas carry-over from the previous frame would misprice.
             Assert.That(trace.VmTrace.Operations.Where(static o => o.Sub.Operations.Count > 0).Select(static o => o.Sub.Operations[0].Cost),
@@ -208,10 +214,10 @@ public partial class FrameTxProcessorTests
     public void ParityTrace_FrameTx_StreamedMatchesBuffered(
         [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "postTxReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
     {
-        string buffered = BufferedParityJson(scenario, mode);
+        string buffered = BufferedParityJson(mode, ParityScenarioTx(scenario));
         TearDown();
         Setup();
-        string streamed = StreamedParityJson(scenario, mode);
+        string streamed = StreamedParityJson(mode, ParityScenarioTx(scenario));
 
         Assert.That(JsonNode.DeepEquals(JsonNode.Parse(streamed), JsonNode.Parse(buffered)), Is.True,
             $"streamed:{streamed}{System.Environment.NewLine}buffered:{buffered}");
@@ -370,6 +376,56 @@ public partial class FrameTxProcessorTests
             .ToArray();
     }
 
+    /// <summary>One reused streaming tracer switches between streaming a legacy transaction's vmTrace and buffering a
+    /// frame transaction's, and back.</summary>
+    [Test]
+    public void ParityTrace_BlockMixingLegacyAndFrameTxs_StreamedMatchesBuffered([Values] ParityTraceStreamMode mode)
+    {
+        string buffered = BufferedParityJson(mode, MixedBlockTxs());
+        TearDown();
+        Setup();
+        string streamed = StreamedParityJson(mode, MixedBlockTxs());
+
+        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(streamed), JsonNode.Parse(buffered)), Is.True,
+            $"streamed:{streamed}{System.Environment.NewLine}buffered:{buffered}");
+    }
+
+    /// <summary>A legacy call, a frame transaction, then another legacy call, each running code.</summary>
+    private Transaction[] MixedBlockTxs()
+    {
+        Transaction frameTx = ParityScenarioTx("nested");
+        PrivateKey legacySender = TestItem.PrivateKeys[20];
+        DeployContract(legacySender.Address, [], 1.Ether);
+        Transaction LegacyCall(ulong nonce) => Build.A.Transaction.WithNonce(nonce).WithTo(Observer)
+            .WithGasLimit(200_000).WithGasPrice(1).SignedAndResolved(legacySender).TestObject;
+        return [LegacyCall(0), frameTx, LegacyCall(1)];
+    }
+
+    /// <summary>A VERIFY frame that reverts invalidates the transaction before any receipt is reported, so its
+    /// operation keeps the frame's gas limit and the gas the VM left.</summary>
+    [Test]
+    public void ParityVmTrace_FrameTxWithoutReceipts_KeepsTheFrameLimitAndTheGasTheVmLeft()
+    {
+        DeploySmartSender(RevertingWithOutput);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithBeneficiary(Beneficiary)
+            .WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, Spec);
+
+        TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        ParityTraceAction frame = trace.Action!.Subtraces.Single();
+        ParityVmOperationTrace operation = trace.VmTrace!.Operations.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False, "a reverted VERIFY frame invalidates the transaction");
+            Assert.That(frame.Error, Is.EqualTo("Reverted"));
+            Assert.That(operation.Cost, Is.EqualTo(tx.Frames![0].GasLimit), "cost");
+            Assert.That(operation.Used, Is.EqualTo(frame.Gas - frame.Result!.GasUsed).And.GreaterThan(0UL), "ex.used");
+        }
+    }
+
     private (ParityLikeTxTrace Trace, TxReceipt Receipt) TraceParity(Transaction tx, ParityTraceTypes types)
     {
         ParityLikeBlockTracer blockTracer = new(types, _specProvider);
@@ -377,23 +433,24 @@ public partial class FrameTxProcessorTests
         return (blockTracer.BuildResult().Single(), receipt);
     }
 
-    private string BufferedParityJson(string scenario, ParityTraceStreamMode mode)
+    private string BufferedParityJson(ParityTraceStreamMode mode, params Transaction[] txs)
     {
-        (ParityLikeTxTrace trace, _) = TraceParity(ParityScenarioTx(scenario), AllParityTraceTypes);
+        ParityLikeBlockTracer blockTracer = new(AllParityTraceTypes, _specProvider);
+        RunBlockThroughReceiptsTracer(blockTracer, blockNumber: 1, txs);
+        IReadOnlyCollection<ParityLikeTxTrace> traces = blockTracer.BuildResult();
         return mode == ParityTraceStreamMode.Replay
-            ? JsonSerializer.Serialize(new[] { new ParityTxTraceFromReplay(trace, includeTransactionHash: true) }, EthereumJsonSerializer.JsonOptions)
-            : JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(trace), EthereumJsonSerializer.JsonOptions);
+            ? JsonSerializer.Serialize(traces.Select(static t => new ParityTxTraceFromReplay(t, includeTransactionHash: true)), EthereumJsonSerializer.JsonOptions)
+            : JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(traces), EthereumJsonSerializer.JsonOptions);
     }
 
-    private string StreamedParityJson(string scenario, ParityTraceStreamMode mode)
+    private string StreamedParityJson(ParityTraceStreamMode mode, params Transaction[] txs)
     {
-        Transaction tx = ParityScenarioTx(scenario);
         ArrayBufferWriter<byte> sink = new();
         using (Utf8JsonWriter writer = new(sink))
         {
             writer.WriteStartArray();
             using StreamingParityLikeBlockTracer blockTracer = new(AllParityTraceTypes, mode, includeTxHash: true, writer, pipeWriter: null, CancellationToken.None, specProvider: _specProvider);
-            RunThroughReceiptsTracer(tx, blockTracer);
+            RunBlockThroughReceiptsTracer(blockTracer, blockNumber: 1, txs);
             writer.WriteEndArray();
         }
 
@@ -402,20 +459,27 @@ public partial class FrameTxProcessorTests
 
     /// <summary>Runs <paramref name="tx"/> through the chain the tracing RPCs build: the receipts tracer over the
     /// cancellable block tracer.</summary>
-    private TxReceipt RunThroughReceiptsTracer(Transaction tx, IBlockTracer blockTracer, ulong blockNumber = 1)
+    private TxReceipt RunThroughReceiptsTracer(Transaction tx, IBlockTracer blockTracer, ulong blockNumber = 1) =>
+        RunBlockThroughReceiptsTracer(blockTracer, blockNumber, tx)[0];
+
+    private TxReceipt[] RunBlockThroughReceiptsTracer(IBlockTracer blockTracer, ulong blockNumber, params Transaction[] txs)
     {
         Block block = Build.A.Block.WithNumber(blockNumber)
             .WithBaseFeePerGas(0)
             .WithBeneficiary(Beneficiary)
-            .WithTransactions(tx)
+            .WithTransactions(txs)
             .WithGasLimit(30_000_000).TestObject;
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.SetOtherTracer(blockTracer.WithCancellation(CancellationToken.None));
         receiptsTracer.StartNewBlockTrace(block);
-        receiptsTracer.StartNewTxTrace(tx);
-        Assert.That(_transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), receiptsTracer).TransactionExecuted, Is.True);
-        receiptsTracer.EndTxTrace();
+        foreach (Transaction tx in txs)
+        {
+            receiptsTracer.StartNewTxTrace(tx);
+            Assert.That(_transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), receiptsTracer).TransactionExecuted, Is.True);
+            receiptsTracer.EndTxTrace();
+        }
+
         receiptsTracer.EndBlockTrace();
-        return receiptsTracer.TxReceipts[0];
+        return receiptsTracer.TxReceipts.ToArray();
     }
 }
