@@ -224,6 +224,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("archive", false)]
     [TestCase("mainnet.json", true)]
+    [TestCase("mainnet_aztec.json", true)]
     [TestCase("sepolia.json", true)]
     [TestCase("gnosis.json", true)]
     [TestCase("chiado.json", true)]
@@ -258,6 +259,19 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<ISyncConfig, ulong>(configWildcard, static c => c.AncientReceiptsBarrier, barrier);
     }
 
+    /// <summary>
+    /// An Aztec node traces about 3,600 recent blocks (debug_traceTransaction), so its flat history keeps a rolling
+    /// window with headroom over that, and its own db path means it always syncs fresh onto the flat backend.
+    /// </summary>
+    [Test]
+    public void Aztec_config_keeps_a_trace_window()
+    {
+        Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.HistoryEnabled, true);
+        Test<IFlatDbConfig, HistoryRetentionMode>("mainnet_aztec.json", static c => c.HistoryRetention, HistoryRetentionMode.Rolling);
+        Test<IFlatDbConfig, ulong>("mainnet_aztec.json", static c => c.HistoryRetentionBlocks, 4096UL);
+        Test<IInitConfig, string>("mainnet_aztec.json", static c => c.BaseDbPath, "nethermind_db/mainnet_aztec");
+    }
+
     [TestCase("^spaceneth", "nethermind_db")]
     [TestCase("spaceneth", "spaceneth_db")]
     public void Base_db_path_is_set(string configWildcard, string startWith) => Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => Assert.That(p, Does.StartWith(startWith), cf));
@@ -271,6 +285,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("mainnet_archive.json", true)]
     [TestCase("mainnet.json", true)]
+    [TestCase("mainnet_aztec.json", true)]
     [TestCase("poacore", true)]
     [TestCase("gnosis", true)]
     [TestCase("volta", false)]
@@ -497,6 +512,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         "hoodi_archive.json",
         "mainnet_archive.json",
         "mainnet.json",
+        "mainnet_aztec.json",
         "poacore.json",
         "poacore_archive.json",
         "gnosis.json",

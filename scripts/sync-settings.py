@@ -18,6 +18,12 @@ configs = {
         "multiplierRequirement": 1000,
         "isPoS": True
     },
+    "mainnet_aztec": {
+        "url": "https://api.etherscan.io/v2/api?chainid=1",
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000,
+        "isPoS": True
+    },
     "gnosis": {
         "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,
