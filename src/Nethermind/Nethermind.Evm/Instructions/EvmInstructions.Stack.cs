@@ -1148,6 +1148,14 @@ public static partial class EvmInstructions
         where TOpCount : struct, IOpCount
     {
         VmState<TGasPolicy> vmState = vm.VmState;
+        if (DispatchFlags.ConstTracing && vm.IsTracingActions)
+        {
+            EvmStack traceStack = stack;
+            if (traceStack.Head >= TOpCount.Count + 2 && traceStack.PopMemoryPositionAndUInt256(out UInt256 tracePosition, out UInt256 traceLength))
+                TraceDynamicMemoryGas(vm, TGasPolicy.GetRemainingGas(in gas), 0,
+                    GasCostOf.Log + (ulong)TOpCount.Count * GasCostOf.LogTopic + traceLength.u0 * GasCostOf.LogData,
+                    in tracePosition, in traceLength);
+        }
         // Logging is not permitted in static call contexts.
         if (vmState.IsStatic) goto StaticCallViolation;
 

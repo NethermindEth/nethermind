@@ -34,6 +34,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private bool _disposed;
     private bool _failedBeforeExecution;
     private bool _pendingStep;
+    private string? _rootError;
     private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -44,12 +45,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private readonly TracerFunctions _functions;
 
     /// <summary>Creates a JavaScript tracer using the supplied execution context and engine.</summary>
-    /// <remarks>SELFDESTRUCT refunds are credited at transaction finalization, avoiding a second credit at the opcode boundary.</remarks>
     public GethLikeJavaScriptTxTracer(
         Engine engine,
         Db db,
         Context ctx,
-        GethTraceOptions options) : base(options, destroyRefund: 0)
+        GethTraceOptions options) : base(options, destroyRefund: engine.SelfDestructRefund)
     {
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -165,6 +165,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _failedBeforeExecution = false;
         _pendingStep = opcode is Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
             or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
+            or Instruction.KECCAK256 or Instruction.EXP or Instruction.MCOPY or Instruction.EXTCODECOPY
+            or Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4
+            or Instruction.CREATE or Instruction.CREATE2 or Instruction.SELFDESTRUCT
             or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL;
     }
 
@@ -278,7 +281,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        InvokeExit(0, Array.Empty<byte>(), evmExceptionType.GetEvmExceptionDescription());
+        InvokeExit(0, Array.Empty<byte>(), _log.depth == _depth + 1 && _log.error is not null
+            ? _log.error : evmExceptionType.GetEvmExceptionDescription());
     }
 
     private void InvokeExit(ulong gas, ReadOnlyMemory<byte> output, string? error = null)
@@ -297,6 +301,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             _tracer.exit(_result);
         }
 
+        if (_depth == 0) _rootError = error;
         _depth--;
     }
 
@@ -305,7 +310,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
         _ctx.Output = output;
-        _ctx.error = error;
+        _ctx.error = _rootError ?? error;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -346,6 +351,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
     public override void ReportRefund(long refund)
     {
+        if (_depth < 0) return;
         base.ReportRefund(refund);
         _log.refund = CurrentRefund;
     }
