@@ -357,8 +357,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
-            // Only the shared bundles, which read-only execution gathers, may build a slot filter; the build happens
-            // on their first filtered read, never here.
+            // Flagged bundles are one-off full scans (trie verification) that never read through the slot filter, so
+            // only shared bundles get bits per key. Nothing is built here: the first filtered read builds the filter.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
                 new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics),
                 slotFilterBitsPerKey: shareable ? _inMemorySlotFilterBitsPerKey : 0);
