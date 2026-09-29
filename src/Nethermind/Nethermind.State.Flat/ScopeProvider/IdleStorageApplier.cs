@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Logging;
 
@@ -15,17 +16,26 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// On Linux the thread runs under SCHED_IDLE, so it only gets a core the scheduler would otherwise leave idle. It never
 /// takes a lock the block thread waits on: work arrives through a lock-free queue, and each storage tree hands itself
 /// to the block-end write batch with a single atomic exchange, so a preempted apply is abandoned rather than waited for.
+/// <para>
+/// A block only uses the thread when it follows an idle gap. Processed back to back, as in sync or catch-up, every core
+/// is already busy through the whole block, and the thread's work slows execution by more than it saves at the end.
+/// </para>
 /// </remarks>
 internal sealed class IdleStorageApplier
 {
     private const int SchedIdle = 5;
     private const int YieldsBeforeSleeping = 64;
 
+    /// <summary>Time since the previous block committed for a block to count as not processed back to back.</summary>
+    /// <remarks>Settable for tests, which share the one thread.</remarks>
+    internal static TimeSpan MinIdleGap { get; set; } = TimeSpan.FromMilliseconds(250);
+
     private static readonly Lock InstanceLock = new();
     private static IdleStorageApplier? _instance;
 
     private readonly ConcurrentQueue<FlatStorageTree> _queue = new();
     private readonly ILogger _logger;
+    private long _lastBlockCommit;
 
     private IdleStorageApplier(ILogManager logManager)
     {
@@ -47,6 +57,16 @@ internal sealed class IdleStorageApplier
 
     public void Enqueue(FlatStorageTree storageTree) => _queue.Enqueue(storageTree);
 
+    /// <summary>Records that a block processing scope committed a block.</summary>
+    public void BlockCommitted() => Volatile.Write(ref _lastBlockCommit, Stopwatch.GetTimestamp());
+
+    /// <summary>Whether a block starting now follows an idle gap since the previous block committed.</summary>
+    public bool FollowsIdleGap()
+    {
+        long lastCommit = Volatile.Read(ref _lastBlockCommit);
+        return lastCommit == 0 || Stopwatch.GetElapsedTime(lastCommit) >= MinIdleGap;
+    }
+
     private void Run()
     {
         LowerPriority();
@@ -60,6 +80,10 @@ internal sealed class IdleStorageApplier
                 try
                 {
                     storageTree.ApplyEarlyWrites();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The block's scope was disposed mid-pass; its early work is discarded with it.
                 }
                 catch (Exception e)
                 {

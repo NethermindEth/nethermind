@@ -99,6 +99,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
+            _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
     }
 
@@ -563,9 +564,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
         if (logger.IsInfo) logger.Info($"Early storage apply block={blockNumber} applied={applied} reused={reused} restored={restored} abandoned={abandoned}");
 
-        // The next block in this scope starts with its own trees.
+        // The next block in this scope starts with its own trees, and right after this one, so back to back.
+        _earlyApplier!.BlockCommitted();
         _earlyApplyGeneration++;
-        _earlyApplyClosed = false;
+        _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
     }
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.

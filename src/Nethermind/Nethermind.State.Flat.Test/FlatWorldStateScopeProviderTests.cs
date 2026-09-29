@@ -745,6 +745,7 @@ public class FlatWorldStateScopeProviderTests
     public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd)
     {
         const int slotCount = 40;
+        IdleStorageApplier.MinIdleGap = TimeSpan.Zero;
         using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
@@ -802,6 +803,25 @@ public class FlatWorldStateScopeProviderTests
     {
         using TestContext ctx = new();
         Assert.That(ctx.Scope.AppliesStorageWritesEarly, Is.False);
+    }
+
+    [Test]
+    public void EarlyStorageApply_SkipsBlocksProcessedBackToBack()
+    {
+        IdleStorageApplier.MinIdleGap = TimeSpan.FromHours(1);
+        try
+        {
+            using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+            FlatWorldStateScope scope = ctx.Scope;
+            scope.Commit(1);
+
+            // The next block in the scope starts right after the commit, so it runs without the early apply thread.
+            Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+        }
+        finally
+        {
+            IdleStorageApplier.MinIdleGap = TimeSpan.Zero;
+        }
     }
 
     [Test]
