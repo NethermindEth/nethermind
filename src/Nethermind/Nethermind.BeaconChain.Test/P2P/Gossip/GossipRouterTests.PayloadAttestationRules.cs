@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -317,6 +318,89 @@ public partial class GossipRouterTests
         }
 
         Assert.That(reopened, Is.Zero, "every pair was marked verified");
+    }
+
+    /// <summary>
+    /// Votes under distinct validator indices are cheap to send: a flood of them must not reopen a verified pair for more verifies,
+    /// nor stop a validator's first vote from reaching fork choice (gloas/p2p-interface.md <c>payload_attestation_message</c>).
+    /// </summary>
+    [Test]
+    public void Payload_attestation_flood_of_distinct_validators_neither_reopens_a_verified_pair_nor_blocks_a_new_one()
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        int raised = 0;
+        router.PayloadAttestationMessageReceived += _ => raised++;
+        PayloadAttestationMessage genuine = PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 1);
+        Handle(router, genuine);
+        router.MarkPayloadAttestationVerified(genuine);
+        raised = 0;
+
+        const int flood = 3 * GossipRouter.PayloadAttestationPairsPerSlot;
+        for (ulong index = 1000; index < 1000 + flood; index++)
+        {
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, index, signatureSeed: 2));
+        }
+
+        int floodRaised = raised;
+        raised = 0;
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 3));
+        int verifiedRaised = raised;
+        raised = 0;
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator + 1, signatureSeed: 3));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(floodRaised, Is.EqualTo(flood), "fixture: every flooded vote was new");
+            Assert.That(verifiedRaised, Is.Zero, "the verified pair is still closed");
+            Assert.That(raised, Is.EqualTo(1), "a validator's first vote after the flood is still raised");
+            Assert.That(router.IsPayloadAttestationVerified(genuine), Is.True);
+        }
+    }
+
+    /// <summary>
+    /// A pair that spent its verify attempts reopens only after <see cref="GossipRouter.PayloadAttestationPairsPerSlot"/> newer pairs push it out,
+    /// which bounds the pairs a slot holds and makes each reopening cost a flood of that size.
+    /// </summary>
+    [TestCase(-1, 0)]
+    [TestCase(0, 1)]
+    public void Payload_attestation_pair_with_spent_attempts_reopens_only_after_a_full_cache_of_newer_pairs(int newerPairsPastCapacity, int expectedRaised)
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        int raised = 0;
+        router.PayloadAttestationMessageReceived += vote => raised += vote.ValidatorIndex == PtcValidator ? 1 : 0;
+        for (byte seed = 1; seed <= GossipRouter.PayloadAttestationVerifyAttempts; seed++)
+        {
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, seed));
+        }
+
+        Assert.That(raised, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts), "fixture: the pair spent its attempts");
+        for (ulong index = 1000; index < 1000 + (ulong)(GossipRouter.PayloadAttestationPairsPerSlot + newerPairsPastCapacity); index++)
+        {
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, index));
+        }
+
+        raised = 0;
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 100));
+
+        Assert.That(raised, Is.EqualTo(expectedRaised));
+    }
+
+    /// <summary>Pairs of a slot too old to receive votes are dropped, so the tracked pairs stay bounded as slots advance.</summary>
+    [Test]
+    public void Payload_attestation_pairs_of_slots_that_can_no_longer_be_voted_are_dropped()
+    {
+        ManualTimestamper timestamper = new(SepoliaSlotStart(PtcSlot).AddMilliseconds(9000));
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, timestamper), LimboLogs.Instance);
+        PayloadAttestationMessage old = PtcVote(PtcBlockRoot, PtcSlot);
+        router.MarkPayloadAttestationVerified(old);
+        Assert.That(router.IsPayloadAttestationVerified(old), Is.True, "fixture: the pair is tracked");
+
+        timestamper.Add(TimeSpan.FromSeconds(3 * Sepolia.SecondsPerSlot));
+        router.MarkPayloadAttestationVerified(PtcVote(PtcBlockRoot, PtcSlot + 3));
+
+        Assert.That(router.IsPayloadAttestationVerified(old), Is.False, "the slot is past the current-slot window and its pairs are gone");
     }
 
     /// <summary>A vote for a block not held yet spends none of the pair's verify attempts: the same member's vote is raised once the block is stored.</summary>
