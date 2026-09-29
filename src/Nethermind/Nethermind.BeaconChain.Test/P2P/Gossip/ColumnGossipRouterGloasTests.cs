@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Google.Protobuf;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
@@ -138,6 +139,25 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.GetPendingGloas(UnknownRoot, Column).Select(static s => s.KzgProofs![0].AsSpan().ToArray()),
             Is.EquivalentTo(new[] { genuine.KzgProofs![0].AsSpan().ToArray(), forged.KzgProofs![0].AsSpan().ToArray() }),
             "both candidates are kept, so availability can still find the genuine one");
+    }
+
+    /// <summary>gloas/p2p-interface.md: [REJECT] the block passes validation; a block that was never recorded as failed stays the IGNORE of an unseen one, which is parked.</summary>
+    [TestCase(true, MessageValidity.Rejected, ColumnGossipDropReason.FailedBlockValidation, 0)]
+    [TestCase(false, MessageValidity.Ignored, ColumnGossipDropReason.UnknownBlock, 1)]
+    public void A_sidecar_whose_block_failed_validation_is_rejected_and_not_parked(bool blockFailed, MessageValidity expected, ColumnGossipDropReason reason, int parked)
+    {
+        FailedBlockRoots failedBlocks = new();
+        failedBlocks.Add(blockFailed ? UnknownRoot : BlockRoot, BlockSlot);
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(failedBlocks: failedBlocks);
+
+        MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: UnknownRoot)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validity, Is.EqualTo(expected));
+            Assert.That(router.GetDropCount(reason), Is.EqualTo(1));
+            Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Has.Length.EqualTo(parked));
+        }
     }
 
     [Test]
@@ -598,14 +618,14 @@ public class ColumnGossipRouterGloasTests
     }
 
     private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool) Create(BeaconChainSpec? spec = null, ulong? wallSlot = null, ulong[]? subscribed = null,
-        Action<MemColumnsDb<BeaconChainDbColumns>, BeaconChainStore>? populate = null, ManualTimestamper? timestamper = null)
+        Action<MemColumnsDb<BeaconChainDbColumns>, BeaconChainStore>? populate = null, ManualTimestamper? timestamper = null, FailedBlockRoots? failedBlocks = null)
     {
-        (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = CreateWithTopic(spec, wallSlot, subscribed, populate, timestamper);
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = CreateWithTopic(spec, wallSlot, subscribed, populate, timestamper, failedBlocks);
         return (router, pool);
     }
 
     private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, ForwardingTopic Topic) CreateWithTopic(BeaconChainSpec? spec = null, ulong? wallSlot = null, ulong[]? subscribed = null,
-        Action<MemColumnsDb<BeaconChainDbColumns>, BeaconChainStore>? populate = null, ManualTimestamper? timestamper = null)
+        Action<MemColumnsDb<BeaconChainDbColumns>, BeaconChainStore>? populate = null, ManualTimestamper? timestamper = null, FailedBlockRoots? failedBlocks = null)
     {
         spec ??= Sepolia;
         ulong slot = wallSlot ?? BlockSlot;
@@ -621,7 +641,7 @@ public class ColumnGossipRouterGloasTests
 
         DataColumnSidecarPool pool = new();
         SlotClock clock = new(spec, timestamper ?? WallClock(spec, slot));
-        ColumnGossipRouter router = new(spec, clock, LimboLogs.Instance, pool, store);
+        ColumnGossipRouter router = new(spec, clock, LimboLogs.Instance, pool, store, failedBlocks: failedBlocks);
         ForwardingTopic topic = new();
         router.Start(_ => topic, ForkDigest.Compute(spec, spec.GetEpoch(slot)), subscribed ?? [Column]);
         return (router, pool, topic);

@@ -75,6 +75,7 @@ public sealed class BlockImporter : IBlockImporter
     private readonly ExecutionPayloadEnvelopeImporter _envelopes;
     private readonly ForkChoiceSnapshotHolder? _forkChoiceSnapshots;
     private readonly ProposerLookaheadHolder? _proposerLookaheads;
+    private readonly FailedBlockRoots? _failedBlocks;
 
     /// <summary>Imported-but-not-finalized block roots and their slots, for store pruning at finalization.</summary>
     private readonly Dictionary<Hash256, ulong> _unfinalized = [];
@@ -112,6 +113,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <param name="anchorState">The post-state of <paramref name="anchorBlock"/>, of the same fork.</param>
     /// <param name="forkChoiceSnapshots">Where <see cref="ComputeHead"/> publishes a copy of the fork-choice store for readers off the import thread; <c>null</c> publishes nothing.</param>
     /// <param name="proposerLookaheads">Where <see cref="ComputeHead"/> publishes the head state's proposer lookahead; <c>null</c> publishes nothing.</param>
+    /// <param name="failedBlocks">Where the root of a block refused for failing validation is recorded, until it finalizes; <c>null</c> records nothing.</param>
     /// <exception cref="ArgumentException">The anchor state and block belong to different forks.</exception>
     public BlockImporter(
         BeaconChainSpec spec,
@@ -127,7 +129,8 @@ public sealed class BlockImporter : IBlockImporter
         ForkedSignedBeaconBlock anchorBlock,
         Hash256 anchorRoot,
         ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
-        ProposerLookaheadHolder? proposerLookaheads = null)
+        ProposerLookaheadHolder? proposerLookaheads = null,
+        FailedBlockRoots? failedBlocks = null)
     {
         _spec = spec;
         _store = store;
@@ -139,6 +142,7 @@ public sealed class BlockImporter : IBlockImporter
         _availability = availability;
         _forkChoiceSnapshots = forkChoiceSnapshots;
         _proposerLookaheads = proposerLookaheads;
+        _failedBlocks = failedBlocks;
 
         switch (anchorState, anchorBlock)
         {
@@ -252,9 +256,14 @@ public sealed class BlockImporter : IBlockImporter
                 : BlockImportResult.UnknownParent;
         }
 
-        if (CheckBeforeTransition(block.Slot, block.ParentRoot) is { } refusal)
+        if (CheckBeforeTransition(block.Slot, block.ParentRoot, out bool failedValidation) is { } refusal)
         {
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot} before its state transition: {refusal}");
+            if (failedValidation)
+            {
+                _failedBlocks?.Add(blockRoot, block.Slot);
+            }
+
             return BlockImportResult.Invalid;
         }
 
@@ -271,13 +280,15 @@ public sealed class BlockImporter : IBlockImporter
     /// order, then the transition's own <c>block.slot &gt; parent slot</c>: a block that fails any of them costs no
     /// <c>process_slots</c>, which is linear in the slot distance to the parent.
     /// </summary>
+    /// <param name="failedValidation"><c>true</c> when the refusal is a validation failure that no later time can undo; <c>false</c> for a block from a future slot or at or below the finalized slot.</param>
     /// <returns>Why the block is refused, or <c>null</c>.</returns>
     /// <remarks>
     /// The current slot is the node's clock, allowing <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> as gossip does, never
     /// fork-choice time: <see cref="TickToClock"/> advances that to at least the block's own slot before <c>OnBlock</c>.
     /// </remarks>
-    private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot)
+    private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot, out bool failedValidation)
     {
+        failedValidation = false;
         ulong currentSlot = _clock.CurrentSlot;
         ulong latestSlot = _clock.UnixMilliseconds + GossipRouter.MaximumGossipClockDisparityMs >= _clock.SlotStartMilliseconds(currentSlot + 1) ? currentSlot + 1 : currentSlot;
         if (slot > latestSlot)
@@ -299,6 +310,7 @@ public sealed class BlockImporter : IBlockImporter
             // specs/bellatrix/optimistic-sync.md: the parent of the block MUST NOT have an INVALIDATED execution payload.
             if (node.Root == parentRoot && node.ExecutionStatus == ExecutionStatus.Invalid)
             {
+                failedValidation = true;
                 return $"its parent {parentRoot} has an invalid execution payload";
             }
 
@@ -311,10 +323,12 @@ public sealed class BlockImporter : IBlockImporter
 
         if (checkpointBlock != finalized.Root)
         {
+            failedValidation = true;
             return $"the block does not descend from the finalized checkpoint {finalized}";
         }
 
         ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
+        failedValidation = slot <= parentSlot;
         return slot > parentSlot ? null : $"the block is not after its parent's slot {parentSlot}";
     }
 
@@ -393,6 +407,7 @@ public sealed class BlockImporter : IBlockImporter
         catch (BeaconStateException e)
         {
             if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {e.Message}");
+            MarkFailed(blockRoot, block.Slot, e);
             return BlockImportResult.Invalid;
         }
         finally
@@ -489,6 +504,7 @@ public sealed class BlockImporter : IBlockImporter
         catch (BeaconStateException e)
         {
             if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {e.Message}");
+            MarkFailed(blockRoot, block.Slot, e);
             return BlockImportResult.Invalid;
         }
 
@@ -525,6 +541,15 @@ public sealed class BlockImporter : IBlockImporter
         _gloasLineageRoot = blockRoot;
         _gloasLineageCache = cache;
         return BlockImportResult.Imported;
+    }
+
+    /// <summary>Records a block the state transition refused, unless only its proposer signature failed: that signature is not part of the block root, so a forged copy would mark the honest block.</summary>
+    private void MarkFailed(Hash256 blockRoot, ulong slot, BeaconStateException failure)
+    {
+        if (failure is not ProposerSignatureException)
+        {
+            _failedBlocks?.Add(blockRoot, slot);
+        }
     }
 
     /// <summary>
@@ -593,7 +618,7 @@ public sealed class BlockImporter : IBlockImporter
     private BlockImportResult DeferBehindDeferredParent(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot, DeferredBlock parent)
     {
         ulong slot = signedBlock.Message!.Slot;
-        string? refusal = CheckBeforeTransition(slot, parent.AncestorRoot) ?? (slot > parent.Slot ? null : $"the block is not after its parent's slot {parent.Slot}");
+        string? refusal = CheckBeforeTransition(slot, parent.AncestorRoot, out _) ?? (slot > parent.Slot ? null : $"the block is not after its parent's slot {parent.Slot}");
         if (refusal is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {slot} before its state transition: {refusal}");
@@ -737,6 +762,7 @@ public sealed class BlockImporter : IBlockImporter
         _store.PruneExecutionPayloadEnvelopes(_clock.CurrentEpoch, _store.TryGetAnchor(out _, out ulong anchorSlot) ? Math.Min(anchorSlot, finalizedSlot) : _runner.GetBlockSlot(finalized.Root) ?? 0);
         // on_block refuses every block at or below the finalized epoch's start slot, even when that slot is empty.
         ulong neverImportable = Math.Max(finalizedSlot, BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch));
+        _failedBlocks?.Prune(neverImportable);
         foreach ((Hash256 root, DeferredBlock deferred) in _deferred)
         {
             if (deferred.Slot <= neverImportable)
@@ -1139,6 +1165,7 @@ public sealed class BlockImporter : IBlockImporter
 /// </param>
 /// <param name="forkChoiceSnapshots">Where every importer publishes its fork-choice snapshots; <c>null</c> publishes nothing.</param>
 /// <param name="proposerLookaheads">Where every importer publishes its head's proposer lookahead; <c>null</c> publishes nothing.</param>
+/// <param name="failedBlocks">Where every importer records the roots of blocks it refused for failing validation; <c>null</c> records nothing.</param>
 public sealed class BlockImporterFactory(
     BeaconChainSpec spec,
     BeaconChainStore store,
@@ -1150,7 +1177,8 @@ public sealed class BlockImporterFactory(
     SlotClock clock,
     BeaconDiscovery? discovery = null,
     ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
-    ProposerLookaheadHolder? proposerLookaheads = null) : IBlockImporterFactory
+    ProposerLookaheadHolder? proposerLookaheads = null,
+    FailedBlockRoots? failedBlocks = null) : IBlockImporterFactory
 {
     public IBlockImporter Create(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot)
     {
@@ -1169,7 +1197,8 @@ public sealed class BlockImporterFactory(
             anchorBlock,
             anchorRoot,
             forkChoiceSnapshots,
-            proposerLookaheads);
+            proposerLookaheads,
+            failedBlocks);
     }
 
 }

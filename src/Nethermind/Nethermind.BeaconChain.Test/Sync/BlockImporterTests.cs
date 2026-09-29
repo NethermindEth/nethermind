@@ -181,7 +181,8 @@ public class BlockImporterTests
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
         WarningCapture warnings = new();
         SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeMilliseconds((long)(chain.Spec.GenesisTime + chain.Spec.SecondsPerSlot) * 1000 - millisecondsBeforeSlotOne).UtcDateTime));
-        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), warnings, importClock: clock);
+        FailedBlockRoots failed = new();
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), warnings, importClock: clock, failedBlocks: failed);
         BeaconBlock block = chain.Block.Message!;
         block.Slot = slot;
         Hash256 root = SszRoots.HashTreeRoot(block);
@@ -191,6 +192,7 @@ public class BlockImporterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(expected));
+            Assert.That(failed.Contains(root), Is.False, "a block from a slot the clock has not reached may still become valid");
             Assert.That(warnings.Warnings.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.Invalid));
         }
     }
@@ -785,7 +787,8 @@ public class BlockImporterTests
     {
         UnsignedChain chain = UnsignedChain.Create();
         WarningCapture warnings = new();
-        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, engine: new ScriptedPayloadEngine(ExecutionStatus.Optimistic));
+        FailedBlockRoots failed = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, engine: new ScriptedPayloadEngine(ExecutionStatus.Optimistic), failedBlocks: failed);
         UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
         UnsignedChain.ChainBlock child = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0xa2);
         Assert.That(importer.Import(parent.Block, parent.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
@@ -797,6 +800,204 @@ public class BlockImporterTests
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
             Assert.That(warnings.Warnings, Has.Some.Contains("before its state transition").And.Contains("has an invalid execution payload"));
+            Assert.That(failed.Contains(child.Root), Is.True, "column gossip must reject a sidecar whose parent the importer refused");
+        });
+    }
+
+    /// <summary>fulu/p2p-interface.md data_column_sidecar_{subnet_id}: [REJECT] the sidecar's block's parent passes validation.</summary>
+    [Test]
+    public void Block_refused_by_the_state_transition_is_recorded_as_failed()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        FailedBlockRoots failed = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), failedBlocks: failed);
+        UnsignedChain.ChainBlock valid = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
+        UnsignedChain.ChainBlock broken = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xb1);
+        broken.Block.Message!.StateRoot = Keccak.Compute("wrong state root");
+        Hash256 brokenRoot = SszRoots.HashTreeRoot(broken.Block.Message);
+
+        BlockImportResult validResult = importer.Import(valid.Block, valid.Root, verifySignatures: false);
+        BlockImportResult brokenResult = importer.Import(broken.Block, brokenRoot, verifySignatures: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That((validResult, brokenResult), Is.EqualTo((BlockImportResult.Imported, BlockImportResult.Invalid)));
+            Assert.That(failed.Contains(brokenRoot), Is.True);
+            Assert.That(failed.Contains(valid.Root), Is.False, "an imported block is not a failed one");
+            Assert.That(failed.Count, Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
+    /// The proposer signature is not part of the block root, so a copy carrying a forged one must not mark the root of the honest
+    /// block, or its child sidecars would be rejected.
+    /// </summary>
+    [Test]
+    public void Block_with_only_a_bad_proposer_signature_is_not_recorded_as_failed()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        WarningCapture warnings = new();
+        FailedBlockRoots failed = new();
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), warnings, failedBlocks: failed);
+        BlsSignature genuine = chain.Block.Signature;
+        chain.Block.Signature = new BlsSignature(SignatureSets.G2PointAtInfinity);
+
+        BlockImportResult forged = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+        chain.Block.Signature = genuine;
+        BlockImportResult honest = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That((forged, honest), Is.EqualTo((BlockImportResult.Invalid, BlockImportResult.Imported)));
+            Assert.That(warnings.Warnings, Has.Some.Contains("Invalid proposer signature"), "fixture: the forged copy fails on its signature");
+            Assert.That(failed.Contains(chain.BlockRoot), Is.False);
+        });
+    }
+
+    /// <summary>
+    /// A block at or below the finalized slot may be a perfectly valid block of a dead branch, so only a refusal that no later time
+    /// can undo is recorded: sidecars of an honest block must not be rejected.
+    /// </summary>
+    [TestCase(0UL, false, TestName = "Block_at_the_finalized_slot_is_not_recorded_as_failed")]
+    [TestCase(2UL, true, TestName = "Block_not_after_its_parents_slot_is_recorded_as_failed")]
+    public void Refusal_before_the_state_transition_is_recorded_only_for_a_validation_failure(ulong slot, bool recorded)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        FailedBlockRoots failed = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), failedBlocks: failed);
+        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 2, payloadHashByte: 0xa1);
+        UnsignedChain.ChainBlock child = chain.Extend(parent.Root, slot: 3, payloadHashByte: 0xa2);
+        Assert.That(importer.Import(parent.Block, parent.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        child.Block.Message!.Slot = slot;
+        Hash256 root = SszRoots.HashTreeRoot(child.Block.Message);
+
+        BlockImportResult result = importer.Import(child.Block, root, verifySignatures: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(failed.Contains(root), Is.EqualTo(recorded));
+        });
+    }
+
+    /// <summary>
+    /// phase0/fork-choice.md on_block: a block that does not descend from the finalized checkpoint block can never become canonical,
+    /// so its refusal is a validation failure.
+    /// </summary>
+    [Test]
+    public void Block_off_the_finalized_chain_is_recorded_as_failed()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        WarningCapture warnings = new();
+        FailedBlockRoots failed = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, failedBlocks: failed);
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
+        Assert.That(importer.Import(first.Block, first.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        // A trusted import runs in place on the anchor state object, so this edits the importer's post-state of the first block too.
+        foreach (BeaconStateFulu state in (BeaconStateFulu[])[chain.Anchor.AnchorState, first.PostState])
+        {
+            // process_slot would otherwise seal the edited state's root into the header, and the child's parent root would miss the first block.
+            state.LatestBlockHeader!.StateRoot = first.Block.Message!.StateRoot;
+            state.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 1, Root = chain.AnchorRoot };
+            state.FinalizedCheckpoint = new Checkpoint { Epoch = 1, Root = chain.AnchorRoot };
+        }
+
+        // Its post-state finalizes epoch 1 on the anchor, which leaves this block, at a slot of epoch 0, off the finalized chain.
+        UnsignedChain.ChainBlock offChain = chain.Extend(first.Root, slot: 2, payloadHashByte: 0xa2);
+        UnsignedChain.ChainBlock child = chain.Extend(offChain.Root, slot: Presets.SlotsPerEpoch + 1, payloadHashByte: 0xa3);
+        Assert.That(importer.Import(offChain.Block, offChain.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+
+        BlockImportResult result = importer.Import(child.Block, child.Root, verifySignatures: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(warnings.Warnings, Has.Some.Contains("does not descend from the finalized checkpoint"), "fixture: refused for its ancestry");
+            Assert.That(failed.Contains(child.Root), Is.True);
+        });
+    }
+
+    /// <summary>
+    /// Fork choice checks availability against the live sidecar pool a second time, after the state transition. Columns that vanish
+    /// in between are a delay, not a verdict: the block stays importable, so its root must not mark the sidecars of its children.
+    /// </summary>
+    [Test]
+    public void Block_whose_data_goes_missing_after_the_first_availability_check_is_not_recorded_as_failed()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        FailedBlockRoots failed = new();
+        AvailableOnce availability = new();
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), failedBlocks: failed, availability: availability);
+
+        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(availability.Calls, Is.EqualTo(2), "fixture: fork choice asked again");
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(failed.Contains(chain.BlockRoot), Is.False);
+        });
+    }
+
+    [Test]
+    public void Gloas_block_refused_by_the_state_transition_is_recorded_as_failed()
+    {
+        const ulong forkSlot = 32;
+        SignedGloasChain chain = new();
+        FailedBlockRoots failed = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), failedBlocks: failed);
+        SignedGloasChain.Block broken = chain.Next(null, forkSlot, full: false, 0xA1);
+        broken.Signed.Message!.StateRoot = Keccak.Compute("wrong state root");
+        Hash256 brokenRoot = SszRoots.HashTreeRoot(broken.Signed.Message);
+
+        BlockImportResult result = importer.Import(broken.Forked, brokenRoot, verifySignatures: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(failed.Contains(brokenRoot), Is.True);
+        });
+    }
+
+    [Test]
+    public void Gloas_block_with_only_a_bad_proposer_signature_is_not_recorded_as_failed()
+    {
+        SignedGloasChain chain = new();
+        FailedBlockRoots failed = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), failedBlocks: failed);
+        SignedGloasChain.Block block = chain.Next(null, 32, full: false, 0xA1);
+        BlsSignature genuine = block.Signed.Signature;
+        block.Signed.Signature = new BlsSignature(SignatureSets.G2PointAtInfinity);
+
+        BlockImportResult forged = importer.Import(block.Forked, block.Root, verifySignatures: true);
+        block.Signed.Signature = genuine;
+        BlockImportResult honest = importer.Import(block.Forked, block.Root, verifySignatures: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That((forged, honest), Is.EqualTo((BlockImportResult.Invalid, BlockImportResult.Imported)));
+            Assert.That(failed.Contains(block.Root), Is.False);
+        });
+    }
+
+    [Test]
+    public void Finalization_forgets_failed_blocks_at_or_below_the_finalized_slot()
+    {
+        SignedGloasChain chain = new();
+        FailedBlockRoots failed = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), failedBlocks: failed);
+        ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(1);
+        Hash256 atFinalized = Keccak.Compute("at the finalized slot");
+        Hash256 afterFinalized = Keccak.Compute("after the finalized slot");
+        failed.Add(atFinalized, finalizedSlot);
+        failed.Add(afterFinalized, finalizedSlot + 1);
+
+        importer.OnFinalized(new CheckpointRef(1, chain.AnchorRoot));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(failed.Contains(atFinalized), Is.False, "a finalized slot is no longer kept");
+            Assert.That(failed.Contains(afterFinalized), Is.True);
         });
     }
 
@@ -884,7 +1085,7 @@ public class BlockImporterTests
     private static long RefusedByForkChoice(string operation) =>
         Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
-    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null) =>
+    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null, FailedBlockRoots? failedBlocks = null, IDataAvailabilityRule? availability = null) =>
         new(
             chain.Spec,
             new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
@@ -892,14 +1093,22 @@ public class BlockImporterTests
             engine ?? new ValidPayloadEngine(),
             new BeaconChainConfig(),
             warnings is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(warnings)),
-            new CustodySamplingAvailability(new FixedCustodySource(custody), new DataColumnPoolSource(pool), clock ?? chain.ClockAtEpoch(0)),
+            availability ?? new CustodySamplingAvailability(new FixedCustodySource(custody), new DataColumnPoolSource(pool), clock ?? chain.ClockAtEpoch(0)),
             static (_, _) => false,
             importClock ?? new SlotClock(chain.Spec, Timestamper.Default),
             new ForkedBeaconState.OfFulu(chain.AnchorState),
             new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock),
             chain.AnchorRoot,
             forkChoiceSnapshots,
-            proposerLookaheads);
+            proposerLookaheads,
+            failedBlocks);
+
+    private sealed class AvailableOnce : IDataAvailabilityRule
+    {
+        public int Calls { get; private set; }
+
+        public bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, BeaconChainSpec spec) => ++Calls == 1;
+    }
 
     private sealed class FixedCustodySource(NodeColumnCustody? custody) : INodeColumnCustodySource
     {
