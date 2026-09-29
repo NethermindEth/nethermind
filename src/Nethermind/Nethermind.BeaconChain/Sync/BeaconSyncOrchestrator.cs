@@ -605,6 +605,8 @@ public sealed class BeaconSyncOrchestrator(
                 _pendingRetry.Remove(root);
                 _columnFetchRotations.Remove(root);
                 DropPendingChildren(root);
+                if (retry.Block.Slot > finalizedSlot && _logger.IsWarn)
+                    _logger.Warn($"Dropping block {root} at slot {retry.Block.Slot}: its data did not become available within {MaxPendingRetryAgeEpochs} epochs");
                 // Nothing else brings back a dropped block the head waits on: range sync re-delivers it from the head.
                 if (retry.Block.Slot > finalizedSlot && retry.Block.ParentRoot == _lastHead?.HeadRoot)
                 {

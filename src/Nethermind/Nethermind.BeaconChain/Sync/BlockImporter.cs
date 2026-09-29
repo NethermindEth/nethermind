@@ -323,7 +323,7 @@ public sealed class BlockImporter : IBlockImporter
         IDataAvailabilityRule availability = verifySignatures ? _availability : ReplayedBlockAvailability.Instance;
         if (!availability.IsDataAvailable(block, blockRoot, _spec))
         {
-            if (_logger.IsWarn) _logger.Warn($"Deferring block {blockRoot} at slot {block.Slot}: blob data is not yet available");
+            if (_logger.IsDebug) _logger.Debug($"Deferring block {blockRoot} at slot {block.Slot}: blob data is not yet available");
             return BlockImportResult.DataUnavailable;
         }
 

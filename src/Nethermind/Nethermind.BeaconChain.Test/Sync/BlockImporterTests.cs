@@ -86,7 +86,7 @@ public class BlockImporterTests
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "missing columns are retryable, not a permanent rejection");
             Assert.That(importer.IsKnown(chain.BlockRoot), Is.False, "a block whose data is unavailable must not enter fork choice");
-            Assert.That(warnings.Warnings, Has.Some.Contains("blob data is not yet available"), "deferred for availability, not for some other reason");
+            Assert.That(warnings.Warnings, Has.None.Contains("blob data is not yet available"), "a block trailing its columns is routine at the head, not a warning");
         });
     }
 
