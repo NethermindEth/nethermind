@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.BeaconChain.Crypto;
@@ -779,6 +780,168 @@ public class ForkChoiceRunnerTests
         {
             Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
             Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
+        }
+    }
+
+    /// <summary><c>ulong.MaxValue / 32</c>, the last epoch whose start slot fits in 64 bits.</summary>
+    private const ulong LastEpochWithAStartSlot = 576460752303423487;
+
+    /// <summary>Epochs that a block of epoch 2 can never name: the next epoch, the last one with a start slot, and the largest.</summary>
+    private static ulong[] EpochsAfterTheBlockEpoch() => [3, LastEpochWithAStartSlot, ulong.MaxValue];
+
+    /// <summary>
+    /// A post-state never names a checkpoint epoch after its block's own epoch. A block that does is refused before the store
+    /// adopts it: a justified epoch near 2^64 would make <c>get_head</c> process slots without end, and a finalized one would
+    /// refuse every later block.
+    /// </summary>
+    [Test]
+    public void Timely_block_naming_a_checkpoint_epoch_after_its_own_is_refused_before_any_store_update(
+        [Values] bool justified,
+        [Values(1ul, LastEpochWithAStartSlot, ulong.MaxValue)] ulong epoch)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        TickToSlot(runner, 1);
+        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xc1);
+        BeaconStateFulu doctored = block.PostState.Clone();
+        Checkpoint beyond = new() { Epoch = epoch, Root = chain.AnchorRoot };
+        if (justified)
+            doctored.CurrentJustifiedCheckpoint = beyond;
+        else
+            doctored.FinalizedCheckpoint = beyond;
+
+        AssertRefusedWithTheStoreUnchanged(runner, block, doctored);
+    }
+
+    public enum StateCheckpoint
+    {
+        Justified,
+        Finalized,
+    }
+
+    /// <summary>
+    /// The same refusal for a prior-epoch block whose own justification weighing (every validator voting for its epoch, possible
+    /// from epoch 2) names a sane pulled-up tip: the store must not adopt the state's epoch, nor realize the tip, before the refusal.
+    /// </summary>
+    [Test]
+    public void Prior_epoch_block_with_a_state_checkpoint_epoch_after_its_own_is_refused_before_any_store_update(
+        [Values] StateCheckpoint field,
+        [ValueSource(nameof(EpochsAfterTheBlockEpoch))] ulong epoch)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        TickToSlot(runner, 3 * Presets.SlotsPerEpoch + 1);
+        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 2 * Presets.SlotsPerEpoch + 1, payloadHashByte: 0xc1);
+        BeaconStateFulu doctored = block.PostState.Clone();
+        Array.Fill(doctored.CurrentEpochParticipation!, (byte)(1 << Presets.TimelyTargetFlagIndex));
+        Checkpoint beyond = new() { Epoch = epoch, Root = chain.AnchorRoot };
+        if (field == StateCheckpoint.Justified)
+        {
+            doctored.CurrentJustifiedCheckpoint = beyond;
+        }
+        else
+        {
+            // Justifying epoch 2 over a justified epoch 1 finalizes epoch 1, so the pulled-up finalized checkpoint no longer carries the state's.
+            doctored.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 1, Root = chain.AnchorRoot };
+            doctored.JustificationBits = new BitArray([true, false, false, false]);
+            doctored.FinalizedCheckpoint = beyond;
+        }
+
+        JustificationAndFinalizationState pulledUp = EpochProcessing.ComputeJustificationAndFinalization(doctored, new EpochCache());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pulledUp.CurrentJustifiedCheckpoint.Epoch, Is.EqualTo(2ul), "fixture bug: the pulled-up tip must be sane");
+            Assert.That(pulledUp.FinalizedCheckpoint.Epoch, Is.LessThanOrEqualTo(2ul), "fixture bug: the pulled-up tip must be sane");
+        }
+
+        AssertRefusedWithTheStoreUnchanged(runner, block, doctored);
+    }
+
+    /// <summary>
+    /// A previous-justified epoch of <c>ulong.MaxValue</c> wraps into the first finalization rule of the block's own weighing, so
+    /// only the pulled-up tip names a huge finalized epoch while the post-state's checkpoints are sane.
+    /// </summary>
+    [Test]
+    public void Prior_epoch_block_whose_pulled_up_finalized_epoch_is_after_its_own_is_refused_before_any_store_update()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        TickToSlot(runner, 3 * Presets.SlotsPerEpoch + 1);
+        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 2 * Presets.SlotsPerEpoch + 1, payloadHashByte: 0xc1);
+        BeaconStateFulu doctored = block.PostState.Clone();
+        doctored.PreviousJustifiedCheckpoint = new Checkpoint { Epoch = ulong.MaxValue, Root = chain.AnchorRoot };
+        doctored.JustificationBits = new BitArray([true, true, true, false]);
+
+        Assert.That(EpochProcessing.ComputeJustificationAndFinalization(doctored, new EpochCache()).FinalizedCheckpoint.Epoch, Is.EqualTo(ulong.MaxValue), "fixture bug: only the pulled-up tip may be huge");
+        AssertRefusedWithTheStoreUnchanged(runner, block, doctored);
+    }
+
+    private static void AssertRefusedWithTheStoreUnchanged(ForkChoiceRunner runner, UnsignedChain.ChainBlock block, BeaconStateFulu doctored)
+    {
+        CheckpointRef justifiedBefore = runner.JustifiedCheckpoint;
+        CheckpointRef finalizedBefore = runner.FinalizedCheckpoint;
+        int nodesBefore = runner.Snapshot().Nodes.Count;
+
+        Assert.That(() => runner.OnBlock(block.Block, doctored, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains("after its own epoch"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
+            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(justifiedBefore));
+            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(finalizedBefore));
+            Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
+        }
+    }
+
+    /// <summary>
+    /// The spec's <c>store.blocks</c> is never pruned, so a proposal on a fork that finality left behind still makes a
+    /// later block of the same slot and proposer an equivocation until finality passes that slot. The fork block
+    /// (slot 289) and a rival of the finalized block (slot 288) are imported before it, so the proto-array's prune, which drops
+    /// everything before the finalized block, removes both: the record at slot 289 stays, the one at the finalized slot goes.
+    /// </summary>
+    [Test]
+    public void Proposer_of_a_pruned_fork_block_is_kept_until_finality_passes_its_slot()
+    {
+        const ulong FinalizedEpoch = 9;
+        const ulong FinalizedSlot = FinalizedEpoch * Presets.SlotsPerEpoch;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        TickToSlot(runner, FinalizedSlot + 2);
+
+        Hash256 parentRoot = chain.AnchorRoot;
+        for (ulong slot = 1; slot < FinalizedSlot; slot++)
+        {
+            UnsignedChain.ChainBlock main = chain.Extend(parentRoot, slot, payloadHashByte: (byte)(slot % 0xe0 + 1));
+            runner.OnBlock(main.Block, main.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+            parentRoot = main.Root;
+        }
+
+        UnsignedChain.ChainBlock fork = chain.Extend(parentRoot, FinalizedSlot + 1, payloadHashByte: 0xf1);
+        runner.OnBlock(fork.Block, fork.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        UnsignedChain.ChainBlock atFinalizedSlot = chain.Extend(parentRoot, FinalizedSlot, payloadHashByte: 0xf5);
+        runner.OnBlock(atFinalizedSlot.Block, atFinalizedSlot.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        UnsignedChain.ChainBlock finalized = chain.Extend(parentRoot, FinalizedSlot, payloadHashByte: 0xf2);
+        runner.OnBlock(finalized.Block, finalized.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+
+        UnsignedChain.ChainBlock finalizing = chain.Extend(finalized.Root, FinalizedSlot + 2, payloadHashByte: 0xf3);
+        BeaconStateFulu doctored = finalizing.PostState.Clone();
+        doctored.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = FinalizedEpoch, Root = finalized.Root };
+        doctored.FinalizedCheckpoint = new Checkpoint { Epoch = FinalizedEpoch, Root = finalized.Root };
+        runner.OnBlock(finalizing.Block, doctored, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(FinalizedEpoch, finalized.Root)), "fixture bug");
+
+        UnsignedChain.ChainBlock sameProposal = chain.Extend(finalized.Root, FinalizedSlot + 1, payloadHashByte: 0xf4);
+        runner.OnBlock(sameProposal.Block, sameProposal.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        runner.Prune();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
+            Assert.That(fork.Block.Message!.ProposerIndex, Is.EqualTo(sameProposal.Block.Message!.ProposerIndex), "fixture bug");
+            Assert.That(atFinalizedSlot.Block.Message!.ProposerIndex, Is.EqualTo(finalized.Block.Message!.ProposerIndex), "fixture bug");
+            Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.True, "slot 289 is after the finalized slot");
+            Assert.That(runner.IsProposerEquivocation(finalized.Root), Is.False, "the rival at the finalized slot 288 is dropped");
+            Assert.That(runner.IsProposerEquivocation(finalizing.Root), Is.False, "a unique proposal is no equivocation");
         }
     }
 

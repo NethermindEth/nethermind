@@ -68,7 +68,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private const int RandaoMixesDepth = 16;
     private const ulong SlashingsChunkCount = 2048;
     private const ulong ProposerLookaheadChunkCount = 16;
-    private const int JustificationBitsLength = 4;
+    private const int JustificationBitsLength = Presets.JustificationBitsLength;
     private const int FieldCount = 38;
     private const int GloasFieldCount = 46;
     private const int ParallelLeafThreshold = 2048;
