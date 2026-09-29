@@ -54,6 +54,7 @@ public class CanonicalIndexReorgTests
         Assert.That(fixture.ComputeHead(), Is.EqualTo(b2.Root), "one vote puts chain B ahead of the unvoted chain A");
         Assert.That(fixture.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, b1.Root, b2.Root, null }),
             "slot 3 held chain A's head, above chain B's head");
+        Assert.That(fixture.Store.GetCanonicalIndexTopSlot(), Is.EqualTo(2UL), "the recorded top slot follows the head down");
     }
 
     [Test]
@@ -65,6 +66,7 @@ public class CanonicalIndexReorgTests
         fixture.ComputeHead();
         UnsignedChain.ChainBlock a4 = fixture.Import(a2.Root, slot: 4, 0xa4);
 
+        Assert.That(fixture.ComputeHead(), Is.EqualTo(a4.Root));
         Assert.That(fixture.ComputeHead(), Is.EqualTo(a4.Root));
         TestMemDb index = fixture.BlockIndex;
         Assert.Multiple(() =>
@@ -78,6 +80,8 @@ public class CanonicalIndexReorgTests
             index.KeyWasRemoved(static key => key.Length == sizeof(ulong), times: 0);
             // The advance stops one block below the old head, so the anchor slot is read only by the first head change.
             index.KeyWasRead(CanonicalReorgFixture.SlotKey(0), times: 1);
+            // A head that did not change is not walked again.
+            index.KeyWasRead(CanonicalReorgFixture.SlotKey(4), times: 1);
         });
     }
 
@@ -156,6 +160,70 @@ public class CanonicalIndexReorgTests
         Assert.That(restarted.ComputeHead(), Is.EqualTo(a1.Root));
         Assert.That(restarted.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { restarted.Chain.AnchorRoot, a1.Root, null, null }),
             "slots 2 and 3 were indexed by the previous run above the head this run replayed to");
+    }
+
+    /// <summary>A restart that replays nothing leaves the anchor as head, so the previous run's entries above it must not be served.</summary>
+    [Test]
+    public void Restart_that_replays_nothing_leaves_nothing_above_the_anchor()
+    {
+        CanonicalReorgFixture fixture = CanonicalReorgFixture.Create();
+        fixture.ImportLongerChainA();
+        fixture.ReorgToSkippingChainB();
+
+        CanonicalReorgFixture restarted = fixture.Restart();
+
+        Assert.That(restarted.ComputeHead(), Is.EqualTo(restarted.Chain.AnchorRoot));
+        Assert.That(restarted.CanonicalRoots(through: 4), Is.EqualTo(new Hash256?[] { restarted.Chain.AnchorRoot, null, null, null, null }));
+    }
+
+    /// <summary>After a reorg onto a chain that skips slots, a restart must not bring the orphan's entries back, whether it replays the whole new chain or only part of it.</summary>
+    [Test]
+    public void Restart_after_a_reorg_onto_a_skipping_chain_indexes_only_the_replayed_chain([Values] bool replayWholeChain)
+    {
+        CanonicalReorgFixture fixture = CanonicalReorgFixture.Create();
+        fixture.ImportLongerChainA();
+        CanonicalReorgFixture.Reorg reorg = fixture.ReorgToSkippingChainB();
+
+        CanonicalReorgFixture restarted = fixture.Restart();
+        UnsignedChain.ChainBlock b1 = restarted.Import(restarted.Chain.AnchorRoot, slot: 1, 0xb1);
+        Hash256 expectedHead = b1.Root;
+        Hash256?[] expected = [restarted.Chain.AnchorRoot, b1.Root, null, null, null];
+        if (replayWholeChain)
+        {
+            UnsignedChain.ChainBlock b4 = restarted.Import(b1.Root, slot: 4, 0xb4, [restarted.Chain.Vote(1, b1.Root), restarted.Chain.Vote(3, b1.Root)]);
+            Assert.That(b4.Root, Is.EqualTo(reorg.BHead.Root), "fixture: the replay re-imports the same block");
+            expectedHead = b4.Root;
+            expected[4] = b4.Root;
+        }
+
+        Assert.That(restarted.ComputeHead(), Is.EqualTo(expectedHead));
+        Assert.That(restarted.CanonicalRoots(through: 4), Is.EqualTo(expected),
+            "slots 2 and 3 held chain A's orphans and slot 4 is above a shorter replayed head");
+    }
+
+    /// <summary>After a reorg to a lower head, a restart must leave the slots above the head empty, whether it replays up to that head or stops below it.</summary>
+    [Test]
+    public void Restart_after_a_reorg_to_a_lower_head_leaves_nothing_above_the_replayed_head([Values] bool replayToHead)
+    {
+        CanonicalReorgFixture fixture = CanonicalReorgFixture.Create();
+        fixture.ImportLongerChainA();
+        UnsignedChain.ChainBlock b1 = fixture.Import(fixture.Chain.AnchorRoot, slot: 1, 0xb1);
+        UnsignedChain.ChainBlock b2 = fixture.Import(b1.Root, slot: 2, 0xb2, [fixture.Chain.Vote(1, b1.Root)]);
+        Assert.That(fixture.ComputeHead(), Is.EqualTo(b2.Root));
+
+        CanonicalReorgFixture restarted = fixture.Restart();
+        restarted.Import(restarted.Chain.AnchorRoot, slot: 1, 0xb1);
+        Hash256 expectedHead = b1.Root;
+        Hash256?[] expected = [restarted.Chain.AnchorRoot, b1.Root, null, null];
+        if (replayToHead)
+        {
+            restarted.Import(b1.Root, slot: 2, 0xb2, [restarted.Chain.Vote(1, b1.Root)]);
+            expectedHead = b2.Root;
+            expected[2] = b2.Root;
+        }
+
+        Assert.That(restarted.ComputeHead(), Is.EqualTo(expectedHead));
+        Assert.That(restarted.CanonicalRoots(through: 3), Is.EqualTo(expected), "slot 3 held chain A's head, above the replayed head");
     }
 }
 
