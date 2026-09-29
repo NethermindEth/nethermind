@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -10,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 
@@ -18,14 +20,25 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// A read-only bundle of <see cref="Snapshot"/>s backed by a persistence reader.
 /// </summary>
+/// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="GetSlotFiltered"/> builds over the
+/// in-memory snapshots' slots; 0 never builds one.</param>
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
     PersistedSnapshotStack persistedSnapshots,
-    bool isHistorical = false)
+    bool isHistorical = false,
+    double slotFilterBitsPerKey = 0)
     : RefCountingDisposable
 {
+    private const int SlotFilterNotBuilt = 0;
+    private const int SlotFilterBuilding = 1;
+    private const int SlotFilterReady = 2;
+    private const int SlotFilterSkipped = 3;
+
+    // With one snapshot the loop is already a single dictionary probe, which the filter would not beat.
+    private const int MinSnapshotsForSlotFilter = 2;
+
     // Cached once — the persisted-snapshot stack is immutable for the bundle's lifetime. Every read
     // gates its persisted-tier probe on this being > 0, so a node with no persisted snapshots (e.g.
     // long finality disabled, or none persisted yet) skips the persisted lookups entirely.
@@ -38,6 +51,13 @@ public sealed class ReadOnlySnapshotBundle(
     /// </summary>
     public bool IsHistorical { get; } = isHistorical;
     private bool _isDisposed;
+
+    // Negative filter over the slot keys of all in-memory snapshots, for GetSlotFiltered. Built lazily by the first
+    // filtered read, so bundles that only serve block processing never pay for it.
+    private BloomFilter? _slotFilter;
+    private int _slotFilterState = slotFilterBitsPerKey > 0 && snapshots.Count >= MinSnapshotsForSlotFilter
+        ? SlotFilterNotBuilt
+        : SlotFilterSkipped;
 
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
@@ -102,7 +122,6 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        (Address address, UInt256 index) = key.Key;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
@@ -120,6 +139,48 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
+        GetSlotBelowInMemory(selfDestructStateIdx, key, sw, out value);
+    }
+
+    /// <summary>
+    /// Returns exactly what <see cref="GetSlot(int, HashedKey{ValueTuple{Address, UInt256}}, out UInt256?)"/> returns,
+    /// but asks a negative filter over the in-memory snapshots first, so a slot none of them wrote - nearly every slot
+    /// an <c>eth_call</c> reads - costs one filter probe instead of one dictionary probe per snapshot.
+    /// </summary>
+    /// <remarks>
+    /// For read-only execution only. The first call builds the filter inline (about a millisecond at mainnet sizes),
+    /// once per bundle; reads racing that build take the plain loop instead of waiting.
+    /// </remarks>
+    public void GetSlotFiltered(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out UInt256? value)
+    {
+        GuardDispose();
+
+        BloomFilter? filter = Volatile.Read(ref _slotFilter)
+            ?? (Volatile.Read(ref _slotFilterState) == SlotFilterNotBuilt ? TryBuildSlotFilter() : null);
+        if (filter is null || filter.MightContain(Snapshot.StorageFilterKey(key)))
+        {
+            GetSlot(selfDestructStateIdx, key, out value);
+            return;
+        }
+
+        // No in-memory snapshot holds the key, so the loop would find nothing and only its self-destruct cutoff
+        // could end it; that cutoff fires at some in-memory snapshot exactly when the clear is at or above the
+        // oldest one.
+        if (selfDestructStateIdx >= _persistedSnapshotCount)
+        {
+            value = null;
+            return;
+        }
+
+        GetSlotBelowInMemory(selfDestructStateIdx, key, recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0, out value);
+    }
+
+    // The rest of a slot read once the in-memory snapshots did not decide it: the persisted-snapshot tier, then
+    // persistence.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void GetSlotBelowInMemory(int selfDestructStateIdx, in HashedKey<(Address, UInt256)> key, long sw, out UInt256? value)
+    {
+        (Address address, UInt256 index) = key.Key;
         if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out value))
             return;
 
@@ -217,6 +278,78 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
+    // Only the reader that moves the state out of NotBuilt builds. It holds a lease on this bundle, so neither the
+    // snapshots it walks nor the filter it publishes can be cleaned up under it.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private BloomFilter? TryBuildSlotFilter()
+    {
+        if (Interlocked.CompareExchange(ref _slotFilterState, SlotFilterBuilding, SlotFilterNotBuilt) != SlotFilterNotBuilt) return null;
+
+        long start = Stopwatch.GetTimestamp();
+        BloomFilter? filter = null;
+        try
+        {
+            // A key written by several snapshots is counted once per snapshot, which only lowers the false-positive rate.
+            long capacity = 0;
+            for (int i = 0; i < snapshots.Count; i++) capacity += snapshots[i].StoragesCount;
+
+            // Snapshots that wrote no slot still get a filter: every read then skips them.
+            filter = new BloomFilter(Math.Max(capacity, 1), slotFilterBitsPerKey);
+            for (int i = 0; i < snapshots.Count; i++) snapshots[i].AddStorageKeysTo(filter);
+        }
+        catch (Exception)
+        {
+            // The plain loop is always right, so a filter that cannot be built is just not used.
+            filter?.Dispose();
+            Volatile.Write(ref _slotFilterState, SlotFilterSkipped);
+            return null;
+        }
+
+        Volatile.Write(ref _slotFilter, filter);
+        Volatile.Write(ref _slotFilterState, SlotFilterReady);
+        Metrics.RecordInMemorySlotFilterBuilt(filter.DataBytes, Stopwatch.GetTimestamp() - start);
+        return filter;
+    }
+
+    /// <summary>The published slot filter, or <c>null</c> while none is built.</summary>
+    internal BloomFilter? SlotFilter => Volatile.Read(ref _slotFilter);
+
+    /// <summary>
+    /// Test hook: publishes <paramref name="filter"/> as the slot filter as if a read had built it, e.g. one that
+    /// answers "maybe" for every key. The bundle owns it from then on.
+    /// </summary>
+    internal void PublishSlotFilter(BloomFilter filter)
+    {
+        int state = Volatile.Read(ref _slotFilterState);
+        if ((state != SlotFilterNotBuilt && state != SlotFilterSkipped)
+            || Interlocked.CompareExchange(ref _slotFilterState, SlotFilterBuilding, state) != state)
+        {
+            throw new InvalidOperationException("A slot filter is already built or being built.");
+        }
+
+        Volatile.Write(ref _slotFilter, filter);
+        Volatile.Write(ref _slotFilterState, SlotFilterReady);
+        Metrics.RecordInMemorySlotFilterBuilt(filter.DataBytes, 0);
+    }
+
+    private void ReleaseSlotFilter()
+    {
+        BloomFilter? filter = Interlocked.Exchange(ref _slotFilter, null);
+        if (filter is null) return;
+
+        // A slot key a snapshot gained after the build is missing from the filter, so filtered reads of it were wrong.
+        Debug.Assert(filter.Count == CountStoragesNow(), "A snapshot gained or lost slot keys after the slot filter was built.");
+        Metrics.RecordInMemorySlotFilterReleased(filter.DataBytes);
+        filter.Dispose();
+    }
+
+    private long CountStoragesNow()
+    {
+        long count = 0;
+        for (int i = 0; i < snapshots.Count; i++) count += snapshots[i].CountStoragesNow();
+        return count;
+    }
+
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
 
     public bool TryLease() => TryAcquireLease();
@@ -225,6 +358,8 @@ public sealed class ReadOnlySnapshotBundle(
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
 
+        // Before the snapshots, whose keys the filter was built from.
+        ReleaseSlotFilter();
         snapshots.Dispose();
         persistedSnapshots.Dispose();
 

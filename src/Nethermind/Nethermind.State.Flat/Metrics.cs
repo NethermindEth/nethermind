@@ -196,6 +196,42 @@ public static class Metrics
         set => Volatile.Write(ref _persistedSnapshotBloomMemory, value);
     }
 
+    // --- Negative filter over the in-memory snapshots' slots (ReadOnlySnapshotBundle) ---
+
+    private static long _inMemorySlotFilterMemory;
+
+    [GaugeMetric]
+    [Description("Memory held by the negative filters over the in-memory snapshots' slots in bytes; one filter per read-only snapshot bundle that served a read-only execution slot read")]
+    public static long InMemorySlotFilterMemory
+    {
+        get => Volatile.Read(ref _inMemorySlotFilterMemory);
+        set => Volatile.Write(ref _inMemorySlotFilterMemory, value);
+    }
+
+    private static long _inMemorySlotFilterBuilds;
+
+    [CounterMetric]
+    [Description("Negative filters built over the in-memory snapshots' slots")]
+    public static long InMemorySlotFilterBuilds
+    {
+        get => Volatile.Read(ref _inMemorySlotFilterBuilds);
+        set => Volatile.Write(ref _inMemorySlotFilterBuilds, value);
+    }
+
+    [DetailedMetric]
+    [Description("Time to build the negative filter over the in-memory snapshots' slots (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
+    public static IMetricObserver InMemorySlotFilterBuildTime { get; set; } = new NoopMetricObserver();
+
+    internal static void RecordInMemorySlotFilterBuilt(long bytes, long elapsedTicks)
+    {
+        Interlocked.Add(ref _inMemorySlotFilterMemory, bytes);
+        Interlocked.Increment(ref _inMemorySlotFilterBuilds);
+        InMemorySlotFilterBuildTime.Observe(elapsedTicks);
+    }
+
+    internal static void RecordInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _inMemorySlotFilterMemory, -bytes);
+
     // Backed by a field so callers can update via Interlocked.Increment/Decrement(ref ...).
     internal static long _persistedSnapshotBloomCount;
 
