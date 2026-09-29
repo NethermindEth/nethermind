@@ -120,7 +120,25 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"], Is.Null, response);
         Assert.That(parsed["result"], Is.Not.Null);
         if (method == "eth_call") Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"));
-        if (method == "eth_simulateV1") Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"));
+        if (method == "eth_simulateV1")
+        {
+            JToken call = parsed["result"]![0]!["calls"]![0]!;
+            JArray frames = (JArray)call["frameResults"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(call["status"]!.Value<string>(), Is.EqualTo("0x1"));
+                Assert.That(frames, Has.Count.EqualTo(2));
+                foreach (JToken frame in frames)
+                {
+                    Assert.That(frame["status"]!.Value<string>(), Is.EqualTo("0x1"));
+                    Assert.That(frame["returnData"]!.Value<string>(), Is.EqualTo("0x"));
+                    Assert.That(frame["gasUsed"]!.Value<string>(), Does.StartWith("0x"));
+                    Assert.That(frame["executionGasUsed"]!.Value<string>(), Does.StartWith("0x"));
+                    Assert.That(frame["stateGasUsed"]!.Value<string>(), Is.EqualTo("0x0"));
+                    Assert.That((JArray)frame["logs"]!, Is.Empty);
+                }
+            }
+        }
         if (method == "eth_fillTransaction")
         {
             using (Assert.EnterMultipleScope())
