@@ -181,15 +181,18 @@ public partial class GossipRouterTests
         router.ExecutionPayloadEnvelopeReceived += _ => envelopes++;
 
         router.Start(id => topics[id] = new FakeTopic(), fuluDigest);
-        Assert.That(topics.Keys, Has.None.Contain(GossipTopics.ExecutionPayload), "Gloas topics are not part of the fixed pre-Gloas set");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topics.Keys, Has.None.Contain(GossipTopics.ExecutionPayload), "Gloas topics are not part of the fixed pre-Gloas set");
+            Assert.That(topics.Keys, Has.None.Contain(GossipTopics.PayloadAttestationMessage));
+        }
 
         router.SubscribeDigest(bpo1Digest);
         string envelopeTopicBpo1 = GossipTopics.Topic(bpo1Digest, GossipTopics.ExecutionPayload);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo1));
-            Assert.That(topics.Keys, Has.None.Contain(GossipTopics.PayloadAttestationMessage), "PTC votes are not subscribed until fork choice consumes them");
-            Assert.That(GossipTopics.GloasTopicNames, Does.Not.Contain(GossipTopics.PayloadAttestationMessage), "nothing consumes PTC votes, and the node cannot forward them");
+            Assert.That(topics.Keys, Does.Contain(GossipTopics.Topic(bpo1Digest, GossipTopics.PayloadAttestationMessage)), "fork choice consumes PTC votes from gossip");
         }
 
         // A pre-Gloas slot, so the envelope handler drops each delivery as one.
