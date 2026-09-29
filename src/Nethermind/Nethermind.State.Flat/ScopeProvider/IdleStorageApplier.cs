@@ -102,15 +102,24 @@ internal sealed class IdleStorageApplier
 
     private void LowerPriority()
     {
-        if (OperatingSystem.IsLinux())
+        // Unhandled, an exception here would end the process: the libc import, for one, is only resolved by the call.
+        // If one is thrown, the thread carries on at normal priority.
+        try
         {
-            SchedParam param = default;
-            // pid 0 is the calling thread.
-            if (sched_setscheduler(0, SchedIdle, ref param) == 0) return;
-            if (_logger.IsWarn) _logger.Warn($"Could not move the early storage apply thread to SCHED_IDLE (errno {Marshal.GetLastPInvokeError()}); lowering its priority instead.");
-        }
+            if (OperatingSystem.IsLinux())
+            {
+                SchedParam param = default;
+                // pid 0 is the calling thread.
+                if (sched_setscheduler(0, SchedIdle, ref param) == 0) return;
+                if (_logger.IsWarn) _logger.Warn($"Could not move the early storage apply thread to SCHED_IDLE (errno {Marshal.GetLastPInvokeError()}); lowering its priority instead.");
+            }
 
-        Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+            Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not lower the priority of the early storage apply thread, so it runs at normal priority: {e.Message}");
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
