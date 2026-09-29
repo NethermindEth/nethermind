@@ -38,8 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     /// <summary>
     /// All methods that receive transaction from users uses ITransactionProcessor.Trace
-    /// As user might send transaction without gas and/or sender we can't charge gas fees here
-    /// So at the end stateDiff will be a bit incorrect
+    /// A transaction priced at zero pays no gas fee and runs with a zero base fee, as eth_call does; a priced one is charged for gas
     ///
     /// All methods that traces transactions from chain uses ITransactionProcessor.Execute
     /// From-chain transactions should have stateDiff as we got during normal execution. Also we are sure that sender have enough funds to pay gas
@@ -99,7 +98,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public static ResultWrapper<T> PendingNotSupported<T>() => ResultWrapper<T>.Fail("Pending block is not supported for tracing", ErrorCodes.InvalidParams);
 
         /// <summary>
-        /// Traces one transaction. Doesn't charge fees.
+        /// Traces one transaction. A call priced at zero runs with a zero base fee and pays no gas fee; a priced call is charged for gas.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null)
         {
@@ -121,7 +120,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// Traces list of transactions. Doesn't charge fees.
+        /// Traces list of transactions, each on the state the previous ones leave. Each call priced at zero runs with a
+        /// zero base fee and pays no gas fee; a priced call sees the block's base fee and is charged for gas.
         /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TraceCallManyRequest request, BlockParameter? blockParameter = null)
         {
@@ -204,7 +204,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// Traces one raw transaction. Doesn't charge fees.
+        /// Traces one raw transaction. A transaction priced at zero runs with a zero base fee and pays no gas fee; a priced one is charged for gas.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
