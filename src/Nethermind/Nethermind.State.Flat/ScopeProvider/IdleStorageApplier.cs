@@ -103,9 +103,10 @@ internal sealed class IdleStorageApplier
                 {
                     storageTree.ApplyEarlyWrites();
                 }
-                catch (ObjectDisposedException)
+                catch (ObjectDisposedException e)
                 {
                     // The block's scope was disposed mid-pass; its early work is discarded with it.
+                    if (_logger.IsDebug) _logger.Debug($"Early storage apply pass ended by the disposal of its scope: {e.Message}");
                 }
                 catch (Exception e)
                 {
