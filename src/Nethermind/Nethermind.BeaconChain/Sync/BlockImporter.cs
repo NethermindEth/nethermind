@@ -721,7 +721,8 @@ public sealed class BlockImporter : IBlockImporter
             CheckpointExecutionHash(_runner.JustifiedCheckpoint.Root),
             CheckpointExecutionHash(_runner.FinalizedCheckpoint.Root),
             _runner.JustifiedCheckpoint,
-            _runner.FinalizedCheckpoint);
+            _runner.FinalizedCheckpoint,
+            headNode.PayloadStatus == ForkChoicePayloadStatus.Full);
     }
 
     /// <summary>specs/gloas/fork-choice.md <c>notify_forkchoice_updated</c>: a Gloas checkpoint block maps to its bid's <c>parent_block_hash</c>.</summary>

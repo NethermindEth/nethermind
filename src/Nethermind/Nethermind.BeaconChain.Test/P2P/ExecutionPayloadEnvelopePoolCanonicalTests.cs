@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.BeaconChain.P2P;
@@ -52,7 +53,7 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
     }
 
     [Test]
-    public void Never_serves_the_head_even_when_its_verified_envelope_is_held([Values] bool held)
+    public void Withholds_an_empty_head_even_when_its_verified_envelope_is_held([Values] bool held)
     {
         EnvelopeChain chain = new();
         (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
@@ -66,6 +67,68 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
         chain.SetHead(head, Base + 1);
 
         Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(new[] { genesis }), "a held envelope does not make the head FULL; only fork choice can");
+    }
+
+    [Test]
+    public void Serves_a_full_head_only_when_its_envelope_is_held([Values] bool held)
+    {
+        EnvelopeChain chain = new();
+        (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        (Hash256 head, _) = chain.Put(Base + 1, genesis, genesisHash);
+        chain.AddEnvelopes(genesis);
+        if (held)
+        {
+            chain.AddEnvelopes(head);
+        }
+
+        chain.SetHead(head, Base + 1, full: true);
+
+        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(held ? new[] { genesis, head } : new[] { genesis }));
+    }
+
+    [Test]
+    public void Full_status_of_another_root_does_not_serve_the_head()
+    {
+        EnvelopeChain chain = new();
+        (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        (Hash256 head, _) = chain.Put(Base + 1, genesis, genesisHash);
+        chain.AddEnvelopes(genesis, head);
+        chain.SetHead(head, Base + 1);
+        chain.Status.Publish(chain.Status.CurrentStatus, genesis);
+
+        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(new[] { genesis }), "a FULL verdict for a previous head must not carry over to the new one");
+    }
+
+    [Test]
+    public void Never_serves_a_sibling_of_a_full_head()
+    {
+        EnvelopeChain chain = new();
+        (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        (Hash256 head, _) = chain.Put(Base + 1, genesis, genesisHash);
+        (Hash256 sibling, _) = chain.Put(Base + 1, genesis, genesisHash, salt: 1);
+        chain.AddEnvelopes(genesis, head, sibling);
+        chain.SetHead(head, Base + 1, full: true);
+
+        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(new[] { genesis, head }), "the sibling is not on the head chain");
+    }
+
+    [Test]
+    public void Serves_the_full_head_it_started_from_when_the_head_moves_during_the_request()
+    {
+        EnvelopeChain chain = new();
+        (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        (Hash256 head, Hash256 headHash) = chain.Put(Base + 1, genesis, genesisHash);
+        (Hash256 next, _) = chain.Put(Base + 2, head, headHash);
+        HeadAdvancingStatusSource source = new((chain.HeadStatus(head, Base + 1), head), (chain.HeadStatus(next, Base + 2), next));
+        ExecutionPayloadEnvelopePool pool = new(store: chain.Store, status: source);
+        foreach (Hash256 root in new[] { genesis, head })
+        {
+            pool.Add(root, chain.Envelope(root));
+        }
+
+        Hash256[] served = [.. pool.GetCanonical(Base + 1, 1).Select(static e => e.Message!.BeaconBlockRoot!)];
+
+        Assert.That(served, Is.EqualTo(new[] { head }), "the head and its payload status come from one snapshot, so a head step mid-request cannot withhold the envelope");
     }
 
     [Test]
@@ -177,6 +240,20 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
     }
 }
 
+/// <summary>Hands out each snapshot once per read, so a second read of the status sees the head that replaced the first.</summary>
+internal sealed class HeadAdvancingStatusSource(params (StatusMessageV2 Status, Hash256? FullHeadRoot)[] snapshots) : IBeaconChainStatusSource
+{
+    private int _reads;
+
+    public (StatusMessageV2 Status, Hash256? FullHeadRoot) CurrentHead => snapshots[Math.Min(_reads++, snapshots.Length - 1)];
+
+    public StatusMessageV2 CurrentStatus => CurrentHead.Status;
+
+    public Hash256 JustifiedRoot => Hash256.Zero;
+
+    public bool ExecutionInSync => true;
+}
+
 /// <summary>A Sepolia store of Gloas blocks with bid hashes chosen per block, the head status, and a pool reading both.</summary>
 internal sealed class EnvelopeChain
 {
@@ -246,16 +323,17 @@ internal sealed class EnvelopeChain
         }
     }
 
-    public void SetHead(Hash256 root, ulong slot) =>
-        Status.CurrentStatus = new StatusMessageV2
-        {
-            ForkDigest = Status.CurrentStatus.ForkDigest,
-            FinalizedRoot = Hash256.Zero,
-            FinalizedEpoch = Status.CurrentStatus.FinalizedEpoch,
-            HeadRoot = root,
-            HeadSlot = slot,
-            EarliestAvailableSlot = Status.CurrentStatus.EarliestAvailableSlot,
-        };
+    public void SetHead(Hash256 root, ulong slot, bool full = false) => Status.Publish(HeadStatus(root, slot), full ? root : null);
+
+    public StatusMessageV2 HeadStatus(Hash256 root, ulong slot) => new()
+    {
+        ForkDigest = Status.CurrentStatus.ForkDigest,
+        FinalizedRoot = Hash256.Zero,
+        FinalizedEpoch = Status.CurrentStatus.FinalizedEpoch,
+        HeadRoot = root,
+        HeadSlot = slot,
+        EarliestAvailableSlot = Status.CurrentStatus.EarliestAvailableSlot,
+    };
 
     public Hash256[] ServedRoots(ulong startSlot, ulong count) => [.. Pool.GetCanonical(startSlot, count).Select(static e => e.Message!.BeaconBlockRoot!)];
 
