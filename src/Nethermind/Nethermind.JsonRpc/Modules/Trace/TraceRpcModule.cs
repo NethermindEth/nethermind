@@ -192,14 +192,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Converts <paramref name="call"/> for trace_call and trace_callMany, rejecting a priority fee above the fee cap as eth_call does.
         /// </summary>
-        /// <remarks>
-        /// A request with only a priority fee defaults its fee cap to zero; with a positive base fee it would otherwise fail later, against the base fee.
-        /// </remarks>
         private Result<Transaction> ToCallTransaction(TransactionForRpc call, IReleaseSpec spec)
         {
             Result<Transaction> result = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: spec);
-            return result.Success(out Transaction? tx, out _) && BlockchainBridge.TipAboveFeeCap(tx, spec) is { } tipAboveFeeCap
-                ? Result<Transaction>.Fail(tipAboveFeeCap.ErrorDescription)
+            return result.Success(out Transaction? tx, out _) && tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap
+                ? Result<Transaction>.Fail(tipAboveFeeCap)
                 : result;
         }
 

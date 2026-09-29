@@ -14,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -536,12 +535,9 @@ namespace Nethermind.Facade
         /// The rejection of a priced call whose priority fee exceeds its fee cap, before any gas is bought; the
         /// processor checks only the fee cap against the base fee when validation is skipped.
         /// </summary>
-        public static TransactionResult? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
-            spec.IsEip1559Enabled
-            && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero)
-            && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas
-                ? TransactionResult.ErrorType.MalformedTransaction.WithDetail(
-                    $"{TxErrorMessages.TipAboveFeeCap}: address {tx.SenderAddress!.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tx.MaxPriorityFeePerGas}, maxFeePerGas: {tx.MaxFeePerGas}")
+        private static TransactionResult? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
+            tx.GetTipAboveFeeCapError(spec) is { } error
+                ? TransactionResult.ErrorType.MalformedTransaction.WithDetail(error)
                 : null;
 
         public ulong GetChainId() => blockTree.ChainId;
