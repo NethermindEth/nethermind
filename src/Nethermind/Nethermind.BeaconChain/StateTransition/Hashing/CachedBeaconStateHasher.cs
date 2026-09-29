@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -67,6 +68,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private const int RandaoMixesDepth = 16;
     private const ulong SlashingsChunkCount = 2048;
     private const ulong ProposerLookaheadChunkCount = 16;
+    private const int JustificationBitsLength = 4;
     private const int FieldCount = 38;
     private const int GloasFieldCount = 46;
     private const int ParallelLeafThreshold = 2048;
@@ -101,6 +103,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private readonly ContainerListCache<Builder> _builders = new(new ProgressiveChunkTree());
     private readonly ContainerVectorCache<PayloadTimelinessCommittee> _ptcWindow = new((int)Presets.PtcWindowLength);
     private readonly UInt256[] _gloasFieldRoots = new UInt256[GloasFieldCount];
+    private bool _fuluCachesLive;
 
     /// <inheritdoc/>
     public Hash256 HashTreeRoot(BeaconStateFulu state)
@@ -108,7 +111,9 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         // The generated Merkleize rejects this before computing anything; keep the same contract.
         if (state.LatestExecutionPayloadHeader is null)
             throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateFulu)}.{nameof(state.LatestExecutionPayloadHeader)}: null variable fields are not decodable.");
+        ValidateFixedVectors(nameof(BeaconStateFulu), state.Slashings, state.JustificationBits, state.ProposerLookahead);
 
+        _fuluCachesLive = true;
         UInt256[] roots = _fieldRoots;
         roots[0] = new UInt256(state.GenesisTime);
         roots[1] = state.GenesisValidatorsRoot is null ? default : new UInt256(state.GenesisValidatorsRoot.Bytes);
@@ -158,13 +163,24 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     /// <inheritdoc/>
     public Hash256 HashTreeRoot(BeaconStateGloas state)
     {
-        // The generated Merkleize rejects these three fields; the fixed sizes of the others are enforced by decode.
+        ValidateFixedVectors(nameof(BeaconStateGloas), state.Slashings, state.JustificationBits, state.ProposerLookahead);
         if (state.BuilderPendingPayments?.Length != (int)Presets.BuilderPendingPaymentsLength)
             throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateGloas)}.{nameof(state.BuilderPendingPayments)}: expected {Presets.BuilderPendingPaymentsLength} elements but found {state.BuilderPendingPayments?.Length ?? 0}.");
         if (state.LatestExecutionPayloadBid is null)
             throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateGloas)}.{nameof(state.LatestExecutionPayloadBid)}: null variable fields are not decodable.");
         if (state.ExecutionPayloadAvailability is not null && state.ExecutionPayloadAvailability.Length != (int)Presets.SlotsPerHistoricalRoot)
             throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateGloas)}.{nameof(state.ExecutionPayloadAvailability)}: expected {Presets.SlotsPerHistoricalRoot} bits but found {state.ExecutionPayloadAvailability.Length}.");
+
+        // Gloas states never return to the Fulu-only trees; drop them instead of pinning them until Reset.
+        if (_fuluCachesLive)
+        {
+            _validators.Reset();
+            _balances.Reset();
+            _inactivityScores.Reset();
+            _previousEpochParticipation.Reset();
+            _currentEpochParticipation.Reset();
+            _fuluCachesLive = false;
+        }
 
         UInt256[] roots = _gloasFieldRoots;
         roots[0] = new UInt256(state.GenesisTime);
@@ -219,9 +235,24 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         return new Hash256(root.ToLittleEndian());
     }
 
+    /// <summary>Rejects a wrong-length fixed vector like the generated hasher; null hashes as the default vector.</summary>
+    private static void ValidateFixedVectors(string stateType, ulong[]? slashings, BitArray? justificationBits, ulong[]? proposerLookahead)
+    {
+        if (slashings is not null && slashings.Length != (int)Presets.EpochsPerSlashingsVector)
+            ThrowInvalidVector(stateType, nameof(BeaconStateFulu.Slashings), "elements", (int)Presets.EpochsPerSlashingsVector, slashings.Length);
+        if (justificationBits is not null && justificationBits.Length != JustificationBitsLength)
+            ThrowInvalidVector(stateType, nameof(BeaconStateFulu.JustificationBits), "bits", JustificationBitsLength, justificationBits.Length);
+        if (proposerLookahead is not null && proposerLookahead.Length != (int)Presets.ProposerLookaheadSlots)
+            ThrowInvalidVector(stateType, nameof(BeaconStateFulu.ProposerLookahead), "elements", (int)Presets.ProposerLookaheadSlots, proposerLookahead.Length);
+    }
+
+    private static void ThrowInvalidVector(string stateType, string field, string unit, int expected, int actual) =>
+        throw new InvalidDataException($"Invalid SSZ value for {stateType}.{field}: expected {expected} {unit} but found {actual}.");
+
     /// <summary>Drops every snapshot and cached subtree; the next call hashes from scratch.</summary>
     public void Reset()
     {
+        _fuluCachesLive = false;
         _validators.Reset();
         _balances.Reset();
         _inactivityScores.Reset();
@@ -459,8 +490,15 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
                 Hash256? element = vector[i];
                 if (!initial && ReferenceEquals(element, _snapshot[i]))
                     continue;
+                if (element is null)
+                {
+                    // Earlier leaves already changed without a tree update; drop them so the next call rebuilds.
+                    ArrayPool<int>.Shared.Return(dirty);
+                    Reset();
+                    ThrowNullRoot(i);
+                }
                 _snapshot[i] = element;
-                leaves[i] = element is null ? default : new UInt256(element.Bytes);
+                leaves[i] = new UInt256(element.Bytes);
                 dirty[dirtyCount++] = i;
             }
 
@@ -472,6 +510,11 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
 
             return _tree.Root;
         }
+
+        // Matches the generated hasher, which dereferences a null root element.
+        [DoesNotReturn]
+        private static void ThrowNullRoot(int index) =>
+            throw new NullReferenceException($"SSZ root vector element {index} is null.");
 
         public void Reset()
         {
