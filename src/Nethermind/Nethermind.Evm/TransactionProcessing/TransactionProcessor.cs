@@ -72,11 +72,13 @@ namespace Nethermind.Evm.TransactionProcessing
         internal static bool ForceSimpleTransferDisabled;
 
         /// <summary>
-        /// When set, the EIP-3607 sender-has-code check is skipped, letting a state-overridden contract be
-        /// the eth_simulateV1 <c>from</c>. Must be set before execution: parallel EIP-7928 workers read it
+        /// When set, skips the sender checks eth_simulateV1 exempts: the EIP-3607 sender-has-code check, letting a
+        /// state-overridden contract be the <c>from</c>, and EIP-8141 frame signature verification, keeping only
+        /// the structural signature checks. Must be set before execution: parallel EIP-7928 workers read it
         /// without synchronisation, relying on the processor being fully configured before it is published.
         /// </summary>
-        public bool SkipSenderCodeCheck { get; set; }
+        /// <remarks>execution-apis#907: simulation exempts contract sender and signature checks even with <c>validation: true</c>.</remarks>
+        public bool SkipSenderChecks { get; set; }
 
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
         /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
@@ -1151,7 +1153,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
             if (validate
-                && !SkipSenderCodeCheck
+                && !SkipSenderChecks
                 && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");

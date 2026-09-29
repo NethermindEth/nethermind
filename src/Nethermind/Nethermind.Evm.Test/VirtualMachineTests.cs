@@ -123,19 +123,21 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
     }
 
-    /// <summary>Asserts that the per-test <see cref="VirtualMachineTestsBase.Setup"/> resets the fork activation that a previous test leaked into it.</summary>
-    /// <remarks>The fixture lifecycle is driven by hand because NUnit gives no ordering contract between tests, so the leak can only be observed deterministically within a single test.</remarks>
     [Test]
-    public void Setup_restores_default_activation_between_tests()
+    public void Explicit_fork_activation_does_not_leak_into_later_PrepareTx_calls()
     {
-        Execute(MainnetSpecProvider.CancunActivation, (byte)Instruction.STOP);
-        Assert.That(Activation, Is.EqualTo(MainnetSpecProvider.CancunActivation));
+        ForkActivation explicitActivation = MainnetSpecProvider.CancunActivation;
+        (Block explicitBlock, _) = PrepareTx(explicitActivation, 100000UL);
 
-        TearDown();
-        Setup();
+        (Block block, _) = PrepareTx(Activation, 100000UL);
 
-        Assert.That(Activation, Is.EqualTo(new ForkActivation(DefaultBlockNumber, DefaultTimestamp)));
-        AssertExpZeroTo160();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(explicitBlock.Header.Number, Is.EqualTo(explicitActivation.BlockNumber));
+            Assert.That(explicitBlock.Header.Timestamp, Is.EqualTo(explicitActivation.Timestamp));
+            Assert.That(block.Header.Number, Is.EqualTo(DefaultBlockNumber));
+            Assert.That(block.Header.Timestamp, Is.EqualTo(DefaultTimestamp));
+        }
     }
 
     [Test]
@@ -1733,9 +1735,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Exp_0_160() => AssertExpZeroTo160();
-
-    private void AssertExpZeroTo160()
+    public void Exp_0_160()
     {
         TestAllTracerWithOutput receipt = Execute(
             (byte)Instruction.PUSH1,
