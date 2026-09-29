@@ -700,7 +700,7 @@ namespace Nethermind.Synchronization.FastSync
         private bool VerifyStorageUpdated(StateSyncItem item, byte[] value)
         {
             DependentItem dependentItem = new(item, value, _stateSyncPivot.UpdatedStorages.Count);
-            bool isComplete = _stateSyncPivot.UpdatedStorages.Count == 0;
+            bool isComplete = dependentItem.Counter == 0;
 
             using ITreeSyncVerificationContext verificationContext = _store.CreateVerificationContext(value);
 

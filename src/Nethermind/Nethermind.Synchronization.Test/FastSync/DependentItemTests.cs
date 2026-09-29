@@ -15,20 +15,32 @@ public class DependentItemTests
     [Test]
     public void Concurrent_resolutions_complete_the_item_exactly_once()
     {
-        const int dependencyCount = 16;
-        const int rounds = 2000;
+        const int threadCount = 4;
+        const int resolutionsPerThread = 100_000;
 
-        for (int round = 0; round < rounds; round++)
+        DependentItem item = new(new StateSyncItem(Keccak.EmptyTreeHash, null, TreePath.Empty, NodeDataType.State), [], threadCount * resolutionsPerThread);
+        using Barrier start = new(threadCount);
+        int completions = 0;
+
+        Task[] resolvers = new Task[threadCount];
+        for (int t = 0; t < threadCount; t++)
         {
-            DependentItem item = new(new StateSyncItem(Keccak.EmptyTreeHash, null, TreePath.Empty, NodeDataType.State), [], dependencyCount);
-            int completions = 0;
-
-            Parallel.For(0, dependencyCount, _ =>
+            resolvers[t] = Task.Factory.StartNew(() =>
             {
-                if (item.ResolveDependency()) Interlocked.Increment(ref completions);
-            });
+                start.SignalAndWait();
+                for (int i = 0; i < resolutionsPerThread; i++)
+                {
+                    if (item.ResolveDependency()) Interlocked.Increment(ref completions);
+                }
+            }, TaskCreationOptions.LongRunning);
+        }
 
-            Assert.That(completions, Is.EqualTo(1), $"round {round}");
+        Task.WaitAll(resolvers);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completions, Is.EqualTo(1));
+            Assert.That(item.Counter, Is.Zero);
         }
     }
 }
