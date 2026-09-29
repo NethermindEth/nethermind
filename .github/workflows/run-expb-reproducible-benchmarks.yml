@@ -80,6 +80,8 @@ on:
           --FlatDb.PersistenceWriteBufferFloor. Keeps small-CompactSize persistence batches from
           shrinking RocksDB memtables (decouples write amplification from CompactSize). Set empty to
           disable. Ignored for non-flat layouts and when additional_extra_flags already sets it.
+          The same switch pins --FlatDb.CompactionOffset=0 (#11756), so every run compacts at the
+          same blocks: the snapshots store no offset, and each node start would draw a random one.
           SET THIS EMPTY when benchmarking an image built before 2026-06-16 (#11936 added the flag):
           older clients reject an unknown argument by printing CLI usage and exiting, which looks
           like a workflow failure rather than a flag mismatch.
@@ -568,6 +570,12 @@ jobs:
                 additional_extra_flags="${floor_flag}"
               fi
             fi
+            # Pin the compaction schedule. The snapshots store no compaction offset, so each node start would draw a
+            # random one and compact at different blocks, moving compaction work between blocks from run to run.
+            # Tied to the floor switch: #11756 added the setting before #11936, so any image that takes one takes both.
+            if ! printf '%s' "${additional_extra_flags}" | grep -qi "CompactionOffset"; then
+              additional_extra_flags="${additional_extra_flags}, --FlatDb.CompactionOffset=0"
+            fi
           fi
 
           branch="${branch#refs/heads/}"
@@ -1000,9 +1008,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v5-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v4-${{ matrix.payload_set }}-
+            expb-master-metrics-v5-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -1855,7 +1863,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.run_id }}
+          key: expb-master-metrics-v5-${{ matrix.payload_set }}-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -2056,9 +2064,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v4-superblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v5-superblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v4-superblocks-
+            expb-master-metrics-v5-superblocks-
 
       - name: Restore master metrics (realblocks)
         id: restore-master-realblocks
@@ -2066,9 +2074,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v4-realblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v5-realblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v4-realblocks-
+            expb-master-metrics-v5-realblocks-
 
       - name: Restore master metrics (fusaka)
         id: restore-master-fusaka
@@ -2076,9 +2084,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-fusaka
-          key: expb-master-metrics-v4-fusaka-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v5-fusaka-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v4-fusaka-
+            expb-master-metrics-v5-fusaka-
 
       - name: Build PR comparison comment
         id: pr-comment
