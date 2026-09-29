@@ -49,6 +49,62 @@ public partial class EthRpcModuleTests
     };
 
     [Test]
+    public async Task FrameRpc_SimulateValidation_SkipsProtocolSignatureChecks([Values] bool placeholder, [Values] bool validation)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+        transaction.Gas = 200_000;
+        transaction.MaxFeePerGas = 1_000_000_000;
+        if (!placeholder) transaction.Signatures![0].Signature = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        object payload = new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation };
+
+        string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+    }
+
+    [Test]
+    public async Task FrameRpc_SimulateValidation_RetainsOtherChecks(
+        [Values("nonce", "signatureLength", "recoveryId", "verify")] string invalid, [Values] bool validation)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+        transaction.Gas = 200_000;
+        transaction.MaxFeePerGas = 1_000_000_000;
+        if (invalid == "nonce") transaction.Nonce = 100;
+        if (invalid == "signatureLength") transaction.Signatures![0].Signature = new byte[64];
+        if (invalid == "recoveryId")
+        {
+            byte[] signature = new byte[65];
+            signature[0] = 27;
+            transaction.Signatures![0].Signature = signature;
+        }
+        if (invalid == "verify") transaction.Signatures![0].Signer = TestItem.AddressB;
+        object payload = new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation };
+
+        string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
+
+        JToken parsed = JToken.Parse(response);
+        if (invalid == "nonce" && !validation)
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+            return;
+        }
+
+        string error = invalid switch
+        {
+            "nonce" => "nonce",
+            "signatureLength" => "signature has the wrong length",
+            "recoveryId" => "recovery id",
+            _ => "VERIFY frame reverted"
+        };
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(error), response);
+    }
+
+    [Test]
     public async Task FrameRpc_UnsignedTransaction_Succeeds(
         [Values("eth_call", "eth_estimateGas", "eth_fillTransaction", "eth_simulateV1")] string method)
     {

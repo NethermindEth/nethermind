@@ -108,7 +108,7 @@ public class TransactionProcessorTests
             .WithExtraData(new byte[32])
             .WithBeneficiary(TestItem.AddressC).WithGasLimit(gasLimit).TestObject;
 
-        _transactionProcessor!.SkipSenderCodeCheck = true;
+        _transactionProcessor!.SkipSenderChecks = true;
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
 
         TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);

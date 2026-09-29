@@ -326,12 +326,13 @@ public class FrameTxSignatureValidatorTests
     }
 
     [Test]
-    public void Validate_P256PlaceholderWithoutPrecompile_RejectedAsNotSupported()
+    public void Validate_P256PlaceholderWithoutPrecompile_RejectedAsNotSupported([Values] bool skipVerification)
     {
         Transaction tx = CreateFrameTx();
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, default)];
+        byte[] signature = skipVerification ? new byte[TxFrameSignature.P256SignatureLength] : [];
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, signature)];
 
-        bool ok = FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, p256Precompile: null, _spec, out string? error, allowEmptySignatures: true);
+        bool ok = FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, p256Precompile: null, _spec, out string? error, allowEmptySignatures: true, skipVerification);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ok, Is.False);
