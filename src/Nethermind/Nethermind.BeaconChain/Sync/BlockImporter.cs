@@ -228,6 +228,9 @@ public sealed class BlockImporter : IBlockImporter
         return lookahead[offset + (int)(slot % Presets.SlotsPerEpoch)] == proposerIndex;
     }
 
+    /// <summary>Forgets the deferral entry of a block the orchestrator dropped, so it does not hold a share of <see cref="MaxDeferredBlocks"/> until finality.</summary>
+    internal void Release(Hash256 blockRoot) => _deferred.Remove(blockRoot);
+
     /// <inheritdoc/>
     public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
     {
