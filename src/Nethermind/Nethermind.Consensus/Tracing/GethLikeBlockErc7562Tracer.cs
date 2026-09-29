@@ -231,7 +231,7 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
         internal readonly Dictionary<Address, (int Size, Instruction Opcode)> ContractSizes = [];
     }
 
-    private sealed class Collector : TxTracer, ITraceImplicitStop, ITraceRejectedCall
+    private sealed class Collector : TxTracer, ITraceImplicitStop
     {
         private readonly IWorldState _worldState;
         private readonly bool[] _ignored;
@@ -263,7 +263,8 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
         public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => Exit();
         public override void ReportActionError(EvmExceptionType evmExceptionType) => Exit();
         public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => _frames.Peek().Children.Add(new());
-        public void ReportRejectedCall(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error) => _frames.Peek().Children.Add(new());
+        public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+            ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false) => _frames.Peek().Children.Add(new());
         public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
         {
             _opcode = opcode;

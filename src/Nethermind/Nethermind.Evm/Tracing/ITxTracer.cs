@@ -424,7 +424,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="to">The callee, or the creation address; <c>null</c> for a creation that failed its precheck, whose address is not derived.</param>
     /// <param name="input">Call data or init code.</param>
     /// <param name="callType">The CALL-family or CREATE operation.</param>
-    /// <param name="error"><see cref="EvmExceptionType.NotEnoughBalance"/>, <see cref="EvmExceptionType.CallDepthExceeded"/> or <see cref="EvmExceptionType.TransactionCollision"/>.</param>
+    /// <param name="error"><see cref="EvmExceptionType.NotEnoughBalance"/>, <see cref="EvmExceptionType.CallDepthExceeded"/>, <see cref="EvmExceptionType.NonceOverflow"/> or <see cref="EvmExceptionType.TransactionCollision"/>.</param>
     /// <param name="isPrecompileCall">Whether <paramref name="to"/> is a precompile.</param>
     /// <remarks>
     /// Depends on <see cref="IsTracingActions"/>. The action is complete when reported, so no action end or error

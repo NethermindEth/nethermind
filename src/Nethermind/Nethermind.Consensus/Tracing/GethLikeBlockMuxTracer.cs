@@ -21,6 +21,8 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
 {
     internal const string TracerName = "muxTracer";
 
+    private static readonly JsonSerializerOptions ResultOptions = new() { MaxDepth = EthereumJsonSerializer.DefaultMaxDepth };
+
     private readonly Hash256? _txHash;
     private readonly CompositeBlockTracer _composite = new();
     private readonly Dictionary<string, IBlockTracer<GethLikeTxTrace>> _children = [];
@@ -144,7 +146,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
                     throw new InvalidOperationException("Mux child returned a different number of transaction traces.");
             }
             for (int i = 0; i < results.Length; i++)
-                results[i].CustomTracerResult!.Value = JsonSerializer.SerializeToElement(values[i]);
+                results[i].CustomTracerResult!.Value = JsonSerializer.SerializeToElement(values[i], ResultOptions);
             return _results = results;
         }
         finally

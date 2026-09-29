@@ -35,6 +35,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private bool _failedBeforeExecution;
     private bool _pendingStep;
     private string? _rootError;
+    private string? _actionErrorDetails;
+    private ulong _actionRemainingGas;
     private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -114,6 +116,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         _depth++;
+        _actionErrorDetails = null;
+        _actionRemainingGas = 0;
 
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
@@ -278,11 +282,19 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         InvokeExit(gasLeft, ReadOnlyMemory<byte>.Empty, error.GetEvmExceptionDescription());
     }
 
+    /// <inheritdoc/>
+    public override void ReportActionRemainingGas(ulong gas) => _actionRemainingGas = gas;
+
+    /// <inheritdoc/>
+    public override void ReportActionErrorDetails(string error) => _actionErrorDetails = error;
+
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        InvokeExit(0, Array.Empty<byte>(), _log.depth == _depth + 1 && _log.error is not null
-            ? _log.error : evmExceptionType.GetEvmExceptionDescription());
+        // A rejected CREATE never started a child opcode; its diagnostic checkpoint may refund all gas.
+        ulong remainingGas = _actionErrorDetails is not null && _log.depth != _depth + 1 ? _actionRemainingGas : 0;
+        InvokeExit(remainingGas, Array.Empty<byte>(), _actionErrorDetails ?? (_log.depth == _depth + 1 && _log.error is not null
+            ? _log.error : evmExceptionType.GetEvmExceptionDescription()));
     }
 
     private void InvokeExit(ulong gas, ReadOnlyMemory<byte> output, string? error = null)
@@ -302,6 +314,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         }
 
         if (_depth == 0) _rootError = error;
+        _actionErrorDetails = null;
+        _actionRemainingGas = 0;
         _depth--;
     }
 
