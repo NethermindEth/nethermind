@@ -9,6 +9,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -260,7 +261,8 @@ public sealed class BeaconSyncOrchestrator(
     internal int ColumnFetchRotationCount => _columnFetchRotations.Count;
 
     /// <summary>Runs the full sync flow from the given anchor until cancelled.</summary>
-    public async Task RunAsync(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token)
+    /// <param name="afterEngineKick">Runs once the execution layer has been pointed at the anchor and before any block is imported, so slow start-up work does not delay that first call.</param>
+    public async Task RunAsync(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token, Action? afterEngineKick = null)
     {
         if (p2p is null || peerManager is null || discovery is null)
         {
@@ -272,8 +274,9 @@ public sealed class BeaconSyncOrchestrator(
         // Engine kick: point the execution layer at the anchor payload so it starts beacon/snap
         // syncing toward it; SYNCING is the expected (successful) answer here.
         if (_logger.IsInfo) _logger.Info($"Beacon sync starting from anchor slot {_anchorSlot} ({anchorRoot}); kicking execution layer with forkchoiceUpdated(head=safe=finalized={_anchorExecutionHash})");
-        PayloadStatusV1 kick = await engine.ForkchoiceUpdated(_anchorExecutionHash, _anchorExecutionHash, _anchorExecutionHash);
+        PayloadStatusV1 kick = await KickExecutionAsync(anchorRoot).WaitAsync(token);
         if (_logger.IsInfo) _logger.Info($"Engine kick returned {kick.Status}{(kick.Status == PayloadStatus.Syncing ? " - execution layer is syncing toward the anchor" : "")}");
+        afterEngineKick?.Invoke();
 
         await ReplayStoredBlocksAsync(token);
 
@@ -1462,6 +1465,13 @@ public sealed class BeaconSyncOrchestrator(
         {
             StartGossip();
         }
+    }
+
+    /// <summary>Points the execution layer at the anchor payload through <see cref="ForkchoiceUpdatedAsync"/>, so the first head step does not repeat an unchanged state.</summary>
+    internal Task<PayloadStatusV1> KickExecutionAsync(Hash256 anchorRoot)
+    {
+        CheckpointRef anchor = new(spec.GetEpoch(_anchorSlot), anchorRoot);
+        return ForkchoiceUpdatedAsync(new HeadView(anchorRoot, _anchorSlot, _anchorExecutionHash, null, null, anchor, anchor), _anchorExecutionHash);
     }
 
     /// <summary>Sends <c>forkchoiceUpdated</c> unless the same head, safe and finalized hashes were sent within <see cref="ForkchoiceResendInterval"/>.</summary>
