@@ -17,6 +17,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.EthStats;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
@@ -261,7 +262,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     /// <summary>
     /// An Aztec node traces about 3,600 recent blocks (debug_traceTransaction), so its flat history keeps a rolling
-    /// window with headroom over that, and its own db path means it always syncs fresh onto the flat backend.
+    /// window with headroom over that, indexed per transaction so a trace does not replay the block ahead of it, and
+    /// its own db path means it always syncs fresh onto the flat backend. Its archiver reads L1 through eth_getLogs,
+    /// which the log index serves.
     /// </summary>
     [Test]
     public void Aztec_config_keeps_a_trace_window()
@@ -269,6 +272,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.HistoryEnabled, true);
         Test<IFlatDbConfig, HistoryRetentionMode>("mainnet_aztec.json", static c => c.HistoryRetention, HistoryRetentionMode.Rolling);
         Test<IFlatDbConfig, ulong>("mainnet_aztec.json", static c => c.HistoryRetentionBlocks, 4096UL);
+        Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.HistoryTransactionIndexEnabled, true);
+        Test<ILogIndexConfig, bool>("mainnet_aztec.json", static c => c.Enabled, true);
         Test<IInitConfig, string>("mainnet_aztec.json", static c => c.BaseDbPath, "nethermind_db/mainnet_aztec");
     }
 

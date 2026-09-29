@@ -20,7 +20,11 @@
   "FlatDb": {
     "HistoryEnabled": true,
     "HistoryRetention": "Rolling",
-    "HistoryRetentionBlocks": 4096
+    "HistoryRetentionBlocks": 4096,
+    "HistoryTransactionIndexEnabled": true
+  },
+  "LogIndex": {
+    "Enabled": true
   },
   "EthStats": {
     "Server": "wss://ethstats.net/api"
