@@ -15,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
