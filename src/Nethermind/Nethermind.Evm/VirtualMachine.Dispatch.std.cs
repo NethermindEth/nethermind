@@ -80,10 +80,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             "Dispatch must run over CodeInfo's own bytes, which carry the padding it may read into.");
 
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = _opcodeHandlers;
+        Debug.Assert(!TablesHaveFastPaths<TTracingInst>() || handlers.Length == 2 * FallbackHandlersOffset,
+            "A table with fast paths must carry the plain handlers its fallbacks read.");
 
-        // Safety: the 256-entry opcode table remains pinned for the complete tail-call chain. Every
-        // bytecode read is preceded by a program-counter bounds check, or lands in the padding that
-        // follows CodeInfo.ExecutionCodeSpan, and a byte is a valid table index.
+        // Safety: the opcode table remains pinned for the complete tail-call chain. Every bytecode read is
+        // preceded by a program-counter bounds check, or lands in the padding that follows
+        // CodeInfo.ExecutionCodeSpan, and a byte is a valid index into its first 256 entries.
+        // A table that holds a fast path carries the plain handlers its fallbacks read in the 256 entries
+        // from FallbackHandlersOffset; a 256-entry table must hold none.
         fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>* opcodeHandlers = &handlers[0])
         {
             if (!TCancelable.IsActive)
@@ -177,10 +181,40 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
             }
 
+            if (!TTracingInst.IsActive && TOpcode.HasUntracedFastPath && !TOpcode.TryExecuteFast(ref stack, ref gas, ref state))
+            {
+                // A tail call, so the fast case stays frameless. The plain handler starts the opcode over from the
+                // unchanged arguments, and it and this handler both dispatch their successor through the same table.
+                nint fallback = (nint)(state.OpcodeHandlers + FallbackHandlersOffset)[Unsafe.Add(ref stack.Code, pc)];
+                IL.EnsureLocal(in fallback);
+
+                IL.Emit.Ldarg(nameof(stack));
+                IL.Emit.Ldarg(nameof(gas));
+                IL.Emit.Ldarg(nameof(state));
+                IL.Emit.Ldarg(nameof(pc));
+                IL.Emit.Ldarg(nameof(opCodeCount));
+                IL.Push(fallback);
+                IL.Emit.Tail();
+                IL.Emit.Calli(new StandAloneMethodSig(
+                    CallingConventions.Standard,
+                    TypeRef.Type<EvmExceptionType>(),
+                    TypeRef.Type<EvmStack>().MakeByRefType(),
+                    TypeRef.Type<TGasPolicy>().MakeByRefType(),
+                    TypeRef.Type<DispatchState>().MakeByRefType(),
+                    TypeRef.Type<nint>(),
+                    TypeRef.Type<nint>()));
+                IL.Emit.Ret();
+                throw IL.Unreachable();
+            }
+
             pc++;
             opCodeCount++;
             EvmExceptionType exceptionType;
-            if (TOpcode.HasCheckedBody)
+            if (!TTracingInst.IsActive && TOpcode.HasUntracedFastPath)
+            {
+                exceptionType = EvmExceptionType.None;
+            }
+            else if (TOpcode.HasCheckedBody)
             {
                 if (!TOpcode.TryConsumeGas(ref gas))
                     return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.OutOfGas);

@@ -25,11 +25,11 @@ public partial class ParallelUnbalancedWorkTests
     }
 
     [Test]
-    public void For_WhenWorkerThrows_RethrowsOnCallingThread()
+    public void For_WhenWorkerThrows_RethrowsOnCallingThread([Values(1, 4)] int workers)
     {
         InvalidOperationException expected = new("boom");
 
-        Action act = () => ParallelUnbalancedWork.For(0, 1000, FourThreads, i =>
+        Action act = () => ParallelUnbalancedWork.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = workers }, i =>
         {
             if (i == 500) throw expected;
         });
@@ -39,9 +39,9 @@ public partial class ParallelUnbalancedWorkTests
     }
 
     [Test]
-    public void For_WhenWorkerThrows_PreservesOriginalStackTrace()
+    public void For_WhenWorkerThrows_PreservesOriginalStackTrace([Values(1, 4)] int workers)
     {
-        Action act = () => ParallelUnbalancedWork.For(0, 1000, FourThreads, i =>
+        Action act = () => ParallelUnbalancedWork.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = workers }, i =>
         {
             if (i == 100) ThrowFromHelper();
         });
@@ -98,14 +98,14 @@ public partial class ParallelUnbalancedWorkTests
     }
 
     [Test]
-    public void For_WithThreadLocal_WhenInitThrows_FinallyIsNotCalled()
+    public void For_WithThreadLocal_WhenInitThrows_FinallyIsNotCalled([Values(1, 4)] int workers)
     {
         // Matches BCL Parallel.For<TLocal>: localFinally must not run if localInit threw — otherwise
         // a reference-typed TLocal with non-trivial cleanup would NPE on default(TLocal).
         int finallyCalls = 0;
 
         Action act = () => ParallelUnbalancedWork.For<object>(
-            0, 100, FourThreads,
+            0, 100, new ParallelOptions { MaxDegreeOfParallelism = workers },
             init: () => throw new InvalidOperationException("init failed"),
             action: (_, l) => l,
             @finally: _ => Interlocked.Increment(ref finallyCalls));
@@ -132,10 +132,10 @@ public partial class ParallelUnbalancedWorkTests
     }
 
     [Test]
-    public void For_WithThreadLocal_WhenFinallyThrows_RethrowsOnCallingThread()
+    public void For_WithThreadLocal_WhenFinallyThrows_RethrowsOnCallingThread([Values(1, 4)] int workers)
     {
         Action act = () => ParallelUnbalancedWork.For<int>(
-            0, 100, FourThreads,
+            0, 100, new ParallelOptions { MaxDegreeOfParallelism = workers },
             init: () => 0,
             action: (_, l) => l,
             @finally: _ => throw new InvalidOperationException("finally failed"));
@@ -144,17 +144,45 @@ public partial class ParallelUnbalancedWorkTests
     }
 
     [Test]
-    public void For_WithThreadLocal_HappyPath_RunsAllIterations()
+    public void For_WithThreadLocal_HappyPath_RunsAllIterations([Values(1, 4)] int workers)
     {
         int total = 0;
 
         ParallelUnbalancedWork.For<int>(
-            0, 1000, FourThreads,
+            0, 1000, new ParallelOptions { MaxDegreeOfParallelism = workers },
             init: () => 0,
             action: (i, local) => local + i,
             @finally: local => Interlocked.Add(ref total, local));
 
         Assert.That(total, Is.EqualTo(Enumerable.Range(0, 1000).Sum()));
+    }
+
+    [Test]
+    public void For_single_worker_preserves_body_exception_when_cleanup_throws()
+    {
+        InvalidOperationException expected = new("body");
+        Action act = () => ParallelUnbalancedWork.For(0, 2,
+            new ParallelOptions { MaxDegreeOfParallelism = 1 },
+            init: () => 0,
+            action: (int _, int local) => throw expected,
+            @finally: _ => throw new ArgumentException("cleanup"));
+
+        Assert.That(Assert.Catch<InvalidOperationException>(act), Is.SameAs(expected));
+    }
+
+    [Test]
+    public void For_single_worker_cancellation_finalizes_last_local_value()
+    {
+        using CancellationTokenSource cancellation = new();
+        int finalValue = -1;
+        Action act = () => ParallelUnbalancedWork.For(0, 10,
+            new ParallelOptions { MaxDegreeOfParallelism = 1, CancellationToken = cancellation.Token },
+            init: () => 3,
+            action: (_, local) => { cancellation.Cancel(); return local + 1; },
+            @finally: local => finalValue = local);
+
+        Assert.That(act, Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(finalValue, Is.EqualTo(4));
     }
 
     [Test]

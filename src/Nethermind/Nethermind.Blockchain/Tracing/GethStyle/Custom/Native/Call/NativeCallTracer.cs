@@ -47,15 +47,20 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly Transaction? _frameTx;
     private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
+    private readonly BlockLogIndex? _blockLogIndex;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
+    private readonly ArrayPoolList<ulong> _logIndexAtEntry = new(1024);
     private readonly CompositeDisposable _disposables = [];
 
     private EvmExceptionType? _error;
     private ulong _remainingGas;
+    private ulong _logIndexStart;
+    private ulong _logIndex;
     private bool _framesCollapsed = false;
     private NativeCallTracerCallFrame?[]? _frameRoots;
     private EvmExceptionType?[]? _frameErrors;
     private TxFrameReceipt[]? _frameReceipts;
+    private ulong?[]? _logIndexAfterFrame;
     private int _rootsClaimed;
 
     public NativeCallTracer(
@@ -81,6 +86,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         if (_config.WithLog)
         {
             IsTracingLogs = true;
+            _blockLogIndex = options.LogIndex;
+            _logIndexStart = (ulong)(_blockLogIndex?.Next ?? 0);
+            _logIndex = _logIndexStart;
         }
     }
 
@@ -118,11 +126,17 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
         // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
         _callStack.DisposeRecursive();
+        _logIndexAtEntry.Dispose();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+
+        if (_config.WithLog)
+        {
+            _logIndexAtEntry.Add(_logIndex);
+        }
 
         if (_config.OnlyTopCall && Depth > 0)
             return;
@@ -146,6 +160,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     {
         base.ReportLog(log);
 
+        ulong index = _logIndex++;
         if (_config.OnlyTopCall && Depth > 0)
             return;
 
@@ -160,6 +175,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             log.Address,
             log.Data,
             log.Topics,
+            index,
             (ulong)callFrame.Calls.Count);
 
         callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(8);
@@ -185,6 +201,18 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _error = evmExceptionType;
         OnExit(_remainingGas, null, _error);
         base.ReportActionError(evmExceptionType);
+    }
+
+    /// <summary>
+    /// Like Geth, records a call or creation that failed its precheck or collided as a frame that failed with that
+    /// error; a failed creation drops its <c>to</c>.
+    /// </summary>
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+        ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        ReportActionRemainingGas(gasLeft);
+        ReportActionError(error);
     }
 
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
@@ -213,6 +241,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+        _blockLogIndex?.Next = (int)_logIndexStart + logs.Length;
 
         CollapseFrameRoots();
         if (_callStack.Count == 0) return;
@@ -230,6 +259,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+        _blockLogIndex?.Next = (int)_logIndexStart + KeptFrameLogCount();
 
         CollapseFrameRoots();
         if (_callStack.Count == 0) return;
@@ -293,11 +323,43 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _frameErrors ??= new EvmExceptionType?[_frames.Length];
         _frameErrors[frameIndex] = error;
 
+        if (_config.WithLog)
+        {
+            _logIndexAfterFrame ??= new ulong?[_frames.Length];
+            _logIndexAfterFrame[frameIndex] = _logIndex;
+        }
+
         // Only a frame that entered the VM pushed a root, and it pushed exactly one.
         if (_callStack.Count > _rootsClaimed)
         {
             _frameRoots[frameIndex] = _callStack[_rootsClaimed++];
         }
+    }
+
+    /// <inheritdoc/>
+    public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex)
+    {
+        if (_logIndexAfterFrame is null) return;
+
+        // The rolled-back frames keep their success status but lose their logs, so the frames after them
+        // number from where the rollback started.
+        _logIndex = LogIndexBeforeFrame(fromFrameIndex);
+        for (int i = fromFrameIndex; i <= toFrameIndex && i < _logIndexAfterFrame.Length; i++)
+        {
+            _logIndexAfterFrame[i] = _logIndex;
+        }
+    }
+
+    /// <summary>The log index left by the last frame before <paramref name="frameIndex"/> that ran; skipped frames
+    /// report no end.</summary>
+    private ulong LogIndexBeforeFrame(int frameIndex)
+    {
+        for (int i = Math.Min(frameIndex, _logIndexAfterFrame!.Length) - 1; i >= 0; i--)
+        {
+            if (_logIndexAfterFrame[i] is ulong logIndex) return logIndex;
+        }
+
+        return _logIndexStart;
     }
 
     /// <summary>Roots an EIP-8141 frame transaction's trace in one synthetic transaction frame whose
@@ -383,6 +445,19 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _ => (_frameErrors?[frameIndex] ?? EvmExceptionType.Revert).GetEvmExceptionDescription()
     };
 
+    /// <summary>The logs a failed transaction's receipt still carries: an EIP-8141 transaction keeps its
+    /// validation prefix's logs, every other failed transaction keeps none.</summary>
+    private int KeptFrameLogCount()
+    {
+        int count = 0;
+        foreach (TxFrameReceipt frameReceipt in _frameReceipts ?? [])
+        {
+            count += frameReceipt.Logs.Length;
+        }
+
+        return count;
+    }
+
     private void ApplyTwoDimensionalGas(NativeCallTracerCallFrame firstCallFrame, in GasConsumed gasSpent)
     {
         if (!_isEip8037Enabled) return;
@@ -392,6 +467,17 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
+        if (_config.WithLog)
+        {
+            // Logs of a halted frame never reach the receipt, so they do not consume an index.
+            ulong logIndexAtEntry = _logIndexAtEntry[^1];
+            _logIndexAtEntry.RemoveAt(_logIndexAtEntry.Count - 1);
+            if (error is not null)
+            {
+                _logIndex = logIndexAtEntry;
+            }
+        }
+
         if (Depth == 0)
         {
             // Only a frame transaction reaches this with more frames to come; every other transaction's

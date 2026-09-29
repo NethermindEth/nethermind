@@ -1162,6 +1162,20 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Call_at_max_depth_reports_depth_error()
+    {
+        // Calls itself with all but 512 gas, then, once the call fails, calls the identity precompile with no value and
+        // with 1 wei, and creates. Before EIP-150 a call forwards what it asks for, so 2M gas reaches the depth limit.
+        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1603c576000600060006000600060046000f1506000600060006000600160046000f150600060006000f0505b00");
+        (Block block, Transaction transaction) = PrepareTx((ForkActivation)MainnetSpecProvider.HomesteadBlockNumber, 2_000_000, code);
+        InstructionCallbackTracer tracer = new();
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.GetErrors(), Is.EqualTo(Enumerable.Repeat((Instruction.CALL, VirtualMachineStatics.MaxCallDepth, EvmExceptionType.CallDepthExceeded), 3)));
+    }
+
+    [Test]
     public void Create_nonce_overflow_callbacks_are_paired()
     {
         byte[] code = Prepare.EvmCode.Create([], UInt256.Zero).Op(Instruction.STOP).Done;

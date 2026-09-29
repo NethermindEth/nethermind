@@ -10,6 +10,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -202,6 +203,7 @@ public partial class VirtualMachine<TGasPolicy>(
     protected VmState<TGasPolicy> _currentState = null!;
     protected (Address? CreatedAddress, bool? Success) _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
+    protected ulong _previousCallOutputWindowLength;
 
     public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
@@ -315,6 +317,7 @@ public partial class VirtualMachine<TGasPolicy>(
         using FrameCleanupScope _ = new(this, vmState);
         _previousCallResult = default;
         _previousCallOutputDestination = UInt256.Zero;
+        _previousCallOutputWindowLength = 0;
         nuint previousCallOutputLength = 0;
 
         // Main execution loop: processes call frames until the top-level transaction completes.
@@ -436,7 +439,7 @@ public partial class VirtualMachine<TGasPolicy>(
                         else
                         {
                             // Process a standard call return.
-                            previousCallOutputLength = HandleRegularReturn<TTracingInst>(in callResult, previousState);
+                            previousCallOutputLength = HandleRegularReturn(in callResult, previousState);
                         }
 
                         // Commit the changes from the completed call frame if execution was successful.
@@ -531,30 +534,41 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
+    private void SetPreviousCallOutputWindow(VmState<TGasPolicy> childState)
+    {
+        _previousCallOutputDestination = (ulong)childState.OutputDestination;
+        _previousCallOutputWindowLength = (ulong)childState.OutputLength;
+    }
+
+    /// <summary>
+    /// Reports a call's whole output window, after any returned bytes were copied into it, as the memory
+    /// change of the CALL-family operation, whether or not the call entered a frame or succeeded. Only tracers
+    /// that ask for it pay for the read.
+    /// </summary>
+    internal void TraceCallOutputWindow(in UInt256 offset, in UInt256 length)
+    {
+        if (!length.IsZero && _txTracer.IsTracingCallOutputMemory)
+        {
+            // The call already paid to expand memory over the window; untouched bytes read as zero.
+            _txTracer.ReportMemoryChange(offset, VmState.Memory.LoadSpanAfterGas(in offset, length.u0));
+        }
+    }
+
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref nuint previousCallOutputLength)
     {
         _previousCallResult = (previousState.Env.ExecutingAccount, true);
         _previousCallOutputDestination = UInt256.Zero;
+        _previousCallOutputWindowLength = 0;
         ReturnDataBuffer = default;
         previousCallOutputLength = 0;
     }
 
-    protected nuint HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, VmState<TGasPolicy> previousState)
-        where TTracingInst : struct, IFlag
+    protected nuint HandleRegularReturn(scoped in CallResult callResult, VmState<TGasPolicy> previousState)
     {
         ReturnDataBuffer = callResult.Output;
         _previousCallResult = (null, callResult.PrecompileSuccess != false);
         nuint previousCallOutputLength = (nuint)Math.Min(ReturnDataBuffer.Length, (int)previousState.OutputLength);
-        _previousCallOutputDestination = (ulong)previousState.OutputDestination;
-        if (previousState.IsPrecompile)
-        {
-            // parity induced if else for vmtrace
-            if (TTracingInst.IsActive)
-            {
-                ReadOnlySpan<byte> output = ReturnDataBuffer.Span[..(int)previousCallOutputLength];
-                _txTracer.ReportMemoryChange(_previousCallOutputDestination, in output);
-            }
-        }
+        SetPreviousCallOutputWindow(previousState);
 
         if (IsTracingActions)
         {
@@ -724,8 +738,8 @@ public partial class VirtualMachine<TGasPolicy>(
 
         previousCallOutputLength = (nuint)Math.Min(ReturnDataBuffer.Length, (int)previousState.OutputLength);
 
-        // Record the output destination address for subsequent operations.
-        _previousCallOutputDestination = (ulong)previousState.OutputDestination;
+        // Record the output window for subsequent operations.
+        SetPreviousCallOutputWindow(previousState);
 
         // If transaction tracing is enabled, report the revert action along with the available gas and output bytes.
         if (IsTracingActions)
@@ -804,8 +818,8 @@ public partial class VirtualMachine<TGasPolicy>(
         bool childNewAccountCharged = _currentState.NewAccountCharged;
         bool childCreateStateGasCharged = _currentState.IsCreateStateGasCharged;
 
-        // Reset output destination and return data.
-        _previousCallOutputDestination = UInt256.Zero;
+        // Nothing is copied back, but the output window is still reported to instruction tracers.
+        SetPreviousCallOutputWindow(_currentState);
         ReturnDataBuffer = default;
         previousCallOutputLength = 0;
 
@@ -993,8 +1007,8 @@ public partial class VirtualMachine<TGasPolicy>(
         bool childNewAccountCharged = _currentState.NewAccountCharged;
         bool childCreateStateGasCharged = _currentState.IsCreateStateGasCharged;
 
-        // Reset output destination and clear return data.
-        _previousCallOutputDestination = UInt256.Zero;
+        // Nothing is copied back, but the output window is still reported to instruction tracers.
+        SetPreviousCallOutputWindow(_currentState);
         ReturnDataBuffer = default;
         previousCallOutputLength = 0;
 
@@ -1165,7 +1179,7 @@ public partial class VirtualMachine<TGasPolicy>(
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not KzgSetupUnavailableException)
         {
             if (_logger.IsError) LogExecutionException(precompile, exception);
             output = default;
@@ -1353,7 +1367,7 @@ public partial class VirtualMachine<TGasPolicy>(
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not KzgSetupUnavailableException)
         {
             if (_logger.IsError) LogExecutionException(precompile, exception);
             return new(default, precompileSuccess: false, shouldRevert: true);
@@ -1492,6 +1506,11 @@ public partial class VirtualMachine<TGasPolicy>(
         if (previousCallOutputLength > 0)
         {
             vmState.Memory.SaveAfterGas(in previousCallOutputDestination, ReturnDataBuffer.Span[..(int)previousCallOutputLength]);
+        }
+
+        if (TTracingInst.IsActive && previousCallResult.Success.HasValue)
+        {
+            TraceCallOutputWindow(in previousCallOutputDestination, _previousCallOutputWindowLength);
         }
 
         // Dispatch the bytecode interpreter.
