@@ -122,6 +122,12 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The custodians asked for the missing columns of each block in <see cref="_pendingRetry"/>, kept across slots so every custodian is reached.</summary>
     private readonly Dictionary<Hash256, RangeSync.ColumnFetchRotation> _columnFetchRotations = [];
 
+    /// <summary>The roots whose by-root column fetch is running, at most one each; the fetch runs off the worker and ends with a <see cref="ColumnFetchEndedItem"/>.</summary>
+    private readonly HashSet<Hash256> _columnFetchesInFlight = [];
+
+    /// <summary>The roots the sidecar pool may wake the worker for, once every sampled column of one is held.</summary>
+    private readonly HashSet<Hash256> _columnWatched = [];
+
     /// <summary>The roots of the blocks in <see cref="_pendingByParent"/> held for a parent waiting on a payload.</summary>
     private readonly HashSet<Hash256> _heldForPayload = [];
 
@@ -194,6 +200,12 @@ public sealed class BeaconSyncOrchestrator(
     internal sealed record GossipGloasAttesterSlashingItem(AttesterSlashingGloas Slashing) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
 
+    /// <summary>The sidecar pool holds every sampled column awaited for <paramref name="BlockRoot"/>; queued at most once per watch.</summary>
+    internal sealed record ColumnsHeldItem(Hash256 BlockRoot) : WorkItem;
+
+    /// <summary>A by-root column fetch for <paramref name="BlockRoot"/> ended; <paramref name="Complete"/> is whether every sampled column is then held.</summary>
+    internal sealed record ColumnFetchEndedItem(Hash256 BlockRoot, bool Complete) : WorkItem;
+
     /// <summary>An execution payload envelope to import; <paramref name="Source"/> is the req/resp peer that served it, if any.</summary>
     internal abstract record EnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source) : WorkItem;
     internal sealed record GossipEnvelopeItem(SignedExecutionPayloadEnvelope Envelope) : EnvelopeItem(Envelope, null);
@@ -212,6 +224,15 @@ public sealed class BeaconSyncOrchestrator(
     internal (Hash256 Root, ulong Slot) SyncTip => (_syncTip.Root, _syncTip.Slot);
 
     internal ChannelWriter<WorkItem> WorkWriter => _work.Writer;
+
+    /// <summary>Completes when a work item is queued, without taking it; for tests that drive the worker by hand.</summary>
+    internal ValueTask<bool> WaitForWorkAsync(CancellationToken token) => _work.Reader.WaitToReadAsync(token);
+
+    /// <summary>The work items queued and not yet taken; for tests.</summary>
+    internal int QueuedWorkCount => _work.Reader.Count;
+
+    /// <summary>The by-root column fetches running off the worker; for tests.</summary>
+    internal int ColumnFetchesInFlight => _columnFetchesInFlight.Count;
 
     /// <summary>The gossip blocks held for a parent, bounded by <see cref="MaxPendingGossipBlocks"/>; for tests.</summary>
     internal int PendingGossipBlockCount => _pendingCount;
@@ -434,6 +455,24 @@ public sealed class BeaconSyncOrchestrator(
             case EnvelopeItem envelope:
                 await ImportEnvelopeItemAsync(envelope, token);
                 break;
+            case ColumnsHeldItem held:
+                // The pool dropped the fired watch; one a re-arm set since is dropped too, so none is orphaned.
+                if (_columnWatched.Remove(held.BlockRoot))
+                {
+                    columnPool!.Unwatch(held.BlockRoot);
+                }
+
+                await RetryOnColumnsAsync(held.BlockRoot, token);
+                break;
+            case ColumnFetchEndedItem ended:
+                _columnFetchesInFlight.Remove(ended.BlockRoot);
+                if (ended.Complete)
+                {
+                    _columnRecovery.Remove(ended.BlockRoot);
+                    await RetryOnColumnsAsync(ended.BlockRoot, token);
+                }
+
+                break;
         }
     }
 
@@ -444,16 +483,12 @@ public sealed class BeaconSyncOrchestrator(
     /// <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry -
     /// wiring it in at only one call site would leave the other three silently dropping it.
     /// </summary>
-    internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token)
+    /// <param name="retryingOnColumns">Whether this import was woken by the columns it waited for, so a repeat deferral waits for the slot tick instead of watching and fetching again.</param>
+    internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns = false)
     {
         Hash256 root = block.ComputeMessageRoot();
         long startMs = Environment.TickCount64;
         BlockImportResult result = _importer!.Import(block, root, verifySignatures: true);
-        if (result == BlockImportResult.DataUnavailable && await FetchMissingColumnsAsync(block, root, token))
-        {
-            startMs = Environment.TickCount64;
-            result = _importer.Import(block, root, verifySignatures: true);
-        }
 
         // These results come after the importer verified the proposer signature.
         if (result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified)
@@ -467,10 +502,9 @@ public sealed class BeaconSyncOrchestrator(
             Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
             _importMsSinceProgressLog += Metrics.BeaconChainLastBlockImportMs;
             _pendingRetry.Remove(root);
-            // Before the held envelopes import, so one that waits only on these columns finds them held.
             if (TrackColumnRecovery(root, block) is { } recovery)
             {
-                await RecoverColumnsAsync(root, recovery, slotClock.CurrentSlot, token);
+                RecoverColumns(root, recovery, slotClock.CurrentSlot, token);
             }
 
             await OnImportedAsync(root, block.Slot, token);
@@ -490,6 +524,10 @@ public sealed class BeaconSyncOrchestrator(
                 // The recovered envelope re-drove this block from the retry set, so the caller must see it imported.
                 return BlockImportResult.Imported;
             }
+            else if (result == BlockImportResult.DataUnavailable && !retryingOnColumns)
+            {
+                AwaitColumns(block, root, token);
+            }
         }
         else
         {
@@ -505,33 +543,120 @@ public sealed class BeaconSyncOrchestrator(
         if (!_pendingRetry.ContainsKey(root))
         {
             _columnFetchRotations.Remove(root);
+            ReleaseColumnWatch(root);
         }
 
         return result;
     }
 
     /// <summary>
-    /// Fetches a deferred Fulu block's missing sampled columns by root from a bounded number of custodians per call,
-    /// rotating through every connected custodian of a missing column across calls and slots.
+    /// Has the pool wake the worker once a deferred Fulu block's sampled columns are all held, and starts fetching its missing
+    /// ones by root from a bounded number of custodians, rotating through every connected custodian of a missing column across calls and slots.
     /// </summary>
     /// <remarks>
     /// A custodian behind peers that answered with nothing, or one that connected since the last attempt, is still reached
-    /// (fulu/das-core.md, every sampled column), while one import costs a bounded number of requests however many peers are connected.
+    /// (fulu/das-core.md, every sampled column), while one fetch costs a bounded number of requests however many peers are connected.
     /// </remarks>
-    /// <returns>Whether every sampled column is now held, so a re-import can pass the availability gate.</returns>
-    private async Task<bool> FetchMissingColumnsAsync(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token)
+    private void AwaitColumns(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token)
     {
         if (block is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { Body.BlobKzgCommitments.Length: > 0 } message })
         {
-            return false;
+            return;
         }
 
+        WatchColumns(root, gloas: false);
         if (!_columnFetchRotations.TryGetValue(root, out RangeSync.ColumnFetchRotation? rotation))
         {
             _columnFetchRotations[root] = rotation = new RangeSync.ColumnFetchRotation(slotClock);
         }
 
-        return await rangeSync.FetchColumnsByRootAsync(root, message, rotation, token);
+        StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, message, rotation, fetchToken), token);
+    }
+
+    /// <summary>Asks the pool to queue one <see cref="ColumnsHeldItem"/> for <paramref name="root"/> when every sampled column of it is held.</summary>
+    private void WatchColumns(Hash256 root, bool gloas)
+    {
+        if (columnPool is not null
+            && _custody.Current is { } custody
+            && columnPool.TryWatch(root, custody.SampledColumns, gloas, () => _work.Writer.TryWrite(new ColumnsHeldItem(root))))
+        {
+            _columnWatched.Add(root);
+        }
+    }
+
+    /// <summary>Drops the pool's watch on <paramref name="root"/> once no block or envelope waits on it, so a sidecar for it queues nothing.</summary>
+    private void ReleaseColumnWatch(Hash256 root)
+    {
+        if (_columnWatched.Count == 0 || _pendingRetry.ContainsKey(root) || _pendingEnvelopeRetry.Contains(root) || !_columnWatched.Remove(root))
+        {
+            return;
+        }
+
+        columnPool!.Unwatch(root);
+    }
+
+    /// <summary>Drops the watches of roots whose block or envelope left the retry sets by a path other than a block import.</summary>
+    private void ReleaseIdleColumnWatches()
+    {
+        if (_columnWatched.Count == 0)
+        {
+            return;
+        }
+
+        Hash256[] watched = [.. _columnWatched];
+        foreach (Hash256 root in watched)
+        {
+            ReleaseColumnWatch(root);
+        }
+    }
+
+    /// <summary>Runs <paramref name="fetch"/> off the worker unless one is running for <paramref name="root"/>; it ends with a <see cref="ColumnFetchEndedItem"/>.</summary>
+    /// <returns>Whether a fetch was started.</returns>
+    private bool StartColumnFetch(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token)
+    {
+        if (!_columnFetchesInFlight.Add(root))
+        {
+            return false;
+        }
+
+        _ = RunColumnFetchAsync(root, fetch, token);
+        return true;
+    }
+
+    /// <remarks>Touches no worker state: the fetched sidecars reach the pool, which wakes the worker, and the end is reported as a work item.</remarks>
+    private async Task RunColumnFetchAsync(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token)
+    {
+        bool complete = false;
+        try
+        {
+            complete = await fetch(token);
+        }
+        catch (Exception e)
+        {
+            if (!token.IsCancellationRequested && _logger.IsDebug) _logger.Debug($"By-root column fetch for {root} failed and is retried on the slot tick: {e.Message}");
+        }
+
+        try
+        {
+            await _work.Writer.WriteAsync(new ColumnFetchEndedItem(root, complete), token);
+        }
+        catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
+        {
+        }
+    }
+
+    /// <summary>Retries the block and the envelopes held for <paramref name="root"/> now that their columns are held, without waiting for the slot tick.</summary>
+    private async Task RetryOnColumnsAsync(Hash256 root, CancellationToken token)
+    {
+        if (_pendingRetry.TryGetValue(root, out PendingRetry pending))
+        {
+            await ImportBlockAsync(pending.Block, token, retryingOnColumns: true);
+        }
+
+        foreach (ParkedEnvelope parked in _pendingEnvelopeRetry.HeldFor(root))
+        {
+            await RetryParkedEnvelopeAsync(parked, token, retryingOnColumns: true);
+        }
     }
 
     /// <summary>Remembers a block for <see cref="DrainPendingRetriesAsync"/>; silently drops it once <see cref="MaxPendingRetryBlocks"/> is reached, same as <see cref="QueuePendingGossipBlock"/> does for its list.</summary>
@@ -604,6 +729,7 @@ public sealed class BeaconSyncOrchestrator(
             {
                 _pendingRetry.Remove(root);
                 _columnFetchRotations.Remove(root);
+                ReleaseColumnWatch(root);
                 DropPendingChildren(root);
                 if (retry.Block.Slot > finalizedSlot && _logger.IsWarn)
                     _logger.Warn($"Dropping block {root} at slot {retry.Block.Slot}: its data did not become available within {MaxPendingRetryAgeEpochs} epochs");
@@ -636,23 +762,36 @@ public sealed class BeaconSyncOrchestrator(
 
         foreach (ParkedEnvelope parked in _pendingEnvelopeRetry.Snapshot())
         {
-            ExecutionPayloadEnvelopeImportResult? result = await ImportEnvelopeAsync(parked.Envelope, token, parked.Source);
-            if (result is not (ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable))
-            {
-                _pendingEnvelopeRetry.Remove(parked);
-            }
+            await RetryParkedEnvelopeAsync(parked, token, retryingOnColumns: false);
+        }
+    }
+
+    private async Task RetryParkedEnvelopeAsync(ParkedEnvelope parked, CancellationToken token, bool retryingOnColumns)
+    {
+        ExecutionPayloadEnvelopeImportResult? result = await ImportEnvelopeAsync(parked.Envelope, token, parked.Source, retryingOnColumns);
+        if (result is not (ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable))
+        {
+            _pendingEnvelopeRetry.Remove(parked);
         }
     }
 
     /// <summary>Queues an envelope that waits on its blob data or on the engine for a retry on the slot tick.</summary>
     /// <param name="source">The req/resp peer that served the envelope, penalized if a retry finds it invalid.</param>
-    private Task OnEnvelopeDataUnavailableAsync(SignedExecutionPayloadEnvelope envelope, CancellationToken token, IBeaconSyncPeer? source = null)
+    private void OnEnvelopeDataUnavailable(SignedExecutionPayloadEnvelope envelope, ExecutionPayloadEnvelopeImportResult result, bool retryingOnColumns, CancellationToken token, IBeaconSyncPeer? source)
     {
-        _pendingEnvelopeRetry.Add(envelope.Message!.BeaconBlockRoot!, envelope, source, slotClock.CurrentSlot);
-        return Task.CompletedTask;
+        Hash256 root = envelope.Message!.BeaconBlockRoot!;
+        _pendingEnvelopeRetry.Add(root, envelope, source, slotClock.CurrentSlot);
+        if (result == ExecutionPayloadEnvelopeImportResult.DataUnavailable && !retryingOnColumns)
+        {
+            WatchColumns(root, gloas: true);
+            if (_columnRecovery.TryGetValue(root, out ColumnRecovery? recovery))
+            {
+                RecoverColumns(root, recovery, slotClock.CurrentSlot, token);
+            }
+        }
     }
 
-    /// <summary>Remembers an imported Gloas block whose bid commits blobs, so <see cref="RecoverGloasColumnsAsync"/> fetches its missing sampled columns.</summary>
+    /// <summary>Remembers an imported Gloas block whose bid commits blobs, so <see cref="RecoverGloasColumns"/> fetches its missing sampled columns.</summary>
     /// <returns>The new entry, or <c>null</c> when the block demands no columns or is tracked already.</returns>
     private ColumnRecovery? TrackColumnRecovery(Hash256 root, ForkedSignedBeaconBlock block)
     {
@@ -693,7 +832,7 @@ public sealed class BeaconSyncOrchestrator(
     /// Gossip candidates carry no source peer to bound, so a flood can take every candidate place of a column, or every
     /// candidate can fail verification; the columns then arrive only by DataColumnSidecarsByRoot (gloas/p2p-interface.md).
     /// </remarks>
-    private async Task RecoverGloasColumnsAsync(CancellationToken token)
+    private void RecoverGloasColumns(CancellationToken token)
     {
         if (_columnRecovery.Count == 0)
         {
@@ -711,21 +850,20 @@ public sealed class BeaconSyncOrchestrator(
                 continue;
             }
 
-            await RecoverColumnsAsync(root, recovery, currentSlot, token);
+            RecoverColumns(root, recovery, currentSlot, token);
         }
     }
 
-    private async Task RecoverColumnsAsync(Hash256 root, ColumnRecovery recovery, ulong currentSlot, CancellationToken token)
+    private void RecoverColumns(Hash256 root, ColumnRecovery recovery, ulong currentSlot, CancellationToken token)
     {
         if (recovery.LastAttemptSlot == currentSlot)
         {
             return;
         }
 
-        _columnRecovery[root] = recovery with { LastAttemptSlot = currentSlot };
-        if (await rangeSync.FetchGloasColumnsByRootAsync(root, recovery.Bid, recovery.Rotation, token))
+        if (StartColumnFetch(root, fetchToken => rangeSync.FetchGloasColumnsByRootAsync(root, recovery.Bid, recovery.Rotation, fetchToken), token))
         {
-            _columnRecovery.Remove(root);
+            _columnRecovery[root] = recovery with { LastAttemptSlot = currentSlot };
         }
     }
 
@@ -740,8 +878,9 @@ public sealed class BeaconSyncOrchestrator(
     /// not know is dropped, neither marked seen nor pooled, so a result added later fails closed.
     /// </remarks>
     /// <param name="source">The req/resp peer that served the envelope; <c>null</c> for gossip.</param>
+    /// <param name="retryingOnColumns">Whether this import was woken by the columns it waited for, so a repeat deferral waits for the slot tick.</param>
     /// <returns>The verdict, or <c>null</c> when the envelope carries no message or block root, or its import failed on a local fault, and it was dropped.</returns>
-    internal async Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeAsync(SignedExecutionPayloadEnvelope envelope, CancellationToken token, IBeaconSyncPeer? source = null)
+    internal async Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeAsync(SignedExecutionPayloadEnvelope envelope, CancellationToken token, IBeaconSyncPeer? source = null, bool retryingOnColumns = false)
     {
         if (envelope.Message is not { BeaconBlockRoot: not null } message)
         {
@@ -775,7 +914,7 @@ public sealed class BeaconSyncOrchestrator(
                 _pendingEnvelopesByBlock.Add(message.BeaconBlockRoot!, envelope, source, slotClock.CurrentSlot);
                 break;
             case ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable:
-                await OnEnvelopeDataUnavailableAsync(envelope, token, source);
+                OnEnvelopeDataUnavailable(envelope, result, retryingOnColumns, token, source);
                 break;
             case ExecutionPayloadEnvelopeImportResult.Invalid:
                 source?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Execution payload envelope for beacon block {message.BeaconBlockRoot} is invalid");
@@ -1311,8 +1450,9 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         await DrainPendingRetriesAsync(token);
-        await RecoverGloasColumnsAsync(token);
+        RecoverGloasColumns(token);
         await DrainPendingEnvelopesAsync(token);
+        ReleaseIdleColumnWatches();
 
         ulong epoch = spec.GetEpoch(slot);
         if (_nextRotation is { } rotation && epoch >= rotation.Epoch)
@@ -1814,6 +1954,9 @@ public sealed class BeaconSyncOrchestrator(
                 }
             }
         }
+
+        /// <summary>The envelopes held for <paramref name="blockRoot"/> in arrival order, still held.</summary>
+        public List<ParkedEnvelope> HeldFor(Hash256 blockRoot) => _byBlock.TryGetValue(blockRoot, out List<ParkedEnvelope>? held) ? [.. held] : [];
 
         public List<ParkedEnvelope> Snapshot()
         {

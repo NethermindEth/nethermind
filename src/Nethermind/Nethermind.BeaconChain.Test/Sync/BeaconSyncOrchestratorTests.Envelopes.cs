@@ -506,12 +506,15 @@ public partial class BeaconSyncOrchestratorTests
         GloasCustodySamplingAvailability availability = new(new DiscoveryNodeCustodySource(discovery), sidecars, RangeSyncTests.ClockAtGenesis(Spec), Spec);
 
         await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
         int requestsOnImport = peer.ColumnRootRequests.Count;
         // A tick queued behind the import runs in the slot the block imported in.
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
         int requestsInImportSlot = peer.ColumnRootRequests.Count;
         harness.Timestamper.Set(SlotStart(WallSlot + 1));
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -539,9 +542,11 @@ public partial class BeaconSyncOrchestratorTests
         GloasCustodySamplingAvailability availability = new(new DiscoveryNodeCustodySource(discovery), sidecars, RangeSyncTests.ClockAtGenesis(Spec), Spec);
 
         await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
         bool availableOnImport = availability.IsDataAvailable(root, bid);
         harness.Timestamper.Set(SlotStart(WallSlot + 1));
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -821,9 +826,11 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
         }
 
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
         int requestsOnImport = peer.ColumnRootRequests.Count;
         harness.Timestamper.Set(SlotStart(WallSlot + 1));
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
 
         Assert.That(peer.ColumnRootRequests.Skip(requestsOnImport).Select(static r => r[0].BlockRoot), Is.EquivalentTo(roots.Skip(1)));
     }
@@ -837,6 +844,7 @@ public partial class BeaconSyncOrchestratorTests
         Harness harness = CreateHarness(peers: [peer], discovery: discovery);
         harness.Importer.Known.Add(anchorRoot);
         await harness.Orchestrator.ImportBlockAsync(GloasBlobBlock(EnvelopeBlockSlot, anchorRoot, ColumnSlot), CancellationToken.None);
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
 
         ulong nextTick = finalized ? WallSlot + 1 : WallSlot + RetryAgeSlots + 1;
@@ -847,6 +855,7 @@ public partial class BeaconSyncOrchestratorTests
 
         harness.Timestamper.Set(SlotStart(nextTick));
         await harness.Orchestrator.ProcessSlotAsync(nextTick, CancellationToken.None);
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
 
         Assert.That(peer.ColumnRootRequests, Has.Count.EqualTo(1));
     }
