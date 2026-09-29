@@ -1511,6 +1511,31 @@ public class SszMiddlewareTests
             Arg.Is<InclusionListClaim[]?>(c => c != null && c.SequenceEqual(ClaimsFixture)));
     }
 
+    /// <summary>An over-cap claim list decodes over SSZ and reaches the engine, so it is answered as the engine's
+    /// -32602 rather than as an SSZ decode failure.</summary>
+    [Test]
+    public async Task NewPayloadV6_ssz_reports_over_cap_claims_as_invalid_params()
+    {
+        _engineModule.engine_newPayloadV6(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(),
+                Arg.Is<InclusionListClaim[]?>(c => c != null && c.Length > Eip8369Constants.MaxInclusionListClaims))
+            .Returns(ResultWrapper<PayloadStatusV2>.Fail("Inclusion list claims exceed the maximum", ErrorCodes.InvalidParams));
+
+        NewPayloadV6RequestWire wire = NewPayloadV6WireWithMembershipAndClaims();
+        wire.InclusionListClaims = [.. Enumerable.Repeat(new InclusionListClaimWire { TransactionHash = TestItem.KeccakA }, Eip8369Constants.MaxInclusionListClaims + 1)];
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", NewPayloadV6RequestWire.Encode(wire), fork: "bogota");
+        await _middleware.InvokeAsync(ctx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // SSZ-REST's rendering of any engine -32602: 400 with the invalid-request problem type and the engine's detail.
+            string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+            Assert.That(body, Does.Contain("/engine-api/errors/invalid-request"));
+            Assert.That(body, Does.Contain("Inclusion list claims exceed the maximum"));
+        }
+    }
+
     /// <summary>SSZ-REST newPayloadWithWitnessV6 carries membership and claims to the engine exactly as JSON does.</summary>
     [Test]
     public async Task NewPayloadWithWitnessV6_ssz_carries_membership_and_claims()

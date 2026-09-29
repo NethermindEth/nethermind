@@ -267,7 +267,9 @@ public partial struct NewPayloadV6RequestWire
     // Flattened aggregate: the per-member cap would reject aggregates the JSON path accepts.
     [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
     [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszInclusionListMembership[]? InclusionListMembership { get; set; }
-    [SszList(Eip8369Constants.MaxInclusionListClaims)] public InclusionListClaimWire[]? InclusionListClaims { get; set; }
+    // Decoded past MAX_INCLUSION_LIST_CLAIMS so the engine answers an over-cap list with -32602, as over JSON;
+    // one claim per entry of the aggregate list is the transport's own bound.
+    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public InclusionListClaimWire[]? InclusionListClaims { get; set; }
 }
 
 [SszContainer]
