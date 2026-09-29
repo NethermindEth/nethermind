@@ -84,19 +84,23 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
-    public void trace_transaction_and_get_return_null_for_missing_transaction()
+    public void transaction_lookups_return_null_for_missing_transaction()
     {
         TestContext test = new();
         test.InnerModule.trace_transaction(TestItem.KeccakB).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(null));
+        test.InnerModule.trace_replayTransaction(TestItem.KeccakB, Arg.Any<string[]>()).Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(null));
 
         using ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> traces = test.Module.trace_transaction(TestItem.KeccakB);
         using ResultWrapper<ParityTxTraceFromStore?> trace = test.Module.trace_get(TestItem.KeccakB, []);
+        using ResultWrapper<ParityTxTraceFromReplay?> replay = test.Module.trace_replayTransaction(TestItem.KeccakB, ["trace"]);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(traces.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(traces.Data, Is.Null);
             Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(trace.Data, Is.Null);
+            Assert.That(replay.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(replay.Data, Is.Null);
         }
     }
 
@@ -514,7 +518,7 @@ public class TraceStoreRpcModuleTests
                 .Returns(nonDbReplayWrapper);
 
             InnerModule.trace_replayTransaction(nonDbTransaction, Arg.Any<string[]>())
-                .Returns(nonDbReplayWrapper);
+                .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplay(NonDbTraces[0])));
 
             InnerModule.trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>())
                 .Returns(nonDbReplaysWrapper);

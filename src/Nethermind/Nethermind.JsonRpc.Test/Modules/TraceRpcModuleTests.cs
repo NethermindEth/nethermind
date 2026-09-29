@@ -136,7 +136,7 @@ public class TraceRpcModuleTests
         object transaction = new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0" };
         object[] parameters = method switch
         {
-            // An unknown hash fails the receipt lookup, so this also checks the types are validated before that.
+            // An unknown hash returns null, so this also checks the types are validated before the lookup.
             "trace_replayTransaction" => [TestItem.KeccakA, traceTypes],
             // Genesis short-circuits replay, so this also checks the types are validated before that.
             "trace_replayBlockTransactions" => ["earliest", traceTypes],
@@ -496,7 +496,7 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_transaction_and_get_return_null_for_missing_transaction([Values] bool streaming, [Values] bool pending)
+    public async Task Transaction_lookups_return_null_for_missing_transaction([Values] bool streaming, [Values] bool pending)
     {
         Context context = new();
         await context.Build();
@@ -517,11 +517,12 @@ public class TraceRpcModuleTests
             Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_transaction", txHash), Is.EqualTo(expected));
             Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", txHash, Array.Empty<string>()), Is.EqualTo(expected));
             Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", txHash, new[] { "0x0" }), Is.EqualTo(expected));
+            Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_replayTransaction", txHash, new[] { "trace" }), Is.EqualTo(expected));
         }
     }
 
     [Test]
-    public async Task Trace_transaction_and_get_keep_errors_for_unavailable_history([Values] UnavailableHistory unavailable)
+    public async Task Transaction_lookups_keep_errors_for_unavailable_history([Values] UnavailableHistory unavailable)
     {
         Context context = new();
         await context.Build();
@@ -550,6 +551,8 @@ public class TraceRpcModuleTests
             (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!), true),
             (await RpcTest.TestSerializedRequest(module, "trace_get", transaction.Hash!, Array.Empty<string>()), true),
             (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!, true), false),
+            (await RpcTest.TestSerializedRequest(module, "trace_replayTransaction", transaction.Hash!, new[] { "trace" }), true),
+            (await RpcTest.TestSerializedRequest(module, "trace_replayTransaction", transaction.Hash!, new[] { "trace" }, true), false),
         })
         {
             using JsonDocument document = JsonDocument.Parse(response);
@@ -1341,10 +1344,10 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction);
         string[] traceTypes = { "trace" };
-        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
+        ResultWrapper<ParityTxTraceFromReplay?> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(traces.Data.Action!.From, Is.EqualTo(TestItem.AddressB));
+            Assert.That(traces.Data!.Action!.From, Is.EqualTo(TestItem.AddressB));
             Assert.That(traces.Data.Action.To, Is.EqualTo(TestItem.AddressC));
             Assert.That(traces.Data.Action.CallType, Is.EqualTo("call"));
             Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
@@ -1373,10 +1376,10 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction);
         string[] traceTypes = { "rewards" };
-        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
+        ResultWrapper<ParityTxTraceFromReplay?> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(traces.Data.Action!.CallType, Is.EqualTo("reward"));
+            Assert.That(traces.Data!.Action!.CallType, Is.EqualTo("reward"));
             Assert.That(traces.Data.Action.Value, Is.EqualTo(UInt256.Parse("2000000000000000000")));
             Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
         }
@@ -2202,7 +2205,7 @@ public class TraceRpcModuleTests
     {
         TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB);
 
-        ResultWrapper<ParityTxTraceFromReplay> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"]);
+        ResultWrapper<ParityTxTraceFromReplay?> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -2227,7 +2230,7 @@ public class TraceRpcModuleTests
     {
         TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB, traceNonCanonical: true);
 
-        ResultWrapper<ParityTxTraceFromReplay> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"], traceNonCanonical: true);
+        ResultWrapper<ParityTxTraceFromReplay?> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"], traceNonCanonical: true);
 
         Assert.That(result.Result.Error, Does.Not.Contain("not canonical"), "traceNonCanonical=true must bypass the canonical block check");
     }
