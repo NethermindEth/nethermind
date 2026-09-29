@@ -38,7 +38,7 @@ public sealed class MetaDataProtocolV3(LocalMetadataSource metadataSource) : Req
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
             return;
@@ -47,7 +47,7 @@ public sealed class MetaDataProtocolV3(LocalMetadataSource metadataSource) : Req
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
         try
         {
-            await ReqRespFraming.RejectTrailingBytesAsync(stream, cts.Token);
+            await inboundSlot.AcceptRequestWithoutPayloadAsync(stream, cts.Token);
             await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, MetaDataV3.Encode(metadataSource.Current), cts.Token);
         }
         catch (Eth2ReqRespException e)

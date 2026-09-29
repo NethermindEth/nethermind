@@ -55,7 +55,7 @@ public sealed class ExecutionPayloadEnvelopesByRangeProtocol(BeaconChainSpec spe
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
             return;
@@ -65,7 +65,7 @@ public sealed class ExecutionPayloadEnvelopesByRangeProtocol(BeaconChainSpec spe
         CancellationTokenSource cts = timeout.Cts;
         try
         {
-            byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, RequestLength, cts.Token);
+            byte[] requestSsz = await inboundSlot.ReadRequestAsync(stream, RequestLength, cts.Token);
             if (requestSsz.Length != RequestLength)
             {
                 throw new Eth2ReqRespException($"Execution-payload-envelopes-by-range request must be {RequestLength} bytes, got {requestSsz.Length}");

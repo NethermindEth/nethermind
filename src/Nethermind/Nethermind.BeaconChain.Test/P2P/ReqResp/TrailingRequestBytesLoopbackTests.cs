@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -15,13 +16,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.ReqResp;
 
 /// <summary>
-/// phase0 p2p ssz_snappy: bytes remaining after the n SSZ bytes of a request are invalid input, answered with InvalidRequest,
-/// whether or not the requester half-closes; a clean request on a stream held open must still be served.
+/// phase0 p2p ssz_snappy: bytes remaining after the n SSZ bytes of a request are invalid input. A request is complete once its payload
+/// is read, so it is served at once without waiting for EOF; bytes already buffered are answered InvalidRequest, later ones are reported against the peer.
 /// </summary>
 public class TrailingRequestBytesLoopbackTests
 {
@@ -31,13 +33,19 @@ public class TrailingRequestBytesLoopbackTests
     private const string MetaData = "/eth2/beacon_chain/req/metadata/3/ssz_snappy";
     private const string Goodbye = "/eth2/beacon_chain/req/goodbye/1/ssz_snappy";
 
+    private const string EnvelopesByRoot = "/eth2/beacon_chain/req/execution_payload_envelopes_by_root/1/ssz_snappy";
+    private const string ColumnsByRoot = "/eth2/beacon_chain/req/data_column_sidecars_by_root/1/ssz_snappy";
+
     // Under the listener's 10 s response timeout, so an answer that only comes from that timeout fails here.
     private static readonly TimeSpan Prompt = TimeSpan.FromSeconds(5);
+
+    // A listener that pauses or waits for the requester's EOF before serving takes longer than this; the fastest of several requests keeps a slow runner from failing it.
+    private static readonly TimeSpan AtOnce = TimeSpan.FromMilliseconds(250);
 
     [Test]
     [CancelAfter(60_000)]
     public async Task Trailing_bytes_are_refused_and_a_clean_request_is_served_whether_or_not_the_stream_is_held_open(
-        [Values(StatusV2, BlocksByRange, BlocksByRoot, MetaData, Goodbye)] string protocolId,
+        [Values(StatusV2, BlocksByRange, BlocksByRoot, Goodbye)] string protocolId,
         [Values(0, 1, 300)] int trailingBytes,
         [Values] bool holdOpen,
         CancellationToken token) =>
@@ -58,6 +66,126 @@ public class TrailingRequestBytesLoopbackTests
         [Values] bool holdOpen,
         CancellationToken token) =>
         await AssertTrailingBytesAsync(BlocksByRoot, [.. EmptyListFraming, .. trailing], trailing.Length, holdOpen, token);
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_request_with_nothing_after_it_on_a_held_open_stream_is_answered_at_once_and_not_reported(
+        [Values(StatusV2, BlocksByRange, BlocksByRoot, MetaData, Goodbye)] string protocolId,
+        CancellationToken token)
+    {
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        Identity requester = new(privateKey: null, KeyType.Secp256K1);
+        peer.Id.Returns($"/ip4/127.0.0.1/tcp/4001/p2p/{requester.PeerId}");
+        IBeaconSyncPeerPool pool = Substitute.For<IBeaconSyncPeerPool>();
+        pool.GetBestPeers(Arg.Any<ulong>()).Returns([peer]);
+        await using BeaconP2P server = PeerSessionNodes.Create(peerPool: new Lazy<IBeaconSyncPeerPool>(() => pool)).P2P;
+        await server.StartAsync(token);
+        byte[] wire = await EncodeAsync(protocolId, 0, token);
+
+        (byte[] response, TimeSpan elapsed) = await PeerSessionNodes.RetryStalledAsync(attemptToken =>
+            RequestAsync(server, protocolId, wire, halfClose: false, attemptToken, requester, requests: 3), token);
+
+        using MemoryStream responseStream = new(response);
+        ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
+        using (Assert.EnterMultipleScope())
+        {
+            if (protocolId == MetaData)
+            {
+                Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success), "metadata is answered, not dropped");
+            }
+            else
+            {
+                AssertCleanRequestAnswer(protocolId, chunk);
+            }
+
+            Assert.That(elapsed, Is.LessThan(AtOnce), "served without waiting for the requester to end its stream");
+            peer.DidNotReceiveWithAnyArgs().ReportFailure(default, default);
+        }
+    }
+
+    // The empty list is one zero length prefix, alone or with the stream identifier a client may write after it.
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task An_empty_by_root_request_on_a_held_open_stream_is_answered_at_once(
+        [Values(BlocksByRoot, EnvelopesByRoot, ColumnsByRoot)] string protocolId,
+        [Values(new byte[] { 0x00 }, new byte[] { 0x00, 0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59 })] byte[] wire,
+        CancellationToken token)
+    {
+        await using BeaconP2P server = PeerSessionNodes.Create().P2P;
+        await server.StartAsync(token);
+
+        (byte[] response, TimeSpan elapsed) = await PeerSessionNodes.RetryStalledAsync(attemptToken =>
+            RequestAsync(server, protocolId, wire, halfClose: false, attemptToken, requests: 3), token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.Empty, "an empty list has nothing to answer with");
+            Assert.That(elapsed, Is.LessThan(AtOnce), "the request is complete without a data frame or an EOF");
+        }
+    }
+
+    // Metadata has no payload, so bytes sent with it can arrive after the answer is on its way: they are refused only when already buffered.
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_metadata_request_is_answered_and_bytes_sent_with_it_never_stall_it(
+        [Values(1, 300)] int trailingBytes,
+        [Values] bool holdOpen,
+        CancellationToken token)
+    {
+        await using BeaconP2P server = PeerSessionNodes.Create().P2P;
+        await server.StartAsync(token);
+        (byte[] response, TimeSpan elapsed) = await PeerSessionNodes.RetryStalledAsync(attemptToken =>
+            RequestAsync(server, MetaData, TrailingBytes(trailingBytes), halfClose: !holdOpen, attemptToken), token);
+
+        using MemoryStream responseStream = new(response);
+        ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chunk?.Result, Is.AnyOf(ReqRespFraming.ResponseCode.Success, ReqRespFraming.ResponseCode.InvalidRequest));
+            Assert.That(elapsed, Is.LessThan(Prompt));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Bytes_sent_while_a_request_is_served_are_reported_against_the_peer_and_the_response_is_intact(CancellationToken token)
+    {
+        using ServingGate gate = new();
+        TaskCompletionSource<PeerFailureReason> reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Identity requester = new(privateKey: null, KeyType.Secp256K1);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.Id.Returns($"/ip4/127.0.0.1/tcp/4001/p2p/{requester.PeerId}");
+        peer.When(static p => p.ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string?>()))
+            .Do(call => reported.TrySetResult(call.ArgAt<PeerFailureReason>(0)));
+        IBeaconSyncPeerPool pool = Substitute.For<IBeaconSyncPeerPool>();
+        pool.GetBestPeers(Arg.Any<ulong>()).Returns([peer]);
+        await using BeaconP2P server = PeerSessionNodes.Create(gate, peerPool: new Lazy<IBeaconSyncPeerPool>(() => pool)).P2P;
+        await server.StartAsync(token);
+
+        byte[] wire = await EncodeAsync(StatusV2, 0, token);
+        (byte[] response, _) = await PeerSessionNodes.RetryStalledAsync(attemptToken =>
+        {
+            gate.Arm();
+            reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return RequestAsync(server, StatusV2, wire, halfClose: false, attemptToken, requester, afterRequest: async (channel, requestToken) =>
+            {
+                await gate.Entered.WaitAsync(requestToken);
+                await channel.WriteAsync(new ReadOnlySequence<byte>(TrailingBytes(3)), requestToken);
+                await reported.Task.WaitAsync(requestToken);
+                gate.Release();
+            });
+        }, token);
+
+        using MemoryStream responseStream = new(response);
+        ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reported.Task.Result, Is.EqualTo(PeerFailureReason.ProtocolViolation));
+            Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success), "the response to the request itself is still sent");
+            Assert.That(chunk?.Payload, Is.EqualTo(StatusMessageV2.Encode(PeerSessionNodes.Status)));
+            Assert.That(responseStream.Position, Is.EqualTo(response.Length), "a single response_chunk");
+        }
+    }
 
     // Zero length prefix, then a stream identifier and one compressed data frame holding an empty snappy block.
     private static readonly byte[] EmptyListFraming = [0x00, 0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59, 0x00, 0x05, 0x00, 0x00, 0xd8, 0xea, 0x82, 0xa2, 0x00];
@@ -129,23 +257,72 @@ public class TrailingRequestBytesLoopbackTests
 
     private static byte[] TrailingBytes(int count) => [.. Enumerable.Repeat((byte)0x2a, count)];
 
-    private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token)
+    private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token,
+        Identity? requesterIdentity = null, int requests = 1, Func<IChannel, CancellationToken, Task>? afterRequest = null)
     {
         ServiceProvider services = new ServiceCollection()
             .AddSingleton<RawRequestProtocol>()
             .AddLibp2p(static builder => builder.AddAppLayerProtocol<RawRequestProtocol>())
             .BuildServiceProvider();
         await using (services)
-        await using (ILocalPeer requester = services.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1)))
+        await using (ILocalPeer requester = services.GetRequiredService<IPeerFactory>().Create(requesterIdentity ?? new Identity(privateKey: null, KeyType.Secp256K1)))
         {
             ISession session = await requester.DialAsync(PeerSessionNodes.LoopbackAddress(server), token).WaitAsync(token);
-            services.GetRequiredService<RawRequestProtocol>().Id = protocolId;
-            services.GetRequiredService<RawRequestProtocol>().HalfClose = halfClose;
+            RawRequestProtocol protocol = services.GetRequiredService<RawRequestProtocol>();
+            protocol.Id = protocolId;
+            protocol.HalfClose = halfClose;
+            protocol.AfterRequest = afterRequest;
 
-            Stopwatch elapsed = Stopwatch.StartNew();
-            byte[] response = await session.DialAsync<RawRequestProtocol, byte[], byte[]>(wire, token).WaitAsync(token);
-            return (response, elapsed.Elapsed);
+            byte[] response = [];
+            TimeSpan fastest = TimeSpan.MaxValue;
+            for (int i = 0; i < requests; i++)
+            {
+                Stopwatch elapsed = Stopwatch.StartNew();
+                response = await session.DialAsync<RawRequestProtocol, byte[], byte[]>(wire, token).WaitAsync(token);
+                fastest = elapsed.Elapsed < fastest ? elapsed.Elapsed : fastest;
+            }
+
+            return (response, fastest);
         }
+    }
+
+    /// <summary>A status source that holds the listener mid-request until released, so bytes can be sent while it is serving.</summary>
+    private sealed class ServingGate : IBeaconChainStatusSource, IDisposable
+    {
+        private readonly ManualResetEventSlim _release = new();
+        private volatile bool _armed;
+        private volatile TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Entered => _entered.Task;
+
+        public void Arm()
+        {
+            _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _release.Reset();
+            _armed = true;
+        }
+
+        public void Release() => _release.Set();
+
+        public StatusMessageV2 CurrentStatus
+        {
+            get
+            {
+                if (_armed)
+                {
+                    _entered.TrySetResult();
+                    _release.Wait(TimeSpan.FromSeconds(30));
+                }
+
+                return PeerSessionNodes.Status;
+            }
+        }
+
+        public Hash256 JustifiedRoot => Hash256.Zero;
+
+        public bool ExecutionInSync => false;
+
+        public void Dispose() => _release.Dispose();
     }
 
     /// <summary>Sends the given bytes as a whole request, optionally half-closes, then reads the response to its end.</summary>
@@ -154,6 +331,8 @@ public class TrailingRequestBytesLoopbackTests
         public string Id { get; set; } = "/test/raw-request/1";
 
         public bool HalfClose { get; set; } = true;
+
+        public Func<IChannel, CancellationToken, Task>? AfterRequest { get; set; }
 
         public async Task<byte[]> DialAsync(IChannel downChannel, ISessionContext context, byte[] request)
         {
@@ -167,6 +346,11 @@ public class TrailingRequestBytesLoopbackTests
             if (HalfClose)
             {
                 await downChannel.WriteEofAsync(cts.Token);
+            }
+
+            if (AfterRequest is not null)
+            {
+                await AfterRequest(downChannel, cts.Token);
             }
 
             using MemoryStream response = new();

@@ -51,6 +51,20 @@ internal sealed class ChannelStreamAdapter(IChannel channel) : Stream
         return (int)result.Data.Length;
     }
 
+    /// <summary>Reads one byte only if the transport already holds it; never waits for one to arrive.</summary>
+    /// <returns><c>false</c> when no byte is buffered or the stream has ended.</returns>
+    internal async ValueTask<bool> TryReadBufferedByteAsync(byte[] buffer, CancellationToken cancellationToken)
+    {
+        ReadResult result = await channel.ReadAsync(1, ReadBlockingMode.DontWait, cancellationToken);
+        if (result.Result != IOResult.Ok || result.Data.Length == 0)
+        {
+            return false;
+        }
+
+        result.Data.Slice(0, 1).CopyTo(buffer);
+        return true;
+    }
+
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
         ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 

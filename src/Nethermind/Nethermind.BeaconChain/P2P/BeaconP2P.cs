@@ -58,6 +58,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ServiceProvider _serviceProvider;
     private readonly GossipMessageValidator? _messageValidator;
+    // Lazy because the pool's implementation is built from this host.
+    private readonly Lazy<IBeaconSyncPeerPool>? _peerPool;
 
     // What the libp2p layer learns about each session that the session object itself does not tell:
     // which side dialed, and the identify agent string. A slot opens the moment the library adds the
@@ -90,9 +92,11 @@ public sealed class BeaconP2P : IAsyncDisposable
         ExecutionPayloadEnvelopePool executionPayloadEnvelopePool,
         ILogManager logManager,
         GossipMessageValidator? messageValidator = null,
-        SlotClock? clock = null)
+        SlotClock? clock = null,
+        Lazy<IBeaconSyncPeerPool>? peerPool = null)
     {
         _config = config;
+        _peerPool = peerPool;
         _messageValidator = messageValidator;
         _store = store;
         _statusSource = statusSource;
@@ -101,17 +105,17 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
-            .AddSingleton(new StatusProtocolV1(statusSource))
-            .AddSingleton(new StatusProtocolV2(statusSource))
-            .AddSingleton(new GoodbyeProtocol())
-            .AddSingleton(new Eth2PingProtocol(metadataSource))
-            .AddSingleton(new MetaDataProtocolV3(metadataSource))
-            .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store))
-            .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store))
-            .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool, store, clock))
-            .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool))
-            .AddSingleton(new ExecutionPayloadEnvelopesByRangeProtocol(spec, executionPayloadEnvelopePool))
-            .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool))
+            .AddSingleton(new StatusProtocolV1(statusSource) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new StatusProtocolV2(statusSource) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new GoodbyeProtocol { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new Eth2PingProtocol(metadataSource) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new MetaDataProtocolV3(metadataSource) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool, store, clock) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new ExecutionPayloadEnvelopesByRangeProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation })
             .AddLibp2p(builder => builder
                 .WithPubsub()
                 .AddAppLayerProtocol<StatusProtocolV1>()
@@ -169,6 +173,20 @@ public sealed class BeaconP2P : IAsyncDisposable
             // each failed upgrade as a Warning with a full stack trace, drowning the useful output.
             .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager, lowerLogLevel: true, maxLogLevel: Microsoft.Extensions.Logging.LogLevel.Debug))
             .BuildServiceProvider();
+    }
+
+    /// <summary>Records a protocol violation by an inbound requester against the peer's failure count, when the peer is in the sync pool.</summary>
+    private void ReportRequestViolation(PeerId peerId, string detail)
+    {
+        string peerSuffix = $"/p2p/{peerId}";
+        foreach (IBeaconSyncPeer peer in _peerPool?.Value.GetBestPeers(0) ?? [])
+        {
+            if (peer.Id.EndsWith(peerSuffix, StringComparison.Ordinal))
+            {
+                peer.ReportFailure(PeerFailureReason.ProtocolViolation, detail);
+                return;
+            }
+        }
     }
 
     /// <summary>The client string this node advertises over libp2p identify and reports from <c>/eth/v1/node/version</c>.</summary>
@@ -247,6 +265,9 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>The public key the session's handshake verified, from which the peer's discv5 node id derives.</summary>
     internal static Nethermind.Libp2p.Core.Dto.PublicKey? RemotePublicKeyOf(ISession session) => (session as LocalPeer.Session)?.State.RemotePublicKey;
+
+    /// <summary>Internal so a test can check the container gave the host the pool that request violations are reported to.</summary>
+    internal IBeaconSyncPeerPool? PeerPoolForTest => _peerPool?.Value;
 
     /// <summary>Internal so a test can give one node a distinguishable agent string before it connects.</summary>
     internal IdentifyProtocolSettings IdentifySettingsForTest => _serviceProvider.GetRequiredService<IdentifyProtocolSettings>();
