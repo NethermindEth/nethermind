@@ -1775,6 +1775,25 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_rawTransaction_sees_a_zero_base_fee_only_when_priced_at_zero([Values] bool priced)
+    {
+        (Context context, Address contract, UInt256 baseFee) = await BuildWithBaseFeeContract();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithTo(contract)
+            .WithGasLimit(100_000)
+            .WithGasPrice(priced ? baseFee : UInt256.Zero)
+            .WithChainId(blockchain.SpecProvider.ChainId)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        ResultWrapper<ParityTxTraceFromReplay> trace = context.TraceRpcModule.trace_rawTransaction(TxDecoder.Instance.Encode(transaction).Bytes, ["trace"]);
+
+        Assert.That(trace.Data.Output, Is.EqualTo((priced ? baseFee : UInt256.Zero).ToBigEndian()), trace.Result.Error);
+    }
+
+    [Test]
     public async Task Trace_replayBlockTransactions_transactions_deploying_contract()
     {
         Context context = new();
@@ -2607,7 +2626,6 @@ public class TraceRpcModuleTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlocksConfig>(),
             NullPrefixStateSeedSource.Instance,
-            new UnpricedTraceCalls(),
             LimboLogs.Instance);
     }
 

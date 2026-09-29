@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     /// <summary>
     /// All methods that receive transaction from users uses ITransactionProcessor.Trace
-    /// A transaction priced at zero pays no gas fee, and trace_call and trace_callMany run it with a zero base fee, as eth_call does; a priced one is charged for gas
+    /// A transaction priced at zero pays no gas fee and runs with a zero base fee, as eth_call does; a priced one is charged for gas
     ///
     /// All methods that traces transactions from chain uses ITransactionProcessor.Execute
     /// From-chain transactions should have stateDiff as we got during normal execution. Also we are sure that sender have enough funds to pay gas
@@ -52,7 +52,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
         IPrefixStateSeedSource prefixSeeds,
-        UnpricedTraceCalls unpricedCalls,
         ILogManager logManager,
         IParallelBlockTracer? parallelTracer = null)
         : ITraceRpcModule
@@ -117,7 +116,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(headerSearch.Object!));
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
-                : TraceTx(transaction, traceTypes, blockParameter, stateOverride, noBaseFee: !call.ShouldSetBaseFee());
+                : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
         }
 
         /// <summary>
@@ -154,7 +153,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Count);
             Transaction[] txs = new Transaction[calls.Count];
-            HashSet<Transaction> unpriced = [];
             for (int i = 0; i < calls.Count; i++)
             {
                 Result<Transaction> txResult = calls[i].Transaction.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header));
@@ -171,7 +169,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
                 txs[i] = tx;
                 traceTypeByTransaction.Add(tx.Hash, traceTypes);
-                if (!calls[i].Transaction.ShouldSetBaseFee()) unpriced.Add(tx);
             }
 
             Block block = new(header, new BlockBody(txs, []));
@@ -183,12 +180,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                         traceTypeByTransaction, ParityTraceTypes.None,
                         ParityTraceStreamMode.Replay, includeTxHash: false,
                         writer, pipeWriter, ct, specProvider: specProvider);
-                    using UnpricedTraceCalls.Marks _ = unpricedCalls.Mark(unpriced);
                     TraceBlockStreaming(block, streamingTracer, ct);
                 },
                 runBuffered: () =>
                 {
-                    using UnpricedTraceCalls.Marks _ = unpricedCalls.Mark(unpriced);
                     IReadOnlyCollection<ParityLikeTxTrace> traces = TraceBlock(block, new(traceTypeByTransaction, specProvider));
                     return traces.Select(static t => new ParityTxTraceFromReplay(t));
                 });
@@ -209,7 +204,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// Traces one raw transaction. A transaction priced at zero pays no gas fee; a priced one is charged for gas.
+        /// Traces one raw transaction. A transaction priced at zero runs with a zero base fee and pays no gas fee; a priced one is charged for gas.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
@@ -227,7 +222,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
-            Dictionary<Address, AccountOverride>? stateOverride = null, bool noBaseFee = false)
+            Dictionary<Address, AccountOverride>? stateOverride = null)
         {
             if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
             {
@@ -241,11 +236,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             BlockHeader header = headerSearch.Object!.Clone();
-            if (noBaseFee)
-            {
-                header.BaseFeePerGas = 0;
-            }
-
             Block block = new(header, [tx], []);
 
             return BuildStreamingSingleResult(

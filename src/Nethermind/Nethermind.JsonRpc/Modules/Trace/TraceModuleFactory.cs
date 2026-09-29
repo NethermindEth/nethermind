@@ -38,12 +38,11 @@ public class TraceModuleFactory(
     public override ITraceRpcModule Create()
     {
         IOverridableEnv env = overridableEnvFactory.CreateForTracing();
-        UnpricedTraceCalls unpricedCalls = new();
 
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, unpricedCalls.CreateAdapter, validationBlockProcessingModules)
+            ConfigureCommonBlockProcessing(builder, static p => new UnpricedCallTraceAdapter(p), validationBlockProcessingModules)
                 .AddModule(env));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules)
@@ -63,7 +62,6 @@ public class TraceModuleFactory(
         ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder.AddScoped(tracerEnv);
-            builder.AddScoped(unpricedCalls);
             if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
         });
 

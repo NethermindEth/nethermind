@@ -47,8 +47,8 @@ public static class ITransactionProcessorExtensions
             => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.BuildUp);
 
         /// <summary>
-        /// Call transaction, no validations, commit state.
-        /// A transaction with both fee caps zero pays no gas fee; any other is validated and charged for gas.
+        /// Call transaction, commit state.
+        /// A transaction with both fee caps zero skips gas validation and pays no gas fee; any other has its gas validated and charged.
         /// </summary>
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer)
             => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
