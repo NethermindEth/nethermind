@@ -273,10 +273,11 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void CreateReader_SyncReader_BypassesTheCache()
+    public async Task CreateReader_SyncReader_BypassesTheCache()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
 
         for (int i = 0; i < 2; i++)
         {
@@ -289,7 +290,7 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void RandomOperations_EveryReadMatchesThePersistenceAtTheReaderState([Values(4, 8, 262144)] int capacity)
+    public async Task RandomOperations_EveryReadMatchesThePersistenceAtTheReaderState([Values(4, 8, 262144)] int capacity)
     {
         const int operations = 1_000_000;
         const int maxOpenReaders = 8;
@@ -303,7 +304,8 @@ public class CarryForwardCachingPersistenceTests
             long hitsBefore = Metrics.CarryForwardSlotHits;
             Random random = new(capacity);
             ModelPersistence model = new(addresses: 4, slotsPerAddress: 8);
-            CarryForwardCachingPersistence cache = new(model, capacity);
+            await using IContainer container = CreateCacheContainer();
+            CarryForwardCachingPersistence cache = ResolveCache(container, model, capacity);
             List<(IPersistence.IPersistenceReader Reader, ModelPersistence.State State)> readers = [];
 
             for (int i = 0; i < operations && mismatches.Count < 10; i++)
@@ -370,7 +372,7 @@ public class CarryForwardCachingPersistenceTests
     [TestCase(3, 262144)]
     [TestCase(30, 64, Explicit = true, Reason = "Long stress run")]
     [TestCase(30, 262144, Explicit = true, Reason = "Long stress run")]
-    public void ConcurrentReadersAndCommitter_ReadEachReaderState(int seconds, int capacity)
+    public async Task ConcurrentReadersAndCommitter_ReadEachReaderState(int seconds, int capacity)
     {
         const int readerThreads = 16;
         const int readsPerReader = 64;
@@ -384,7 +386,8 @@ public class CarryForwardCachingPersistenceTests
         {
             long hitsBefore = Metrics.CarryForwardSlotHits;
             ModelPersistence model = new(addresses: 8, slotsPerAddress: 16);
-            CarryForwardCachingPersistence cache = new(model, capacity);
+            await using IContainer container = CreateCacheContainer();
+            CarryForwardCachingPersistence cache = ResolveCache(container, model, capacity);
             using CancellationTokenSource stop = new(TimeSpan.FromSeconds(seconds));
 
             Task committer = Task.Factory.StartNew(() =>
@@ -494,7 +497,7 @@ public class CarryForwardCachingPersistenceTests
         .AddModule(new FlatWorldStateModule(new FlatDbConfig()))
         .Build();
 
-    private static CarryForwardCachingPersistence ResolveCache(IContainer container, FakePersistence inner, int? maxEntriesPerKind = null)
+    private static CarryForwardCachingPersistence ResolveCache(IContainer container, IPersistence inner, int? maxEntriesPerKind = null)
     {
         if (maxEntriesPerKind is int capacity)
         {
