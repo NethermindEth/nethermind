@@ -4913,6 +4913,32 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
         }
 
+        [Test]
+        public async Task Revalidation_short_of_width_sheds_the_same_transaction_whatever_the_admission_order([Values] bool reversed)
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxWidthEnabled = true }, KeyedNonceSpecProvider(), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction[] txs =
+            [
+                SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1]),
+                SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]),
+            ];
+            Transaction kept = txs.MinBy(static tx => tx.Hash!.ValueHash256)!;
+            if (reversed) Array.Reverse(txs);
+            _txPool.EarnWidthOnFinalization(Build.A.Block.WithTransactions(txs[0]).TestObject, [new TxReceipt { GasUsed = (ulong)FrameTxWidthCharge.For(txs[1], 1000) }]);
+
+            Assert.That(_txPool.SubmitTx(txs[0], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(txs[1], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactions().Select(static tx => tx.Hash), Is.EqualTo(new[] { kept.Hash }));
+        }
+
         // Each carried deferral costs a simulation under the head write lock, so an unbounded carry lets a
         // backlog the per-head budget cannot clear hold that lock for the whole budget on every later head.
         [TestCase(0, 1)]
