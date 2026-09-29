@@ -241,8 +241,8 @@ public class CarryForwardSlotTableTests
         // One set and more keys than ways, so the writer both rewrites keys in place and replaces them with others.
         const int keys = OneSet + 2;
         const int readers = 8;
-        const int readsPerReader = 250_000;
-        using CarryForwardSlotTable table = new(OneSet);
+        const int readsPerReader = 2_000_000;
+        CarryForwardSlotTable table = new(OneSet);
         Address[] addresses = new Address[keys];
         for (int i = 0; i < keys; i++) addresses[i] = TestItem.Addresses[i];
 
@@ -250,6 +250,7 @@ public class CarryForwardSlotTableTests
         using Barrier startLine = new(readers + 1);
         TimeSpan stress = TimeSpan.FromSeconds(stressSeconds);
         int readersDone = 0;
+        bool stop = false;
         long hits = 0;
         long torn = 0;
         Task writer = Task.Factory.StartNew(() =>
@@ -257,12 +258,13 @@ public class CarryForwardSlotTableTests
             Random random = new(1);
             ulong version = 0;
             startLine.SignalAndWait();
-            while (Volatile.Read(ref readersDone) < readers)
+            while (Volatile.Read(ref readersDone) < readers && !Volatile.Read(ref stop))
             {
                 int key = random.Next(keys);
                 version++;
                 Remove(table, addresses[key], (ulong)key);
-                Add(table, addresses[key], (ulong)key, true, Pattern(key, version));
+                // Every other write caches a missing slot, so a found flag copied apart from its value shows up.
+                Add(table, addresses[key], (ulong)key, found: (version & 1) == 0, Pattern(key, version));
             }
         }, TaskCreationOptions.LongRunning);
 
@@ -284,7 +286,7 @@ public class CarryForwardSlotTableTests
                         int key = random.Next(keys);
                         if (!TryGet(table, addresses[key], (ulong)key, out bool found, out UInt256 value)) continue;
                         readerHits++;
-                        if (!found || !IsPattern(value, key)) readerTorn++;
+                        if (found ? !IsPattern(value, key) : value != default) readerTorn++;
                     }
                 }
                 finally
@@ -296,8 +298,18 @@ public class CarryForwardSlotTableTests
             }, TaskCreationOptions.LongRunning);
         }
 
-        // Only a guard against a hang: the readers do a fixed number of reads.
-        await Task.WhenAll([writer, .. readerTasks]).WaitAsync(TimeSpan.FromMinutes(5));
+        Task all = Task.WhenAll([writer, .. readerTasks]);
+        try
+        {
+            // Only a guard against a hang: the readers do a fixed number of reads.
+            await all.WaitAsync(TimeSpan.FromMinutes(5));
+        }
+        finally
+        {
+            // After a hang a reader may still be in the table, so it is freed only once every thread is out of it.
+            Volatile.Write(ref stop, true);
+            if (all.IsCompleted) table.Dispose();
+        }
 
         using (Assert.EnterMultipleScope())
         {
