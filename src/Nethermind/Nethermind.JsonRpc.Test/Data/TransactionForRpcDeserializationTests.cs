@@ -54,8 +54,11 @@ public class TransactionForRpcDeserializationTests
 
             yield return Make(TxType.AccessList, """{"type":null,"accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[]}""");
-            yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null}""");
-            yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","AccessList":null}""");
+            yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","AccessList":[]}""");
+            // An explicit null discriminator is the same as omitting it.
+            yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null}""");
+            yield return Make(TxType.EIP1559, """{"accessList":null,"blobVersionedHashes":null,"authorizationList":null}""");
+            yield return Make(TxType.AccessList, """{"accessList":[],"blobVersionedHashes":null,"authorizationList":null}""");
 
             yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"maxPriorityFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null,"maxPriorityFeePerGas":"0x0"}""");
@@ -71,12 +74,14 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"maxFeePerBlobGas":"0x0", "blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"blobVersionedHashes":[]}""");
-            yield return Make(TxType.Blob, """{"BlobVersionedHashes":null}""");
+            yield return Make(TxType.Blob, """{"BlobVersionedHashes":[]}""");
+            yield return Make(TxType.EIP1559, """{"blobVersionedHashes":null}""");
             yield return Make(TxType.Blob, """{"blobVersionedHashes":["0x01f1872d656b7a820d763e6001728b9b883f829b922089ec6ad7f5f1665470dc"]}""");
 
             yield return Make(TxType.SetCode, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"authorizationList":[]}""");
             yield return Make(TxType.SetCode, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","authorizationList":[]}""");
-            yield return Make(TxType.SetCode, """{"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"frames":null}""");
             yield return Make(TxType.SetCode, """{"AuthorizationList":[]}""");
 
             yield return Make(TxType.Legacy, """{"type":"0x0"}""");
@@ -112,6 +117,9 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Legacy, """{}""", Istanbul.Instance);
             yield return Make(TxType.Legacy, """{"nonce":"0x0","input":null}""", Istanbul.Instance);
             yield return Make(TxType.Legacy, """{"type":null}""", Istanbul.Instance);
+            // A null discriminator is the same as omitting it, so the type stays defaulted.
+            yield return Make(TxType.Legacy, """{"accessList":null}""", Istanbul.Instance);
+            yield return Make(TxType.Legacy, """{"maxFeePerGas":null,"maxPriorityFeePerGas":null}""", Istanbul.Instance);
 
             // Defaulted type on post-Berlin → keeps EIP1559
             yield return Make(TxType.EIP1559, """{}""", Berlin.Instance);

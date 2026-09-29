@@ -230,10 +230,9 @@ public abstract class TransactionForRpc
         {
             TxType? setType = null;
             bool hasGasPrice = false;
-            // Bit i set ⇒ discriminator for _txTypes[i] seen; lowest bit wins (registration order).
+            // Bit i set ⇒ non-null discriminator for _txTypes[i] seen; lowest bit wins (registration order).
+            // An explicit null is the same as omitting the member, as in geth, which keys on non-nil fields.
             ulong discriminated = 0;
-            // Explicit-null discriminators still select a type, but not over gasPrice (geth keys on non-nil).
-            ulong nullDiscriminated = 0;
 
             if (reader.TokenType == JsonTokenType.StartObject)
             {
@@ -270,22 +269,13 @@ public abstract class TransactionForRpc
                     }
 
                     reader.Read();
-                    if (reader.TokenType == JsonTokenType.Null)
-                    {
-                        nullDiscriminated |= matched;
-                    }
-                    else
+                    if (reader.TokenType != JsonTokenType.Null)
                     {
                         discriminated |= matched;
                     }
 
                     if (!reader.TrySkip()) break;
                 }
-            }
-
-            if (discriminated == 0 && !hasGasPrice)
-            {
-                discriminated = nullDiscriminated;
             }
 
             Type? viaDiscriminator = null;
