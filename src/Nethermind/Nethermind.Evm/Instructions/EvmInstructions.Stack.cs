@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
@@ -124,7 +125,7 @@ public static partial class EvmInstructions
                 programCounter += Size;
                 return EvmExceptionType.StackOverflow;
             }
-            if (remainingCode <= Size)
+            if (!DispatchFlags.PaddedCode && remainingCode <= Size)
             {
                 // Implicit STOP discards the stack, and no tracer or subsequent opcode can observe this push.
                 programCounter += Size;
@@ -138,15 +139,24 @@ public static partial class EvmInstructions
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
             ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
             destination = BinaryPrimitives.ReverseEndianness(destination);
+            // With lazy analysis the destination may not be analyzed yet, and analyzing it here would put a call into
+            // this handler, so unless a JUMPI will not be taken, and so never validates it, the push and the jump run
+            // unfused and the jump handler does the analysis. Either way the gas, the stack and the outcome are the
+            // same.
+            if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination)
+                && !(nextInstruction == Instruction.JUMPI && stack.PeekUInt256IsZero()))
+                goto Unfused;
 
             if (nextInstruction == Instruction.JUMP)
             {
-                vm.OpCodeCount++;
+                if (DispatchFlags.CountOpcodes)
+                    vm.OpCodeCount++;
                 if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
             }
             else
             {
-                vm.OpCodeCount++;
+                if (DispatchFlags.CountOpcodes)
+                    vm.OpCodeCount++;
                 if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
                 if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
@@ -158,18 +168,21 @@ public static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            nint jumpTarget = JumpDestination((int)destination, ref stack);
+            // With lazy analysis it was validated before fusing.
+            nint jumpTarget = EvmStack.AnalyzesJumpDestinationsLazily ? destination : JumpDestination((int)destination, ref stack);
             if (jumpTarget < 0)
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter = jumpTarget + 1;
             PrefetchCodeAtDestination(ref stack, programCounter);
-            vm.OpCodeCount++;
+            if (DispatchFlags.CountOpcodes)
+                vm.OpCodeCount++;
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
         }
 
+    Unfused:
         ref byte start = ref Unsafe.Add(ref bytes, programCounter);
         EvmExceptionType result;
         if (!TTracingInst.IsActive || remainingCode >= Size)
@@ -1153,23 +1166,23 @@ public static partial class EvmInstructions
         if (vm.TxExecutionContext.SuppressLogs)
         {
             // Instruction tracers can inspect the expanded memory even when they do not collect logs.
-            if (DispatchFlags.ConstTracing && vm.TxExecutionContext.MaterializeLogMemory
-                && !vmState.Memory.TryLoad(in position, length, out _)) goto OutOfGas;
+            if (DispatchFlags.ConstTracing && vm.TxExecutionContext.MaterializeLogMemory)
+                vmState.Memory.LoadSpanAfterGas(in position, in length);
             for (int i = 0; i < TOpCount.Count; i++)
                 if (!stack.PopLimbo()) goto StackUnderflow;
             return EvmExceptionType.None;
         }
 
         // Load the log data from memory.
-        if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
-            goto OutOfGas;
+        Span<byte> data = vmState.Memory.LoadSpanAfterGas(in position, in length);
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
         Hash256[] topics = topicsCount == 0 ? [] : new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)
         {
             if (!stack.PopWord256(out Span<byte> topic)) goto StackUnderflow;
-            topics[i] = new Hash256(topic);
+            // Topic 0 is the event signature, which repeats across logs, so its instance is shared.
+            topics[i] = i == 0 ? LogTopicCache.Get(topic) : new Hash256(topic);
         }
 
         // Create a new log entry with the executing account, log data, and topics.

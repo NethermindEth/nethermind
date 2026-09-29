@@ -373,6 +373,29 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         AssertTrace(trace, expectedTrace);
     }
 
+    /// <summary>A CREATE2 onto an address that already holds a balance creates the contract but not the account,
+    /// so diffMode keeps the account's pre-state.</summary>
+    [Test]
+    public void Test_PrestateTrace_Create2OntoFundedAddress_KeepsItsPrestate()
+    {
+        byte[] salt = { 4, 5, 6 };
+        byte[] initCode = Prepare.EvmCode.ForInitOf([1, 2, 3]).Done;
+        Address created = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32), initCode);
+
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Create2(initCode, salt, 0).Done, Spec);
+        TestState.CreateAccount(created, 7);
+
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        GethLikeTxTrace trace = ExecutePrestate(tracer, Prepare.EvmCode.Call(TestItem.AddressC, 50000).Done, wrapped: false);
+
+        using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions));
+        JsonElement pre = document.RootElement.GetProperty("pre");
+        Assert.That(pre.TryGetProperty(created.ToString(), out JsonElement account) ? account.GetProperty("balance").GetString() : null,
+            Is.EqualTo("0x7"));
+    }
+
     private const string ExpectedExistingAccountPrestateTrace = """
         {
           "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {

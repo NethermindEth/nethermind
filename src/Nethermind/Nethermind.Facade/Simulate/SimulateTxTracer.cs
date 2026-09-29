@@ -15,7 +15,7 @@ using Log = Nethermind.Facade.Proxy.Models.Simulate.Log;
 
 namespace Nethermind.Facade.Simulate;
 
-public sealed class SimulateTxTracer : TxTracer
+public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
 {
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _currentBlockNumber;
@@ -23,10 +23,16 @@ public sealed class SimulateTxTracer : TxTracer
     private readonly ulong _txIndex;
     private readonly ulong _logIndexStart;
     private readonly List<LogEntry> _logs;
-    // Start index in _logs of each open call frame; a frame that reverts or halts drops its entries.
-    private readonly Stack<int> _frameLogStarts = new();
     private readonly Transaction _tx;
     private readonly bool _isTracingTransfers;
+    private bool _hasFrameReceipts;
+    private int[]? _frameLogStarts;
+    private int _framesEnded;
+    private int _frameLogEnd;
+    private Stack<int>? _callLogStarts;
+    private byte[]? _frameRevertData;
+    private EvmExceptionType? _frameError;
+    private byte[]? _frameErrorData;
 
     public SimulateTxTracer(
         bool isTracingTransfers,
@@ -57,7 +63,8 @@ public sealed class SimulateTxTracer : TxTracer
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        _frameLogStarts.Push(_logs.Count);
+        // Logs and synthetic transfers emitted by a reverted call frame do not survive in the transaction result.
+        (_callLogStarts ??= new Stack<int>()).Push(_logs.Count);
         if (!_isTracingTransfers) return;
         if (callType == ExecutionType.DELEGATECALL) return;
         if (!value.IsZero)
@@ -82,82 +89,134 @@ public sealed class SimulateTxTracer : TxTracer
         _logs.Add(log);
     }
 
+    /// <inheritdoc/>
+    void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
+    {
+        // The validation-prefix simulation reports an empty set, which pins no frame's outcome.
+        if (frameReceipts.Length == 0) return;
+
+        _hasFrameReceipts = true;
+    }
+
+    /// <inheritdoc/>
+    void IFrameTxReceiptTracer.ReportFrameEnd(int frameIndex, EvmExceptionType? error)
+    {
+        _frameLogStarts ??= new int[_tx.Frames?.Length ?? 0];
+        if ((uint)frameIndex >= (uint)_frameLogStarts.Length) return;
+
+        // A skipped frame emits nothing, so it starts where the next frame to run does.
+        for (; _framesEnded <= frameIndex; _framesEnded++)
+        {
+            _frameLogStarts[_framesEnded] = _frameLogEnd;
+        }
+
+        if (error is not null)
+        {
+            // The first failed frame is the one the aggregate status fails on.
+            if (_frameError is null)
+            {
+                _frameError = error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
+                _frameErrorData = _frameRevertData;
+            }
+
+            TruncateLogs(_frameLogStarts[frameIndex]);
+        }
+
+        _frameRevertData = null;
+        _frameLogEnd = _logs.Count;
+    }
+
+    /// <inheritdoc/>
+    void IFrameTxReceiptTracer.ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex)
+    {
+        if (_frameLogStarts is null || (uint)fromFrameIndex >= (uint)_framesEnded) return;
+
+        TruncateLogs(_frameLogStarts[fromFrameIndex]);
+        _frameLogEnd = _logs.Count;
+    }
+
+    private void TruncateLogs(int count) => _logs.RemoveRange(count, _logs.Count - count);
+
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
         GasUsed = gasSpent.SpentGas,
         MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
         ReturnData = output,
         Status = StatusCode.Success,
-        Logs = _logs.Select((entry, i) => new Log
-        {
-            Address = entry.Address,
-            Topics = entry.Topics,
-            Data = entry.Data,
-            LogIndex = _logIndexStart + (ulong)i,
-            TransactionHash = _tx.Hash!,
-            TransactionIndex = _txIndex,
-            BlockHash = _currentBlockHash,
-            BlockNumber = _currentBlockNumber,
-            BlockTimestamp = _currentBlockTimestamp
-        }).ToList()
+        Logs = BuildLogs()
     };
 
-    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
-        // A failed transaction emits no logs, so none may consume log indices of the following transactions.
-        _logs.Clear();
-        TraceResult = new SimulateCallResult
+        GasUsed = gasSpent.SpentGas,
+        MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
+        Error = new Error
         {
-            GasUsed = gasSpent.SpentGas,
-            MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
-            Error = new Error
-            {
-                Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
-                EvmException = _exceptionType,
-                Data = output
-            },
-            ReturnData = [],
-            Status = StatusCode.Failure
-        };
-    }
+            Message = FailureMessage(error),
+            // A frame transaction fails for the frame that failed, not for whichever call last errored.
+            EvmException = _frameError ?? _exceptionType,
+            // The processor reports no output for a frame transaction, so the revert data is the frame's own.
+            Data = _frameError is null ? output : _frameErrorData ?? []
+        },
+        ReturnData = [],
+        Status = StatusCode.Failure,
+        // A failed frame transaction keeps the logs of the frames that committed, as its receipt does.
+        Logs = _hasFrameReceipts ? BuildLogs() : []
+    };
+
+    private string FailureMessage(string? error) => _frameError is { } frameError && frameError != EvmExceptionType.Revert
+        ? frameError.GetEvmExceptionDescription() ?? frameError.ToString()
+        : error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error;
+
+    private List<Log> BuildLogs() => _logs.Select((entry, i) => new Log
+    {
+        Address = entry.Address,
+        Topics = entry.Topics,
+        Data = entry.Data,
+        LogIndex = _logIndexStart + (ulong)i,
+        TransactionHash = _tx.Hash!,
+        TransactionIndex = _txIndex,
+        BlockHash = _currentBlockHash,
+        BlockNumber = _currentBlockNumber,
+        BlockTimestamp = _currentBlockTimestamp
+    }).ToList();
 
     private EvmExceptionType _exceptionType = EvmExceptionType.None;
+
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionEnd(gas, output);
+        _callLogStarts?.TryPop(out _);
+    }
+
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        _callLogStarts?.TryPop(out _);
+    }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
         _exceptionType = evmExceptionType;
-        DiscardFrameLogs();
+        EndFailedCall(default);
     }
 
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gas, output);
         _exceptionType = EvmExceptionType.Revert;
-        DiscardFrameLogs();
+        EndFailedCall(output);
     }
 
-    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
+    private void EndFailedCall(ReadOnlyMemory<byte> output)
     {
-        base.ReportActionEnd(gas, output);
-        _frameLogStarts.TryPop(out _);
-    }
+        if (_callLogStarts is null || !_callLogStarts.TryPop(out int logStart)) return;
 
-    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-    {
-        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
-        _frameLogStarts.TryPop(out _);
-    }
-
-    /// <summary>
-    /// Drops the logs and synthetic transfer logs recorded by the call frame that just reverted or halted,
-    /// including those of its already-completed subcalls, as its state changes are rolled back.
-    /// </summary>
-    private void DiscardFrameLogs()
-    {
-        if (_frameLogStarts.TryPop(out int start))
+        TruncateLogs(logStart);
+        if (_callLogStarts.Count == 0)
         {
-            _logs.RemoveRange(start, _logs.Count - start);
+            _frameRevertData = output.ToArray();
         }
     }
 }

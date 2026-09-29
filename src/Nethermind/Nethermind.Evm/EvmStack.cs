@@ -2149,14 +2149,16 @@ public ref partial struct EvmStack
         ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
         ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
 
-        EvmWord buffer = Unsafe.ReadUnaligned<EvmWord>(ref bottom);
-        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
-        Unsafe.WriteUnaligned(ref top, buffer);
+        SwapWords(ref bottom, ref top);
 
         if (TTracingInst.IsActive) Trace(depth);
 
         return EvmExceptionType.None;
     }
+
+    /// <summary>Exchanges the two 32-byte stack words at <paramref name="bottom"/> and <paramref name="top"/>.</summary>
+    /// <remarks>Split per target; see <c>EvmStack.Swap.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial void SwapWords(ref byte bottom, ref byte top);
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

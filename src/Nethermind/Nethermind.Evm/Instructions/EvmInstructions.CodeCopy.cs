@@ -339,7 +339,8 @@ public static partial class EvmInstructions
             {
                 // Peephole optimization for EXTCODESIZE when checking for contract existence.
                 // This reduces storage access by using the preloaded CodeHash.
-                vm.OpCodeCount++;
+                if (DispatchFlags.CountOpcodes)
+                    vm.OpCodeCount++;
                 programCounter++;
                 // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
                 if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);

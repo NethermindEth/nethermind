@@ -610,6 +610,51 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
     }
 
+    public enum RejectedAction { CallBalance, CreateBalance, Create2Collision }
+
+    [Test]
+    public void Test_CallTrace_RejectedAction_RecordsFailedFrame([Values] RejectedAction scenario)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        byte[] salt = Bytes.FromHexString("0x01").PadLeft(32);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        // The transaction runs at AddressB; an account with code already sits at its CREATE2 address.
+        Address collision = ContractAddress.From(TestItem.AddressB, salt, initCode);
+        TestState.CreateAccount(collision, 0);
+        TestState.InsertCode(collision, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        Prepare rejectedAction = scenario switch
+        {
+            RejectedAction.CallBalance => Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50000, 1000.Ether),
+            RejectedAction.CreateBalance => Prepare.EvmCode.Create(initCode, 1000.Ether),
+            _ => Prepare.EvmCode.Create2(initCode, salt, 0),
+        };
+        byte[] code = rejectedAction.Op(Instruction.POP).STOP().Done;
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code));
+
+        JsonElement calls = trace.RootElement.GetProperty("calls");
+        JsonElement rejected = calls[0];
+        bool collided = scenario == RejectedAction.Create2Collision;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls.GetArrayLength(), Is.EqualTo(1), "calls");
+            Assert.That(rejected.GetProperty("type").GetString(), Is.EqualTo(scenario switch
+            {
+                RejectedAction.CallBalance => "CALL",
+                RejectedAction.CreateBalance => "CREATE",
+                _ => "CREATE2",
+            }), "type");
+            Assert.That(rejected.GetProperty("error").GetString(),
+                Is.EqualTo(collided ? "contract address collision" : "insufficient balance for transfer"), "error");
+            // A failed precheck returns all the gas; a collision consumes it.
+            Assert.That(rejected.GetProperty("gasUsed").GetString(),
+                Is.EqualTo(collided ? rejected.GetProperty("gas").GetString() : "0x0"), "gasUsed");
+            Assert.That(rejected.TryGetProperty("to", out _), Is.EqualTo(scenario == RejectedAction.CallBalance), "to");
+            Assert.That(rejected.TryGetProperty("calls", out _), Is.False, "nested calls");
+        }
+    }
+
     [Test]
     public void Test_CallTrace_SelfDestruct()
     {
