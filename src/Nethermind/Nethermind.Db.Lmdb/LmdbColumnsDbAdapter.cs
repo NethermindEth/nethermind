@@ -60,7 +60,7 @@ public sealed class LmdbColumnsDbAdapter(IColumnsDb<FlatDbColumns> inner, LmdbDb
     private static string FormatDiagnostics(LmdbDb.DiagnosticsSnapshot d) =>
         $"Get x{d.GetCount:N0} (avg {d.AvgGetMicros:F1}us), " +
         $"CreateSnapshot x{d.CreateSnapshotCount:N0} (avg {d.AvgCreateSnapshotMicros:F1}us), " +
-        $"WriteWave x{d.WriteWaveCount:N0} (avg {d.AvgWriteWaveMicros:F1}us), " +
+        $"WriteWave x{d.WriteWaveCount:N0} (avg {d.AvgWriteWaveMicros:F1}us, avg {d.AvgWriteWaveOps:F0} ops/wave), " +
         $"MapGrowths {d.MapGrowthCount:N0}";
 
     private static string FormatBytes(long bytes) => $"{bytes / (1024.0 * 1024 * 1024):F2} GiB";

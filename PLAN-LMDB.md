@@ -327,6 +327,36 @@ every ~30s by `LmdbColumnsDbAdapter` alongside the existing key-count line) - ca
 latencies for `Get`, `CreateSnapshot`, and write-wave commits, specifically so a future "quite slow" report
 comes with real numbers instead of requiring a fresh round of guessing.
 
+**Follow-up from a second live snap-sync check-in, and the lock-granularity theory re-tested and re-rejected
+under a *mixed* read+write workload.** A later diagnostics sample (same live run, further along) showed the
+Account/Storage `CreateSnapshot` latency gap narrowing (231.5→522.6us vs 1244.5→587.5us) while write-wave
+counts grew asymmetrically (Account 1→16, Storage 7,597→12,406) - crucially, Account's *now-16-sample* average
+write-wave latency held steady at ~200ms (160383.3→202386.8us), ruling out the earlier single sample as a
+fluke. Two hypotheses were checked and rejected before landing on the real one:
+1. *Lock granularity, re-tested with concurrent writes this time.* The earlier `ReaderWriterLockSlim` rejection
+   only benchmarked pure concurrent reads (no writes in flight). Re-benchmarked with a mixed workload (12
+   reader threads calling `CreateSnapshot`+`Dispose`, 4 writer threads calling `Set`, roughly matching the
+   observed Storage-column read:write ratio) against the real `LmdbDb` class: the plain `Lock` again beat
+   `ReaderWriterLockSlim` outright - 92,612 `CreateSnapshot`/sec and 2,886 writes/sec vs. 27,217/sec and
+   1,041/sec respectively. Confirms the first benchmark's conclusion held even under realistic contention;
+   reverted again (working tree returned to the exact prior commit).
+2. *Durability difference (Account fsync'd, Storage not).* Traced every `WriteFlags.DisableWAL` call site
+   across `Nethermind.State.Flat` (an Explore-agent pass, then confirmed directly): `FlatSnapStateTree.Commit`
+   (`Sync/Snap/FlatSnapStateTree.cs`) and `FlatSnapStorageTree.Commit` (`Sync/Snap/FlatSnapStorageTree.cs`)
+   both pass `WriteFlags.DisableWAL` identically - normal chain-following persistence
+   (`PersistenceManager.PersistSnapshot`/`PersistPersistedSnapshot`) also treats both columns identically
+   (neither sets `DisableWAL`, both default to `WriteFlags.None` via one shared `RocksDbPersistence.CreateWriteBatch`
+   call). Rejected: both columns hit the same `TransactionBeginFlags` branch in
+   `CommitWaveWithMapGrowthRetry` during snap sync.
+3. **Leading hypothesis, not yet confirmed: wave size, not durability or locking.** Account has ~775x fewer
+   write waves than Storage in the same window (16 vs 12,406) - if snap sync coalesces vastly more individual
+   key writes into each of those rare Account waves (there are far fewer total accounts than storage slots in
+   real Ethereum state, so account-range sync responses plausibly batch more before a wave's `IWriteBatch` is
+   disposed and flushed), then ~200ms for one large B+tree-mutating commit vs ~2.3ms for many small ones would
+   be proportional real work, not a bug. Added `AvgWriteWaveOps` to `LmdbDb.DiagnosticsSnapshot` (average
+   operations coalesced per physical write-wave commit) specifically to confirm or kill this on the next
+   check-in - a large ops/wave figure for Account and a small one for Storage would confirm it directly.
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,

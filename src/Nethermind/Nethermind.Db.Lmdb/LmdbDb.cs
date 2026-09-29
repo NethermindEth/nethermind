@@ -50,6 +50,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     private long _createSnapshotElapsedTicks;
     private long _writeWaveCount;
     private long _writeWaveElapsedTicks;
+    private long _writeWaveOpsCount;
     private long _mapGrowthCount;
 
     public string Name { get; }
@@ -272,7 +273,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     internal readonly record struct DiagnosticsSnapshot(
         long GetCount, double AvgGetMicros,
         long CreateSnapshotCount, double AvgCreateSnapshotMicros,
-        long WriteWaveCount, double AvgWriteWaveMicros,
+        long WriteWaveCount, double AvgWriteWaveMicros, double AvgWriteWaveOps,
         long MapGrowthCount);
 
     /// <summary>Atomically reads and zeroes every counter, so each call reports only the interval since the
@@ -286,10 +287,12 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         long getCount = Interlocked.Exchange(ref _getCount, 0);
         long createSnapshotCount = Interlocked.Exchange(ref _createSnapshotCount, 0);
         long writeWaveCount = Interlocked.Exchange(ref _writeWaveCount, 0);
+        long writeWaveOpsCount = Interlocked.Exchange(ref _writeWaveOpsCount, 0);
         return new DiagnosticsSnapshot(
             getCount, AvgMicros(Interlocked.Exchange(ref _getElapsedTicks, 0), getCount),
             createSnapshotCount, AvgMicros(Interlocked.Exchange(ref _createSnapshotElapsedTicks, 0), createSnapshotCount),
             writeWaveCount, AvgMicros(Interlocked.Exchange(ref _writeWaveElapsedTicks, 0), writeWaveCount),
+            writeWaveCount == 0 ? 0 : (double)writeWaveOpsCount / writeWaveCount,
             Interlocked.Exchange(ref _mapGrowthCount, 0));
 
         static double AvgMicros(long totalTicks, long count) =>
@@ -425,7 +428,12 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     {
         long start = Stopwatch.GetTimestamp();
         bool durable = false;
-        foreach (PendingWrite w in wave) durable |= w.WantsDurability;
+        int opsCount = 0;
+        foreach (PendingWrite w in wave)
+        {
+            durable |= w.WantsDurability;
+            opsCount += w.Operations.Count;
+        }
 
         // Per-transaction NoSync (verified honored as of LMDB 1.0 - see PLAN-LMDB.md "Spike findings" #3) is the
         // per-commit durability knob: the environment itself is opened without the env-wide NoSync flag, so a
@@ -460,6 +468,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
                     {
                         Interlocked.Increment(ref _writeWaveCount);
                         Interlocked.Add(ref _writeWaveElapsedTicks, Stopwatch.GetTimestamp() - start);
+                        Interlocked.Add(ref _writeWaveOpsCount, opsCount);
                         return;
                     }
 
