@@ -161,6 +161,12 @@ public sealed class BeaconSyncOrchestrator(
     private ulong _anchorSlot;
     private HeadView? _lastHead;
     private bool _elInSync;
+
+    // The last forkchoiceUpdated sent, so an unchanged one is not repeated each slot.
+    private (ForkchoiceHashes Hashes, long SentAtMs, PayloadStatusV1 Status)? _lastForkchoice;
+
+    /// <summary>How often an unchanged <c>forkchoiceUpdated</c> is still sent; well inside the EL's default 300 s CL liveness window.</summary>
+    internal static readonly TimeSpan ForkchoiceResendInterval = TimeSpan.FromSeconds(60);
     private bool _importedSinceHeadStep;
     private int _importsSinceHeadStep;
     private int _pendingCount;
@@ -1255,11 +1261,27 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    private Task<PayloadStatusV1> ForkchoiceUpdatedAsync(HeadView head, Hash256 headExec) =>
-        engine.ForkchoiceUpdated(
-            headExec,
-            head.JustifiedExecutionHash ?? headExec,
-            head.FinalizedExecutionHash ?? _anchorExecutionHash);
+    /// <summary>Sends <c>forkchoiceUpdated</c> unless the same head, safe and finalized hashes were sent within <see cref="ForkchoiceResendInterval"/>.</summary>
+    /// <remarks>
+    /// The Engine API asks for the call when the fork choice state changes; an unchanged repeat each slot tells the EL nothing.
+    /// It is still resent at that interval, as the EL treats a CL that sends neither this nor <c>newPayload</c> for a while as gone.
+    /// </remarks>
+    private async Task<PayloadStatusV1> ForkchoiceUpdatedAsync(HeadView head, Hash256 headExec)
+    {
+        ForkchoiceHashes sent = new(headExec, head.JustifiedExecutionHash ?? headExec, head.FinalizedExecutionHash ?? _anchorExecutionHash);
+        long now = slotClock.UnixMilliseconds;
+        if (_lastForkchoice is { } last && last.Hashes == sent && last.Status.Status != PayloadStatus.Invalid
+            && now - last.SentAtMs < (long)ForkchoiceResendInterval.TotalMilliseconds)
+        {
+            return last.Status;
+        }
+
+        PayloadStatusV1 status = await engine.ForkchoiceUpdated(sent.Head, sent.Safe, sent.Finalized);
+        _lastForkchoice = (sent, now, status);
+        return status;
+    }
+
+    private readonly record struct ForkchoiceHashes(Hash256 Head, Hash256 Safe, Hash256 Finalized);
 
     private void TrackExecutionSyncTransition(PayloadStatusV1 status)
     {
