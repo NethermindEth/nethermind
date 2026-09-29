@@ -11,7 +11,7 @@ using Nethermind.Logging;
 namespace Nethermind.Facade.Simulate;
 
 // Wraps a chain's own factory so the EIP-7928 BAL processors it builds skip the sender checks eth_simulateV1 exempts.
-internal sealed class SkipSenderCodeCheckTransactionProcessorFactory(ITransactionProcessorFactory inner) : ITransactionProcessorFactory
+internal sealed class SkipSenderChecksTransactionProcessorFactory(ITransactionProcessorFactory inner) : ITransactionProcessorFactory
 {
     public ITransactionProcessor Create(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
