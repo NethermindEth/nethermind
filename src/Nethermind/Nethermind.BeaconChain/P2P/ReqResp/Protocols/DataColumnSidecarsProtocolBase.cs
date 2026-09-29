@@ -29,8 +29,9 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
     protected byte[] ContextBytesFor(DataColumnSidecar sidecar) =>
         ForkDigest.Compute(Spec, Spec.GetEpoch(sidecar.SignedBlockHeader!.Message!.Slot));
 
-    /// <param name="overallTimeout">Overrides <see cref="MaxSidecarsResponseDuration"/>; test-only seam, production call sites omit it.</param>
-    protected async Task<IReadOnlyList<DataColumnSidecar>> ReadSidecarChunksAsync(Stream stream, int maxSidecars, string protocolId, TimeSpan? overallTimeout = null)
+    /// <param name="overallTimeout">Overrides <see cref="MaxSidecarsResponseDuration"/>; the by-range dial scales it by the chunks it expects.</param>
+    /// <param name="onSidecar">Called with each chunk that passed every check, before the next is read; may throw to refuse the chunk.</param>
+    protected async Task<IReadOnlyList<DataColumnSidecar>> ReadSidecarChunksAsync(Stream stream, int maxSidecars, string protocolId, TimeSpan? overallTimeout = null, Action<DataColumnSidecar>? onSidecar = null)
     {
         List<DataColumnSidecar> sidecars = [];
         using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxSidecarsResponseDuration);
@@ -96,6 +97,7 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                     throw new Eth2ReqRespException($"Data column sidecar chunk context bytes do not match the fork digest of slot {sidecar.SignedBlockHeader.Message.Slot}");
                 }
 
+                onSidecar?.Invoke(sidecar);
                 sidecars.Add(sidecar);
                 cts.CancelAfter(RespTimeout);
             }
