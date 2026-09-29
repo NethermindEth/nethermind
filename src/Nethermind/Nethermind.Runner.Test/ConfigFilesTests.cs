@@ -270,6 +270,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [Test]
     public void Aztec_config_keeps_a_trace_window()
     {
+        Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.Enabled, true);
         Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.HistoryEnabled, true);
         Test<IFlatDbConfig, HistoryRetentionMode>("mainnet_aztec.json", static c => c.HistoryRetention, HistoryRetentionMode.Rolling);
         Test<IFlatDbConfig, ulong>("mainnet_aztec.json", static c => c.HistoryRetentionBlocks, 4096UL);
