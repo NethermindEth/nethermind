@@ -110,8 +110,8 @@ public class FrameTransactionForRpcTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(frames.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(frames[0].GetProperty("mode").GetInt32(), Is.EqualTo((byte)FrameMode.Verify));
-            Assert.That(frames[0].GetProperty("flags").GetInt32(), Is.EqualTo((byte)FrameFlags.ApproveExecutionAndPayment));
+            Assert.That(frames[0].GetProperty("mode").GetString(), Is.EqualTo("0x1"));
+            Assert.That(frames[0].GetProperty("flags").GetString(), Is.EqualTo("0x3"));
             Assert.That(frames[0].GetProperty("target").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
             Assert.That(frames[0].GetProperty("executionGas").GetString(), Does.Match("^0x[0-9a-f]+$"));
             Assert.That(frames[0].GetProperty("stateGas").GetString(), Does.Match("^0x[0-9a-f]+$"));
@@ -131,7 +131,7 @@ public class FrameTransactionForRpcTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(signatures.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(signatures[0].GetProperty("scheme").GetInt32(), Is.EqualTo(TxFrameSignature.SchemeSecp256k1));
+            Assert.That(signatures[0].GetProperty("scheme").GetString(), Is.EqualTo("0x1"));
         }
     }
 
@@ -557,6 +557,36 @@ public class FrameTransactionForRpcTests
         }
     }
 
+    /// <summary>A frame receipt serializes to the execution-apis <c>FrameReceipt</c> schema: quantities, the
+    /// summed <c>gasUsed</c>, and full <c>Log</c> objects identical to the receipt's own, block-global indexes included.</summary>
+    [Test]
+    public void ReceiptForRpc_FrameTx_SerializesFrameReceiptsPerSchema()
+    {
+        TxReceipt receipt = BuildFrameTxReceipt();
+        receipt.TxHash = TestItem.KeccakB;
+        receipt.Index = 2;
+        receipt.BlockNumber = 7;
+        receipt.Logs = [FrameLog, FrameLog];
+        receipt.FrameReceipts = [.. receipt.FrameReceipts!, new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, []), new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 1_000, 0, [FrameLog])];
+
+        ReceiptForRpc receiptForRpc = new(TestItem.KeccakB, receipt, blockTimestamp: 0x10, new TxGasInfo(UInt256.One), logIndexStart: 5);
+        using JsonDocument doc = JsonDocument.Parse(Serializer.Serialize(receiptForRpc));
+        JsonElement logs = doc.RootElement.GetProperty("logs");
+        JsonElement frames = doc.RootElement.GetProperty("frameReceipts");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frames.EnumerateArray().Select(static f => f.GetProperty("status").GetString()), Is.EqualTo(new[] { "0x1", "0x0", "0x2", "0x1" }));
+            Assert.That(frames[0].GetProperty("gasUsed").GetString(), Is.EqualTo("0x1d088"));
+            Assert.That(frames[3].GetProperty("gasUsed").GetString(), Is.EqualTo("0x3e8"));
+            Assert.That(frames[3].GetProperty("logs")[0].GetProperty("logIndex").GetString(), Is.EqualTo("0x6"));
+            Assert.That(JsonElement.DeepEquals(frames[0].GetProperty("logs")[0], logs[0]), Is.True);
+            Assert.That(JsonElement.DeepEquals(frames[3].GetProperty("logs")[0], logs[1]), Is.True);
+            Assert.That(receiptForRpc.FrameReceipts![0].Logs![0], Is.SameAs(receiptForRpc.Logs![0]));
+            Assert.That(receiptForRpc.FrameReceipts![3].Logs![0], Is.SameAs(receiptForRpc.Logs![1]));
+        }
+    }
+
     /// <summary>The wire-facing converter, not just the DTO, must carry the frame fields both ways.</summary>
     /// <remarks><see cref="TxReceiptConverter"/> is the registered converter for <see cref="TxReceipt"/>.</remarks>
     [Test]
@@ -683,7 +713,7 @@ public class FrameTransactionForRpcTests
             new FrameReceiptForRpc
             {
                 Status = TxFrameReceipt.StatusSuccess,
-                Logs = withNullEntry ? [null!] : [new LogEntry(TestItem.AddressA, [1], [])],
+                Logs = withNullEntry ? [null!] : [new LogEntryForRpc { Address = TestItem.AddressA, Data = [1], Topics = [] }],
             }
         ];
 
@@ -729,23 +759,24 @@ public class FrameTransactionForRpcTests
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
     }
 
-    private static LogEntry[] RepeatFrameLog(int count)
+    private static LogEntryForRpc[] RepeatFrameLog(int count)
     {
-        LogEntry[] logs = new LogEntry[count];
+        LogEntryForRpc frameLog = new() { Address = FrameLog.Address, Data = FrameLog.Data, Topics = FrameLog.Topics };
+        LogEntryForRpc[] logs = new LogEntryForRpc[count];
         for (int i = 0; i < count; i++)
         {
-            logs[i] = FrameLog;
+            logs[i] = frameLog;
         }
 
         return logs;
     }
 
     /// <summary>The frames wire form, captured from the serializer and pinned verbatim.</summary>
-    /// <remarks><c>mode</c> and <c>flags</c> carry no quantity converter, so they are plain JSON numbers where
-    /// every other scalar is a hex quantity; <c>eth_sendTransaction</c> callers and t8n fixture input both rely
-    /// on that. Pinning the string rather than round-tripping catches a change that moved both ends together.</remarks>
+    /// <remarks>Every scalar, <c>mode</c> and <c>flags</c> included, is a hex quantity as the execution-apis
+    /// <c>Frame</c> schema requires. Pinning the string rather than round-tripping catches a change that moved
+    /// both ends together.</remarks>
     private const string PinnedFramesJson =
-        """[{"mode":1,"flags":3,"executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x"},{"mode":2,"flags":4,"target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0x5208","stateGas":"0x0","value":"0x7","data":"0xdead"},{"mode":3,"flags":0,"target":"0x76e68a8696537e4141926f3e528733af9e237d69","executionGas":"0x3e8","stateGas":"0x7d0","value":"0x0","data":"0x"}]""";
+        """[{"mode":"0x1","flags":"0x3","executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x"},{"mode":"0x2","flags":"0x4","target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0x5208","stateGas":"0x0","value":"0x7","data":"0xdead"},{"mode":"0x3","flags":"0x0","target":"0x76e68a8696537e4141926f3e528733af9e237d69","executionGas":"0x3e8","stateGas":"0x7d0","value":"0x0","data":"0x"}]""";
 
     /// <summary>The frames <see cref="PinnedFramesJson"/> was captured from: every mode, an approval scope, the
     /// atomic-batch bit, an omitted target and a present one, both gas limits, a value and calldata.</summary>
@@ -760,10 +791,13 @@ public class FrameTransactionForRpcTests
     public void FrameForRpc_SerializedForm_IsUnchanged() =>
         Assert.That(Serializer.Serialize(FrameForRpc.FromFrames(PinnedFrames())), Is.EqualTo(PinnedFramesJson));
 
-    [Test]
-    public void FrameForRpc_DeserializedFromThePinnedForm_YieldsTheSameFrames()
+    /// <remarks><c>eth_sendTransaction</c> callers and t8n fixture input may still send <c>mode</c> and
+    /// <c>flags</c> as JSON numbers, so that form reads the same frames.</remarks>
+    [TestCase(PinnedFramesJson)]
+    [TestCase("""[{"mode":1,"flags":3,"executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x"},{"mode":2,"flags":4,"target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0x5208","stateGas":"0x0","value":"0x7","data":"0xdead"},{"mode":3,"flags":0,"target":"0x76e68a8696537e4141926f3e528733af9e237d69","executionGas":"0x3e8","stateGas":"0x7d0","value":"0x0","data":"0x"}]""")]
+    public void FrameForRpc_DeserializedFromThePinnedForm_YieldsTheSameFrames(string framesJson)
     {
-        FrameForRpc[]? parsed = Serializer.Deserialize<FrameForRpc[]>(PinnedFramesJson);
+        FrameForRpc[]? parsed = Serializer.Deserialize<FrameForRpc[]>(framesJson);
 
         Assert.That(FrameForRpc.TryToFrames(parsed, out TxFrame[]? frames), Is.True);
 
