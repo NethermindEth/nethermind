@@ -68,10 +68,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private const string PeerIdSeparator = "/p2p/";
 
     // Bounds the per-peer-id ban/diagnostics table so years of churn on a public network cannot
-    // grow it forever. Real (deterministic) policy: evicts the oldest tracked non-banned entry -
-    // see EvictIfOverCapacity. A banned entry is never evicted; the table can only exceed this bound
-    // if every tracked id happens to be banned, which FaultDisconnectsBeforeBan makes rare.
+    // grow it forever. Deterministic policy, see EvictIfOverCapacity: an entry that is not banned goes first.
     private const int MaxTrackedPeerIds = 8192;
+    private const int MaxBanMinutes = 10 * 365 * 24 * 60;
 
     private readonly BeaconP2P _p2p;
     private readonly IBeaconChainConfig _config;
@@ -621,7 +620,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 record.Value.DisconnectCount,
                 record.Value.LastDisconnectReason,
                 record.Value.LastDisconnectDetail,
-                record.Value.Banned));
+                IsBanActive(record.Value, _timestamper.UtcNowOffset)));
         }
 
         return snapshot;
@@ -733,7 +732,36 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <summary>Internal so a test can check the ban key derivation directly.</summary>
     internal static string ExtractPeerIdForTest(string address) => ExtractPeerId(address);
 
-    private bool IsBanned(string peerId) => _peerRecords.TryGetValue(peerId, out BanRecord? record) && record.Banned;
+    private bool IsBanned(string peerId) => _peerRecords.TryGetValue(peerId, out BanRecord? record) && IsBanActive(record, _timestamper.UtcNowOffset);
+
+    private TimeSpan BanDuration => TimeSpan.FromMinutes(Math.Clamp(_config.PeerBanMinutes, 0, MaxBanMinutes));
+
+    /// <summary>Whether the ban on <paramref name="record"/> still holds at <paramref name="now"/>. A ban that has run out is lifted
+    /// here together with the fault streak behind it, so a peer that was only slow starts again from a clean history.</summary>
+    private bool IsBanActive(BanRecord record, DateTimeOffset now)
+    {
+        long bannedUntil = Volatile.Read(ref record.BannedUntilTicks);
+        if (bannedUntil == 0)
+        {
+            return false;
+        }
+
+        if (now.UtcTicks < bannedUntil)
+        {
+            return true;
+        }
+
+        lock (record)
+        {
+            if (record.BannedUntilTicks == bannedUntil)
+            {
+                record.BannedUntilTicks = 0;
+                record.ConsecutiveFaultDisconnects = 0;
+            }
+        }
+
+        return false;
+    }
 
     private BanRecord GetOrCreateRecord(string peerId)
     {
@@ -746,11 +774,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return _peerRecords.GetOrAdd(peerId, _ => new BanRecord(Interlocked.Increment(ref _nextRecordSequence)));
     }
 
-    /// <summary>Real (deterministic) bound on the ban/diagnostics table: evicts the oldest tracked
-    /// non-banned entry by creation order, not an arbitrary one from undefined dictionary enumeration
-    /// order. A banned entry is never evicted, so the table can still exceed the cap if every tracked
-    /// id happens to be banned - accepted, since that needs FaultDisconnectsBeforeBan-many faults per
-    /// id and is not the churn this bound defends against.</summary>
+    /// <summary>Deterministic bound on the ban/diagnostics table: evicts the oldest entry that is not banned, by creation order.
+    /// When every entry is banned, the ban closest to running out goes, so the table never exceeds the cap.</summary>
     private void EvictIfOverCapacity()
     {
         if (_peerRecords.Count < MaxTrackedPeerIds)
@@ -758,20 +783,32 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return;
         }
 
+        DateTimeOffset now = _timestamper.UtcNowOffset;
         string? oldestKey = null;
         long oldestSequence = long.MaxValue;
+        string? soonestBanKey = null;
+        long soonestBan = long.MaxValue;
         foreach (KeyValuePair<string, BanRecord> entry in _peerRecords)
         {
-            if (!entry.Value.Banned && entry.Value.Sequence < oldestSequence)
+            if (IsBanActive(entry.Value, now))
+            {
+                long bannedUntil = Volatile.Read(ref entry.Value.BannedUntilTicks);
+                if (bannedUntil != 0 && bannedUntil < soonestBan)
+                {
+                    soonestBan = bannedUntil;
+                    soonestBanKey = entry.Key;
+                }
+            }
+            else if (entry.Value.Sequence < oldestSequence)
             {
                 oldestSequence = entry.Value.Sequence;
                 oldestKey = entry.Key;
             }
         }
 
-        if (oldestKey is not null)
+        if ((oldestKey ?? soonestBanKey) is { } evicted)
         {
-            _peerRecords.TryRemove(oldestKey, out _);
+            _peerRecords.TryRemove(evicted, out _);
         }
     }
 
@@ -1097,11 +1134,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            int failures = peer.RecordFailedHealthCheck();
+            int failures = peer.RecordFailedHealthCheck(violation: !IsSilence(e));
             if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check ({failures}/{MaxConsecutiveFailures}): {e.Message}");
             if (failures >= MaxConsecutiveFailures)
             {
-                await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last: {DescribeFailure(e)}", token);
+                await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last: {DescribeFailure(e)}", token, unresponsive: IsUnresponsiveFailure(peer, e));
             }
         }
     }
@@ -1144,14 +1181,23 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     internal static string DescribeFailure(Exception e) =>
         e is OperationCanceledException or TimeoutException ? "request timed out" : e.Message;
 
-    private async Task DropAsync(ManagedPeer peer, ulong reason, string detail, CancellationToken token)
+    /// <summary>A timeout or a lost session says nothing about the content the peer sends; any other failure of a health check is a bad reply.</summary>
+    private static bool IsSilence(Exception e) =>
+        e is OperationCanceledException or TimeoutException || PeerFailureClassifier.Classify(e) == PeerFailureReason.SessionClosed;
+
+    /// <summary>Whether a drop after repeated failures shows only silence: the last failure is a timeout or a lost session and no reply in the run was a protocol violation.</summary>
+    internal static bool IsUnresponsiveFailure(IBeaconSyncPeer peer, Exception e) =>
+        IsSilence(e) && !((ManagedPeer)peer).ViolatedProtocolSinceLastHealthyCheck;
+
+    /// <param name="unresponsive">The peer only stopped answering: the drop is recorded but earns no step toward a ban.</param>
+    private async Task DropAsync(ManagedPeer peer, ulong reason, string detail, CancellationToken token, bool unresponsive = false)
     {
         if (_logger.IsInfo) _logger.Info($"Dropping beacon chain peer {peer.Id}: {detail}");
         _peers.TryRemove(peer.Id, out _);
         Metrics.BeaconChainPeersDropped++;
         Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(GoodbyeReasonName(reason)));
         Metrics.BeaconChainPeerCount = _peers.Count;
-        RecordDisconnect(peer, reason, detail);
+        RecordDisconnect(peer, reason, detail, unresponsive);
         PeerDropped?.Invoke(peer.Id);
         await _p2p.GoodbyeAsync(peer.Session, reason, token);
         try
@@ -1167,12 +1213,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <summary>
     /// Folds a dropped session's counters into its peer id's durable record, and bans the id once it
     /// has caused <see cref="IBeaconChainConfig.FaultDisconnectsBeforeBan"/> consecutive fault
-    /// disconnects. A non-fault disconnect (fork rotation, our own shutdown) resets that streak: it
-    /// is not evidence of misbehaviour, and BPO digest rotations legitimately cause fork-mismatch
-    /// drops of otherwise-healthy peers.
+    /// disconnects; the ban lasts <see cref="IBeaconChainConfig.PeerBanMinutes"/>. A non-fault disconnect (fork rotation,
+    /// our own shutdown) resets that streak: it is not evidence of misbehaviour, and BPO digest rotations legitimately cause
+    /// fork-mismatch drops of otherwise-healthy peers. A drop for silence alone leaves the streak as it is.
     /// </summary>
-    private void RecordDisconnect(ManagedPeer peer, ulong reason, string detail) =>
-        RecordDisconnect(peer.PeerId, peer.MessagesSent, peer.FailuresReported, reason, detail);
+    private void RecordDisconnect(ManagedPeer peer, ulong reason, string detail, bool unresponsive) =>
+        RecordDisconnect(peer.PeerId, peer.MessagesSent, peer.FailuresReported, reason, detail, unresponsive);
 
     /// <summary>
     /// The session-independent half of <see cref="DropAsync"/>'s bookkeeping. Internal so a test can
@@ -1180,8 +1226,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// live libp2p session for every one of <see cref="IBeaconChainConfig.FaultDisconnectsBeforeBan"/>
     /// fault disconnects.
     /// </summary>
-    internal void RecordDisconnect(string peerId, long messagesSent, long failuresReported, ulong reason, string detail)
+    internal void RecordDisconnect(string peerId, long messagesSent, long failuresReported, ulong reason, string detail, bool unresponsive = false)
     {
+        DateTimeOffset now = _timestamper.UtcNowOffset;
         BanRecord record = GetOrCreateRecord(peerId);
         record.LastDisconnectReason = GoodbyeReasonName(reason);
         record.LastDisconnectDetail = detail;
@@ -1189,18 +1236,32 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         record.FailuresReported = failuresReported;
         Interlocked.Increment(ref record.DisconnectCount);
 
-        if (reason != GoodbyeReason.Fault)
+        if (unresponsive)
         {
-            Volatile.Write(ref record.ConsecutiveFaultDisconnects, 0);
             return;
         }
 
-        int consecutiveFaults = Interlocked.Increment(ref record.ConsecutiveFaultDisconnects);
-        if (consecutiveFaults >= _config.FaultDisconnectsBeforeBan && !record.Banned)
+        int consecutiveFaults;
+        lock (record)
         {
-            record.Banned = true;
-            if (_logger.IsWarn) _logger.Warn($"Banned beacon chain peer {peerId} after {consecutiveFaults} consecutive fault disconnects");
+            // Lifts a ban that has run out under the same lock, so the streak below starts from zero.
+            bool banned = IsBanActive(record, now);
+            if (reason != GoodbyeReason.Fault)
+            {
+                record.ConsecutiveFaultDisconnects = 0;
+                return;
+            }
+
+            consecutiveFaults = ++record.ConsecutiveFaultDisconnects;
+            if (consecutiveFaults < _config.FaultDisconnectsBeforeBan || banned)
+            {
+                return;
+            }
+
+            record.BannedUntilTicks = (now + BanDuration).UtcTicks;
         }
+
+        if (_logger.IsWarn) _logger.Warn($"Banned beacon chain peer {peerId} after {consecutiveFaults} consecutive fault disconnects");
     }
 
     /// <summary>
@@ -1220,7 +1281,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         Interlocked.Increment(ref record.DisconnectCount);
     }
 
-    /// <summary>Internal so a test can assert ban state without dialing: see <see cref="RecordDisconnect(string,long,long,ulong,string)"/>.</summary>
+    /// <summary>Internal so a test can assert ban state without dialing: see <see cref="RecordDisconnect(string,long,long,ulong,string,bool)"/>.</summary>
     internal bool IsBannedForTest(string peerId) => IsBanned(peerId);
 
     internal static long MessagesSentForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).MessagesSent;
@@ -1238,7 +1299,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     {
         /// <summary>Creation order, for a deterministic oldest-first eviction in <see cref="EvictIfOverCapacity"/>.</summary>
         public readonly long Sequence = sequence;
-        public volatile bool Banned;
+
+        /// <summary>UTC ticks at which the ban ends; 0 when the id is not banned.</summary>
+        public long BannedUntilTicks;
         public int ConsecutiveFaultDisconnects;
         public int DisconnectCount;
         public long MessagesSent;
@@ -1253,6 +1316,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private int _requestFailures;
         private DateTimeOffset _requestFailuresDecayFrom;
         private int _consecutiveFailures;
+        private bool _violatedProtocol;
         private long _messagesSent;
         private long _failuresReported;
         private volatile PeerColumnCustody _custody = CustodyOf(session, PeerColumnCustody.CustodyGroupCountOf(enr));
@@ -1291,7 +1355,14 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public bool IsAtFailureLimit => RequestFailures >= MaxConsecutiveFailures;
 
-        public void ResetHealthCheckFailures() => Interlocked.Exchange(ref _consecutiveFailures, 0);
+        /// <summary>A reply since the last passing health check failed a content check, which a timeout in the same run does not excuse.</summary>
+        public bool ViolatedProtocolSinceLastHealthyCheck => Volatile.Read(ref _violatedProtocol);
+
+        public void ResetHealthCheckFailures()
+        {
+            Interlocked.Exchange(ref _consecutiveFailures, 0);
+            Volatile.Write(ref _violatedProtocol, false);
+        }
 
         public void RecordRequestServed()
         {
@@ -1332,7 +1403,15 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         /// <returns>The consecutive failures including this one.</returns>
-        public int RecordFailedHealthCheck() => Interlocked.Increment(ref _consecutiveFailures);
+        public int RecordFailedHealthCheck(bool violation = false)
+        {
+            if (violation)
+            {
+                Volatile.Write(ref _violatedProtocol, true);
+            }
+
+            return Interlocked.Increment(ref _consecutiveFailures);
+        }
 
         public long MessagesSent => Interlocked.Read(ref _messagesSent);
         public long FailuresReported => Interlocked.Read(ref _failuresReported);
@@ -1429,6 +1508,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             else
             {
                 failures = Interlocked.Increment(ref _consecutiveFailures);
+                if (reason == PeerFailureReason.ProtocolViolation)
+                {
+                    Volatile.Write(ref _violatedProtocol, true);
+                }
+
                 // A violation takes back the credit the reply that carried it just earned.
                 AddRequestFailures(reason == PeerFailureReason.ProtocolViolation ? 2 : 1);
             }
