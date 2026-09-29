@@ -296,35 +296,35 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces one transaction. As it replays existing transaction will charge gas
         /// </summary>
-        public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
+        public ResultWrapper<ParityTxTraceFromReplay?> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
         {
             if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
             {
-                return InvalidTraceTypes<ParityTxTraceFromReplay>();
+                return InvalidTraceTypes<ParityTxTraceFromReplay?>();
             }
 
-            SearchResult<Hash256> blockHashSearch = receiptFinder.SearchForReceiptBlockHash(txHash);
-            if (blockHashSearch.IsError)
+            Hash256? blockHash = receiptFinder.FindBlockHash(txHash);
+            if (blockHash is null)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(blockHashSearch);
+                return ResultWrapper<ParityTxTraceFromReplay?>.Success(null);
             }
 
-            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object!, requireCanonical: !traceNonCanonical));
+            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(new BlockParameter(blockHash, requireCanonical: !traceNonCanonical));
             if (blockSearch.IsError)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(blockSearch);
+                return ResultWrapper<ParityTxTraceFromReplay?>.Fail(blockSearch);
             }
 
             Block block = blockSearch.Object!;
             SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
             if (parentSearch.IsError)
             {
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(parentSearch);
+                return ResultWrapper<ParityTxTraceFromReplay?>.Fail(parentSearch);
             }
 
             if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
             {
-                return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object);
+                return GetStateFailureResult<ParityTxTraceFromReplay?>(parentSearch.Object);
             }
 
             BlockHeader parentHeader = parentSearch.Object!;

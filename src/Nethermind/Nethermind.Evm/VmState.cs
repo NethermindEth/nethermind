@@ -257,6 +257,12 @@ public class VmState<TGasPolicy> : IDisposable
     }
 #endif
 
+    /// <summary>Builds the frame's EVM stack over <paramref name="codeSpan"/>, renting the data stack on first use.</summary>
+    /// <param name="codeSpan">
+    /// Must be <c>Env.CodeInfo.ExecutionCodeSpan</c>: untraced dispatch reads past the end of the code into the
+    /// padding that follows it, which a span of any other buffer does not carry.
+    /// </param>
+    /// <param name="stack">The stack of this frame.</param>
     public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
@@ -270,6 +276,8 @@ public class VmState<TGasPolicy> : IDisposable
         stack.HoistInputData(Env.InputData.Span);
     }
 
+    /// <inheritdoc cref="InitializeStacks(ReadOnlySpan{byte}, out EvmStack)"/>
+    /// <param name="txTracer">The tracer the stack reports to.</param>
     public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
@@ -283,6 +291,8 @@ public class VmState<TGasPolicy> : IDisposable
         stack.HoistInputData(Env.InputData.Span);
     }
 
+    /// <summary>Rebuilds a resumed frame's EVM stack over <paramref name="codeSpan"/>.</summary>
+    /// <inheritdoc cref="InitializeStacks(ITxTracer, ReadOnlySpan{byte}, out EvmStack)" path="/param"/>
     internal void RestoreStack<TTracingInst>(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
         where TTracingInst : struct, IFlag
     {
