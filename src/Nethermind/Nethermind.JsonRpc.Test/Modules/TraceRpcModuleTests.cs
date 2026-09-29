@@ -17,6 +17,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Specs;
@@ -1569,6 +1570,59 @@ public class TraceRpcModuleTests
             "trace_call", transaction, traceTypes, blockParameter);
 
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
+    }
+
+    // Sends one call with the given fee fields through trace_call, or through trace_callMany after a free call, and
+    // the same call through eth_call, on a London chain whose head has a base fee.
+    private static async Task<(string Trace, string Eth)> TraceAndEthCall(string method, string feeFields, bool streaming)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(new OverridableReleaseSpec(London.Instance) { Eip1559TransitionBlock = 1 }));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Assert.That(blockchain.BlockTree.Head!.BaseFeePerGas, Is.GreaterThan(UInt256.Zero), "precondition: the head block has a base fee");
+        string free = $$"""{"from":"{{TestItem.AddressA}}","to":"{{TestItem.AddressB}}","gas":"0x186a0"}""";
+        string priced = $$"""{"from":"{{TestItem.AddressA}}","to":"{{TestItem.AddressB}}","gas":"0x186a0",{{feeFields}}}""";
+        using JsonDocument call = JsonDocument.Parse(priced);
+        using JsonDocument calls = JsonDocument.Parse($$"""[[{{free}},["trace"]],[{{priced}},["trace"]]]""");
+
+        string trace = method == "trace_call"
+            ? await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, call.RootElement, new[] { "trace" }, "latest")
+            : await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, calls.RootElement, "latest");
+        return (trace, await RpcTest.TestSerializedRequest(blockchain.EthRpcModule, "eth_call", call.RootElement, "latest"));
+    }
+
+    [Test]
+    public async Task Trace_call_and_callMany_reject_a_priority_fee_above_the_fee_cap_as_eth_call_does(
+        [Values("trace_call", "trace_callMany")] string method, [Values] bool streaming)
+    {
+        // Only a priority fee: the fee cap defaults to zero, below both the priority fee and the base fee.
+        (string trace, string eth) = await TraceAndEthCall(method, "\"maxPriorityFeePerGas\":\"0x1\"", streaming);
+
+        string expected = $"{TxErrorMessages.TipAboveFeeCap}: address {TestItem.AddressA.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: 1, maxFeePerGas: 0";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(trace)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), trace);
+            Assert.That(JToken.Parse(trace)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected), trace);
+            Assert.That(JToken.Parse(eth)["error"]?["message"]?.Value<string>(), Does.Contain(expected), eth);
+        }
+    }
+
+    [Test]
+    public async Task Trace_call_and_callMany_run_fees_the_tip_check_accepts(
+        [Values("trace_call", "trace_callMany")] string method,
+        [Values(
+            "\"maxFeePerGas\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\"",
+            "\"maxFeePerGas\":\"0x4a817c800\",\"maxPriorityFeePerGas\":\"0x1\"",
+            "\"gasPrice\":\"0x4a817c800\"")] string feeFields)
+    {
+        (string trace, string eth) = await TraceAndEthCall(method, feeFields, streaming: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(trace)["error"], Is.Null, trace);
+            Assert.That(JToken.Parse(eth)["error"], Is.Null, eth);
+        }
     }
 
     // Shaped like trace-interop's field-null-members probe: a null `input` after `data`, and the other optional members null.

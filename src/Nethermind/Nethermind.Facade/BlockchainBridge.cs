@@ -536,7 +536,7 @@ namespace Nethermind.Facade
         /// The rejection of a priced call whose priority fee exceeds its fee cap, before any gas is bought; the
         /// processor checks only the fee cap against the base fee when validation is skipped.
         /// </summary>
-        private static TransactionResult? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
+        public static TransactionResult? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
             spec.IsEip1559Enabled
             && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero)
             && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas
