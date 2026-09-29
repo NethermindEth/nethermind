@@ -37,8 +37,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// </para>
 /// <para>
 /// A verified batch containing blob-carrying blocks additionally requests this node's sampled data
-/// column sidecars before yielding (Fulu columns from the peers custodying them, Gloas columns from the
-/// batch's peer), so the gossip-fed availability gates
+/// column sidecars before yielding (each column from a peer custodying it, for Fulu and Gloas alike), so the gossip-fed availability gates
 /// (<see cref="DataAvailability.CustodySamplingAvailability"/> for a Fulu block,
 /// <see cref="DataAvailability.GloasCustodySamplingAvailability"/> for a Gloas envelope) have something
 /// to check against for a range-synced block. Fulu and Gloas blocks get one request each, over a window
@@ -117,7 +116,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // A peer may answer ResourceUnavailable below its earliest slot (phase0/p2p-interface.md); slots under it are taken as empty and block linkage still checks that.
             ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
             ulong count = Math.Min(batchSize, target - from + 1);
-            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null, token);
+            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null, token);
             if (batch is { Linked: false })
             {
                 // The first block names another parent: the unverified anchor is off the peers' chain, not the peer at fault.
@@ -153,8 +152,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
             if (batchSize != DefaultBatchSize && _logger.IsDebug) _logger.Debug($"Restoring range sync batch size to {DefaultBatchSize} from {batchSize} after a served batch");
             batchSize = DefaultBatchSize;
-            await FetchColumnsForBatchAsync(batch.Value.Blocks, token);
-            await FetchGloasColumnsForBatchAsync(peer, batch.Value.Blocks, token);
+            await FetchColumnsForBatchAsync(batch.Value.Blocks, batch.Value.Roots, token);
+            await FetchGloasColumnsForBatchAsync(batch.Value.Blocks, batch.Value.Roots, token);
             foreach (ForkedSignedBeaconBlock block in batch.Value.Blocks)
             {
                 yield return block;
@@ -163,15 +162,15 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
             if (batch.Value.Blocks.Count > 0)
             {
-                lastRoot = batch.Value.LastRoot;
+                lastRoot = batch.Value.Roots[^1];
             }
 
             nextSlot = from + count;
         }
     }
 
-    /// <returns>The verified batch and its last block's root, or <c>null</c> when the request failed or the batch did not link up; not <c>Linked</c> when <paramref name="anchorUnverified"/> and the first block does not link to <paramref name="parentRoot"/>.</returns>
-    private async Task<(IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot, bool Linked)?> FetchAndVerifyBatchAsync(
+    /// <returns>The verified batch and the root of each of its blocks, or <c>null</c> when the request failed or the batch did not link up; not <c>Linked</c> when <paramref name="anchorUnverified"/> and the first block does not link to <paramref name="parentRoot"/>.</returns>
+    private async Task<(IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)?> FetchAndVerifyBatchAsync(
         IBeaconSyncPeer peer,
         ulong startSlot,
         ulong count,
@@ -198,23 +197,25 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
         // Slot bounds and ordering are already enforced at the protocol layer; verify parent linkage here.
         Hash256 expectedParent = parentRoot;
-        foreach (ForkedSignedBeaconBlock block in batch)
+        Hash256[] roots = new Hash256[batch.Count];
+        for (int i = 0; i < roots.Length; i++)
         {
+            ForkedSignedBeaconBlock block = batch[i];
             if (block.ParentRoot != expectedParent)
             {
                 if (anchorUnverified && expectedParent == parentRoot)
                 {
-                    return (batch, parentRoot, false);
+                    return (batch, [], false);
                 }
 
                 peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Block at slot {block.Slot} has parent {block.ParentRoot}, expected {expectedParent}");
                 return null;
             }
 
-            expectedParent = block.ComputeMessageRoot();
+            expectedParent = roots[i] = block.ComputeMessageRoot();
         }
 
-        return (batch, expectedParent, true);
+        return (batch, roots, true);
     }
 
     /// <summary>
@@ -230,16 +231,16 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// peer that custodies it (<see cref="AssignColumns"/>), since fulu/p2p-interface.md DataColumnSidecarsByRange serves custodied columns only.
     /// Peers whose <c>earliest_available_slot</c> is at or before the request's start are preferred; when none is, those serving from at or before the last blob-carrying slot are asked from their earliest slot.
     /// </remarks>
-    private async Task FetchColumnsForBatchAsync(IReadOnlyList<ForkedSignedBeaconBlock> blocks, CancellationToken token)
+    private async Task FetchColumnsForBatchAsync(IReadOnlyList<ForkedSignedBeaconBlock> blocks, Hash256[] roots, CancellationToken token)
     {
         ulong windowStartEpoch = DataAvailabilityStartEpoch();
         Dictionary<Hash256, BeaconBlock> blobBlocksByRoot = [];
         ulong startSlot = ulong.MaxValue;
         ulong endSlot = 0;
         ulong lastBlobSlot = 0;
-        foreach (ForkedSignedBeaconBlock block in blocks)
+        for (int i = 0; i < blocks.Count; i++)
         {
-            if (block is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { } message }
+            if (blocks[i] is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { } message }
                 || !IsInDataAvailabilityWindow(message.Slot, windowStartEpoch))
             {
                 continue;
@@ -249,7 +250,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             endSlot = Math.Max(endSlot, message.Slot);
             if (message.Body?.BlobKzgCommitments is { Length: > 0 })
             {
-                blobBlocksByRoot[SszRoots.HashTreeRoot(message)] = message;
+                blobBlocksByRoot[roots[i]] = message;
                 lastBlobSlot = Math.Max(lastBlobSlot, message.Slot);
             }
         }
@@ -283,15 +284,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             return;
         }
 
-        IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
-        IBeaconSyncPeer[] custodians = [.. reaching.Where(p => p.Custody.CountCustodied(missing) > 0)];
-        if (custodians.Length == 0)
-        {
-            LogNoCustodian(missing, reaching.Count);
-            return;
-        }
-
-        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignColumns(missing, ServingFrom(custodians, startSlot, lastBlobSlot), MaxColumnPeersPerBatch);
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, startSlot, lastBlobSlot);
         Task<IReadOnlyList<DataColumnSidecar>?>[] responses = new Task<IReadOnlyList<DataColumnSidecar>?>[requests.Count];
         for (int i = 0; i < requests.Count; i++)
         {
@@ -308,6 +301,20 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 AddVerifiedSidecars(requests[i].Peer, sidecars, blobBlocksByRoot);
             }
         }
+    }
+
+    /// <summary>Assigns each of <paramref name="missing"/> to a peer reaching <paramref name="startSlot"/> that custodies it and serves the range; empty when no such peer exists.</summary>
+    private List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignBatchColumns(List<ulong> missing, ulong startSlot, ulong lastBlobSlot)
+    {
+        IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
+        IBeaconSyncPeer[] custodians = [.. reaching.Where(p => p.Custody.CountCustodied(missing) > 0)];
+        if (custodians.Length == 0)
+        {
+            LogNoCustodian(missing, reaching.Count);
+            return [];
+        }
+
+        return AssignColumns(missing, ServingFrom(custodians, startSlot, lastBlobSlot), MaxColumnPeersPerBatch);
     }
 
     /// <summary>
@@ -616,24 +623,25 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     }
 
     /// <summary>
-    /// Requests and verifies this node's sampled Gloas data column sidecars for every blob-carrying Gloas block
-    /// in <paramref name="blocks"/> inside the data availability window, from <paramref name="peer"/>. Never
-    /// fails the batch, as <see cref="FetchColumnsForBatchAsync"/>.
+    /// Requests and verifies this node's missing sampled Gloas data column sidecars for every blob-carrying Gloas block
+    /// in <paramref name="blocks"/> inside the data availability window. Never fails the batch, as <see cref="FetchColumnsForBatchAsync"/>.
     /// </summary>
     /// <remarks>
-    /// The request window spans only those blocks, so it lies wholly in Gloas epochs as the Gloas request requires.
-    /// A sidecar must name a Gloas block of this batch and that block's slot, and pass gloas/p2p-interface.md
-    /// <c>verify_data_column_sidecar</c> and <c>verify_data_column_sidecar_kzg_proofs</c> against the block's bid.
+    /// The request window spans only those blocks, so it lies wholly in Gloas epochs as the Gloas request requires, and each column is asked of
+    /// one peer that custodies it as in <see cref="FetchColumnsForBatchAsync"/>. A sidecar must name a Gloas block of this batch and that block's slot,
+    /// and pass gloas/p2p-interface.md <c>verify_data_column_sidecar</c> and <c>verify_data_column_sidecar_kzg_proofs</c> against the block's bid;
+    /// a column already pooled is not verified again.
     /// </remarks>
-    private async Task FetchGloasColumnsForBatchAsync(IBeaconSyncPeer peer, IReadOnlyList<ForkedSignedBeaconBlock> blocks, CancellationToken token)
+    private async Task FetchGloasColumnsForBatchAsync(IReadOnlyList<ForkedSignedBeaconBlock> blocks, Hash256[] roots, CancellationToken token)
     {
         ulong windowStartEpoch = DataAvailabilityStartEpoch();
         Dictionary<Hash256, (ulong Slot, ExecutionPayloadBid Bid)> bidsByRoot = [];
         ulong startSlot = ulong.MaxValue;
         ulong endSlot = 0;
-        foreach (ForkedSignedBeaconBlock block in blocks)
+        ulong lastBlobSlot = 0;
+        for (int i = 0; i < blocks.Count; i++)
         {
-            if (block is not ForkedSignedBeaconBlock.OfGloas { Block.Message: { } message }
+            if (blocks[i] is not ForkedSignedBeaconBlock.OfGloas { Block.Message: { } message }
                 || message.Body?.SignedExecutionPayloadBid?.Message is not { BlobKzgCommitments.Length: > 0 } bid
                 || !IsInDataAvailabilityWindow(message.Slot, windowStartEpoch))
             {
@@ -642,7 +650,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
             startSlot = Math.Min(startSlot, message.Slot);
             endSlot = Math.Max(endSlot, message.Slot);
-            bidsByRoot[SszRoots.HashTreeRoot(message)] = (message.Slot, bid);
+            lastBlobSlot = Math.Max(lastBlobSlot, message.Slot);
+            bidsByRoot[roots[i]] = (message.Slot, bid);
         }
 
         if (bidsByRoot.Count == 0 || _custodySource.Current is not { } custody)
@@ -650,31 +659,77 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             return;
         }
 
-        ulong[] sampledColumns = [.. custody.SampledColumns];
-        ulong count = endSlot - startSlot + 1;
+        List<ulong> missing = [];
+        foreach (ulong column in custody.SampledColumns)
+        {
+            foreach (Hash256 root in bidsByRoot.Keys)
+            {
+                if (!sidecarPool.TryGetGloas(root, column, out _))
+                {
+                    missing.Add(column);
+                    break;
+                }
+            }
+        }
 
-        IReadOnlyList<DataColumnSidecarGloas> sidecars;
+        if (missing.Count == 0)
+        {
+            return;
+        }
+
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, startSlot, lastBlobSlot);
+        Task<IReadOnlyList<DataColumnSidecarGloas>?>[] responses = new Task<IReadOnlyList<DataColumnSidecarGloas>?>[requests.Count];
+        for (int i = 0; i < requests.Count; i++)
+        {
+            // A peer serves from its earliest slot; a request below it may be answered ResourceUnavailable (fulu/p2p-interface.md).
+            ulong from = Math.Max(startSlot, requests[i].Peer.EarliestAvailableSlot);
+            responses[i] = RequestGloasColumnsByRangeAsync(requests[i].Peer, from, endSlot - from + 1, requests[i].Columns, token);
+        }
+
+        await Task.WhenAll(responses);
+        for (int i = 0; i < requests.Count; i++)
+        {
+            if (responses[i].Result is { } sidecars)
+            {
+                AddVerifiedGloasSidecars(requests[i].Peer, sidecars, bidsByRoot, requests[i].Columns);
+            }
+        }
+    }
+
+    /// <returns>The peer's sidecars, or <c>null</c> when the request failed and the peer was penalized.</returns>
+    private static async Task<IReadOnlyList<DataColumnSidecarGloas>?> RequestGloasColumnsByRangeAsync(IBeaconSyncPeer peer, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
+    {
         try
         {
-            sidecars = await peer.RequestGloasDataColumnSidecarsByRangeAsync(startSlot, count, sampledColumns, token);
+            return await peer.RequestGloasDataColumnSidecarsByRangeAsync(startSlot, count, columns, token);
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
             peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Gloas data-column-sidecars-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
-            return;
+            return null;
         }
+    }
 
+    private void AddVerifiedGloasSidecars(IBeaconSyncPeer peer, IReadOnlyList<DataColumnSidecarGloas> sidecars, Dictionary<Hash256, (ulong Slot, ExecutionPayloadBid Bid)> bidsByRoot, ulong[] requestedColumns)
+    {
         foreach (DataColumnSidecarGloas sidecar in sidecars)
         {
-            if (sidecar.BeaconBlockRoot is not { } root
-                || !bidsByRoot.TryGetValue(root, out (ulong Slot, ExecutionPayloadBid Bid) block)
-                || !IsVerifiedGloasColumnOf(sidecar, block.Slot, block.Bid.BlobKzgCommitments!, sampledColumns))
+            if (sidecar.BeaconBlockRoot is { } root && bidsByRoot.TryGetValue(root, out (ulong Slot, ExecutionPayloadBid Bid) block))
             {
-                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Gloas data column sidecar at slot {sidecar.Slot} column {sidecar.Index} failed verification");
-                continue;
+                // A column an earlier reply already supplied is not verified again.
+                if (sidecarPool.TryGetGloas(root, sidecar.Index, out _))
+                {
+                    continue;
+                }
+
+                if (IsVerifiedGloasColumnOf(sidecar, block.Slot, block.Bid.BlobKzgCommitments!, requestedColumns))
+                {
+                    sidecarPool.AddGloas(sidecar);
+                    continue;
+                }
             }
 
-            sidecarPool.AddGloas(sidecar);
+            peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Gloas data column sidecar at slot {sidecar.Slot} column {sidecar.Index} failed verification");
         }
     }
 
