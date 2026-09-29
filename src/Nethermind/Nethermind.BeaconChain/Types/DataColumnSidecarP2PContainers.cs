@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.Core.Crypto;
@@ -41,7 +42,8 @@ public partial class DataColumnsByRootIdentifier
 /// and the libp2p host dispatches a dial through the first <c>ISessionProtocol</c> closing of a protocol type only,
 /// so one closing per protocol carries the shape with the request.
 /// </remarks>
-public readonly record struct DataColumnSidecarsDial<TRequest>(TRequest Request, bool Gloas);
+/// <param name="OnSidecar">Receives each Fulu sidecar of a by-range response as it is read and structurally checked, so a reply that later fails still leaves what it delivered; unused for by-root and Gloas dials.</param>
+public readonly record struct DataColumnSidecarsDial<TRequest>(TRequest Request, bool Gloas, Action<DataColumnSidecar>? OnSidecar = null);
 
 /// <summary>A data column sidecars response in the shape its <see cref="DataColumnSidecarsDial{TRequest}"/> asked for; the other list is empty.</summary>
 public sealed record ForkedDataColumnSidecars(IReadOnlyList<DataColumnSidecar> Fulu, IReadOnlyList<DataColumnSidecarGloas> Gloas);

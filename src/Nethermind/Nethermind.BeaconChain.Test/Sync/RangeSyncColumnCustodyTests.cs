@@ -11,11 +11,15 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.P2P.ReqResp;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Api;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -176,6 +180,165 @@ public class RangeSyncColumnCustodyTests
         }
     }
 
+    /// <summary>
+    /// A supernode that fails every by-range column request used to be asked again next batch and could not be told from a
+    /// working one, so the batch's columns stayed missing; the columns must come from a custodian that has not failed.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_custodian_that_failed_a_column_request_is_not_asked_again_and_another_serves_the_columns(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer failing = fixture.FailingColumnPeer("failing", static _ => throw new Eth2ReqRespException("Truncated response chunk: Unable to read beyond the end of the stream."));
+        StubPeer good = fixture.Peer("good", custody: StubPeer.AllColumns);
+
+        IReadOnlyList<ForkedSignedBeaconBlock> yielded = await fixture.RunOneRoundAsync([failing, good], token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failing.ColumnRequests, Is.EqualTo(1), "a custodian that failed this batch is not picked again in it");
+            Assert.That(failing.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
+            Assert.That(yielded.Select(b => fixture.Importer.Import(b, fixture.Chain.BlockRoot, verifySignatures: true)), Is.EqualTo(new[] { BlockImportResult.Imported }));
+        }
+    }
+
+    /// <summary>A reply cut short after some chunks must keep them: only what is still missing is requested, from a peer that has not failed.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_reply_cut_short_keeps_its_chunks_and_only_the_rest_is_requested(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer cutShort = fixture.FailingColumnPeer("cut-short", columns => throw new PartialSidecarsException(
+            new Eth2ReqRespException("Truncated response chunk: Unable to read beyond the end of the stream."),
+            fixture.ServeColumns(columns[..1])));
+        StubPeer good = fixture.Peer("good", custody: StubPeer.AllColumns);
+
+        IReadOnlyList<ForkedSignedBeaconBlock> yielded = await fixture.RunOneRoundAsync([cutShort, good], token);
+
+        ulong[] asked = cutShort.RequestedColumns.Single();
+        ulong[] undelivered = asked[1..];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(good.RequestedColumns.Skip(1).SelectMany(static c => c), Is.EquivalentTo(undelivered), "the retry asks only for the columns the cut reply did not deliver");
+            Assert.That(good.RequestedColumns.SelectMany(static c => c), Has.None.EqualTo(asked[0]), "the delivered column is not asked again");
+            Assert.That(yielded.Select(b => fixture.Importer.Import(b, fixture.Chain.BlockRoot, verifySignatures: true)), Is.EqualTo(new[] { BlockImportResult.Imported }));
+        }
+    }
+
+    /// <summary>The importer defers a block whose columns are missing and fetches them by root, so a failed column batch must not hold its blocks back.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_batch_whose_column_requests_all_fail_still_yields_its_blocks_for_the_by_root_fetch(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer failing = fixture.FailingColumnPeer("failing", static _ => throw new TimeoutException("request timed out"));
+
+        IReadOnlyList<ForkedSignedBeaconBlock> yielded = await fixture.RunOneRoundAsync([failing], token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(yielded.Select(static b => b.Slot), Is.EqualTo(new[] { fixture.Chain.Block.Message!.Slot }));
+            Assert.That(failing.ColumnRequests, Is.EqualTo(1), "the lone custodian is not asked again");
+            Assert.That(fixture.Importer.Import(yielded[0], fixture.Chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.DataUnavailable));
+        }
+    }
+
+    /// <summary>A failed column request is logged for the operator, who searches logs for exceptions: the line names the cause's text, never a type name.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_failed_column_request_is_logged_with_the_sidecars_kept_and_without_exception_type_names(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer cutShort = fixture.FailingColumnPeer("cut-short", columns => throw new PartialSidecarsException(new TimeoutException("request timed out"), fixture.ServeColumns(columns[..1])));
+        RangeSyncPeerSelectionTests.AllLevelsCapture log = new();
+        RangeSync sync = new(new StubPool(cutShort), new OneLoggerLogManager(new ILogger(log)), fixture.SidecarPool, fixture.Chain.Spec, fixture.Clock, fixture.Discovery);
+
+        await foreach (ForkedSignedBeaconBlock _ in sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token))
+        {
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.Lines, Has.Some.Matches<string>(static line => line.Contains("cut-short failed after") && line.Contains("keeping 1 sidecars read")));
+            Assert.That(log.Lines, Has.None.Contains("Exception"));
+        }
+    }
+
+    /// <summary>The advertised supernode is preferred by custody, so without the per-peer bound it takes every sampled column while the floor custodians idle.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_advertised_supernode_is_asked_for_no_more_than_its_share_while_other_custodians_serve_the_rest(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        ulong[] sampled = fixture.Sampled;
+        StubPeer supernode = fixture.Peer("supernode", custody: StubPeer.AllColumns);
+        StubPeer[] floor = [.. Enumerable.Range(0, 3).Select(i => fixture.Peer($"floor-{i}", custody: new PeerColumnCustody([.. sampled.Where((_, c) => c % 3 == i)], isAdvertised: false)))];
+
+        IReadOnlyList<ForkedSignedBeaconBlock> yielded = await fixture.RunOneRoundAsync([supernode, .. floor], token);
+
+        int share = Math.Max(2, (sampled.Length + 3) / 4);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(supernode.RequestedColumns.SelectMany(static c => c).Count(), Is.LessThanOrEqualTo(share), "one supernode does not take the batch");
+            Assert.That(floor.Sum(static p => p.ColumnRequests), Is.GreaterThan(0), "the other custodians are used");
+            Assert.That(yielded.Select(b => fixture.Importer.Import(b, fixture.Chain.BlockRoot, verifySignatures: true)), Is.EqualTo(new[] { BlockImportResult.Imported }));
+        }
+    }
+
+    /// <summary>A later round must ask only for the slots still lacking a column, not the whole batch window again.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_later_round_requests_only_from_the_first_slot_still_missing_a_column(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        BeaconBlock first = fixture.Chain.Block.Message!;
+        BeaconBlock second = new() { Slot = first.Slot + 1, ProposerIndex = first.ProposerIndex, ParentRoot = fixture.Chain.BlockRoot, StateRoot = first.StateRoot, Body = first.Body };
+        Hash256 secondRoot = SszRoots.HashTreeRoot(second);
+        ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = second, Signature = default })];
+        ulong lackingColumn = fixture.Sampled[0];
+        foreach (ulong column in fixture.Sampled)
+        {
+            fixture.SidecarPool.Add(fixture.Chain.BlockRoot, first.Slot, fixture.Chain.Columns[(int)column]);
+            if (column != lackingColumn)
+            {
+                fixture.SidecarPool.Add(secondRoot, second.Slot, fixture.Chain.Columns[(int)column]);
+            }
+        }
+
+        List<(ulong Start, ulong Count)> requests = [];
+        StubPeer[] peers = [.. Enumerable.Range(0, 2).Select(i => new StubPeer($"peer-{i}", second.Slot, (_, _) => blocks, (start, count, _) =>
+        {
+            lock (requests)
+            {
+                requests.Add((start, count));
+            }
+
+            return [];
+        }))];
+
+        await foreach (ForkedSignedBeaconBlock _ in fixture.CreateRangeSync(peers).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Slot, token))
+        {
+        }
+
+        Assert.That(requests, Is.EqualTo(new[] { (first.Slot, 2UL), (second.Slot, 1UL) }), "round 0 covers the batch, the next round only the slot still lacking the column");
+    }
+
+    /// <summary>One supernode must not take a whole batch while other custodians can serve columns: it is asked for at most the per-peer bound, the rest wait for the next round.</summary>
+    [Test]
+    public void A_peer_is_asked_for_at_most_the_per_peer_bound_of_columns()
+    {
+        StubPeer supernode = PeerWithCustody("supernode", StubPeer.AllColumns);
+        StubPeer other = PeerWithCustody("other", new PeerColumnCustody([1], isAdvertised: true));
+
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = RangeSync.AssignColumns([0, 1, 2, 3, 4, 5], [supernode, other], maxPeers: 2, maxColumnsPerPeer: 2);
+
+        Assert.That(requests.Select(static r => (r.Peer.Id, r.Columns)), Is.EqualTo(new (string, ulong[])[]
+        {
+            ("supernode", [0, 2]),
+            ("other", [1]),
+        }), "columns beyond the bound are left for a later round");
+    }
+
     private static StubPeer PeerWithCustody(string id, PeerColumnCustody custody) => new(id, headSlot: 0, static (_, _) => [], custody: custody);
 
     private sealed class Fixture : IAsyncDisposable
@@ -226,6 +389,15 @@ public class RangeSyncColumnCustodyTests
                 custody: peerCustody,
                 rootHandler: identifiers => ServeColumns([.. identifiers.Single().Columns!.Where(peerCustody.Custodies)]));
         }
+
+        /// <summary>A supernode that serves the chain's block and answers every by-range column request with <paramref name="onColumnRequest"/>, which normally throws.</summary>
+        public StubPeer FailingColumnPeer(string id, Func<ulong[], DataColumnSidecar[]> onColumnRequest) =>
+            new(
+                id,
+                Chain.Block.Message!.Slot,
+                (_, _) => [new ForkedSignedBeaconBlock.OfFulu(Chain.Block)],
+                (_, _, columns) => onColumnRequest(columns),
+                custody: StubPeer.AllColumns);
 
         public DataColumnSidecar[] ServeColumns(ulong[] columns) => [.. columns.Select(c => Chain.Columns[(int)c])];
 
