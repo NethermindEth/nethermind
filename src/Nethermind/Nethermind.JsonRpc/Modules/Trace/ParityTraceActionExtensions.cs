@@ -8,10 +8,11 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 
 internal static class ParityTraceActionExtensions
 {
-    /// <summary>
-    /// The recipient side a record reports: a reward's author, and a creation's address from its result, which a
-    /// failed creation does not report even though its action carries the address it would have created.
-    /// </summary>
+    /// <summary>The recipient side a trace record reports, used to match <c>toAddress</c> in <c>trace_filter</c>.</summary>
+    /// <remarks>
+    /// A reward reports its author and a creation reports the address from its result. A failed creation has no
+    /// recipient, even though its action still carries the address it would have created.
+    /// </remarks>
     public static Address? GetRecipient(this ParityTraceAction action) => action.Type switch
     {
         "reward" => action.Author,
