@@ -1662,6 +1662,158 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_rawTransaction_rejects_a_transaction_signed_for_another_chain(
+        [Values(TxType.Legacy, TxType.EIP1559)] TxType type, [Values] bool otherChain)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.SpecProvider.ChainId;
+        ulong signedChainId = otherChain ? chainId + 1 : chainId;
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, SignedTransaction(type, signedChainId));
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (otherChain)
+            {
+                Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+                Assert.That(traces.Result.Error, Is.EqualTo(TxErrorMessages.InvalidTxChainId(chainId, signedChainId)),
+                    () => $"traced from {traces.Data?.Action?.From}");
+            }
+            else
+            {
+                AssertTracedFromAddressA(traces);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Trace_rawTransaction_rejects_a_frame_transaction_for_another_chain()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.SpecProvider.ChainId;
+        Transaction transaction = FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify());
+        transaction.ChainId = chainId + 1;
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+            Assert.That(traces.Result.Error, Is.EqualTo(TxErrorMessages.InvalidTxChainId(chainId, chainId + 1)));
+        }
+    }
+
+    [Test]
+    public async Task Trace_rawTransaction_accepts_a_pre_eip155_legacy_transaction()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Transaction transaction = SignedTransaction(TxType.Legacy, blockchain.SpecProvider.ChainId, isEip155Enabled: false);
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.Signature!.V, Is.EqualTo(27).Or.EqualTo(28));
+            AssertTracedFromAddressA(traces);
+        }
+    }
+
+    // v 29 and 30 carry the pre-EIP-155 recovery id of 27 and 28 but aren't valid legacy signatures.
+    [Test]
+    public async Task Trace_rawTransaction_rejects_a_legacy_signature_v_that_is_neither_pre_eip155_nor_eip155()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Transaction transaction = SignedTransaction(TxType.Legacy, blockchain.SpecProvider.ChainId, isEip155Enabled: false);
+        Signature signature = transaction.Signature!;
+        transaction.Signature = new Signature(signature.R.Span, signature.S.Span, signature.V + 2);
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+            Assert.That(traces.Result.Error, Is.EqualTo(TxErrorMessages.InvalidTxSignature));
+        }
+    }
+
+    [Test]
+    public async Task Trace_rawTransaction_rejects_a_high_s_signature(
+        [Values(TxType.Legacy, TxType.EIP1559)] TxType type, [Values] bool otherChain)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.SpecProvider.ChainId;
+        Transaction transaction = SignedTransaction(type, otherChain ? chainId + 1 : chainId);
+        Signature signature = transaction.Signature!;
+        UInt256 highS = SecP256k1Curve.N - new UInt256(signature.SAsSpan, isBigEndian: true);
+        transaction.Signature = new Signature(new UInt256(signature.RAsSpan, isBigEndian: true), highS, signature.V);
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+            Assert.That(traces.Result.Error, Is.EqualTo(TxErrorMessages.InvalidTxSignature));
+        }
+    }
+
+    // As eth_sendRawTransaction, a spec that doesn't validate chain ids accepts a legacy signature for another chain,
+    // and recovery then uses the signature's chain id; a typed transaction's chain id is checked regardless.
+    [Test]
+    public async Task Trace_rawTransaction_follows_a_spec_that_does_not_validate_legacy_chain_ids(
+        [Values(TxType.Legacy, TxType.EIP1559)] TxType type)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { ValidateChainId = false }));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.SpecProvider.ChainId;
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, SignedTransaction(type, chainId + 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (type == TxType.Legacy)
+            {
+                AssertTracedFromAddressA(traces);
+            }
+            else
+            {
+                Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+                Assert.That(traces.Result.Error, Is.EqualTo(TxErrorMessages.InvalidTxChainId(chainId, chainId + 1)));
+            }
+        }
+    }
+
+    private static Transaction SignedTransaction(TxType type, ulong chainId, bool isEip155Enabled = true) =>
+        Build.A.Transaction
+            .WithType(type)
+            .WithChainId(type == TxType.Legacy ? null : chainId)
+            .WithTo(TestItem.AddressC)
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(0)
+            .WithMaxPriorityFeePerGas(0)
+            .SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA, isEip155Enabled)
+            .TestObject;
+
+    private static ResultWrapper<ParityTxTraceFromReplay> TraceRaw(Context context, Transaction transaction) =>
+        context.TraceRpcModule.trace_rawTransaction(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes, ["trace"]);
+
+    private static void AssertTracedFromAddressA(ResultWrapper<ParityTxTraceFromReplay> traces)
+    {
+        Assert.That(traces.Result.ResultType, Is.EqualTo(ResultType.Success), traces.Result.Error);
+        Assert.That(traces.Data?.Action?.From, Is.EqualTo(TestItem.AddressA));
+    }
+
+    [Test]
     public async Task Trace_call_simple_tx_test()
     {
         Context context = new();
