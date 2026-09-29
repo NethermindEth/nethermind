@@ -352,7 +352,7 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new FrameTxPayerFilter(_logger));
 
             // EIP-8141: after FrameTxPayerFilter, so the natively-resolved fast path bypasses it.
-            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger));
+            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger, _headInfo));
 
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
@@ -1577,7 +1577,11 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
-            if (accepted != AcceptTxResult.Invalid
+            if (state.FrameSimulationYielded && _retryCache.TryDefer(tx.Hash!))
+            {
+                _hashCache.DeleteFromCurrentBlock(tx.Hash!);
+            }
+            else if (accepted != AcceptTxResult.Invalid
                 && accepted != AcceptTxResult.InvalidBlobProofs)
             {
                 _retryCache.Received(tx.Hash!);
