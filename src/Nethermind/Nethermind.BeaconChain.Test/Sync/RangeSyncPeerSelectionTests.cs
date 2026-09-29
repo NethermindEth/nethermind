@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -91,6 +92,138 @@ public class RangeSyncPeerSelectionTests
         }
     }
 
+    /// <summary>
+    /// phase0/p2p-interface.md BeaconBlocksByRange skips empty slots: with slot 11 empty, a peer serving from 12 answers a request
+    /// starting at 11 with block 12, which links to the anchor, so refusing it would wait for a peer that cannot exist.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Blocks_by_range_fall_back_to_a_peer_serving_from_inside_the_range_when_none_covers_the_start(CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 12, 13, 14, 16, 17, 18);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        StubPeer peer = new("from12", TargetSlot, RefusingBelow(12, chainBlocks), earliestAvailableSlot: 12);
+        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        List<ForkedSignedBeaconBlock> yielded = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
+        {
+            yielded.Add(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+            Assert.That(peer.Failures, Is.Zero, "a peer that answers ResourceUnavailable below its earliest slot is never asked below it");
+        }
+    }
+
+    /// <summary>Failures shrink the batch; the fallback window stays the default batch, so the peer serving from slot 20 is still asked after the shrink.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Blocks_by_range_keep_using_a_fallback_peer_after_failures_shrink_the_batch(CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 20, 21, 22);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        Func<ulong, ulong, ForkedSignedBeaconBlock[]> serve = RefusingBelow(20, chainBlocks);
+        int calls = 0;
+        StubPeer peer = new("from20", 22, (start, count) => ++calls <= 3 ? throw new TimeoutException("slow") : serve(start, count), earliestAvailableSlot: 20);
+        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        List<ForkedSignedBeaconBlock> yielded = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => 22, token))
+        {
+            yielded.Add(block);
+        }
+
+        Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+    }
+
+    private static Func<ulong, ulong, ForkedSignedBeaconBlock[]> RefusingBelow(ulong earliestSlot, ForkedSignedBeaconBlock[] blocks) =>
+        (start, _) => start < earliestSlot
+            ? throw new Eth2ReqRespException("Requested range predates the earliest available slot", ReqRespFraming.ResponseCode.ResourceUnavailable)
+            : [.. blocks.Where(b => b.Slot >= start)];
+
+    /// <summary>A peer whose earliest available slot is past the whole batch has nothing to answer with, so the sync waits on its retry delay instead of asking it or spinning.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Blocks_by_range_wait_without_spinning_when_every_peer_serves_only_past_the_batch(CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12);
+        StubPeer peer = new("late", TargetSlot, (_, _) => [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))], earliestAvailableSlot: TargetSlot + 1);
+        CountingPool pool = new(peer);
+        RangeSync sync = new(pool, LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        stop.CancelAfter(TimeSpan.FromMilliseconds(500));
+        Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        {
+            await foreach (ForkedSignedBeaconBlock _ in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, stop.Token))
+            {
+            }
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Requests, Is.Zero);
+            Assert.That(pool.Calls, Is.InRange(1, 2), "one peer lookup per retry delay, not a busy loop");
+        }
+    }
+
+    /// <summary>
+    /// The batch is the genesis-slot block (empty) and the blob block at slot 1, so the request starts at 0. A custodian serving from 1 covers no start,
+    /// yet holds the only blob block; it is asked from its own earliest slot, never below it, unless another custodian covers the start.
+    /// </summary>
+    [TestCase(false, TestName = "Columns by range fall back to a custodian serving from inside the range and ask it from its earliest slot")]
+    [TestCase(true, TestName = "Columns by range prefer a custodian covering the start over one serving from inside the range")]
+    [CancelAfter(60_000)]
+    public async Task Columns_by_range_use_a_custodian_serving_from_inside_the_range_only_when_none_covers_the_start(bool coveringCustodian, CancellationToken token)
+    {
+        await using ColumnBatch batch = ColumnBatch.Create();
+        List<(ulong Start, ulong Count)> lateRequests = [];
+        StubPeer blocks = new("blocks", 1, (_, _) => [new ForkedSignedBeaconBlock.OfFulu(batch.Chain.AnchorBlock), batch.Blocks[0]], custody: PeerColumnCustody.None);
+        StubPeer late = new(
+            "late",
+            1,
+            (_, _) => [],
+            (start, count, columns) =>
+            {
+                lateRequests.Add((start, count));
+                return [.. columns.Select(c => batch.Chain.Columns[(int)c])];
+            },
+            custody: new PeerColumnCustody(batch.Sampled, isAdvertised: true),
+            earliestAvailableSlot: 1);
+        StubPeer covering = new(
+            "covering",
+            1,
+            (_, _) => [],
+            (_, _, columns) => [.. columns.Select(c => batch.Chain.Columns[(int)c])],
+            custody: new PeerColumnCustody(batch.Sampled, isAdvertised: true));
+
+        await batch.RunFromBelowTheBlobBlockAsync(token, coveringCustodian ? [blocks, late, covering] : [blocks, late]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(late.ColumnRequests, Is.EqualTo(coveringCustodian ? 0 : 1));
+            Assert.That(covering.ColumnRequests, Is.EqualTo(coveringCustodian ? 1 : 0));
+            Assert.That(lateRequests, coveringCustodian ? (NUnit.Framework.Constraints.IResolveConstraint)Is.Empty : Is.EqualTo(new[] { (1UL, 1UL) }), "requested from its earliest slot, not from the batch start");
+            Assert.That(batch.Sampled.All(c => batch.SidecarPool.TryGet(batch.Chain.BlockRoot, c, out _)), Is.True);
+        }
+    }
+
+    private sealed class CountingPool(IBeaconSyncPeer peer) : IBeaconSyncPeerPool
+    {
+        private int _calls;
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
+        {
+            Interlocked.Increment(ref _calls);
+            return peer.HeadSlot >= minHeadSlot ? [peer] : [];
+        }
+    }
+
     private sealed class ColumnBatch : IAsyncDisposable
     {
         private BeaconDiscovery _discovery = null!;
@@ -120,6 +253,15 @@ public class RangeSyncPeerSelectionTests
         {
             RangeSync sync = new(new StubPool(peers), LimboLogs.Instance, SidecarPool, Chain.Spec, Chain.ClockAtEpoch(1), _discovery);
             await foreach (ForkedSignedBeaconBlock _ in sync.Run(Chain.AnchorRoot, Chain.AnchorBlock.Message!.Slot, () => 2, token))
+            {
+            }
+        }
+
+        /// <summary>Syncs from the anchor's parent so the batch starts at the anchor block at slot 0 (a ulong anchor slot of MaxValue makes the next slot 0), ahead of the blob block at slot 1.</summary>
+        public async Task RunFromBelowTheBlobBlockAsync(CancellationToken token, params IBeaconSyncPeer[] peers)
+        {
+            RangeSync sync = new(new StubPool(peers), LimboLogs.Instance, SidecarPool, Chain.Spec, Chain.ClockAtEpoch(1), _discovery);
+            await foreach (ForkedSignedBeaconBlock _ in sync.Run(Chain.AnchorBlock.Message!.ParentRoot!, ulong.MaxValue, () => 1, token))
             {
             }
         }
