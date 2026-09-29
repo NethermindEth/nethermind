@@ -20,8 +20,16 @@ public class OptimismExecutionPayloadV3 : ExecutionPayloadV3
     /// <inheritdoc/>
     /// <remarks>Isthmus also opens <c>engine_newPayloadV4</c>, matching the capability advertised for it,
     /// whether or not the chain enables the request EIPs.</remarks>
-    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion) =>
-        base.ValidateForkOnNewPayload(specProvider, newPayloadVersion)
-        || (newPayloadVersion == EngineApiVersions.NewPayload.V4
-            && specProvider.GetSpec(BlockNumber, Timestamp) is IOptimismReleaseSpec { IsOpIsthmusEnabled: true });
+    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
+    {
+        IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
+        bool isIsthmusEnabled = spec is IOptimismReleaseSpec { IsOpIsthmusEnabled: true };
+
+        return newPayloadVersion switch
+        {
+            EngineApiVersions.NewPayload.V3 => spec.IsEip4844Enabled && !isIsthmusEnabled,
+            EngineApiVersions.NewPayload.V4 => isIsthmusEnabled,
+            _ => false,
+        };
+    }
 }
