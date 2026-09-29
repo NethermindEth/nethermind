@@ -4,29 +4,42 @@
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null) : IPersistence
+public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, ITrieNodeLog trieNodeLog, IFlatDbConfig? config = null) : IPersistence
 {
     private readonly WriteBufferAdjuster _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
     private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<RocksDbPersistence>());
 
-    public void Flush() => db.Flush();
+    public void Flush()
+    {
+        trieNodeLog.Drain();
+        db.Flush();
+    }
 
-    public void Clear() => BasePersistence.ClearAllColumns(db);
+    public void Clear()
+    {
+        trieNodeLog.Clear();
+        BasePersistence.ClearAllColumns(db);
+    }
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
+        // Pinned before the snapshot so a generation merged and deleted in between stays readable, bound after it
+        // so the view serves exactly the log version the snapshot's metadata confirms.
+        ITrieNodeLog.IView logView = trieNodeLog.PinLiveGenerations();
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot(flags);
         try
         {
+            logView.Bind(snapshot.GetColumn(FlatDbColumns.Metadata));
             BaseTriePersistence.Reader trieReader = new(
-                snapshot.GetColumn(FlatDbColumns.StateTopNodes),
-                snapshot.GetColumn(FlatDbColumns.StateNodes),
-                snapshot.GetColumn(FlatDbColumns.StorageNodes),
-                snapshot.GetColumn(FlatDbColumns.FallbackNodes)
+                logView.Wrap(FlatDbColumns.StateTopNodes, snapshot.GetColumn(FlatDbColumns.StateTopNodes)),
+                logView.Wrap(FlatDbColumns.StateNodes, snapshot.GetColumn(FlatDbColumns.StateNodes)),
+                logView.Wrap(FlatDbColumns.StorageNodes, snapshot.GetColumn(FlatDbColumns.StorageNodes)),
+                logView.Wrap(FlatDbColumns.FallbackNodes, snapshot.GetColumn(FlatDbColumns.FallbackNodes))
             );
 
             StateId currentState = BasePersistence.ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
@@ -45,12 +58,14 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
                 new Reactive.AnonymousDisposable(() =>
                 {
                     snapshot.Dispose();
+                    logView.Dispose();
                 })
             );
         }
         catch
         {
             snapshot.Dispose();
+            logView.Dispose();
             throw;
         }
     }
@@ -65,14 +80,26 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
+        // Sync and import batches scan the trie columns for range deletes, so they go straight to RocksDB.
+        ITrieNodeLog.IWriteBatch logBatch;
+        try
+        {
+            logBatch = trieNodeLog.StartWriteBatch(bypass: from == StateId.Sync || to == StateId.Sync || flags.HasFlag(WriteFlags.DisableWAL));
+        }
+        catch
+        {
+            dbSnap.Dispose();
+            throw;
+        }
+
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
 
         IWriteBatch accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
         IWriteBatch storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
-        IWriteBatch stateTopNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags);
-        IWriteBatch stateNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags);
-        IWriteBatch storageNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags);
-        IWriteBatch fallbackNodesBatch = _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags);
+        IWriteBatch stateTopNodesBatch = logBatch.Wrap(FlatDbColumns.StateTopNodes, _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags));
+        IWriteBatch stateNodesBatch = logBatch.Wrap(FlatDbColumns.StateNodes, _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags));
+        IWriteBatch storageNodesBatch = logBatch.Wrap(FlatDbColumns.StorageNodes, _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags));
+        IWriteBatch fallbackNodesBatch = logBatch.Wrap(FlatDbColumns.FallbackNodes, _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags));
 
         BaseTriePersistence.WriteBatch trieWriteBatch = new(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
@@ -102,6 +129,9 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
+                // The log is made durable and its version put into this batch's metadata before RocksDB commits,
+                // and the log only seals generations once RocksDB has.
+                logBatch.Commit(batch.GetColumnBatch(FlatDbColumns.Metadata));
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 if (_rlpWrapSlots)
@@ -113,6 +143,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
                 {
                     db.Flush(onlyWal: true);
                 }
+                logBatch.Dispose();
             })
         );
     }

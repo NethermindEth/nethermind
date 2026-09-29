@@ -414,4 +414,16 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of history window pruner passes that left work for the next pass - the wall-clock budget expired mid-sweep, a floor drain did not finish inside it, or a completed cycle found the floor had advanced under it and queued the next cycle")]
     public static long FlatHistoryPrunePassesYielded { get; set; }
+
+    [CounterMetric]
+    [Description("Key and value bytes appended to the trie node log")]
+    public static long TrieNodeLogAppendedBytes { get; set; }
+
+    [CounterMetric]
+    [Description("Key and value bytes merged from the trie node log into RocksDB (the latest record per key of each generation)")]
+    public static long TrieNodeLogFlushedBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Trie node log generations in memory, including ones merged into RocksDB but still pinned by readers")]
+    public static long TrieNodeLogGenerationCount { get; set; }
 }

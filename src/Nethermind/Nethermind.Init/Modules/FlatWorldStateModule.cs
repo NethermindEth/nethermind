@@ -23,6 +23,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Api;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -103,6 +104,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     Path.Combine("persistedSnapshot", "catalog"))))
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
+            .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, ILogManager>((cfg, initConfig, db, logManager) =>
+                cfg.TrieNodeLogScope == TrieNodeLogScope.None
+                    ? NullTrieNodeLog.Instance
+                    : new TrieNodeLog(Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog"), db, cfg, logManager))
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .Add<CarryForwardCachingPersistence>()

@@ -1,0 +1,91 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Buffers.Binary;
+using Nethermind.Core;
+
+namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
+
+/// <summary>
+/// Reader-side view of the log at the version of one RocksDB snapshot: the pinned generations, the version
+/// <c>V</c> the snapshot confirms and the flushed marker <c>N</c> below which the snapshot already holds the log's content.
+/// </summary>
+internal sealed class TrieNodeLogView(TrieNodeLog log, List<TrieNodeLogGeneration> pinned) : ITrieNodeLog.IView
+{
+    // Header, the longest key and a full trie node (a branch is ~530 bytes) fit in one read.
+    private const int ReadBufferSize = 1024;
+
+    private ulong _version;
+    private ulong _flushedGeneration;
+
+    public void Bind(IReadOnlyKeyValueStore metadata)
+    {
+        _version = ReadUInt64(metadata.Get(TrieNodeLog.VersionKey));
+        _flushedGeneration = ReadUInt64(metadata.Get(TrieNodeLog.FlushedGenerationKey));
+        log.PinNewer(pinned);
+
+        int flushed = 0;
+        while (flushed < pinned.Count && pinned[flushed].Number <= _flushedGeneration) pinned[flushed++].Dispose();
+        pinned.RemoveRange(0, flushed);
+    }
+
+    public IReadOnlyKeyValueStore Wrap(FlatDbColumns column, IReadOnlyKeyValueStore inner) =>
+        log.Covers(column) ? new Column(this, (byte)column, inner) : inner;
+
+    public void Dispose()
+    {
+        foreach (TrieNodeLogGeneration generation in pinned) generation.Dispose();
+        pinned.Clear();
+    }
+
+    /// <summary>Whether the log holds the value for <paramref name="key"/> at this view's version; <paramref name="value"/> is null for a tombstone.</summary>
+    private bool TryGet(byte column, ReadOnlySpan<byte> key, out byte[]? value)
+    {
+        ulong hash = TrieNodeLogRecord.Hash(column, key);
+        Span<byte> buffer = stackalloc byte[ReadBufferSize];
+        for (int i = pinned.Count - 1; i >= 0; i--)
+        {
+            TrieNodeLogGeneration generation = pinned[i];
+            if (!generation.TryLocate(hash, column, key, buffer, out TrieNodeLogRecord header, out _, out long offset, out int bytesRead)) continue;
+
+            while (header.Version > _version)
+            {
+                ulong previous = header.Prev;
+                if (previous == 0 || TrieNodeLogRecord.LocationGeneration(previous) <= _flushedGeneration)
+                {
+                    value = null;
+                    return false;
+                }
+
+                generation = Pinned(TrieNodeLogRecord.LocationGeneration(previous));
+                offset = TrieNodeLogRecord.LocationOffset(previous);
+                bytesRead = generation.ReadAt(offset, buffer);
+                header = TrieNodeLogRecord.Read(buffer);
+            }
+
+            value = header.Type == TrieNodeLogRecord.Delete ? null : generation.ReadValue(offset, header, buffer, bytesRead);
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    private TrieNodeLogGeneration Pinned(ulong number)
+    {
+        // Generations are pinned contiguously above the flushed marker, so the index is an offset from the oldest.
+        TrieNodeLogGeneration generation = pinned[(int)(number - pinned[0].Number)];
+        return generation.Number == number ? generation : throw new InvalidOperationException($"Trie node log generation {number} is not pinned");
+    }
+
+    private static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
+
+    private sealed class Column(TrieNodeLogView view, byte column, IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore
+    {
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+            view.TryGet(column, key, out byte[]? value) ? value : inner.Get(key, flags);
+
+        public bool KeyExists(ReadOnlySpan<byte> key) =>
+            view.TryGet(column, key, out byte[]? value) ? value is not null : inner.KeyExists(key);
+    }
+}

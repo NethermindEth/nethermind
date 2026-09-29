@@ -171,4 +171,10 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]
     int WarmReadConcurrency { get; set; }
+
+    [ConfigItem(Description = "Which trie columns are written through an append-only trie node log (with an in-memory index) and merged into RocksDB one generation at a time, so nodes rewritten within a generation are written to RocksDB once. None disables the log; StateTop covers StateTopNodes; State adds StateNodes; All adds StorageNodes and FallbackNodes. Flat layout only. Experimental: a self-destruct only removes the storage trie nodes already in RocksDB, nodes still in the log are left as unreachable orphans.", DefaultValue = "None")]
+    TrieNodeLogScope TrieNodeLogScope { get; set; }
+
+    [ConfigItem(Description = "Size in bytes of one trie node log generation, i.e. the deduplication window before the generation is merged into RocksDB. Each live generation also keeps an in-memory index of about 1/8 of this size.", DefaultValue = "1073741824")]
+    long TrieNodeLogGenerationBytes { get; set; }
 }
