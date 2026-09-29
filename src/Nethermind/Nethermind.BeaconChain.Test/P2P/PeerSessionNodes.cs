@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
@@ -169,11 +170,18 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
 
     public Multiaddress Address => peer.ListenAddresses.First();
 
-    public static async Task<PlainPeer> StartAsync(Func<IProtocolStackSettings, IdentifyProtocol> identify, CancellationToken token)
+    /// <param name="statusSource">When given, the peer also answers <c>status</c> v2 from it, and nothing else of the eth2 protocols.</param>
+    public static async Task<PlainPeer> StartAsync(Func<IProtocolStackSettings, IdentifyProtocol> identify, CancellationToken token, IBeaconChainStatusSource? statusSource = null)
     {
-        ServiceProvider services = new ServiceCollection()
-            .AddSingleton(sp => identify(sp.GetRequiredService<IProtocolStackSettings>()))
-            .AddLibp2p(static builder => builder)
+        ServiceCollection collection = new();
+        collection.AddSingleton(sp => identify(sp.GetRequiredService<IProtocolStackSettings>()));
+        if (statusSource is not null)
+        {
+            collection.AddSingleton(new StatusProtocolV2(statusSource));
+        }
+
+        ServiceProvider services = collection
+            .AddLibp2p(builder => statusSource is null ? builder : builder.AddAppLayerProtocol<StatusProtocolV2>())
             .BuildServiceProvider();
         // Building the factory is what fills the stack settings the peer runs on.
         services.GetRequiredService<IPeerFactory>();

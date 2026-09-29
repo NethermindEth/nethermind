@@ -202,7 +202,8 @@ public partial class RangeSyncTests
         Func<ulong, ulong, ulong[], DataColumnSidecarGloas[]>? gloasColumnHandler = null,
         Func<DataColumnsByRootIdentifier[], DataColumnSidecarGloas[]>? gloasRootHandler = null,
         PeerColumnCustody? custody = null,
-        Func<DataColumnsByRootIdentifier[], DataColumnSidecar[]>? rootHandler = null) : IBeaconSyncPeer
+        Func<DataColumnsByRootIdentifier[], DataColumnSidecar[]>? rootHandler = null,
+        ulong earliestAvailableSlot = 0) : IBeaconSyncPeer
     {
         /// <summary>Every column, as a supernode would custody, unless the test narrows it.</summary>
         public PeerColumnCustody Custody { get; } = custody ?? AllColumns;
@@ -220,6 +221,7 @@ public partial class RangeSyncTests
 
         public string Id => id;
         public ulong HeadSlot => headSlot;
+        public ulong EarliestAvailableSlot => earliestAvailableSlot;
 
         public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
         {
