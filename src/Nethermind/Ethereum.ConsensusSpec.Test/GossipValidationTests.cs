@@ -50,6 +50,22 @@ public class GossipValidationTests
         ("gloas", ["gossip_attester_slashing", "gossip_beacon_aggregate_and_proof", "gossip_beacon_block", "gossip_execution_payload_envelope", "gossip_payload_attestation_message"]),
     ];
 
+    private static readonly string[] UnroutedHandlers =
+    [
+        "gossip_beacon_attestation", "gossip_bls_to_execution_change", "gossip_partial_data_column_sidecar", "gossip_proposer_slashing",
+        "gossip_sync_committee_contribution_and_proof", "gossip_sync_committee_message", "gossip_voluntary_exit",
+    ];
+
+    /// <summary>
+    /// The <c>networking</c> handlers whose vectors are enumerated but not driven, per fork: their topic is neither subscribed nor validated
+    /// by <see cref="GossipRouter"/>, so each vector is reported not-implemented. <c>gossip_data_column_sidecar</c> runs in <see cref="DataColumnSidecarNetworkingTests"/>.
+    /// </summary>
+    internal static readonly (string Fork, string[] Handlers)[] UnroutedSuites =
+    [
+        ("fulu", [.. UnroutedHandlers]),
+        ("gloas", [.. UnroutedHandlers, "gossip_execution_payload_bid", "gossip_proposer_preferences"]),
+    ];
+
     /// <summary>The verdicts other than raised that <see cref="GossipRouter"/> reaches on the vectors' messages, per topic and vector <c>reason</c>.</summary>
     /// <remarks>
     /// Taken from the router's behaviour on the vectors at <see cref="ConsensusSpecArchive.Version"/> and checked against it
@@ -206,6 +222,33 @@ public class GossipValidationTests
         }
     }
 
+    // A handler that starts routing must move to Suites, or its vectors keep reporting not-implemented against a router that now validates them.
+    [Test]
+    public void Every_unrouted_handler_has_vectors_and_its_topic_is_not_routed()
+    {
+        if (!ConsensusSpecArchive.MainnetEnabled)
+            Assert.Ignore("mainnet vectors are opt-in (NETHERMIND_CONSENSUS_SPEC_MAINNET=1)");
+
+        // A gossip handler the archive gains must be driven, listed as unrouted or run by the column suite, never left out unseen.
+        foreach ((string fork, string[] driven) in Suites)
+        {
+            string[] archived = [.. ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(ConsensusPreset.Mainnet, fork, Suite)).Select(Path.GetFileName).Where(static name => name!.StartsWith("gossip_", StringComparison.Ordinal))!];
+            string[] unroutedInFork = UnroutedSuites.Single(suite => suite.Fork == fork).Handlers;
+            Assert.That(archived, Is.EquivalentTo([.. driven, .. unroutedInFork, "gossip_data_column_sidecar"]), $"{fork} gossip handlers in the archive");
+        }
+
+        List<GossipValidationCase> unrouted = [.. AllCases().Where(IsUnrouted)];
+        IEnumerable<string> expected = UnroutedSuites.SelectMany(static s => s.Handlers.Select(handler => $"{s.Fork}/{handler}"));
+        GossipRouter probe = new(BeaconChainSpec.Mainnet, new SlotClock(BeaconChainSpec.Mainnet, new ManualTimestamper(DateTime.UnixEpoch)), LimboLogs.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unrouted.Select(KeyOf).Distinct(), Is.EquivalentTo(expected));
+            // The router's own dispatch is the probe: a subnet topic name carries a numeric suffix, so both forms are tried.
+            Assert.That(UnroutedSuites.SelectMany(static s => s.Handlers).Select(TopicOf).Distinct().SelectMany(static topic => new[] { topic, $"{topic}_0" }).Where(name => Routes(probe, name)), Is.Empty);
+            Assert.That(Suites.SelectMany(static s => s.Handlers).Select(TopicOf).Distinct().Where(name => !Routes(probe, name)), Is.Empty, "driven handlers must reach a router arm");
+        }
+    }
+
     // gossip_validation.md: offset_ms counts from the vector's current_time_ms; a message's own current_time_ms, which the vectors also use, is absolute.
     [TestCase("current_time_ms: 12000\nmessages:\n- {offset_ms: 500, message: m, expected: valid}", 12500)]
     [TestCase("current_time_ms: 12000\nmessages:\n- {current_time_ms: 12100, message: m, expected: valid}", 12100)]
@@ -221,9 +264,31 @@ public class GossipValidationTests
     public void Vector_without_messages_is_malformed() =>
         Assert.That(() => VectorMeta.Parse(new StringReader("topic: beacon_block\nmessages: []")), Throws.InstanceOf<InvalidDataException>());
 
+    private static bool Routes(GossipRouter router, string topicName)
+    {
+        try
+        {
+            router.HandlerFor(topicName);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+    }
+
+    // The handler for the Gloas envelope topic is named after the envelope, not the topic.
+    private static string TopicOf(string handler) =>
+        handler == "gossip_execution_payload_envelope" ? GossipTopics.ExecutionPayload : handler["gossip_".Length..];
+
+    private static bool IsUnrouted(GossipValidationCase testCase) =>
+        UnroutedSuites.Any(suite => suite.Fork == testCase.Fork && suite.Handlers.Contains(testCase.Handler));
+
     private static string KeyOf(GossipValidationCase testCase) => $"{testCase.Fork}/{testCase.Handler}";
 
-    private static List<GossipValidationCase> TestedCases() =>
+    private static List<GossipValidationCase> TestedCases() => [.. AllCases().Where(static testCase => !IsUnrouted(testCase))];
+
+    private static List<GossipValidationCase> AllCases() =>
         FuluDriverSupport.TestedCases<GossipValidationCase>(ConsensusPreset.Mainnet, static () => [], MainnetCases);
 
     private static void Execute(GossipValidationCase testCase) =>
@@ -233,6 +298,9 @@ public class GossipValidationTests
     /// <param name="observations">Receives each decoded message's expected result, reason and observed verdict.</param>
     private static void Run(GossipValidationCase testCase, ICollection<Observation>? observations = null)
     {
+        if (IsUnrouted(testCase))
+            throw new NotImplementedInDriverException($"GossipRouter neither subscribes nor validates the {TopicOf(testCase.Handler)} topic, so its rules have no code to run against");
+
         VectorMeta meta = VectorMeta.Load(testCase.CasePath);
         bool gloas = testCase.Fork == "gloas";
         (ulong genesisTime, ulong anchorFinalizedEpoch) = ReadAnchorState(Path.Combine(testCase.CasePath, "state.ssz_snappy"), gloas);
@@ -409,7 +477,7 @@ public class GossipValidationTests
     {
         if (!ConsensusSpecArchive.MainnetEnabled) yield break;
 
-        foreach ((string fork, string[] handlers) in Suites)
+        foreach ((string fork, string[] handlers) in Suites.Concat(UnroutedSuites))
         {
             string? suitePath = ConsensusSpecArchive.SuitePath(ConsensusPreset.Mainnet, fork, Suite);
             foreach (string handler in handlers)

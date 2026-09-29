@@ -26,6 +26,8 @@ public class SszStaticTests
     private interface IHandler
     {
         void Run(byte[] ssz, UInt256 expectedRoot);
+
+        bool Decodes(byte[] ssz, UInt256 expectedRoot);
     }
 
     private sealed class Handler<T> : IHandler where T : ISszCodec<T>
@@ -38,6 +40,20 @@ public class SszStaticTests
 
             T.Merkleize(decoded, out UInt256 actual);
             Assert.That(actual, Is.EqualTo(expectedRoot), $"hash tree root mismatch: expected {expectedRoot}, actual {actual}");
+        }
+
+        public bool Decodes(byte[] ssz, UInt256 expectedRoot)
+        {
+            try
+            {
+                T.Decode(ssz, out T decoded);
+                T.Merkleize(decoded, out UInt256 actual);
+                return T.Encode(decoded).AsSpan().SequenceEqual(ssz) && actual == expectedRoot;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
     }
 
@@ -116,7 +132,7 @@ public class SszStaticTests
         // preset-safe; the full ExecutionPayload (embedded transactions/withdrawals) is not.
         Map<ExecutionPayloadHeader>("ExecutionPayloadHeader", DenebElectraFulu);
         Map<ExecutionPayload>("ExecutionPayload", DenebElectraFulu, presetDependent: true);
-        Map<ExecutionPayloadGloas>("ExecutionPayload", GloasOnly, presetDependent: true);
+        Map<ExecutionPayloadGloas>("ExecutionPayload", GloasOnly);
 
         // Introduced Electra (EIP-6110/7002/7251), unchanged since.
         Map<DepositRequest>("DepositRequest", ElectraPlus);
@@ -130,11 +146,11 @@ public class SszStaticTests
         // AttestingIndices/CommitteeBits/AggregationBits bounds derive from MAX_COMMITTEES_PER_SLOT
         // and MAX_VALIDATORS_PER_COMMITTEE, both preset-scaled.
         Map<IndexedAttestation>("IndexedAttestation", ElectraFulu, presetDependent: true);
-        Map<IndexedAttestationGloas>("IndexedAttestation", GloasOnly, presetDependent: true);
+        Map<IndexedAttestationGloas>("IndexedAttestation", GloasOnly);
         Map<Attestation>("Attestation", ElectraFulu, presetDependent: true);
         Map<AttestationGloas>("Attestation", GloasOnly, presetDependent: true);
         Map<AttesterSlashing>("AttesterSlashing", ElectraFulu, presetDependent: true);
-        Map<AttesterSlashingGloas>("AttesterSlashing", GloasOnly, presetDependent: true);
+        Map<AttesterSlashingGloas>("AttesterSlashing", GloasOnly);
         Map<ExecutionRequests>("ExecutionRequests", ElectraFulu);
         Map<ExecutionRequestsGloas>("ExecutionRequests", GloasOnly);
         // Both wrap the preset-dependent Attestation shape, so they are preset-dependent too.
@@ -174,10 +190,14 @@ public class SszStaticTests
         Map<PayloadAttestation>("PayloadAttestation", GloasOnly, presetDependent: true);
         Map<IndexedPayloadAttestation>("IndexedPayloadAttestation", GloasOnly, presetDependent: true);
 
+        // The Fulu column sidecar and the req/resp column identifier, which the node decodes on gossip and req/resp.
+        Map<DataColumnSidecar>("DataColumnSidecar", ["fulu"]);
+        Map<DataColumnsByRootIdentifier>("DataColumnsByRootIdentifier", ["fulu", "gloas"]);
+
         // A Container since v1.7.0-beta.2; it embeds the preset-dependent ExecutionPayload. No Bellatrix or Capella payload shape is modeled.
         Map<NewPayloadRequestDeneb>("NewPayloadRequest", ["deneb"], presetDependent: true);
         Map<NewPayloadRequest>("NewPayloadRequest", ElectraFulu, presetDependent: true);
-        Map<NewPayloadRequestGloas>("NewPayloadRequest", GloasOnly, presetDependent: true);
+        Map<NewPayloadRequestGloas>("NewPayloadRequest", GloasOnly);
 
         Dictionary<string, IReadOnlyDictionary<string, Entry>> result = new(StringComparer.Ordinal);
         foreach (KeyValuePair<string, Dictionary<string, Entry>> kv in r)
@@ -197,8 +217,47 @@ public class SszStaticTests
         ["capella"] = 21,
         ["deneb"] = 24,
         ["electra"] = 40,
-        ["fulu"] = 40,
-        ["gloas"] = 53,
+        ["fulu"] = 42,
+        ["gloas"] = 54,
+    };
+
+    private const string BeforeElectra = "the fork predates Electra, the oldest fork this node runs, and no container is modeled for it";
+    private const string UnrunFork = "heze is not a fork this node runs";
+    private const string LightClient = "the node serves and follows no light client";
+    private const string SyncCommitteeDuty = "the node neither produces nor consumes sync committee contributions or messages";
+    private const string PowChain = "the node has no eth1 data voting or proof-of-work block tracking";
+    private const string BlobSidecars = "blob sidecars are not modeled; Fulu replaces them with data column sidecars";
+    private const string SingleAttestations = "the node does not subscribe to attestation subnets, so SingleAttestation is never decoded";
+    private const string PartialColumns = "partial data column messages and matrix entries are not modeled; no router handles them";
+    private const string ProposerPreferences = "the node does not subscribe to proposer_preferences, so it never decodes them";
+
+    /// <summary>How many (fork, container) triples of the archive are pinned as not modeled, per reason, so a triple that gains or loses a model fails the test that counts them.</summary>
+    private static readonly IReadOnlyDictionary<string, int> PinnedNotModeledCounts = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        [BeforeElectra] = 55,
+        [UnrunFork] = 75,
+        [LightClient] = 35,
+        [SyncCommitteeDuty] = 35,
+        [PowChain] = 14,
+        [BlobSidecars] = 4,
+        [SingleAttestations] = 3,
+        [PartialColumns] = 9,
+        [ProposerPreferences] = 2,
+    };
+
+    /// <summary>Why <paramref name="container"/> of <paramref name="fork"/> has no model, or <c>null</c> when this repo does not pin it as not modeled.</summary>
+    private static string? NotModeledReason(string fork, string container) => container switch
+    {
+        _ when fork == "heze" => UnrunFork,
+        _ when container.StartsWith("LightClient", StringComparison.Ordinal) => LightClient,
+        "ContributionAndProof" or "SignedContributionAndProof" or "SyncAggregatorSelectionData" or "SyncCommitteeContribution" or "SyncCommitteeMessage" => SyncCommitteeDuty,
+        "Eth1Block" or "PowBlock" => PowChain,
+        "BlobSidecar" or "BlobIdentifier" => BlobSidecars,
+        "SingleAttestation" => SingleAttestations,
+        "MatrixEntry" or "PartialDataColumnGroupID" or "PartialDataColumnHeader" or "PartialDataColumnPartsMetadata" or "PartialDataColumnSidecar" => PartialColumns,
+        "ProposerPreferences" or "SignedProposerPreferences" => ProposerPreferences,
+        _ when AllForks.Take(Array.IndexOf(AllForks, "electra")).Contains(fork) => BeforeElectra,
+        _ => null,
     };
 
     [TestCaseSource(nameof(MinimalCases))]
@@ -222,6 +281,22 @@ public class SszStaticTests
         }
     }
 
+    // A container the archive gains, or one that loses its model, would otherwise only move vectors between not-implemented and passing unnoticed.
+    [Test]
+    public void Every_container_without_a_model_is_pinned_with_a_reason([Values] ConsensusPreset preset)
+    {
+        List<SszStaticCase> cases = FuluDriverSupport.TestedCases<SszStaticCase>(preset, MinimalCases, MainnetCases);
+        List<(string Fork, string Container)> unmodeled = [.. cases
+            .Select(static testCase => (testCase.Fork, Container: testCase.ContainerName))
+            .Distinct()
+            .Where(static pair => !(Registry.TryGetValue(pair.Container, out IReadOnlyDictionary<string, Entry>? byFork) && byFork.ContainsKey(pair.Fork)))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unmodeled.Where(static pair => NotModeledReason(pair.Fork, pair.Container) is null), Is.Empty, "containers with neither a model nor a pinned reason");
+            Assert.That(unmodeled.GroupBy(static pair => NotModeledReason(pair.Fork, pair.Container)!).ToDictionary(static g => g.Key, static g => g.Count()), Is.EquivalentTo(PinnedNotModeledCounts));
+        }
+    }
+
     // Not-implemented vectors are Inconclusive, so a registry row whose every mainnet vector reports that way still runs green.
     [Test]
     public void Every_registered_container_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
@@ -230,6 +305,29 @@ public class SszStaticTests
                 .Where(static testCase => Registry.TryGetValue(testCase.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork) && byFork.ContainsKey(testCase.Fork))],
             static testCase => PairKey(testCase.Fork, testCase.ContainerName),
             Run);
+
+    // A false flag skips vectors that decode; the flag is right only while some minimal vector of the container fails to decode.
+    [Test]
+    public void Every_preset_dependent_container_fails_to_decode_a_minimal_vector()
+    {
+        List<SszStaticCase> minimal = FuluDriverSupport.TestedCases<SszStaticCase>(ConsensusPreset.Minimal, MinimalCases, static () => []);
+        List<string> decodable = [];
+        foreach (IGrouping<(string Fork, string ContainerName), SszStaticCase> pair in minimal.GroupBy(static c => (c.Fork, c.ContainerName)))
+        {
+            if (!Registry.TryGetValue(pair.Key.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork) || !byFork.TryGetValue(pair.Key.Fork, out Entry entry) || !entry.PresetDependent)
+                continue;
+
+            if (pair.All(testCase => Decodes(testCase, entry)))
+                decodable.Add(PairKey(pair.Key.Fork, pair.Key.ContainerName));
+        }
+
+        Assert.That(decodable, Is.Empty, "preset-dependent containers whose minimal vectors all decode");
+    }
+
+    private static bool Decodes(SszStaticCase testCase, Entry entry) =>
+        entry.Handler.Decodes(
+            SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, "serialized.ssz_snappy")),
+            SszConsensusTestLoader.ParseRoot(Path.Combine(testCase.CasePath, "roots.yaml")));
 
     private static string PairKey(string fork, string container) => $"{fork}/{container}";
 
@@ -242,7 +340,7 @@ public class SszStaticTests
             || !byFork.TryGetValue(testCase.Fork, out Entry entry))
         {
             throw new NotImplementedInDriverException(
-                $"No {testCase.ContainerName} container is modeled for fork '{testCase.Fork}' in this repo.");
+                $"No {testCase.ContainerName} container is modeled for fork '{testCase.Fork}' in this repo: {NotModeledReason(testCase.Fork, testCase.ContainerName) ?? "no reason is pinned"}.");
         }
 
         if (entry.PresetDependent && testCase.Preset == nameof(ConsensusPreset.Minimal))
