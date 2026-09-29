@@ -1558,15 +1558,17 @@ public sealed class BeaconSyncOrchestrator(
         Metrics.BeaconChainElInSync = _elInSync ? 1 : 0;
         statusHolder.JustifiedRoot = head.Justified.Root;
         statusHolder.ExecutionInSync = _elInSync;
-        statusHolder.CurrentStatus = new StatusMessageV2
-        {
-            ForkDigest = _currentDigest,
-            FinalizedRoot = head.Finalized.Root,
-            FinalizedEpoch = head.Finalized.Epoch,
-            HeadRoot = head.HeadRoot,
-            HeadSlot = head.HeadSlot,
-            EarliestAvailableSlot = EarliestAvailableSlot(),
-        };
+        statusHolder.Publish(
+            new StatusMessageV2
+            {
+                ForkDigest = _currentDigest,
+                FinalizedRoot = head.Finalized.Root,
+                FinalizedEpoch = head.Finalized.Epoch,
+                HeadRoot = head.HeadRoot,
+                HeadSlot = head.HeadSlot,
+                EarliestAvailableSlot = EarliestAvailableSlot(),
+            },
+            head.HeadPayloadFull ? head.HeadRoot : null);
 
         // A replay near the wall clock runs before the libp2p host starts, and topics exist only once it has.
         if (!GossipStarted && p2p?.LocalPeerId is not null && head.HeadSlot + GossipStartDistanceSlots >= slotClock.CurrentSlot)

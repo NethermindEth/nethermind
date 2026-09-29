@@ -223,6 +223,7 @@ public class GloasBlockImporterTests
         {
             Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
             Assert.That(head.HeadExecutionHash, Is.EqualTo(ptcVotedTimely ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
+            Assert.That(head.HeadPayloadFull, Is.EqualTo(ptcVotedTimely), "the payload status the envelope server reads is the one get_head resolved");
         }
     }
 
@@ -248,6 +249,7 @@ public class GloasBlockImporterTests
             Assert.That((empty.HeadRoot, full.HeadRoot), Is.EqualTo((first.Root, first.Root)), "fixture: the head does not move");
             Assert.That(empty.HeadExecutionHash, Is.EqualTo(first.Bid.ParentBlockHash));
             Assert.That(full.HeadExecutionHash, Is.EqualTo(first.Bid.BlockHash));
+            Assert.That((empty.HeadPayloadFull, full.HeadPayloadFull), Is.EqualTo((false, true)), "only a verified payload makes the head FULL");
         }
     }
 

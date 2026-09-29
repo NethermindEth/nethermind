@@ -127,6 +127,18 @@ public partial class BeaconSyncOrchestratorTests
         Assert.DoesNotThrowAsync(() => RequestOneSlotByRangeAsync(pool, slotClock, afterHeadStep), "after the head step");
     }
 
+    /// <summary>gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange: the head's envelope is served only while fork choice resolves the head FULL.</summary>
+    [Test]
+    public async Task Head_step_publishes_the_head_root_only_while_the_head_is_full([Values] bool full)
+    {
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(new DataColumnSidecarPool(), FuluAnchorSlot, FuluWallSlot, headFull: full);
+        statusHolder.Publish(statusHolder.CurrentStatus, TestItem.KeccakB);
+
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(statusHolder.CurrentHead.FullHeadRoot, Is.EqualTo(full ? TestItem.KeccakA : null), "a stale FULL root must not survive a head that is EMPTY");
+    }
+
     [Test]
     public async Task Production_wiring_advertises_the_earliest_slot_from_the_shared_column_pool()
     {
@@ -144,12 +156,12 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 10), "the orchestrator must read the pool the column protocols serve from");
     }
 
-    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset)
+    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false)
     {
         ManualTimestamper timestamper = new(WallTime(wallSlot));
         SlotClock slotClock = new(Spec, timestamper);
         StubPool peers = new([]);
-        ScriptedImporter importer = ImporterWithHead(anchorSlot, headOffset);
+        ScriptedImporter importer = ImporterWithHead(anchorSlot, headOffset, headFull);
         BeaconChainStatusHolder statusHolder = new(Spec, timestamper);
         BeaconSyncOrchestrator orchestrator = new(
             new BeaconChainConfig(),
@@ -169,9 +181,9 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     // No execution hash, so the head step never reaches the engine.
-    private static ScriptedImporter ImporterWithHead(ulong anchorSlot, ulong headOffset) => new()
+    private static ScriptedImporter ImporterWithHead(ulong anchorSlot, ulong headOffset, bool headFull = false) => new()
     {
-        Head = new HeadView(TestItem.KeccakA, anchorSlot + headOffset, null, null, null, new CheckpointRef(0, TestItem.KeccakC), new CheckpointRef(0, TestItem.KeccakD)),
+        Head = new HeadView(TestItem.KeccakA, anchorSlot + headOffset, null, null, null, new CheckpointRef(0, TestItem.KeccakC), new CheckpointRef(0, TestItem.KeccakD), headFull),
     };
 
     private static void Initialize(BeaconSyncOrchestrator orchestrator, ScriptedImporter importer, ulong anchorSlot)
