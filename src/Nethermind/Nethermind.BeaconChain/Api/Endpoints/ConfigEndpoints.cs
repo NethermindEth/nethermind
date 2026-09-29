@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -53,10 +55,10 @@ internal static class ConfigEndpoints
     }
 
     /// <remarks>
-    /// This is a deliberate subset of the full mainnet <c>config.yaml</c>: only fields this driver
-    /// actually holds a value for (in <see cref="BeaconChainSpec"/> or <see cref="Presets"/>) are
-    /// included. A caller cannot use an absent field's absence to infer anything about it beyond
-    /// "not reported here" - nothing here claims completeness.
+    /// Every key of the consensus-specs v1.7.0-beta.2 mainnet <c>config.yaml</c> and of the presets of phase0 to gloas, as the beacon-APIs
+    /// <c>getSpec</c> asks for: numbers as decimal strings, <c>0x</c> values as hex, schedules as arrays. The mainnet
+    /// values come from <see cref="SpecValues.Mainnet"/> and the network's own replace them; every network runs the
+    /// mainnet preset. <c>SECONDS_PER_SLOT</c>, which that config no longer lists, stays for tooling that still reads it.
     /// </remarks>
     private static Task Spec(HttpContext c, BeaconApiContext ctx)
     {
@@ -66,74 +68,67 @@ internal static class ConfigEndpoints
         }
 
         BeaconChainSpec spec = ctx.Spec;
-        Dictionary<string, string> data = new()
+        Dictionary<string, object> data = new(SpecValues.Mainnet.Count + 4);
+        foreach ((string key, string value) in SpecValues.Mainnet)
         {
-            ["SECONDS_PER_SLOT"] = spec.SecondsPerSlot.ToString(),
-            ["SLOTS_PER_EPOCH"] = spec.SlotsPerEpoch.ToString(),
-            ["GENESIS_FORK_VERSION"] = spec.Forks[0].Version.ToHexString(withZeroX: true),
-            ["ELECTRA_FORK_EPOCH"] = spec.ElectraForkEpoch.ToString(),
-            ["ELECTRA_FORK_VERSION"] = spec.VersionForEpoch(spec.ElectraForkEpoch).ToHexString(withZeroX: true),
-            ["FULU_FORK_EPOCH"] = spec.FuluForkEpoch.ToString(),
-            ["FULU_FORK_VERSION"] = spec.VersionForEpoch(spec.FuluForkEpoch).ToHexString(withZeroX: true),
-            ["MAX_BLOBS_PER_BLOCK_ELECTRA"] = spec.MaxBlobsPerBlockElectra.ToString(),
-            ["DEPOSIT_CONTRACT_TREE_DEPTH"] = Presets.DepositContractTreeDepth.ToString(),
-            ["MAX_COMMITTEES_PER_SLOT"] = Presets.MaxCommitteesPerSlot.ToString(),
-            ["TARGET_COMMITTEE_SIZE"] = Presets.TargetCommitteeSize.ToString(),
-            ["MAX_VALIDATORS_PER_COMMITTEE"] = Presets.MaxValidatorsPerCommittee.ToString(),
-            ["MIN_SEED_LOOKAHEAD"] = Presets.MinSeedLookahead.ToString(),
-            ["MAX_SEED_LOOKAHEAD"] = Presets.MaxSeedLookahead.ToString(),
-            ["SHARD_COMMITTEE_PERIOD"] = Presets.ShardCommitteePeriod.ToString(),
-            ["MIN_PER_EPOCH_CHURN_LIMIT"] = Presets.MinPerEpochChurnLimit.ToString(),
-            ["CHURN_LIMIT_QUOTIENT"] = Presets.ChurnLimitQuotient.ToString(),
-            ["EJECTION_BALANCE"] = Presets.EjectionBalance.ToString(),
-            ["MIN_ACTIVATION_BALANCE"] = Presets.MinActivationBalance.ToString(),
-            ["MAX_EFFECTIVE_BALANCE_ELECTRA"] = Presets.MaxEffectiveBalanceElectra.ToString(),
-            ["SHUFFLE_ROUND_COUNT"] = Presets.ShuffleRoundCount.ToString(),
-            ["HYSTERESIS_QUOTIENT"] = Presets.HysteresisQuotient.ToString(),
-            ["HYSTERESIS_DOWNWARD_MULTIPLIER"] = Presets.HysteresisDownwardMultiplier.ToString(),
-            ["HYSTERESIS_UPWARD_MULTIPLIER"] = Presets.HysteresisUpwardMultiplier.ToString(),
-            ["MIN_DEPOSIT_AMOUNT"] = Presets.MinDepositAmount.ToString(),
-            ["MAX_EFFECTIVE_BALANCE"] = Presets.MaxEffectiveBalance.ToString(),
-            ["EFFECTIVE_BALANCE_INCREMENT"] = Presets.EffectiveBalanceIncrement.ToString(),
-            ["MAX_DEPOSITS"] = Presets.MaxDeposits.ToString(),
-            ["MIN_ATTESTATION_INCLUSION_DELAY"] = Presets.MinAttestationInclusionDelay.ToString(),
-            ["EPOCHS_PER_ETH1_VOTING_PERIOD"] = Presets.EpochsPerEth1VotingPeriod.ToString(),
-            ["SLOTS_PER_HISTORICAL_ROOT"] = Presets.SlotsPerHistoricalRoot.ToString(),
-            ["MIN_EPOCHS_TO_INACTIVITY_PENALTY"] = Presets.MinEpochsToInactivityPenalty.ToString(),
-            ["EPOCHS_PER_HISTORICAL_VECTOR"] = Presets.EpochsPerHistoricalVector.ToString(),
-            ["EPOCHS_PER_SLASHINGS_VECTOR"] = Presets.EpochsPerSlashingsVector.ToString(),
-            ["BASE_REWARD_FACTOR"] = Presets.BaseRewardFactor.ToString(),
-            ["SYNC_COMMITTEE_SIZE"] = Presets.SyncCommitteeSize.ToString(),
-            ["EPOCHS_PER_SYNC_COMMITTEE_PERIOD"] = Presets.EpochsPerSyncCommitteePeriod.ToString(),
-            ["INACTIVITY_PENALTY_QUOTIENT_BELLATRIX"] = Presets.InactivityPenaltyQuotientBellatrix.ToString(),
-            ["PROPORTIONAL_SLASHING_MULTIPLIER_BELLATRIX"] = Presets.ProportionalSlashingMultiplierBellatrix.ToString(),
-            ["MAX_WITHDRAWALS_PER_PAYLOAD"] = Presets.MaxWithdrawalsPerPayload.ToString(),
-            ["MAX_VALIDATORS_PER_WITHDRAWALS_SWEEP"] = Presets.MaxValidatorsPerWithdrawalsSweep.ToString(),
-            ["MIN_SLASHING_PENALTY_QUOTIENT_ELECTRA"] = Presets.MinSlashingPenaltyQuotientElectra.ToString(),
-            ["WHISTLEBLOWER_REWARD_QUOTIENT_ELECTRA"] = Presets.WhistleblowerRewardQuotientElectra.ToString(),
-            ["PENDING_PARTIAL_WITHDRAWALS_LIMIT"] = Presets.PendingPartialWithdrawalsLimit.ToString(),
-            ["PENDING_CONSOLIDATIONS_LIMIT"] = Presets.PendingConsolidationsLimit.ToString(),
-            ["MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP"] = Presets.MaxPendingPartialsPerWithdrawalsSweep.ToString(),
-            ["MAX_PENDING_DEPOSITS_PER_EPOCH"] = Presets.MaxPendingDepositsPerEpoch.ToString(),
-            ["MAX_PROPOSER_SLASHINGS"] = Presets.MaxProposerSlashings.ToString(),
-            ["MAX_ATTESTER_SLASHINGS_ELECTRA"] = Presets.MaxAttesterSlashingsElectra.ToString(),
-            ["MAX_ATTESTATIONS_ELECTRA"] = Presets.MaxAttestationsElectra.ToString(),
-            ["MAX_VOLUNTARY_EXITS"] = Presets.MaxVoluntaryExits.ToString(),
-            ["MAX_BLS_TO_EXECUTION_CHANGES"] = Presets.MaxBlsToExecutionChanges.ToString(),
-            ["MAX_DEPOSIT_REQUESTS_PER_PAYLOAD"] = Presets.MaxDepositRequestsPerPayload.ToString(),
-            ["MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD"] = Presets.MaxWithdrawalRequestsPerPayload.ToString(),
-            ["MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD"] = Presets.MaxConsolidationRequestsPerPayload.ToString(),
-            ["MAX_PER_EPOCH_ACTIVATION_CHURN_LIMIT"] = Presets.MaxPerEpochActivationChurnLimit.ToString(),
-            ["MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA"] = Presets.MinPerEpochChurnLimitElectra.ToString(),
-        };
-
-        if (spec.GloasForkEpoch != Presets.FarFutureEpoch)
-        {
-            data["GLOAS_FORK_EPOCH"] = spec.GloasForkEpoch.ToString();
-            data["GLOAS_FORK_VERSION"] = spec.GloasForkVersion.ToHexString(withZeroX: true);
+            data[key] = value;
         }
 
+        ApplyChain(data, spec.ChainId);
+        data["SLOTS_PER_EPOCH"] = spec.SlotsPerEpoch.ToString();
+        data["SECONDS_PER_SLOT"] = spec.SecondsPerSlot.ToString();
+        data["SLOT_DURATION_MS"] = (spec.SecondsPerSlot * 1000).ToString();
+        data["GENESIS_FORK_VERSION"] = spec.Forks[0].Version.ToHexString(withZeroX: true);
+        string[] earlyForks = ["ALTAIR", "BELLATRIX", "CAPELLA", "DENEB"];
+        for (int i = 0; i < earlyForks.Length && i + 1 < spec.Forks.Length; i++)
+        {
+            data[$"{earlyForks[i]}_FORK_VERSION"] = spec.Forks[i + 1].Version.ToHexString(withZeroX: true);
+            data[$"{earlyForks[i]}_FORK_EPOCH"] = spec.Forks[i + 1].Epoch.ToString();
+        }
+
+        data["ELECTRA_FORK_EPOCH"] = spec.ElectraForkEpoch.ToString();
+        data["ELECTRA_FORK_VERSION"] = spec.VersionForEpoch(spec.ElectraForkEpoch).ToHexString(withZeroX: true);
+        data["FULU_FORK_EPOCH"] = spec.FuluForkEpoch.ToString();
+        data["FULU_FORK_VERSION"] = spec.VersionForEpoch(spec.FuluForkEpoch).ToHexString(withZeroX: true);
+        data["GLOAS_FORK_EPOCH"] = spec.GloasForkEpoch.ToString();
+        data["GLOAS_FORK_VERSION"] = spec.GloasForkVersion.ToHexString(withZeroX: true);
+        data["MAX_BLOBS_PER_BLOCK_ELECTRA"] = spec.MaxBlobsPerBlockElectra.ToString();
+        data["BLOB_SCHEDULE"] = spec.BlobSchedule
+            .Select(entry => new Dictionary<string, string> { ["EPOCH"] = entry.Epoch.ToString(), ["MAX_BLOBS_PER_BLOCK"] = entry.MaxBlobsPerBlock.ToString() })
+            .ToArray();
+        data["GAS_LIMIT_SCHEDULE"] = Array.Empty<string>();
+
         return BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted);
+    }
+
+    /// <summary>Replaces the mainnet values of the keys that differ per network and that <see cref="BeaconChainSpec"/> does not hold.</summary>
+    /// <remarks>From the eth-clients <c>hoodi</c> and <c>sepolia</c> <c>metadata/config.yaml</c>; a chain with no entry there keeps the mainnet values.</remarks>
+    private static void ApplyChain(Dictionary<string, object> data, ulong chainId)
+    {
+        if (DepositContractAddress(chainId) is { } depositContract)
+        {
+            data["DEPOSIT_CHAIN_ID"] = chainId.ToString();
+            data["DEPOSIT_NETWORK_ID"] = chainId.ToString();
+            data["DEPOSIT_CONTRACT_ADDRESS"] = depositContract;
+        }
+
+        switch (chainId)
+        {
+            case BlockchainIds.Hoodi:
+                data["CONFIG_NAME"] = "hoodi";
+                data["MIN_GENESIS_TIME"] = "1742212800";
+                data["GENESIS_DELAY"] = "600";
+                data["TERMINAL_TOTAL_DIFFICULTY"] = "0";
+                data["SECONDS_PER_ETH1_BLOCK"] = "12";
+                break;
+            case BlockchainIds.Sepolia:
+                data["CONFIG_NAME"] = "sepolia";
+                data["MIN_GENESIS_ACTIVE_VALIDATOR_COUNT"] = "1300";
+                data["MIN_GENESIS_TIME"] = "1655647200";
+                data["GENESIS_DELAY"] = "86400";
+                data["TERMINAL_TOTAL_DIFFICULTY"] = "17000000000000000";
+                break;
+        }
     }
 
     private static Task ForkSchedule(HttpContext c, BeaconApiContext ctx)

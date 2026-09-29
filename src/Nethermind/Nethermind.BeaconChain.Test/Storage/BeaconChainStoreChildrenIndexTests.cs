@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -10,14 +14,15 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using NUnit.Framework;
 using Snappier;
+using Transaction = Nethermind.BeaconChain.Types.Transaction;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
 /// <summary>
 /// The root-to-children index behind <c>headers?parent_root</c>. Every expectation here is about
 /// completeness, not just membership: a list the store calls complete must hold every child ever
-/// stored, and a parent whose children could have been stored without the index must never be
-/// reported complete, because the API turns "complete" into a 200 and anything else into a 501.
+/// stored, and every stored block's list must be complete, because the API turns "complete" into a
+/// 200 and anything else into a 500.
 /// </summary>
 public class BeaconChainStoreChildrenIndexTests
 {
@@ -76,16 +81,19 @@ public class BeaconChainStoreChildrenIndexTests
     }
 
     [Test]
-    public void Re_storing_a_legacy_block_does_not_promote_it_to_complete()
+    public void Re_storing_a_stored_block_whose_entry_is_pending_completes_it_with_its_children()
     {
-        Hash256 legacy = TestRoot(1);
+        Hash256 stored = TestRoot(1);
+        Hash256 child = TestRoot(2);
         SignedBeaconBlock block = CreateBlock(100, parent: TestRoot(0));
-        WriteLegacyBlock(legacy, block);
+        WriteLegacyBlock(stored, block);
+        _store.PutBlock(child, CreateBlock(101, stored));
 
-        _store.PutBlock(legacy, block);
+        _store.PutBlock(stored, block);
 
-        Assert.That(_store.TryGetChildren(legacy, out _, out bool complete), Is.True);
-        Assert.That(complete, Is.False, "a block that existed before the index may have children the index never saw");
+        Assert.That(_store.TryGetChildren(stored, out Hash256[] children, out bool complete), Is.True);
+        Assert.That(complete, Is.True, "a stored block's list is complete: opening the database rebuilds the index, so no stored block lives outside it");
+        Assert.That(children, Is.EqualTo(new[] { child }));
     }
 
     [Test]
@@ -158,9 +166,8 @@ public class BeaconChainStoreChildrenIndexTests
         _store.DeleteBlock(legacyChild);
 
         Assert.That(_store.TryGetBlock(legacyChild, out _), Is.False);
-        Assert.That(_store.TryGetChildren(legacyParent, out Hash256[] children, out bool complete), Is.True);
+        Assert.That(_store.TryGetChildren(legacyParent, out Hash256[] children, out _), Is.True);
         Assert.That(children, Is.EqualTo(new[] { indexedChild }), "a block that was never linked has nothing to unlink");
-        Assert.That(complete, Is.False, "the legacy parent stays incomplete: the deleted legacy child is exactly the kind of child it never indexed");
     }
 
     [Test]
@@ -200,36 +207,36 @@ public class BeaconChainStoreChildrenIndexTests
     }
 
     [Test]
-    public void A_deleted_legacy_block_is_never_reported_complete_once_re_stored()
+    public void A_block_deleted_without_an_entry_is_complete_once_re_stored()
     {
-        Hash256 legacy = TestRoot(1);
+        Hash256 root = TestRoot(1);
         SignedBeaconBlock block = CreateBlock(100, parent: TestRoot(0));
-        WriteLegacyBlock(legacy, block);
+        WriteLegacyBlock(root, block);
 
-        _store.DeleteBlock(legacy);
-        _store.PutBlock(legacy, block);
+        _store.DeleteBlock(root);
+        _store.PutBlock(root, block);
 
-        Assert.That(_store.TryGetBlock(legacy, out _), Is.True);
-        Assert.That(_store.TryGetChildren(legacy, out Hash256[] children, out bool complete), Is.True);
+        Assert.That(_store.TryGetBlock(root, out _), Is.True);
+        Assert.That(_store.TryGetChildren(root, out Hash256[] children, out bool complete), Is.True);
         Assert.That(children, Is.Empty);
-        Assert.That(complete, Is.False, "children stored beside it before the index existed are unknowable; a delete must not launder that into a fresh complete list");
+        Assert.That(complete, Is.True, "a delete must not leave a mark that keeps the re-stored block incomplete for good");
     }
 
     [Test]
-    public void A_legacy_block_with_indexed_children_stays_incomplete_through_a_delete_and_re_store()
+    public void A_block_with_a_pending_entry_stays_complete_through_a_delete_and_re_store()
     {
-        Hash256 legacy = TestRoot(1);
+        Hash256 stored = TestRoot(1);
         Hash256 indexedChild = TestRoot(2);
         SignedBeaconBlock block = CreateBlock(100, parent: TestRoot(0));
-        WriteLegacyBlock(legacy, block);
-        _store.PutBlock(indexedChild, CreateBlock(101, legacy));
+        WriteLegacyBlock(stored, block);
+        _store.PutBlock(indexedChild, CreateBlock(101, stored));
 
-        _store.DeleteBlock(legacy);
-        _store.PutBlock(legacy, block);
+        _store.DeleteBlock(stored);
+        _store.PutBlock(stored, block);
 
-        Assert.That(_store.TryGetChildren(legacy, out Hash256[] children, out bool complete), Is.True);
+        Assert.That(_store.TryGetChildren(stored, out Hash256[] children, out bool complete), Is.True);
         Assert.That(children, Is.EqualTo(new[] { indexedChild }), "the indexed child stays linked");
-        Assert.That(complete, Is.False, "the pending entry its child created is not proof that no legacy sibling exists");
+        Assert.That(complete, Is.True, "pruning a block must not pin its list incomplete: every child stored under it is listed");
     }
 
     [Test]
@@ -306,9 +313,134 @@ public class BeaconChainStoreChildrenIndexTests
         Assert.That(reopened.TryGetChildren(legacy, out _, out _), Is.False, "the rebuild scans every stored block, so it must run only on the upgrade that introduced it");
     }
 
+    [Test]
+    public void A_rebuilt_index_equals_the_one_built_by_storing_and_deleting_the_same_blocks()
+    {
+        const int Blocks = 2600;
+        Random random = new(12345);
+        List<Hash256> stored = [];
+        List<Hash256> universe = [Hash256.Zero];
+        for (int i = 1; i <= Blocks; i++)
+        {
+            Hash256 parent = i % 50 == 0 ? BlockRoot(100_000 + i) : universe[random.Next(universe.Count)];
+            Hash256 root = BlockRoot(i);
+            _store.PutBlock(root, CreateBlock((ulong)i, parent));
+            stored.Add(root);
+            universe.Add(root);
+            universe.Add(parent);
+        }
+
+        foreach (Hash256 pruned in stored.Where((_, index) => index % 7 == 0).ToArray())
+        {
+            _store.DeleteBlock(pruned);
+        }
+
+        Dictionary<Hash256, (Hash256[] Children, bool Complete)> incremental = Snapshot(_store, universe);
+        Assert.That(incremental.Values.Count(entry => entry.Complete), Is.GreaterThan(Blocks / 2), "the fixture must leave complete and pending entries to compare");
+        _store.SetSchemaVersion(1);
+
+        BeaconChainStore reopened = new(_db);
+        reopened.EnsureSchemaVersion();
+
+        Dictionary<Hash256, (Hash256[] Children, bool Complete)> rebuilt = Snapshot(reopened, universe);
+        Assert.That(Blocks, Is.GreaterThan(BeaconChainStore.ChildrenRebuildBatchSize * 2), "the rebuild must cross batch boundaries");
+        foreach (Hash256 root in universe.Distinct())
+        {
+            Assert.That(rebuilt[root].Complete, Is.EqualTo(incremental[root].Complete), $"completeness of {root}");
+            Assert.That(rebuilt[root].Children, Is.EquivalentTo(incremental[root].Children), $"children of {root}");
+        }
+    }
+
+    [Test]
+    public void Rebuilding_a_wide_fan_out_of_large_blocks_allocates_far_less_than_the_blocks_it_reads()
+    {
+        const int Children = 3000;
+        const int TransactionBytes = 64 * 1024;
+        Hash256 parent = BlockRoot(0);
+        byte[] record = Snappy.CompressToArray(SignedBeaconBlock.Encode(CreateBlock(100, parent, TransactionBytes)));
+        IDb blocks = _db.GetColumnDb(BeaconChainDbColumns.Blocks);
+        for (int i = 1; i <= Children; i++)
+        {
+            blocks.Set(BlockRoot(i).Bytes, record);
+        }
+
+        _store.SetSchemaVersion(1);
+        BeaconChainStore reopened = new(_db);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        reopened.EnsureSchemaVersion();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(reopened.TryGetChildren(parent, out Hash256[] listed, out bool complete), Is.True);
+        Assert.That(listed, Has.Length.EqualTo(Children));
+        Assert.That(complete, Is.False, "the parent is not stored");
+        long wholeBlocks = (long)Children * TransactionBytes;
+        Assert.That(allocated, Is.LessThan(wholeBlocks / 16), "decompressing every whole block, or regrowing the parent list once per child, would allocate at least the blocks' size");
+    }
+
+    [TestCase(0, false)]
+    [TestCase(100, false)]
+    [TestCase(147, false)]
+    [TestCase(148, true)]
+    public void Rebuilding_refuses_a_record_too_short_to_hold_a_parent_root(int decompressedLength, bool accepted)
+    {
+        Hash256 root = BlockRoot(1);
+        _db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(new byte[decompressedLength]));
+        _store.SetSchemaVersion(1);
+        BeaconChainStore reopened = new(_db);
+
+        if (accepted)
+        {
+            reopened.EnsureSchemaVersion();
+            Assert.That(reopened.TryGetChildren(Hash256.Zero, out Hash256[] children, out _), Is.True, "the parent root is the last byte range of the 148-byte prefix");
+            Assert.That(children, Is.EqualTo(new[] { root }));
+        }
+        else
+        {
+            Assert.That(reopened.EnsureSchemaVersion, Throws.InstanceOf<InvalidOperationException>().With.Message.Contains(root.ToString()),
+                "a parent root read past the record would link the block under a made-up parent");
+        }
+    }
+
+    [Test]
+    public void Deleting_a_block_whose_own_entry_is_unreadable_still_unlinks_it_from_its_parent()
+    {
+        Hash256 parent = TestRoot(1);
+        Hash256 child = TestRoot(2);
+        Hash256 sibling = TestRoot(3);
+        _store.PutBlock(parent, CreateBlock(100, parent: TestRoot(0)));
+        _store.PutBlock(child, CreateBlock(101, parent));
+        _store.PutBlock(sibling, CreateBlock(102, parent));
+        byte[] ownKey = [0x01, .. child.Bytes.ToArray()];
+        _db.GetColumnDb(BeaconChainDbColumns.BlockIndex).Set(ownKey, [0x01, 0x02, 0x03]);
+
+        _store.DeleteBlock(child);
+
+        Assert.That(_store.TryGetChildren(parent, out Hash256[] children, out bool complete), Is.True);
+        Assert.That(children, Is.EqualTo(new[] { sibling }), "a deleted block must not stay named in a list the API serves as complete");
+        Assert.That(complete, Is.True);
+    }
+
     /// <summary>Writes a block exactly as the pre-index store did: the compressed SSZ under the bare root, nothing else.</summary>
     private void WriteLegacyBlock(Hash256 root, SignedBeaconBlock block) =>
         _db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
+
+    private static Dictionary<Hash256, (Hash256[] Children, bool Complete)> Snapshot(BeaconChainStore store, IEnumerable<Hash256> roots)
+    {
+        Dictionary<Hash256, (Hash256[] Children, bool Complete)> snapshot = [];
+        foreach (Hash256 root in roots.Distinct())
+        {
+            snapshot[root] = store.TryGetChildren(root, out Hash256[] children, out bool complete) ? (children, complete) : ([], false);
+        }
+
+        return snapshot;
+    }
+
+    private static Hash256 BlockRoot(int index)
+    {
+        byte[] bytes = new byte[32];
+        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(28), index);
+        return new Hash256(bytes);
+    }
 
     private static Hash256 TestRoot(byte marker)
     {
@@ -317,7 +449,7 @@ public class BeaconChainStoreChildrenIndexTests
         return new Hash256(bytes);
     }
 
-    private static SignedBeaconBlock CreateBlock(ulong slot, Hash256 parent) => new()
+    private static SignedBeaconBlock CreateBlock(ulong slot, Hash256 parent, int transactionBytes = 0) => new()
     {
         Message = new BeaconBlock
         {
@@ -350,7 +482,7 @@ public class BeaconChainStoreChildrenIndexTests
                     ExtraData = Bytes.FromHexString("0x"),
                     BaseFeePerGas = 7,
                     BlockHash = Hash256.Zero,
-                    Transactions = [],
+                    Transactions = transactionBytes == 0 ? [] : [new Transaction { Bytes = new byte[transactionBytes] }],
                     Withdrawals = [],
                     BlobGasUsed = 0,
                     ExcessBlobGas = 0,
