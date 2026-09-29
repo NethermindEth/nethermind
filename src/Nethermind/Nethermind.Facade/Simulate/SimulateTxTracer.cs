@@ -25,14 +25,16 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
     private readonly bool _isTracingTransfers;
-    private bool _hasFrameReceipts;
+    private List<Log>? _frameTxLogs;
+    private FrameResult[]? _frameResults;
+    private byte[]?[]? _frameOutputs;
+    private int[]? _frameLogCounts;
+    private byte[]? _frameOutput;
     private int[]? _frameLogStarts;
     private int _framesEnded;
     private int _frameLogEnd;
     private Stack<int>? _callLogStarts;
-    private byte[]? _frameRevertData;
     private EvmExceptionType? _frameError;
-    private byte[]? _frameErrorData;
 
     public SimulateTxTracer(
         bool isTracingTransfers,
@@ -63,8 +65,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        // A frame transaction's logs follow its receipt, which drops a reverted call's logs and transfers.
-        if (_tx.SupportsFrames) (_callLogStarts ??= new Stack<int>()).Push(_logs.Count);
+        // Logs and synthetic transfers emitted by a reverted call frame do not survive in the transaction result.
+        (_callLogStarts ??= new Stack<int>()).Push(_logs.Count);
         if (!_isTracingTransfers) return;
         if (callType == ExecutionType.DELEGATECALL) return;
         if (!value.IsZero)
@@ -95,7 +97,25 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         // The validation-prefix simulation reports an empty set, which pins no frame's outcome.
         if (frameReceipts.Length == 0) return;
 
-        _hasFrameReceipts = true;
+        // Built once so the call's logs and each frame's slice share instances that ReapplyBlockHash updates.
+        _frameTxLogs = BuildLogs();
+        int logOffset = 0;
+        _frameResults = new FrameResult[frameReceipts.Length];
+        for (int i = 0; i < frameReceipts.Length; i++)
+        {
+            TxFrameReceipt receipt = frameReceipts[i];
+            int logCount = _frameLogCounts?[i] ?? 0;
+            _frameResults[i] = new FrameResult
+            {
+                Status = receipt.Status,
+                GasUsed = receipt.GasUsed,
+                ExecutionGasUsed = receipt.ExecutionGasUsed,
+                StateGasUsed = receipt.StateGasUsed,
+                Logs = _frameTxLogs.GetRange(logOffset, logCount),
+                ReturnData = _frameOutputs?[i] ?? []
+            };
+            logOffset += logCount;
+        }
     }
 
     /// <inheritdoc/>
@@ -113,16 +133,16 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (error is not null)
         {
             // The first failed frame is the one the aggregate status fails on.
-            if (_frameError is null)
-            {
-                _frameError = error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
-                _frameErrorData = _frameRevertData;
-            }
+            _frameError ??= error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
 
             TruncateLogs(_frameLogStarts[frameIndex]);
         }
 
-        _frameRevertData = null;
+        _frameOutputs ??= new byte[]?[_frameLogStarts.Length];
+        _frameLogCounts ??= new int[_frameLogStarts.Length];
+        _frameOutputs[frameIndex] = _frameOutput;
+        _frameLogCounts[frameIndex] = _logs.Count - _frameLogStarts[frameIndex];
+        _frameOutput = null;
         _frameLogEnd = _logs.Count;
     }
 
@@ -131,6 +151,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     {
         if (_frameLogStarts is null || (uint)fromFrameIndex >= (uint)_framesEnded) return;
 
+        if (_frameLogCounts is not null)
+            Array.Clear(_frameLogCounts, fromFrameIndex, toFrameIndex - fromFrameIndex);
         TruncateLogs(_frameLogStarts[fromFrameIndex]);
         _frameLogEnd = _logs.Count;
     }
@@ -141,28 +163,34 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     {
         GasUsed = gasSpent.SpentGas,
         MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
-        ReturnData = output,
+        ReturnData = _frameResults is { Length: > 0 } ? _frameResults[^1].ReturnData : output,
+        FrameResults = _frameResults,
         Status = StatusCode.Success,
-        Logs = BuildLogs()
+        Logs = _frameTxLogs ?? BuildLogs()
     };
 
-    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
-        GasUsed = gasSpent.SpentGas,
-        MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
-        Error = new Error
+        byte[] failedFrameOutput = _frameResults?.FirstOrDefault(static frame => frame.Status == TxFrameReceipt.StatusFailure)?.ReturnData ?? [];
+        TraceResult = new SimulateCallResult
         {
-            Message = FailureMessage(error),
-            // A frame transaction fails for the frame that failed, not for whichever call last errored.
-            EvmException = _frameError ?? _exceptionType,
-            // The processor reports no output for a frame transaction, so the revert data is the frame's own.
-            Data = _frameError is null ? output : _frameErrorData ?? []
-        },
-        ReturnData = [],
-        Status = StatusCode.Failure,
-        // A failed frame transaction keeps the logs of the frames that committed, as its receipt does.
-        Logs = _hasFrameReceipts ? BuildLogs() : []
-    };
+            GasUsed = gasSpent.SpentGas,
+            MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
+            Error = new Error
+            {
+                Message = FailureMessage(error),
+                // A frame transaction fails for the frame that failed, not for whichever call last errored.
+                EvmException = _frameError ?? _exceptionType,
+                // The processor reports no output for a frame transaction, so the revert data is the frame's own.
+                Data = _frameError is null ? output : failedFrameOutput
+            },
+            ReturnData = failedFrameOutput,
+            FrameResults = _frameResults,
+            Status = StatusCode.Failure,
+            // A failed frame transaction keeps the logs of the frames that committed, as its receipt does.
+            Logs = _frameTxLogs ?? []
+        };
+    }
 
     private string FailureMessage(string? error) => _frameError is { } frameError && frameError != EvmExceptionType.Revert
         ? frameError.GetEvmExceptionDescription() ?? frameError.ToString()
@@ -186,7 +214,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionEnd(gas, output);
-        _callLogStarts?.TryPop(out _);
+        if (_callLogStarts is not null && _callLogStarts.TryPop(out _) && _callLogStarts.Count == 0)
+            _frameOutput = output.ToArray();
     }
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
@@ -216,7 +245,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         TruncateLogs(logStart);
         if (_callLogStarts.Count == 0)
         {
-            _frameRevertData = output.ToArray();
+            _frameOutput = output.ToArray();
         }
     }
 }
