@@ -12,6 +12,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.Rpc;
