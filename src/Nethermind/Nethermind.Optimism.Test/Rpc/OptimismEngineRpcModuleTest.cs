@@ -127,15 +127,18 @@ public class OptimismEngineRpcModuleTest
             payload, blobVersionedHashes, Hash256.Zero, executionRequests);
     }
 
-    [TestCase(false, false, false)]
-    [TestCase(true, false, true)]
-    [TestCase(true, true, true)]
-    public void NewPayloadV4_fork_check_follows_Isthmus(bool isthmusEnabled, bool requestsEnabled, bool expected)
+    [TestCase(false, false, EngineApiVersions.NewPayload.V3, true)]
+    [TestCase(false, false, EngineApiVersions.NewPayload.V4, false)]
+    [TestCase(true, false, EngineApiVersions.NewPayload.V3, false)]
+    [TestCase(true, false, EngineApiVersions.NewPayload.V4, true)]
+    [TestCase(true, true, EngineApiVersions.NewPayload.V3, false)]
+    [TestCase(true, true, EngineApiVersions.NewPayload.V4, true)]
+    public void NewPayload_fork_check_follows_Isthmus(bool isthmusEnabled, bool requestsEnabled, int version, bool expected)
     {
         OptimismReleaseSpec spec = new() { IsEip4844Enabled = true, IsOpIsthmusEnabled = isthmusEnabled, IsEip6110Enabled = requestsEnabled };
         OptimismExecutionPayloadV3 payload = new();
 
-        Assert.That(payload.ValidateForkOnNewPayload(new TestSingleReleaseSpecProvider(spec), EngineApiVersions.NewPayload.V4), Is.EqualTo(expected));
+        Assert.That(payload.ValidateForkOnNewPayload(new TestSingleReleaseSpecProvider(spec), version), Is.EqualTo(expected));
     }
 
     [Test]
