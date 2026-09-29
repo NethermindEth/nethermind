@@ -53,6 +53,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
+    private readonly double _inMemorySlotFilterBitsPerKey;
 
     public FlatDbManager(
         IResourcePool resourcePool,
@@ -74,6 +75,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+        _inMemorySlotFilterBitsPerKey = config.InMemorySnapshotBloomBitsPerKey;
 
         // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
@@ -355,8 +357,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
+            // Only the shared bundles, which read-only execution gathers, may build a slot filter; the build happens
+            // on their first filtered read, never here.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
-                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
+                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics),
+                slotFilterBitsPerKey: shareable ? _inMemorySlotFilterBitsPerKey : 0);
 
             if (!shareable) return res;
 

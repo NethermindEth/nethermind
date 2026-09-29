@@ -106,12 +106,15 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             throw;
         }
 
+        // Everything this scope executes is read-only (calls, simulations, traces, proofs), so its slot reads may use
+        // the in-memory snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
             _trieNodeCache,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
-            snapshots
+            snapshots,
+            filterInMemorySlotReads: true
         );
     }
 
