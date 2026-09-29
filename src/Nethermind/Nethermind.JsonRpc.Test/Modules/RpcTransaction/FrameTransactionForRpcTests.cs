@@ -97,7 +97,11 @@ public class FrameTransactionForRpcTests
         string json = $"{{\"scheme\":1,\"signer\":\"{TestItem.AddressA}\"}}";
         FrameSignatureForRpc rpc = Serializer.Deserialize<FrameSignatureForRpc>(json)!;
 
-        Assert.That(rpc.Signer, Is.EqualTo(TestItem.AddressA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.Signer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(rpc.Signature.IsEmpty, Is.True);
+        }
     }
 
     [TestCase("0x12", typeof(ArgumentException))]
