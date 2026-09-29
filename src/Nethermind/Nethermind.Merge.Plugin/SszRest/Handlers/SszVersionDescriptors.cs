@@ -223,6 +223,16 @@ public readonly struct GetPayloadDescriptorV6 : IGetPayloadVersion<GetPayloadV6R
         => SszCodec.EncodeGetPayloadV6Response(result, writer);
 }
 
+/// <remarks>The SSZ container has no claims field yet, so over SSZ the response carries the V6 fields alone.</remarks>
+public readonly struct GetPayloadDescriptorV7 : IGetPayloadVersion<GetPayloadV7Result>
+{
+    public static int VersionNumber => EngineApiVersions.GetPayload.V7;
+    public static Task<ResultWrapper<GetPayloadV7Result?>> Call(IEngineRpcModule engine, byte[] id)
+        => engine.engine_getPayloadV7(id);
+    public static int Encode(GetPayloadV7Result result, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetPayloadV6Response(result, writer);
+}
+
 public interface IPayloadBodiesByHashVersion<TResult> where TResult : class
 {
     static abstract int VersionNumber { get; }

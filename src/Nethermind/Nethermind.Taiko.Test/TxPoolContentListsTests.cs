@@ -249,6 +249,7 @@ public class TxPoolContentListsTests
             Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV7Result?>>(),
             Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
             Substitute.For<IForkchoiceUpdatedHandler>(),
             Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),

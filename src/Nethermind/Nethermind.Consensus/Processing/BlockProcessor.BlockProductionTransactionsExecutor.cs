@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -63,14 +64,21 @@ namespace Nethermind.Consensus.Processing
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
+                IReadOnlySet<Hash256AsKey>? claimable = blockToProduce?.InclusionListCandidates;
+                List<InclusionListClaim>? claims = null;
                 int i = 0;
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
+                    // EIP-8369: only the first attempt is where the builder tried; a later offer is a duplicate.
+                    bool claimOnSkip = claimable is not null && currentTx.Hash is { } hash
+                        && claimable.Contains(hash) && !consideredTx.Contains(currentTx);
                     TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
+                    if (action == TxAction.Skip && claimOnSkip && (claims?.Count ?? 0) < Eip8369Constants.MaxInclusionListClaims)
+                        (claims ??= []).Add(new InclusionListClaim(currentTx.Hash!, (ulong)includedTx.Count));
 
                     consideredTx.Add(currentTx);
                     if (action == TxAction.Add)
@@ -87,6 +95,7 @@ namespace Nethermind.Consensus.Processing
                 if (blockToProduce is not null)
                 {
                     blockToProduce.Transactions = includedTx.ToArray();
+                    blockToProduce.InclusionListClaims = claims?.ToArray();
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }

@@ -48,6 +48,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             {
                 blockToProduce.Transactions = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header, blockToProduce.Header.GasLimit, payloadAttributes);
             }
+            blockToProduce.InclusionListCandidates = inclusionListTxSource?.GetProfile2Candidates(payloadAttributes, _blocksConfig.FocilProfile2MaxVerifyGas);
             return blockToProduce;
         }
 

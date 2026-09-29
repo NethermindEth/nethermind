@@ -111,6 +111,7 @@ public class SszMiddlewareTests
             new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
+            new GetPayloadSszHandler<GetPayloadDescriptorV7, GetPayloadV7Result>(_engineModule),
 
             new GetInclusionListSszHandler(_engineModule),
 
@@ -1454,7 +1455,7 @@ public class SszMiddlewareTests
     public async Task NewPayloadV6_bogota_routes_to_engine_newPayloadV6()
     {
         _engineModule.engine_newPayloadV6(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>())
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<InclusionListClaim[]?>())
             .Returns(ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
             {
                 Status = PayloadStatus.Valid,
@@ -1474,7 +1475,7 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
         await _engineModule.Received(1).engine_newPayloadV6(
-            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>());
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<InclusionListClaim[]?>());
     }
 
     [Test]

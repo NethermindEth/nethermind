@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -55,6 +56,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
     private readonly ulong _focilProfile2MaxVerifyGas;
+    private readonly IProfile2EligibilityReplayer? _profile2Replayer;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
@@ -85,7 +87,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ISpecProvider specProvider,
         ITxValidator txValidator,
         IBlocksConfig blocksConfig,
-        ILogManager logManager)
+        ILogManager logManager,
+        IProfile2EligibilityReplayer? profile2Replayer = null)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -101,6 +104,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _specProvider = specProvider;
         _txValidator = txValidator;
         _focilProfile2MaxVerifyGas = blocksConfig.FocilProfile2MaxVerifyGas;
+        _profile2Replayer = profile2Replayer;
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -342,15 +346,42 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private static bool HasInclusionList(Block block) => block.InclusionListTransactions is { Length: > 0 };
 
-    // An absent IL digests to default, matching non-IL cache entries.
+    // An absent IL digests to default, matching non-IL cache entries. The EIP-8369 membership and claims
+    // change the verdict too, so they are digested when present; input without them digests as before.
     private static ValueHash256 ComputeInclusionListDigest(Block block)
     {
         if (block.InclusionListTransactions is not { Length: > 0 } il) return default;
 
-        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(il.Length * Keccak.Size, out byte[] buffer);
-        Span<byte> span = buffer.AsSpan(0, il.Length * Keccak.Size);
+        ushort[] membership = block.InclusionListMembership ?? [];
+        InclusionListClaim[] claims = block.InclusionListClaims ?? [];
+        int size = il.Length * Keccak.Size;
+        if (block.InclusionListMembership is not null || block.InclusionListClaims is not null)
+            size += sizeof(int) * 2 + sizeof(ushort) * membership.Length + claims.Length * (Keccak.Size + sizeof(ulong));
+
+        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(size, out byte[] buffer);
+        Span<byte> span = buffer.AsSpan(0, size);
         for (int i = 0; i < il.Length; i++)
             (il[i].Hash ?? Keccak.Zero).Bytes.CopyTo(span.Slice(i * Keccak.Size, Keccak.Size));
+
+        if (size > il.Length * Keccak.Size)
+        {
+            Span<byte> tail = span[(il.Length * Keccak.Size)..];
+            BinaryPrimitives.WriteInt32LittleEndian(tail, block.InclusionListMembership?.Length ?? -1);
+            tail = tail[sizeof(int)..];
+            foreach (ushort mask in membership)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(tail, mask);
+                tail = tail[sizeof(ushort)..];
+            }
+            BinaryPrimitives.WriteInt32LittleEndian(tail, block.InclusionListClaims?.Length ?? -1);
+            tail = tail[sizeof(int)..];
+            foreach (InclusionListClaim claim in claims)
+            {
+                (claim.TransactionHash ?? Keccak.Zero).Bytes.CopyTo(tail);
+                BinaryPrimitives.WriteUInt64LittleEndian(tail[Keccak.Size..], claim.TransactionIndex);
+                tail = tail[(Keccak.Size + sizeof(ulong))..];
+            }
+        }
 
         return ValueKeccak.Compute(span);
     }
@@ -366,7 +397,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
 
         ValidationResult result = InclusionListValidator.IsSatisfied(
-            block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator, _focilProfile2MaxVerifyGas)
+            block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator, _focilProfile2MaxVerifyGas, _profile2Replayer)
             ? ValidationResult.Valid
             : ValidationResult.InclusionListUnsatisfied;
 

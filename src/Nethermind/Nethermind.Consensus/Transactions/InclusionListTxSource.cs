@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Decoders;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -25,38 +28,79 @@ public class InclusionListTxSource(
 
     // Keyed by the build's PayloadAttributes array so a concurrent FCU can't leak another build's IL;
     // weak keys collect with the build.
-    private readonly ConditionalWeakTable<byte[][], Lazy<Transaction[]>> _decodedByAttributes = [];
+    private readonly ConditionalWeakTable<byte[][], Lazy<DecodedInclusionList>> _decodedByAttributes = [];
+
+    /// <summary>A build's list decoded twice over: ordered for production, and in list order beside the
+    /// membership masks the EIP-8369 budget fill reads, which stay aligned after undecodable entries are dropped.</summary>
+    private sealed record DecodedInclusionList(Transaction[] ForProduction, Transaction[] InListOrder, ushort[]? Masks, IReleaseSpec Spec);
 
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        => TryGetDecoded(payloadAttributes, out DecodedInclusionList? decoded) ? decoded.ForProduction : [];
+
+    public IReadOnlySet<Hash256AsKey>? GetProfile2Candidates(PayloadAttributes? payloadAttributes, ulong maxVerifyGasPerTx)
     {
-        if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return [];
-        if (!_decodedByAttributes.TryGetValue(il, out Lazy<Transaction[]>? decoded))
+        if (!TryGetDecoded(payloadAttributes, out DecodedInclusionList? decoded)) return null;
+
+        if (decoded.Masks is { } masks)
+        {
+            HashSet<Hash256AsKey> admitted = Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(decoded.InListOrder, masks), maxVerifyGasPerTx,
+                tx => Profile2EligibilityReplayer.AreSignaturesValid(tx, ecdsa, decoded.Spec));
+            return admitted.Count > 0 ? admitted : null;
+        }
+
+        HashSet<Hash256AsKey>? candidates = null;
+        foreach (Transaction tx in decoded.InListOrder)
+        {
+            if (tx.SupportsFrames && tx.Hash is not null && Eip8369Profile2.Classify(tx, maxVerifyGasPerTx) == Profile2Exclusion.None)
+                (candidates ??= []).Add(tx.Hash);
+        }
+        return candidates;
+    }
+
+    private bool TryGetDecoded(PayloadAttributes? payloadAttributes, [NotNullWhen(true)] out DecodedInclusionList? decoded)
+    {
+        decoded = null;
+        if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return false;
+        if (!_decodedByAttributes.TryGetValue(il, out Lazy<DecodedInclusionList>? lazy))
         {
             // A miss means Set was never called for these attributes, e.g. an oversized IL that
             // engine_forkchoiceUpdatedV5 already warned about; debug-level as this runs once per improvement.
             if (_logger.IsDebug) _logger.Debug($"No inclusion list for this build ({il.Length} entries) — building without it.");
-            return [];
+            return false;
         }
 
         try
         {
-            return decoded.Value;
+            decoded = lazy.Value;
+            return true;
         }
         catch (Exception ex) when (ex is RlpException or ArgumentException)
         {
             // Lazy caches the failure, so a malformed list is reported once per build, not per improvement.
             if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");
-            return [];
+            return false;
         }
     }
 
     /// <inheritdoc/>
     /// <remarks>Decoding and sender recovery are deferred to the first <see cref="GetTransactions"/> call, so
     /// a forkchoice update that never starts a build pays nothing.</remarks>
-    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
+    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, byte[][]? inclusionListMembership = null)
         => _decodedByAttributes.AddOrUpdate(inclusionListTransactions,
-            new Lazy<Transaction[]>(() => OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec)))));
+            new Lazy<DecodedInclusionList>(() => Decode(inclusionListTransactions, spec, inclusionListMembership)));
+
+    private DecodedInclusionList Decode(byte[][] inclusionListTransactions, IReleaseSpec spec, byte[][]? inclusionListMembership)
+    {
+        if (inclusionListMembership is null || InclusionListMembership.Validate(inclusionListTransactions, inclusionListMembership) is not null)
+        {
+            Transaction[] flat = _decoder.Value.DecodeAndRecover(inclusionListTransactions, spec);
+            return new DecodedInclusionList(OrderForProduction(FilterBlobs([.. flat])), flat, null, spec);
+        }
+
+        (Transaction[] decoded, ushort[] masks) = _decoder.Value.DecodeAndRecover(inclusionListTransactions, inclusionListMembership, spec);
+        return new DecodedInclusionList(OrderForProduction(FilterBlobs([.. decoded])), decoded, masks, spec);
+    }
 
     // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its
     // dependent. Ordering by first-appearance rather than address avoids favouring low-address senders.

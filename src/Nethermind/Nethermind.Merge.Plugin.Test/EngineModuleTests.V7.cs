@@ -41,7 +41,7 @@ public partial class EngineModuleTests
             Assert.That(fcuResult.Data.PayloadId, Is.Not.Null);
         }
 
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcuResult.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcuResult.Data.PayloadId!));
         Assert.That(payloadResult.Data, Is.Not.Null);
         ExecutionPayloadV4 executionPayload = payloadResult.Data!.ExecutionPayload;
         Assert.That(executionPayload.Transactions, Is.Empty);
@@ -84,7 +84,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(build.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
 
         // Deliver the empty block with a censoring IL → newPayloadV6 retains inclusionListSatisfied=false.
@@ -117,7 +117,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> baselineFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> baselinePayload = await rpc.engine_getPayloadV6(Bytes.FromHexString(baselineFcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> baselinePayload = await rpc.engine_getPayloadV7(Bytes.FromHexString(baselineFcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = baselinePayload.Data!.ExecutionPayload;
 
         // Censored tx: a normal transfer that fits in the empty payload → IL unsatisfied.
@@ -158,7 +158,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
 
         ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(
@@ -205,7 +205,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
 
         // The flattened aggregate can exceed the per-member cap; newPayloadV6 must not reject it.
         byte[] member = new byte[Eip7805Constants.MaxBytesPerInclusionList * 3 / 4];
@@ -231,7 +231,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
 
         // Three members of 1,400 empty entries each: 5,600 SSZ bytes apiece, well inside the per-member cap.
         byte[][] aggregate = new byte[3 * 1400][];
@@ -253,7 +253,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
 
         // At the aggregate limit (IL_COMMITTEE_SIZE * MAX_BYTES_PER_INCLUSION_LIST): accepted.
@@ -294,7 +294,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
 
         // execution-apis#609: at/after Bogota, engine_newPayloadV5 must be rejected with -38005.
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV5(
@@ -318,7 +318,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 executionPayload = payloadResult.Data!.ExecutionPayload;
         byte[][]? executionRequests = payloadResult.Data!.ExecutionRequests;
 
@@ -411,7 +411,7 @@ public partial class EngineModuleTests
         }
 
         // Even the producer's EmptyBlock fast path carries the IL, so the first getPayload is populated.
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         Assert.That(payloadResult.Data, Is.Not.Null);
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
         using (Assert.EnterMultipleScope())
@@ -450,7 +450,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: inclusionList));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
 
         ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(
@@ -495,7 +495,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: inclusionList));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
 
         // Both IL txs must be produced, in ascending-nonce order.
@@ -672,7 +672,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent, Keccak.Zero, parent),
             BuildBogotaPayloadAttributes(inclusionList: [], timestamp: Timestamper.UnixTime.Seconds + slot, slotNumber: slot));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
 
         await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
