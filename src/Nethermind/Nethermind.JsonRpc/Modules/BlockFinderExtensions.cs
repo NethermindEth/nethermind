@@ -11,6 +11,16 @@ namespace Nethermind.JsonRpc.Modules
     public static class BlockFinderExtensions
     {
         public const string HeaderNotFound = "header not found";
+        public const string BlockRangeInFuture = "requested block range is in the future";
+
+        /// <summary>
+        /// Whether either bound of a range is a block number past the head, which eth_getLogs and trace_filter reject as invalid params.
+        /// </summary>
+        public static bool IsRangeInFuture(this IBlockFinder blockFinder, BlockParameter? fromBlock, BlockParameter? toBlock)
+        {
+            ulong? headNumber = blockFinder.Head?.Number;
+            return headNumber < fromBlock?.BlockNumber || headNumber < toBlock?.BlockNumber;
+        }
 
         public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {

@@ -380,6 +380,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     return PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
                 }
 
+                if (blockFinder.IsRangeInFuture(fromBlock, toBlock))
+                {
+                    return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
+                }
+
                 // Collect the whole range first so search errors (e.g. from > to) take precedence over state checks.
                 List<(Block Block, BlockHeader? Parent)> blocks = [];
                 foreach (SearchResult<Block> blockSearch in blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock))
