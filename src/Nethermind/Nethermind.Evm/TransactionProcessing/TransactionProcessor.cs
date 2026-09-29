@@ -242,7 +242,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 IBlockAccessListSource? diffRecorder = BeginPostTxDiffRecording(tx, opts, spec);
                 try
                 {
-                    return ExecuteFrameTx(tx, tracer, opts, header, spec);
+                    return tracer.IsTracing
+                        ? ExecuteFrameTx<OnFlag>(tx, tracer, opts, header, spec)
+                        : ExecuteFrameTx<OffFlag>(tx, tracer, opts, header, spec);
                 }
                 finally
                 {
