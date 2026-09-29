@@ -187,9 +187,7 @@ public class VmState<TGasPolicy> : IDisposable
         }
         _isDisposed = false;
 
-#if DEBUG
-        _rentSite = PooledObjectLeakDetector.RentSite();
-#endif
+        PooledObjectLeakDetector.OnRent(this, nameof(VmState<>));
         [DoesNotReturn, StackTraceHidden]
         static void ThrowIsInUse() => throw new InvalidOperationException("Already in use");
     }
@@ -217,10 +215,7 @@ public class VmState<TGasPolicy> : IDisposable
             return;
         }
         _isDisposed = true;
-#if DEBUG
-        // Not held past the rental: a pooled instance would otherwise retain its last site indefinitely.
-        _rentSite = null;
-#endif
+        PooledObjectLeakDetector.OnReturn(this);
 
         if (DataStack is not null)
         {
@@ -243,24 +238,6 @@ public class VmState<TGasPolicy> : IDisposable
 
         _statePool.Enqueue(this);
     }
-
-#if DEBUG
-
-    private StackTrace? _rentSite;
-
-    /// <remarks>
-    /// A leak is an instance still rented when collected; a disposed one the pool drops (dead thread tier,
-    /// shared overflow) stays silent. <see cref="GC.SuppressFinalize"/> must not be used in <see cref="Dispose"/>:
-    /// it is permanent per object, so it would blind this for every pooled instance after its first reuse.
-    /// </remarks>
-    ~VmState()
-    {
-        if (!_isDisposed)
-        {
-            PooledObjectLeakDetector.Report(nameof(VmState<>), _rentSite);
-        }
-    }
-#endif
 
     public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {

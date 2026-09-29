@@ -18,12 +18,12 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// The DEBUG-only finalizers on <see cref="ExecutionEnvironment"/> and <see cref="VmState{TGasPolicy}"/> report
-/// pooled instances that were rented and never returned.
+/// <see cref="PooledObjectLeakDetector"/> reports pooled <see cref="ExecutionEnvironment"/> and
+/// <see cref="VmState{TGasPolicy}"/> instances that were rented and never returned.
 /// </summary>
 /// <remarks>
-/// <see cref="GC.SuppressFinalize"/> in Dispose is permanent per object, so it would hide every recycled
-/// instance from the check. The recycled cases below are the ones that regress if it returns.
+/// The recycled cases cover instances reused from the pool, which a per-object check disabled on first
+/// dispose (such as <see cref="GC.SuppressFinalize"/>) would hide.
 /// </remarks>
 [NonParallelizable]
 public class PooledObjectLeakDetectionTests
