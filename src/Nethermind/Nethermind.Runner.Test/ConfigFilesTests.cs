@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Nodes;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -275,6 +276,30 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.HistoryTransactionIndexEnabled, true);
         Test<ILogIndexConfig, bool>("mainnet_aztec.json", static c => c.Enabled, true);
         Test<IInitConfig, string>("mainnet_aztec.json", static c => c.BaseDbPath, "nethermind_db/mainnet_aztec");
+    }
+
+    /// <summary>
+    /// mainnet_aztec.json is mainnet.json plus the Aztec node's own settings. Only the pivot is kept in step by the
+    /// sync script, so anything else changed in mainnet.json and not carried over fails here.
+    /// </summary>
+    [Test]
+    public void Aztec_config_is_mainnet_plus_its_own_settings()
+    {
+        JsonObject mainnet = ReadConfig("mainnet.json");
+        JsonObject aztec = ReadConfig("mainnet_aztec.json");
+        foreach ((string section, string key) in (ReadOnlySpan<(string, string)>)[("Init", "BaseDbPath"), ("Init", "LogFileName"), ("Metrics", "NodeName")])
+        {
+            ((JsonObject)mainnet[section]!).Remove(key);
+            ((JsonObject)aztec[section]!).Remove(key);
+        }
+
+        aztec.Remove("FlatDb");
+        aztec.Remove("LogIndex");
+
+        Assert.That(JsonNode.DeepEquals(aztec, mainnet), Is.True, "mainnet_aztec.json has drifted from mainnet.json");
+
+        static JsonObject ReadConfig(string file) =>
+            JsonNode.Parse(File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", file)))!.AsObject();
     }
 
     [TestCase("^spaceneth", "nethermind_db")]
