@@ -9,6 +9,7 @@ every op-*/world-* sync, and filtering on "hoodi" also selected "taiko-hoodi".
 """
 
 import json
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -17,6 +18,20 @@ REPO = Path(__file__).resolve().parents[2]
 SELECT = REPO / "scripts" / "sync" / "select-networks.sh"
 SYNC_LIB = REPO / ".github" / "actions" / "sync-chain" / "lib.sh"
 MATRIX = REPO / "scripts" / "config" / "testnet-matrix.json"
+MATRIX_WORKFLOWS = [
+    REPO / ".github" / "workflows" / name
+    for name in ("sync-supported-chains.yml", "sync-master-validation.yml")
+]
+
+
+def provisioning_expression(workflow):
+    """The jq expression a matrix builder uses to pick each entry's provisioning model."""
+    match = re.search(
+        r"provisioning_model: \((.*?)\n\s*\),", workflow.read_text(), re.DOTALL
+    )
+    if match is None:
+        raise AssertionError(f"{workflow.name} has no provisioning_model expression")
+    return " ".join(match.group(1).split())
 
 
 def select(matrix, network_filter):
@@ -109,6 +124,49 @@ class TestnetMatrixTest(unittest.TestCase):
             self.assertEqual(missing, set(), f"{entry.get('network')} is missing {missing}")
             self.assertIsInstance(entry["local_ssd_count"], int)
             self.assertIsInstance(entry["spot"], bool)
+
+
+class ProvisioningModelTest(unittest.TestCase):
+    """STANDARD must only come from an explicit request; anything unstated resolves to SPOT."""
+
+    def resolve(self, model_input, config):
+        out = subprocess.run(
+            [
+                "jq", "-nr",
+                "--arg", "model", model_input,
+                "--argjson", "config", json.dumps(config),
+                provisioning_expression(MATRIX_WORKFLOWS[0]),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return out.stdout.strip()
+
+    def test_both_matrix_builders_share_one_expression(self):
+        first, second = (provisioning_expression(w) for w in MATRIX_WORKFLOWS)
+        self.assertEqual(first, second)
+
+    def test_an_entry_without_a_spot_key_resolves_to_spot(self):
+        self.assertEqual(self.resolve("Default", {"network": "new-chain"}), "SPOT")
+
+    def test_a_null_spot_resolves_to_spot(self):
+        self.assertEqual(self.resolve("Default", {"spot": None}), "SPOT")
+
+    def test_spot_true_resolves_to_spot(self):
+        self.assertEqual(self.resolve("Default", {"spot": True}), "SPOT")
+
+    def test_an_explicit_spot_false_is_honoured(self):
+        self.assertEqual(self.resolve("Default", {"spot": False}), "STANDARD")
+
+    def test_an_empty_input_behaves_like_default(self):
+        self.assertEqual(self.resolve("", {}), "SPOT")
+
+    def test_the_spot_input_overrides_spot_false(self):
+        self.assertEqual(self.resolve("Spot", {"spot": False}), "SPOT")
+
+    def test_the_standard_input_overrides_spot_true(self):
+        self.assertEqual(self.resolve("Standard", {"spot": True}), "STANDARD")
 
 
 if __name__ == "__main__":
