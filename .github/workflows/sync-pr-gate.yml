@@ -163,7 +163,7 @@ jobs:
             --Sync.SnapSync true \
             --Metrics.NodeName "${node_name}" \
             --Metrics.Enabled true \
-            --Init.LogRules "Synchronization.Peers.SyncPeersReport:Debug"
+            --Init.LogRules "Synchronization.Peers.SyncPeersReport:Debug;BeaconChain.Sync.*:Debug;BeaconChain.P2P.PeerManager:Debug"
 
       - name: Start Grafana Alloy
         continue-on-error: true
