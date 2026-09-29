@@ -4,8 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -13,10 +16,11 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
-using Snappier;
+using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.P2P.Gossip;
 
@@ -52,6 +56,30 @@ public enum ColumnGossipDropReason
 
     /// <summary>A Fulu sidecar whose slot is not above the slot of its held parent.</summary>
     NotAboveParentSlot,
+
+    /// <summary>A Fulu sidecar whose header is an imported block's but whose signature is not the one it was imported with.</summary>
+    HeaderSignatureMismatch,
+
+    /// <summary>A Fulu sidecar whose block is not a descendant of the finalized checkpoint.</summary>
+    NotFinalizedDescendant,
+
+    /// <summary>A Fulu sidecar whose proposer index has no public key in this node's validator key cache.</summary>
+    UnknownProposer,
+
+    /// <summary>A Fulu sidecar whose header signature does not verify against its proposer's public key.</summary>
+    InvalidHeaderSignature,
+
+    /// <summary>A Fulu sidecar under another signed header for a (slot, proposer_index) that already signed <see cref="ColumnGossipRouter.SignedHeadersPerProposal"/>.</summary>
+    ProposerHeaderLimit,
+
+    /// <summary>A Fulu sidecar whose proposer index is not the one the published proposer lookahead names for its slot on its branch.</summary>
+    UnexpectedProposer,
+
+    /// <summary>A Fulu sidecar of a header this node has not imported whose branch or slot the published proposer lookahead does not cover.</summary>
+    ProposerNotVerifiable,
+
+    /// <summary>A Fulu sidecar for a (block root, index) that already ran <see cref="ColumnGossipRouter.KzgBatchesPerColumn"/> KZG batches.</summary>
+    KzgBatchLimit,
 }
 
 /// <summary>
@@ -59,18 +87,17 @@ public enum ColumnGossipDropReason
 /// typed event for sidecars that pass the validation this router can do without beacon state.
 /// </summary>
 /// <remarks>
-/// Implements the EIP-7594 <c>validate_data_column_sidecar_gossip</c> conditions in the spec's own
-/// order (p2p-interface.md), cheapest structural checks first: decode, per-(slot, proposer_index,
-/// index) duplicate suppression, the structural part of <c>verify_data_column_sidecar</c>, subnet
-/// correctness, not-from-a-future-slot, a slot above a held parent's, then the two cryptographic checks (merkle inclusion proof,
-/// KZG cell-proof batch). The remaining conditions - the sidecar's block parent has been seen and
-/// passes validation, the proposer index is valid and its signature verifies, the sidecar's slot is
-/// higher than the slot of a parent not held, the current finalized checkpoint is an ancestor of the sidecar's block,
-/// and the sidecar is proposed by the expected proposer - all need the head state and fork choice.
-/// Exactly like <see cref="GossipRouter"/> leaves full block validation to the orchestrator import
-/// pipeline, this router does not implement them: <see cref="DataColumnSidecarReceived"/> firing is
-/// not spec-complete acceptance, and a caller must run those checks before trusting an adversarial
-/// proposer's sidecar. A Fulu sidecar is therefore consumed and returned as <see cref="MessageValidity.Ignored"/>, never forwarded.
+/// Implements the fulu/p2p-interface.md <c>data_column_sidecar_{subnet_id}</c> conditions in the spec's
+/// order: decode, the structural part of <c>verify_data_column_sidecar</c>, subnet correctness, and the
+/// future and finalized slots. A sidecar whose header is a block this node imported (read from
+/// <paramref name="store"/>) has the signature and proposer that import verified, so it is checked against the
+/// finalized checkpoint, its inclusion proof and its KZG proofs, and is <see cref="MessageValidity.Accepted"/> when
+/// all pass. Any other header is checked against the expected proposer in <paramref name="proposerLookahead"/>, then
+/// the parent checks fork choice can answer and its proposer signature against <paramref name="pubkeys"/>, all before
+/// any KZG work; one whose branch or slot the lookahead does not cover is dropped as the spec's IGNORE without KZG
+/// work and, when its signature verified, queued until the next snapshot or lookahead is published. A sidecar that passes every check
+/// is <see cref="MessageValidity.Accepted"/>. A slot not above a held parent's is rejected first, from the store. KZG work per (block root, index)
+/// stops after <see cref="KzgBatchesPerColumn"/> batches, since every column of a block carries the same header.
 /// <para>
 /// A Gloas sidecar (gloas/p2p-interface.md) needs no state: its block is read from <paramref name="store"/>, which holds only
 /// blocks fork choice accepted, so a held block stands in for both "seen" and "passes validation". A sidecar that verifies
@@ -81,17 +108,53 @@ public enum ColumnGossipDropReason
 /// </remarks>
 /// <param name="store">Where a Gloas sidecar's block is read from; <c>null</c> holds no block, so every Gloas sidecar is parked.</param>
 /// <param name="status">Where the finalized checkpoint is read from; <c>null</c> applies no finalized-slot rule.</param>
+/// <param name="forkChoice">Where a Fulu sidecar's parent and finalized ancestry are read from; <c>null</c> applies neither rule.</param>
+/// <param name="pubkeys">Where a Fulu header's proposer public key is read from; <c>null</c> applies no signature rule.</param>
+/// <param name="proposerLookahead">
+/// Where a Fulu header's expected proposer is read from; <c>null</c> applies no expected-proposer rule, so no sidecar of
+/// a header this node has not imported is forwarded.
+/// </param>
 public sealed class ColumnGossipRouter(
     BeaconChainSpec spec,
     SlotClock slotClock,
     ILogManager logManager,
     DataColumnSidecarPool? pool = null,
     BeaconChainStore? store = null,
-    IBeaconChainStatusSource? status = null)
+    IBeaconChainStatusSource? status = null,
+    ForkChoiceSnapshotHolder? forkChoice = null,
+    PubkeyCache? pubkeys = null,
+    ProposerLookaheadHolder? proposerLookahead = null)
 {
     private const int SeenCacheSize = 4096;
     internal const int GloasBlockCacheSize = 64;
     internal const int NonGloasBlockCacheSize = 4096;
+    private const int ImportedHeaderCacheSize = 256;
+    private const int VerifiedColumnCacheSize = 1 << 14;
+    private const int HeaderSignatureCacheSize = 1024;
+
+    // Holds every (root, index) that can reach KZG in the slot window, two roots per slot over 34 slots and 128 columns, so eviction never resets a live count.
+    private const int KzgBatchCacheSize = 1 << 14;
+
+    // Two blocks' worth of every column; each key holds at most KzgBatchesPerColumn sidecars.
+    private const int ParkedColumnCacheSize = 2 * Eip7594DasConstants.NumberOfColumns;
+
+    /// <summary>The most (block root, index) keys one proposer_index may hold in the queue, so a single key holder cannot evict every honest column.</summary>
+    internal const int ParkedColumnsPerProposer = ParkedColumnCacheSize / 2;
+
+    /// <summary>The most distinct signed headers a (slot, proposer_index) may run KZG work under.</summary>
+    /// <remarks>
+    /// The expected proposer of a slot can still sign any number of headers for it. An honest proposer signs one; two
+    /// already prove an equivocation, so more only add KZG work chosen by the signer.
+    /// </remarks>
+    internal const int SignedHeadersPerProposal = 2;
+
+    /// <summary>The most KZG batches run for one (block root, index); later copies are dropped without KZG work.</summary>
+    /// <remarks>
+    /// Every column of a block carries the same signed header and inclusion proof, so anyone can copy them and send any
+    /// number of copies with altered cells, and the pinned pubsub library has no peer scoring to make a REJECT cost its
+    /// sender anything. An honest copy that arrives within the bound still verifies; a later one is refused.
+    /// </remarks>
+    internal const int KzgBatchesPerColumn = 2;
 
     /// <summary>The most stored blocks decoded per slot for sidecars whose block is not cached and not canonical at a recent slot.</summary>
     /// <remarks>
@@ -110,6 +173,28 @@ public sealed class ColumnGossipRouter(
     private readonly ILogger _logger = logManager.GetClassLogger<ColumnGossipRouter>();
     private readonly LruKeyCache<(ulong Slot, ulong ProposerIndex, ulong Index)> _seenSidecars = new(SeenCacheSize, "beacon column gossip seen sidecars");
     private readonly LruKeyCache<(Hash256 BlockRoot, ulong Index)> _seenGloasSidecars = new(SeenCacheSize, "beacon column gossip seen gloas sidecars");
+
+    // The signature each stored block was imported with, or null for a stored root that is not a readable Fulu block.
+    private readonly LruCache<Hash256, BlsSignature?> _importedHeaderSignatures = new(ImportedHeaderCacheSize, "beacon column gossip imported headers");
+    private volatile SnapshotIndex? _snapshotIndex;
+    private long _kzgBatches;
+    private long _headerSignatureVerifications;
+
+    // Keyed by header root, not by the header's (slot, proposer_index), so a forged header never marks an honest sidecar seen.
+    private readonly LruKeyCache<(Hash256 BlockRoot, ulong Index)> _verifiedColumns = new(VerifiedColumnCacheSize, "beacon column gossip verified columns");
+
+    // Every column of a block carries the same header, so its signature is verified once, not once per column.
+    private readonly LruCache<Hash256, HeaderSignatureCheck> _headerSignatures = new(HeaderSignatureCacheSize, "beacon column gossip header signatures");
+    private readonly LruCache<(ulong Slot, ulong ProposerIndex), Hash256[]> _signedHeaderRoots = new(SeenCacheSize, "beacon column gossip signed headers");
+    private readonly Lock _signedHeaderRootsLock = new();
+    private readonly LruCache<(Hash256 BlockRoot, ulong Index), int> _kzgBatchesByColumn = new(KzgBatchCacheSize, "beacon column gossip kzg batches");
+    private readonly Lock _kzgBatchesLock = new();
+
+    // Signed sidecars whose expected proposer the published snapshot and lookahead cannot verify yet.
+    private readonly LruCache<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> _parkedColumns = new(ParkedColumnCacheSize, "beacon column gossip parked columns");
+    private readonly Lock _parkedLock = new();
+    private ForkChoiceSnapshot? _retriedSnapshot;
+    private ProposerLookaheadSnapshot? _retriedLookahead;
 
     // Every column of a block reads the same bid, so a block is decoded from the store once, not once per column.
     private readonly LruCache<Hash256, GloasBlockColumns> _gloasBlocks = new(GloasBlockCacheSize, "beacon column gossip gloas blocks");
@@ -145,6 +230,12 @@ public sealed class ColumnGossipRouter(
     public event Action<DataColumnSidecar>? DataColumnSidecarReceived;
 
     public long GetDropCount(ColumnGossipDropReason reason) => Interlocked.Read(ref _dropCounts[(int)reason]);
+
+    /// <summary>The Fulu KZG cell-proof batches this router has run.</summary>
+    internal long KzgBatchCount => Interlocked.Read(ref _kzgBatches);
+
+    /// <summary>The header signature pairings this router has run.</summary>
+    internal long HeaderSignatureVerificationCount => Interlocked.Read(ref _headerSignatureVerifications);
 
     /// <summary>Subscribes <paramref name="subnets"/> for <paramref name="forkDigest"/>; every later digest subscribes the same subnets.</summary>
     public void Start(Func<string, ITopic> getTopic, byte[] forkDigest, IReadOnlyList<ulong> subnets)
@@ -209,28 +300,11 @@ public sealed class ColumnGossipRouter(
         }
     }
 
-    /// <summary>Moves all subnet subscriptions to <paramref name="newForkDigest"/>, unsubscribing every other digest.</summary>
-    /// <exception cref="InvalidOperationException"><see cref="Start"/> has not run.</exception>
-    public void RotateDigest(byte[] newForkDigest)
-    {
-        lock (_subscriptionLock)
-        {
-            SubscribeDigest(newForkDigest);
-            string newKey = Convert.ToHexStringLower(newForkDigest);
-            foreach (string key in new List<string>(_subscriptions.Keys))
-            {
-                if (key != newKey)
-                {
-                    UnsubscribeDigest(Convert.FromHexString(key));
-                }
-            }
-        }
-    }
-
     /// <summary>Validates a raw message from the <c>data_column_sidecar_{subnet_id}</c> topic of a Fulu or Gloas digest and consumes it when it passes.</summary>
     /// <returns>
-    /// <see cref="MessageValidity.Accepted"/> only for a Gloas sidecar that verified against its block's bid; otherwise
-    /// <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>, including for a consumed Fulu sidecar.
+    /// <see cref="MessageValidity.Accepted"/> for a Gloas sidecar that verified against its block's bid, or a Fulu sidecar that
+    /// passed every check under an imported block's header or the expected proposer's; otherwise <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>,
+    /// including for a consumed Fulu sidecar whose header this node cannot verify.
     /// </returns>
     internal MessageValidity Handle(ulong subnetId, bool gloasTopic, byte[] message)
     {
@@ -256,6 +330,8 @@ public sealed class ColumnGossipRouter(
 
     private MessageValidity HandleFulu(ulong subnetId, byte[] payload)
     {
+        RetryParked();
+
         DataColumnSidecar sidecar;
         try
         {
@@ -267,6 +343,11 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.InvalidSsz, MessageValidity.Rejected);
         }
 
+        return ValidateFulu(subnetId, sidecar);
+    }
+
+    private MessageValidity ValidateFulu(ulong subnetId, DataColumnSidecar sidecar)
+    {
         // SSZ containers populate every field on decode, so a wire-decoded sidecar's header is never
         // null; this only guards a sidecar reaching this path some other way (e.g. constructed
         // in-process) from null-referencing every check below that reads it.
@@ -328,44 +409,468 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.NotAboveParentSlot, MessageValidity.Rejected);
         }
 
-        // [REJECT] verify_data_column_sidecar_inclusion_proof needs no state; gossip_validation.md lets it run before the parent checks that do.
+        // [REJECT] the proposer signature is valid: an imported block's signature was verified at import.
+        Hash256 blockRoot = SszRoots.HashTreeRoot(header);
+        return ReadImportedHeader(blockRoot, sidecar.SignedBlockHeader.Signature) switch
+        {
+            ImportedHeader.Found => HandleImportedFulu(sidecar, blockRoot, slot, proposerIndex),
+            // Only the signature verified at import is trusted without a BLS check, so another one is dropped, not rejected.
+            ImportedHeader.SignatureMismatch => Drop(ColumnGossipDropReason.HeaderSignatureMismatch, MessageValidity.Ignored),
+            _ => HandleUnimportedFulu(sidecar, header, blockRoot, slot, signatureVerifiedAtImport: false),
+        };
+    }
+
+    /// <summary>The spec checks after the proposer signature, for a sidecar whose header is an imported block's.</summary>
+    /// <remarks>
+    /// Import already required the parent to be seen and valid and the slot to be above the parent's, so every check
+    /// before the finalized-ancestor one has passed and a failure from it on is a REJECT. A sidecar that passes is
+    /// <see cref="MessageValidity.Accepted"/>, so the pubsub library forwards it.
+    /// </remarks>
+    private MessageValidity HandleImportedFulu(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot, ulong proposerIndex)
+    {
+        // [REJECT] the current finalized checkpoint is an ancestor of the block.
+        switch (DescendsFromFinalized(CurrentSnapshot(), blockRoot))
+        {
+            case false:
+                return Drop(ColumnGossipDropReason.NotFinalizedDescendant, MessageValidity.Rejected);
+            case null:
+                return HandleUnimportedFulu(sidecar, sidecar.SignedBlockHeader!.Message!, blockRoot, slot, signatureVerifiedAtImport: true);
+        }
+
+        // [REJECT] verify_data_column_sidecar_inclusion_proof.
         if (!DataColumnSidecarVerifier.VerifyInclusionProof(sidecar))
         {
             return Drop(ColumnGossipDropReason.FailedInclusionProof, MessageValidity.Rejected);
         }
 
-        // [REJECT] verify_data_column_sidecar_kzg_proofs: a native KZG cell-proof batch verification
-        // (Ckzg.VerifyCellKzgProofBatch) over up to MaxBlobCommitmentsPerBlock cells, run synchronously
-        // on this call stack. Unlike every check above, this is real cryptographic work rather than a
-        // hash or a field comparison; the pubsub library invokes this validator inline on its message
-        // read loop, so this call blocks that loop for however long the native batch verify takes
-        // (not benchmarked here - it scales with the sidecar's commitment count, unlike the O(1) checks
-        // above). The seen-check above keys on slot and proposer index from this same unverified
-        // header, plus the column index from the sidecar itself; nothing this router checks ties any
-        // of them to the real proposer. An attacker who mints their own header therefore controls the
-        // key, so this cost is paid once per distinct key the attacker chooses to send, not once per
-        // real sidecar - the deferred proposer signature check is what would actually bound it.
-        if (!DataColumnSidecarVerifier.VerifyKzgProofs(sidecar))
+        // A copy that verified before import leaves the tuple below unmarked, so without this every later copy costs a KZG batch.
+        if (IsColumnVerified(blockRoot, sidecar.Index))
         {
-            return Drop(ColumnGossipDropReason.FailedKzgProofs, MessageValidity.Rejected);
+            return ForwardIfHeld(sidecar, blockRoot, slot, proposerIndex);
         }
 
-        // Deferred (need beacon state / fork choice, exactly like GossipRouter's block handling defers
-        // proposer signature and shuffling): parent-seen, parent-passes-validation, proposer index
-        // validity and signature, higher-slot-than-a-parent-not-held, finalized-checkpoint-is-ancestor, and
-        // expected-proposer. A caller must run those before trusting this sidecar against an
-        // adversarial proposer.
-        if (!_seenSidecars.Set((slot, proposerIndex, sidecar.Index)))
+        // [REJECT] verify_data_column_sidecar_kzg_proofs: a native KZG cell-proof batch, run inline on the pubsub read loop.
+        if (VerifyKzgProofs(sidecar, blockRoot) is { } kzgFailure)
         {
-            return Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
+            return Drop(kzgFailure, kzgFailure == ColumnGossipDropReason.FailedKzgProofs ? MessageValidity.Rejected : MessageValidity.Ignored);
         }
 
-        Hash256 blockRoot = SszRoots.HashTreeRoot(header);
+        return ConsumeVerified(sidecar, blockRoot, slot, proposerIndex);
+    }
+
+    /// <summary>Consumes a sidecar that passed every check and returns <see cref="MessageValidity.Accepted"/>, so the pubsub library forwards it.</summary>
+    private MessageValidity ConsumeVerified(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot, ulong proposerIndex) =>
+        // [IGNORE] the first sidecar for (slot, proposer_index, index) with a valid header signature, inclusion proof and KZG proofs.
+        _seenSidecars.Set((slot, proposerIndex, sidecar.Index)) && TryConsume(sidecar, blockRoot, slot)
+            ? MessageValidity.Accepted
+            : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
+
+    /// <summary>
+    /// Returns <see cref="MessageValidity.Accepted"/> for the first copy of a (slot, proposer_index, index) whose cells and
+    /// proofs equal the pooled copy of its column, which verified under the same header; any other copy is a duplicate.
+    /// </summary>
+    /// <remarks>
+    /// A column consumed without being forwarded, such as one pooled by sync or one whose checks could not all run yet,
+    /// leaves its tuple unmarked. The inclusion proof binds the commitments to the header, so an equal copy needs no KZG batch.
+    /// </remarks>
+    private MessageValidity ForwardIfHeld(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot, ulong proposerIndex) =>
+        pool is not null && pool.TryGet(blockRoot, sidecar.Index, out DataColumnSidecar? held) && held is not null
+            && MemoryMarshal.AsBytes<SszBlobCell>(held.Column).SequenceEqual(MemoryMarshal.AsBytes<SszBlobCell>(sidecar.Column))
+            && MemoryMarshal.AsBytes<SszKzgCommitment>(held.KzgProofs).SequenceEqual(MemoryMarshal.AsBytes<SszKzgCommitment>(sidecar.KzgProofs))
+            && _seenSidecars.Set((slot, proposerIndex, sidecar.Index))
+            ? MessageValidity.Accepted
+            : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
+
+    /// <summary>The spec checks for a sidecar whose header is not a block fork choice holds with known finalized ancestry.</summary>
+    /// <remarks>
+    /// A failure is <see cref="MessageValidity.Rejected"/> only when every check ordered before it ran and passed: the parent
+    /// is in fork choice, its finalized ancestry is known, and the signature was checked; a source this router has none of, such as
+    /// fork choice or the key cache, applies no rule. A sidecar that passes every check
+    /// under a header whose proposer is verified is <see cref="MessageValidity.Accepted"/>; one that passes only the checks
+    /// that could run is <see cref="MessageValidity.Ignored"/> and is marked seen only by header root, never by the
+    /// (slot, proposer_index, index) it claims.
+    /// </remarks>
+    /// <param name="signatureVerifiedAtImport">Whether the header is a stored block's with the signature and proposer import verified.</param>
+    private MessageValidity HandleUnimportedFulu(DataColumnSidecar sidecar, BeaconBlockHeader header, Hash256 blockRoot, ulong slot, bool signatureVerifiedAtImport)
+    {
+        // [IGNORE] the parent has been seen, and [REJECT] it passes validation: fork choice holds only valid blocks.
+        SnapshotIndex? snapshot = CurrentSnapshot();
+        ForkChoiceSnapshotNode? parent = null;
+        if (snapshot is not null && header.ParentRoot is { } parentRoot)
+        {
+            snapshot.Nodes.TryGetValue(parentRoot, out parent);
+        }
+
+        bool rejectable = parent is not null || forkChoice is null;
+
+        // [REJECT] the expected proposer: checked first as it needs no BLS work; import verified an imported block's.
+        ExpectedProposer? proposer = signatureVerifiedAtImport ? ExpectedProposer.Expected
+            : proposerLookahead is null ? null
+            : CheckExpectedProposer(snapshot, parent, header);
+        if (proposer == ExpectedProposer.Unexpected)
+        {
+            return Drop(ColumnGossipDropReason.UnexpectedProposer, MessageValidity.Rejected);
+        }
+
+        // [REJECT] the proposer index is a valid validator index and the proposer signature is valid.
+        bool signatureValid = signatureVerifiedAtImport;
+        if (!signatureVerifiedAtImport)
+        {
+            switch (CheckHeaderSignature(header, blockRoot, sidecar.SignedBlockHeader!.Signature))
+            {
+                case HeaderSignature.Valid:
+                    signatureValid = true;
+                    break;
+                case HeaderSignature.UnknownProposer:
+                    return Drop(ColumnGossipDropReason.UnknownProposer, MessageValidity.Ignored);
+                case HeaderSignature.Invalid:
+                    return Drop(ColumnGossipDropReason.InvalidHeaderSignature, rejectable ? MessageValidity.Rejected : MessageValidity.Ignored);
+            }
+        }
+
+        if (parent is not null)
+        {
+            // [REJECT] the sidecar is from a higher slot than its parent.
+            if (header.Slot <= parent.Slot)
+            {
+                return Drop(ColumnGossipDropReason.NotAboveParentSlot, rejectable ? MessageValidity.Rejected : MessageValidity.Ignored);
+            }
+
+            // [REJECT] the current finalized checkpoint is an ancestor of the sidecar's block.
+            switch (DescendsFromFinalized(snapshot, parent.Root))
+            {
+                case false:
+                    return Drop(ColumnGossipDropReason.NotFinalizedDescendant, rejectable ? MessageValidity.Rejected : MessageValidity.Ignored);
+                case null:
+                    rejectable = false;
+                    break;
+            }
+        }
+
+        // [REJECT] verify_data_column_sidecar_inclusion_proof: a few SHA256 hashes, run before any KZG work.
+        if (!DataColumnSidecarVerifier.VerifyInclusionProof(sidecar))
+        {
+            return Drop(ColumnGossipDropReason.FailedInclusionProof, rejectable ? MessageValidity.Rejected : MessageValidity.Ignored);
+        }
+
+        if (IsColumnVerified(blockRoot, sidecar.Index))
+        {
+            return proposer == ExpectedProposer.Expected && rejectable
+                ? ForwardIfHeld(sidecar, blockRoot, slot, header.ProposerIndex)
+                : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
+        }
+
+        if (!TryAdmitSignedHeader(header.Slot, header.ProposerIndex, blockRoot))
+        {
+            return Drop(ColumnGossipDropReason.ProposerHeaderLimit, MessageValidity.Ignored);
+        }
+
+        // An expected proposer that cannot be verified yet is the spec's IGNORE, "MAY be queued": it runs no KZG work, the only expensive check.
+        if (proposer == ExpectedProposer.Unverifiable)
+        {
+            if (signatureValid)
+            {
+                ParkUnverifiable(sidecar, blockRoot);
+            }
+
+            return Drop(ColumnGossipDropReason.ProposerNotVerifiable, MessageValidity.Ignored);
+        }
+
+        // [REJECT] verify_data_column_sidecar_kzg_proofs: a sidecar reaches the pool only after it passes, so a forgery never displaces the honest copy.
+        if (VerifyKzgProofs(sidecar, blockRoot) is { } kzgFailure)
+        {
+            return Drop(kzgFailure, rejectable && kzgFailure == ColumnGossipDropReason.FailedKzgProofs ? MessageValidity.Rejected : MessageValidity.Ignored);
+        }
+
+        if (proposer == ExpectedProposer.Expected && rejectable)
+        {
+            return ConsumeVerified(sidecar, blockRoot, slot, header.ProposerIndex);
+        }
+
+        return TryConsume(sidecar, blockRoot, slot)
+            ? MessageValidity.Ignored
+            : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
+    }
+
+    /// <summary>fulu/p2p-interface.md: the header's proposer is the expected one for its slot in the shuffling of its branch.</summary>
+    /// <remarks>
+    /// The published lookahead answers only for a branch whose latest block before the lookahead's first slot is its
+    /// dependent root. Any other branch, or a slot outside the lookahead, cannot be verified immediately, which the spec
+    /// turns into an IGNORE.
+    /// </remarks>
+    private ExpectedProposer CheckExpectedProposer(SnapshotIndex? snapshot, ForkChoiceSnapshotNode? parent, BeaconBlockHeader header)
+    {
+        if (snapshot is null || parent is null || proposerLookahead!.Current is not { } lookahead || !lookahead.TryGetProposer(header.Slot, out ulong expected))
+        {
+            return ExpectedProposer.Unverifiable;
+        }
+
+        if (ProposerLookaheadSnapshot.FindDependentRoot(snapshot.Snapshot.Nodes, parent.Root, lookahead.StartSlot) != lookahead.DependentRoot)
+        {
+            return ExpectedProposer.Unverifiable;
+        }
+
+        return expected == header.ProposerIndex ? ExpectedProposer.Expected : ExpectedProposer.Unexpected;
+    }
+
+    /// <summary>fulu/p2p-interface.md: the header's proposer index is in the validator key cache and its signature verifies under <c>DOMAIN_BEACON_PROPOSER</c>.</summary>
+    /// <remarks>
+    /// The key cache may briefly lag the head's registry, so an index outside it is unknown rather than invalid. The domain
+    /// is the fork version scheduled for the header's epoch, which is what <c>get_domain</c> on the head state returns for it.
+    /// </remarks>
+    private HeaderSignature CheckHeaderSignature(BeaconBlockHeader header, Hash256 blockRoot, BlsSignature signature)
+    {
+        if (pubkeys is null)
+        {
+            return HeaderSignature.Unchecked;
+        }
+
+        if (_headerSignatures.TryGet(blockRoot, out HeaderSignatureCheck cached) && cached.Signature == signature)
+        {
+            return cached.Valid ? HeaderSignature.Valid : HeaderSignature.Invalid;
+        }
+
+        bool valid;
+        try
+        {
+            if (header.ProposerIndex >= (ulong)pubkeys.Count)
+            {
+                return HeaderSignature.UnknownProposer;
+            }
+
+            Hash256 domain = Domains.ComputeDomain(DomainType.BeaconProposer, spec.VersionForEpoch(spec.GetEpoch(header.Slot)), spec.GenesisValidatorsRoot);
+            Interlocked.Increment(ref _headerSignatureVerifications);
+            valid = pubkeys.TryGetValidPublicKey((int)header.ProposerIndex, out G1Affine key)
+                && BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // The import worker replaced the key buffer between the count read and the key read.
+            return HeaderSignature.UnknownProposer;
+        }
+
+        // A header has one valid signature, so a verified one is never displaced by a failed one.
+        if (valid || !cached.Valid)
+        {
+            _headerSignatures.Set(blockRoot, new HeaderSignatureCheck(signature, valid));
+        }
+
+        return valid ? HeaderSignature.Valid : HeaderSignature.Invalid;
+    }
+
+    /// <summary>Admits <paramref name="blockRoot"/> for KZG work unless (<paramref name="slot"/>, <paramref name="proposerIndex"/>) already has <see cref="SignedHeadersPerProposal"/> other roots.</summary>
+    private bool TryAdmitSignedHeader(ulong slot, ulong proposerIndex, Hash256 blockRoot)
+    {
+        lock (_signedHeaderRootsLock)
+        {
+            Hash256[] roots = _signedHeaderRoots.Get((slot, proposerIndex)) ?? [];
+            if (Array.IndexOf(roots, blockRoot) >= 0)
+            {
+                return true;
+            }
+
+            if (roots.Length >= SignedHeadersPerProposal)
+            {
+                return false;
+            }
+
+            _signedHeaderRoots.Set((slot, proposerIndex), [.. roots, blockRoot]);
+            return true;
+        }
+    }
+
+    /// <summary>Queues a signed sidecar whose expected proposer cannot be verified yet, keeping at most <see cref="KzgBatchesPerColumn"/> copies per (block root, index).</summary>
+    /// <remarks>More copies could never reach KZG, since a verified copy ends the column's KZG work and failures are bounded.</remarks>
+    private void ParkUnverifiable(DataColumnSidecar sidecar, Hash256 blockRoot)
+    {
+        (Hash256, ulong) key = (blockRoot, sidecar.Index);
+        lock (_parkedLock)
+        {
+            DataColumnSidecar[] copies = _parkedColumns.Get(key) ?? [];
+            if (copies.Length == 0 && ParkedKeysOf(sidecar.SignedBlockHeader!.Message!.ProposerIndex) >= ParkedColumnsPerProposer)
+            {
+                return;
+            }
+
+            if (copies.Length < KzgBatchesPerColumn)
+            {
+                _parkedColumns.Set(key, [.. copies, sidecar]);
+            }
+        }
+    }
+
+    private int ParkedKeysOf(ulong proposerIndex)
+    {
+        int keys = 0;
+        foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry in _parkedColumns.ToArray())
+        {
+            if (entry.Value[0].SignedBlockHeader!.Message!.ProposerIndex == proposerIndex)
+            {
+                keys++;
+            }
+        }
+
+        return keys;
+    }
+
+    /// <summary>Runs every queued sidecar through the checks again once a new fork-choice snapshot or proposer lookahead is published.</summary>
+    /// <remarks>
+    /// A queued sidecar's message was already <see cref="MessageValidity.Ignored"/>, so one that now passes is pooled but
+    /// not forwarded; pubsub drops later copies of the same message id before they reach this router, so only a copy
+    /// under another id, such as one received after the seen cache expires, can still be forwarded. One that still cannot
+    /// be verified is queued again.
+    /// </remarks>
+    private void RetryParked()
+    {
+        ForkChoiceSnapshot? snapshot = forkChoice?.Current;
+        ProposerLookaheadSnapshot? lookahead = proposerLookahead?.Current;
+        if (ReferenceEquals(snapshot, Volatile.Read(ref _retriedSnapshot)) && ReferenceEquals(lookahead, Volatile.Read(ref _retriedLookahead)))
+        {
+            return;
+        }
+
+        KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]>[] parked;
+        lock (_parkedLock)
+        {
+            if (ReferenceEquals(snapshot, _retriedSnapshot) && ReferenceEquals(lookahead, _retriedLookahead))
+            {
+                return;
+            }
+
+            Volatile.Write(ref _retriedSnapshot, snapshot);
+            Volatile.Write(ref _retriedLookahead, lookahead);
+            if (_parkedColumns.Count == 0)
+            {
+                return;
+            }
+
+            parked = _parkedColumns.ToArray();
+            _parkedColumns.Clear();
+        }
+
+        foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry in parked)
+        {
+            foreach (DataColumnSidecar sidecar in entry.Value)
+            {
+                // Its message was already Ignored, so the tuple stays unmarked for any equal copy that reaches this router.
+                if (ValidateFulu(CustodyGroups.ComputeSubnetForDataColumnSidecar(sidecar.Index), sidecar) == MessageValidity.Accepted
+                    && sidecar.SignedBlockHeader?.Message is { } header)
+                {
+                    _seenSidecars.Delete((header.Slot, header.ProposerIndex, sidecar.Index));
+                }
+            }
+        }
+    }
+
+    /// <summary>Adds a sidecar whose KZG proofs passed to the pool and raises <see cref="DataColumnSidecarReceived"/>, unless a copy for its block root and index already did.</summary>
+    private bool TryConsume(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot)
+    {
+        if (!_verifiedColumns.Set((blockRoot, sidecar.Index)))
+        {
+            return false;
+        }
+
         pool?.Add(blockRoot, slot, sidecar);
         DataColumnSidecarReceived?.Invoke(sidecar);
 
         TrackHeldColumnAndMaybeReconstruct(blockRoot, sidecar);
-        return MessageValidity.Ignored;
+        return true;
+    }
+
+    // The pool holds only sidecars whose proofs verified, so a pooled copy counts as verified too.
+    private bool IsColumnVerified(Hash256 blockRoot, ulong index) =>
+        _verifiedColumns.Get((blockRoot, index)) || (pool is not null && pool.TryGet(blockRoot, index, out _));
+
+    /// <summary>Runs <c>verify_data_column_sidecar_kzg_proofs</c> unless <see cref="KzgBatchesPerColumn"/> batches already ran for the sidecar's (block root, index).</summary>
+    /// <returns><c>null</c> when the proofs verify; otherwise why the sidecar is dropped.</returns>
+    /// <remarks>A copy that verifies is held, so later copies of its column never reach this; only failures use up the bound.</remarks>
+    private ColumnGossipDropReason? VerifyKzgProofs(DataColumnSidecar sidecar, Hash256 blockRoot)
+    {
+        (Hash256, ulong) key = (blockRoot, sidecar.Index);
+
+        // Counted before the batch runs, so concurrent copies never run more batches than the bound.
+        lock (_kzgBatchesLock)
+        {
+            _kzgBatchesByColumn.TryGet(key, out int batches);
+            if (batches >= KzgBatchesPerColumn)
+            {
+                return ColumnGossipDropReason.KzgBatchLimit;
+            }
+
+            _kzgBatchesByColumn.Set(key, batches + 1);
+        }
+
+        Interlocked.Increment(ref _kzgBatches);
+        return DataColumnSidecarVerifier.VerifyKzgProofs(sidecar) ? null : ColumnGossipDropReason.FailedKzgProofs;
+    }
+
+    /// <summary>Whether <paramref name="blockRoot"/> is a block this node imported, and if so whether <paramref name="signature"/> is the one it was imported with.</summary>
+    /// <remarks>
+    /// A header that hashes to a stored root is that block's header, and the store holds only blocks whose proposer
+    /// signature was verified at import. Such roots lie within the slot window checked before, so this decodes at most
+    /// the stored blocks of that window, each once.
+    /// </remarks>
+    private ImportedHeader ReadImportedHeader(Hash256 blockRoot, BlsSignature signature)
+    {
+        if (!_importedHeaderSignatures.TryGet(blockRoot, out BlsSignature? imported))
+        {
+            if (store is null || !store.HasBlock(blockRoot))
+            {
+                return ImportedHeader.Unknown;
+            }
+
+            try
+            {
+                imported = store.TryGetForkedBlock(blockRoot, out ForkedSignedBeaconBlock? forked) && forked is ForkedSignedBeaconBlock.OfFulu fulu
+                    ? fulu.Block.Signature
+                    : null;
+            }
+            catch (Exception e) when (e is BeaconStateException or InvalidDataException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Unreadable stored block {blockRoot} named by a data column sidecar: {e.Message}");
+                imported = null;
+            }
+
+            _importedHeaderSignatures.Set(blockRoot, imported);
+        }
+
+        return imported switch
+        {
+            null => ImportedHeader.Unknown,
+            { } stored when stored == signature => ImportedHeader.Found,
+            _ => ImportedHeader.SignatureMismatch,
+        };
+    }
+
+    /// <summary>The latest fork-choice snapshot with its nodes and their finalized ancestry indexed by root, or <c>null</c> when none has been taken.</summary>
+    private SnapshotIndex? CurrentSnapshot()
+    {
+        if (forkChoice?.Current is not { } snapshot)
+        {
+            return null;
+        }
+
+        SnapshotIndex? index = _snapshotIndex;
+        if (index is null || !ReferenceEquals(index.Snapshot, snapshot))
+        {
+            _snapshotIndex = index = SnapshotIndex.Build(snapshot);
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// fork-choice.md <c>get_checkpoint_block(store, root, finalized.epoch) == finalized.root</c>, or <c>null</c> when
+    /// <paramref name="snapshot"/> cannot answer it. With no snapshot source the rule is not applied.
+    /// </summary>
+    private bool? DescendsFromFinalized(SnapshotIndex? snapshot, Hash256 blockRoot)
+    {
+        if (forkChoice is null)
+        {
+            return true;
+        }
+
+        return snapshot is not null && snapshot.DescendsFromFinalized.TryGetValue(blockRoot, out bool descends) ? descends : null;
     }
 
     /// <summary>gloas/p2p-interface.md <c>validate_data_column_sidecar_gossip</c>, in the spec's order.</summary>
@@ -576,10 +1081,9 @@ public sealed class ColumnGossipRouter(
     /// <summary>
     /// Accumulates <paramref name="sidecar"/> under <paramref name="blockRoot"/> and, once this
     /// block's held columns cross <see cref="Eip7594DasConstants.RequiredColumnsForReconstruction"/>,
-    /// reconstructs the full matrix and publishes the columns this node did not itself receive
-    /// (Fulu p2p-interface.md "distributed blob publishing"). Runs at most once per block: a
-    /// completed root is never revisited, so a later gossip arrival for the same block cannot
-    /// re-reconstruct or re-publish. Different subnets' validator calls can run
+    /// reconstructs the full matrix and exposes the columns this node did not itself receive. Runs at
+    /// most once per block: a completed root is never revisited, so a later gossip arrival for the
+    /// same block cannot re-reconstruct or re-expose. Different subnets' validator calls can run
     /// concurrently on separate threads for the very columns reconstruction watches, so the
     /// read-check-mutate sequence over <see cref="_heldColumnsByBlockRoot"/> and
     /// <see cref="_reconstructedBlockRoots"/> runs under <see cref="_reconstructionLock"/>: each
@@ -613,59 +1117,29 @@ public sealed class ColumnGossipRouter(
 
         foreach (ReconstructedSidecarToPublish entry in ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix))
         {
-            PublishReconstructed(entry);
+            ExposeReconstructed(entry, blockRoot);
         }
     }
 
     /// <summary>
-    /// Exposes a locally reconstructed sidecar exactly as if it had arrived over gossip: marks the
-    /// anti-equivocation cache first, then adds it to the serving pool, raises
-    /// <see cref="DataColumnSidecarReceived"/>, and - only if this node is subscribed to the
-    /// sidecar's own subnet - publishes it there. Marking first (rather than after publishing) means
-    /// a genuine concurrent gossip arrival for the same (slot, proposer_index, index) is correctly
-    /// caught as a duplicate by <see cref="Handle"/> instead of racing this method's own update.
+    /// Adds a locally reconstructed sidecar to the serving pool and raises <see cref="DataColumnSidecarReceived"/>, unless a
+    /// gossip copy of its (block root, index) already did.
     /// </summary>
-    private void PublishReconstructed(ReconstructedSidecarToPublish entry)
+    /// <remarks>
+    /// It is not published, so its (slot, proposer_index, index) stays unmarked: the next gossip copy equal to it is
+    /// forwarded without KZG work, which is the only way this node relays the column to its mesh.
+    /// </remarks>
+    private void ExposeReconstructed(ReconstructedSidecarToPublish entry, Hash256 blockRoot)
     {
-        if (!_seenSidecars.Set((entry.Slot, entry.ProposerIndex, entry.Sidecar.Index)))
+        if (!_verifiedColumns.Set((blockRoot, entry.Sidecar.Index)))
         {
-            // A gossip copy of this exact column won the race and already marked the cache: its own
-            // Handle call already added it to the pool and raised the event, so do neither again.
             return;
         }
 
-        Hash256 blockRoot = SszRoots.HashTreeRoot(entry.Sidecar.SignedBlockHeader!.Message!);
+        // Not published: Nethermind.Libp2p preview.45 signs every Publish, which StrictNoSign peers drop.
+        // Publish again once the library omits from, seqno, signature and key under SignaturePolicy.StrictNoSign.
         pool?.Add(blockRoot, entry.Slot, entry.Sidecar);
         DataColumnSidecarReceived?.Invoke(entry.Sidecar);
-
-        if (FindSubnetTopic(entry.Subnet, entry.Slot) is { } topic)
-        {
-            topic.Publish(Snappy.CompressToArray(DataColumnSidecar.Encode(entry.Sidecar)));
-        }
-    }
-
-    /// <summary>The subscribed topic for <paramref name="subnet"/> under the digest of <paramref name="slot"/>, or null if this node does not subscribe it.</summary>
-    private ITopic? FindSubnetTopic(ulong subnet, ulong slot)
-    {
-        // altair/p2p-interface.md: messages SHOULD NOT be re-broadcast from one fork to the other.
-        string key = Convert.ToHexStringLower(ForkDigest.Compute(spec, spec.GetEpoch(slot)));
-        lock (_subscriptionLock)
-        {
-            if (!_subscriptions.TryGetValue(key, out List<(ulong Subnet, ITopic Topic)>? subscriptions))
-            {
-                return null;
-            }
-
-            foreach ((ulong subscribedSubnet, ITopic subscribedTopic) in subscriptions)
-            {
-                if (subscribedSubnet == subnet)
-                {
-                    return subscribedTopic;
-                }
-            }
-        }
-
-        return null;
     }
 
     private ColumnGossipDropReason? ValidateNotFromFuture(ulong slot)
@@ -698,5 +1172,56 @@ public sealed class ColumnGossipRouter(
         PreGloas,
         Unreadable,
         BudgetSpent,
+    }
+
+    private enum ImportedHeader
+    {
+        Unknown,
+        Found,
+        SignatureMismatch,
+    }
+
+    private enum ExpectedProposer
+    {
+        Expected,
+        Unexpected,
+        Unverifiable,
+    }
+
+    private enum HeaderSignature
+    {
+        Valid,
+        Invalid,
+        UnknownProposer,
+        Unchecked,
+    }
+
+    private readonly record struct HeaderSignatureCheck(BlsSignature Signature, bool Valid);
+
+    /// <param name="DescendsFromFinalized">Whether each node's checkpoint block at the finalized epoch is the finalized root; a node whose ancestry leaves the snapshot has no entry.</param>
+    private sealed record SnapshotIndex(ForkChoiceSnapshot Snapshot, Dictionary<Hash256, ForkChoiceSnapshotNode> Nodes, Dictionary<Hash256, bool> DescendsFromFinalized)
+    {
+        /// <remarks>One pass in proto-array order, parents before children, so a check costs a lookup, not a walk to the finalized slot.</remarks>
+        public static SnapshotIndex Build(ForkChoiceSnapshot snapshot)
+        {
+            CheckpointRef finalized = snapshot.FinalizedCheckpoint;
+            ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
+            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = new(snapshot.Nodes.Count);
+            Dictionary<Hash256, bool> descends = new(snapshot.Nodes.Count);
+            foreach (ForkChoiceSnapshotNode node in snapshot.Nodes)
+            {
+                nodes[node.Root] = node;
+                if (node.Slot <= finalizedSlot)
+                {
+                    descends[node.Root] = node.Root == finalized.Root;
+                }
+                else if (node.ParentRoot is { } parentRoot && descends.TryGetValue(parentRoot, out bool parentDescends))
+                {
+                    descends[node.Root] = parentDescends;
+                }
+            }
+
+            return new SnapshotIndex(snapshot, nodes, descends);
+        }
     }
 }

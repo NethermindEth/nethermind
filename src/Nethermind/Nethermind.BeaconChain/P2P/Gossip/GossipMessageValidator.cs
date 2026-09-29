@@ -22,8 +22,9 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// before it has passed.
 /// </para>
 /// <para>
-/// Data column sidecars go to <see cref="ColumnGossipRouter"/>. A Gloas sidecar is the one message that can be
-/// <see cref="MessageValidity.Accepted"/>: every check its spec lists runs here without beacon state.
+/// Data column sidecars go to <see cref="ColumnGossipRouter"/>. They are the only messages that can be
+/// <see cref="MessageValidity.Accepted"/>: a Gloas sidecar, whose every check runs here without beacon state, and a
+/// Fulu sidecar whose header is an imported block's or is signed by the proposer the head state's lookahead expects.
 /// </para>
 /// </remarks>
 public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRouter columns, BeaconChainSpec spec, SlotClock slotClock)
@@ -34,7 +35,7 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
 
     /// <summary>Validates <paramref name="message"/> and consumes it when it passes.</summary>
     /// <returns>
-    /// <see cref="MessageValidity.Accepted"/> only for a Gloas data column sidecar that passed every check; otherwise
+    /// <see cref="MessageValidity.Accepted"/> only for a data column sidecar that passed every check; otherwise
     /// <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>, including for a consumed message.
     /// </returns>
     public MessageValidity Verify(Message message)

@@ -5,18 +5,24 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Ethereum.Ssz.Test;
 using Google.Protobuf;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NUnit.Framework;
+using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
 
@@ -25,9 +31,10 @@ namespace Ethereum.ConsensusSpec.Test;
 /// <see cref="ColumnGossipRouter"/>, with the vector conventions of <see cref="GossipValidationTests"/>.
 /// </summary>
 /// <remarks>
-/// A Fulu sidecar that passes the router's checks is consumed (its event is raised, the result is Ignored); a Gloas one is Accepted.
-/// Both count as raised. Every other verdict must match a row of <see cref="SynchronousVerdicts"/>, and an expected reject the
-/// router does not reject makes the vector not-implemented, named by its reason.
+/// A Fulu router reads fork choice, the key cache and the proposer lookahead seeded from each vector's anchor state and
+/// blocks. A Fulu sidecar that passes is Accepted with its event raised; a Gloas one is Accepted. Both count as raised.
+/// Every other verdict must match a row of <see cref="SynchronousVerdicts"/>, and an expected reject the router does
+/// not reject makes the vector not-implemented, named by its reason.
 /// </remarks>
 [TestFixture]
 public class DataColumnSidecarNetworkingTests
@@ -56,6 +63,15 @@ public class DataColumnSidecarNetworkingTests
                 // REJECTs needing no state that the spec orders after the parent checks; gossip_validation.md lets them run in any order.
                 ("invalid sidecar inclusion proof", ColumnVerdict.Rejected(ColumnGossipDropReason.FailedInclusionProof)),
                 ("invalid sidecar kzg proofs", ColumnVerdict.Rejected(ColumnGossipDropReason.FailedKzgProofs)),
+                ("invalid proposer signature on sidecar block header", ColumnVerdict.Rejected(ColumnGossipDropReason.InvalidHeaderSignature)),
+                ("finalized checkpoint is not an ancestor of sidecar's block", ColumnVerdict.Rejected(ColumnGossipDropReason.NotFinalizedDescendant)),
+                ("sidecar proposer_index does not match expected proposer", ColumnVerdict.Rejected(ColumnGossipDropReason.UnexpectedProposer)),
+                // The expected-proposer REJECT needs no BLS work, so it runs before the key cache is read.
+                ("proposer index out of range", ColumnVerdict.Rejected(ColumnGossipDropReason.UnexpectedProposer)),
+                // A parent fork choice does not hold cannot name the expected proposer; the MAY-queue IGNORE applies.
+                ("sidecar's parent has not been seen", ColumnVerdict.Ignored(ColumnGossipDropReason.ProposerNotVerifiable)),
+                // No record of blocks that failed validation is kept, so such a parent reads as not seen and the vector is reported not-implemented.
+                ("sidecar's parent failed validation", ColumnVerdict.Ignored(ColumnGossipDropReason.ProposerNotVerifiable)),
             ],
             // A sidecar whose block is not held is parked, so "block ... failed validation" is Ignored and reported not-implemented.
             ["gloas"] =
@@ -139,8 +155,12 @@ public class DataColumnSidecarNetworkingTests
     {
         GossipValidationTests.VectorMeta meta = GossipValidationTests.VectorMeta.Load(testCase.CasePath);
         bool gloas = testCase.Fork == "gloas";
-        (ulong genesisTime, ulong anchorFinalizedEpoch) = GossipValidationTests.ReadAnchorState(Path.Combine(testCase.CasePath, "state.ssz_snappy"), gloas);
+        string statePath = Path.Combine(testCase.CasePath, "state.ssz_snappy");
+        (ulong genesisTime, ulong anchorFinalizedEpoch) = GossipValidationTests.ReadAnchorState(statePath, gloas);
+        BeaconStateFulu? anchor = gloas ? null : FuluDriverSupport.DecodeState(statePath);
         BeaconChainSpec spec = GossipValidationTests.WithGenesisTime(GossipValidationTests.VectorSpec(testCase.CasePath, gloas), genesisTime);
+        if (anchor is not null)
+            spec = WithAnchorDomain(spec, anchor);
         DateTime genesis = DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime;
         ManualTimestamper timestamper = new(genesis);
         BeaconChainStatusHolder status = new(spec, timestamper)
@@ -152,7 +172,22 @@ public class DataColumnSidecarNetworkingTests
                 HeadRoot = Hash256.Zero,
             },
         };
-        ColumnGossipRouter router = new(spec, new SlotClock(spec, timestamper), LimboLogs.Instance, store: GossipValidationTests.SeedStore(testCase.CasePath, spec), status: status);
+        SlotClock clock = new(spec, timestamper);
+        BeaconChainStore store = GossipValidationTests.SeedStore(testCase.CasePath, spec);
+        ColumnGossipRouter router;
+        if (anchor is null)
+        {
+            router = new(spec, clock, LimboLogs.Instance, store: store, status: status);
+        }
+        else
+        {
+            (ForkChoiceSnapshot snapshot, ProposerLookaheadSnapshot lookahead) = SeedForkChoice(testCase.CasePath, meta, spec, anchor);
+            router = new(spec, clock, LimboLogs.Instance, store: store, status: status,
+                forkChoice: new ForkChoiceSnapshotHolder { Current = snapshot },
+                pubkeys: FuluDriverSupport.BuildPubkeyCache(anchor.Validators!),
+                proposerLookahead: new ProposerLookaheadHolder { Current = lookahead });
+        }
+
         ulong[] subnets = [.. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static s => (ulong)s)];
         router.Start(static _ => new NullTopic(), ForkDigest.Compute(spec, 0), subnets);
         int raised = 0;
@@ -177,7 +212,7 @@ public class DataColumnSidecarNetworkingTests
                 ([ColumnGossipDropReason.Oversized or ColumnGossipDropReason.InvalidSnappy or ColumnGossipDropReason.InvalidSsz], _, _) => null,
                 ([ColumnGossipDropReason drop], 0, MessageValidity.Rejected) => ColumnVerdict.Rejected(drop),
                 ([ColumnGossipDropReason drop], 0, MessageValidity.Ignored) => ColumnVerdict.Ignored(drop),
-                ([], 1, MessageValidity.Ignored) when !gloas => ColumnVerdict.Raised,
+                ([], 1, MessageValidity.Accepted) when !gloas => ColumnVerdict.Raised,
                 ([], 0, MessageValidity.Accepted) when gloas => ColumnVerdict.Raised,
                 _ => null,
             };
@@ -202,7 +237,7 @@ public class DataColumnSidecarNetworkingTests
                 case "reject" when actual.Action == RouterAction.Rejected:
                     break;
                 case "reject":
-                    uncheckedRejects.Add($"{message.Reason ?? $"message {i}"} (the router's verdict is {actual}: the rule needs BLS, beacon state or a failed-block record)");
+                    uncheckedRejects.Add($"{message.Reason ?? $"message {i}"} (the router's verdict is {actual})");
                     break;
                 default:
                     throw new InvalidDataException($"{label}: unknown expected result");
@@ -215,6 +250,64 @@ public class DataColumnSidecarNetworkingTests
         if (uncheckedRejects.Count > 0)
             throw new NotImplementedInDriverException($"ColumnGossipRouter does not reject: {string.Join("; ", uncheckedRejects)}");
     }
+
+    /// <summary>The fork-choice store and head lookahead of <c>get_forkchoice_store(anchor_state, anchor_block)</c> over the vector's accepted blocks.</summary>
+    /// <remarks>The anchor is the earliest accepted block; meta.yaml's <c>finalized_checkpoint</c>, when present, replaces the store's.</remarks>
+    private static (ForkChoiceSnapshot Snapshot, ProposerLookaheadSnapshot Lookahead) SeedForkChoice(string casePath, GossipValidationTests.VectorMeta meta, BeaconChainSpec spec, BeaconStateFulu anchor)
+    {
+        ForkedSignedBeaconBlock[] blocks = [.. meta.Blocks
+            .Where(static block => !block.Failed)
+            .Select(block => SignedBeaconBlockCodec.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy")), spec))
+            .OrderBy(static block => block.Slot)];
+        if (blocks.Length == 0 || blocks[0].Slot != anchor.Slot)
+            throw new InvalidDataException($"no accepted block at the anchor state's slot {anchor.Slot}");
+
+        HashSet<Hash256> roots = [.. blocks.Select(static block => block.ComputeMessageRoot())];
+        ForkChoiceSnapshotNode[] nodes = [.. blocks.Select(block => new ForkChoiceSnapshotNode(
+            block.Slot, block.ComputeMessageRoot(), roots.Contains(block.ParentRoot) ? block.ParentRoot : null, 0, 0, 0, ExecutionStatus.Valid, Hash256.Zero))];
+        Hash256 anchorRoot = nodes[0].Root;
+        CheckpointRef finalized = new(meta.FinalizedEpoch ?? anchor.FinalizedCheckpoint!.Epoch, ReadFinalizedRoot(casePath) ?? anchorRoot);
+
+        ulong epoch = anchor.GetCurrentEpoch();
+        Hash256 dependentRoot = ProposerLookaheadSnapshot.FindDependentRoot(nodes, anchorRoot, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch))!;
+        return (new ForkChoiceSnapshot(finalized, finalized, Hash256.Zero, nodes), new ProposerLookaheadSnapshot(epoch, dependentRoot, anchor.ProposerLookahead!));
+    }
+
+    /// <summary>meta.yaml's <c>finalized_checkpoint</c> root, given as <c>root</c> or as the name of a <c>block_0x{root}</c> file.</summary>
+    private static Hash256? ReadFinalizedRoot(string casePath)
+    {
+        using StreamReader reader = new(Path.Combine(casePath, "meta.yaml"));
+        YamlStream yaml = [];
+        yaml.Load(reader);
+        YamlMappingNode root = (YamlMappingNode)yaml.Documents[0].RootNode;
+        if (!root.Children.TryGetValue(new YamlScalarNode("finalized_checkpoint"), out YamlNode? node))
+            return null;
+
+        IDictionary<YamlNode, YamlNode> checkpoint = ((YamlMappingNode)node).Children;
+        string hex = checkpoint.TryGetValue(new YamlScalarNode("root"), out YamlNode? rootNode) ? ((YamlScalarNode)rootNode).Value!
+            : checkpoint.TryGetValue(new YamlScalarNode("block"), out YamlNode? blockNode) ? ((YamlScalarNode)blockNode).Value!["block_".Length..]
+            : throw new InvalidDataException("finalized_checkpoint names neither a root nor a block");
+        return new Hash256(Bytes.FromHexString(hex));
+    }
+
+    // get_domain(state, DOMAIN_BEACON_PROPOSER, epoch) reads the anchor state's fork and genesis_validators_root, not the config's.
+    private static BeaconChainSpec WithAnchorDomain(BeaconChainSpec spec, BeaconStateFulu anchor) => new()
+    {
+        ChainId = spec.ChainId,
+        CheckpointSyncUrl = spec.CheckpointSyncUrl,
+        SecondsPerSlot = spec.SecondsPerSlot,
+        SlotsPerEpoch = spec.SlotsPerEpoch,
+        GenesisTime = spec.GenesisTime,
+        GenesisValidatorsRoot = anchor.GenesisValidatorsRoot!,
+        Forks = [new(anchor.Fork!.PreviousVersion!, 0), new(anchor.Fork.CurrentVersion!, anchor.Fork.Epoch)],
+        BlobSchedule = spec.BlobSchedule,
+        ElectraForkEpoch = spec.ElectraForkEpoch,
+        FuluForkEpoch = spec.FuluForkEpoch,
+        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
+        GloasForkEpoch = spec.GloasForkEpoch,
+        GloasForkVersion = spec.GloasForkVersion,
+        Bootnodes = spec.Bootnodes,
+    };
 
     private static bool IsSynchronousVerdict(string fork, string reason, ColumnVerdict verdict) =>
         SynchronousVerdicts.TryGetValue(fork, out (string Reason, ColumnVerdict Verdict)[]? rows) && rows.Contains((reason, verdict));
