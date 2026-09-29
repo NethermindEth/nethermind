@@ -155,15 +155,12 @@ public class SampledColumnCustodianTests
             ReportFailuresShortOfADrop(peerManager.GetBestPeers(0).Single());
 
             serverStatus.Refuse = true;
-            for (int round = 0; round < 8 && peerManager.PeerCount > 0; round++)
-            {
-                await peerManager.RunMaintenanceRoundAsync(token);
-            }
+            await peerManager.RunMaintenanceRoundAsync(token);
 
             string[] drops = [.. logger.LogList.Where(static l => l.StartsWith("Dropping beacon chain peer", StringComparison.Ordinal))];
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(peerManager.PeerCount, Is.Zero);
+                Assert.That(peerManager.PeerCount, Is.Zero, "the failed health check that makes eight consecutive failures drops the peer");
                 Assert.That(drops, Has.Length.EqualTo(1));
                 Assert.That(drops.Single(), Does.Match(@"repeated failures, last: .+"), "the drop names the failure that caused it");
             }
@@ -251,11 +248,7 @@ public class SampledColumnCustodianTests
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
             IReadOnlyList<ulong> uncustodiedWhileHealthy = peerManager.UncustodiedSampledColumns();
-            IBeaconSyncPeer failingPeer = peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P));
-            for (int i = 0; i < 8; i++)
-            {
-                failingPeer.ReportFailure(PeerFailureReason.RequestFailed);
-            }
+            ReportFailuresUpToTheLimit(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P)));
 
             PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
             ulong[] onlyFailingCustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
@@ -263,6 +256,7 @@ public class SampledColumnCustodianTests
             IReadOnlyList<ulong> uncustodied = peerManager.UncustodiedSampledColumns();
             int connected = peerManager.PeerCount;
             bool replacementAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(replacement.P2P), token, Enr(replacementKey, replacement, Eip7594DasConstants.NumberOfCustodyGroups));
+            await peerManager.RunMaintenanceRoundAsync(token);
 
             using (Assert.EnterMultipleScope())
             {
@@ -272,7 +266,78 @@ public class SampledColumnCustodianTests
                 Assert.That(connected, Is.EqualTo(2), "the last custodian of a sampled column stays connected");
                 Assert.That(uncustodied, Is.EqualTo(onlyFailingCustodied), "the columns only the failing peer custodies are sought");
                 Assert.That(replacementAdmitted, Is.True, "at the target, a custodian of those columns is admitted");
+                Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Does.Contain(LoopbackAddress(failing.P2P)), "a passing health check makes the peer selectable again");
             }
+        }
+    }
+
+    /// <summary>
+    /// A peer at the failure limit still counts as a custodian when the pool makes room, since it still serves its columns (fulu/das-core.md):
+    /// over the ceiling the trim keeps it while it is their last custodian, and at the ceiling a candidate custodying them takes its place.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_peer_at_the_failure_limit_counts_as_a_custodian_when_the_pool_makes_room([Values] bool overTheCeiling, CancellationToken token)
+    {
+        using PrivateKey localKey = new(LocalKey);
+        await using BeaconDiscovery discovery = CreateDiscovery(localKey);
+        ulong[] sampled = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns];
+        using PrivateKey bystanderKey = FindPartialCustodian(custody => custody.CountCustodied(sampled) == 0);
+        using PrivateKey replacementKey = new(SupernodeKey);
+        Node failing = CreateNode(custodyGroupCount: Eip7594DasConstants.NumberOfCustodyGroups);
+        Node client = CreateNode();
+        SetMatchingStatus(failing, client);
+        StatusMessageV2 status = client.StatusHolder.CurrentStatus;
+        using ManualResetEventSlim roundStarted = new();
+        PeerManager peerManager = null!;
+        IBeaconSyncPeer failingPeer = null!;
+        // A round's passing health check resets the failing peer's failures, so the bystander's check reports them again before the trim.
+        Node bystander = CreateNode(bystanderKey, statusSource: new ScriptedStatusSource(_ =>
+        {
+            if (roundStarted.IsSet)
+            {
+                SpinWait.SpinUntil(() => peerManager.GetBestPeers(0).Contains(failingPeer), TimeSpan.FromSeconds(10));
+                ReportFailuresUpToTheLimit(failingPeer);
+            }
+
+            return status;
+        }));
+        Node replacement = CreateNode(replacementKey, Eip7594DasConstants.NumberOfCustodyGroups);
+        SetMatchingStatus(replacement);
+
+        await using (client.P2P)
+        await using (failing.P2P)
+        await using (bystander.P2P)
+        await using (replacement.P2P)
+        {
+            await StartAsync(token, failing, bystander, replacement, client);
+            peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(bystander.P2P), token), Is.True);
+            failingPeer = peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P));
+            string[] expected;
+            if (overTheCeiling)
+            {
+                client.Config.MaxPeerCount = 1;
+                client.Config.TargetPeerCount = 1;
+                ReportFailuresUpToTheLimit(failingPeer);
+                roundStarted.Set();
+                await peerManager.RunMaintenanceRoundAsync(token);
+                expected = [PeerIdOf(failing)];
+            }
+            else
+            {
+                client.Config.MaxPeerCount = 2;
+                client.Config.TargetPeerCount = 2;
+                ReportFailuresUpToTheLimit(failingPeer);
+                Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(replacement.P2P), token, Enr(replacementKey, replacement, Eip7594DasConstants.NumberOfCustodyGroups)), Is.True);
+                expected = [PeerIdOf(bystander), PeerIdOf(replacement)];
+            }
+
+            string[] connected = [.. peerManager.Peers.Where(static p => p.State == PeerConnectionState.Connected).Select(static p => p.PeerId)];
+            Assert.That(connected, Is.EquivalentTo(expected), overTheCeiling
+                ? "the last custodian of a sampled column is kept and the bystander, custodying none, is trimmed"
+                : "the peer at the failure limit, no longer the last custodian once the candidate joins, makes room rather than the bystander");
         }
     }
 
@@ -379,6 +444,17 @@ public class SampledColumnCustodianTests
         }
     }
 
+    private static void ReportFailuresUpToTheLimit(IBeaconSyncPeer peer)
+    {
+        // PeerManager's consecutive failure limit.
+        for (int i = 0; i < 8; i++)
+        {
+            peer.ReportFailure(PeerFailureReason.RequestFailed);
+        }
+    }
+
+    private static string PeerIdOf(Node node) => $"{node.P2P.LocalPeerId}";
+
     /// <summary>Records health-check-sized failures on <paramref name="peer"/> until one more failed health check drops it.</summary>
     private static void ReportFailuresShortOfADrop(IBeaconSyncPeer peer)
     {
@@ -413,9 +489,9 @@ public class SampledColumnCustodianTests
         throw new InvalidOperationException("No key in the searched range has the wanted custody");
     }
 
-    private static Node CreateNode(PrivateKey? identity = null, ulong custodyGroupCount = Eip7594DasConstants.CustodyRequirement)
+    private static Node CreateNode(PrivateKey? identity = null, ulong custodyGroupCount = Eip7594DasConstants.CustodyRequirement, IBeaconChainStatusSource? statusSource = null)
     {
-        Node node = PeerBandTests.CreateNode();
+        Node node = PeerBandTests.CreateNode(statusSource);
         node.Metadata.Current.CustodyGroupCount = custodyGroupCount;
         if (identity is not null)
         {
