@@ -223,6 +223,51 @@ public class CachedKeySubgroupTests
             Assert.That(verify, Throws.Nothing);
     }
 
+    /// <summary>Every cached slot holds validator 0's key, so any in-range alias of an index would verify and only the bound can refuse.</summary>
+    private static PubkeyCache SameKeyCache()
+    {
+        Validator[] validators = [.. Enumerable.Range(0, KeyCount).Select(static _ => new Validator { Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(0)).Compress()) })];
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        return cache;
+    }
+
+    private static void ProcessRandaoAt(ulong proposerIndex)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.ProposerLookahead![(int)(state.Slot % Presets.SlotsPerEpoch)] = proposerIndex;
+        BeaconBlockBodyGloas body = new() { RandaoReveal = SignBy(0, state.GetDomain(DomainType.Randao, state.GetCurrentEpoch()), EpochRoot(state.GetCurrentEpoch())) };
+        GloasBlockProcessing.ProcessRandao(state, body, SameKeyCache());
+    }
+
+    private static void VerifyEnvelopeAt(ulong proposerIndex)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        SignedExecutionPayloadBid bid = SelfBuildBid(state, state.LatestBlockHash!, Hash(0x9A));
+        GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true);
+        state.LatestBlockHeader!.ProposerIndex = proposerIndex;
+        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, ValidatorKey(0), Presets.BuilderIndexSelfBuild);
+        GloasBlockProcessing.VerifyExecutionPayloadEnvelope(new BlockStates().Add(state), envelope, new AcceptingNotifier(), SameKeyCache());
+    }
+
+    [Test]
+    public void Gloas_randao_reveal_for_a_proposer_index_outside_the_key_cache_is_refused(
+        [Values((ulong)KeyCount, (ulong)KeyCount + 1, 2048UL, 1UL << 31, 1UL << 32, ulong.MaxValue)] ulong proposerIndex) =>
+        Assert.That(() => ProcessRandaoAt(proposerIndex), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("Invalid RANDAO reveal"));
+
+    [Test]
+    public void Gloas_randao_reveal_for_the_last_cached_proposer_index_is_accepted() =>
+        Assert.That(() => ProcessRandaoAt(KeyCount - 1), Throws.Nothing);
+
+    [Test]
+    public void Self_build_envelope_for_a_proposer_index_outside_the_key_cache_is_refused(
+        [Values((ulong)KeyCount, (ulong)KeyCount + 1, 2048UL, 1UL << 31, 1UL << 32, ulong.MaxValue)] ulong proposerIndex) =>
+        Assert.That(() => VerifyEnvelopeAt(proposerIndex), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("Invalid execution payload envelope signature"));
+
+    [Test]
+    public void Self_build_envelope_for_the_last_cached_proposer_index_is_accepted() =>
+        Assert.That(() => VerifyEnvelopeAt(KeyCount - 1), Throws.Nothing);
+
     /// <summary>The verdict for a key is fixed by its first check, so a later read of the same index never re-derives it.</summary>
     [Test]
     public void A_refused_key_stays_refused_on_every_later_read()
