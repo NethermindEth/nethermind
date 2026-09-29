@@ -40,7 +40,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// A checkpoint candidate evicted from the boundary tier while <paramref name="isAboveFinalized"/> holds is persisted,
 /// because a root first justified after leaving both tiers is resolvable only from the store. With finality two or three
 /// epochs behind, a canonical candidate is usually finalized before eight later ones evict it; under non-finality this
-/// writes about one state per epoch beyond the tier's span. The store has no state deletion, so these states stay after finality.
+/// writes about one state per epoch beyond the tier's span.
 /// <para/>
 /// A node started from a Gloas anchor has no Fulu lineage: <see cref="LineageRoot"/> and
 /// <see cref="LineageState"/> are then <c>null</c>.
