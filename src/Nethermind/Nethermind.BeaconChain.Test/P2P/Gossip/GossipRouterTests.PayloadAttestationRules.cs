@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -67,8 +68,9 @@ public partial class GossipRouterTests
         if (testCase is PtcCase.AlreadySeen or PtcCase.SeenForAnotherValidator)
         {
             // Another signature, so a drop below is the pair rule and not the message id.
-            router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true,
-                Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, testCase == PtcCase.AlreadySeen ? PtcValidator : PtcValidator + 1, signatureSeed: 1))));
+            PayloadAttestationMessage seen = PtcVote(PtcBlockRoot, PtcSlot, testCase == PtcCase.AlreadySeen ? PtcValidator : PtcValidator + 1, signatureSeed: 1);
+            Handle(router, seen);
+            router.MarkPayloadAttestationVerified(seen);
             received = 0;
         }
 
@@ -133,9 +135,9 @@ public partial class GossipRouterTests
         }
     }
 
-    /// <summary>Each raised vote costs fork choice a BLS verify, so a repeat for the same (slot, validator) is dropped whatever its signature.</summary>
+    /// <summary>Each raised vote costs fork choice a BLS verify, so a pair is raised at most the attempt limit of times while none has verified.</summary>
     [Test]
-    public void Payload_attestation_repeats_with_other_signatures_are_raised_once()
+    public void Payload_attestation_repeats_with_other_signatures_are_raised_up_to_the_attempt_limit()
     {
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
@@ -151,14 +153,89 @@ public partial class GossipRouterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(received, Is.EqualTo(1));
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(repeats));
+            Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts));
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(repeats + 1 - GossipRouter.PayloadAttestationVerifyAttempts));
         }
     }
 
-    /// <summary>Handlers racing on one (slot, validator) pair with different signatures must raise a single vote: the pair claim is atomic.</summary>
+    /// <summary>gloas/p2p-interface.md IGNOREs a repeat only after the first valid message: a forgery that failed its verify must not hide the genuine vote.</summary>
     [Test]
-    public void Payload_attestation_pair_raced_by_concurrent_handlers_is_raised_once([Range(0, 4)] int round)
+    public void Payload_attestation_after_failed_verifies_is_raised_until_one_verifies([Values(0, 1, 2)] int forgeriesFirst)
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        List<byte> raised = [];
+        router.PayloadAttestationMessageReceived += vote => raised.Add(vote.Signature.Bytes[0]);
+        PayloadAttestationMessage genuine = PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 100);
+
+        for (byte forged = 1; forged <= forgeriesFirst; forged++)
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: forged));
+        Handle(router, genuine);
+        router.MarkPayloadAttestationVerified(genuine);
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 101));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(raised, Is.EqualTo(Enumerable.Range(1, forgeriesFirst).Select(static i => (byte)i).Append((byte)100)), "the genuine vote is raised after the forgeries");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1), "a vote after the verified one is dropped");
+        }
+    }
+
+    /// <summary>A vote the vote queue refused must give back its attempt and its message id, or a later copy is dropped unverified.</summary>
+    [Test]
+    public void Released_payload_attestation_gives_back_its_attempt_and_message_id()
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        int received = 0;
+        router.PayloadAttestationMessageReceived += _ => received++;
+        PayloadAttestationMessage refused = PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 1);
+        Handle(router, refused);
+        for (byte seed = 2; seed <= GossipRouter.PayloadAttestationVerifyAttempts; seed++)
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: seed));
+        int beforeRelease = received;
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 200));
+        long droppedBeforeRelease = router.GetDropCount(GossipDropReason.Duplicate);
+
+        router.ReleasePayloadAttestation(refused);
+        Handle(router, refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((beforeRelease, droppedBeforeRelease), Is.EqualTo((GossipRouter.PayloadAttestationVerifyAttempts, 1L)), "fixture: the attempts were spent");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(droppedBeforeRelease), "the identical copy is not dropped");
+            Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1), "the identical copy is raised again");
+        }
+    }
+
+    /// <summary>Copies of one message racing must spend one attempt: the losers of the message-id race hand theirs back.</summary>
+    [Test]
+    public void Identical_payload_attestations_raced_by_concurrent_handlers_spend_one_attempt([Range(0, 4)] int round)
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        int received = 0;
+        router.PayloadAttestationMessageReceived += _ => Interlocked.Increment(ref received);
+        const int handlers = 16;
+        byte[] copy = Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 1)));
+        using Barrier start = new(handlers);
+
+        Parallel.For(0, handlers, new ParallelOptions { MaxDegreeOfParallelism = handlers }, _ =>
+        {
+            start.SignalAndWait();
+            router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, copy);
+        });
+
+        int afterCopies = received;
+        for (byte seed = 2; seed < 2 + GossipRouter.PayloadAttestationVerifyAttempts - 1; seed++)
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: seed));
+
+        Assert.That((afterCopies, received), Is.EqualTo((1, GossipRouter.PayloadAttestationVerifyAttempts)), "the losing copies left their attempts for other votes");
+    }
+
+    /// <summary>Handlers racing on one (slot, validator) pair with different signatures must raise at most the attempt limit: the count is atomic.</summary>
+    [Test]
+    public void Payload_attestation_pair_raced_by_concurrent_handlers_is_raised_up_to_the_attempt_limit([Range(0, 4)] int round)
     {
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
@@ -174,10 +251,75 @@ public partial class GossipRouterTests
             router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, messages[i]);
         });
 
-        Assert.That(received, Is.EqualTo(1));
+        Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts));
     }
 
-    /// <summary>A vote for a block not held yet is not the pair's one verify: the same member's vote is raised once the block is stored.</summary>
+    /// <summary>Many fresh pairs raced at once: a check-then-act claim or a pair created twice lets a pair pass more than the attempt limit.</summary>
+    [Test]
+    [Repeat(3)]
+    public void Payload_attestation_pairs_raced_across_many_validators_are_each_raised_up_to_the_attempt_limit()
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        const int handlers = 16;
+        const int pairs = 400;
+        int[] raised = new int[pairs];
+        router.PayloadAttestationMessageReceived += vote => Interlocked.Increment(ref raised[vote.ValidatorIndex]);
+        byte[][][] messages = [.. Enumerable.Range(0, pairs).Select(v => Enumerable.Range(0, handlers)
+            .Select(i => Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, (ulong)v, signatureSeed: (byte)(i + 1))))).ToArray())];
+        using Barrier start = new(handlers);
+
+        Task[] tasks = [.. Enumerable.Range(0, handlers).Select(i => Task.Factory.StartNew(() =>
+        {
+            for (int pair = 0; pair < pairs; pair++)
+            {
+                start.SignalAndWait();
+                router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, messages[pair][i]);
+            }
+        }, TaskCreationOptions.LongRunning))];
+        Task.WaitAll(tasks);
+
+        Assert.That(raised, Is.All.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts));
+    }
+
+    /// <summary>The verified mark and the attempt count share one lock: a mark racing claims on a fresh pair must still close it.</summary>
+    [Test]
+    [Repeat(8)]
+    public void Payload_attestation_verified_mark_racing_claims_closes_the_pair()
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        const int handlers = 2;
+        const int pairs = 1500;
+        router.PayloadAttestationMessageReceived += _ => { };
+        byte[][][] messages = [.. Enumerable.Range(0, pairs).Select(v => Enumerable.Range(0, handlers)
+            .Select(i => Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, (ulong)v, signatureSeed: (byte)(i + 1))))).ToArray())];
+        using Barrier start = new(handlers + 1);
+
+        Task[] tasks = [.. Enumerable.Range(0, handlers + 1).Select(i => Task.Factory.StartNew(() =>
+        {
+            for (int pair = 0; pair < pairs; pair++)
+            {
+                start.SignalAndWait();
+                if (i == handlers)
+                    router.MarkPayloadAttestationVerified(PtcVote(PtcBlockRoot, PtcSlot, (ulong)pair, signatureSeed: 250));
+                else
+                    router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, messages[pair][i]);
+            }
+        }, TaskCreationOptions.LongRunning))];
+        Task.WaitAll(tasks);
+
+        int reopened = 0;
+        router.PayloadAttestationMessageReceived += _ => reopened++;
+        for (int pair = 0; pair < pairs; pair++)
+        {
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, (ulong)pair, signatureSeed: 251));
+        }
+
+        Assert.That(reopened, Is.Zero, "every pair was marked verified");
+    }
+
+    /// <summary>A vote for a block not held yet spends none of the pair's verify attempts: the same member's vote is raised once the block is stored.</summary>
     [Test]
     public void Payload_attestation_for_an_unheld_block_does_not_claim_the_pair()
     {
@@ -222,6 +364,9 @@ public partial class GossipRouterTests
             Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
         }
     }
+
+    private static MessageValidity Handle(GossipRouter router, PayloadAttestationMessage vote) =>
+        router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(vote)));
 
     private static PayloadAttestationMessage PtcVote(Hash256 blockRoot, ulong slot, ulong validator = PtcValidator, byte signatureSeed = 0) => new()
     {

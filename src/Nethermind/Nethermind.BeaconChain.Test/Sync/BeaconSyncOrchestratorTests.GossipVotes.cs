@@ -62,15 +62,16 @@ public partial class BeaconSyncOrchestratorTests
     /// <summary>
     /// gloas/p2p-interface.md <c>payload_attestation_message</c> IGNOREs a repeat only after a valid vote, but the router cannot check the
     /// signature and each vote under a PTC member's index costs fork choice a BLS verify. A (slot, validator) pair is therefore
-    /// verified once whatever the signature, so a flood of forged repeats costs one verify, and other validators' votes are unaffected.
+    /// verified at most the attempt limit of times while none verifies, so a flood of forged repeats has a bounded cost, and other
+    /// validators' votes are unaffected.
     /// </summary>
     [Test]
-    public async Task Payload_attestation_pair_is_verified_once_whatever_the_signature([Values] bool firstAccepted)
+    public async Task Payload_attestation_pair_is_verified_at_most_the_attempt_limit_of_times_whatever_the_signature()
     {
         ulong slot = FirstGloasSlot + 1;
         GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
         Harness harness = CreateHarness(router: router);
-        harness.Importer.AcceptsGossipOperations = firstAccepted;
+        harness.Importer.AcceptsGossipOperations = false;
         harness.Orchestrator.RouteGossipEvents();
 
         const int forgeries = 3 * BeaconSyncOrchestrator.VotesPerPass;
@@ -87,9 +88,98 @@ public partial class BeaconSyncOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(repeats.Append(first).Append(otherValidator), Is.All.EqualTo(MessageValidity.Ignored), "consumed by the router, never forwarded");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries), "each repeat is dropped before it is queued");
-            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(2), "one verify for the pair and one for the other validator");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries + 1 - GossipRouter.PayloadAttestationVerifyAttempts), "each repeat past the limit is dropped before it is queued");
+            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1), "the limit for the pair and one for the other validator");
             Assert.That(harness.Importer.GossipOperations, Is.All.TypeOf<PayloadAttestationMessage>());
+        }
+    }
+
+    /// <summary>
+    /// A forged vote that fork choice refuses leaves the pair open, so the member's genuine vote behind it still reaches fork choice; once
+    /// a vote is accepted the pair is closed and later votes for it are dropped before the queue.
+    /// </summary>
+    [Test]
+    public async Task Payload_attestation_genuine_vote_after_a_refused_forgery_is_verified_and_closes_the_pair()
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Orchestrator.RouteGossipEvents();
+
+        harness.Importer.AcceptsGossipOperations = false;
+        PtcVote(router, slot, validatorIndex: 7, signatureSeed: 1);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        harness.Importer.AcceptsGossipOperations = true;
+        PtcVote(router, slot, validatorIndex: 7, signatureSeed: 2);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        int verifiedBeforeRepeat = harness.Importer.GossipOperations.Count;
+        PtcVote(router, slot, validatorIndex: 7, signatureSeed: 3);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifiedBeforeRepeat, Is.EqualTo(2), "the genuine vote reached fork choice behind the forgery");
+            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(2), "a vote after the accepted one is not verified");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>gloas/p2p-interface.md IGNOREs every vote after the first valid one: votes queued before that one is processed must not reach fork choice again.</summary>
+    [Test]
+    public async Task Payload_attestation_votes_queued_before_the_first_verifies_are_applied_once()
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Orchestrator.RouteGossipEvents();
+
+        PtcVote(router, slot, validatorIndex: 7, payloadPresent: true, signatureSeed: 1);
+        PtcVote(router, slot, validatorIndex: 7, payloadPresent: false, signatureSeed: 2);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(1));
+    }
+
+    /// <summary>
+    /// A vote the full vote channel refuses must not use up its pair's attempts or its message id: while the channel is full every
+    /// copy is refused, and once it drains a later copy, identical or not, is still verified.
+    /// </summary>
+    [Test]
+    public async Task Payload_attestation_refused_by_a_full_vote_channel_can_still_be_verified_later([Values] bool identicalCopy)
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Orchestrator.RouteGossipEvents();
+        const ulong member = BeaconSyncOrchestrator.VoteQueueCapacity;
+        for (ulong validator = 0; validator < BeaconSyncOrchestrator.VoteQueueCapacity; validator++)
+        {
+            PtcVote(router, slot, validator);
+        }
+
+        ulong droppedBefore = Metrics.BeaconChainGossipDropped;
+        const int refusedCopies = GossipRouter.PayloadAttestationVerifyAttempts + 1;
+        for (byte seed = 1; seed <= refusedCopies; seed++)
+        {
+            PtcVote(router, slot, member, signatureSeed: seed);
+        }
+
+        ulong dropped = Metrics.BeaconChainGossipDropped - droppedBefore;
+        for (int pass = 0; pass < BeaconSyncOrchestrator.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass + 1; pass++)
+        {
+            await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        }
+
+        int verifiedBefore = harness.Importer.GossipOperations.Count;
+        PtcVote(router, slot, member, signatureSeed: identicalCopy ? (byte)1 : (byte)200);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dropped, Is.EqualTo((ulong)refusedCopies), "fixture: every copy reached the full channel and was refused");
+            Assert.That(verifiedBefore, Is.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity), "fixture: the refused copies were never queued");
+            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity + 1), "the later copy is verified");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.Zero);
         }
     }
 
@@ -161,26 +251,38 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
-    /// gloas/fork-choice.md <c>on_payload_attestation_message</c> checks a gossip vote against the store's current slot, so a vote
-    /// queued before a slot tick must reach fork choice before that tick moves the store to the next slot.
+    /// gloas/fork-choice.md <c>on_payload_attestation_message</c> checks a gossip vote against the store's current slot, so every vote
+    /// queued before a slot tick must reach fork choice before that tick moves the store to the next slot, however many are queued,
+    /// and every vote queued after the tick must reach it after the tick.
     /// </summary>
     [Test]
-    public async Task Payload_attestation_queued_before_a_slot_tick_reaches_fork_choice_first()
+    public async Task Payload_attestations_reach_fork_choice_in_order_with_a_slot_tick(
+        [Values(1, BeaconSyncOrchestrator.VotesPerPass, BeaconSyncOrchestrator.VotesPerPass + 3)] int votesBeforeTick)
     {
         ulong slot = FirstGloasSlot + 1;
         GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
         Harness harness = CreateHarness(router: router);
         harness.Orchestrator.RouteGossipEvents();
         int ticksBefore = harness.Importer.Ticks.Count;
+        const int votesAfterTick = 2;
+        for (ulong validator = 0; validator < (ulong)(votesBeforeTick + votesAfterTick); validator++)
+        {
+            if (validator == (ulong)votesBeforeTick)
+            {
+                await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 1, CancellationToken.None);
+            }
 
-        Assert.That(PtcVote(router, slot, validatorIndex: 7, payloadPresent: true), Is.EqualTo(MessageValidity.Ignored), "fixture: the vote is raised");
-        await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 1, CancellationToken.None);
+            Assert.That(PtcVote(router, slot, validator), Is.EqualTo(MessageValidity.Ignored), "fixture: the vote is raised");
+        }
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.Importer.Ticks, Has.Count.EqualTo(ticksBefore + 1), "fixture: the tick was processed");
-            Assert.That(harness.Importer.TicksAtGossipOperations, Is.EqualTo((int[])[ticksBefore]), "the vote reached fork choice before the tick");
+            Assert.That(harness.Importer.TicksAtGossipOperations,
+                Is.EqualTo(Enumerable.Repeat(ticksBefore, votesBeforeTick).Concat(Enumerable.Repeat(ticksBefore + 1, votesAfterTick))));
         }
     }
 

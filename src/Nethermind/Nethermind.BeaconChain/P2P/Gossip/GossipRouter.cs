@@ -86,6 +86,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private const int EnvelopeBlockCacheSize = 1024;
     private const int SeenSlashedIndexCacheSize = 8192;
     private const int SeenPayloadAttestationCacheSize = 2048;
+
+    /// <summary>The most payload attestations raised for fork choice to verify per (slot, validator) pair while none has verified.</summary>
+    internal const int PayloadAttestationVerifyAttempts = 3;
     private const int MaxDeferredMessages = 64;
 
     /// <summary>The most stored blocks decoded per slot for envelopes whose block is not cached and not canonical at a recent slot.</summary>
@@ -123,8 +126,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     // Written once an attester slashing verifies; read on the network thread. An evicted index only makes a later slashing consumed again.
     private readonly LruKeyCache<ulong> _seenSlashedIndices = new(SeenSlashedIndexCacheSize, "beacon gossip slashed indices");
 
-    // Claimed when a payload attestation is raised, whatever its signature: fork choice pays a BLS verify for each raised vote, so a repeat with another signature must not reach it.
-    private readonly LruKeyCache<(ulong Slot, ulong ValidatorIndex)> _seenPayloadAttestations = new(SeenPayloadAttestationCacheSize, "beacon gossip payload attestations");
+    // Each raised payload attestation costs fork choice a BLS verify: a pair gets a few attempts, and none once one has verified.
+    private readonly Lock _payloadAttestationLock = new();
+    private readonly LruCache<(ulong Slot, ulong ValidatorIndex), PayloadAttestationPair> _payloadAttestationPairs = new(SeenPayloadAttestationCacheSize, "beacon gossip payload attestations");
 
     private readonly StoredBlockSlots? _storedBlockSlots = store is null ? null : new(store, slotClock, logManager.GetClassLogger<GossipRouter>(), "beacon gossip stored block slots");
 
@@ -167,6 +171,58 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>Records that an envelope for <paramref name="blockRoot"/> from <paramref name="builderIndex"/> passed every gossip check, its signature included.</summary>
     /// <remarks>The spec IGNOREs later envelopes for the pair only once a valid one is seen, so an unverified envelope must never mark it.</remarks>
     internal void MarkEnvelopeSeen(Hash256 blockRoot, ulong builderIndex) => _seenEnvelopes.Set((blockRoot, builderIndex));
+
+    /// <summary>Records that a payload attestation passed its signature check in fork choice, so later votes for its (slot, validator) pair are ignored.</summary>
+    /// <remarks>The spec IGNOREs later votes for the pair only once a valid one is seen, so an unverified vote must never mark it.</remarks>
+    internal void MarkPayloadAttestationVerified(PayloadAttestationMessage vote)
+    {
+        lock (_payloadAttestationLock)
+        {
+            GetPayloadAttestationPair(vote).Verified = true;
+        }
+    }
+
+    /// <summary>Whether a vote for the payload attestation's (slot, validator) pair already verified, so fork choice need not verify another.</summary>
+    /// <remarks>Votes raised before the first one verified are already queued; the spec IGNOREs each of them once a valid one is seen.</remarks>
+    internal bool IsPayloadAttestationVerified(PayloadAttestationMessage vote)
+    {
+        lock (_payloadAttestationLock)
+        {
+            return _payloadAttestationPairs.TryGet((vote.Data!.Slot, vote.ValidatorIndex), out PayloadAttestationPair? pair) && pair.Verified;
+        }
+    }
+
+    /// <summary>Hands back the verify attempt and the message id of a payload attestation the vote queue refused, so a later copy can still be verified.</summary>
+    internal void ReleasePayloadAttestation(PayloadAttestationMessage vote)
+    {
+        ReleasePayloadAttestationAttempt(vote);
+        _seenPayloadAttestationMessages.Delete(SeenKey(GossipTopics.PayloadAttestationMessage, PayloadAttestationMessage.Encode(vote)));
+    }
+
+    private void ReleasePayloadAttestationAttempt(PayloadAttestationMessage vote)
+    {
+        lock (_payloadAttestationLock)
+        {
+            PayloadAttestationPair pair = GetPayloadAttestationPair(vote);
+            if (pair.Attempts > 0)
+            {
+                pair.Attempts--;
+            }
+        }
+    }
+
+    // Callers hold _payloadAttestationLock.
+    private PayloadAttestationPair GetPayloadAttestationPair(PayloadAttestationMessage vote)
+    {
+        (ulong, ulong) key = (vote.Data!.Slot, vote.ValidatorIndex);
+        if (!_payloadAttestationPairs.TryGet(key, out PayloadAttestationPair? pair))
+        {
+            pair = new PayloadAttestationPair();
+            _payloadAttestationPairs.Set(key, pair);
+        }
+
+        return pair;
+    }
 
     /// <summary>Records the intersecting indices of an attester slashing that passed every gossip check, its signatures included.</summary>
     /// <remarks>
@@ -337,8 +393,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// a vote passing them is raised for fork choice to verify and is never forwarded.
     /// </summary>
     /// <remarks>
-    /// Only the first vote raised for a (slot, validator) pair is verified, though the spec IGNOREs a repeat only after a valid one:
-    /// the signature cannot be checked here, and each forged vote under a PTC member's index would cost fork choice a BLS verify.
+    /// The spec IGNOREs a repeat only after a valid vote, but the signature cannot be checked here and each forged vote under a PTC
+    /// member's index would cost fork choice a BLS verify: a pair is raised at most <see cref="PayloadAttestationVerifyAttempts"/> times
+    /// until <see cref="MarkPayloadAttestationVerified"/> records a vote that verified.
     /// </remarks>
     private MessageValidity HandlePayloadAttestationMessage(byte[] message) =>
         Handle(GossipTopics.PayloadAttestationMessage, message,
@@ -346,10 +403,11 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             ValidatePayloadAttestation,
             vote => PayloadAttestationMessageReceived?.Invoke(vote),
             PayloadAttestationMessageSize,
-            _seenPayloadAttestationMessages);
+            _seenPayloadAttestationMessages,
+            ReleasePayloadAttestationAttempt);
 
     private MessageValidity Handle<T>(string name, byte[] message, Func<byte[], T> decode, Func<T, Verdict?> validate, Action<T> raise, int maxSize = Eth2MessageId.MaxGossipSize,
-        LruKeyCache<ValueHash256>? seenMessages = null) where T : class
+        LruKeyCache<ValueHash256>? seenMessages = null, Action<T>? releaseClaim = null) where T : class
     {
         seenMessages ??= _seenMessages;
         ReleaseDueMessages();
@@ -395,6 +453,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         // by a later copy under another message id. Set returns false when a concurrent handler raced us.
         if (!seenMessages.Set(seenKey))
         {
+            releaseClaim?.Invoke(value);
             return Drop(name, GossipDropReason.Duplicate, MessageValidity.Ignored);
         }
 
@@ -682,9 +741,21 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             : ClaimPayloadAttestationPair(vote);
     }
 
-    // One atomic claim per (slot, validator): concurrent handlers cannot both pass, so the pair pays one signature check whatever the signature.
-    private Verdict? ClaimPayloadAttestationPair(PayloadAttestationMessage vote) =>
-        _seenPayloadAttestations.Set((vote.Data!.Slot, vote.ValidatorIndex)) ? null : Verdict.Ignore(GossipDropReason.Duplicate);
+    // The attempt count and the verified mark change under one lock, so concurrent handlers cannot overspend a pair's attempts.
+    private Verdict? ClaimPayloadAttestationPair(PayloadAttestationMessage vote)
+    {
+        lock (_payloadAttestationLock)
+        {
+            PayloadAttestationPair pair = GetPayloadAttestationPair(vote);
+            if (pair.Verified || pair.Attempts >= PayloadAttestationVerifyAttempts)
+            {
+                return Verdict.Ignore(GossipDropReason.Duplicate);
+            }
+
+            pair.Attempts++;
+            return null;
+        }
+    }
 
     // altair p2p is_current_slot: start(slot) - MAXIMUM_GOSSIP_CLOCK_DISPARITY <= now <= start(slot + 1) + MAXIMUM_GOSSIP_CLOCK_DISPARITY.
     private Verdict? CheckCurrentSlot(ulong slot)
@@ -874,6 +945,12 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
         sha.GetHashAndReset(hash);
         return new ValueHash256(hash);
+    }
+
+    private sealed class PayloadAttestationPair
+    {
+        public int Attempts;
+        public bool Verified;
     }
 
     private enum EnvelopeBlockLookup
