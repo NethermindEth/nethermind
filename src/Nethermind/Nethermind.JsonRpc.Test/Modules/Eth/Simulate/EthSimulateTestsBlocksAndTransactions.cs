@@ -1943,7 +1943,6 @@ public class EthSimulateTestsBlocksAndTransactions
     [Test]
     public async Task eth_simulateV1_delegation_replaces_code_override_on_bal_path()
     {
-
         using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
 
         AuthorizationTuple authorization = new EthereumEcdsa(chain.SpecProvider.ChainId)
