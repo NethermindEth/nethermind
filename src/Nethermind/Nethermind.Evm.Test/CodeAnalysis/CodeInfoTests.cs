@@ -154,6 +154,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
 
+        [Test]
+        public void Retains_a_whole_array_without_boxing()
+        {
+            byte[] source = [0x60, 0x01, 0x60, 0x02, 0x01];
+
+            Assert.That(CodeField(new CodeInfo(source)), Is.SameAs(source));
+        }
+
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_code")]
+        private static extern ref object CodeField(CodeInfo codeInfo);
+
         [TestCase(-1, false)]
         [TestCase(0, true)]
         [TestCase(1, false)]

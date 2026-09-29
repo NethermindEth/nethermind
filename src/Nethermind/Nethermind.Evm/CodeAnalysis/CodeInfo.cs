@@ -36,7 +36,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     {
         _codeLength = code.Length;
         _code = MemoryMarshal.TryGetArray(code, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length
-            ? segment.Array
+            ? (object)segment.Array
             : code;
         if (code.Length == 0)
         {
