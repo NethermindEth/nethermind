@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
@@ -15,30 +16,38 @@ public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLi
     private readonly IDictionary<Hash256, ParityTraceTypes>? _typesByTransaction;
     private Block? _block;
     private readonly ParityTraceTypes _types;
+    private readonly ISpecProvider? _specProvider;
 
-    public ParityLikeBlockTracer(Hash256 txHash, ParityTraceTypes types)
+    /// <param name="specProvider">Prices an EIP-8141 frame transaction's gas budget for its root; see <see cref="ParityLikeTxTracer"/>.</param>
+    public ParityLikeBlockTracer(Hash256 txHash, ParityTraceTypes types, ISpecProvider? specProvider = null)
         : base(txHash)
     {
         _types = types;
+        _specProvider = specProvider;
         IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
     }
 
-    public ParityLikeBlockTracer(ParityTraceTypes types)
+    /// <param name="specProvider">Prices an EIP-8141 frame transaction's gas budget for its root; see <see cref="ParityLikeTxTracer"/>.</param>
+    public ParityLikeBlockTracer(ParityTraceTypes types, ISpecProvider? specProvider = null)
     {
         _types = types;
+        _specProvider = specProvider;
         IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
     }
 
-    public ParityLikeBlockTracer(IDictionary<Hash256, ParityTraceTypes> typesByTransaction)
+    /// <param name="specProvider">Prices an EIP-8141 frame transaction's gas budget for its root; see <see cref="ParityLikeTxTracer"/>.</param>
+    public ParityLikeBlockTracer(IDictionary<Hash256, ParityTraceTypes> typesByTransaction, ISpecProvider? specProvider = null)
     {
         _typesByTransaction = typesByTransaction;
+        _specProvider = specProvider;
         IsTracingRewards = false;
     }
 
     protected override ParityLikeTxTracer OnStart(Transaction? tx) => new(_block, tx,
         tx is not null && _typesByTransaction?.TryGetValue(tx.Hash!, out ParityTraceTypes types) == true
             ? types
-            : _types);
+            : _types,
+        _block is null ? null : _specProvider?.GetSpec(_block.Header));
 
     protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
 
