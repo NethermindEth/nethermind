@@ -240,6 +240,7 @@ jobs:
       retrospective_step: ${{ steps.resolve.outputs.retrospective_step }}
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
+      cells: ${{ steps.resolve.outputs.cells }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
       perf: ${{ steps.resolve.outputs.perf }}
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
@@ -300,6 +301,11 @@ jobs:
           # Default FlatDb write-buffer floor (bytes) for flat layout; overridden by the dispatch input.
           flat_write_buffer_floor="67108864"
           expb_env=""
+          # Every PR-label and master-push run benchmarks fusaka in two cells: 1000 payloads back to back, as in
+          # sync or catch-up, and 100 payloads a second apart, which leaves the node idle between blocks as at the
+          # chain head. A cell is the unit the benchmark matrix, the artifacts and the cached master baselines are
+          # keyed by; the first cell keeps the id the single fusaka run always had.
+          automated_cells='[{"id":"fusaka","payload_set":"fusaka","amount":"1000","delay_seconds":"0"},{"id":"fusaka-delay1s","payload_set":"fusaka","amount":"100","delay_seconds":"1"}]'
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
             client="${DISPATCH_CLIENT:-nethermind}"
@@ -329,6 +335,17 @@ jobs:
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
             payload_sets="[\"${payload_set}\"]"
+            # The cell values are interpolated into JSON and the rendered config, so they must be plain tokens.
+            if ! [[ "${delay_seconds}" =~ ^[0-9]+$ ]]; then
+              echo "::error::delay_seconds must be a whole number of seconds (got '${delay_seconds}')."
+              exit 1
+            fi
+            if ! [[ "${amount}" =~ ^[A-Za-z0-9]+$ ]]; then
+              echo "::error::amount must be a payload count (got '${amount}')."
+              exit 1
+            fi
+            # A dispatch is one cell named after its payload set, so its artifact names stay as they were.
+            cells="[{\"id\":\"${payload_set}\",\"payload_set\":\"${payload_set}\",\"amount\":\"${amount}\",\"delay_seconds\":\"${delay_seconds}\"}]"
 
             # Determine mode: multi-image if docker_images or retrospective is enabled
             docker_images="${DISPATCH_DOCKER_IMAGES:-}"
@@ -409,13 +426,15 @@ jobs:
             fi
             branch="${PR_HEAD_BRANCH}"
             state_layout="flat"
-            payload_set="superblocks"
-            payload_sets='["superblocks","realblocks","fusaka"]'
+            payload_set="fusaka"
+            payload_sets='["fusaka"]'
+            cells="${automated_cells}"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             arch="amd64"
+            # Per-cell amount and delay come from cells; these describe the first cell.
             delay_seconds="0"
-            amount=""
+            amount="1000"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -434,13 +453,15 @@ jobs:
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
-            payload_set="superblocks"
-            payload_sets='["superblocks","realblocks","fusaka"]'
+            payload_set="fusaka"
+            payload_sets='["fusaka"]'
+            cells="${automated_cells}"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             arch="amd64"
+            # Per-cell amount and delay come from cells; these describe the first cell.
             delay_seconds="0"
-            amount=""
+            amount="1000"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -683,6 +704,7 @@ jobs:
             echo "retrospective_step=${retrospective_step:-10}"
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
+            echo "cells=${cells}"
             echo "dottrace=${dottrace}"
             echo "perf=${perf:-false}"
             echo "dottrace_mode=${dottrace_mode}"
@@ -916,13 +938,13 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
   benchmark:
-    name: benchmark (${{ matrix.payload_set }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
+    name: benchmark (${{ matrix.cell.id }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
     needs: [resolve, prepare-docker]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     strategy:
       matrix:
         run: ${{ fromJson(needs.resolve.outputs.run_indices) }}
-        payload_set: ${{ fromJson(needs.resolve.outputs.payload_sets) }}
+        cell: ${{ fromJson(needs.resolve.outputs.cells) }}
       max-parallel: 1
       fail-fast: false
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
@@ -943,9 +965,9 @@ jobs:
         shell: bash
         env:
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
-          PAYLOAD_SET: ${{ matrix.payload_set }}
+          PAYLOAD_SET: ${{ matrix.cell.payload_set }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          DELAY_SECONDS: ${{ matrix.cell.delay_seconds }}
           RUN: ${{ matrix.run }}
           RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
           CLIENT: ${{ needs.resolve.outputs.client }}
@@ -977,14 +999,16 @@ jobs:
         run: |
           echo "Event: ${{ github.event_name }}"
           echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
-          echo "Payload set: ${{ matrix.payload_set }}"
+          echo "Cell: ${{ matrix.cell.id }}"
+          echo "Payload set: ${{ matrix.cell.payload_set }}"
+          echo "Payload amount: ${{ matrix.cell.amount }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Docker image revision: ${IMAGE_REVISION}"
           echo "Client: ${CLIENT}"
           echo "Measurement source: ${MEASUREMENT_SOURCE}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
-          echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
+          echo "Delay placeholder value: ${{ matrix.cell.delay_seconds }}"
           echo "Rebuild docker requested: ${{ needs.resolve.outputs.rebuild_docker }}"
           echo "Publish docker workflow triggered: ${{ needs.resolve.outputs.should_trigger_publish_docker }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
@@ -1007,10 +1031,10 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@v5
         with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v5-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
+          path: /tmp/expb-master-metrics-cache-${{ matrix.cell.id }}
+          key: expb-master-metrics-v6-${{ matrix.cell.id }}-run-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v5-${{ matrix.payload_set }}-
+            expb-master-metrics-v6-${{ matrix.cell.id }}-run-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -1031,9 +1055,9 @@ jobs:
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
           DOCKER_TAG: ${{ needs.prepare-docker.outputs.image }}
           IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
-          AMOUNT: ${{ needs.resolve.outputs.amount }}
-          PAYLOAD_SET: ${{ matrix.payload_set }}
+          DELAY_SECONDS: ${{ matrix.cell.delay_seconds }}
+          AMOUNT: ${{ matrix.cell.amount }}
+          PAYLOAD_SET: ${{ matrix.cell.payload_set }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
@@ -1846,7 +1870,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: expb-single-metrics-${{ matrix.payload_set }}-run${{ matrix.run }}
+          name: expb-single-metrics-${{ matrix.cell.id }}-run${{ matrix.run }}
           path: ${{ steps.analyze.outputs.metrics_file }}
           retention-days: 30
 
@@ -1855,15 +1879,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}"
-          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}/master-metrics.env"
+          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.cell.id }}"
+          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.cell.id }}/master-metrics.env"
 
       - name: Save master metrics cache
         if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
         uses: actions/cache/save@v5
         with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v5-${{ matrix.payload_set }}-${{ github.run_id }}
+          path: /tmp/expb-master-metrics-cache-${{ matrix.cell.id }}
+          key: expb-master-metrics-v6-${{ matrix.cell.id }}-run-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -1902,7 +1926,7 @@ jobs:
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
-          ARTIFACT_SUFFIX: ${{ matrix.payload_set }}-run${{ matrix.run }}
+          ARTIFACT_SUFFIX: ${{ matrix.cell.id }}-run${{ matrix.run }}
           MARKER: ${{ runner.temp }}/.expb-run-marker
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           PERF: ${{ needs.resolve.outputs.perf }}
@@ -1991,7 +2015,7 @@ jobs:
           METRICS_FILE: ${{ steps.analyze.outputs.metrics_file }}
           RENDERED_CONFIG_FILE: ${{ steps.render-config.outputs.rendered_config_file }}
           YQ_BIN: ${{ runner.temp }}/yq
-          LOG_ARTIFACT_DIR: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
+          LOG_ARTIFACT_DIR: ${{ runner.temp }}/expb-single-logs-${{ matrix.cell.id }}-run${{ matrix.run }}
         run: |
           set -euo pipefail
           mkdir -p "${LOG_ARTIFACT_DIR}"
@@ -2009,7 +2033,10 @@ jobs:
           {
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "event=${{ github.event_name }}"
-            echo "payload_set=${{ matrix.payload_set }}"
+            echo "cell=${{ matrix.cell.id }}"
+            echo "payload_set=${{ matrix.cell.payload_set }}"
+            echo "amount=${{ matrix.cell.amount }}"
+            echo "delay_seconds=${{ matrix.cell.delay_seconds }}"
             echo "run=${{ matrix.run }}"
             echo "run_count=${{ needs.resolve.outputs.run_count }}"
             echo "measurement_mode=${{ needs.resolve.outputs.measurement_mode }}"
@@ -2020,8 +2047,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
+          name: expb-single-logs-${{ matrix.cell.id }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/expb-single-logs-${{ matrix.cell.id }}-run${{ matrix.run }}
           retention-days: 30
           if-no-files-found: warn
 
@@ -2058,48 +2085,36 @@ jobs:
           path: ${{ runner.temp }}/all-metrics
           pattern: expb-single-metrics-*
 
-      - name: Restore master metrics (superblocks)
-        id: restore-master-superblocks
-        continue-on-error: true
-        uses: actions/cache/restore@v5
-        with:
-          path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v5-superblocks-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v5-superblocks-
-
-      - name: Restore master metrics (realblocks)
-        id: restore-master-realblocks
-        continue-on-error: true
-        uses: actions/cache/restore@v5
-        with:
-          path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v5-realblocks-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v5-realblocks-
-
+      # One restore per cell of the PR-label run (see automated_cells in the resolver).
       - name: Restore master metrics (fusaka)
         id: restore-master-fusaka
         continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-fusaka
-          key: expb-master-metrics-v5-fusaka-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v6-fusaka-run-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v5-fusaka-
+            expb-master-metrics-v6-fusaka-run-
+
+      - name: Restore master metrics (fusaka-delay1s)
+        id: restore-master-fusaka-delay1s
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/expb-master-metrics-cache-fusaka-delay1s
+          key: expb-master-metrics-v6-fusaka-delay1s-run-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v6-fusaka-delay1s-run-
 
       - name: Build PR comparison comment
         id: pr-comment
         shell: bash
         env:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
-          MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
-          MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
-          MASTER_FUSAKA: /tmp/expb-master-metrics-cache-fusaka/master-metrics.env
-          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          MASTER_CACHE_ROOT: /tmp
+          CELLS: ${{ needs.resolve.outputs.cells }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           IMAGE: ${{ needs.prepare-docker.outputs.image }}
           IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -2187,16 +2202,21 @@ jobs:
           }
 
           build_table() {
-            local payload_set="$1"
+            local cell_json="$1"
             local current_metrics="$2"
             local master_metrics="$3"
-            local scenario_name="${CLIENT}-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+            local cell_id payload_set amount delay
+            cell_id="$(jq -r '.id' <<< "${cell_json}")"
+            payload_set="$(jq -r '.payload_set' <<< "${cell_json}")"
+            amount="$(jq -r '.amount' <<< "${cell_json}")"
+            delay="$(jq -r '.delay_seconds' <<< "${cell_json}")"
+            local scenario_name="${CLIENT}-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${delay}s"
 
             local metrics=("MIN" "AVG" "MEDIAN" "P90" "P99" "MAX")
             local labels=("Min" "Avg" "P50" "P90" "P99" "Max")
 
             append_blank
-            append_line "#### ${payload_set}"
+            append_line "#### ${payload_set}: ${amount} payloads, ${delay} s delay"
             append_blank
 
             if [[ ! -f "${current_metrics}" ]]; then
@@ -2207,7 +2227,7 @@ jobs:
             append_line "Scenario: \`${scenario_name}\`"
 
             if [[ ! -f "${master_metrics}" ]]; then
-              append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
+              append_line "No cached master baseline for \`${cell_id}\`. A baseline will be created from the next successful \`master\` push run."
             fi
 
             # The request time is what the consensus client waits for; the processing time isolates EVM
@@ -2280,22 +2300,17 @@ jobs:
           append_line "### EXPB Benchmark Comparison"
           append_blank
           append_line "Run: [View workflow run](${RUN_URL})"
+          append_blank
+          append_line "_0 s delay sends the payloads back to back, as in sync or catch-up; 1 s delay leaves the node idle between them, as at the chain head._"
 
-          # Iterate over each payload_set from the matrix
-          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+          # One table per cell of the matrix, each against the cached master run of the same cell.
+          mapfile -t cells < <(echo "${CELLS}" | jq -c '.[]')
 
-          for ps in "${payload_sets[@]}"; do
-            # Find the PR metrics artifact (run 1 by default)
-            current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
-
-            # Master metrics from cache
-            case "${ps}" in
-              superblocks) master_metrics="${MASTER_SUPERBLOCKS}" ;;
-              fusaka) master_metrics="${MASTER_FUSAKA}" ;;
-              *) master_metrics="${MASTER_REALBLOCKS}" ;;
-            esac
-
-            build_table "${ps}" "${current_metrics}" "${master_metrics}"
+          for cell_json in "${cells[@]}"; do
+            cell_id="$(jq -r '.id' <<< "${cell_json}")"
+            current_metrics="${METRICS_DIR}/expb-single-metrics-${cell_id}-run1/expb-metrics.env"
+            master_metrics="${MASTER_CACHE_ROOT}/expb-master-metrics-cache-${cell_id}/master-metrics.env"
+            build_table "${cell_json}" "${current_metrics}" "${master_metrics}"
           done
 
           {
@@ -2361,11 +2376,10 @@ jobs:
         shell: bash
         env:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
-          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          CELLS: ${{ needs.resolve.outputs.cells }}
           RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           CLIENT: ${{ needs.resolve.outputs.client }}
         run: |
@@ -2395,22 +2409,29 @@ jobs:
             printf '%s' "${source:-unknown}"
           }
 
-          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+          mapfile -t cells < <(echo "${CELLS}" | jq -c '.[]')
 
           {
             echo "## EXPB Benchmark Results"
             echo ""
-            echo "Branch: \`${CLEAN_BRANCH}\` | Layout: \`${STATE_LAYOUT}\` | Delay: \`${DELAY_SECONDS}s\` | Runs: \`${run_count}\`"
+            echo "Branch: \`${CLEAN_BRANCH}\` | Layout: \`${STATE_LAYOUT}\` | Runs: \`${run_count}\`"
             echo ""
             echo "Run: [View workflow run](${RUN_URL})"
           } > "${summary_file}"
 
-          for ps in "${payload_sets[@]}"; do
-            scenario_name="${CLIENT}-${STATE_LAYOUT}-${ps}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+          for cell_json in "${cells[@]}"; do
+            # ps holds the cell id, which names the metrics artifacts.
+            ps="$(jq -r '.id' <<< "${cell_json}")"
+            cell_payload_set="$(jq -r '.payload_set' <<< "${cell_json}")"
+            cell_amount="$(jq -r '.amount' <<< "${cell_json}")"
+            cell_delay="$(jq -r '.delay_seconds' <<< "${cell_json}")"
+            scenario_name="${CLIENT}-${STATE_LAYOUT}-${cell_payload_set}-${CLEAN_BRANCH}-delay${cell_delay}s"
 
             {
               echo ""
               echo "### ${ps}"
+              echo ""
+              echo "Payloads: \`${cell_amount}\` | Delay: \`${cell_delay}s\`"
               echo ""
               echo "Scenario: \`${scenario_name}\`"
               echo ""

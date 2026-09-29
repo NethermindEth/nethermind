@@ -381,6 +381,113 @@ fi
                 self.assertNotEqual(0, code)
                 self.assertIn(expected, log)
 
+    AUTOMATED_CELLS = [
+        {"id": "fusaka", "payload_set": "fusaka", "amount": "1000", "delay_seconds": "0"},
+        {"id": "fusaka-delay1s", "payload_set": "fusaka", "amount": "100", "delay_seconds": "1"},
+    ]
+
+    def test_performance_label_runs_only_fusaka_at_both_delays(self):
+        code, log, output = self.run_resolver(
+            EVENT_NAME="pull_request",
+            PR_LABEL="performance is good",
+            PR_HEAD_BRANCH="perf/example",
+            PR_HEAD_REPO="NethermindEth/nethermind",
+            CURRENT_REPO="NethermindEth/nethermind",
+        )
+        self.assertEqual(0, code, log)
+        self.assertEqual("true", output["should_run"])
+        self.assertEqual(["fusaka"], json.loads(output["payload_sets"]))
+        self.assertEqual(self.AUTOMATED_CELLS, json.loads(output["cells"]))
+
+    def test_master_push_runs_the_same_cells_as_the_label(self):
+        code, log, output = self.run_resolver(EVENT_NAME="push", PUSH_BRANCH="master")
+        self.assertEqual(0, code, log)
+        self.assertEqual(["fusaka"], json.loads(output["payload_sets"]))
+        self.assertEqual(self.AUTOMATED_CELLS, json.loads(output["cells"]))
+
+    def test_dispatch_is_one_cell_named_after_its_payload_set(self):
+        code, log, output = self.run_resolver(DISPATCH_AMOUNT="25", DISPATCH_DELAY_SECONDS="1")
+        self.assertEqual(0, code, log)
+        self.assertEqual(
+            [{"id": "fusaka", "payload_set": "fusaka", "amount": "25", "delay_seconds": "1"}],
+            json.loads(output["cells"]),
+        )
+
+        # Without an amount the payload set's default applies, as before cells existed.
+        code, log, output = self.run_resolver(
+            DISPATCH_PAYLOAD_SET="superblocks", DISPATCH_AMOUNT="", DISPATCH_DOCKER_IMAGES=""
+        )
+        self.assertEqual(0, code, log)
+        self.assertEqual(
+            [{"id": "superblocks", "payload_set": "superblocks", "amount": "100", "delay_seconds": "0"}],
+            json.loads(output["cells"]),
+        )
+
+    def test_dispatch_rejects_a_delay_or_amount_that_is_not_a_plain_number(self):
+        for overrides, expected in (
+            ({"DISPATCH_DELAY_SECONDS": "1.5"}, "delay_seconds must be a whole number of seconds"),
+            ({"DISPATCH_AMOUNT": '10"0'}, "amount must be a payload count"),
+        ):
+            with self.subTest(**overrides):
+                code, log, output = self.run_resolver(**overrides)
+                self.assertNotEqual(0, code)
+                self.assertIn(expected, log)
+                self.assertNotIn("cells", output)
+
+    def test_single_image_jobs_key_everything_by_cell(self):
+        text = WORKFLOW.read_bytes().decode("utf-8-sig")
+        self.assertNotIn("matrix.payload_set", text)
+        self.assertIn("cell: ${{ fromJson(needs.resolve.outputs.cells) }}", text)
+        # A cache key needs a separator after the cell id: 'fusaka' is a prefix of 'fusaka-delay1s', so a bare
+        # 'fusaka-' restore prefix would hand one cell the other's master baseline.
+        keys = re.findall(r"expb-master-metrics-v\d+-\S+", text)
+        self.assertTrue(keys)
+        for key in keys:
+            self.assertIn("-run-", key, key)
+        for cell in self.AUTOMATED_CELLS:
+            self.assertIn(f"Restore master metrics ({cell['id']})", text)
+
+    def test_pr_comment_has_one_table_per_cell_against_its_own_baseline(self):
+        if shutil.which("jq") is None:
+            self.skipTest("jq is required to build the PR comment")
+        body = extract_step(WORKFLOW, "Build PR comparison comment")
+        with tempfile.TemporaryDirectory(prefix="expb-comment-test-") as directory:
+            root = Path(directory)
+            metrics = root / "metrics"
+            cache = root / "cache"
+            for cell_id, avg in (("fusaka", "40.0"), ("fusaka-delay1s", "30.0")):
+                cell_dir = metrics / f"expb-single-metrics-{cell_id}-run1"
+                cell_dir.mkdir(parents=True)
+                (cell_dir / "expb-metrics.env").write_text(f"SOURCE=k6\nAVG={avg}\nMEDIAN={avg}\n", encoding="utf-8")
+            # Only the 1 s cell has a master baseline; the 0 s cell must not borrow it.
+            baseline = cache / "expb-master-metrics-cache-fusaka-delay1s"
+            baseline.mkdir(parents=True)
+            (baseline / "master-metrics.env").write_text("SOURCE=k6\nAVG=33.0\nMEDIAN=33.0\n", encoding="utf-8")
+            proc, output, _ = self.run_body(
+                body,
+                {
+                    "METRICS_DIR": to_bash(metrics),
+                    "MASTER_CACHE_ROOT": to_bash(cache),
+                    "CELLS": json.dumps(self.AUTOMATED_CELLS),
+                    "STATE_LAYOUT": "flat",
+                    "CLEAN_BRANCH": "perf-example",
+                    "IMAGE": "nethermindeth/nethermind:perf-example",
+                    "IMAGE_REVISION": "a" * 40,
+                    "RUN_URL": "https://example.invalid/run",
+                    "CLIENT": "nethermind",
+                },
+            )
+        self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+        comment = output["body"]
+        self.assertIn("#### fusaka: 1000 payloads, 0 s delay", comment)
+        self.assertIn("#### fusaka: 100 payloads, 1 s delay", comment)
+        self.assertIn("nethermind-flat-fusaka-perf-example-delay0s", comment)
+        self.assertIn("nethermind-flat-fusaka-perf-example-delay1s", comment)
+        self.assertIn("No cached master baseline for `fusaka`.", comment)
+        self.assertNotIn("No cached master baseline for `fusaka-delay1s`.", comment)
+        # The 1 s cell is compared with its own baseline: 30.0 against 33.0.
+        self.assertIn("| Avg | 33.0 | 30.0 | -9% |", comment)
+
     def test_nethermind_default_preserves_sse_and_flatdb_behavior(self):
         code, log, output = self.run_resolver(
             DISPATCH_CLIENT="nethermind",
