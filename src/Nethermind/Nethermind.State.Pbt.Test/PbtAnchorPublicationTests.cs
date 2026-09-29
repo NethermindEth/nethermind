@@ -262,6 +262,50 @@ public class PbtAnchorPublicationTests
         }
     }
 
+    [Test]
+    public async Task Fake_root_snapshot_import_switches_the_node_to_pbt_without_migrating()
+    {
+        using Stream input = typeof(PbtAnchorPublicationTests).Assembly.GetManifestResourceStream("Nethermind.State.Pbt.Test.Fixtures.Eip8347.genesis.json")!;
+        ChainSpec chain = new GethGenesisLoader(new EthereumJsonSerializer()).Load(input);
+        chain.Parameters.Eip8347TransitionTimestamp = null;
+        PbtConfig config = new()
+        {
+            Enabled = true,
+            ImportMigrationSnapshotWithFakeRoots = true,
+            MigrationAnchor = 0,
+            MigrationSnapshotPath = Path.Combine(Fixtures, "canonical", "anchor", "snapshot.pbt"),
+            MigrationPreimagesPath = Path.Combine(Fixtures, "canonical", "anchor", "preimages.bin"),
+        };
+        using TempPath scratch = TempPath.GetTempDirectory();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider(new Nethermind.Api.InitConfig { BaseDbPath = scratch.Path }), chain, useTestSpecProvider: false))
+            .AddSingleton<IPbtConfig>(config)
+            .AddModule(new PbtModule(config))
+            .Build();
+        Block genesis = Build.A.Block.Genesis.WithStateRoot(new Hash256(Metadata("anchor").GetProperty("mptRoot").GetString()!)).TestObject;
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        blockTree.SuggestBlock(genesis);
+        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [genesis]);
+
+        ImportMigrationSnapshotWithFakeRoots step = container.Resolve<ImportMigrationSnapshotWithFakeRoots>();
+        await step.Execute(CancellationToken.None);
+        // A restart with the same snapshot reuses the import.
+        await step.Execute(CancellationToken.None);
+
+        RunnerStepDependenciesAttribute dependencies = (RunnerStepDependenciesAttribute)Attribute.GetCustomAttribute(
+            typeof(ImportMigrationSnapshotWithFakeRoots), typeof(RunnerStepDependenciesAttribute))!;
+        using IPbtPersistence.IReader reader = container.Resolve<IPbtPersistence>().CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IPbtChildHeaderSource>(), Is.TypeOf<PbtBlockTreeChildHeaderSource>());
+            Assert.That(container.Resolve<IWorldStateManager>().GlobalStateReader.HasStateForBlock(genesis.Header), Is.True);
+            Assert.That(reader.CurrentState, Is.EqualTo(new StateId(genesis.Header)));
+            Assert.That(reader.CurrentRoot, Is.EqualTo(new Hash256(Metadata("anchor").GetProperty("pbtRoot").GetString()!).ValueHash256));
+            Assert.That(dependencies.Dependencies, Does.Contain(typeof(LoadGenesisBlock)));
+            Assert.That(dependencies.Dependents, Is.SupersetOf(new[] { typeof(ReviewBlockTree), typeof(InitializeNetwork) }));
+        }
+    }
+
     private static void AssertUnpublished(Harness harness)
     {
         using (Assert.EnterMultipleScope())

@@ -78,7 +78,7 @@ public class PbtMigrationConfigTests
 
     [Test]
     public void Rejects_invalid_configuration([Values(
-        "mirror", "fake", "import", "scan", "flat-disabled",
+        "mirror", "fake", "import", "scan", "fake-root-snapshot", "flat-disabled",
         "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "partial", "mixed", "no-anchor", "negative-anchor", "overlap", "whitespace")] string invalid)
     {
         PbtConfig config = Config();
@@ -90,6 +90,7 @@ public class PbtMigrationConfigTests
             case "fake": config.FakeMatchingStateRoot = true; break;
             case "import": config.ImportFromPreimageFlat = true; break;
             case "scan": config.ScanTree = true; break;
+            case "fake-root-snapshot": WithFakeRootSnapshotImport(config); break;
             case "flat-disabled": flat.Enabled = false; break;
             case "no-bal": chain.Parameters.Eip7928TransitionTimestamp = null; break;
             case "late-bal": chain.Parameters.Eip7928TransitionTimestamp = 100; break;
@@ -105,6 +106,34 @@ public class PbtMigrationConfigTests
             case "whitespace": config.MigrationPreimageSourcePath = " "; config.MigrationAnchor = 25; config.MigrationGenesisBootstrap = false; break;
         }
         Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(config, flat, chain, "target"));
+    }
+
+    [Test]
+    public void Fake_root_snapshot_import_requires_the_snapshot_and_runs_the_binary_tree_alone(
+        [Values("valid", "mirror", "no-snapshot", "no-preimages", "no-anchor")] string mode)
+    {
+        PbtConfig config = WithFakeRootSnapshotImport(new PbtConfig { Enabled = true });
+        switch (mode)
+        {
+            case "mirror": config.MirrorFlat = true; break;
+            case "no-snapshot": config.MigrationSnapshotPath = null; break;
+            case "no-preimages": config.MigrationPreimagesPath = " "; break;
+            case "no-anchor": config.MigrationAnchor = null; break;
+        }
+        ChainSpec chain = Chain();
+        chain.Parameters.Eip8347TransitionTimestamp = null;
+        if (mode == "valid") Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(config, Flat(), chain, "target"));
+        else Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(config, Flat(), chain, "target"));
+    }
+
+    private static PbtConfig WithFakeRootSnapshotImport(PbtConfig config)
+    {
+        config.ImportMigrationSnapshotWithFakeRoots = true;
+        config.MigrationGenesisBootstrap = false;
+        config.MigrationAnchor = 25;
+        config.MigrationSnapshotPath = "source/snapshot.pbt";
+        config.MigrationPreimagesPath = "source/preimages.bin";
+        return config;
     }
 
     [Test]

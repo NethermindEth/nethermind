@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Steps;
@@ -64,10 +65,16 @@ public class PbtModule(IPbtConfig config) : Module
         if (config.CarryForwardCache)
             builder.AddDecorator<IPbtPersistence, PbtCarryForwardCachingPersistence>();
 
-        if (config.FakeMatchingStateRoot)
+        // The imported snapshot is keyed by the anchor's Patricia root, so its children only validate with faked roots.
+        if (config.FakeMatchingStateRoot || config.ImportMigrationSnapshotWithFakeRoots)
             builder.AddSingleton<IPbtChildHeaderSource, PbtBlockTreeChildHeaderSource>();
         else
             builder.AddSingleton<IPbtChildHeaderSource>(NullPbtChildHeaderSource.Instance);
+
+        if (config.ImportMigrationSnapshotWithFakeRoots)
+            builder
+                .AddSingleton<PbtAnchorPublication>()
+                .AddStep(typeof(ImportMigrationSnapshotWithFakeRoots));
 
         // Registered unconditionally so `nethermind import-pbt` and `nethermind scan-pbt` can always find them.
         // Carrying [StepCommand] keeps them out of a normal node start; they run only when selected below or by name.

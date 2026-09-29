@@ -64,6 +64,10 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root. Does not affect flat mirror mode.", DefaultValue = "false")]
     bool FakeMatchingStateRoot { get; set; }
 
+    /// <summary>Whether to import the EIP-8347 snapshot at MigrationAnchor and keep running on PBT from it. Defaults to false.</summary>
+    [ConfigItem(Description = "Import the EIP-8347 snapshot from MigrationSnapshotPath and MigrationPreimagesPath at MigrationAnchor as the PBT state before block processing, then keep running on PBT with FakeMatchingStateRoot implied. A restart with the same snapshot reuses the import. Diagnostic use only; not available with a scheduled binaryTrieTime.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool ImportMigrationSnapshotWithFakeRoots { get; set; }
+
     /// <summary>Maximum estimated retained account trie-cache memory in bytes; zero disables this partition.</summary>
     [ConfigItem(Description = "Memory budget for cached account PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "134217728")]
     ulong AccountTrieNodeCacheSizeBudget { get; set; }

@@ -17,10 +17,11 @@ internal static class PbtMigrationConfigValidator
     {
         if (config.MigrationAnchor is < 0) Fail("MigrationAnchor must not be negative.");
         ValidateExport(config, flatConfig, chainSpec, targetPath);
+        ValidateFakeRootSnapshotImport(config);
         if (!IsScheduledMigration(chainSpec)) return;
 
-        if (config.MirrorFlat || config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree)
-            Fail("A scheduled binaryTrieTime migration cannot be combined with mirror, fake-root, offline import or scan modes.");
+        if (config.MirrorFlat || config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree || config.ImportMigrationSnapshotWithFakeRoots)
+            Fail("A scheduled binaryTrieTime migration cannot be combined with mirror, fake-root, offline import, scan or fake-root snapshot import modes.");
         if (!flatConfig.Enabled)
             Fail("A scheduled binaryTrieTime migration requires FlatDb.Enabled.");
         if (flatConfig.HistoryEnabled)
@@ -78,6 +79,14 @@ internal static class PbtMigrationConfigValidator
             if (ContainsPath(Path.GetFullPath(input), output) || ContainsPath(output, Path.GetFullPath(input)))
                 Fail("Migration export must not overlap target or source paths.");
         }
+    }
+
+    private static void ValidateFakeRootSnapshotImport(IPbtConfig config)
+    {
+        if (!config.ImportMigrationSnapshotWithFakeRoots) return;
+        if (config.MirrorFlat) Fail("ImportMigrationSnapshotWithFakeRoots runs the PBT backend alone, so it cannot be combined with MirrorFlat.");
+        if (!HasPath(config.MigrationSnapshotPath) || !HasPath(config.MigrationPreimagesPath) || config.MigrationAnchor is null)
+            Fail("ImportMigrationSnapshotWithFakeRoots requires MigrationSnapshotPath, MigrationPreimagesPath and MigrationAnchor.");
     }
 
     private static void RejectLinks(string path)
