@@ -117,6 +117,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _executedRead = false;
         _judgedRead = false;
         t_commitPhasesSeen = 0;
+        Nethermind.State.Flat.SnapshotCompactor.LastCompaction = (0, 0, -2);
         _block = Window.Start();
     }
 
@@ -143,8 +144,11 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
               $" popslots={Nethermind.State.Flat.TrieNodeCache.LastAddSlots} popnodes={Nethermind.State.Flat.TrieNodeCache.LastAddNodes}" +
               $" popclear={Nethermind.State.Flat.TrieNodeCache.LastAddShardsCleared}"
             : string.Empty;
+        // cmp: snapshots the inline compaction merged / how many were already compacted / added (1), refused (0),
+        // nothing assembled (-1), not attempted (-2).
+        (int inputs, int compactedInputs, int added) = Nethermind.State.Flat.SnapshotCompactor.LastCompaction;
         Block block = e.Block;
-        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit}");
+        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit} cmp={inputs}/{compactedInputs}/{added}");
     }
 
     private static void OnCommitPhase(int phase)

@@ -27,6 +27,12 @@ public class SnapshotCompactor(
     private readonly IResourcePool _resourcePool = resourcePool;
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
 
+    /// <summary>
+    /// Benchmark diagnostics of the last <see cref="DoCompactSnapshot"/> on this thread: snapshots merged, how many of them
+    /// were already compacted, and whether the result was added (-1 when nothing was assembled).
+    /// </summary>
+    [ThreadStatic] public static (int Inputs, int CompactedInputs, int Added) LastCompaction;
+
     public bool DoCompactSnapshot(in StateId stateId)
     {
         if (_snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
@@ -35,11 +41,19 @@ public class SnapshotCompactor(
 
             long sw = Stopwatch.GetTimestamp();
             using SnapshotPooledList snapshots = GetSnapshotsToCompact(snapshot);
+            int compactedInputs = 0;
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                if (snapshots[i].To.BlockNumber - snapshots[i].From.BlockNumber > 1) compactedInputs++;
+            }
+            LastCompaction = (snapshots.Count, compactedInputs, -1);
 
             if (snapshots.Count != 0)
             {
                 Snapshot compactedSnapshot = CompactSnapshotBundle(snapshots);
-                if (_snapshotRepository.TryAdd(compactedSnapshot, SnapshotTier.InMemoryCompacted))
+                bool added = _snapshotRepository.TryAdd(compactedSnapshot, SnapshotTier.InMemoryCompacted);
+                LastCompaction = (snapshots.Count, compactedInputs, added ? 1 : 0);
+                if (added)
                 {
                     Metrics.CompactTime.Observe(Stopwatch.GetTimestamp() - sw);
 
