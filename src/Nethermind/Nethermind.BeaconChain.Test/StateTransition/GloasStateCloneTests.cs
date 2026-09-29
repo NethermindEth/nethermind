@@ -22,6 +22,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// copy can reach the other through a shared, in-place-written field - which is exactly what the
 /// state transition is run against here to prove.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasStateCloneTests
 {
     [Test]

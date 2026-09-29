@@ -205,8 +205,8 @@ public static class ReqRespFraming
                         throw new Eth2ReqRespException("Snappy data frame of an empty request without the empty-data checksum");
                     }
 
-                    // An empty snappy block is its one-byte zero length; the decompressor ignores bytes after it.
-                    if (frameType == CompressedFrame && (data.Length != 5 || data[4] != 0))
+                    // An empty snappy block is a zero length varint, canonical or not, and nothing else; the decompressor ignores bytes after it.
+                    if (frameType == CompressedFrame && !IsEmptySnappyBlock(data.AsSpan(4)))
                     {
                         throw new Eth2ReqRespException("Compressed snappy frame of an empty request is not one empty block");
                     }
@@ -235,6 +235,25 @@ public static class ReqRespFraming
         {
             throw new Eth2ReqRespException($"Snappy decompression failed: {e.Message}");
         }
+    }
+
+    private static bool IsEmptySnappyBlock(ReadOnlySpan<byte> block)
+    {
+        // A zero uncompressed length is continuation bits only before its last byte; the decompressor bounds the varint length.
+        if (block.Length == 0)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < block.Length - 1; i++)
+        {
+            if (block[i] != 0x80)
+            {
+                return false;
+            }
+        }
+
+        return block[^1] == 0;
     }
 
     private static async Task<byte[]> ReadPayloadAsync(Stream stream, int maxSize, CancellationToken token) =>
