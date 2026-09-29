@@ -36,6 +36,7 @@ public class PowForwardHeaderProvider(
     private ulong _currentNumber;
     private readonly Random _rnd = new();
     private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
+    private readonly Guid _sealValidationBatchGuid = Guid.NewGuid();
 
     protected const int MinCachedHeaderBatchSize = 32;
 
@@ -251,26 +252,36 @@ public class PowForwardHeaderProvider(
         cancellation.ThrowIfCancellationRequested();
         headers = FilterPosHeader(headers);
 
+        // Consistency must be checked before seals: ValidateSeals force-validates the last header, and
+        // its peer-chosen Number picks the Ethash epoch, whose cache is then built synchronously
+        // (gigabytes, or billions of seed-hash rounds) before anything else could reject the response.
+        ValidateBatchConsistency(peer, headers.AsSpan(), currentNumber);
         ValidateSeals(headers, cancellation);
-        ValidateBatchConsistency(peer, headers.AsSpan());
         return headers;
     }
 
-    private void ValidateBatchConsistency(PeerInfo bestPeer, ReadOnlySpan<BlockHeader> headers)
+    private void ValidateBatchConsistency(PeerInfo bestPeer, ReadOnlySpan<BlockHeader> headers, ulong startNumber)
     {
+        if (headers.Length > 0 && headers[0] is not null && headers[0].Number != startNumber)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Block list from peer {bestPeer} does not start at the requested {startNumber}");
+            throw new EthSyncException("Peer sent a block list that does not start at the requested number");
+        }
+
         // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
         // so we need to confirm that the blocks form a valid subchain
         for (int i = 1; i < headers.Length; i++)
         {
-            if (headers[i] is not null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
-                throw new EthSyncException("Peer sent an inconsistent block list");
-            }
-
             if (headers[i] is null)
             {
                 break;
+            }
+
+            BlockHeader? previous = headers[i - 1];
+            if (previous is null || headers[i].ParentHash != previous.Hash || headers[i].Number != previous.Number + 1)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
+                throw new EthSyncException("Peer sent an inconsistent block list");
             }
         }
     }
@@ -278,6 +289,7 @@ public class PowForwardHeaderProvider(
     protected void ValidateSeals(IReadOnlyList<BlockHeader?> headers, CancellationToken cancellation)
     {
         if (_logger.IsTrace) _logger.Trace("Starting seal validation");
+        HintBatchRange(headers);
         ConcurrentQueue<Exception> exceptions = new();
         int randomNumberForValidation = _rnd.Next(Math.Max(0, headers.Count - 2));
         Parallel.For(0, headers.Count, (i, state) =>
@@ -330,6 +342,27 @@ public class PowForwardHeaderProvider(
             throw new AggregateException(exceptions);
         }
         cancellation.ThrowIfCancellationRequested();
+    }
+
+    // Ethash refuses to validate an epoch it was not hinted for, so the hint has to sit next to the validation:
+    // subclasses call ValidateSeals without going through RequestHeaders. A dedicated guid keeps this exact
+    // range from evicting the wider pre-warm hint RequestHeaders issues.
+    private void HintBatchRange(IReadOnlyList<BlockHeader?> headers)
+    {
+        ulong min = ulong.MaxValue;
+        ulong max = 0;
+        for (int i = 0; i < headers.Count; i++)
+        {
+            BlockHeader? header = headers[i];
+            if (header is null) continue;
+            if (header.Number < min) min = header.Number;
+            if (header.Number > max) max = header.Number;
+        }
+
+        if (min <= max)
+        {
+            sealValidator.HintValidationRange(_sealValidationBatchGuid, min, max);
+        }
     }
 
     protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty ?? UInt256.Zero) > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero);

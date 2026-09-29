@@ -213,7 +213,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         // Per-single-bit-context glyphs in the order of AllocationAllowances.OrderedSingleContexts.
-        private static ReadOnlySpan<char> ContextChars => ['H', 'B', 'R', 'N', 'S', 'F'];
+        private static ReadOnlySpan<char> ContextChars => ['H', 'B', 'R', 'N', 'S', 'F', 'A'];
 
         private static string BuildContextString(AllocationContexts contexts)
         {

@@ -697,6 +697,65 @@ public partial class EngineModuleTests
         Assert.That(result.Data.PayloadId, Is.Not.Null);
     }
 
+    public enum ForkchoiceAttributesScenario
+    {
+        NoAttributes,
+        ValidAttributes,
+        MissingBeaconRoot,
+        UnsupportedFork,
+        StaleTimestamp,
+    }
+
+    // Forkchoice state is applied once, before attribute validation, and is not rolled back when attributes are rejected.
+    [TestCase(ForkchoiceAttributesScenario.NoAttributes, 0)]
+    [TestCase(ForkchoiceAttributesScenario.ValidAttributes, 0)]
+    [TestCase(ForkchoiceAttributesScenario.MissingBeaconRoot, MergeErrorCodes.InvalidPayloadAttributes)]
+    [TestCase(ForkchoiceAttributesScenario.UnsupportedFork, MergeErrorCodes.UnsupportedFork)]
+    [TestCase(ForkchoiceAttributesScenario.StaleTimestamp, MergeErrorCodes.InvalidPayloadAttributes)]
+    public async Task ForkChoiceUpdated_applies_forkchoice_state_once(ForkchoiceAttributesScenario scenario, int expectedErrorCode)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ExecutionPayloadV3 block1 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block2 = await AddNewBlockV3(rpcModule, chain);
+        ExecutionPayloadV3 block3 = await AddNewBlockV3(rpcModule, chain);
+
+        PayloadAttributes? payloadAttributes = scenario == ForkchoiceAttributesScenario.NoAttributes
+            ? null
+            : new PayloadAttributes
+            {
+                Timestamp = scenario == ForkchoiceAttributesScenario.StaleTimestamp ? block3.Timestamp : block3.Timestamp + 1,
+                PrevRandao = TestItem.KeccakH,
+                SuggestedFeeRecipient = TestItem.AddressF,
+                Withdrawals = [],
+                ParentBeaconBlockRoot = scenario is ForkchoiceAttributesScenario.MissingBeaconRoot or ForkchoiceAttributesScenario.UnsupportedFork
+                    ? null
+                    : TestItem.KeccakE
+            };
+
+        int forkChoiceUpdatedCount = 0;
+        chain.BlockTree.OnForkChoiceUpdated += (_, _) => forkChoiceUpdatedCount++;
+
+        ForkchoiceStateV1 forkchoiceState = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block2.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = scenario == ForkchoiceAttributesScenario.UnsupportedFork
+            ? await rpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes)
+            : await rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
+            if (expectedErrorCode == 0)
+            {
+                Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                Assert.That(result.Data.PayloadId, scenario == ForkchoiceAttributesScenario.ValidAttributes ? Is.Not.Null : Is.Null);
+            }
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(block1.BlockHash));
+            Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(block2.BlockHash));
+            Assert.That(forkChoiceUpdatedCount, Is.EqualTo(1));
+        }
+    }
+
     [Test]
     public async Task GetBlobsV1_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {

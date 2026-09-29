@@ -16,6 +16,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -273,9 +274,10 @@ public class TrieStoreScopeProvider(
 
         public void Commit(ulong blockNumber)
         {
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
             using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
-            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor || !blockCommitter.SupportsParallelCommit || _storages.Count < 2)
             {
                 foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
                 {
@@ -284,28 +286,14 @@ public class TrieStoreScopeProvider(
             }
             else
             {
-                // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-                // may make it worst. Always check on mainnet.
-                using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
-                {
-                    if (blockCommitter.TryRequestConcurrencyQuota())
+                using ArrayPoolList<StorageTree> storages = new(_storages.Count);
+                foreach (StorageTree storage in _storages.Values) storages.Add(storage);
+                ParallelUnbalancedWork.For(0, storages.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+                    storages, static (i, trees) =>
                     {
-                        commitTask.Add(Task.Factory.StartNew((ctx) =>
-                        {
-                            StorageTree st = ctx as StorageTree
-                                ?? throw new InvalidOperationException("A storage commit task requires a storage tree.");
-                            st.Commit();
-                            blockCommitter.ReturnConcurrencyQuota();
-                        }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-                    }
-                    else
-                    {
-                        storage.Value.Commit();
-                    }
-                }
-
-                Task.WaitAll(commitTask.AsSpan());
+                        trees[i].Commit();
+                        return trees;
+                    });
             }
 
             _backingStateTree.Commit();
