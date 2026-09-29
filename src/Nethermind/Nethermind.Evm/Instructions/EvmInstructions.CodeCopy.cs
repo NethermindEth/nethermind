@@ -313,13 +313,12 @@ public static partial class EvmInstructions
 
         vm.WorldState.AddAccountRead(address);
 
-        // Attempt a peephole optimization when tracing is not active and code is available.
-        ReadOnlySpan<byte> codeSection = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (!TTracingInst.IsActive && programCounter < codeSection.Length)
+        // Attempt a peephole optimization when tracing is not active.
+        if (!TTracingInst.IsActive)
         {
             bool optimizeAccess = false;
-            // Peek at the next instruction to detect patterns.
-            Instruction nextInstruction = (Instruction)codeSection[(int)programCounter];
+            // Peek at the next instruction to detect patterns. Untraced code is padded, so past the end this reads STOP.
+            Instruction nextInstruction = (Instruction)Unsafe.Add(ref stack.Code, programCounter);
             // If the next instruction is ISZERO, optimize for a simple contract check.
             if (nextInstruction == Instruction.ISZERO)
             {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -23,13 +24,13 @@ public class GuestCodePaddingTests
 
         CodeInfo codeInfo = new(buffer.AsMemory(0, length));
 
-        Assert.That(MemoryMarshal.TryGetArray(codeInfo.Code, out ArraySegment<byte> code), Is.True);
-        ReadOnlySpan<byte> afterCode = code.Array.AsSpan(code.Offset + code.Count);
+        ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
+        ReadOnlySpan<byte> afterCode = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), padding);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(execution.ToArray(), Is.EqualTo(buffer[..length]));
             Assert.That(codeInfo.CodeSpan.ToArray(), Is.EqualTo(buffer[..length]));
-            Assert.That(afterCode.Length, Is.GreaterThanOrEqualTo(padding));
-            Assert.That(afterCode[..padding].IndexOfAnyExcept((byte)Instruction.STOP), Is.EqualTo(-1));
+            Assert.That(afterCode.IndexOfAnyExcept((byte)Instruction.STOP), Is.EqualTo(-1));
         }
     }
 }
