@@ -98,10 +98,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         while (!token.IsCancellationRequested && nextSlot <= targetHeadSlot())
         {
             ulong count = Math.Min(batchSize, targetHeadSlot() - nextSlot + 1);
-            IReadOnlyList<IBeaconSyncPeer> peers = peerPool.GetBestPeers(nextSlot);
+            IReadOnlyList<IBeaconSyncPeer> peers = ServingFrom(peerPool.GetBestPeers(nextSlot), nextSlot);
             if (peers.Count == 0)
             {
-                if (_logger.IsDebug) _logger.Debug($"No beacon chain peers with head at or past slot {nextSlot}; waiting");
+                if (_logger.IsDebug) _logger.Debug($"No beacon chain peers with head at or past slot {nextSlot} and earliest available slot at or before it; waiting");
                 await Task.Delay(RetryDelay, token);
                 continue;
             }
@@ -190,6 +190,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// Only Fulu-shaped blocks inside the data availability window are considered and the request window spans only them: a Gloas block's
     /// commitments are in its bid and its sidecars have the Gloas shape, so it has no part in a Fulu request. Each column is asked of one
     /// peer that custodies it (<see cref="AssignColumns"/>), since fulu/p2p-interface.md DataColumnSidecarsByRange serves custodied columns only.
+    /// The peers are those whose head is at or past the request's start slot and whose <c>earliest_available_slot</c> is at or before it, as that section requires.
     /// </remarks>
     private async Task FetchColumnsForBatchAsync(IReadOnlyList<ForkedSignedBeaconBlock> blocks, CancellationToken token)
     {
@@ -243,7 +244,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
 
         ulong count = endSlot - startSlot + 1;
-        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignColumns(missing, peerPool.GetBestPeers(endSlot), MaxColumnPeersPerBatch);
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignColumns(missing, ServingFrom(peerPool.GetBestPeers(startSlot), startSlot), MaxColumnPeersPerBatch);
         Task<IReadOnlyList<DataColumnSidecar>?>[] responses = new Task<IReadOnlyList<DataColumnSidecar>?>[requests.Count];
         for (int i = 0; i < requests.Count; i++)
         {
@@ -259,6 +260,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
         }
     }
+
+    /// <summary>The peers of <paramref name="peers"/> whose Status v2 <c>earliest_available_slot</c> is at or before <paramref name="startSlot"/>, so the range starts inside what they serve.</summary>
+    private static IReadOnlyList<IBeaconSyncPeer> ServingFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong startSlot) =>
+        [.. peers.Where(p => p.EarliestAvailableSlot <= startSlot)];
 
     /// <returns>The peer's sidecars, or <c>null</c> when the request failed and the peer was penalized.</returns>
     private static async Task<IReadOnlyList<DataColumnSidecar>?> RequestColumnsByRangeAsync(IBeaconSyncPeer peer, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
@@ -628,8 +633,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <remarks>
     /// A fetch takes custodians not asked yet, those absent at the previous fetch first but for one place kept for a custodian
     /// seen before, so newcomers arriving before every fetch cannot keep an earlier custodian from being asked. Once every
-    /// custodian was asked the rotation starts over, at most once per slot of <paramref name="clock"/>. Only the custodians of
-    /// the latest fetch are remembered as asked. Not thread-safe.
+    /// custodian was asked the rotation starts over, at most once per slot of <paramref name="clock"/>. The asked set accumulates
+    /// across fetches and each fetch drops from it the peers that are no longer custodians. Not thread-safe.
     /// </remarks>
     internal sealed class ColumnFetchRotation(SlotClock clock)
     {
