@@ -22,7 +22,8 @@ internal sealed class EnvelopeServingPeer(
     Func<Hash256[], IReadOnlyList<SignedExecutionPayloadEnvelope>>? byRoot = null,
     Func<ulong, ulong, IReadOnlyList<ForkedSignedBeaconBlock>>? blocksByRange = null,
     Func<Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>? blocksByRoot = null,
-    Func<DataColumnsByRootIdentifier[], IReadOnlyList<DataColumnSidecarGloas>>? gloasColumnsByRoot = null) : IBeaconSyncPeer
+    Func<DataColumnsByRootIdentifier[], IReadOnlyList<DataColumnSidecarGloas>>? gloasColumnsByRoot = null,
+    ulong earliestAvailableSlot = 0) : IBeaconSyncPeer
 {
     public List<(ulong StartSlot, ulong Count)> RangeRequests { get; } = [];
     public List<Hash256[]> RootRequests { get; } = [];
@@ -31,6 +32,7 @@ internal sealed class EnvelopeServingPeer(
 
     public string Id => id;
     public ulong HeadSlot => headSlot;
+    public ulong EarliestAvailableSlot => earliestAvailableSlot;
 
     /// <summary>Every column, as a supernode would custody.</summary>
     public PeerColumnCustody Custody { get; } = new(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c), isAdvertised: true);
