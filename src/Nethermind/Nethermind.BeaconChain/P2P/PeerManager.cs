@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -46,6 +47,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     // Peers that never answer each hold a check for a request timeout, so a round checks this many at once.
     private const int MaxConcurrentHealthChecks = 8;
+
+    // A peer that answers status and ping but fails sync requests must stay out of selection for longer than a maintenance round.
+    internal static readonly TimeSpan RequestFailureDecayInterval = TimeSpan.FromMinutes(1);
+
+    // The admission MetaData request holds the dial slot until it returns, so it must not wait out the full request timeout.
+    internal static readonly TimeSpan AdmissionMetadataTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(30);
 
     // Below MinPeerCount, maintenance (static-peer reconnect and health checks) runs on this
@@ -73,6 +80,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly ConcurrentDictionary<string, ManagedPeer> _peers = new();
     private readonly BeaconDiscovery? _discovery;
     private readonly INodeColumnCustodySource _localCustody;
+    private readonly ITimestamper _timestamper;
 
     // Replaced and completed whenever a sampled column is left without a connected custodian, to wake the admission wait.
     private TaskCompletionSource _custodyShortfall = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -107,8 +115,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly record struct Reservation(string PeerId, PeerDirection Direction, string? Enr);
 
     /// <param name="discovery">Supplies this node's sampled columns and dials their custodians; without it no custody is sought or kept.</param>
-    public PeerManager(BeaconP2P p2p, IBeaconChainConfig config, IBeaconChainStatusSource statusSource, ILogManager logManager, BeaconDiscovery? discovery = null)
+    /// <param name="timestamper">The clock the request-failure decay reads; the system clock when omitted.</param>
+    public PeerManager(BeaconP2P p2p, IBeaconChainConfig config, IBeaconChainStatusSource statusSource, ILogManager logManager, BeaconDiscovery? discovery = null, ITimestamper? timestamper = null)
     {
+        _timestamper = timestamper ?? Timestamper.Default;
         _p2p = p2p;
         _config = config;
         _statusSource = statusSource;
@@ -199,7 +209,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return uncustodied;
     }
 
-    /// <param name="usableOnly">Counts only peers below the failure limit, which requests are still sent to (see <see cref="GetBestPeers"/>).</param>
+    /// <param name="usableOnly">Counts only peers below the request-failure limit, which requests are still sent to (see <see cref="GetBestPeers"/>).</param>
     private int CustodianCount(ulong column, bool usableOnly = false)
     {
         int count = 0;
@@ -372,8 +382,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A peer at the failure limit is not handed out, but it is not dropped for request failures alone either: it can be the
+    /// A peer at the request-failure limit is not handed out, but it is not dropped for request failures alone either: it can be the
     /// last custodian of a sampled column (fulu/das-core.md), so its columns are sought elsewhere while it stays connected.
+    /// A passing health check does not readmit it: it returns once it serves a request or its failures decay (<see cref="RequestFailureDecayInterval"/> each).
     /// </remarks>
     public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
     {
@@ -945,7 +956,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         Metrics.BeaconChainPeersConnected++;
         Metrics.BeaconChainPeerCount = _peers.Count;
         if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
-        await RefreshCustodyAsync(peer, token);
+        await RefreshCustodyAsync(peer, token, AdmissionMetadataTimeout);
         return true;
     }
 
@@ -1059,7 +1070,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
             ulong metadataSeqNumber = await _p2p.PingAsync(peer.Session, token);
             peer.RecordMessageSent();
-            peer.ResetFailures();
+            peer.ResetHealthCheckFailures();
             if (peer.MetadataSeqNumber != metadataSeqNumber)
             {
                 await RefreshCustodyAsync(peer, token);
@@ -1077,11 +1088,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     }
 
     /// <summary>Reads the peer's custody group count from its <c>MetaData</c> v3 (fulu/p2p-interface.md); on failure the previous custody stands.</summary>
-    private async Task RefreshCustodyAsync(ManagedPeer peer, CancellationToken token)
+    /// <param name="timeout">Bounds the request; the request timeout when omitted.</param>
+    private async Task RefreshCustodyAsync(ManagedPeer peer, CancellationToken token, TimeSpan? timeout = null)
     {
         try
         {
-            MetaDataV3 metadata = await _p2p.RequestMetaDataAsync(peer.Session, token);
+            MetaDataV3 metadata = await _p2p.RequestMetaDataAsync(peer.Session, token, timeout);
             peer.RecordMessageSent();
             peer.ApplyMetadata(metadata);
         }
@@ -1218,6 +1230,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     private sealed class ManagedPeer(PeerManager manager, BeaconP2P p2p, string address, string peerId, ISession session, PeerDirection direction, string? agentVersion, string? enr) : IBeaconSyncPeer
     {
+        private readonly object _requestFailureLock = new();
+        private int _requestFailures;
+        private DateTimeOffset _requestFailuresDecayFrom;
         private int _consecutiveFailures;
         private long _messagesSent;
         private long _failuresReported;
@@ -1241,9 +1256,61 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public int ConsecutiveFailures => Volatile.Read(ref _consecutiveFailures);
 
-        public bool IsAtFailureLimit => ConsecutiveFailures >= MaxConsecutiveFailures;
+        /// <summary>Sync request failures, which a passing health check leaves alone: the peer answers status and ping while it times out every request.</summary>
+        /// <remarks>Each served request takes one off, and one is forgiven every <see cref="RequestFailureDecayInterval"/> since the latest failure. Held at the limit, so a peer taken out of selection needs one served request or one interval to return.</remarks>
+        public int RequestFailures
+        {
+            get
+            {
+                lock (_requestFailureLock)
+                {
+                    DecayRequestFailures();
+                    return _requestFailures;
+                }
+            }
+        }
 
-        public void ResetFailures() => Interlocked.Exchange(ref _consecutiveFailures, 0);
+        public bool IsAtFailureLimit => RequestFailures >= MaxConsecutiveFailures;
+
+        public void ResetHealthCheckFailures() => Interlocked.Exchange(ref _consecutiveFailures, 0);
+
+        public void RecordRequestServed()
+        {
+            lock (_requestFailureLock)
+            {
+                DecayRequestFailures();
+                if (_requestFailures > 0)
+                {
+                    _requestFailures--;
+                }
+            }
+        }
+
+        private void AddRequestFailures(int failures)
+        {
+            lock (_requestFailureLock)
+            {
+                DecayRequestFailures();
+                _requestFailuresDecayFrom = manager._timestamper.UtcNowOffset;
+                _requestFailures = Math.Min(MaxConsecutiveFailures, _requestFailures + failures);
+            }
+        }
+
+        private void DecayRequestFailures()
+        {
+            if (_requestFailures == 0)
+            {
+                return;
+            }
+
+            DateTimeOffset now = manager._timestamper.UtcNowOffset;
+            long forgiven = (now - _requestFailuresDecayFrom).Ticks / RequestFailureDecayInterval.Ticks;
+            if (forgiven > 0)
+            {
+                _requestFailures = (int)Math.Max(0, _requestFailures - forgiven);
+                _requestFailuresDecayFrom += TimeSpan.FromTicks(forgiven * RequestFailureDecayInterval.Ticks);
+            }
+        }
 
         /// <returns>The consecutive failures including this one.</returns>
         public int RecordFailedHealthCheck() => Interlocked.Increment(ref _consecutiveFailures);
@@ -1253,6 +1320,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public string Id => address;
         public ulong HeadSlot => Status?.HeadSlot ?? 0;
+        public ulong EarliestAvailableSlot => Status?.EarliestAvailableSlot ?? 0;
 
         /// <summary>Until <c>MetaData</c> answers, the ENR's <c>cgc</c> when this peer was discovered, else the <c>CUSTODY_REQUIREMENT</c> floor.</summary>
         public PeerColumnCustody Custody => _custody;
@@ -1271,52 +1339,59 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public void RecordMessageSent() => Interlocked.Increment(ref _messagesSent);
 
+        private async Task<T> Served<T>(Task<T> request)
+        {
+            T response = await request;
+            RecordRequestServed();
+            return response;
+        }
+
         public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
         {
             RecordMessageSent();
-            return await p2p.RequestBlocksByRangeAsync(Session, startSlot, count, token);
+            return await Served(p2p.RequestBlocksByRangeAsync(Session, startSlot, count, token));
         }
 
         public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token)
         {
             RecordMessageSent();
-            return await p2p.RequestBlocksByRootAsync(Session, roots, token);
+            return await Served(p2p.RequestBlocksByRootAsync(Session, roots, token));
         }
 
         public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
         {
             RecordMessageSent();
-            return await p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token);
+            return await Served(p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token));
         }
 
         public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
         {
             RecordMessageSent();
-            return await p2p.RequestDataColumnSidecarsByRootAsync(Session, identifiers, token);
+            return await Served(p2p.RequestDataColumnSidecarsByRootAsync(Session, identifiers, token));
         }
 
         public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
         {
             RecordMessageSent();
-            return await p2p.RequestGloasDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token);
+            return await Served(p2p.RequestGloasDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token));
         }
 
         public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
         {
             RecordMessageSent();
-            return await p2p.RequestGloasDataColumnSidecarsByRootAsync(Session, identifiers, token);
+            return await Served(p2p.RequestGloasDataColumnSidecarsByRootAsync(Session, identifiers, token));
         }
 
         public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
         {
             RecordMessageSent();
-            return await p2p.RequestExecutionPayloadEnvelopesByRangeAsync(Session, startSlot, count, token);
+            return await Served(p2p.RequestExecutionPayloadEnvelopesByRangeAsync(Session, startSlot, count, token));
         }
 
         public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token)
         {
             RecordMessageSent();
-            return await p2p.RequestExecutionPayloadEnvelopesByRootAsync(Session, roots, token);
+            return await Served(p2p.RequestExecutionPayloadEnvelopesByRootAsync(Session, roots, token));
         }
 
         public void ReportFailure(PeerFailureReason reason, string? detail = null)
@@ -1326,9 +1401,19 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             // A dead session means every further request would fail, so skip the failure budget and
             // let the next maintenance round (or the dial-loop cooldown) reconnect instead of
             // wedging on a zombie session.
-            int failures = reason == PeerFailureReason.SessionClosed
-                ? Interlocked.Exchange(ref _consecutiveFailures, MaxConsecutiveFailures)
-                : Interlocked.Increment(ref _consecutiveFailures);
+            int failures;
+            if (reason == PeerFailureReason.SessionClosed)
+            {
+                failures = Interlocked.Exchange(ref _consecutiveFailures, MaxConsecutiveFailures);
+                AddRequestFailures(MaxConsecutiveFailures);
+            }
+            else
+            {
+                failures = Interlocked.Increment(ref _consecutiveFailures);
+                // A violation takes back the credit the reply that carried it just earned.
+                AddRequestFailures(reason == PeerFailureReason.ProtocolViolation ? 2 : 1);
+            }
+
             Metrics.BeaconChainPeerFailuresByReason.Increment(new StringLabel(reason.ToString()));
             if (manager._logger.IsDebug) manager._logger.Debug($"Beacon chain peer {Id} reported as failing ({failures}/{MaxConsecutiveFailures}): {reason}{(detail is null ? "" : $" ({detail})")}");
         }

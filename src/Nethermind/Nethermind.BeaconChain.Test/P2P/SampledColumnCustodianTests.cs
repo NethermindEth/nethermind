@@ -266,7 +266,7 @@ public class SampledColumnCustodianTests
                 Assert.That(connected, Is.EqualTo(2), "the last custodian of a sampled column stays connected");
                 Assert.That(uncustodied, Is.EqualTo(onlyFailingCustodied), "the columns only the failing peer custodies are sought");
                 Assert.That(replacementAdmitted, Is.True, "at the target, a custodian of those columns is admitted");
-                Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Does.Contain(LoopbackAddress(failing.P2P)), "a passing health check makes the peer selectable again");
+                Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Does.Not.Contain(LoopbackAddress(failing.P2P)), "a passing health check does not make the peer selectable again");
             }
         }
     }
@@ -287,21 +287,8 @@ public class SampledColumnCustodianTests
         Node failing = CreateNode(custodyGroupCount: Eip7594DasConstants.NumberOfCustodyGroups);
         Node client = CreateNode();
         SetMatchingStatus(failing, client);
-        StatusMessageV2 status = client.StatusHolder.CurrentStatus;
-        using ManualResetEventSlim roundStarted = new();
-        PeerManager peerManager = null!;
-        IBeaconSyncPeer failingPeer = null!;
-        // A round's passing health check resets the failing peer's failures, so the bystander's check reports them again before the trim.
-        Node bystander = CreateNode(bystanderKey, statusSource: new ScriptedStatusSource(_ =>
-        {
-            if (roundStarted.IsSet)
-            {
-                SpinWait.SpinUntil(() => peerManager.GetBestPeers(0).Contains(failingPeer), TimeSpan.FromSeconds(10));
-                ReportFailuresUpToTheLimit(failingPeer);
-            }
-
-            return status;
-        }));
+        Node bystander = CreateNode(bystanderKey);
+        SetMatchingStatus(bystander);
         Node replacement = CreateNode(replacementKey, Eip7594DasConstants.NumberOfCustodyGroups);
         SetMatchingStatus(replacement);
 
@@ -311,17 +298,16 @@ public class SampledColumnCustodianTests
         await using (replacement.P2P)
         {
             await StartAsync(token, failing, bystander, replacement, client);
-            peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(bystander.P2P), token), Is.True);
-            failingPeer = peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P));
+            IBeaconSyncPeer failingPeer = peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P));
             string[] expected;
             if (overTheCeiling)
             {
                 client.Config.MaxPeerCount = 1;
                 client.Config.TargetPeerCount = 1;
                 ReportFailuresUpToTheLimit(failingPeer);
-                roundStarted.Set();
                 await peerManager.RunMaintenanceRoundAsync(token);
                 expected = [PeerIdOf(failing)];
             }
