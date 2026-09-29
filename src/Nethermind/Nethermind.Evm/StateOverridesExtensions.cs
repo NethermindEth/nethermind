@@ -115,6 +115,11 @@ public static class StateOverridesExtensions
                 address,
                 codeInfo);
         }
+        else if (accountOverride.MovePrecompileToAddress is null && overridableCodeInfoRepository.GetPrecompile(address, currentSpec) is not null)
+        {
+            // As in geth, any override of a precompile's address turns it into an ordinary account.
+            overridableCodeInfoRepository.SetCodeOverride(currentSpec, address, new CodeInfo(stateProvider.GetCode(address)));
+        }
     }
 
     private static void UpdateNonce(

@@ -1943,6 +1943,41 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// Regression test: as in geth, any override of a precompile's address turns it into an ordinary account, which
+    /// runs its code instead of the precompile, on the EIP-7928 path and on the sequential one.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_overridden_precompile_address_runs_code([Values] bool balPath, [Values] bool overrideCode)
+    {
+        Address identity = Address.FromNumber(4);
+
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { identity, overrideCode ? new AccountOverride { Code = Return42Code } : new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = identity, Input = EcrecoverInput, GasPrice = UInt256.Zero }]
+                }
+            ]
+        };
+
+        SimulateCallResult call = SimulateSingleBlock(chain, payload).Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Error, Is.Null);
+            Assert.That(call.ReturnData, overrideCode ? Is.EqualTo(new UInt256(42).ToBigEndian()) : Is.Empty);
+        }
+    }
+
+    /// <summary>
     /// Regression test: a delegation to a move destination runs empty code (EIP-7702), both from the transaction and
     /// from a nested <c>CALL</c>, on the EIP-7928 path and on the sequential one. A plain call to the destination
     /// still runs the precompile.

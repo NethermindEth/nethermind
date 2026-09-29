@@ -13,10 +13,11 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
-/// <summary>Applies the precompile moves of an overridable env over a per-transaction code repository.</summary>
+/// <summary>Applies the precompile overrides of an overridable env over a per-transaction code repository.</summary>
 /// <remarks>
 /// Block access list execution gives each transaction its own code repository. Code overrides are already in the
-/// world state, so only the precompile moves, which live in the env's <see cref="CodeOverrideStore"/>, need applying.
+/// world state, so only what changes precompile dispatch, which lives in the env's <see cref="CodeOverrideStore"/>,
+/// needs applying: a moved precompile runs at its destination, and an overridden precompile address runs its code.
 /// Every other lookup reads through <paramref name="codeInfoRepository"/>, which sees later state changes such as
 /// EIP-7702 delegations.
 /// </remarks>
@@ -26,7 +27,7 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
-        if (TryGetMoved(codeSource, out CodeInfo? codeInfo))
+        if (TryGetMoved(codeSource, out CodeInfo? codeInfo) || TryGetOverriddenPrecompileAddress(codeSource, vmSpec, out codeInfo))
         {
             worldState.AddAccountRead(codeSource);
             worldState.RecordAccountAccess(codeSource);
@@ -43,16 +44,17 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
     }
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
-        TryGetMoved(codeSource, out CodeInfo? codeInfo) ? codeInfo.Precompile : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
+        TryGetMoved(codeSource, out CodeInfo? codeInfo) ? codeInfo.Precompile
+        : TryGetOverriddenPrecompileAddress(codeSource, vmSpec, out _) ? null
+        : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A code override at a precompile's address runs as code, as in <see cref="OverridableCodeInfoRepository"/>;
-    /// no transaction can change the code there, so the env's copy is current. Any other target, a move destination
-    /// included, resolves to its code in the world state.
+    /// An overridden precompile address runs its code, as in <see cref="OverridableCodeInfoRepository"/>. Any other
+    /// target, a move destination included, resolves to its code in the world state.
     /// </remarks>
     public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
-        vmSpec.IsPrecompile(target) && overrides.Code.TryGetValue(target, out CodeInfo? codeInfo)
+        TryGetOverriddenPrecompileAddress(target, vmSpec, out CodeInfo? codeInfo)
             ? codeInfo
             : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
@@ -65,32 +67,25 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         codeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
 
-    /// <summary>Returns the code of a move destination, or of a move origin, which is no longer a precompile.</summary>
+    /// <summary>Returns the precompile moved to <paramref name="codeSource"/>.</summary>
     private bool TryGetMoved(Address codeSource, [NotNullWhen(true)] out CodeInfo? codeInfo)
     {
         Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> precompiles = overrides.Precompiles;
-        if (precompiles.Count == 0)
-        {
-            codeInfo = null;
-            return false;
-        }
-
-        if (precompiles.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) moved))
+        if (precompiles.Count != 0 && precompiles.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) moved))
         {
             codeInfo = moved.codeInfo;
             return true;
         }
 
-        foreach ((CodeInfo _, Address initialAddr) in precompiles.Values)
-        {
-            if (initialAddr == codeSource)
-            {
-                codeInfo = overrides.Code[codeSource];
-                return true;
-            }
-        }
-
         codeInfo = null;
         return false;
+    }
+
+    /// <summary>Returns the code of a precompile address that an override, a move away included, turned into an account.</summary>
+    /// <remarks>No transaction can change the code at a precompile address, so the env's copy is current.</remarks>
+    private bool TryGetOverriddenPrecompileAddress(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? codeInfo)
+    {
+        codeInfo = null;
+        return vmSpec.IsPrecompile(codeSource) && overrides.Code.TryGetValue(codeSource, out codeInfo);
     }
 }
