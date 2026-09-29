@@ -3,14 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -25,6 +29,8 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -34,6 +40,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -43,7 +50,7 @@ namespace Nethermind.Evm.Test;
 /// <remarks>A frame transaction found invalid mid-loop is rolled back to the executor's transaction
 /// snapshot, so post-rejection assertions see the state the transaction started from.</remarks>
 [TestFixture]
-public class FrameTxProcessorTests
+public partial class FrameTxProcessorTests
 {
     private ISpecProvider _specProvider;
     private OverridableReleaseSpec _spec;
@@ -108,13 +115,136 @@ public class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_InvalidProtocolSignature_ReturnsMalformedTransaction()
+    public void UnsignedFrameTransaction_RequiresPlaceholderAndSimulation(
+        [Values] bool placeholder,
+        [Values(ExecutionOptions.CommitAndRestore, ExecutionOptions.None, ExecutionOptions.Commit, ExecutionOptions.BuildUp, ExecutionOptions.SkipValidationAndCommit, ExecutionOptions.FrameValidationPrefixOnly)] ExecutionOptions options)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 5));
+        tx.FrameSignatures = placeholder
+            ? [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)]
+            : [];
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            bool succeeds = placeholder && options.HasFlag(ExecutionOptions.SkipValidation);
+            Assert.That(result.TransactionExecuted, Is.EqualTo(succeeds));
+            if (!succeeds)
+            {
+                Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+                Assert.That(result.ErrorDescription, Does.Contain(placeholder
+                    ? FrameTxSignatureValidator.InvalidSignatureLength
+                    : options == ExecutionOptions.FrameValidationPrefixOnly ? "validation prefix frame reverted" : "VERIFY frame reverted"));
+            }
+            if (!succeeds || options.HasFlag(ExecutionOptions.Restore))
+            {
+                Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL));
+                Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo((UInt256)1.Ether));
+                Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
+            }
+        }
+    }
+
+    [Test]
+    public void CallAndRestore_UnsignedCustomVerifier_StillExecutes([Values] bool reverts,
+        [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary)] byte scheme)
+    {
+        DeploySmartSender(reverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(scheme, null, default, scheme == TxFrameSignature.SchemeArbitrary ? new byte[] { 1, 2, 3 } : default)];
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(!reverts));
+        if (reverts) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public void CallAndRestore_DefaultVerifier_RejectsInvalidPlaceholders(
+        [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary, TxFrameSignature.SchemeSecp256k1)] byte scheme)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(scheme, null,
+            scheme == TxFrameSignature.SchemeSecp256k1 ? TestItem.KeccakA.Bytes.ToArray() : default, default)];
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public void CallAndRestore_MixedSignatures_ValidatesSuppliedSignature([Values] bool valid)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default),
+        ];
+        SignCanonicalHash(tx, 1, valid ? TestItem.PrivateKeyA : TestItem.PrivateKeyB, signer: null);
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(valid));
+        if (!valid) Assert.That(result.ErrorDescription, Does.Contain(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+    }
+
+    [Test]
+    public void CallAndRestore_ArbitraryDummyData_IsCheckedByCustomVerifier([Values] bool matches)
+    {
+        byte[] condition = Prepare.EvmCode
+            .PushData(0).PushData(1).PushData(0).PushData(0).Op(Instruction.SIGDATACOPY)
+            .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.BYTE)
+            .PushData(42).Op(Instruction.EQ).Done;
+        DeploySmartSender(BranchOnStackTop(condition,
+            ApproveCode(FrameFlags.ApproveExecutionAndPayment),
+            Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { matches ? (byte)42 : (byte)43 })];
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(matches));
+        if (!matches) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public void CallAndRestore_DefaultVerifier_RejectsDifferentSigner([Values] bool placeholder)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, default)];
+        if (!placeholder) SignCanonicalHash(tx, 0, TestItem.PrivateKeyB, TestItem.AddressB);
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public void InvalidProtocolSignature_ReturnsMalformedTransaction([Values] bool simulate,
+        [Values(TxFrameSignature.SchemeSecp256k1, TxFrameSignature.SchemeP256)] byte scheme)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressD, default, new byte[65])];
+        tx.FrameSignatures = [new TxFrameSignature(scheme, TestItem.AddressD, default, new byte[65])];
 
-        TransactionResult result = Process(tx);
+        TransactionResult result = simulate ? CallAndRestore(tx) : Process(tx);
 
         using (Assert.EnterMultipleScope())
         {
@@ -716,6 +846,30 @@ public class FrameTxProcessorTests
         AssertStorage(Observer, 0, new UInt256(FrameTxSigHash.ComputeValue(tx).Bytes, isBigEndian: true));
     }
 
+    [Test]
+    public void Simulation_TxParamMaxCost_PlaceholderCoversSignedSignature()
+    {
+        UInt256 placeholder = SimulatedMaxCost(signed: false);
+        UInt256 signed = SimulatedMaxCost(signed: true);
+
+        Assert.That(placeholder, Is.GreaterThanOrEqualTo(signed));
+    }
+
+    /// <summary>The <c>TXPARAM</c> max_cost a frame observes with a SECP256K1 entry, run as simulation with its state kept.</summary>
+    private UInt256 SimulatedMaxCost(bool signed)
+    {
+        Transaction tx = TxParamObserverTx(0x06);
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, default)];
+        if (signed) SignCanonicalHash(tx, 0, TestItem.PrivateKeyB, TestItem.AddressB);
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.SkipValidationAndCommit);
+
+        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+        return StorageAt(new StorageCell(Observer, 0));
+    }
+
     /// <summary>Builds the transaction whose body frame stores <c>TXPARAM param</c> into the observer's slot 0.</summary>
     private Transaction TxParamObserverTx(byte param)
     {
@@ -1003,18 +1157,7 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_AtomicBatch_FrameFails_RollsBackBatchAndSkipsRemaining()
     {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        // Frame 1 writes and succeeds, frame 2 reverts, terminal frame 3 must be skipped and the batch
-        // rolled back.
-        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
-        DeployContract(TestItem.AddressD, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-
-        Transaction tx = FrameTx(nonce: 0,
-            SelfVerifyFrame(),
-            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Observer),
-            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
-            Frame(FrameMode.Sender, target: TestItem.AddressD));
+        Transaction tx = FailingAtomicBatchTx();
 
         TransactionResult result = Process(tx);
 
@@ -1026,6 +1169,37 @@ public class FrameTxProcessorTests
             AssertStorage(Observer, 0, UInt256.Zero, "batch frame 1 write rolled back");
             AssertStorage(TestItem.AddressD, 0, UInt256.Zero, "terminal frame skipped, never wrote");
         }
+    }
+
+    [TestCase(false, 0, 0, TestName = "Execute_AtomicBatch_FrameFails_NonTracingTracerGetsNoFrameReports")]
+    [TestCase(true, 3, 1, TestName = "Execute_AtomicBatch_FrameFails_TracingTracerGetsFrameReports")]
+    public void Execute_AtomicBatch_FrameFails_FrameReportsFollowIsTracing(bool isTracing, int frameEnds, int rollbacks)
+    {
+        Transaction tx = FailingAtomicBatchTx();
+        ITxTracer tracer = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+        tracer.IsTracing.Returns(isTracing);
+        IFrameTxReceiptTracer frameTracer = (IFrameTxReceiptTracer)tracer;
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        frameTracer.Received(frameEnds).ReportFrameEnd(Arg.Any<int>(), Arg.Any<EvmExceptionType?>());
+        frameTracer.Received(rollbacks).ReportFramesRolledBack(1, 2);
+        frameTracer.DidNotReceive().ReportFrameTxReceipt(Arg.Any<Address>(), Arg.Any<TxFrameReceipt[]>());
+    }
+
+    /// <summary>Frame 1 writes and succeeds, frame 2 reverts, so the batch rolls back and terminal frame 3 is skipped.</summary>
+    private Transaction FailingAtomicBatchTx()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(TestItem.AddressD, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        return FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Observer),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+            Frame(FrameMode.Sender, target: TestItem.AddressD));
     }
 
     [Test]
@@ -4589,7 +4763,7 @@ public class FrameTxProcessorTests
             Assert.That(root.GetProperty("to").GetString(), Is.EqualTo(Eip8141Constants.EntryPointAddress.ToString()));
             Assert.That(root.TryGetProperty("value", out JsonElement rootValue) ? rootValue.GetString() : null, Is.EqualTo("0x0"),
                 "the synthetic root must carry the same value field every other transaction's root does");
-            Assert.That(HexValue(root, "gas"), Is.EqualTo(tx.GasLimit),
+            Assert.That(HexValue(root, "gas"), Is.EqualTo(FrameGasBudget(tx)),
                 "the transaction-wide limit belongs to the synthetic root, not to a frame");
             Assert.That(frames.GetArrayLength(), Is.EqualTo(2), "both executed frames belong in the trace");
 
@@ -4814,6 +4988,484 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>The tracer outputs that carry a frame transaction's transaction-level status.</summary>
+    public enum FrameTxStatusConsumer
+    {
+        CallTracer,
+        StructLogger,
+        JavaScriptTracer,
+        Simulate
+    }
+
+    /// <summary>The processor marks every included frame transaction successful, so a tracer has to be given the
+    /// status the receipt derives from the frames, and simulate the receipt's logs rather than those emitted by a
+    /// frame an atomic batch later unrolled.</summary>
+    [Test]
+    public void Execute_FrameTxTracedThroughTheReceiptsTracer_ReportsTheReceiptStatus([Values] FrameTxStatusConsumer consumer, [Values] bool batchFails)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, LogEmitter(7));
+        DeployContract(Observer, batchFails
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Default, target: Recipient));
+        tx.Hash = tx.CalculateHash();
+
+        (bool failed, int? logCount, TxReceipt receipt) = TraceStatus(tx, consumer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(batchFails ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(receipt.Logs, Has.Length.EqualTo(batchFails ? 1 : 2), "an unrolled frame's log leaves the receipt");
+            Assert.That(failed, Is.EqualTo(batchFails), "the traced status must be the receipt's");
+            if (logCount is not null)
+            {
+                Assert.That(logCount, Is.EqualTo(receipt.Logs!.Length), "the simulated logs must be the receipt's");
+            }
+        }
+    }
+
+    /// <summary>Without EIP-7708, simulate synthesises transfer logs as values move, so a frame an atomic batch
+    /// unrolled would keep its transfer while the receipt drops everything else it did.</summary>
+    [Test]
+    public void Simulate_TraceTransfersOverAnUnrolledBatch_KeepsOnlyTheCommittedFramesTransfers([Values] bool batchFails)
+    {
+        _spec.IsEip7708Enabled = false;
+        Address afterBatch = TestItem.AddressD;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, LogEmitter(7));
+        DeployContract(Observer, batchFails
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(afterBatch, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient, value: 1),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Sender, target: afterBatch, value: 2));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        LogEntry[] expected = batchFails
+            ? [TransferLog.CreateSimulateTransfer(Sender, afterBatch, 2)]
+            : [TransferLog.CreateSimulateTransfer(Sender, Recipient, 1), receipt.Logs![0], TransferLog.CreateSimulateTransfer(Sender, afterBatch, 2)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(batchFails ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(result.Logs.Select(static log => $"{log.Address}:{log.Topics[^1]}"),
+                Is.EqualTo(expected.Select(static log => $"{log.Address}:{log.Topics[^1]}")),
+                "the committed frames' transfers and logs, in emission order");
+        }
+    }
+
+    /// <summary>A failed frame transaction fails on its first failed frame, so simulate must report that frame's
+    /// error: not a later frame's, and not a later successful frame's inner revert.</summary>
+    [TestCase(false, EvmExceptionType.OutOfGas, TestName = "Simulate_BatchOutOfGasBeforeAnInnerRevert_ReportsTheFailedFramesError")]
+    [TestCase(true, EvmExceptionType.Revert, TestName = "Simulate_RevertBeforeALaterOutOfGasFrame_ReportsTheFirstFailedFramesError")]
+    public void Simulate_FailedFrameTransaction_ReportsTheFirstFailedFramesError(bool revertFirst, EvmExceptionType expected)
+    {
+        Address afterBatch = TestItem.AddressD;
+        Address reverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Observer, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done);
+        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(afterBatch, Prepare.EvmCode.Call(reverter, 50_000).Op(Instruction.STOP).Done);
+
+        Transaction tx = revertFirst
+            ? FrameTx(nonce: 0,
+                SelfVerifyFrame(),
+                Frame(FrameMode.Sender, target: reverter),
+                Frame(FrameMode.Sender, target: Observer))
+            : FrameTx(nonce: 0,
+                SelfVerifyFrame(),
+                Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+                Frame(FrameMode.Sender, target: Observer),
+                Frame(FrameMode.Default, target: afterBatch));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+        ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(StatusCode.Failure));
+            Assert.That(result.Error!.EvmException, Is.EqualTo(expected));
+            Assert.That(result.Error.Message, Is.EqualTo(expected == EvmExceptionType.Revert
+                ? "execution reverted: frame failed"
+                : expected.GetEvmExceptionDescription()));
+        }
+    }
+
+    /// <summary>A failed <c>POST_TX</c> frame discards the body down to the validation prefix, so simulate keeps
+    /// the prefix's log and drops the body's log and transfer, and names the assertion in its error.</summary>
+    [Test]
+    public void Simulate_PostTxRevertsOverALoggingPrefix_KeepsOnlyThePrefixLogs()
+    {
+        _spec.IsEip7708Enabled = false;
+        Address reverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, LogEmitter(999));
+        DeployContract(Recipient, LogEmitter(7));
+        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        // The deploy frame opening the prefix is the one prefix frame that is not static, so it can log.
+        Transaction tx = FrameTx(nonce: 0,
+            Frame(FrameMode.Default, target: Observer),
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, target: Recipient, value: 1),
+            Frame(FrameMode.PostTx, target: reverter));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "only the prefix's log outlives the assertion");
+            Assert.That(result.Logs.Select(static log => log.Address), Is.EqualTo(new[] { Observer }),
+                "the body's log and transfer go with its state");
+            Assert.That(result.Error!.EvmException, Is.EqualTo(EvmExceptionType.Revert));
+            Assert.That(result.Error.Message, Is.EqualTo("execution reverted: POST_TX frame reverted"));
+        }
+    }
+
+    /// <summary>A reverted inner call's state goes with it, so a committed frame's receipt drops the call's logs
+    /// and simulate must drop the transfer it synthesised for the call's value too.</summary>
+    [Test]
+    public void Simulate_RevertedInnerValueCallInACommittedFrame_DropsItsTransferAndLog()
+    {
+        _spec.IsEip7708Enabled = false;
+        Address reverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(reverter, Prepare.EvmCode
+            .PushData(5).PushData(0).PushData(0).Op(Instruction.LOG1)
+            .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(Recipient, Prepare.EvmCode
+            .CallWithValue(reverter, 100_000, 1)
+            .PushData(7).PushData(0).PushData(0).Op(Instruction.LOG1)
+            .Op(Instruction.STOP).Done, balance: 10);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "only the frame's own log is committed");
+            Assert.That(result.Logs.Select(static log => $"{log.Address}:{log.Topics[^1]}"),
+                Is.EqualTo(receipt.Logs!.Select(static log => $"{log.Address}:{log.Topics[^1]}")),
+                "the reverted call's log and its transfer never happened");
+        }
+    }
+
+    /// <summary>The processor reports no output for a frame transaction, so simulate has to carry the revert data
+    /// of the frame it reports the error for: the first failed one.</summary>
+    [Test]
+    public void Simulate_FramesRevertingWithData_SurfacesTheFirstFailedFramesRevertData()
+    {
+        Address secondReverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, RevertWithWord(0xaa));
+        DeployContract(secondReverter, RevertWithWord(0xbb));
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Sender, target: secondReverter));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+        ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error!.EvmException, Is.EqualTo(EvmExceptionType.Revert));
+            Assert.That(result.Error.Data, Is.EqualTo(new UInt256(0xaa).ToBigEndian()));
+        }
+    }
+
+    private static byte[] RevertWithWord(UInt256 word) => Prepare.EvmCode
+        .PushData(word).PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.REVERT).Done;
+
+    /// <summary>Runs <paramref name="tx"/> through the receipts tracer under <paramref name="consumer"/>,
+    /// returning whether it reported a failure, the logs it reported when it reports any, and the receipt.</summary>
+    private (bool Failed, int? LogCount, TxReceipt Receipt) TraceStatus(Transaction tx, FrameTxStatusConsumer consumer)
+    {
+        switch (consumer)
+        {
+            case FrameTxStatusConsumer.CallTracer:
+                {
+                    using JsonDocument document = TraceThroughReceiptsTracer(tx,
+                    GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer }, baseFeePerGas: 0, out TxReceipt receipt);
+                    return (document.RootElement.TryGetProperty("error", out _), null, receipt);
+                }
+            case FrameTxStatusConsumer.StructLogger:
+                {
+                    GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default);
+                    TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+                    using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
+                    return (trace.Failed, null, receipt);
+                }
+            case FrameTxStatusConsumer.JavaScriptTracer:
+                {
+                    GethTraceOptions options = GethTraceOptions.Default with
+                    {
+                        Tracer = "{ step: function(log, db) { }, fault: function(log, db) { }, result: function(ctx, db) { return ctx.error !== undefined; } }"
+                    };
+                    GethLikeBlockJavaScriptTracer? blockTracer = null;
+                    try
+                    {
+                        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, state => blockTracer = new GethLikeBlockJavaScriptTracer(state, Spec, options));
+                        using GethLikeTxTrace trace = blockTracer!.BuildResult().Single();
+                        return (JsonSerializer.Serialize(trace.CustomTracerResult?.Value) == "true", null, receipt);
+                    }
+                    finally
+                    {
+                        blockTracer?.Dispose();
+                    }
+                }
+            default:
+                {
+                    SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+                    TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+                    SimulateCallResult result = blockTracer.BuildResult().Single();
+                    return (result.Status == StatusCode.Failure, result.Logs.Count, receipt);
+                }
+        }
+    }
+
+    /// <summary>A frame transaction has no <c>to</c> and creates nothing: prestateTracer has to record every
+    /// frame target and the payer, whose storage and fee charge it otherwise misses or crashes on.</summary>
+    [Test]
+    public void Execute_FrameTxTracedWithPrestateTracer_RecordsFrameTargetsAndPayer([Values] FramePayer framePayer, [Values] bool diffMode, [Values(0, 1)] int baseFeePerGas)
+    {
+        Address sponsor = TestItem.AddressF;
+        Address storageHelper = TestItem.AddressD;
+        DeployContract(Observer, Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        // CALLER is ENTRY_POINT in a DEFAULT frame, which only an opcode like this BALANCE touches.
+        DeployContract(storageHelper, Prepare.EvmCode
+            .Op(Instruction.CALLER).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .PushData(1).Op(Instruction.SLOAD).Op(Instruction.POP)
+            .PushData(7).PushData(1).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+
+        Transaction tx;
+        if (framePayer != FramePayer.Sender)
+        {
+            DeploySmartSender(ApproveCode(FrameFlags.ApproveExecution));
+            // A codeless sponsor approves through the default code, which never enters the VM.
+            DeployContract(sponsor, framePayer == FramePayer.Sponsor ? ApproveCode(FrameFlags.ApprovePayment) : [], 1.Ether);
+            tx = FrameTx(nonce: 0,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, sponsor, gasLimit: 200_000, UInt256.Zero, default),
+                Frame(FrameMode.Sender, target: Observer),
+                Frame(FrameMode.Default, target: storageHelper));
+        }
+        else
+        {
+            DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+            tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: storageHelper));
+        }
+
+        // Leaves a priority fee over the base fee, so the beneficiary is credited in every case.
+        tx.DecodedMaxFeePerGas = 2;
+        if (framePayer == FramePayer.CodelessSponsor)
+        {
+            tx.FrameSignatures =
+            [
+                new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0x01 }),
+                new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sponsor, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
+            ];
+            SignCanonicalHash(tx, index: 1, TestItem.PrivateKeyF, sponsor);
+        }
+
+        Address payer = framePayer == FramePayer.Sender ? Sender : sponsor;
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode), (UInt256)baseFeePerGas, out TxReceipt receipt);
+        JsonElement root = document.RootElement;
+        JsonElement pre = diffMode ? root.GetProperty("pre") : root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pre.TryGetProperty(ContractAddress.From(Sender, 0).ToString(), out _), Is.False,
+                "a frame transaction creates no contract");
+            Assert.That(PrestateBalance(pre, payer.ToString()), Is.EqualTo((BigInteger)1.Ether), "the payer's balance before approval charged it");
+
+            if (diffMode)
+            {
+                JsonElement post = root.GetProperty("post");
+                Assert.That(PrestateSlot(post, Observer, 0), Is.EqualTo(StorageWord(42)));
+                Assert.That(PrestateSlot(post, storageHelper, 1), Is.EqualTo(StorageWord(7)));
+
+                BigInteger burnt = (BigInteger)baseFeePerGas * receipt.GasUsed;
+                Assert.That(PrestateBalanceDelta(pre, post), Is.EqualTo(-burnt),
+                    "the payer's debit has to balance the beneficiary's credit and the burn");
+            }
+            else
+            {
+                Assert.That(PrestateSlot(pre, Observer, 0), Is.EqualTo(StorageWord(0)));
+                Assert.That(PrestateSlot(pre, storageHelper, 1), Is.EqualTo(StorageWord(0)));
+                Assert.That(pre.TryGetProperty(Beneficiary.ToString(), out _), Is.True);
+                Assert.That(pre.TryGetProperty(Eip8141Constants.EntryPointAddress.ToString(), out _), Is.True);
+            }
+        }
+    }
+
+    /// <summary>With a keyed nonce set, approval consumes the sender's nonce through <c>NONCE_MANAGER</c> storage
+    /// outside the VM, leaving the account nonce untouched.</summary>
+    [Test]
+    public void Execute_KeyedNonceFrameTxTracedWithPrestateTracer_RecordsTheConsumedSlots([Values] bool diffMode, [Values] bool keysUsedBefore)
+    {
+        UInt256[] keys = [1, 2];
+        ulong nonce = keysUsedBefore ? 1UL : 0UL;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        if (keysUsedBefore)
+        {
+            Transaction first = FrameTx(nonce: 0, KeyedSelfVerifyFrame(keys.Length));
+            first.NonceKeys = keys;
+            Assert.That(Process(first).TransactionExecuted, Is.True);
+        }
+
+        Transaction tx = FrameTx(nonce, KeyedSelfVerifyFrame(keysUsedBefore ? 0 : keys.Length));
+        tx.NonceKeys = keys;
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode), baseFeePerGas: 0, out _);
+        JsonElement root = document.RootElement;
+        JsonElement pre = diffMode ? root.GetProperty("pre") : root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (UInt256 key in keys)
+            {
+                UInt256 slot = KeyedNonceManager.StorageSlot(Sender, key).Index;
+                // diffMode leaves zero-valued slots out of pre, as for any other storage.
+                if (!diffMode || keysUsedBefore)
+                    Assert.That(PrestateSlot(pre, Eip8250Constants.NonceManagerAddress, slot), Is.EqualTo(StorageWord(nonce)), $"key {key} before");
+                if (diffMode)
+                    Assert.That(PrestateSlot(root.GetProperty("post"), Eip8250Constants.NonceManagerAddress, slot), Is.EqualTo(StorageWord(nonce + 1)), $"key {key} after");
+            }
+
+            if (diffMode)
+            {
+                Assert.That(root.GetProperty("post").TryGetProperty(Sender.ToString(), out JsonElement senderPost)
+                    && senderPost.TryGetProperty("nonce", out _), Is.False, "a keyed nonce set leaves the account nonce alone");
+            }
+        }
+    }
+
+    /// <summary>EIP-8272 references are checked against <c>RECENT_ROOT</c> storage before the first frame, so a
+    /// prestate that omits those cells cannot replay the transaction.</summary>
+    [Test]
+    public void Execute_RecentRootReferencingFrameTxTracedWithPrestateTracer_RecordsTheReferencedCells()
+    {
+        const ulong committedSlot = 1_000;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        StorageCell cell = RecentRootStore.ReferenceCell(sourceId, committedSlot);
+        UInt256 entry = RecentRootStore.EntryHash(sourceId, committedSlot, root).ToUInt256();
+        _stateProvider.Set(cell, entry);
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot, root)];
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: false), baseFeePerGas: 0, out _, slotNumber: committedSlot + 1);
+
+        Assert.That(PrestateSlot(document.RootElement, Eip8272Constants.RecentRootAddress, cell.Index), Is.EqualTo(StorageWord(entry)));
+    }
+
+    /// <summary>A deploy frame CREATE2-ing a sender that already holds its funds creates the code, not the account,
+    /// so diffMode has to keep the payer's pre balance for the fee debit to balance.</summary>
+    [Test]
+    public void Execute_DeployFrameCreatingAFundedSenderTracedWithPrestateTracer_KeepsThePayerPrestate([Values(0, 1)] int baseFeePerGas)
+    {
+        Address factory = TestItem.AddressF;
+        byte[] senderInit = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
+        byte[] salt = new byte[32];
+        Address smartSender = ContractAddress.From(factory, salt, senderInit);
+        DeployContract(factory, Prepare.EvmCode.Create2(senderInit, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        _stateProvider.CreateAccount(smartSender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Default, 0, factory, executionGasLimit: 1_000_000,
+                stateGasLimit: (ulong)(GasCostOf.NewAccountState + GasCostOf.CodeDepositState * senderInit.Length), UInt256.Zero, default),
+            SelfVerifyFrame());
+        tx.SenderAddress = smartSender;
+        tx.DecodedMaxFeePerGas = 2;
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: true), (UInt256)baseFeePerGas, out TxReceipt receipt);
+        JsonElement pre = document.RootElement.GetProperty("pre");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pre.TryGetProperty(smartSender.ToString(), out _), Is.True, "the sender existed before the transaction");
+            Assert.That(PrestateBalanceDelta(pre, document.RootElement.GetProperty("post")), Is.EqualTo(-(BigInteger)baseFeePerGas * receipt.GasUsed));
+        }
+    }
+
+    private static GethTraceOptions PrestateOptions(bool diffMode) => GethTraceOptions.Default with
+    {
+        Tracer = NativePrestateTracer.PrestateTracer,
+        TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}}}""")
+    };
+
+    private static BigInteger PrestateBalance(JsonElement state, string address) =>
+        BigInteger.Parse("0" + state.GetProperty(address).GetProperty("balance").GetString()![2..], NumberStyles.AllowHexSpecifier);
+
+    private static string? PrestateSlot(JsonElement state, Address address, in UInt256 slot) =>
+        state.GetProperty(address.ToString()).GetProperty("storage").GetProperty(StorageWord(slot)).GetString();
+
+    private static string StorageWord(in UInt256 value) => value.ToBigEndian().ToHexString(true);
+
+    /// <summary>Σ balance changes across a diffMode trace: an account missing from pre was created at zero, and one
+    /// missing from post, or without a post balance, kept its pre balance.</summary>
+    private static BigInteger PrestateBalanceDelta(JsonElement pre, JsonElement post)
+    {
+        BigInteger balanceDelta = 0;
+        foreach (JsonProperty account in pre.EnumerateObject())
+        {
+            if (!post.TryGetProperty(account.Name, out JsonElement after) || !after.TryGetProperty("balance", out _)) continue;
+            balanceDelta += PrestateBalance(post, account.Name) - PrestateBalance(pre, account.Name);
+        }
+
+        foreach (JsonProperty account in post.EnumerateObject())
+        {
+            if (!pre.TryGetProperty(account.Name, out _) && account.Value.TryGetProperty("balance", out _))
+                balanceDelta += PrestateBalance(post, account.Name);
+        }
+
+        return balanceDelta;
+    }
+
+    public enum FramePayer
+    {
+        Sender,
+        Sponsor,
+        CodelessSponsor
+    }
+
     /// <summary>The pre-dispatch exits of <c>ExecuteFrame</c>, each of which ends a frame without entering the VM.</summary>
     public enum PreDispatchExit
     {
@@ -4890,28 +5542,40 @@ public class FrameTxProcessorTests
 
     /// <summary>Runs <paramref name="tx"/> under <c>callTracer</c> through the chain the tracing RPCs build —
     /// the receipts tracer over the cancellable native block tracer — and returns the serialized trace.</summary>
-    private JsonDocument TraceThroughReceiptsTracer(Transaction tx)
+    private JsonDocument TraceThroughReceiptsTracer(Transaction tx) =>
+        TraceThroughReceiptsTracer(tx, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer }, baseFeePerGas: 0, out _);
+
+    private JsonDocument TraceThroughReceiptsTracer(Transaction tx, GethTraceOptions options, UInt256 baseFeePerGas, out TxReceipt receipt, ulong? slotNumber = null)
     {
-        GethTraceOptions options = GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer };
+        GethLikeBlockNativeTracer? blockTracer = null;
+        receipt = ProcessThroughReceiptsTracer(tx, tracedState => blockTracer = new GethLikeBlockNativeTracer(txHash: null,
+            (b, t) => GethLikeNativeTracerFactory.CreateTracer(options, b, t, tracedState, Spec)), baseFeePerGas, slotNumber);
+
+        using GethLikeTxTrace trace = blockTracer!.BuildResult().Single();
+        return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
+    }
+
+    /// <summary>Runs <paramref name="tx"/> through the receipts tracer over the cancellable block tracer
+    /// <paramref name="createBlockTracer"/> builds on the traced state, and returns the built receipt.</summary>
+    private TxReceipt ProcessThroughReceiptsTracer(Transaction tx, Func<IWorldState, IBlockTracer> createBlockTracer,
+        UInt256 baseFeePerGas = default, ulong? slotNumber = null)
+    {
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
         Block block = Build.A.Block.WithNumber(1)
-            .WithBaseFeePerGas(0)
+            .WithBaseFeePerGas(baseFeePerGas)
             .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
+            .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
 
-        GethLikeBlockNativeTracer blockTracer = new(txHash: null,
-            (b, t) => GethLikeNativeTracerFactory.CreateTracer(options, b, t, tracedState, Spec));
         BlockReceiptsTracer receiptsTracer = new();
-        receiptsTracer.SetOtherTracer(blockTracer.WithCancellation(CancellationToken.None));
+        receiptsTracer.SetOtherTracer(createBlockTracer(tracedState).WithCancellation(CancellationToken.None));
         receiptsTracer.StartNewBlockTrace(block);
         receiptsTracer.StartNewTxTrace(tx);
         Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), receiptsTracer).TransactionExecuted, Is.True);
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
-
-        using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
-        return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
+        return receiptsTracer.LastReceipt;
     }
 
     /// <summary>A <c>callTracer</c> that also keeps the per-frame receipts, so a test can hold the trace
