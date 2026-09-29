@@ -21,6 +21,7 @@ namespace Nethermind.BeaconChain.Test.Crypto;
 /// gives over the committee's compressed participant pubkeys, repeated members included.
 /// </summary>
 [TestFixture]
+[HardTimeout(60_000)]
 public class SyncAggregateSignatureTests
 {
     private const int RegistrySize = 24;

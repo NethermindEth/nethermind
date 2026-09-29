@@ -29,6 +29,7 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test;
 
+[HardTimeout(60_000)]
 public class BeaconChainServiceStartupTests
 {
     /// <summary>

@@ -34,6 +34,7 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// <see cref="ExecutionPayloadEnvelopeImporter"/> driven through the production <see cref="EngineDriver"/>
 /// over a scripted engine RPC module, so the engine's own status strings are what gets mapped.
 /// </summary>
+[HardTimeout(60_000)]
 public class ExecutionPayloadEnvelopeImporterTests
 {
     private static readonly StringLabel EnvelopeRejected = new("execution_payload_envelope");

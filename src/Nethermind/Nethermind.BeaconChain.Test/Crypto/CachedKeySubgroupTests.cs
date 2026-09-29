@@ -21,6 +21,7 @@ namespace Nethermind.BeaconChain.Test.Crypto;
 /// must therefore refuse such a key, while the same signature under the honest cache verifies.
 /// </summary>
 [TestFixture]
+[HardTimeout(60_000)]
 public class CachedKeySubgroupTests
 {
     private const int KeyCount = 4;

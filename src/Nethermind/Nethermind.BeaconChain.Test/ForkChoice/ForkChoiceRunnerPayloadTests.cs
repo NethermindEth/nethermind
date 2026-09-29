@@ -23,6 +23,7 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// The children built here are slot-advanced copies of their parent's post-state, never run through
 /// <c>process_block</c>: fork choice reads only the post-state's checkpoints and registry.
 /// </remarks>
+[HardTimeout(60_000)]
 public class ForkChoiceRunnerPayloadTests
 {
     private const ulong EffectiveBalance = 32 * Gwei;

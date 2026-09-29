@@ -28,6 +28,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// serial path gives, whichever signature is bad and whatever else in the block fails.
 /// </summary>
 [TestFixture]
+[HardTimeout(60_000)]
 public class BlockSignatureBatchProcessingTests
 {
     /// <summary>Every block-validity signature a Gloas block carries, in <c>process_block</c> order.</summary>
