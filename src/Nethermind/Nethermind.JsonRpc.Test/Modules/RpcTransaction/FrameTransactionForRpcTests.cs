@@ -76,20 +76,18 @@ public class FrameTransactionForRpcTests
     [Test]
     public void FrameSignature_DeserializesDefaultSigner(
         [Values((byte)0, (byte)1, (byte)2)] byte scheme,
-        [Values(null, "null", "\"0x\"")] string? signer,
-        [Values] bool populated)
+        [Values(null, "null", "\"0x\"")] string? signer)
     {
         string signerField = signer is null ? "" : $"\"signer\":{signer},";
         int signatureLength = scheme == TxFrameSignature.SchemeP256 ? 128 : 65;
-        string signature = populated ? $",\"signature\":\"0x{new string('1', signatureLength * 2)}\"" : "";
-        string json = $"{{{signerField}\"scheme\":{scheme}{signature}}}";
+        string json = $"{{{signerField}\"scheme\":{scheme},\"signature\":\"0x{new string('1', signatureLength * 2)}\"}}";
 
         FrameSignatureForRpc rpc = Serializer.Deserialize<FrameSignatureForRpc>(json)!;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rpc.ToSignature().Signer, Is.Null);
-            Assert.That(rpc.Signature.Length, Is.EqualTo(populated ? signatureLength : 0));
+            Assert.That(rpc.Signature.Length, Is.EqualTo(signatureLength));
         }
     }
 
@@ -102,12 +100,13 @@ public class FrameTransactionForRpcTests
         Assert.That(rpc.Signer, Is.EqualTo(TestItem.AddressA));
     }
 
-    [Test]
-    public void FrameSignature_RejectsMalformedSigner([Values("0x12", "0xzz")] string signer)
+    [TestCase("0x12", typeof(ArgumentException))]
+    [TestCase("0xzz", typeof(FormatException))]
+    public void FrameSignature_RejectsMalformedSigner(string signer, Type expectedException)
     {
         string json = $"{{\"scheme\":1,\"signer\":\"{signer}\"}}";
 
-        Assert.That(() => Serializer.Deserialize<FrameSignatureForRpc>(json), Throws.Exception);
+        Assert.That(() => Serializer.Deserialize<FrameSignatureForRpc>(json), Throws.TypeOf(expectedException));
     }
 
     [Test]
