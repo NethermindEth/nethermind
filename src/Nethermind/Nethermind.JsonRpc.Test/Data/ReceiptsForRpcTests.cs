@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -47,6 +49,31 @@ namespace Nethermind.JsonRpc.Test.Data
             long?[] expected = { 0, 1, 2 };
 
             Assert.That(indexes, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Serializing_receipt_does_not_allocate_per_log()
+        {
+            const int logCount = 256;
+            LogEntry[] logEntries = new LogEntry[logCount];
+            Array.Fill(logEntries, Build.A.LogEntry.TestObject);
+            TxReceipt receipt = Build.A.Receipt.WithLogs(logEntries).TestObject;
+            ArrayBufferWriter<byte> buffer = new(1 << 20);
+            JsonSerializerOptions options = EthereumJsonSerializer.JsonOptions;
+            WriteReceipt(receipt, buffer, options);
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            WriteReceipt(receipt, buffer, options);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.That(allocated, Is.LessThan(logCount * 8), "receipt logs must be written from the stored entries, not materialized per log");
+        }
+
+        private static void WriteReceipt(TxReceipt receipt, ArrayBufferWriter<byte> buffer, JsonSerializerOptions options)
+        {
+            buffer.ResetWrittenCount();
+            using Utf8JsonWriter writer = new(buffer);
+            JsonSerializer.Serialize(writer, new ReceiptForRpc(Keccak.OfAnEmptyString, receipt, 0, new(UInt256.One)), options);
         }
 
         [Test]

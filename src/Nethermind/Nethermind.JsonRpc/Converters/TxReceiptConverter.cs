@@ -24,7 +24,7 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
         try
         {
             writer.WriteStartObject();
-            using ReceiptForRpc receipt = new(value.TxHash!, value, 0, default);
+            ReceiptForRpc receipt = new(value.TxHash!, value, 0, default);
             if (receipt.Type != TxType.Legacy)
             {
                 writer.WritePropertyName("type");

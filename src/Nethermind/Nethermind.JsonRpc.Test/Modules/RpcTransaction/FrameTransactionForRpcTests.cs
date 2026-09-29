@@ -582,8 +582,6 @@ public class FrameTransactionForRpcTests
             Assert.That(frames[3].GetProperty("logs")[0].GetProperty("logIndex").GetString(), Is.EqualTo("0x6"));
             Assert.That(JsonElement.DeepEquals(frames[0].GetProperty("logs")[0], logs[0]), Is.True);
             Assert.That(JsonElement.DeepEquals(frames[3].GetProperty("logs")[0], logs[1]), Is.True);
-            Assert.That(receiptForRpc.FrameReceipts![0].Logs![0], Is.SameAs(receiptForRpc.Logs![0]));
-            Assert.That(receiptForRpc.FrameReceipts![3].Logs![0], Is.SameAs(receiptForRpc.Logs![1]));
         }
     }
 
