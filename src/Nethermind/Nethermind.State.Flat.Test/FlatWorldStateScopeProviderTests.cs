@@ -742,6 +742,69 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd)
+    {
+        const int slotCount = 40;
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        // What the transactions commit, in order: every slot once, then slot 1 again and slot 2 back to its
+        // pre-block zero, which the block-end flush then leaves out.
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+        for (int slot = 0; slot < slotCount; slot++) storageTree.HintSet((UInt256)slot, (UInt256)(slot + 1));
+        storageTree.HintSet(1, 1000);
+        storageTree.HintSet(2, 0);
+        Assert.That(() => storageTree.EarlyWritesDrained, Is.True.After(5000, 10));
+
+        // The block-end flush: every changed slot's final value, slot 1 differing from its first early write.
+        UInt256[] expected = new UInt256[slotCount];
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+            if (clearAtBlockEnd) storageBatch.Clear();
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                if (slot == 2) continue;
+                // Slot 1 ends at a value the early writes never had, as after a restore of the block's changes.
+                expected[slot] = slot == 1 ? 2000 : (UInt256)(slot + 1);
+                storageBatch.Set((UInt256)slot, expected[slot]);
+            }
+        }
+
+        (int applied, int reused, int restored, int abandoned) = scope.EarlyApplyCounts;
+        if (applyEarly)
+        {
+            Assert.That(applied, Is.GreaterThanOrEqualTo(slotCount));
+            Assert.That(abandoned, Is.Zero);
+            // Clearing drops the early writes: every slot goes through the batch and none is restored.
+            Assert.That(reused, Is.EqualTo(clearAtBlockEnd ? 0 : slotCount - 2));
+            Assert.That(restored, Is.EqualTo(clearAtBlockEnd ? 0 : 1));
+        }
+        else
+        {
+            Assert.That(applied + reused + restored + abandoned, Is.Zero);
+        }
+        scope.Commit(1);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            if (!expected[slot].IsZero) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
+        }
+        expectedTree.UpdateRootHash();
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
+    public void EarlyStorageApply_IsOffByDefault()
+    {
+        using TestContext ctx = new();
+        Assert.That(ctx.Scope.AppliesStorageWritesEarly, Is.False);
+    }
+
+    [Test]
     public void TestStorageRootAfterMultipleCommits()
     {
         using TestContext ctx = new();

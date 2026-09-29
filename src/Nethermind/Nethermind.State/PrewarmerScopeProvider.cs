@@ -371,6 +371,12 @@ public class PrewarmerScopeProvider(
 
         public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
 
+        public void HintSet(in UInt256 index, in UInt256 value)
+        {
+            if (isPrewarmer) baseStorageTree.HintSet(in index);
+            else baseStorageTree.HintSet(in index, in value);
+        }
+
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
             // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per

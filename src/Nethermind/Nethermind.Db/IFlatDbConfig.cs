@@ -139,6 +139,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
+    [ConfigItem(Description = "Apply each transaction's committed storage writes to the storage tries on one lowest-priority background thread while later transactions execute, so the block-end storage root update only covers what is left. The thread only gets CPU time no other thread wants (SCHED_IDLE on Linux). Ignored when VerifyWithTrie is on.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool ApplyStorageWritesOnIdleThread { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 

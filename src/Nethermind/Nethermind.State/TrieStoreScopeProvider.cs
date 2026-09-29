@@ -454,6 +454,9 @@ public class TrieStoreScopeProvider(
             _hasSelfDestruct = true;
         }
 
+        /// <summary>Updates and reports the root on dispose even when every slot was already applied to the tree.</summary>
+        public void MarkSet() => _wasSetCalled = true;
+
         public void Dispose()
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;
