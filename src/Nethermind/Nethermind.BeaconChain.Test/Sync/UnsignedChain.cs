@@ -65,8 +65,10 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
     {
         BeaconStateFulu parentState = _postStates[parentRoot];
         BeaconBlock block = TestChain.CreateBlock(slot, parentRoot).Message!;
-        // The anchor's proposer lookahead is all zeros, so validator 0 proposes every slot.
-        block.ProposerIndex = 0;
+        // The proposer the transition expects: the parent state's lookahead once advanced to the slot.
+        BeaconStateFulu atSlot = parentState.Clone();
+        SlotProcessing.ProcessSlots(atSlot, slot, new EpochCache());
+        block.ProposerIndex = atSlot.GetBeaconProposerIndex();
         BeaconBlockBody body = block.Body!;
         body.RandaoReveal = Unsigned;
         body.Attestations = attestations ?? [];
