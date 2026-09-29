@@ -39,10 +39,10 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
     public const int Ways = 4;
     public const int MaxCapacity = 1 << 28;
 
-    private const uint LockBit = 1;
-    private const uint VersionIncrement = 2;
-    private const uint VersionMask = 0x0000_FFFE;
-    private const uint TagMask = 0xFFFF_0000;
+    private const ulong LockBit = 1;
+    private const ulong VersionIncrement = 2;
+    private const ulong VersionMask = 0x0000_FFFF_FFFF_FFFE;
+    private const ulong TagMask = 0xFFFF_0000_0000_0000;
     private const uint EmptyEpoch = 0;
     private const uint FirstEpoch = 1;
 
@@ -105,26 +105,36 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
     /// <param name="value">The cached value; <c>default</c> when <paramref name="found"/> is <c>false</c>.</param>
     /// <returns><c>true</c> on a hit. An entry being written at the same time reads as a miss.</returns>
     [SkipLocalsInit]
-    public bool TryGet(ulong hash, Address address, in UInt256 slot, out bool found, out UInt256 value)
+    public bool TryGet(ulong hash, Address address, in UInt256 slot, out bool found, out UInt256 value) =>
+        TryGet<OffFlag>(hash, address, slot, out found, out value, afterKeyCopy: null);
+
+    /// <inheritdoc cref="TryGet(ulong, Address, in UInt256, out bool, out UInt256)"/>
+    /// <typeparam name="TTestHook"><see cref="OnFlag"/> runs <paramref name="afterKeyCopy"/>; <see cref="OffFlag"/> compiles it out.</typeparam>
+    /// <param name="afterKeyCopy">Runs after an entry's key is copied and before its value is, so a test can write mid-read.</param>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryGet<TTestHook>(ulong hash, Address address, in UInt256 slot, out bool found, out UInt256 value, Action? afterKeyCopy)
+        where TTestHook : struct, IFlag
     {
         Entry* set = SetOf(hash);
-        uint tag = TagOf(hash);
+        ulong tag = TagOf(hash);
         uint epoch = Volatile.Read(ref _epoch);
         ref byte key = ref MemoryMarshal.GetReference(address.Bytes);
 
         for (int way = 0; way < Ways; way++)
         {
             Entry* entry = set + way;
-            uint header = Volatile.Read(ref entry->Header);
+            ulong header = Volatile.Read(ref entry->Header);
             if ((header & (TagMask | LockBit)) != tag) continue;
 
             // Speculative copy, trusted only if the header is unchanged afterwards.
             uint entryEpoch = entry->Epoch;
-            uint entryFound = entry->Found;
             ulong address0 = entry->Address0;
             ulong address1 = entry->Address1;
             uint address2 = entry->Address2;
             UInt256 entrySlot = entry->Slot;
+            if (TTestHook.IsActive) afterKeyCopy!();
+            uint entryFound = entry->Found;
             UInt256 entryValue = entry->Value;
 
             // On x86/x64 (TSO) loads are not reordered with other loads, so the JIT drops this; elsewhere the copy
@@ -152,7 +162,7 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
     public AddResult AddNoLock(ulong hash, Address address, in UInt256 slot, bool found, in UInt256 value)
     {
         Entry* set = SetOf(hash);
-        uint tag = TagOf(hash);
+        ulong tag = TagOf(hash);
         uint epoch = _epoch;
         ref byte key = ref MemoryMarshal.GetReference(address.Bytes);
 
@@ -184,7 +194,7 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
         }
 
         Entry* target = set + free;
-        uint unlocked = BeginWrite(target, tag);
+        ulong unlocked = BeginWrite(target, tag);
         target->Epoch = epoch;
         target->Found = found ? 1u : 0u;
         target->Address0 = Unsafe.ReadUnaligned<ulong>(ref key);
@@ -201,7 +211,7 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
     public bool RemoveNoLock(ulong hash, Address address, in UInt256 slot)
     {
         Entry* set = SetOf(hash);
-        uint tag = TagOf(hash);
+        ulong tag = TagOf(hash);
         uint epoch = _epoch;
         ref byte key = ref MemoryMarshal.GetReference(address.Bytes);
 
@@ -258,7 +268,7 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
 
     // The set index takes the low bits and the tag the top 16, so the two stay independent.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static uint TagOf(ulong hash) => (uint)(hash >> 32) & TagMask;
+    internal static ulong TagOf(ulong hash) => hash & TagMask;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool AddressEquals(ulong address0, ulong address1, uint address2, ref byte key) =>
@@ -271,26 +281,27 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
 
     private static void Invalidate(Entry* entry)
     {
-        uint unlocked = BeginWrite(entry, entry->Header & TagMask);
+        ulong unlocked = BeginWrite(entry, entry->Header & TagMask);
         entry->Epoch = EmptyEpoch;
         EndWrite(entry, unlocked);
     }
 
     /// <summary>Marks an entry as being written; returns the header <see cref="EndWrite"/> publishes.</summary>
     /// <remarks>
-    /// The version moves on every write, so a reader whose copy spans one sees a different header. It has 15 bits:
-    /// repeating a header takes 32,768 writes to one entry within a single read, and one entry takes a few writes a
-    /// second under load.
+    /// The version moves on every write, so a reader whose copy spans one sees a different header. Were it to come back
+    /// to the value a read started with, a reader descheduled between copying the key and the value could pair that key
+    /// with the value of a later entry of the same tag. It has 47 bits, so that takes 2^47 writes to one entry within a
+    /// single read: 39 hours at one write a nanosecond.
     /// </remarks>
-    private static uint BeginWrite(Entry* entry, uint tag)
+    private static ulong BeginWrite(Entry* entry, ulong tag)
     {
-        uint unlocked = tag | ((entry->Header + VersionIncrement) & VersionMask);
+        ulong unlocked = tag | ((entry->Header + VersionIncrement) & VersionMask);
         // A full fence: none of the field stores that follow may become visible before the lock bit.
         Interlocked.Exchange(ref entry->Header, unlocked | LockBit);
         return unlocked;
     }
 
-    private static void EndWrite(Entry* entry, uint unlocked) => Volatile.Write(ref entry->Header, unlocked);
+    private static void EndWrite(Entry* entry, ulong unlocked) => Volatile.Write(ref entry->Header, unlocked);
 
     public enum AddResult
     {
@@ -308,15 +319,15 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
     {
         public const int Size = 128;
 
-        /// <summary>Tag (bits 16-31), version (bits 1-15) and <see cref="LockBit"/>.</summary>
-        [FieldOffset(0)] public uint Header;
-        [FieldOffset(4)] public uint Epoch;
+        /// <summary>Tag (bits 48-63), version (bits 1-47) and <see cref="LockBit"/>.</summary>
+        [FieldOffset(0)] public ulong Header;
         [FieldOffset(8)] public ulong Address0;
         [FieldOffset(16)] public ulong Address1;
         [FieldOffset(24)] public uint Address2;
-        [FieldOffset(28)] public uint Found;
+        [FieldOffset(28)] public uint Epoch;
         [FieldOffset(32)] public UInt256 Slot;
         [FieldOffset(64)] public UInt256 Value;
+        [FieldOffset(96)] public uint Found;
     }
 
     /// <summary>

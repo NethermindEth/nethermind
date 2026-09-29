@@ -174,6 +174,37 @@ public class CarryForwardSlotTableTests
         }
     }
 
+    [Test]
+    public void TryGet_EntryReplacedByTheSameTagMidRead_Misses()
+    {
+        // One set and one cached key, so every write below lands on the way the read is copying.
+        using CarryForwardSlotTable table = new(OneSet);
+        (UInt256 first, UInt256 second) = FindSlotsWithTheSameTag(TestItem.AddressA);
+        Add(table, TestItem.AddressA, first, true, Pattern(1, 1));
+
+        // Between the read's key and value copies: 2^20 writes, which bring a version of up to 20 bits back to where the
+        // read started, and leave the way holding the other key.
+        const int writes = 1 << 20;
+        bool hit = table.TryGet<OnFlag>(CarryForwardSlotTable.Hash(TestItem.AddressA, first), TestItem.AddressA, first,
+            out _, out UInt256 value, afterKeyCopy: () =>
+            {
+                Remove(table, TestItem.AddressA, first);
+                for (int i = 2; i < writes; i += 2)
+                {
+                    Add(table, TestItem.AddressA, second, true, Pattern(2, 1));
+                    Remove(table, TestItem.AddressA, second);
+                }
+                Add(table, TestItem.AddressA, second, true, Pattern(2, 1));
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hit, Is.False, $"returned {value}, the value of the key that replaced the one being read");
+            Assert.That(TryGet(table, TestItem.AddressA, second, out _, out UInt256 secondValue), Is.True);
+            Assert.That(secondValue, Is.EqualTo(Pattern(2, 1)));
+        }
+    }
+
     [TestCaseSource(nameof(NearKeys))]
     public void TryGet_KeyDifferingInOneByte_Misses(Address cachedAddress, UInt256 cachedSlot, Address probedAddress, UInt256 probedSlot)
     {
@@ -271,11 +302,11 @@ public class CarryForwardSlotTableTests
 
     private static (UInt256, UInt256) FindSlotsWithTheSameTag(Address address)
     {
-        Dictionary<uint, UInt256> byTag = [];
+        Dictionary<ulong, UInt256> byTag = [];
         for (ulong i = 0; ; i++)
         {
             UInt256 slot = new(i);
-            uint tag = CarryForwardSlotTable.TagOf(CarryForwardSlotTable.Hash(address, slot));
+            ulong tag = CarryForwardSlotTable.TagOf(CarryForwardSlotTable.Hash(address, slot));
             if (byTag.TryGetValue(tag, out UInt256 other)) return (other, slot);
             byTag[tag] = slot;
         }
