@@ -278,13 +278,36 @@ public class BeaconJsonBodiesTests
     }
 
     [Test]
-    public async Task Headers_by_parent_root_rejects_a_malformed_root_and_404s_an_unknown_parent()
+    public async Task Headers_by_parent_root_rejects_a_malformed_root()
     {
         HttpResponseMessage malformed = await _host.GetAsync("/eth/v1/beacon/headers?parent_root=0x1234", Json);
         Assert.That(malformed.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+    }
 
-        HttpResponseMessage unknown = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={BeaconApiTestHost.TestRoot(0xee)}", Json);
-        Assert.That(unknown.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+    /// <summary>getBlockHeaders answers a filter that matches nothing with an empty, non-finalized list, whether the parent was never seen or was pruned.</summary>
+    [Test]
+    public async Task Headers_by_parent_root_answers_an_unknown_or_pruned_parent_with_an_empty_list([Values] bool pruned)
+    {
+        Hash256 parent = BeaconApiTestHost.TestRoot(pruned ? (byte)0x50 : (byte)0xee);
+        if (pruned)
+        {
+            Hash256 child = BeaconApiTestHost.TestRoot(0x51);
+            _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
+            _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 1, parent));
+            _host.Store.DeleteBlock(child);
+            _host.Store.DeleteBlock(parent);
+        }
+
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
+        string raw = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        JsonElement body = JsonDocument.Parse(raw).RootElement;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+            Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False);
+            Assert.That(body.GetProperty("execution_optimistic").GetBoolean(), Is.False, "an empty list references no payload, even while the execution client is not in sync");
+        }
     }
 
     [Test]

@@ -85,7 +85,8 @@ internal static class BeaconEndpoints
     /// <summary>
     /// <c>headers?parent_root=...[&amp;slot=...]</c>: every stored child of the parent, from the store's
     /// children index. Every stored block's entry is complete; a stored block without one means the index
-    /// is damaged, and is refused because an empty or shorter list would read as a real answer.
+    /// is damaged, and is refused because an empty or shorter list would read as a real answer. A parent
+    /// that is not stored lists the children the index still holds, or none.
     /// </summary>
     private static Task HeadersByParent(HttpContext c, string parentRootRaw, BeaconApiContext ctx)
     {
@@ -105,19 +106,13 @@ internal static class BeaconEndpoints
             slotFilter = parsedSlot;
         }
 
-        if (!ctx.Store.HasBlock(parentRoot!))
+        // getBlockHeaders answers a filter that matches nothing with an empty list, so an unknown or pruned parent is not a 404.
+        // Read before the index: a block stored later than this has no complete entry to find yet, which is not damage.
+        bool stored = ctx.Store.HasBlock(parentRoot!);
+        ctx.Store.TryGetChildren(parentRoot!, out Hash256[] childRoots, out bool complete);
+        // Only a parent that is still stored can have a damaged entry; a pruned one lists whatever children remain.
+        if (stored && !complete && ctx.Store.HasBlock(parentRoot!))
         {
-            return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"Block {parentRoot} is not retained by this node.", c.RequestAborted);
-        }
-
-        if (!ctx.Store.TryGetChildren(parentRoot!, out Hash256[] childRoots, out bool complete) || !complete)
-        {
-            // A prune between the two reads leaves no entry; only a block that is still stored means damage.
-            if (!ctx.Store.HasBlock(parentRoot!))
-            {
-                return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"Block {parentRoot} is not retained by this node.", c.RequestAborted);
-            }
-
             return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
                 $"The root-to-children index holds no complete entry for the stored block {parentRoot}, so no child list can be served.", c.RequestAborted);
         }
@@ -144,7 +139,7 @@ internal static class BeaconEndpoints
         }
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            entries.Count > 0 && ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
             finalized && entries.Count > 0,
             c.RequestAborted);
     }
