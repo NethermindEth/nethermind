@@ -47,7 +47,7 @@ public class GossipValidationTests
     internal static readonly (string Fork, string[] Handlers)[] Suites =
     [
         ("fulu", ["gossip_attester_slashing", "gossip_beacon_aggregate_and_proof", "gossip_beacon_block"]),
-        ("gloas", ["gossip_attester_slashing", "gossip_beacon_aggregate_and_proof", "gossip_beacon_block", "gossip_execution_payload_envelope"]),
+        ("gloas", ["gossip_attester_slashing", "gossip_beacon_aggregate_and_proof", "gossip_beacon_block", "gossip_execution_payload_envelope", "gossip_payload_attestation_message"]),
     ];
 
     /// <summary>The verdicts other than raised that <see cref="GossipRouter"/> reaches on the vectors' messages, per topic and vector <c>reason</c>.</summary>
@@ -124,6 +124,18 @@ public class GossipValidationTests
                 ("payload's block hash does not match the bid's block hash", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("envelope's execution requests root does not match the bid's", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("too many withdrawals", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+            ],
+            // PTC membership and the signature need the state, so those votes are raised for fork choice to verify.
+            [GossipTopics.PayloadAttestationMessage] =
+            [
+                ("payload attestation's slot is pre-gloas", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("already seen payload attestation from this validator", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
+                ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.FutureSlot)),
+                ("payload attestation's block has not been seen", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
+                // The store holds only blocks fork choice accepted, so a block that failed validation reads as not seen.
+                ("payload attestation's block failed validation", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
+                ("payload attestation's block is not at the assigned slot", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
             ],
         };
 
@@ -237,7 +249,7 @@ public class GossipValidationTests
                 HeadRoot = Hash256.Zero,
             },
         };
-        GossipRouter router = new(spec, new SlotClock(spec, timestamper), LimboLogs.Instance, SeedStore(testCase.CasePath, spec), status);
+        GossipRouter router = new(spec, new SlotClock(spec, timestamper), LimboLogs.Instance, SeedStore(testCase.CasePath, spec, gloas), status);
         int raised = 0;
         router.BeaconBlockReceived += _ => raised++;
         router.AggregateAndProofReceived += _ => raised++;
@@ -245,6 +257,7 @@ public class GossipValidationTests
         router.AttesterSlashingReceived += _ => raised++;
         router.GloasAttesterSlashingReceived += _ => raised++;
         router.ExecutionPayloadEnvelopeReceived += _ => raised++;
+        router.PayloadAttestationMessageReceived += _ => raised++;
 
         List<string> failures = [];
         List<string> uncheckedRejects = [];
@@ -319,7 +332,8 @@ public class GossipValidationTests
     /// <remarks>A node stores only the blocks fork choice accepted, so a block that failed validation is never held.</remarks>
     /// <param name="casePath">The vector directory holding meta.yaml and the block files.</param>
     /// <param name="spec">The network the blocks are stored and read under.</param>
-    internal static BeaconChainStore SeedStore(string casePath, BeaconChainSpec spec)
+    /// <param name="gloas">Whether the vector is a Gloas one, whose blocks are Gloas-shaped even at a slot its config puts before the fork.</param>
+    internal static BeaconChainStore SeedStore(string casePath, BeaconChainSpec spec, bool gloas = false)
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
         foreach (VectorBlock block in VectorMeta.Load(casePath).Blocks)
@@ -327,7 +341,12 @@ public class GossipValidationTests
             if (block.Failed)
                 continue;
 
-            ForkedSignedBeaconBlock forked = SignedBeaconBlockCodec.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy")), spec);
+            byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy"));
+            // A node never holds a block whose shape is not its slot's fork.
+            if (gloas && SignedBeaconBlockCodec.TryReadSlot(ssz, out ulong slot) && !SignedBeaconBlockCodec.IsGloasSlot(slot, spec))
+                continue;
+
+            ForkedSignedBeaconBlock forked = SignedBeaconBlockCodec.Decode(ssz, spec);
             store.PutForkedBlock(forked.ComputeMessageRoot(), forked);
         }
 

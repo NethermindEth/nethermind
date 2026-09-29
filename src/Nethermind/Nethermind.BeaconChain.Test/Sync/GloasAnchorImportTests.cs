@@ -165,7 +165,7 @@ public class GloasAnchorImportTests
         }
 
         HeadView head = importer.ComputeHead();
-        importer.OnGossipAttesterSlashing(DoubleVote(justified.PostState, justifiedEpoch + 1));
+        bool slashingAccepted = importer.OnGossipAttesterSlashing(DoubleVote(justified.PostState, justifiedEpoch + 1));
 
         using (Assert.EnterMultipleScope())
         {
@@ -173,6 +173,7 @@ public class GloasAnchorImportTests
             Assert.That(head.Justified, Is.EqualTo(new CheckpointRef(justifiedEpoch, justified.Root)), "fixture: the votes justify epoch 2");
             Assert.That(head.Finalized, Is.EqualTo(new CheckpointRef(1, anchor.Root)), "fixture: nothing past the anchor is finalized");
             Assert.That(logger.LogList.Where(static l => l.Contains("attester slashing")), Is.Empty, "the slashing verifies against the justified state");
+            Assert.That(slashingAccepted, Is.True, "a verified slashing is reported accepted, so its indices can be marked seen");
             Assert.That(importer.ImportEnvelope(justified.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the justified state is still held");
         }
 

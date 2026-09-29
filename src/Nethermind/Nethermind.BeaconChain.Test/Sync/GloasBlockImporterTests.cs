@@ -24,6 +24,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using NUnit.Framework;
+using Snappier;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Sync;
@@ -187,6 +188,211 @@ public class GloasBlockImporterTests
             Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == first.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
         }
     }
+
+    /// <summary>
+    /// The forkchoiceUpdated head hash follows the payload status <c>get_head</c> resolves (specs/gloas/fork-choice.md), not
+    /// whether the payload arrived: FULL names the bid's <c>block_hash</c>, EMPTY its <c>parent_block_hash</c>. In the next slot
+    /// the verified payload of the previous block is extended only when the PTC voted it timely and available, since the boosted
+    /// block builds on its EMPTY node; that block is then invalidated, so the previous block is the head either way.
+    /// </summary>
+    [Test]
+    public void Head_hash_follows_the_payload_status_the_ptc_votes_resolve([Values] bool ptcVotedTimely)
+    {
+        SignedGloasChain chain = new();
+        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot).AddSeconds(1));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        Import(importer, first);
+        Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the head's payload is verified");
+        if (ptcVotedTimely)
+        {
+            foreach (ulong member in first.PostState.GetPtc(ForkSlot, chain.Spec).Indices!.Distinct())
+            {
+                Assert.That(importer.OnGossipPayloadAttestation(PtcVote(first, member, payloadPresent: true)), Is.True, "fixture: a signed vote of a PTC member");
+            }
+        }
+
+        timestamper.Set(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
+        SignedGloasChain.Block boosted = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        Import(importer, boosted);
+        importer.OnInvalidExecutionPayload(boosted.Root, latestValidHash: null);
+
+        HeadView head = importer.ComputeHead();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
+            Assert.That(head.HeadExecutionHash, Is.EqualTo(ptcVotedTimely ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
+        }
+    }
+
+    /// <summary>
+    /// The same head root changes its forkchoiceUpdated head hash when get_head's payload status flips: EMPTY names the bid's
+    /// <c>parent_block_hash</c> until the payload is verified, FULL its <c>block_hash</c> after.
+    /// </summary>
+    [Test]
+    public void Head_hash_of_the_same_head_flips_from_empty_to_full_when_its_payload_is_verified()
+    {
+        SignedGloasChain chain = new();
+        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot).AddSeconds(1));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        Import(importer, first);
+
+        HeadView empty = importer.ComputeHead();
+        Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the payload is verified");
+        HeadView full = importer.ComputeHead();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((empty.HeadRoot, full.HeadRoot), Is.EqualTo((first.Root, first.Root)), "fixture: the head does not move");
+            Assert.That(empty.HeadExecutionHash, Is.EqualTo(first.Bid.ParentBlockHash));
+            Assert.That(full.HeadExecutionHash, Is.EqualTo(first.Bid.BlockHash));
+        }
+    }
+
+    /// <summary>
+    /// specs/gloas/fork-choice.md <c>on_block</c> calls <c>notify_ptc_messages</c>: a block's payload attestations reach fork choice
+    /// through <see cref="BlockImporter"/>'s import, so a timely, available payload the PTC voted in the next block's body is extended.
+    /// </summary>
+    [Test]
+    public void Block_body_payload_attestations_reach_fork_choice_on_import([Values] bool inBody)
+    {
+        SignedGloasChain chain = new();
+        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot).AddSeconds(1));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        Import(importer, first);
+        Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the head's payload is verified");
+        PayloadAttestation vote = PtcAttestation(
+            first.PostState,
+            new PayloadAttestationData { BeaconBlockRoot = first.Root, Slot = ForkSlot, PayloadPresent = true, BlobDataAvailable = true },
+            [.. Enumerable.Range(0, (int)Presets.PtcSize)],
+            sign: true);
+
+        timestamper.Set(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
+        SignedGloasChain.Block boosted = chain.Next(first, ForkSlot + 1, full: false, 0xA2, payloadAttestations: inBody ? [vote] : []);
+        Import(importer, boosted);
+        importer.OnInvalidExecutionPayload(boosted.Root, latestValidHash: null);
+
+        HeadView head = importer.ComputeHead();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
+            Assert.That(head.HeadExecutionHash, Is.EqualTo(inBody ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
+        }
+    }
+
+    public enum GossipPtcVote
+    {
+        Signed,
+        BadSignature,
+        NotInPtc,
+        UnknownBlock,
+        BlockAtAnotherSlot,
+        PreviousSlot,
+    }
+
+    /// <summary>
+    /// A gossip payload attestation counts as accepted only when fork choice verified and applied it. <c>on_payload_attestation_message</c>
+    /// returns without any check for a vote whose slot is not its block's, so a forged vote of that shape is refused and counted.
+    /// </summary>
+    [TestCase(GossipPtcVote.Signed, true)]
+    [TestCase(GossipPtcVote.BadSignature, false)]
+    [TestCase(GossipPtcVote.NotInPtc, false)]
+    [TestCase(GossipPtcVote.UnknownBlock, false)]
+    [TestCase(GossipPtcVote.BlockAtAnotherSlot, false)]
+    [TestCase(GossipPtcVote.PreviousSlot, false)]
+    public void Gossip_payload_attestation_is_accepted_only_when_fork_choice_applies_it(GossipPtcVote vote, bool accepted)
+    {
+        SignedGloasChain chain = new();
+        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block second = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        Import(importer, first, second);
+        ulong[] ptc = second.PostState.GetPtc(ForkSlot + 1, chain.Spec).Indices!;
+        ulong outsider = Enumerable.Range(0, ValidatorCount).Select(static i => (ulong)i).First(i => !ptc.Contains(i));
+        PayloadAttestationMessage message = vote == GossipPtcVote.PreviousSlot
+            ? PtcVote(first, first.PostState.GetPtc(ForkSlot, chain.Spec).Indices![0], payloadPresent: true)
+            : PtcVote(second, vote == GossipPtcVote.NotInPtc ? outsider : ptc[0], payloadPresent: true);
+        switch (vote)
+        {
+            case GossipPtcVote.BadSignature:
+                message.Data!.PayloadPresent = false;
+                break;
+            case GossipPtcVote.UnknownBlock:
+                message.Data!.BeaconBlockRoot = Hash(0x5A);
+                break;
+            case GossipPtcVote.BlockAtAnotherSlot:
+                // Signed for the current slot, but naming the previous slot's block: fork choice would record nothing and check nothing.
+                message.Data!.BeaconBlockRoot = first.Root;
+                message.Signature = default;
+                break;
+        }
+
+        long refusedBefore = RefusedByForkChoice("gossip_payload_attestation");
+        bool result = importer.OnGossipPayloadAttestation(message);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(accepted));
+            Assert.That(RefusedByForkChoice("gossip_payload_attestation") - refusedBefore, Is.EqualTo(accepted ? 0 : 1), "a refused vote is counted");
+        }
+    }
+
+    /// <summary>
+    /// Forged votes under a PTC member's index each cost fork choice a BLS verify and are never penalized, so the router hands
+    /// fork choice one vote per (slot, validator): a flood of them is refused once, whatever their signatures.
+    /// </summary>
+    [Test]
+    public void Forged_gossip_payload_attestations_under_one_member_cost_fork_choice_one_verify()
+    {
+        SignedGloasChain chain = new();
+        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
+        SlotClock clock = new(chain.Spec, timestamper);
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock);
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block second = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        Import(importer, first, second);
+        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance);
+        router.PayloadAttestationMessageReceived += vote => importer.OnGossipPayloadAttestation(vote);
+        ulong member = second.PostState.GetPtc(ForkSlot + 1, chain.Spec).Indices![0];
+        PayloadAttestationMessage genuine = PtcVote(second, member, payloadPresent: true);
+        const int forgeries = 40;
+
+        long refusedBefore = RefusedByForkChoice("gossip_payload_attestation");
+        for (int i = 0; i < forgeries; i++)
+        {
+            PayloadAttestationMessage forged = PtcVote(second, member, payloadPresent: true);
+            forged.Signature = new BlsSignature([.. Enumerable.Repeat((byte)(i + 1), BlsSignature.Length)]);
+            router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(forged)));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RefusedByForkChoice("gossip_payload_attestation") - refusedBefore, Is.EqualTo(1), "one verify for the pair");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries - 1));
+            Assert.That(importer.OnGossipPayloadAttestation(genuine), Is.True, "fixture: the genuine vote verifies when it reaches fork choice");
+        }
+    }
+
+    /// <summary>A PTC member's signed vote on <paramref name="block"/>'s payload for its slot, the data available with the payload.</summary>
+    private static PayloadAttestationMessage PtcVote(SignedGloasChain.Block block, ulong validatorIndex, bool payloadPresent)
+    {
+        ulong slot = block.Signed.Message!.Slot;
+        PayloadAttestationData data = new() { BeaconBlockRoot = block.Root, Slot = slot, PayloadPresent = payloadPresent, BlobDataAvailable = payloadPresent };
+        Hash256 domain = block.PostState.GetDomain(DomainType.PtcAttester, BeaconStateAccessors.ComputeEpochAtSlot(slot));
+        return new PayloadAttestationMessage
+        {
+            ValidatorIndex = validatorIndex,
+            Data = data,
+            Signature = Sign(ValidatorKey((int)validatorIndex), Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain)),
+        };
+    }
+
+    private static DateTime SlotStart(SignedGloasChain chain, ulong slot) => DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + slot * chain.Spec.SecondsPerSlot);
 
     /// <summary>The safe hash for a justified Gloas block is its bid's <c>parent_block_hash</c> (gloas/fast-confirmation.md <c>get_safe_execution_block_hash</c>).</summary>
     [Test]

@@ -103,6 +103,10 @@ public class GossipMessageValidatorTests
         yield return Case("envelope for a pre-Gloas slot only drops", Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope(slot: FuluSlot)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
         yield return Case("envelope withdrawal count follows the block checks, so a block not held consumes it", Topic(GloasDigest, GossipTopics.ExecutionPayload),
             Encode(Envelope(withdrawals: Presets.MaxWithdrawalsPerPayload + 1)), MessageValidity.Ignored, typeof(SignedExecutionPayloadEnvelope), null);
+
+        yield return Case("payload attestation message is consumed", Topic(GloasDigest, GossipTopics.PayloadAttestationMessage), Encode(PtcVote(WallSlot)), MessageValidity.Ignored, typeof(PayloadAttestationMessage), null);
+        yield return Case("payload attestation message on a Fulu digest", Topic(FuluDigest, GossipTopics.PayloadAttestationMessage), Encode(PtcVote(FuluSlot)), MessageValidity.Ignored, null, GossipDropReason.UnknownTopic);
+        yield return Case("payload attestation message for a pre-Gloas slot", Topic(GloasDigest, GossipTopics.PayloadAttestationMessage), Encode(PtcVote(FuluSlot)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
     }
 
     [TestCaseSource(nameof(Cases))]
@@ -201,6 +205,7 @@ public class GossipMessageValidatorTests
         router.AttesterSlashingReceived += raised.Add;
         router.GloasAttesterSlashingReceived += raised.Add;
         router.ExecutionPayloadEnvelopeReceived += raised.Add;
+        router.PayloadAttestationMessageReceived += raised.Add;
         return (new GossipMessageValidator(router, new ColumnGossipRouter(Sepolia, clock, LimboLogs.Instance), Sepolia, clock), router, raised);
     }
 
@@ -228,11 +233,16 @@ public class GossipMessageValidatorTests
 
     internal static byte[] Encode(AttesterSlashingGloas slashing) => Compress(AttesterSlashingGloas.Encode(slashing));
 
-    private static byte[] Encode(AttesterSlashing slashing) => Compress(AttesterSlashing.Encode(slashing));
+    internal static byte[] Encode(AttesterSlashing slashing) => Compress(AttesterSlashing.Encode(slashing));
 
     private static byte[] Encode(SignedBeaconBlock block) => Compress(SignedBeaconBlock.Encode(block));
 
     private static byte[] Encode(SignedExecutionPayloadEnvelope envelope) => Compress(SignedExecutionPayloadEnvelope.Encode(envelope));
+
+    private static byte[] Encode(PayloadAttestationMessage message) => Compress(PayloadAttestationMessage.Encode(message));
+
+    private static PayloadAttestationMessage PtcVote(ulong slot) =>
+        new() { ValidatorIndex = 1, Data = new PayloadAttestationData { BeaconBlockRoot = Keccak.OfAnEmptyString, Slot = slot }, Signature = default };
 
     private static SignedBeaconBlockGloas GloasBlock(ulong? slot = null, Action<SignedBeaconBlockGloas>? mutate = null)
     {
@@ -313,7 +323,7 @@ public class GossipMessageValidatorTests
         Attestation2 = new IndexedAttestationGloas { AttestingIndices = indices2, Data = Vote(secondSource, secondTarget) },
     };
 
-    private static AttesterSlashing FuluSlashing(ulong[] indices1, ulong[] indices2, ulong secondSource, ulong secondTarget) => new()
+    internal static AttesterSlashing FuluSlashing(ulong[] indices1, ulong[] indices2, ulong secondSource, ulong secondTarget) => new()
     {
         Attestation1 = new IndexedAttestation { AttestingIndices = indices1, Data = Vote(1, 4) },
         Attestation2 = new IndexedAttestation { AttestingIndices = indices2, Data = Vote(secondSource, secondTarget) },
