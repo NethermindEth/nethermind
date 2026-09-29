@@ -37,11 +37,16 @@ public sealed class BeaconChainService(
     ExternalClDetector externalClDetector,
     ILogManager logManager) : IDisposable, IStoppableService
 {
+    private static readonly TimeSpan DefaultStartRetryDelay = TimeSpan.FromSeconds(30);
+
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconChainService>();
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly Lock _lifecycleLock = new();
     private bool _disposed;
     private Task? _runTask;
+
+    /// <summary>Wait before checkpoint sync starts over after a network failure that outlasted its own retries.</summary>
+    internal TimeSpan StartRetryDelay { get; init; } = DefaultStartRetryDelay;
 
     /// <summary>Checks the database schema version and any persisted anchor, then runs the driver in the background.</summary>
     /// <remarks>Does nothing, not even the schema check, once an external consensus client has been detected.</remarks>
@@ -157,8 +162,20 @@ public sealed class BeaconChainService(
 
     private async Task<(ForkedBeaconState State, ForkedSignedBeaconBlock? Block, Hash256 BlockRoot)> CheckpointSyncAsync(CancellationToken cancellationToken)
     {
-        CheckpointAnchor anchor = await checkpointSync.RunAsync(cancellationToken);
-        return (anchor.State, anchor.Block, anchor.BlockRoot);
+        while (true)
+        {
+            try
+            {
+                CheckpointAnchor anchor = await checkpointSync.RunAsync(cancellationToken);
+                return (anchor.State, anchor.Block, anchor.BlockRoot);
+            }
+            catch (Exception e) when (config.CheckpointStateFile is null && CheckpointSync.IsTransientDownloadFailure(e, cancellationToken))
+            {
+                // Without a driver the execution layer has no consensus client until the process restarts; an unreachable provider is not a reason to stay down.
+                if (_logger.IsWarn) _logger.Warn($"Checkpoint sync failed: {CheckpointSync.DescribeCause(e)}; starting it again in {StartRetryDelay.TotalSeconds:F0} s.");
+                await Task.Delay(StartRetryDelay, cancellationToken);
+            }
+        }
     }
 
     private void InitializePubkeyCache(Validator[] validators, CancellationToken token)

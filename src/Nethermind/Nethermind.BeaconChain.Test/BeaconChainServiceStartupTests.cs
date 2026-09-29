@@ -451,6 +451,130 @@ public class BeaconChainServiceStartupTests
         }
     }
 
+    /// <summary>
+    /// A provider that drops the state download for longer than one checkpoint sync retries leaves the execution layer without a
+    /// consensus driver until the process restarts, so the driver starts checkpoint sync again and goes on once it succeeds.
+    /// </summary>
+    [Test]
+    public async Task A_checkpoint_download_the_network_keeps_dropping_is_started_again_and_the_driver_goes_on()
+    {
+        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static n => n <= 2 ? StateResponse.DropMidBody : StateResponse.Serve);
+
+        (LevelCapturingLogManager logs, KickEngine engine, PubkeyCache pubkeyCache) = await RunFromProviderAsync(provider, TimeSpan.FromMilliseconds(1), waitForCache: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.StateRequests, Is.EqualTo(3), "two failed starts, then the state");
+            Assert.That(engine.PubkeysHeldAtCall, Is.EqualTo(new[] { 0 }), "the driver reached the execution layer");
+            Assert.That(pubkeyCache.Count, Is.EqualTo(ForkCrossingChain.Instance.First.PostState.Validators!.Length));
+            Assert.That(logs.Lines.Where(static l => l.Level == "Warn" && l.Text.Contains("starting it again")), Has.Exactly(2).Items);
+            Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Is.Empty);
+        }
+    }
+
+    /// <summary>A refusal of the checkpoint itself repeats on every start, so it fails the run loudly instead of being retried.</summary>
+    [Test]
+    public async Task A_checkpoint_that_cannot_be_anchored_is_not_started_again()
+    {
+        BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState.Clone();
+        state.GenesisValidatorsRoot = GloasTestFixtures.Hash(0x5A);
+        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.Serve, state);
+
+        (LevelCapturingLogManager logs, KickEngine engine, _) = await RunFromProviderAsync(provider, TimeSpan.FromMilliseconds(1), waitForCache: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.StateRequests, Is.EqualTo(1));
+            Assert.That(engine.PubkeysHeldAtCall, Is.Empty);
+            Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Has.Exactly(1).Items);
+            Assert.That(logs.Lines.Where(static l => l.Text.Contains("starting it again")), Is.Empty);
+        }
+    }
+
+    /// <summary>A state file the operator named and that is not there stays missing on every start, so it fails the run loudly instead of being retried.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_missing_checkpoint_state_file_is_not_started_again()
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        LevelCapturingLogManager logs = new();
+        PubkeyCache pubkeyCache = new();
+        BeaconChainConfig config = new()
+        {
+            CheckpointSyncUrl = "http://invalid.localhost:1",
+            CheckpointStateFile = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing.ssz")
+        };
+        await using IContainer container = KickContainer(new KickEngine(pubkeyCache), pubkeyCache, config: config).AddSingleton(store).Build();
+        using CheckpointSync checkpointSync = new(config, GloasCheckpointFiles.Spec, store, logs);
+        using BeaconChainService service = new(config, GloasCheckpointFiles.Spec, store, pubkeyCache, checkpointSync,
+            container.Resolve<BeaconSyncOrchestrator>(), container.Resolve<ExternalClDetector>(), logs)
+        {
+            StartRetryDelay = TimeSpan.FromMilliseconds(1)
+        };
+
+        await service.Start().WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Has.Exactly(1).Items);
+            Assert.That(logs.Lines.Where(static l => l.Text.Contains("starting it again")), Is.Empty);
+        }
+    }
+
+    /// <summary>The wait before a new start is part of the run, so a stop during it must end the run instead of leaving shutdown waiting.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task StopAsync_ends_the_wait_before_checkpoint_sync_starts_again(CancellationToken token)
+    {
+        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.ServerError);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        LevelCapturingLogManager logs = new();
+        PubkeyCache pubkeyCache = new();
+        BeaconChainConfig config = new() { CheckpointSyncUrl = provider.Url };
+        await using IContainer container = KickContainer(new KickEngine(pubkeyCache), pubkeyCache, config: config).AddSingleton(store).Build();
+        using CheckpointSync checkpointSync = new(config, GloasCheckpointFiles.Spec, store, logs) { MaxDownloadAttempts = 1 };
+        using BeaconChainService service = new(config, GloasCheckpointFiles.Spec, store, pubkeyCache, checkpointSync,
+            container.Resolve<BeaconSyncOrchestrator>(), container.Resolve<ExternalClDetector>(), logs)
+        {
+            StartRetryDelay = TimeSpan.FromHours(1)
+        };
+        Task run = service.Start();
+        while (!logs.Lines.Any(static l => l.Text.Contains("starting it again")))
+        {
+            await Task.Delay(10, token);
+        }
+
+        await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(30), token);
+
+        Assert.That(run.IsCompletedSuccessfully, Is.True);
+        Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Is.Empty, "a stop is not a failure");
+    }
+
+    /// <summary>Runs a fresh start against <paramref name="provider"/> with one download attempt per checkpoint sync, until the driver has built its pubkey cache or its run ends.</summary>
+    private static async Task<(LevelCapturingLogManager Logs, KickEngine Engine, PubkeyCache PubkeyCache)> RunFromProviderAsync(FlakyCheckpointProvider provider, TimeSpan startRetryDelay, bool waitForCache)
+    {
+        CacheWrittenMemDb metadata = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
+        LevelCapturingLogManager logs = new();
+        PubkeyCache pubkeyCache = new();
+        KickEngine engine = new(pubkeyCache);
+        BeaconChainConfig config = new() { CheckpointSyncUrl = provider.Url };
+        await using IContainer container = KickContainer(engine, pubkeyCache, config: config).AddSingleton(store).Build();
+        using CheckpointSync checkpointSync = new(config, GloasCheckpointFiles.Spec, store, logs) { MaxDownloadAttempts = 1 };
+        using BeaconChainService service = new(config, GloasCheckpointFiles.Spec, store, pubkeyCache, checkpointSync,
+            container.Resolve<BeaconSyncOrchestrator>(), container.Resolve<ExternalClDetector>(), logs)
+        {
+            StartRetryDelay = startRetryDelay
+        };
+        if (waitForCache)
+        {
+            metadata.OnCacheWritten = service.Stop;
+        }
+
+        await service.Start().WaitAsync(TimeSpan.FromSeconds(60));
+        return (logs, engine, pubkeyCache);
+    }
+
     private static ContainerBuilder KickContainer(KickEngine engine, PubkeyCache pubkeyCache, TestErrorLogManager? logManager = null, BeaconChainConfig? config = null) =>
         BeaconChainTestContainer.Builder(logManager: logManager, config: config ?? new BeaconChainConfig { CheckpointSyncUrl = "http://invalid.localhost:1" })
             .AddSingleton(GloasCheckpointFiles.Spec)
