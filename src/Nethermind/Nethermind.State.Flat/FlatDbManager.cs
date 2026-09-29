@@ -35,6 +35,19 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     /// </summary>
     internal static bool InlinePersistence { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_INLINE_PERSISTENCE") == "1";
 
+    /// <summary>
+    /// Benchmark hook, called on the committing thread at the inline commit's step boundaries: 0 before and 1 after the
+    /// trie node cache population, 2 after compaction, 3 after the inline persistence job.
+    /// </summary>
+    public static Action<int>? CommitPhase { get; set; }
+
+    /// <summary>
+    /// Benchmark switch (<c>NETHERMIND_FLAT_FRESH_TRANSIENT=1</c>): give every block a new transient resource of the initial
+    /// size instead of a pooled one. A pooled resource keeps the capacity earlier blocks grew it to, which the trie node
+    /// cache population walks, and which one a block gets depends on when the previous holders released theirs.
+    /// </summary>
+    internal static bool FreshTransientResources { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_FRESH_TRANSIENT") == "1";
+
     private readonly ILogger _logger;
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
@@ -152,7 +165,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJobSync(StateId stateId, TransientResource transientResource, CancellationToken cancellationToken)
     {
+        CommitPhase?.Invoke(0);
         PopulateTrieNodeCache(transientResource);
+        CommitPhase?.Invoke(1);
         await RunCompactJob(stateId, cancellationToken);
     }
 
@@ -162,12 +177,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _snapshotRepository.AddStateId(stateId);
 
         _snapshotCompactor.DoCompactSnapshot(stateId);
+        CommitPhase?.Invoke(2);
 
         // Trigger persistence job. Inline compaction under the benchmark switch runs the job on this thread too, since
         // it clears the read-only bundle cache, which the next block's bundle assembly otherwise races.
         if (_inlineCompaction && InlinePersistence)
         {
             await PersistIfNeeded(stateId);
+            CommitPhase?.Invoke(3);
             return;
         }
 

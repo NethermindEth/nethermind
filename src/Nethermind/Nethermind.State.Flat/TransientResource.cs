@@ -52,6 +52,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         SpinWait spinWait = default;
         while (Volatile.Read(ref _leases) != RefCountingLease.Single)
         {
+            Metrics.IncrementTransientLeaseSpins();
             spinWait.SpinOnce();
         }
     }

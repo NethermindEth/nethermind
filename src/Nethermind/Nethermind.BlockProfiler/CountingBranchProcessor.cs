@@ -39,6 +39,10 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 {
     private static int s_armedLogged;
 
+    // Counter readings at FlatDbManager's inline commit steps (see FlatDbManager.CommitPhase), on the committing thread.
+    [ThreadStatic] private static ulong[]? t_commitPhases;
+    [ThreadStatic] private static int t_commitPhasesSeen;
+
     /// <summary>
     /// <c>NETHERMIND_COUNT_DEFER_VERDICT=1</c> holds <see cref="BlockExecuted"/> until the branch window closes, so the
     /// answered newPayload's forkchoiceUpdated cannot run alongside the window's commit.
@@ -61,6 +65,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     public CountingBranchProcessor(IBranchProcessor inner, ILogManager logManager, IBlockProcessor? blockProcessor = null)
     {
         _inner = inner;
+        Nethermind.State.Flat.FlatDbManager.CommitPhase = OnCommitPhase;
         _blockProcessor = blockProcessor;
         _logger = logManager.GetClassLogger<CountingBranchProcessor>();
         _inner.BlocksProcessing += OnBlocksProcessing;
@@ -100,6 +105,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     {
         _executedRead = false;
         _judgedRead = false;
+        t_commitPhasesSeen = 0;
         _block = Window.Start();
     }
 
@@ -114,8 +120,22 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         // roots: receipts, blooms and the state root up to the verdict; commit: the tree commit after it.
         ulong roots = _judgedRead && _executedRead ? _judged.Instructions - _executed.Instructions : 0;
         ulong commit = _judgedRead ? _block.StartInstructions + instructions - _judged.Instructions : 0;
+        // pop: trie node cache population; compact: snapshot compaction; persist: the inline persistence job.
+        ulong[]? phases = t_commitPhases;
+        string steps = t_commitPhasesSeen == 0b1111 && phases is not null
+            ? $" pop={phases[1] - phases[0]} compact={phases[2] - phases[1]} persist={phases[3] - phases[2]}" +
+              $" popslots={Nethermind.State.Flat.TrieNodeCache.LastAddSlots} popnodes={Nethermind.State.Flat.TrieNodeCache.LastAddNodes}" +
+              $" popclear={Nethermind.State.Flat.TrieNodeCache.LastAddShardsCleared}"
+            : string.Empty;
         Block block = e.Block;
-        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}");
+        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}");
+    }
+
+    private static void OnCommitPhase(int phase)
+    {
+        if ((uint)phase >= 4 || !ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample sample)) return;
+        (t_commitPhases ??= new ulong[4])[phase] = sample.Instructions;
+        t_commitPhasesSeen |= 1 << phase;
     }
 
     private void OnInnerBlockExecuted(object? sender, BlockExecutedEventArgs e)
@@ -157,6 +177,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         private readonly long _accountMisses;
         private readonly long _slotHits;
         private readonly long _slotMisses;
+        private readonly long _leaseSpins;
 
         private Window(ThreadInstructionCounter.Sample counters)
         {
@@ -172,6 +193,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
             _accountMisses = FlatMetrics.CarryForwardAccountMisses;
             _slotHits = FlatMetrics.CarryForwardSlotHits;
             _slotMisses = FlatMetrics.CarryForwardSlotMisses;
+            _leaseSpins = FlatMetrics.TransientLeaseSpins;
         }
 
         public static Window Start() => ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample counters) ? new Window(counters) : default;
@@ -200,7 +222,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
                 $"lockc={Monitor.LockContentionCount - _lockContentions} " +
                 $"cfa={FlatMetrics.CarryForwardAccountHits - _accountHits}/{FlatMetrics.CarryForwardAccountMisses - _accountMisses} " +
                 $"cfs={FlatMetrics.CarryForwardSlotHits - _slotHits}/{FlatMetrics.CarryForwardSlotMisses - _slotMisses} " +
-                $"bundle={FlatMetrics.SnapshotBundleSize} snaps={FlatMetrics.SnapshotCount}";
+                $"bundle={FlatMetrics.SnapshotBundleSize} snaps={FlatMetrics.SnapshotCount} spins={FlatMetrics.TransientLeaseSpins - _leaseSpins}";
             return true;
         }
     }
