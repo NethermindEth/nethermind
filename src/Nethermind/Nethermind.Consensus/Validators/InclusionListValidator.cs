@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -79,9 +80,7 @@ public static class InclusionListValidator
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
-        // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
-        // way GasLimit - tx.GasLimit would for an oversized tx.
-        if (tx.GasLimit > block.GasLimit - block.GasUsed) return false;
+        if (!FitsRemainingBlockGas(tx, block, spec)) return false;
         // Appendability must match normal execution, so reuse the full well-formedness check, not a subset.
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
@@ -106,6 +105,23 @@ public static class InclusionListValidator
             return false;
 
         return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
+    }
+
+    /// <summary>Whether an appended transaction's worst-case block gas still fits.</summary>
+    /// <remarks>EIP-8037 admits a transaction only if both its execution and its state reservation fit the
+    /// matching dimension, so measuring it against the header's max(execution, state) rejects transactions the
+    /// spec judges includable. Without the per-dimension totals — a block executed elsewhere — that max is all
+    /// there is, and both dimensions fall back to it.</remarks>
+    private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec)
+    {
+        // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
+        // way GasLimit - tx.GasLimit would for an oversized tx.
+        if (!spec.IsEip8037Enabled) return tx.GasLimit <= block.GasLimit - block.GasUsed;
+
+        (ulong execution, ulong state) = block.Header.GasUsedPerDimension ?? (block.GasUsed, block.GasUsed);
+        return Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation)
+            && Eip8037BlockGasInclusionCheck.Validate(block.GasLimit, execution, state, executionReservation, stateReservation)
+                == Eip8037BlockGasInclusionCheck.Outcome.Ok;
     }
 
     /// <summary>Balance the sender would have had when an appended transaction executed.</summary>

@@ -61,6 +61,11 @@ public class BlockHeader
     public ulong Number { get; set; }
     public ulong GasUsed { get; set; }
     public ulong GasLimit { get; set; }
+
+    /// <summary>EIP-8037 per-dimension block gas totals, which <see cref="GasUsed"/> reduces to their maximum.</summary>
+    /// <remarks>Recorded as the block executes, so <c>null</c> for a header decoded or loaded rather than executed —
+    /// the maximum is not invertible, so neither dimension is recoverable afterwards.</remarks>
+    public (ulong Execution, ulong State)? GasUsedPerDimension { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
     public byte[] ExtraData { get; set; } = [];

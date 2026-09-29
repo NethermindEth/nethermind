@@ -109,6 +109,28 @@ public class InclusionListValidatorTests
         return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
+    // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
+    // is appendable even though it exceeds the header's max(execution, state). Numbers are those of
+    // test_preparation_rollback_restores_block_state_budget, where a 97_920-gas state total sits under a
+    // 513_317-gas execution total.
+    [TestCase(34_067_749UL, true, ExpectedResult = false, TestName = "Entry at the exact state budget is appendable")]
+    [TestCase(34_067_750UL, true, ExpectedResult = true, TestName = "Entry one gas past the state budget is not appendable")]
+    // Without the per-dimension totals — a block executed elsewhere — both dimensions fall back to that max.
+    [TestCase(34_067_749UL, false, ExpectedResult = true, TestName = "Entry is judged on the combined gas when dimensions are unknown")]
+    public bool Appendability_is_judged_per_block_gas_dimension(ulong ilGasLimit, bool dimensionsKnown)
+    {
+        Block block = Build.A.Block
+            .WithGasLimit(34_165_669)
+            .WithGasUsed(513_317)
+            .WithBaseFeePerGas(UInt256.Zero)
+            .WithTransactions([])
+            .WithInclusionListTransactions([BuildTx(gasLimit: ilGasLimit, to: TestItem.AddressB)])
+            .TestObject;
+        if (dimensionsKnown) block.Header.GasUsedPerDimension = (513_317, 97_920);
+
+        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+    }
+
     // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
     // well-formedness assertion keeps the case honest: without it the entry could pass for being malformed.
     [Test]
