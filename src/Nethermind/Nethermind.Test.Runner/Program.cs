@@ -220,13 +220,6 @@ internal class Program
 
         if (parseResult.GetValue(Options.Wait)) Console.ReadLine();
 
-        if (isEngineTest)
-        {
-            long asserted = BlockchainTestBase.FcuInclusionListAssertionCount;
-            Console.Error.WriteLine($"engine_forkchoiceUpdated inclusionListSatisfied asserted {asserted} time(s)");
-            Console.Error.Flush();
-        }
-
         return 0;
     }
 
