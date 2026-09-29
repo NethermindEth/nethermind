@@ -50,6 +50,9 @@ public class CheckpointSync(
     private const string ConsensusVersionHeader = "Eth-Consensus-Version";
     /// <summary>Fallback initial buffer size when the state response has no Content-Length.</summary>
     private const int DefaultStateBufferSize = 64 * 1024 * 1024;
+    private const int DefaultMaxDownloadAttempts = 5;
+    private static readonly TimeSpan DefaultRetryBaseDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly ILogger _logger = logManager.GetClassLogger<CheckpointSync>();
     private readonly HttpClient _httpClient = new(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All })
@@ -57,6 +60,15 @@ public class CheckpointSync(
         // The finalized state is ~300 MB; allow for slow providers.
         Timeout = TimeSpan.FromMinutes(10),
     };
+
+    /// <summary>Attempts a checkpoint download gets before its last failure is thrown.</summary>
+    internal int MaxDownloadAttempts { get; init; } = DefaultMaxDownloadAttempts;
+
+    /// <summary>Delay after the first failed attempt; it doubles per attempt up to <see cref="MaxRetryDelay"/>.</summary>
+    internal TimeSpan RetryBaseDelay { get; init; } = DefaultRetryBaseDelay;
+
+    /// <summary>Pool the state bytes are read into; every array rented from it is returned, including those of a dropped attempt.</summary>
+    internal ArrayPool<byte> BufferPool { get; init; } = ArrayPool<byte>.Shared;
 
     /// <summary>
     /// The operator-configured URL if set, otherwise the selected network's default provider.
@@ -71,7 +83,7 @@ public class CheckpointSync(
     {
         (byte[] buffer, int length) = config.CheckpointStateFile is { } stateFile
             ? await ReadStateFileAsync(stateFile, cancellationToken)
-            : await DownloadStateAsync(cancellationToken);
+            : await RetryTransientAsync("state download", DownloadStateAsync, cancellationToken);
 
         try
         {
@@ -94,7 +106,7 @@ public class CheckpointSync(
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            BufferPool.Return(buffer);
         }
     }
 
@@ -113,33 +125,85 @@ public class CheckpointSync(
         return (buffer, length);
     }
 
-    private static async Task<(byte[] Buffer, int Length)> ReadStateFileAsync(string stateFile, CancellationToken cancellationToken)
+    private async Task<(byte[] Buffer, int Length)> ReadStateFileAsync(string stateFile, CancellationToken cancellationToken)
     {
         await using FileStream content = File.OpenRead(stateFile);
         return await ReadToPooledBufferAsync(content, content.Length, cancellationToken);
     }
 
-    private static async Task<(byte[] Buffer, int Length)> ReadToPooledBufferAsync(Stream content, long? expectedLength, CancellationToken cancellationToken)
+    private async Task<(byte[] Buffer, int Length)> ReadToPooledBufferAsync(Stream content, long? expectedLength, CancellationToken cancellationToken)
     {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent((int)(expectedLength ?? DefaultStateBufferSize));
+        byte[] buffer = BufferPool.Rent((int)(expectedLength ?? DefaultStateBufferSize));
         int length = 0;
-        while (true)
+        try
         {
-            if (length == buffer.Length)
+            while (true)
             {
-                byte[] grown = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
-                buffer.CopyTo(grown, 0);
-                ArrayPool<byte>.Shared.Return(buffer);
-                buffer = grown;
-            }
+                if (length == buffer.Length)
+                {
+                    byte[] grown = BufferPool.Rent(buffer.Length * 2);
+                    buffer.CopyTo(grown, 0);
+                    BufferPool.Return(buffer);
+                    buffer = grown;
+                }
 
-            int read = await content.ReadAsync(buffer.AsMemory(length), cancellationToken);
-            if (read == 0)
+                int read = await content.ReadAsync(buffer.AsMemory(length), cancellationToken);
+                if (read == 0)
+                {
+                    return (buffer, length);
+                }
+
+                length += read;
+            }
+        }
+        catch
+        {
+            // A dropped transfer is retried, so its buffer must not be left to the GC once per attempt.
+            BufferPool.Return(buffer);
+            throw;
+        }
+    }
+
+    /// <summary>Whether <paramref name="exception"/> is a network failure a later attempt can outlast: a dropped or timed-out transfer, or a server-side or rate-limit response.</summary>
+    /// <remarks>An unsupported fork, undecodable data and the caller's own cancellation are never transient.</remarks>
+    internal static bool IsTransientDownloadFailure(Exception exception, CancellationToken cancellationToken) => exception switch
+    {
+        HttpRequestException { StatusCode: { } status } => status is HttpStatusCode.InternalServerError or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable
+            or HttpStatusCode.GatewayTimeout or HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests,
+        HttpRequestException or IOException => true,
+        OperationCanceledException => !cancellationToken.IsCancellationRequested,
+        _ => false,
+    };
+
+    /// <summary>The delay after <paramref name="delay"/>: twice as long, never beyond <see cref="MaxRetryDelay"/>.</summary>
+    internal static TimeSpan NextRetryDelay(TimeSpan delay) => TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, MaxRetryDelay.Ticks));
+
+    /// <summary>The message of the innermost exception, which names the network failure a wrapping <see cref="HttpRequestException"/> only hints at.</summary>
+    internal static string DescribeCause(Exception exception)
+    {
+        while (exception.InnerException is { } inner)
+        {
+            exception = inner;
+        }
+
+        return exception.Message.TrimEnd('.');
+    }
+
+    private async Task<T> RetryTransientAsync<T>(string what, Func<CancellationToken, Task<T>> attempt, CancellationToken cancellationToken)
+    {
+        TimeSpan delay = RetryBaseDelay;
+        for (int attemptNumber = 1; ; attemptNumber++)
+        {
+            try
             {
-                return (buffer, length);
+                return await attempt(cancellationToken);
             }
-
-            length += read;
+            catch (Exception e) when (attemptNumber < MaxDownloadAttempts && IsTransientDownloadFailure(e, cancellationToken))
+            {
+                if (_logger.IsInfo) _logger.Info($"Checkpoint {what} failed on attempt {attemptNumber} of {MaxDownloadAttempts}: {DescribeCause(e)}; retrying in {delay.TotalSeconds:F0} s.");
+                await Task.Delay(delay, cancellationToken);
+                delay = NextRetryDelay(delay);
+            }
         }
     }
 
@@ -292,8 +356,11 @@ public class CheckpointSync(
         }
         else
         {
-            using HttpResponseMessage response = await GetOctetStreamAsync($"/eth/v2/beacon/blocks/{blockRoot}", cancellationToken);
-            blockSsz = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            blockSsz = await RetryTransientAsync("anchor block download", async token =>
+            {
+                using HttpResponseMessage response = await GetOctetStreamAsync($"/eth/v2/beacon/blocks/{blockRoot}", token);
+                return await response.Content.ReadAsByteArrayAsync(token);
+            }, cancellationToken);
         }
 
         ForkedSignedBeaconBlock block = SignedBeaconBlockCodec.Decode(blockSsz, spec);
