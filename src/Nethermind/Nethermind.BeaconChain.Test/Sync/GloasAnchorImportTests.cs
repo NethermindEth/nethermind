@@ -35,6 +35,7 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// <c>payloads = {}</c>): the importer the factory builds on it, the anchor state it keeps, and the finalized Gloas
 /// state it persists for the next start.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasAnchorImportTests
 {
     private const ulong ForkSlot = 32;

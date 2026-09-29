@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Api;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -30,6 +31,15 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// </summary>
 public class RangeSyncColumnCustodyTests
 {
+    /// <summary>Expected columns are pyspec <c>get_custody_groups</c> for the node id keccak(PrivateKeyA public key) at 8 groups, computed outside this code base.</summary>
+    [Test]
+    public async Task The_fixture_node_samples_the_columns_the_spec_assigns_to_its_fixed_identity()
+    {
+        await using Fixture fixture = Fixture.Create();
+
+        Assert.That(fixture.Sampled, Is.EqualTo(new ulong[] { 15, 35, 42, 45, 96, 105, 115, 120 }));
+    }
+
     [Test]
     [CancelAfter(30_000)]
     public async Task A_peer_is_never_asked_for_a_column_it_does_not_custody(CancellationToken token)
@@ -184,12 +194,13 @@ public class RangeSyncColumnCustodyTests
 
         public IBlockImporter Importer { get; private set; } = null!;
 
-        /// <summary>This node's sampled columns, which depend on its randomly generated identity.</summary>
+        /// <summary>This node's sampled columns, which depend on its identity: the fixed key seeded in <see cref="Create"/>.</summary>
         public ulong[] Sampled { get; private set; } = [];
 
         public static Fixture Create()
         {
             Fixture fixture = new();
+            fixture._store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, TestItem.PrivateKeyA.KeyBytes);
             fixture._discovery = new BeaconDiscovery(new BeaconChainConfig { Discv5Port = 0 }, fixture.Chain.Spec, fixture._store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
             // Resolves the identity and local custody exactly as Start does, without binding a socket.
             fixture._discovery.CreateDiscv5Services(IPAddress.Loopback);

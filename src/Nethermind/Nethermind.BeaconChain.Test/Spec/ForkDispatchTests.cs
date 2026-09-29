@@ -44,6 +44,7 @@ namespace Nethermind.BeaconChain.Test.Spec;
 /// value, so a new fork fails here until each site handles it or refuses it by name, instead of compiling and throwing
 /// the generic fall-through at runtime.
 /// </summary>
+[HardTimeout(60_000)]
 public class ForkDispatchTests
 {
     private static readonly byte[] ElectraVersion = Bytes.FromHexString("0x05000000");

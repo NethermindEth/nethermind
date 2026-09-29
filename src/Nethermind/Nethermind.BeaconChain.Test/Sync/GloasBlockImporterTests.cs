@@ -33,6 +33,7 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// <see cref="BlockImporter"/> on Gloas blocks and their execution payload envelopes (specs/gloas/fork-choice.md
 /// <c>on_block</c> and <c>on_execution_payload_envelope</c>), with genuinely signed blocks from a Fulu anchor.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasBlockImporterTests
 {
     private const ulong ForkSlot = 32;

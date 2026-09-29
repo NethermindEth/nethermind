@@ -181,9 +181,10 @@ public class PeerBandTests
     {
         // An inbound session is keyed by the address the remote came from, never by its configured
         // static address, so an exemption matched on the address string would trim the static peer.
+        AdmissionWatch watch = new();
         Node staticPeer = CreateNode();
         Node other = CreateNode();
-        Node local = CreateNode();
+        Node local = CreateNode(logManager: watch.LogManager);
         SetMatchingStatus(staticPeer, other, local);
         staticPeer.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot;
         other.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot + 100;
@@ -196,11 +197,12 @@ public class PeerBandTests
             await other.P2P.StartAsync(token);
             await local.P2P.StartAsync(token);
             local.Config.StaticPeers = LoopbackAddress(staticPeer.P2P);
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+            PeerManager peerManager = watch.Watch(local, staticPeer, other);
 
             await staticPeer.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
-            await WaitUntilAsync(() => peerManager.PeerCount == 1, token, "the static peer's inbound session was never admitted");
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token), Is.True);
+            await watch.AdmittedAsync("the static peer's inbound session was never admitted", token);
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1));
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token), Is.True, () => watch.Describe("the second peer was not admitted"));
 
             local.Config.MaxPeerCount = 1;
             local.Config.TargetPeerCount = 1;
@@ -319,8 +321,9 @@ public class PeerBandTests
     [CancelAfter(60_000)]
     public async Task A_session_the_remote_opened_is_admitted_and_reported_as_inbound_with_its_agent_string(CancellationToken token)
     {
+        AdmissionWatch watch = new();
         Node remote = CreateNode();
-        Node local = CreateNode();
+        Node local = CreateNode(logManager: watch.LogManager);
         SetMatchingStatus(remote, local);
         // Distinguishable from our own identify literal, so the field provably carries what the remote sent.
         remote.P2P.IdentifySettingsForTest.AgentVersion = "test-remote/inbound-1.2.3";
@@ -330,28 +333,29 @@ public class PeerBandTests
         {
             await remote.P2P.StartAsync(token);
             await local.P2P.StartAsync(token);
-            // Admission failures are logged at Debug only; the test output then names why a session was dropped.
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, new TestLogManager(LogLevel.Debug));
+            // Admission failures are logged at Debug only; the watch keeps that log so a failure names why the session was dropped.
+            PeerManager peerManager = watch.Watch(local, remote);
 
             await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
 
-            await WaitUntilAsync(() => peerManager.PeerCount == 1, token, "the manager never admitted the session the remote opened");
+            await watch.AdmittedAsync("the manager never admitted the session the remote opened", token);
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("the admitted peer does not match"));
             IPeerDirectory directory = peerManager;
             PeerRecord record = directory.Peers.Single();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(record.PeerId, Is.EqualTo(remote.P2P.LocalPeerId!.ToString()));
-                Assert.That(record.Direction, Is.EqualTo(PeerDirection.Inbound), "the remote dialed us: reporting it as Outbound is the lie this closes");
-                Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected));
-                Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"));
-                Assert.That(record.AgentVersion, Is.EqualTo("test-remote/inbound-1.2.3"), "the identify agent string the remote advertised, not null and not our own");
+                Assert.That(record.PeerId, Is.EqualTo(remote.P2P.LocalPeerId!.ToString()), () => watch.Describe("the admitted peer does not match"));
+                Assert.That(record.Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the remote dialed us: reporting it as Outbound is the lie this closes"));
+                Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected), () => watch.Describe("the admitted peer does not match"));
+                Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"), () => watch.Describe("the admitted peer does not match"));
+                Assert.That(record.AgentVersion, Is.EqualTo("test-remote/inbound-1.2.3"), () => watch.Describe("the identify agent string the remote advertised, not null and not our own"));
                 // A session the remote opened was never discovered by us, so there is no ENR to
                 // attribute - fabricating one here would be worse than reporting the honest gap.
-                Assert.That(record.Enr, Is.Null);
+                Assert.That(record.Enr, Is.Null, () => watch.Describe("the admitted peer does not match"));
             }
 
-            Assert.That(directory.TryGetPeer(record.PeerId, out PeerRecord lookedUp), Is.True);
-            Assert.That(lookedUp.Direction, Is.EqualTo(PeerDirection.Inbound));
+            Assert.That(directory.TryGetPeer(record.PeerId, out PeerRecord lookedUp), Is.True, () => watch.Describe("the admitted peer does not match"));
+            Assert.That(lookedUp.Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
         }
     }
 
@@ -362,8 +366,9 @@ public class PeerBandTests
         // BeaconP2P.DialPeerAsync hands back the existing session for an already-connected peer id, so
         // a static/discovery dial of a peer that got in first must neither record it twice nor relabel
         // it as Outbound.
+        AdmissionWatch watch = new();
         Node remote = CreateNode();
-        Node local = CreateNode();
+        Node local = CreateNode(logManager: watch.LogManager);
         SetMatchingStatus(remote, local);
 
         await using (local.P2P)
@@ -371,25 +376,26 @@ public class PeerBandTests
         {
             await remote.P2P.StartAsync(token);
             await local.P2P.StartAsync(token);
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+            PeerManager peerManager = watch.Watch(local, remote);
 
             await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
-            await WaitUntilAsync(() => peerManager.PeerCount == 1, token, "the inbound session was never admitted");
+            await watch.AdmittedAsync("the inbound session was never admitted", token);
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("the admitted peer does not match"));
 
             // Straight at the libp2p layer: the manager's own dial path short-circuits on "already
             // connected" before it ever dials, so only a direct dial exercises the session reuse.
             ISession reused = await local.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(remote.P2P)), token);
 
-            Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? established), Is.True);
-            Assert.That(reused, Is.SameAs(established), "the dial must hand back the session the remote opened, not open a second one");
-            Assert.That((await local.P2P.GetSessionInfoAsync(reused, token)).Direction, Is.EqualTo(PeerDirection.Inbound));
-            Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1), "one connection, not a second outbound one");
+            Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? established), Is.True, () => watch.Describe("the admitted peer does not match"));
+            Assert.That(reused, Is.SameAs(established), () => watch.Describe("the dial must hand back the session the remote opened, not open a second one"));
+            Assert.That((await local.P2P.GetSessionInfoAsync(reused, token)).Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
+            Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1), () => watch.Describe("one connection, not a second outbound one"));
 
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True, "already connected counts as success");
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True, () => watch.Describe("already connected counts as success"));
 
             IPeerDirectory directory = peerManager;
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "one session, one entry");
-            Assert.That(directory.Peers.Single().Direction, Is.EqualTo(PeerDirection.Inbound));
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("one session, one entry"));
+            Assert.That(directory.Peers.Single().Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
         }
     }
 
@@ -967,14 +973,86 @@ public class PeerBandTests
     internal record Node(BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config, BeaconChainStore Store, LocalMetadataSource Metadata);
 
     /// <param name="statusSource">What the node serves over <c>status</c>; defaults to its own settable holder.</param>
-    internal static Node CreateNode(IBeaconChainStatusSource? statusSource = null)
+    /// <param name="logManager">Where the node's P2P host logs; silent by default.</param>
+    internal static Node CreateNode(IBeaconChainStatusSource? statusSource = null, ILogManager? logManager = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
-        BeaconP2P p2p = new(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+        BeaconP2P p2p = new(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logManager ?? LimboLogs.Instance);
         return new Node(p2p, statusHolder, config, store, metadataSource);
+    }
+
+    /// <summary>
+    /// Waits for the manager's admission event instead of polling its count, and keeps the Debug log of the manager and
+    /// the local host: an admission that never happens is logged there and the session silently dropped.
+    /// </summary>
+    private sealed class AdmissionWatch : InterfaceLogger
+    {
+        private static readonly TimeSpan HangBound = TimeSpan.FromSeconds(30);
+
+        private readonly List<string> _lines = [];
+        private readonly TaskCompletionSource _admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private Node[] _nodes = [];
+
+        public AdmissionWatch() => LogManager = new OneLoggerLogManager(new ILogger(this));
+
+        public ILogManager LogManager { get; }
+
+        public PeerManager Watch(Node local, params Node[] others)
+        {
+            _nodes = [local, .. others];
+            PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LogManager);
+            manager.PeerAdmitted += _ => _admitted.TrySetResult();
+            return manager;
+        }
+
+        /// <summary>Returns once a peer was admitted; fails with the logged cause when none is within <see cref="HangBound"/>.</summary>
+        public async Task AdmittedAsync(string failure, CancellationToken token)
+        {
+            try
+            {
+                await _admitted.Task.WaitAsync(HangBound, token);
+            }
+            catch (Exception e) when (e is TimeoutException or OperationCanceledException)
+            {
+                Assert.Fail(Describe(failure));
+            }
+        }
+
+        /// <summary>The failure text with the nodes' session and identify-timeout counts and the captured log.</summary>
+        public string Describe(string failure)
+        {
+            string state = string.Join("; ", _nodes.Select(static (n, i) => $"node {i}: sessions={n.P2P.SessionCountForTest} identifyTimeouts={n.P2P.IdentifyTimeoutsForTest}"));
+            string[] lines;
+            lock (_lines)
+            {
+                lines = [.. _lines];
+            }
+
+            return $"{failure} ({state}). Log:{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
+        }
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => false;
+        public bool IsError => true;
+
+        public void Info(string text) => Add(text);
+        public void Warn(string text) => Add(text);
+        public void Debug(string text) => Add(text);
+        public void Trace(string text) { }
+        public void Error(string text, Exception? ex = null) => Add(ex is null ? text : $"{text}: {ex}");
+
+        private void Add(string text)
+        {
+            lock (_lines)
+            {
+                _lines.Add(text);
+            }
+        }
     }
 
     /// <summary>Answers every <c>status</c> request with an error chunk, so a status exchange with this

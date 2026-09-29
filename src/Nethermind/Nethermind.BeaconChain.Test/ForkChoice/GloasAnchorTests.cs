@@ -16,6 +16,7 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// The Gloas <c>get_forkchoice_store</c> rooted at <see cref="ForkCrossingChain.First"/>, the state a node
 /// checkpoint-synced after the fork finalizes starts from.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasAnchorTests
 {
     [Test]
