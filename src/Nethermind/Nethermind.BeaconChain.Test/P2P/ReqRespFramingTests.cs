@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.Core.Extensions;
@@ -98,6 +99,9 @@ public class ReqRespFramingTests
     [TestCase("0x00ff060000734e6150705900090000d8ea82a28080808000", false, Description = "an empty compressed block with a five byte zero length")]
     [TestCase("0x00ff060000734e6150705980000000", false, Description = "an empty skippable frame")]
     [TestCase("0x00ff060000734e61507059fe03000000000000050000d8ea82a200", false, Description = "padding then an empty compressed frame")]
+    [TestCase("0x00ff060000734e6150705900050000d8ea82a200fe030000000000", true, Description = "a padding frame after the data frame")]
+    [TestCase("0x00ff060000734e6150705900050000d8ea82a20000050000d8ea82a200", true, Description = "a second data frame")]
+    [TestCase("0x00ff060000734e6150705900050000d8ea82a200fe", true, Description = "a lone frame type byte after the data frame")]
     [TestCase("0x00ff060000734e6150705900", true, Description = "a byte after the stream identifier")]
     [TestCase("0x00010c00000175de410100000000000000", true, Description = "a data frame")]
     [TestCase("0x00ff060000734e61507059010c00000175de410100000000000000", true, Description = "a data frame after the stream identifier")]
@@ -165,7 +169,6 @@ public class ReqRespFramingTests
     // Frames that decode to nothing never end an empty request on their own, so only the byte bound stops a peer that keeps sending them.
     [TestCase("0xff060000734e61507059", Description = "repeated stream identifiers")]
     [TestCase("0xfe030000000000", Description = "repeated padding frames")]
-    [TestCase("0x00050000d8ea82a200", Description = "repeated empty compressed frames")]
     public void Rejects_endless_empty_frames_after_an_empty_request_before_exhausting_input(string repeatedFrameHex)
     {
         byte[] repeatedFrame = Bytes.FromHexString(repeatedFrameHex);
@@ -199,6 +202,42 @@ public class ReqRespFramingTests
         else
         {
             Assert.That(await ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true), Is.Empty);
+        }
+    }
+
+    // Stream identifier 10 + padding frame 15 + uncompressed data frame 16 = max_compressed_len(8) = 41 bytes: the bound is used up, so the next byte is not read.
+    [Test]
+    public async Task A_request_whose_framing_uses_the_whole_bound_is_not_probed_for_more_bytes()
+    {
+        byte[] wire = [.. Bytes.FromHexString("0x08ff060000734e61507059"), 0xfe, 11, 0, 0, .. new byte[11], .. Bytes.FromHexString("0x010c00000175de410100000000000000"), 0x2a];
+        using MemoryStream stream = new(wire);
+
+        Assert.That(await ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default), Is.EqualTo(Bytes.FromHexString(PingSsz)));
+        Assert.That(stream.Position, Is.EqualTo(wire.Length - 1), "the byte past max_compressed_len(n) stays unread");
+    }
+
+    // A requester that keeps its stream open after a complete request is answered; the request deadline still bounds the wait.
+    [Test]
+    public void The_request_deadline_during_the_trailing_byte_probe_is_a_timeout_not_a_served_request()
+    {
+        using CancellationTokenSource deadline = new(TimeSpan.FromMilliseconds(100));
+        using StalledAfterStream stream = new(Bytes.FromHexString(PingRequestWire));
+
+        Assert.CatchAsync<OperationCanceledException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, deadline.Token));
+    }
+
+    /// <summary>Serves its bytes, then blocks like an open stream with nothing more to read until cancelled.</summary>
+    private sealed class StalledAfterStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            int read = await base.ReadAsync(buffer, cancellationToken);
+            if (read == 0)
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+
+            return read;
         }
     }
 

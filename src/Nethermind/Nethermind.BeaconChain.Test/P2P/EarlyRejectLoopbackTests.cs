@@ -68,13 +68,16 @@ public class EarlyRejectLoopbackTests
     [TestCase(ColumnsByRoot, Request.VarintLongerThanTenBytes)]
     [TestCase(ColumnsByRoot, Request.MoreRootsThanTheMaximum)]
     [TestCase(Ping, Request.DeclaredLengthAboveTheMaximum)]
+    [TestCase(Goodbye, Request.DeclaredLengthAboveTheMaximum)]
     [TestCase(Ping, Request.VarintLongerThanTenBytes)]
+    [TestCase(Goodbye, Request.VarintLongerThanTenBytes)]
     // A zero length prefix is refused where the request type has a nonzero minimum size.
     [TestCase(StatusV2, Request.ZeroLength)]
     [TestCase(BlocksByRange, Request.ZeroLength)]
     [TestCase(EnvelopesByRange, Request.ZeroLength)]
     [TestCase(ColumnsByRange, Request.ZeroLength)]
     [TestCase(Ping, Request.ZeroLength)]
+    [TestCase(Goodbye, Request.ZeroLength)]
     // The requester sends the zero prefix and keeps the stream open: a fixed-size request needs no more framing, so the refusal must not wait for a half-close.
     [TestCase(StatusV2, Request.ZeroLengthStreamHeldOpen)]
     [TestCase(BlocksByRange, Request.ZeroLengthStreamHeldOpen)]
@@ -86,6 +89,7 @@ public class EarlyRejectLoopbackTests
     [TestCase(StatusV2, Request.TruncatedAfterTheLengthPrefix)]
     [TestCase(BlocksByRoot, Request.TruncatedAfterTheLengthPrefix)]
     [TestCase(ColumnsByRoot, Request.TruncatedAfterTheLengthPrefix)]
+    [TestCase(Goodbye, Request.TruncatedAfterTheLengthPrefix)]
     [CancelAfter(60_000)]
     public async Task Early_rejected_requests_are_answered_with_an_error_chunk_at_once(string protocolId, Request request, CancellationToken token)
     {
@@ -104,16 +108,12 @@ public class EarlyRejectLoopbackTests
         }
     }
 
-    // The Goodbye listener sends no chunk, and a list that may be empty has nothing to send: both must close the stream at once.
-    [TestCase(Goodbye, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(Goodbye, Request.VarintLongerThanTenBytes)]
-    [TestCase(Goodbye, Request.ZeroLength)]
-    [TestCase(Goodbye, Request.TruncatedAfterTheLengthPrefix)]
+    // A list that may be empty has nothing to send, so it must close the stream at once.
     [TestCase(BlocksByRoot, Request.ZeroLength)]
     [TestCase(EnvelopesByRoot, Request.ZeroLength)]
     [TestCase(ColumnsByRoot, Request.ZeroLength)]
     [CancelAfter(60_000)]
-    public async Task Requests_without_an_error_response_close_the_stream_at_once_with_no_chunk(string protocolId, Request request, CancellationToken token)
+    public async Task Empty_by_root_lists_close_the_stream_at_once_with_no_chunk(string protocolId, Request request, CancellationToken token)
     {
         byte[] wire = await EncodeAsync(protocolId, request, token);
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
