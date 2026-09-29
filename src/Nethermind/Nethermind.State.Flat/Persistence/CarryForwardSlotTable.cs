@@ -65,7 +65,7 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
 
         nuint size = (nuint)Capacity * Entry.Size;
         _allocatedBytes = (long)size + Entry.Size;
-        // Zeroed memory is handed out by the OS page by page as it is touched, so the resident size follows the fill.
+        // The OS commits zeroed pages on first touch. Entries are placed by hash, so all of them are touched soon after start.
         // The extra entry's worth of bytes lets the entries start on an Entry.Size boundary.
         _allocation = NativeMemory.AllocZeroed((nuint)_allocatedBytes);
         _entries = (Entry*)(((nuint)_allocation + Entry.Size - 1) & ~(nuint)(Entry.Size - 1));

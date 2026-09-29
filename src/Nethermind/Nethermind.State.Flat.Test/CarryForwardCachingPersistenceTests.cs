@@ -38,7 +38,7 @@ public class CarryForwardCachingPersistenceTests
     public async Task TryGetSlot_SecondReadAfterScenario_ReadsInnerExpectedTimes(Action<CarryForwardCachingPersistence, FakePersistence> scenario, int expectedSlotReads, bool disposedWithAReaderOpen)
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using CarryForwardCachingPersistence cache = new(inner);
         // The open reader keeps the slot table alive, so the cache must go on serving and invalidating it.
         using IPersistence.IPersistenceReader? openReader = disposedWithAReaderOpen ? cache.CreateReader() : null;
         if (disposedWithAReaderOpen) await cache.DisposeAsync();
@@ -51,10 +51,10 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void GetAccount_SecondReadAtSameBasis_ServedFromCache()
+    public async Task GetAccount_SecondReadAtSameBasis_ServedFromCache()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using CarryForwardCachingPersistence cache = new(inner);
 
         using (IPersistence.IPersistenceReader reader = cache.CreateReader()) reader.GetAccount(Address);
         using (IPersistence.IPersistenceReader reader = cache.CreateReader()) reader.GetAccount(Address);
@@ -63,10 +63,10 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
+    public async Task GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+        await using CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
 
         ReadAccount(cache, TestItem.AddressA);
         ReadAccount(cache, TestItem.AddressA);
@@ -80,10 +80,10 @@ public class CarryForwardCachingPersistenceTests
     [TestCase(false, 2, false, TestName = "WriteBatch_SlotSetBeyondCapacity_NotKept")]
     [TestCase(true, 1, true, TestName = "WriteBatch_AccountSetWithinCapacity_KeptForTheNextBatch")]
     [TestCase(true, 2, false, TestName = "WriteBatch_AccountSetBeyondCapacity_NotKept")]
-    public void WriteBatch_CommittedWrittenSet_KeptOnlyWithinTheCacheCapacity(bool accounts, int written, bool kept)
+    public async Task WriteBatch_CommittedWrittenSet_KeptOnlyWithinTheCacheCapacity(bool accounts, int written, bool kept)
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+        await using CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
 
         using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
         {
@@ -320,11 +320,11 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void TryGetSlot_WorkingSetOfAQuarterOfTheCapacity_IsServedFromTheCache()
+    public async Task TryGetSlot_WorkingSetOfAQuarterOfTheCapacity_IsServedFromTheCache()
     {
         const int slots = 131072;
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using CarryForwardCachingPersistence cache = new(inner);
         using IPersistence.IPersistenceReader reader = cache.CreateReader();
         UInt256 value = default;
 
@@ -338,10 +338,10 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void TryGetSlot_WhileTheCacheLockIsHeld_ReadsWithoutWaitingOrCaching()
+    public async Task TryGetSlot_WhileTheCacheLockIsHeld_ReadsWithoutWaitingOrCaching()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using CarryForwardCachingPersistence cache = new(inner);
         using IPersistence.IPersistenceReader reader = cache.CreateReader();
         UInt256 value = default;
         bool completed;
@@ -364,10 +364,10 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void CreateReader_SyncReader_BypassesTheCache()
+    public async Task CreateReader_SyncReader_BypassesTheCache()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using CarryForwardCachingPersistence cache = new(inner);
 
         for (int i = 0; i < 2; i++)
         {
@@ -415,77 +415,86 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
-    [TestCase(4, TestName = "capacity_4")]
-    [TestCase(8, TestName = "capacity_8")]
-    [TestCase(CarryForwardCachingPersistence.DefaultSlotCapacity, TestName = "default_capacity")]
-    public void RandomOperations_EveryReadMatchesThePersistenceAtTheReaderState(int capacity)
+    [Test]
+    public async Task RandomOperations_EveryReadMatchesThePersistenceAtTheReaderState([Values(4, 8, CarryForwardCachingPersistence.DefaultSlotCapacity)] int capacity)
     {
         const int operations = 1_000_000;
         const int maxOpenReaders = 8;
         bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
         Db.Metrics.DetailedMetricsEnabled = true;
-        long hitsBefore = Metrics.CarryForwardSlotHits;
-        Random random = new(capacity);
-        ModelPersistence model = new(addresses: 4, slotsPerAddress: 8);
-        CarryForwardCachingPersistence cache = new(model, capacity, capacity);
-        List<(IPersistence.IPersistenceReader Reader, ModelPersistence.State State)> readers = [];
+        long hits;
+        int slotCount;
+        int slotCapacity;
         int reads = 0;
         List<string> mismatches = [];
-
-        for (int i = 0; i < operations && mismatches.Count < 10; i++)
+        try
         {
-            int operation = random.Next(1000);
-            if (operation < 850)
+            long hitsBefore = Metrics.CarryForwardSlotHits;
+            Random random = new(capacity);
+            ModelPersistence model = new(addresses: 4, slotsPerAddress: 8);
+            await using CarryForwardCachingPersistence cache = new(model, capacity, capacity);
+            List<(IPersistence.IPersistenceReader Reader, ModelPersistence.State State)> readers = [];
+
+            for (int i = 0; i < operations && mismatches.Count < 10; i++)
             {
-                if (readers.Count == 0 || random.Next(4) == 0)
+                int operation = random.Next(1000);
+                if (operation < 850)
                 {
-                    if (readers.Count == maxOpenReaders)
+                    if (readers.Count == 0 || random.Next(4) == 0)
                     {
-                        readers[0].Reader.Dispose();
-                        readers.RemoveAt(0);
+                        if (readers.Count == maxOpenReaders)
+                        {
+                            readers[0].Reader.Dispose();
+                            readers.RemoveAt(0);
+                        }
+                        readers.Add((cache.CreateReader(), ModelPersistence.LastReaderState!));
                     }
-                    readers.Add((cache.CreateReader(), ModelPersistence.LastReaderState!));
+
+                    (IPersistence.IPersistenceReader reader, ModelPersistence.State state) = random.Next(2) == 0
+                        ? readers[^1]
+                        : readers[random.Next(readers.Count)];
+                    reads++;
+                    string? mismatch = random.Next(4) == 0
+                        ? model.CheckAccountRead(reader, state, random)
+                        : model.CheckSlotRead(reader, state, random);
+                    if (mismatch is not null) mismatches.Add($"operation {i}: {mismatch}");
                 }
+                else if (operation < 880)
+                {
+                    if (readers.Count == 0) continue;
+                    int index = random.Next(readers.Count);
+                    readers[index].Reader.Dispose();
+                    readers.RemoveAt(index);
+                }
+                else if (operation < 998)
+                {
+                    model.CommitRandomBatch(cache, random, clearAllShare: 0.03);
+                }
+                else
+                {
+                    // Snap sync clears the persistence before anything reads it, so no reader spans the clear.
+                    foreach ((IPersistence.IPersistenceReader reader, _) in readers) reader.Dispose();
+                    readers.Clear();
+                    cache.Clear();
+                }
+            }
 
-                (IPersistence.IPersistenceReader reader, ModelPersistence.State state) = random.Next(2) == 0
-                    ? readers[^1]
-                    : readers[random.Next(readers.Count)];
-                reads++;
-                string? mismatch = random.Next(4) == 0
-                    ? model.CheckAccountRead(reader, state, random)
-                    : model.CheckSlotRead(reader, state, random);
-                if (mismatch is not null) mismatches.Add($"operation {i}: {mismatch}");
-            }
-            else if (operation < 880)
-            {
-                if (readers.Count == 0) continue;
-                int index = random.Next(readers.Count);
-                readers[index].Reader.Dispose();
-                readers.RemoveAt(index);
-            }
-            else if (operation < 998)
-            {
-                model.CommitRandomBatch(cache, random, clearAllShare: 0.03);
-            }
-            else
-            {
-                // Snap sync clears the persistence before anything reads it, so no reader spans the clear.
-                foreach ((IPersistence.IPersistenceReader reader, _) in readers) reader.Dispose();
-                readers.Clear();
-                cache.Clear();
-            }
+            foreach ((IPersistence.IPersistenceReader reader, _) in readers) reader.Dispose();
+            hits = Metrics.CarryForwardSlotHits - hitsBefore;
+            slotCount = cache.SlotTable.Count;
+            slotCapacity = cache.SlotTable.Capacity;
         }
-
-        foreach ((IPersistence.IPersistenceReader reader, _) in readers) reader.Dispose();
-        long hits = Metrics.CarryForwardSlotHits - hitsBefore;
-        Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
+        finally
+        {
+            Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
             Assert.That(reads, Is.GreaterThan(operations / 2));
             Assert.That(hits, Is.GreaterThan(reads / 100), "the cache served a share of the reads");
-            Assert.That(cache.SlotTable.Count, Is.LessThanOrEqualTo(cache.SlotTable.Capacity));
+            Assert.That(slotCount, Is.LessThanOrEqualTo(slotCapacity));
         }
     }
 
@@ -493,57 +502,64 @@ public class CarryForwardCachingPersistenceTests
     [TestCase(3, CarryForwardCachingPersistence.DefaultSlotCapacity)]
     [TestCase(30, 64, Explicit = true, Reason = "Long stress run")]
     [TestCase(30, CarryForwardCachingPersistence.DefaultSlotCapacity, Explicit = true, Reason = "Long stress run")]
-    public void ConcurrentReadersAndCommitter_ReadEachReaderState(int seconds, int capacity)
+    public async Task ConcurrentReadersAndCommitter_ReadEachReaderState(int seconds, int capacity)
     {
         const int readerThreads = 16;
         const int readsPerReader = 64;
         bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
         Db.Metrics.DetailedMetricsEnabled = true;
-        long hitsBefore = Metrics.CarryForwardSlotHits;
-        ModelPersistence model = new(addresses: 8, slotsPerAddress: 16);
-        CarryForwardCachingPersistence cache = new(model, capacity, capacity);
-        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(seconds));
+        long hits;
         long reads = 0;
         long commits = 0;
         MismatchLog mismatches = new();
-
-        Task committer = Task.Factory.StartNew(() =>
+        try
         {
-            Random random = new(1);
-            while (!stop.IsCancellationRequested)
-            {
-                model.CommitRandomBatch(cache, random, clearAllShare: 0.005);
-                Interlocked.Increment(ref commits);
-                Thread.SpinWait(random.Next(2000));
-            }
-        }, TaskCreationOptions.LongRunning);
+            long hitsBefore = Metrics.CarryForwardSlotHits;
+            ModelPersistence model = new(addresses: 8, slotsPerAddress: 16);
+            await using CarryForwardCachingPersistence cache = new(model, capacity, capacity);
+            using CancellationTokenSource stop = new(TimeSpan.FromSeconds(seconds));
 
-        Task[] readerTasks = new Task[readerThreads];
-        for (int t = 0; t < readerThreads; t++)
-        {
-            int seed = t + 2;
-            readerTasks[t] = Task.Factory.StartNew(() =>
+            Task committer = Task.Factory.StartNew(() =>
             {
-                Random random = new(seed);
+                Random random = new(1);
                 while (!stop.IsCancellationRequested)
                 {
-                    using IPersistence.IPersistenceReader reader = cache.CreateReader();
-                    ModelPersistence.State state = ModelPersistence.LastReaderState!;
-                    for (int i = 0; i < readsPerReader; i++)
-                    {
-                        string? mismatch = random.Next(8) == 0
-                            ? model.CheckAccountRead(reader, state, random)
-                            : model.CheckSlotRead(reader, state, random);
-                        if (mismatch is not null) mismatches.Add(mismatch);
-                    }
-                    Interlocked.Add(ref reads, readsPerReader);
+                    model.CommitRandomBatch(cache, random, clearAllShare: 0.005);
+                    Interlocked.Increment(ref commits);
+                    Thread.SpinWait(random.Next(2000));
                 }
             }, TaskCreationOptions.LongRunning);
-        }
 
-        Task.WaitAll([committer, .. readerTasks]);
-        long hits = Metrics.CarryForwardSlotHits - hitsBefore;
-        Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
+            Task[] readerTasks = new Task[readerThreads];
+            for (int t = 0; t < readerThreads; t++)
+            {
+                int seed = t + 2;
+                readerTasks[t] = Task.Factory.StartNew(() =>
+                {
+                    Random random = new(seed);
+                    while (!stop.IsCancellationRequested)
+                    {
+                        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+                        ModelPersistence.State state = ModelPersistence.LastReaderState!;
+                        for (int i = 0; i < readsPerReader; i++)
+                        {
+                            string? mismatch = random.Next(8) == 0
+                                ? model.CheckAccountRead(reader, state, random)
+                                : model.CheckSlotRead(reader, state, random);
+                            if (mismatch is not null) mismatches.Add(mismatch);
+                        }
+                        Interlocked.Add(ref reads, readsPerReader);
+                    }
+                }, TaskCreationOptions.LongRunning);
+            }
+
+            await Task.WhenAll([committer, .. readerTasks]);
+            hits = Metrics.CarryForwardSlotHits - hitsBefore;
+        }
+        finally
+        {
+            Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
+        }
 
         using (Assert.EnterMultipleScope())
         {

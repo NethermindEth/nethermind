@@ -240,11 +240,16 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
-            // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
-            if (current && parent._accounts.TryGetValue(address, out Account? cached) && parent.IsCurrent(generation))
+            if (current && parent._accounts.TryGetValue(address, out Account? cached))
             {
-                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
-                return cached;
+                // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
+                if (parent.IsCurrent(generation))
+                {
+                    if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
+                    return cached;
+                }
+
+                current = false;
             }
 
             if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
@@ -257,12 +262,17 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             ulong hash = CarryForwardSlotTable.Hash(address, slot);
             bool current = parent.IsCurrent(generation);
-            // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
-            if (current && parent._slots.TryGet(hash, address, slot, out bool cachedFound, out UInt256 cachedValue) && parent.IsCurrent(generation))
+            if (current && parent._slots.TryGet(hash, address, slot, out bool cachedFound, out UInt256 cachedValue))
             {
-                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
-                if (cachedFound) outValue = cachedValue;
-                return cachedFound;
+                // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
+                if (parent.IsCurrent(generation))
+                {
+                    if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
+                    if (cachedFound) outValue = cachedValue;
+                    return cachedFound;
+                }
+
+                current = false;
             }
 
             if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardSlotMisses();
