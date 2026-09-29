@@ -792,7 +792,7 @@ public class JsonRpcServiceTests
     [TestCase(",\"after\":1", 1UL)]
     [TestCase(",\"after\":\"0x1\"", 1UL)]
     [TestCase(",\"after\":\"0xffffffff\"", 0xffffffffUL)]
-    public void Raw_utf8_params_read_null_trace_filter_after_as_omitted(string after, ulong? expected)
+    public void Raw_utf8_params_read_trace_filter_after(string after, ulong? expected)
     {
         ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
         traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
