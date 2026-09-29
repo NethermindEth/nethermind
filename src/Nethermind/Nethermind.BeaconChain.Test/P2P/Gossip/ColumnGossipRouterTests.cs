@@ -39,38 +39,6 @@ public class ColumnGossipRouterTests
     private static byte[] Message(DataColumnSidecar sidecar) => Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar));
 
     [Test]
-    public void Start_subscribes_exactly_the_given_subnets_and_rotation_moves_them()
-    {
-        byte[] bpo1Digest = ForkDigest.Compute(Spec, 412_672);
-        byte[] bpo2Digest = ForkDigest.Compute(Spec, 419_072);
-        Dictionary<string, FakeTopic> topics = [];
-        ColumnGossipRouter router = CreateRouter();
-
-        Assert.That(() => router.RotateDigest(bpo2Digest), Throws.InvalidOperationException, "rotation requires Start");
-
-        ulong[] subnets = [3, 5, 9];
-        router.Start(id => topics[id] = new FakeTopic(), bpo1Digest, subnets);
-
-        List<string> expectedTopics = [];
-        foreach (ulong subnet in subnets)
-        {
-            expectedTopics.Add(GossipTopics.Topic(bpo1Digest, GossipTopics.DataColumnSidecarTopicName(subnet)));
-        }
-
-        Assert.That(topics.Keys, Is.EquivalentTo(expectedTopics), "exactly the given subnets are subscribed, not all 128");
-
-        FakeTopic subnet5Bpo1 = topics[GossipTopics.Topic(bpo1Digest, GossipTopics.DataColumnSidecarTopicName(5))];
-        router.RotateDigest(bpo2Digest);
-        FakeTopic subnet5Bpo2 = topics[GossipTopics.Topic(bpo2Digest, GossipTopics.DataColumnSidecarTopicName(5))];
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(subnet5Bpo1.IsSubscribed, Is.False, "old subnet topics are unsubscribed on rotation");
-            Assert.That(subnet5Bpo2.IsSubscribed, "new subnet topics are subscribed on rotation");
-        }
-    }
-
-    [Test]
     public void A_correctly_formed_sidecar_on_its_own_subnet_raises_the_event_and_populates_the_pool()
     {
         DataColumnSidecarPool pool = new();
@@ -122,11 +90,10 @@ public class ColumnGossipRouterTests
     }
 
     [Test]
-    public void Crossing_the_reconstruction_threshold_reconstructs_and_publishes_the_missing_columns_exactly_once()
+    public void Crossing_the_reconstruction_threshold_reconstructs_the_missing_columns_exactly_once_and_publishes_none()
     {
         // Held directly over gossip: columns 0..63 (crosses the 64-column threshold on the last one).
-        // Subscribed but held: subnets 64..70, so publishing-only-when-subscribed is actually exercised
-        // rather than vacuously true. Subnets 71..127 are neither held nor subscribed.
+        // Subscribed but not held: subnets 64..70, the ones a reconstructed column could be published to.
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         ulong[] subscribedSubnets = [.. Enumerable.Range(0, required + 7).Select(i => (ulong)i)];
         DataColumnSidecarPool pool = new();
@@ -154,24 +121,10 @@ public class ColumnGossipRouterTests
             Assert.That(receivedEvents.Select(s => s.Index), Is.EquivalentTo(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(i => (ulong)i)));
         }
 
-        // Published exactly on the reconstructed columns whose own subnet is subscribed (64..70), and
-        // nowhere else: not on the 0..63 already held directly, not on the unsubscribed 71..127.
-        List<(string Topic, DataColumnSidecar Sidecar)> published = [.. topics
-            .SelectMany(kv => kv.Value.Published.Select(m => (kv.Key, Decode(m))))];
+        // Nethermind.Libp2p preview.45 signs every published message, and StrictNoSign peers drop signed ones.
+        Assert.That(topics.Values.SelectMany(t => t.Published), Is.Empty, "no reconstructed column is published");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(published, Has.Count.EqualTo(7), "only the subscribed-but-missing subnets 64..70 are published to");
-            Assert.That(published.Select(p => p.Sidecar.Index), Is.EquivalentTo(Enumerable.Range(required, 7).Select(i => (ulong)i)));
-            foreach ((string topic, DataColumnSidecar sidecar) in published)
-            {
-                Assert.That(topic, Is.EqualTo(GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(sidecar.Index))),
-                    "published on the reconstructed sidecar's own subnet, not some other one");
-            }
-        }
-
-        // A gossip copy of a reconstructed column arriving later is rejected as a duplicate, not
-        // re-accepted or re-raised. Whether the mark precedes the publish is pinned by ReconstructionPublishOrderTests.
+        // A gossip copy of a reconstructed column arriving later is rejected as a duplicate, not re-accepted or re-raised.
         int receivedBeforeReplay = receivedEvents.Count;
         DataColumnSidecar replay = DataColumnSidecarTestFixture.BuildValidSidecar((ulong)required, CurrentSlot);
         router.Handle((ulong)required, gloasTopic: false, Message(replay));
@@ -186,13 +139,6 @@ public class ColumnGossipRouterTests
         Hash256 blockRoot = SszRoots.HashTreeRoot(replay.SignedBlockHeader!.Message!);
         Assert.That(pool.TryGet(blockRoot, (ulong)required, out DataColumnSidecar? pooled), Is.True);
         Assert.That(pooled!.Index, Is.EqualTo((ulong)required));
-    }
-
-    private static DataColumnSidecar Decode(byte[] wireMessage)
-    {
-        Eth2MessageId.TryDecompress(wireMessage, Eth2MessageId.MaxGossipSize, out byte[]? payload);
-        DataColumnSidecar.Decode(payload!, out DataColumnSidecar sidecar);
-        return sidecar;
     }
 
     private static IEnumerable<TestCaseData> DroppedCases()
