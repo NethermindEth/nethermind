@@ -19,6 +19,19 @@ public class CarryForwardSlotTableTests
     private const int OneSet = CarryForwardSlotTable.Ways;
 
     [Test]
+    public void Constructor_InvalidCapacity_CanBeFinalized([Values(-1, 0, CarryForwardSlotTable.MaxCapacity + 1)] int capacity)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            using (new CarryForwardSlotTable(capacity)) { }
+        });
+
+        // A failed constructor still leaves an object on the finalization queue.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+    }
+
+    [Test]
     public void TryGet_AfterAdd_ReturnsTheCachedRead([Values] bool found)
     {
         using CarryForwardSlotTable table = new(1024);

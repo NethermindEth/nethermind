@@ -64,12 +64,13 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
         _setMask = (nuint)(Capacity / Ways - 1);
 
         nuint size = (nuint)Capacity * Entry.Size;
-        _allocatedBytes = (long)size + Entry.Size;
+        long allocatedBytes = (long)size + Entry.Size;
         // The OS commits zeroed pages on first touch. Entries are placed by hash, so all of them are touched soon after start.
         // The extra entry's worth of bytes lets the entries start on an Entry.Size boundary.
-        _allocation = NativeMemory.AllocZeroed((nuint)_allocatedBytes);
+        _allocation = NativeMemory.AllocZeroed((nuint)allocatedBytes);
         _entries = (Entry*)(((nuint)_allocation + Entry.Size - 1) & ~(nuint)(Entry.Size - 1));
-        GC.AddMemoryPressure(_allocatedBytes);
+        GC.AddMemoryPressure(allocatedBytes);
+        _allocatedBytes = allocatedBytes;
     }
 
     ~CarryForwardSlotTable() => Free();
@@ -249,7 +250,7 @@ internal sealed unsafe class CarryForwardSlotTable : RefCountingDisposable
     {
         if (Interlocked.Exchange(ref _freed, 1) != 0) return;
         NativeMemory.Free(_allocation);
-        GC.RemoveMemoryPressure(_allocatedBytes);
+        if (_allocatedBytes != 0) GC.RemoveMemoryPressure(_allocatedBytes);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -65,7 +65,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     internal bool HasSpareWrittenSlots => Volatile.Read(ref _spareWrittenSlots) is not null;
 
     /// <param name="inner">The persistence to cache reads of.</param>
-    /// <param name="maxEntriesPerKind">The account cap.</param>
+    /// <param name="maxEntriesPerKind">The cached-account cap and the per-kind cap on tracked account and slot writes.</param>
     /// <param name="slotCapacity">
     /// The slot table's capacity, rounded up to a power of two of at least <see cref="CarryForwardSlotTable.Ways"/>.
     /// </param>
