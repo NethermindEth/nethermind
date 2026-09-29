@@ -778,11 +778,14 @@ public class FlatWorldStateScopeProviderTests
         (int applied, int reused, int restored, int abandoned) = scope.EarlyApplyCounts;
         if (applyEarly)
         {
-            Assert.That(applied, Is.GreaterThanOrEqualTo(slotCount));
-            Assert.That(abandoned, Is.Zero);
-            // Clearing drops the early writes: every slot goes through the batch and none is restored.
-            Assert.That(reused, Is.EqualTo(clearAtBlockEnd ? 0 : slotCount - 2));
-            Assert.That(restored, Is.EqualTo(clearAtBlockEnd ? 0 : 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(applied, Is.GreaterThanOrEqualTo(slotCount));
+                Assert.That(abandoned, Is.Zero);
+                // Clearing drops the early writes: every slot goes through the batch and none is restored.
+                Assert.That(reused, Is.EqualTo(clearAtBlockEnd ? 0 : slotCount - 2));
+                Assert.That(restored, Is.EqualTo(clearAtBlockEnd ? 0 : 1));
+            }
         }
         else
         {
