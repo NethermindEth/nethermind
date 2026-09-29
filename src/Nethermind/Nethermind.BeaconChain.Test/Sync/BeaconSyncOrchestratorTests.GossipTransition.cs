@@ -85,7 +85,8 @@ public partial class BeaconSyncOrchestratorTests
 
             Assert.That(IsSubscribed(topics, next, GossipTopics.ExecutionPayload), Is.EqualTo(gloas), "execution_payload exists only on a Gloas digest");
             Assert.That(topics.Keys, Has.None.EqualTo(GossipTopics.Topic(previous, GossipTopics.ExecutionPayload)), "never on the pre-Gloas digest");
-            Assert.That(topics.Keys, Has.None.Contain(GossipTopics.PayloadAttestationMessage), "PTC votes stay unsubscribed");
+            Assert.That(IsSubscribed(topics, next, GossipTopics.PayloadAttestationMessage), Is.EqualTo(gloas), "fork choice consumes PTC votes on a Gloas digest");
+            Assert.That(topics.Keys, Has.None.EqualTo(GossipTopics.Topic(previous, GossipTopics.PayloadAttestationMessage)), "never on the pre-Gloas digest");
         }
 
         orchestrator.ReconcileGossipDigests(boundary + 1);

@@ -88,7 +88,12 @@ public sealed class BeaconSyncOrchestrator(
 
     private const int RecentEnvelopeRequestCapacity = 1024;
 
-    private const int WorkQueueCapacity = 512;
+    internal const int WorkQueueCapacity = 512;
+
+    internal const int VoteQueueCapacity = 1024;
+
+    /// <summary>The most gossip votes and slashings verified per worker pass, so a flood of them delays queued blocks by one batch at most.</summary>
+    internal const int VotesPerPass = 64;
 
     /// <summary>Head-step cadence while the work queue never drains (deep range sync).</summary>
     private const int HeadStepImportInterval = 64;
@@ -107,6 +112,13 @@ public sealed class BeaconSyncOrchestrator(
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconSyncOrchestrator>();
     private readonly Channel<WorkItem> _work = Channel.CreateBounded<WorkItem>(
         new BoundedChannelOptions(WorkQueueCapacity) { SingleReader = true });
+
+    // Each queued vote costs a BLS verify and a forged one is never penalized, so votes wait apart: a flood of them must not fill _work and drop gossip blocks.
+    private readonly Channel<WorkItem> _votes = Channel.CreateBounded<WorkItem>(
+        new BoundedChannelOptions(VoteQueueCapacity) { SingleReader = true });
+
+    /// <summary>1 while a <see cref="VoteWakeItem"/> may be queued in the work channel, so a vote flood adds at most one item there.</summary>
+    private int _voteWakeQueued;
 
     /// <summary>The newest slot tick queued, written before the tick is; a queued tick older than it is skipped.</summary>
     private ulong _newestSlotTick;
@@ -198,6 +210,7 @@ public sealed class BeaconSyncOrchestrator(
     internal sealed record GossipGloasAggregateItem(SignedAggregateAndProofGloas Aggregate) : WorkItem;
     internal sealed record GossipAttesterSlashingItem(AttesterSlashing Slashing) : WorkItem;
     internal sealed record GossipGloasAttesterSlashingItem(AttesterSlashingGloas Slashing) : WorkItem;
+    internal sealed record GossipPayloadAttestationItem(PayloadAttestationMessage Message) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
 
     /// <summary>The sidecar pool holds every sampled column awaited for <paramref name="BlockRoot"/>; queued at most once per watch.</summary>
@@ -205,6 +218,12 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>A by-root column fetch for <paramref name="BlockRoot"/> ended; <paramref name="Complete"/> is whether every sampled column is then held.</summary>
     internal sealed record ColumnFetchEndedItem(Hash256 BlockRoot, bool Complete) : WorkItem;
+
+    /// <summary>Wakes the worker for queued gossip votes; carries no work of its own.</summary>
+    private sealed record VoteWakeItem : WorkItem
+    {
+        public static readonly VoteWakeItem Instance = new();
+    }
 
     /// <summary>An execution payload envelope to import; <paramref name="Source"/> is the req/resp peer that served it, if any.</summary>
     internal abstract record EnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source) : WorkItem;
@@ -401,7 +420,7 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>The single consumer of the work channel; completes when the channel is completed or the token fires.</summary>
+    /// <summary>The single consumer of the work and vote channels; completes when the work channel is completed or the token fires.</summary>
     internal async Task RunWorkerAsync(CancellationToken token)
     {
         ChannelReader<WorkItem> reader = _work.Reader;
@@ -411,12 +430,28 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Processes every queued work item, then runs a head step if any imported; one pass of <see cref="RunWorkerAsync"/>.</summary>
+    /// <summary>
+    /// Processes at most <see cref="VotesPerPass"/> queued gossip votes, then every queued work item, then runs a head step if
+    /// any imported; one pass of <see cref="RunWorkerAsync"/>.
+    /// </summary>
     internal async Task ProcessQueuedAsync(CancellationToken token)
     {
+        // Votes first, so one queued before a slot tick is not checked against the next slot (gloas/fork-choice.md on_payload_attestation_message).
+        for (int i = 0; i < VotesPerPass && _votes.Reader.TryRead(out WorkItem? vote); i++)
+        {
+            await ProcessItemAsync(vote, token);
+        }
+
         while (_work.Reader.TryRead(out WorkItem? item))
         {
             await ProcessItemAsync(item, token);
+        }
+
+        // Cleared after the drain, which may have read the queued wake, and fenced before the peek, so leftover or later votes always wake the worker.
+        Interlocked.Exchange(ref _voteWakeQueued, 0);
+        if (_votes.Reader.TryPeek(out _))
+        {
+            WakeForVotes();
         }
 
         if (_importedSinceHeadStep)
@@ -441,11 +476,22 @@ public sealed class BeaconSyncOrchestrator(
             case GossipGloasAggregateItem aggregate:
                 _importer!.OnGossipAggregate(aggregate.Aggregate);
                 break;
-            case GossipAttesterSlashingItem slashing:
-                _importer!.OnGossipAttesterSlashing(slashing.Slashing);
+            case GossipAttesterSlashingItem { Slashing: AttesterSlashing slashing }:
+                if (_importer!.OnGossipAttesterSlashing(slashing))
+                {
+                    MarkSlashedIndicesSeen(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
+                }
+
                 break;
-            case GossipGloasAttesterSlashingItem slashing:
-                _importer!.OnGossipAttesterSlashing(slashing.Slashing);
+            case GossipGloasAttesterSlashingItem { Slashing: AttesterSlashingGloas slashing }:
+                if (_importer!.OnGossipAttesterSlashing(slashing))
+                {
+                    MarkSlashedIndicesSeen(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
+                }
+
+                break;
+            case GossipPayloadAttestationItem payloadAttestation:
+                _importer!.OnGossipPayloadAttestation(payloadAttestation.Message);
                 break;
             // on_tick steps through every skipped slot, so only the newest tick of a backlog needs the per-slot work;
             // each older one would send another forkchoiceUpdated for the same head.
@@ -474,6 +520,22 @@ public sealed class BeaconSyncOrchestrator(
 
                 break;
         }
+    }
+
+    // phase0/p2p-interface.md attester_slashing: the seen set holds the intersecting indices of slashings whose signatures verified.
+    private void MarkSlashedIndicesSeen(ulong[] indices1, ulong[] indices2)
+    {
+        HashSet<ulong> second = [.. indices2];
+        List<ulong> intersecting = [];
+        foreach (ulong index in indices1)
+        {
+            if (second.Contains(index))
+            {
+                intersecting.Add(index);
+            }
+        }
+
+        gossipRouter.MarkSlashedIndicesSeen(intersecting);
     }
 
     /// <summary>
@@ -1477,15 +1539,37 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Routes the gossip router's events into the work channel; gossip overflow is droppable.</summary>
+    /// <summary>Routes the gossip router's blocks and envelopes into the work channel and its votes and slashings into the vote channel; gossip overflow is droppable.</summary>
     internal void RouteGossipEvents()
     {
         gossipRouter.BeaconBlockReceived += block => _work.Writer.TryWrite(new GossipBlockItem(block));
-        gossipRouter.AggregateAndProofReceived += aggregate => _work.Writer.TryWrite(new GossipAggregateItem(aggregate));
-        gossipRouter.GloasAggregateAndProofReceived += aggregate => _work.Writer.TryWrite(new GossipGloasAggregateItem(aggregate));
-        gossipRouter.AttesterSlashingReceived += slashing => _work.Writer.TryWrite(new GossipAttesterSlashingItem(slashing));
-        gossipRouter.GloasAttesterSlashingReceived += slashing => _work.Writer.TryWrite(new GossipGloasAttesterSlashingItem(slashing));
+        gossipRouter.AggregateAndProofReceived += aggregate => QueueVote(new GossipAggregateItem(aggregate));
+        gossipRouter.GloasAggregateAndProofReceived += aggregate => QueueVote(new GossipGloasAggregateItem(aggregate));
+        gossipRouter.AttesterSlashingReceived += slashing => QueueVote(new GossipAttesterSlashingItem(slashing));
+        gossipRouter.GloasAttesterSlashingReceived += slashing => QueueVote(new GossipGloasAttesterSlashingItem(slashing));
         gossipRouter.ExecutionPayloadEnvelopeReceived += envelope => _work.Writer.TryWrite(new GossipEnvelopeItem(envelope));
+        gossipRouter.PayloadAttestationMessageReceived += vote => QueueVote(new GossipPayloadAttestationItem(vote));
+    }
+
+    private void QueueVote(WorkItem vote)
+    {
+        if (_votes.Writer.TryWrite(vote))
+        {
+            WakeForVotes();
+        }
+        else
+        {
+            Metrics.BeaconChainGossipDropped++;
+        }
+    }
+
+    // A wake refused by a full work channel is not needed: the worker has a pass to run, and each pass reads the votes.
+    private void WakeForVotes()
+    {
+        if (Interlocked.Exchange(ref _voteWakeQueued, 1) == 0)
+        {
+            _work.Writer.TryWrite(VoteWakeItem.Instance);
+        }
     }
 
     private void StartGossip() => StartGossip(p2p!.GetTopic);

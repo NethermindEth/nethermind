@@ -85,10 +85,11 @@ internal sealed class SignedGloasChain
 
     /// <summary>Builds the block at <paramref name="slot"/> on <paramref name="parent"/>, or on the Fulu anchor across the fork when it is <c>null</c>.</summary>
     /// <param name="attestations">The body's attestations, built from the pre-state advanced to <paramref name="slot"/>.</param>
-    public Block Next(Block? parent, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments = null, System.Func<BeaconStateGloas, EpochCache, AttestationGloas[]>? attestations = null) =>
+    /// <param name="payloadAttestations">The body's payload attestations, for the previous slot's block.</param>
+    public Block Next(Block? parent, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments = null, System.Func<BeaconStateGloas, EpochCache, AttestationGloas[]>? attestations = null, PayloadAttestation[]? payloadAttestations = null) =>
         parent is null
-            ? Build(CrossFork(AnchorState), slot, full, blockHashFill, blobCommitments, attestations)
-            : Build(parent.PostState.Clone(), slot, full, blockHashFill, blobCommitments, attestations);
+            ? Build(CrossFork(AnchorState), slot, full, blockHashFill, blobCommitments, attestations, payloadAttestations)
+            : Build(parent.PostState.Clone(), slot, full, blockHashFill, blobCommitments, attestations, payloadAttestations);
 
     /// <summary>Builds the first Gloas block at <paramref name="slot"/> on the Fulu block <paramref name="parent"/>, across the fork.</summary>
     public Block NextOnFulu(FuluBlock parent, ulong slot, bool full, byte blockHashFill) => Build(CrossFork(parent.PostState), slot, full, blockHashFill, null);
@@ -100,7 +101,7 @@ internal sealed class SignedGloasChain
         return GloasForkTransition.UpgradeToGloas(fulu, Spec);
     }
 
-    private Block Build(BeaconStateGloas state, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments, System.Func<BeaconStateGloas, EpochCache, AttestationGloas[]>? attestations = null)
+    private Block Build(BeaconStateGloas state, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments, System.Func<BeaconStateGloas, EpochCache, AttestationGloas[]>? attestations = null, PayloadAttestation[]? payloadAttestations = null)
     {
         EpochCache cache = new();
         if (state.Slot < slot)
@@ -119,6 +120,11 @@ internal sealed class SignedGloasChain
         if (attestations is not null)
         {
             message.Body!.Attestations = attestations(state, cache);
+        }
+
+        if (payloadAttestations is not null)
+        {
+            message.Body!.PayloadAttestations = payloadAttestations;
         }
 
         Bls.SecretKey proposerKey = ValidatorKey((int)message.ProposerIndex);

@@ -176,6 +176,24 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(expectedFcus));
     }
 
+    /// <summary>The head root does not change when get_head flips its payload status, only its execution hash does; the resend window must not hide that.</summary>
+    [Test]
+    public async Task Forkchoice_updated_is_sent_when_the_same_head_root_flips_its_payload_status()
+    {
+        Harness harness = CreateHarness();
+        HeadView empty = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 3, execHash: TestItem.KeccakB);
+        HeadView full = empty with { HeadExecutionHash = TestItem.KeccakD };
+
+        foreach (HeadView head in new[] { empty, full, empty })
+        {
+            harness.Importer.Head = head;
+            harness.Timestamper.Add(TimeSpan.FromSeconds(1));
+            await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        }
+
+        Assert.That(harness.Engine.FcuCalls.Select(static call => call.Head), Is.EqualTo(new[] { TestItem.KeccakB, TestItem.KeccakD, TestItem.KeccakB }));
+    }
+
     [Test]
     public async Task An_invalid_verdict_is_never_reused_for_an_unchanged_head()
     {
@@ -725,6 +743,12 @@ public partial class BeaconSyncOrchestratorTests
 
         public List<object> GossipOperations { get; } = [];
 
+        /// <summary>The count of <see cref="Ticks"/> when each of <see cref="GossipOperations"/> arrived.</summary>
+        public List<int> TicksAtGossipOperations { get; } = [];
+
+        /// <summary>Runs as each slot tick arrives, after it is recorded.</summary>
+        public Action<ulong>? OnTick { get; set; }
+
         private readonly HashSet<Hash256> _deferred = [];
 
         public List<(ulong Slot, Hash256 Root, bool VerifySignatures)> Imports { get; } = [];
@@ -777,7 +801,11 @@ public partial class BeaconSyncOrchestratorTests
             return result;
         }
 
-        public void OnSlotTick(ulong slot) => Ticks.Add(slot);
+        public void OnSlotTick(ulong slot)
+        {
+            Ticks.Add(slot);
+            OnTick?.Invoke(slot);
+        }
 
         public HeadView ComputeHead()
         {
@@ -795,11 +823,23 @@ public partial class BeaconSyncOrchestratorTests
 
         public void OnGossipAggregate(SignedAggregateAndProof aggregate) { }
 
-        public void OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => GossipOperations.Add(aggregate);
+        public void OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => Consume(aggregate);
 
-        public void OnGossipAttesterSlashing(AttesterSlashing slashing) { }
+        /// <summary>Whether fork choice accepts each gossip slashing and payload attestation, as a verified signature would.</summary>
+        public bool AcceptsGossipOperations { get; set; } = true;
 
-        public void OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => GossipOperations.Add(slashing);
+        public bool OnGossipAttesterSlashing(AttesterSlashing slashing) => Consume(slashing);
+
+        public bool OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => Consume(slashing);
+
+        public bool OnGossipPayloadAttestation(PayloadAttestationMessage message) => Consume(message);
+
+        private bool Consume(object operation)
+        {
+            GossipOperations.Add(operation);
+            TicksAtGossipOperations.Add(Ticks.Count);
+            return AcceptsGossipOperations;
+        }
     }
 
     private sealed class ScriptedEngine : IEngineDriver

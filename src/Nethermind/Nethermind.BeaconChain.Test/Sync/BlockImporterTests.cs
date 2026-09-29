@@ -647,24 +647,23 @@ public class BlockImporterTests
         // The same vote twice is not slashable, so fork choice refuses it before any signature check.
         AttestationData data = chain.Vote(1, chain.AnchorRoot).Data!;
 
-        if (gloasContainer)
-        {
-            importer.OnGossipAttesterSlashing(new AttesterSlashingGloas
+        bool accepted = gloasContainer
+            ? importer.OnGossipAttesterSlashing(new AttesterSlashingGloas
             {
                 Attestation1 = new IndexedAttestationGloas { AttestingIndices = [1], Data = data },
                 Attestation2 = new IndexedAttestationGloas { AttestingIndices = [1], Data = data },
-            });
-        }
-        else
-        {
-            importer.OnGossipAttesterSlashing(new AttesterSlashing
+            })
+            : importer.OnGossipAttesterSlashing(new AttesterSlashing
             {
                 Attestation1 = new IndexedAttestation { AttestingIndices = [1], Data = data },
                 Attestation2 = new IndexedAttestation { AttestingIndices = [1], Data = data },
             });
-        }
 
-        Assert.That(RefusedByForkChoice("gossip_attester_slashing") - refusedBefore, Is.EqualTo(1), "the slashing reached fork choice, which refused it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RefusedByForkChoice("gossip_attester_slashing") - refusedBefore, Is.EqualTo(1), "the slashing reached fork choice, which refused it");
+            Assert.That(accepted, Is.False, "a refused slashing must not mark its indices seen");
+        }
     }
 
     /// <summary>An anchor with one new validator's signed deposit queued, which the first epoch transition onboards.</summary>

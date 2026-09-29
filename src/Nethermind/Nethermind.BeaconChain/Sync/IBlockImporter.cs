@@ -104,8 +104,8 @@ public interface IBlockImporter
     /// <summary>Recomputes the fork-choice head, updates the canonical slot index, and maps the checkpoints to execution hashes.</summary>
     /// <remarks>
     /// A Gloas block maps to its bid's <c>parent_block_hash</c> (specs/gloas/fork-choice.md
-    /// <c>notify_forkchoice_updated</c>), except a head whose payload is verified, which maps to the
-    /// bid's <c>block_hash</c>: only then has the execution layer received that payload.
+    /// <c>notify_forkchoice_updated</c>), except a head that <c>get_head</c> resolves FULL, which maps to the
+    /// bid's <c>block_hash</c>: only then does the head build on that payload.
     /// </remarks>
     HeadView ComputeHead();
 
@@ -124,11 +124,17 @@ public interface IBlockImporter
     /// <summary>Feeds a Gloas gossip aggregate to fork choice; invalid attestations are counted and dropped.</summary>
     void OnGossipAggregate(SignedAggregateAndProofGloas aggregate);
 
-    /// <summary>Feeds a gossip attester slashing to fork choice; invalid slashings are dropped.</summary>
-    void OnGossipAttesterSlashing(AttesterSlashing slashing);
+    /// <summary>Feeds a gossip attester slashing to fork choice; invalid slashings are counted and dropped.</summary>
+    /// <returns>Whether fork choice accepted the slashing, its signatures included.</returns>
+    bool OnGossipAttesterSlashing(AttesterSlashing slashing);
 
-    /// <summary>Feeds a Gloas gossip attester slashing to fork choice; invalid slashings are dropped.</summary>
-    void OnGossipAttesterSlashing(AttesterSlashingGloas slashing);
+    /// <summary>Feeds a Gloas gossip attester slashing to fork choice; invalid slashings are counted and dropped.</summary>
+    /// <returns>Whether fork choice accepted the slashing, its signatures included.</returns>
+    bool OnGossipAttesterSlashing(AttesterSlashingGloas slashing);
+
+    /// <summary>Feeds a gossip payload attestation to fork choice; invalid votes are counted and dropped.</summary>
+    /// <returns>Whether fork choice verified and recorded the vote, its PTC membership and signature included.</returns>
+    bool OnGossipPayloadAttestation(PayloadAttestationMessage message);
 }
 
 /// <summary>Creates the importer once the anchor is known; lets tests script the consensus core.</summary>
