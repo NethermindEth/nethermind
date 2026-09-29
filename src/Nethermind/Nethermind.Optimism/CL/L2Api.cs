@@ -23,6 +23,7 @@ namespace Nethermind.Optimism.CL;
 public class L2Api(
     IOptimismEthRpcModule l2EthRpc,
     IOptimismEngineRpcModule l2EngineRpc,
+    IEngineRpcModule engineRpcModule,
     ISystemConfigDeriver systemConfigDeriver,
     ILogManager logManager) : IL2Api
 {
@@ -175,7 +176,7 @@ public class L2Api(
     }
 
     public async Task<PayloadStatusV1> NewPayloadV3(ExecutionPayloadV3 payload, Hash256? parentBeaconBlockRoot)
-        => await RetryEngineApi(async () => await l2EngineRpc.engine_newPayloadV3(payload, [], parentBeaconBlockRoot),
+        => await RetryEngineApi(async () => await engineRpcModule.engine_newPayloadV3(payload, [], parentBeaconBlockRoot),
             err => $"NewPayload request error: {err}");
 
     private async Task<BlockForRpc?> RetryGetBlock(BlockParameter blockParameter)
