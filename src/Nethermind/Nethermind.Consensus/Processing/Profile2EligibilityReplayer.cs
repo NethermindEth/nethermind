@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Exceptions;
@@ -28,12 +29,13 @@ namespace Nethermind.Consensus.Processing;
 /// throwaway env opened at the parent, then the validation prefix runs under the Profile 2 trace rules.
 /// <see cref="BlockAccessListBasedWorldState"/> is not reused: it rejects every account the list omits,
 /// and an omitted transaction's sender and payer usually are such accounts.
-/// <para>The prefix runs under EIP-8141's <c>MAX_VERIFY_GAS</c>, which is below
-/// <see cref="Eip8369Constants.MaxVerifyGasPerTx"/>, so a prefix spending more is judged ineligible.</para>
+/// <para>The prefix runs under <c>MAX_VERIFY_GAS_PER_TX</c> rather than EIP-8141's mempool <c>MAX_VERIFY_GAS</c>,
+/// and its recent roots are checked at the block's own slot, as EIP-8369 § Attesters specifies.</para>
 /// </remarks>
 public sealed class Profile2EligibilityReplayer(
     IReadOnlyTxProcessingEnvFactory envFactory,
     IEthereumEcdsa ecdsa,
+    IBlocksConfig blocksConfig,
     ILogManager logManager) : IProfile2EligibilityReplayer, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<Profile2EligibilityReplayer>();
@@ -76,11 +78,13 @@ public sealed class Profile2EligibilityReplayer(
                     ApplyChangesBefore(state, blockAccessList, (uint)index + 1, spec);
                     if (!IsNonceValid(state, transaction, sender)) return false;
 
-                    if (!AreRecentRootsValid(state, transaction, block.Header, spec)) return false;
+                    if (transaction.RecentRootReferences is not null && !spec.IsEip8272Enabled) return false;
 
                     Address payer = FrameTxValidation.GetPrefixPaymaster(transaction) ?? sender;
                     tracer = new FrameTxValidationTracer(sender, Eip8141Constants.ExpiryVerifierAddress, state, spec,
-                        payer: payer, storageSlotBound: Eip8369Constants.AaVopsSlotCount);
+                        payer: payer, storageSlotBound: Eip8369Constants.AaVopsSlotCount,
+                        maxVerifyGas: blocksConfig.FocilProfile2MaxVerifyGas is 0 ? ulong.MaxValue : blocksConfig.FocilProfile2MaxVerifyGas,
+                        recentRootAnchorSlot: block.Header.SlotNumber);
 
                     ITransactionProcessor processor = scope.TransactionProcessor;
                     processor.SetBlockExecutionContext(block.Header);
@@ -157,17 +161,6 @@ public sealed class Profile2EligibilityReplayer(
         transaction.NonceKeys is { } nonceKeys
             ? KeyedNonceManager.IsNonceSetValid(state, sender, nonceKeys, transaction.Nonce)
             : state.GetNonce(sender) == transaction.Nonce;
-
-    /// <remarks>current_slot is the block's own slot (EIP-8369 § Attesters). The prefix simulation anchors one
-    /// slot later, as mempool admission does, so the oldest usable root is also judged ineligible.</remarks>
-    private static bool AreRecentRootsValid(IWorldState state, Transaction transaction, BlockHeader header, IReleaseSpec spec)
-    {
-        if (transaction.RecentRootReferences is null) return true;
-        if (!spec.IsEip8272Enabled) return false;
-
-        using StackAccessTracker accessTracker = new();
-        return RecentRootReferences.Validate(state, transaction.RecentRootReferences, header.SlotNumber, in accessTracker);
-    }
 
     private bool Undecided(Transaction transaction, string reason)
     {

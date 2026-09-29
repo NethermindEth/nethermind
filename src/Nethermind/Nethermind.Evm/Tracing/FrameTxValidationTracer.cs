@@ -21,6 +21,8 @@ namespace Nethermind.Evm.Tracing;
 /// <param name="payer">A second account whose storage the prefix may read, or <c>null</c> for
 /// <paramref name="sender"/> only.</param>
 /// <param name="storageSlotBound">Slots below which a read is in surface, or <c>0</c> for no slot bound.</param>
+/// <param name="maxVerifyGas">The prefix's VERIFY gas bound; EIP-8141's <c>MAX_VERIFY_GAS</c> by default.</param>
+/// <param name="recentRootAnchorSlot">The slot recent roots are checked at, or <c>null</c> for the slot after the header.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
 /// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
@@ -33,7 +35,9 @@ public sealed class FrameTxValidationTracer(
     TimeProvider? timeProvider = null,
     CancellationToken token = default,
     Address? payer = null,
-    UInt256 storageSlotBound = default)
+    UInt256 storageSlotBound = default,
+    ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas,
+    ulong? recentRootAnchorSlot = null)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -91,6 +95,10 @@ public sealed class FrameTxValidationTracer(
     public bool OutsideSurface { get; private set; }
 
     public Address? Payer { get; private set; }
+
+    ulong IFrameTxPrefixTracer.MaxVerifyGas => maxVerifyGas;
+
+    ulong? IFrameTxPrefixTracer.RecentRootAnchorSlot => recentRootAnchorSlot;
 
     void IFrameTxPrefixTracer.StartPrefixFrame(bool isDeployFrame, Address target)
     {

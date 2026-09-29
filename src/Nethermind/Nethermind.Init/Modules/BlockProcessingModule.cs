@@ -102,10 +102,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                     new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
                     blockFinder, specProvider, txPoolConfig, logManager))
             // Its own code cache for the same reason: the replay materialises code the access list deploys.
-            .AddSingleton<IProfile2EligibilityReplayer, ILifetimeScope, IWorldStateManager, ISpecProvider, IEthereumEcdsa, ILogManager>(
-                (lifetime, worldStateManager, specProvider, ecdsa, logManager) => new Profile2EligibilityReplayer(
+            .AddSingleton<IProfile2EligibilityReplayer, ILifetimeScope, IWorldStateManager, ISpecProvider, IEthereumEcdsa, IBlocksConfig, ILogManager>(
+                (lifetime, worldStateManager, specProvider, ecdsa, blocksConfig, logManager) => new Profile2EligibilityReplayer(
                     new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
-                    ecdsa, logManager))
+                    ecdsa, blocksConfig, logManager))
             .Add<BlockchainProcessorFacade>()
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
