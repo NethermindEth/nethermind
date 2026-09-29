@@ -99,7 +99,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>
         _traceModule.trace_rawTransaction(data, traceTypes);
 
-    public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
+    public ResultWrapper<ParityTxTraceFromReplay?> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
     {
         if (TraceRpcModule.TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes)
             && TryGetStoredTrace(txHash, parityTypes, out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
@@ -111,7 +111,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     ParityReplayEnvelopeWriter.WriteFromTrace(writer, storedTrace, includeTxHash: true, EthereumJsonSerializer.JsonOptions);
                     FlushPipe(writer, pipeWriter, ct);
                 },
-                runBuffered: () => new ParityTxTraceFromReplay(storedTrace, includeTransactionHash: true));
+                runBuffered: () => new ParityTxTraceFromReplay(storedTrace, includeTransactionHash: true))!;
         }
 
         return _traceModule.trace_replayTransaction(txHash, traceTypes, traceNonCanonical);
