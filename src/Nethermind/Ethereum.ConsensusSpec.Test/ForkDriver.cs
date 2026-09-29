@@ -55,7 +55,9 @@ public abstract class ForkDriver
 
         public override object ForDiff(BeaconStateFulu state) => state;
 
-        public override EpochCache NewCache() => new();
+        public override EpochCache NewCache() => new() { Hasher = new DifferentialBeaconStateHasher() };
+
+        public override Hash256 CachedRoot(BeaconStateFulu state, EpochCache cache) => cache.Hasher.HashTreeRoot(state);
 
         public override ulong SlotOf(BeaconStateFulu state) => state.Slot;
 
@@ -213,7 +215,9 @@ public abstract class ForkDriver
             return roundTripped;
         }
 
-        public override EpochCache NewCache() => new();
+        public override EpochCache NewCache() => new() { Hasher = new DifferentialBeaconStateHasher() };
+
+        public override Hash256 CachedRoot(BeaconStateGloas state, EpochCache cache) => cache.Hasher.HashTreeRoot(state);
 
         public override ulong SlotOf(BeaconStateGloas state) => state.Slot;
 
@@ -234,7 +238,7 @@ public abstract class ForkDriver
 
             GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures);
 
-            if (block.StateRoot != StateRoot(state))
+            if (block.StateRoot != CachedRoot(state, cache))
                 throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
         }
 
@@ -305,6 +309,12 @@ public abstract class ForkDriver<TState> : ForkDriver where TState : class
 
     /// <summary>A cache whose hasher writes the fork's own state root into <c>state_roots</c> and the latest block header.</summary>
     public abstract EpochCache NewCache();
+
+    /// <summary>
+    /// <c>hash_tree_root</c> of the working state through <paramref name="cache"/>'s hasher, in the fork's SSZ shape.
+    /// A fork whose cache installs a <see cref="DifferentialBeaconStateHasher"/> fails here when the incremental root is wrong.
+    /// </summary>
+    public virtual Hash256 CachedRoot(TState state, EpochCache cache) => StateRoot(state);
 
     /// <summary>The state's <c>slot</c>.</summary>
     public abstract ulong SlotOf(TState state);
