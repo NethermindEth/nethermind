@@ -248,9 +248,10 @@ public abstract class TransactionForRpc
                     }
 
                     ulong matched = 0;
+                    bool isGasPrice = false;
                     if (!hasGasPrice && NameEqualsIgnoreCase(ref reader, GasPriceFieldUtf8))
                     {
-                        hasGasPrice = true;
+                        isGasPrice = true;
                     }
                     else
                     {
@@ -272,6 +273,7 @@ public abstract class TransactionForRpc
                     if (reader.TokenType != JsonTokenType.Null)
                     {
                         discriminated |= matched;
+                        hasGasPrice |= isGasPrice;
                     }
 
                     if (!reader.TrySkip()) break;
