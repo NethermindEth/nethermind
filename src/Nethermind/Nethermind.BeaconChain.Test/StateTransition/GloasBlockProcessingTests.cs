@@ -26,6 +26,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// post-state, withdrawals computed from state, and the builder-payment machinery for a payload
 /// settled within the epoch it was committed in. Fixtures come from <see cref="GloasTestFixtures"/>.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasBlockProcessingTests
 {
     // ---- Bid processing: signature verification actually gates state mutation ----

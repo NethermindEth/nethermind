@@ -24,6 +24,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// directly, and each one asserts a state change the operation must make, never just the absence
 /// of a throw.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasOperationsTests
 {
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;

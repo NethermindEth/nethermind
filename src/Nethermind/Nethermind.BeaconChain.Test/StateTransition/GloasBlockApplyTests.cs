@@ -17,6 +17,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// the slot advance through the caller's <see cref="EpochCache"/>, and the proposer signature check on an
 /// untrusted proposer index.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasBlockApplyTests
 {
     /// <summary>
