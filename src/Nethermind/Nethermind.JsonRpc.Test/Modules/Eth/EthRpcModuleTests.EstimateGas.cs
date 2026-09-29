@@ -130,6 +130,33 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Does.Contain("frame 1 failed: OutOfGas"));
     }
 
+    [TestCase("eth_call", true)]
+    [TestCase("eth_estimateGas", true)]
+    [TestCase("eth_createAccessList", true)]
+    [TestCase("eth_call", false)]
+    [TestCase("eth_estimateGas", false)]
+    public async Task FrameGas_RejectsLikeExplicitLimits(string method, bool missingState)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance), useFlatDb: false);
+        object? blockOverride = null;
+        if (missingState)
+        {
+            ctx.Test.WorldStateManager.FlushCache(System.Threading.CancellationToken.None);
+            ctx.Test.StateDb.Clear();
+        }
+        else blockOverride = JsonSerializer.Deserialize<object>($$"""{"gasLimit":"0x{{ctx.Test.RpcConfig.GasCap!.Value + 1:x}}"}""");
+        FrameTransactionForRpc omitted = FrameGasRequest();
+        FrameTransactionForRpc explicitLimits = FrameGasRequest();
+        foreach (FrameForRpc frame in explicitLimits.Frames!) (frame.ExecutionGasLimit, frame.StateGasLimit) = (50_000UL, 200_000UL);
+        if (method == "eth_createAccessList") omitted.MaxFeePerGas = explicitLimits.MaxFeePerGas = 1_000_000_000;
+
+        string expected = await ctx.Test.TestEthRpc(method, missingState ? [explicitLimits, "latest"] : [explicitLimits, "latest", null, blockOverride]);
+        string response = await ctx.Test.TestEthRpc(method, missingState ? [omitted, "latest"] : [omitted, "latest", null, blockOverride]);
+
+        Assert.That(JToken.Parse(expected)["error"]!["code"]!.Value<int>(), Is.EqualTo(missingState ? ErrorCodes.ResourceUnavailable : ErrorCodes.InvalidInput), expected);
+        Assert.That(response, Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task FrameGas_UsesEarlierFrameWrites([Values("eth_estimateGas", "eth_call", "eth_createAccessList")] string method, [Values] bool atomic, [Values] bool catchesInnerFailure)
     {

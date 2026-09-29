@@ -19,11 +19,14 @@ public partial class EthRpcModule
     private ResultWrapper<TResult> ExecuteWithFrameGas<TResult>(TxExecutor<TResult> executor, SignableTransactionForRpc request,
         BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride = null)
     {
-        if (request is not FrameTransactionForRpc frameTx || !NeedsFrameGas(frameTx))
+        // Requests the executor rejects before execution get its errors, as they would with explicit limits.
+        if (request is not FrameTransactionForRpc frameTx || !NeedsFrameGas(frameTx) || blockOverride?.GasLimit > _rpcConfig.GasCap!.Value)
             return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride);
 
         SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
         if (search.IsError) return ResultWrapper<TResult>.Fail(search);
+        if (!_blockchainBridge.HasStateForBlock(search.Object!))
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, searchResult: search);
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, timeout.Token, out int errorCode, stateOverride, blockOverride);
         if (!result) return ResultWrapper<TResult>.Fail(result.Error!, errorCode);
@@ -53,7 +56,6 @@ public partial class EthRpcModule
     {
         errorCode = ErrorCodes.InvalidInput;
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
-        if (blockOverride?.GasLimit > _rpcConfig.GasCap.EffectiveGasCap()) return Result<FrameForRpc[]>.Fail("block gas override exceeds the RPC gas cap");
         IReleaseSpec spec = _specProvider.GetSpec(header);
         Result<Transaction> converted = request.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
