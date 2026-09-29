@@ -26,6 +26,7 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 namespace Nethermind.BeaconChain.Test.Sync;
 
 /// <summary>Gloas blocks through the orchestrator: routed to the importer, parked on an unverified parent payload, and re-driven by its envelope.</summary>
+[HardTimeout(60_000)]
 public partial class BeaconSyncOrchestratorTests
 {
     [Test]

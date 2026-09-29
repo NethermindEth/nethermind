@@ -16,6 +16,7 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// specs/gloas/fork-choice.md <c>store.payload_timeliness_vote</c>, <c>store.payload_data_availability_vote</c>,
 /// <c>on_payload_attestation_message</c> and <c>notify_ptc_messages</c> through <see cref="ForkChoiceRunner"/>.
 /// </summary>
+[HardTimeout(60_000)]
 public class ForkChoiceRunnerPtcVoteTests
 {
     /// <summary>

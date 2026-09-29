@@ -26,6 +26,7 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// registry is 16 validators of 32 ETH with no votes cast, so equal-weight branches are ordered by the higher root and
 /// the 6.4 ETH boost alone decides between them.
 /// </remarks>
+[HardTimeout(60_000)]
 public class ProposerBoostDependentRootTests
 {
     private const ulong BoostSlot = 2 * Presets.SlotsPerEpoch;

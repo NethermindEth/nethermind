@@ -20,6 +20,7 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// earlier slot supports its FULL node when <c>data.index</c> is 1 and its EMPTY node when it is 0; a vote in the
 /// block's own slot, or in a pre-Gloas slot, supports its PENDING node only.
 /// </summary>
+[HardTimeout(60_000)]
 public class ForkChoiceRunnerVoteRoutingTests
 {
     private const ulong EffectiveBalance = 32 * Gwei;

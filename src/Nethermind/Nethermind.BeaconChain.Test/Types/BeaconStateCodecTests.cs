@@ -18,6 +18,7 @@ namespace Nethermind.BeaconChain.Test.Types;
 /// persisted state as Fulu whatever wrote it. Refusing by name beats decoding a Gloas state
 /// against Fulu's layout, which yields wrong field values rather than an error.
 /// </summary>
+[HardTimeout(60_000)]
 public class BeaconStateCodecTests
 {
     private const int SlotOffset = 40;

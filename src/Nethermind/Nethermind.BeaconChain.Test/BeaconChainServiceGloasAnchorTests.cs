@@ -32,6 +32,7 @@ using NUnit.Framework;
 namespace Nethermind.BeaconChain.Test;
 
 /// <summary>Starting the driver on a Gloas checkpoint, fresh or resumed, and refusing a resumed anchor whose state and block disagree on the fork.</summary>
+[HardTimeout(60_000)]
 public class BeaconChainServiceGloasAnchorTests
 {
     /// <summary>

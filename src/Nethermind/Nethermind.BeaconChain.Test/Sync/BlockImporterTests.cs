@@ -45,6 +45,7 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// column, so every blob-carrying block was rejected; the positive case here is what proves the
 /// gate now admits the blocks a base-custody node is actually able to verify.
 /// </summary>
+[HardTimeout(60_000)]
 public class BlockImporterTests
 {
     private static readonly Hash256 NodeId = new([.. Enumerable.Repeat((byte)0x42, 32)]);

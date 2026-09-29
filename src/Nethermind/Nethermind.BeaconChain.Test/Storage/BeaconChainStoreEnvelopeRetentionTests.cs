@@ -19,6 +19,7 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
+[HardTimeout(60_000)]
 public class BeaconChainStoreEnvelopeRetentionTests
 {
     private const ulong ForkSlot = 32;

@@ -20,6 +20,7 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// EMPTY and FULL nodes, <c>get_weight</c>, <c>get_payload_status_tiebreaker</c>, <c>should_extend_payload</c> and
 /// <c>should_apply_proposer_boost</c>.
 /// </summary>
+[HardTimeout(60_000)]
 public class ForkChoiceRunnerGloasHeadTests
 {
     public enum PayloadDecision

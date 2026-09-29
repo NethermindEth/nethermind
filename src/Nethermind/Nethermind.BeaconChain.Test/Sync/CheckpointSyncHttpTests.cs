@@ -25,6 +25,7 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// Every public provider serves the finalized checkpoint over the beacon API, labelled with its fork in the
 /// Eth-Consensus-Version header; refusing the Gloas label refuses every checkpoint once Gloas finalizes.
 /// </summary>
+[HardTimeout(60_000)]
 public class CheckpointSyncHttpTests
 {
     [TestCase("gloas")]

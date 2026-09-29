@@ -32,6 +32,7 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
+[HardTimeout(60_000)]
 public class CheckpointSyncTests
 {
     [Test]
