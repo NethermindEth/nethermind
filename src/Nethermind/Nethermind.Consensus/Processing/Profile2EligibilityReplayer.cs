@@ -102,7 +102,6 @@ public sealed class Profile2EligibilityReplayer(
 
                 using (scope)
                 {
-                    Interlocked.Increment(ref _stateReconstructions);
                     IWorldState state = scope.WorldState;
                     ITransactionProcessor processor = scope.TransactionProcessor;
                     processor.SetBlockExecutionContext(block.Header);
@@ -124,10 +123,6 @@ public sealed class Profile2EligibilityReplayer(
         }
         return eligible;
     }
-
-    /// <summary>The number of times a block's state was reconstructed for replay.</summary>
-    internal long StateReconstructions => Interlocked.Read(ref _stateReconstructions);
-    private long _stateReconstructions;
 
     /// <summary>Runs one candidate's checks against <paramref name="state"/>, which it leaves as found.</summary>
     private bool Replay(IWorldState state, ITransactionProcessor processor, Block block, Transaction transaction, IReleaseSpec spec)

@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -14,9 +16,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -123,10 +127,10 @@ public class Profile2EligibilityReplayerTests
     public async Task A_batch_reconstructs_the_state_once_and_judges_each_index_on_its_own_state()
     {
         using BasicTestBlockchain chain = await CreateChain(slot: 0);
-        Profile2EligibilityReplayer replayer = (Profile2EligibilityReplayer)chain.Container.Resolve<IProfile2EligibilityReplayer>();
+        CountingEnvFactory envFactory = new(chain.Container.Resolve<IReadOnlyTxProcessingEnvFactory>());
+        using Profile2EligibilityReplayer replayer = new(envFactory, chain.Container.Resolve<IEthereumEcdsa>(), new BlocksConfig(), LimboLogs.Instance);
         Block block = ChildOfHead(chain, new ReadOnlyBlockAccessList(
             [Changes(storage: [new ReadOnlySlotChanges(0, [new StorageChange(2, 1), new StorageChange(3, 0)])])], 1));
-        long before = replayer.StateReconstructions;
 
         bool[] eligible = replayer.AreEligible(block,
             [(FrameTx(), 2), (FrameTx(), 0), (FrameTx(), 1), (FrameTx(), 0), (FrameTx(), 2), (FrameTx(), 1), (FrameTx(), 3)], Spec);
@@ -135,7 +139,28 @@ public class Profile2EligibilityReplayerTests
         {
             // Slot 0 is set by transaction 1 and cleared by transaction 2, so only index 2 sees it set.
             Assert.That(eligible, Is.EqualTo(new[] { false, true, true, true, false, true, true }));
-            Assert.That(replayer.StateReconstructions - before, Is.EqualTo(1));
+            Assert.That(envFactory.ScopesBuilt, Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>Counts the parent-state scopes the replayer opens, each one a reconstruction of the block's state.</summary>
+    private sealed class CountingEnvFactory(IReadOnlyTxProcessingEnvFactory inner) : IReadOnlyTxProcessingEnvFactory
+    {
+        public int ScopesBuilt { get; private set; }
+
+        public IReadOnlyTxProcessorSource Create() => new CountingSource(inner.Create(), this);
+
+        private sealed class CountingSource(IReadOnlyTxProcessorSource inner, CountingEnvFactory owner) : IReadOnlyTxProcessorSource
+        {
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
+
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
+            {
+                owner.ScopesBuilt++;
+                return inner.TryBuildAtTarget(targetBlock, out scope);
+            }
+
+            public void Dispose() => inner.Dispose();
         }
     }
 
