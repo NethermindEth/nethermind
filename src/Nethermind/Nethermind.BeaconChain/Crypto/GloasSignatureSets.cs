@@ -34,7 +34,7 @@ public static class GloasSignatureSets
     public static bool VerifyIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
         Span<long> sum = stackalloc long[Bls.P1.Sz];
-        if (!pubkeys.TrySumValidPublicKeys(attestation.AttestingIndices, sum))
+        if (!SignatureSets.TrySumAttestingKeys(pubkeys, attestation.AttestingIndices, sum))
             return false;
         BlsSigner.AggregatedPublicKey aggregate = new(sum);
 
@@ -51,14 +51,18 @@ public static class GloasSignatureSets
     /// <remarks>
     /// The index list may repeat a validator (a PTC is sampled with replacement); the pubkey is
     /// then aggregated once per occurrence, exactly as the spec's <c>FastAggregateVerify</c> over
-    /// the repeated pubkey list does. Indices must already be validated as in range by the caller.
+    /// the repeated pubkey list does. An oversized list or an index outside the cache is refused.
     /// </remarks>
     public static bool VerifyIndexedPayloadAttestation(BeaconStateGloas state, IndexedPayloadAttestation attestation, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
+        ulong[] indices = attestation.AttestingIndices!;
+        if ((ulong)indices.Length > Presets.PtcSize)
+            return false;
+
         BlsSigner.AggregatedPublicKey aggregate = new(stackalloc long[Bls.P1.Sz]);
-        foreach (ulong index in attestation.AttestingIndices!)
+        foreach (ulong index in indices)
         {
-            if (!pubkeys.TryGetValidPublicKey((int)index, out G1Affine key))
+            if (!SignatureSets.TryGetValidatorKey(pubkeys, index, out G1Affine key))
                 return false;
             aggregate.Aggregate(key);
         }
@@ -74,7 +78,7 @@ public static class GloasSignatureSets
         BeaconBlockHeader header = signedHeader.Message!;
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(header.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
-        return pubkeys.TryGetValidPublicKey((int)header.ProposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedHeader.Signature, signingRoot, deferral);
+        return SignatureSets.TryGetValidatorKey(pubkeys, header.ProposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedHeader.Signature, signingRoot, deferral);
     }
 
     /// <summary>Verifies a voluntary exit signature over the EIP-7044 fork-agnostic Capella domain.</summary>
@@ -83,7 +87,7 @@ public static class GloasSignatureSets
         VoluntaryExit exit = signedExit.Message!;
         Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).CapellaForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
-        return pubkeys.TryGetValidPublicKey((int)exit.ValidatorIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedExit.Signature, signingRoot, deferral);
+        return SignatureSets.TryGetValidatorKey(pubkeys, exit.ValidatorIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedExit.Signature, signingRoot, deferral);
     }
 
     /// <summary>
