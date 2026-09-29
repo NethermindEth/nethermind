@@ -1066,6 +1066,14 @@ namespace Nethermind.Db.Test
         {
         };
 
+        private DbOnTheRocks CreateFreshDb(string dbName)
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+            return new DbOnTheRocks(dbPath, GetRocksDbSettings(dbPath, dbName), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+        }
+
         private static string ReadOptionsFile(string dbPath)
         {
             string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, dbPath);
@@ -1097,12 +1105,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void GetViewBetween_on_a_prefix_extractor_database_honours_a_bound_that_crosses_prefixes()
         {
-            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
-            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
-            Directory.CreateDirectory(dbPath);
-
-            IDbConfig config = new DbConfig();
-            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, "Code"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = CreateFreshDb("Code");
 
             for (int i = 0; i < 16; i++)
             {
@@ -1133,12 +1136,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void GetViewBetween_on_a_prefix_extractor_database_returns_a_range_that_stays_inside_one_prefix()
         {
-            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
-            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
-            Directory.CreateDirectory(dbPath);
-
-            IDbConfig config = new DbConfig();
-            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, "Code"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = CreateFreshDb("Code");
 
             for (int i = 0; i < 16; i++)
             {
@@ -1163,18 +1161,52 @@ namespace Nethermind.Db.Test
                 "the bounds share their capped:8 prefix, so this range keeps the prefix index and must still yield every key in it");
         }
 
+        [Test]
+        public void GetAll_on_a_prefix_extractor_database_returns_every_key(
+            [Values] bool flush,
+            [Values] bool ordered,
+            [Values(16, DbOnTheRocks.FullEnumerationBatchSize + 16)] int count)
+        {
+            using DbOnTheRocks db = CreateFreshDb("Code");
+
+            for (int i = 0; i < count; i++)
+            {
+                db.PutSpan(Keccak.Compute(i.ToBigEndianByteArray()).Bytes, [(byte)i], WriteFlags.None);
+            }
+
+            if (flush) db.Flush();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.GetAll(ordered).Count(), Is.EqualTo(count));
+                Assert.That(db.GetAllKeys(ordered).Count(), Is.EqualTo(count));
+                Assert.That(db.GetAllValues(ordered).Count(), Is.EqualTo(count));
+            }
+        }
+
+        [Test]
+        public void FirstKey_and_LastKey_on_a_prefix_extractor_database_see_every_key([Values] bool flush)
+        {
+            using DbOnTheRocks db = CreateFreshDb("Code");
+
+            byte[][] keys = [.. Enumerable.Range(0, 16).Select(static i => Keccak.Compute(i.ToBigEndianByteArray()).BytesToArray())];
+            foreach (byte[] key in keys) db.PutSpan(key, [1], WriteFlags.None);
+            if (flush) db.Flush();
+
+            byte[][] sorted = [.. keys.Order(Bytes.Comparer)];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.FirstKey, Is.EqualTo(sorted[0]));
+                Assert.That(db.LastKey, Is.EqualTo(sorted[^1]));
+            }
+        }
+
         [TestCase(0, 0, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnADatabaseWithoutAnExtractor_IsFalse")]
         [TestCase(8, 3, ExpectedResult = true, TestName = "CrossesPrefixBucket_OnBoundsShorterThanThePrefix_IsTrue")]
         [TestCase(8, 8, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnBoundsSharingThePrefix_IsFalse")]
         public bool CrossesPrefixBucket_classifies_bounds(int prefixLength, int sharedBytes)
         {
-            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
-            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
-            Directory.CreateDirectory(dbPath);
-
-            IDbConfig config = new DbConfig();
-            string dbName = prefixLength == 0 ? "Blocks" : "Code";
-            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, dbName), config, _rocksdbConfigFactory, LimboLogs.Instance);
+            using DbOnTheRocks db = CreateFreshDb(prefixLength == 0 ? "Blocks" : "Code");
 
             byte[] first = new byte[sharedBytes == 3 ? 3 : 32];
             byte[] last = new byte[first.Length];

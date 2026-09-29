@@ -44,6 +44,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly bool _isFrameTx;
     private readonly Address? _sender;
     private readonly TxFrame[]? _frames;
+    private readonly Transaction? _frameTx;
+    private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly CompositeDisposable _disposables = [];
@@ -71,6 +73,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _isFrameTx = tx.SupportsFrames;
         _sender = tx.SenderAddress;
         _frames = _isFrameTx ? tx.Frames : null;
+        _frameTx = _isFrameTx ? tx : null;
+        _frameTxSpec = _isFrameTx ? spec : null;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
@@ -181,6 +185,18 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _error = evmExceptionType;
         OnExit(_remainingGas, null, _error);
         base.ReportActionError(evmExceptionType);
+    }
+
+    /// <summary>
+    /// Like Geth, records a call or creation that failed its precheck or collided as a frame that failed with that
+    /// error; a failed creation drops its <c>to</c>.
+    /// </summary>
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+        ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        ReportActionRemainingGas(gasLeft);
+        ReportActionError(error);
     }
 
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
@@ -314,7 +330,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             Type = Instruction.CALL,
             From = _sender,
             To = Eip8141Constants.EntryPointAddress,
-            Gas = _gasLimit,
+            // Priced here rather than at construction: the processor measures the calldata the budget counts
+            // only once it runs. GasLimit alone carries just the frame limits, short of the intrinsic gas.
+            Gas = FrameTxValidation.TryCalculateGasBudget(_frameTx!, _frameTxSpec!, out _, out _, out ulong maxGas) ? maxGas : _gasLimit,
             Value = UInt256.Zero
         };
 
