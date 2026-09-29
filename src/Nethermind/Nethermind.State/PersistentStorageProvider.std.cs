@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
@@ -29,13 +30,18 @@ internal sealed partial class PersistentStorageProvider
             IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
             )> storages = new(_toUpdateRoots.Count);
 
-        foreach (KeyValuePair<AddressAsKey, PerContractState> kv in _storages)
+        foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
         {
-            if (!_toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) || !hasChanges) continue;
+            if (!kv.Value) continue;
+            if (!_storages.TryGetValue(kv.Key, out PerContractState? contractState))
+            {
+                Debug.Fail($"Storage root marked changed for {kv.Key} but no contract state is present");
+                continue;
+            }
             storages.Add((
                 kv.Key,
-                kv.Value,
-                writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)));
+                contractState,
+                writeBatch.CreateStorageWriteBatch(kv.Key, contractState.EstimatedChanges)));
         }
 
         if (storages.Count == 0) return;
@@ -43,10 +49,11 @@ internal sealed partial class PersistentStorageProvider
         // Schedule larger changes first to help balance the work
         storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         ParallelUnbalancedWork.For(
             0,
             storages.Count,
-            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            RuntimeInformation.ParallelOptionsLogicalCores,
             (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {

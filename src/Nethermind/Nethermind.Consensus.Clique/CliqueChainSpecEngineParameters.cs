@@ -8,8 +8,8 @@ namespace Nethermind.Consensus.Clique;
 
 public class CliqueChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => SealEngineType;
-    public string? SealEngineType => Core.SealEngineType.Clique;
+    public string EngineName => SealEngineType;
+    public string SealEngineType => Core.SealEngineType.Clique;
     public ulong Epoch { get; set; }
     public ulong Period { get; set; }
     public UInt256? Reward { get; set; } = UInt256.Zero;

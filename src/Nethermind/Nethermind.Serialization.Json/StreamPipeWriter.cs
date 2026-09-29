@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -118,6 +117,10 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// </summary>
     public Stream InnerStream { get; }
 
+    /// <summary>Gets whether bytes may have reached <see cref="InnerStream"/>.</summary>
+    /// <remarks>Set when a write to the stream starts: a write that fails may already have written part of its data.</remarks>
+    public bool MayHaveWrittenToStream { get; private set; }
+
     /// <inheritdoc />
     public override void Advance(int bytes)
     {
@@ -130,11 +133,6 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         _bytesBuffered += bytes;
         _tailMemory = _tailMemory[bytes..];
         WrittenCount += bytes;
-
-        if (_bytesBuffered > _minimumBufferSize)
-        {
-            FlushInternal(writeToStream: true);
-        }
     }
 
     /// <inheritdoc />
@@ -198,10 +196,24 @@ public sealed class CountingStreamPipeWriter : CountingWriter
                     _tailBytesBuffered = 0;
                 }
 
+                // Threshold flush happens here, never in Advance: a consumer may still hold a buffer
+                // obtained earlier and Advance into it across the flush.
+                if (_bytesBuffered > _minimumBufferSize)
+                {
+                    FlushInternal(writeToStream: true);
+                }
+
                 BufferSegment newSegment = AllocateSegment(sizeHint);
 
-                _tail.SetNext(newSegment);
-                _tail = newSegment;
+                if (_head is null)
+                {
+                    _head = _tail = newSegment;
+                }
+                else
+                {
+                    _tail!.SetNext(newSegment);
+                    _tail = newSegment;
+                }
             }
         }
     }
@@ -334,11 +346,14 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// <inheritdoc />
     public override long UnflushedBytes => _bytesBuffered;
 
-    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default) => FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
+    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default)
+    {
+        WrittenCount += source.Length;
+        return FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
+    }
 
     private void Cancel() => InternalTokenSource.Cancel();
 
-    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<FlushResult> FlushAsyncInternal(bool writeToStream, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
         // Write all completed segments and whatever remains in the current segment
@@ -371,6 +386,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
                     if (returnSegment.Length > 0 && writeToStream)
                     {
+                        MayHaveWrittenToStream = true;
                         await InnerStream.WriteAsync(returnSegment.Memory, localToken).ConfigureAwait(false);
                     }
 
@@ -385,6 +401,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
                     // Write data after the buffered data
                     if (data.Length > 0)
                     {
+                        MayHaveWrittenToStream = true;
                         await InnerStream.WriteAsync(data, localToken).ConfigureAwait(false);
                     }
 
@@ -443,6 +460,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
             if (returnSegment.Length > 0 && writeToStream)
             {
+                MayHaveWrittenToStream = true;
                 InnerStream.Write(returnSegment.Memory.Span);
             }
 

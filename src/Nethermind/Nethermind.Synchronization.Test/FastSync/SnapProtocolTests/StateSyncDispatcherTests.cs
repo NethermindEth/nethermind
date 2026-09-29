@@ -36,7 +36,7 @@ public class StateSyncDispatcherTests
 
     private readonly PublicKey _publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 
-    private const int ChainLength = 100;
+    private const ulong ChainLength = 100;
     private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(ChainLength).TestObject);
 
     [SetUp]

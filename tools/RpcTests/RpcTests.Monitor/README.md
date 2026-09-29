@@ -65,8 +65,8 @@ Example:
       "jsonrpc": "2.0",
       "method": "eth_getLogs",
       "params": [{
-        "fromBlock": "{{Hex(RecentBlock - 9)}}",
-        "toBlock": "{{Hex(RecentBlock)}}",
+        "fromBlock": "{{Hex(Recent.Number - 9)}}",
+        "toBlock": "{{Hex(Recent.Number)}}",
         "address": ["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "0xdAC17F958D2ee523a2206206994597C13D831ec7"],
         "topics": [
           "{{Topic.Transfer}}",
@@ -84,6 +84,7 @@ Each test can have the following fields:
 - `run` (required): dynamic condition on whether test should be run;
 - `request` (required): parameterized request JSON;
 - `response`: to validate against a fixed expected value instead of using a reference node;
+- `ignore` (optional): a single response path or an array of paths to exclude from comparison;
 - `test` (optional): test metadata.
 
 Some of them support custom C# expressions using [DynamicExpresso](https://github.com/dynamicexpresso/DynamicExpresso/):
@@ -92,7 +93,9 @@ Some of them support custom C# expressions using [DynamicExpresso](https://githu
    these are strings denoted as `{{ expression }}`.
 
 [TestContext](./TestContext.cs) provides helper methods and properties for common patterns
-available to be called directly (like `EveryBlocks`, `RecentBlock`, `Hex(n)`, etc.)
+available to be called directly (like `EveryBlocks`, `Recent`, `Hex(n)`, etc.)
+
+Test files may contain comments – these are stripped on load and never sent in requests.
 
 ## Execution
 The monitor subscribes to the new block events from the target node via WebSocket (`eth_subscribe("newHeads")`).
@@ -108,3 +111,8 @@ Only Slack is supported for now. Configure via environment variables:
 - `RPC_MONITOR_BOT_TOKEN` + `RPC_MONITOR_CHANNEL_ID` — post messages to a Slack channel via a bot user, uploads responses as files.
 
 Slack notifications are rate-limited to avoid spamming in case of consistent test/node/app failures.
+
+The monitor tracks chain reorgs observed on the `newHeads` stream (a previously seen block number
+reappearing with a different hash). When any have occurred recently, a `recent-reorgs.txt` file
+is attached to failure notifications and to the daily statistics report (if enabled).
+No file is attached when there are no reorgs in the window.

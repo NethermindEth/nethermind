@@ -70,10 +70,8 @@ internal class XdcReorgModuleTests
         Assert.That(blockChain.XdcContext.LockQC!.ProposedBlockInfo.Hash, Is.EqualTo(forkParent.ParentHash!));
     }
 
-    [TestCase(5)]
-    [TestCase(900)]
-    [TestCase(901)]
-    public async Task TestShouldNotReorgCommittedBlock(int number)
+    [Test]
+    public async Task TestShouldNotReorgCommittedBlock([Values(5, 900, 901)] int number)
     {
         using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create();
         ulong startRound = blockChain.XdcContext.CurrentRound;
@@ -96,7 +94,7 @@ internal class XdcReorgModuleTests
         blockChain.ChangeReleaseSpec(spec => { spec.EpochLength = 10; spec.Gap = 5; });
         await blockChain.AddBlocks(3);
 
-        const long gapBlockNumber = 5;
+        const ulong gapBlockNumber = 5;
 
 
         XdcBlockHeader originalChainGapBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(gapBlockNumber)!;

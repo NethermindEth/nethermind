@@ -14,7 +14,7 @@ public partial class SecP256r1Precompile
     {
         ReadOnlySpan<byte> input = inputData.Span;
 
-        return inputData.Length == 160 && Accelerators.SecP256r1Verify(
+        return input.Length == 160 && Accelerators.SecP256r1Verify(
             input[..32], input[32..96], input[96..]
             ) ? _successResult : [];
     }

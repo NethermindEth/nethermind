@@ -3,11 +3,11 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using G2 = Nethermind.Crypto.Bls.P2;
+using G2Affine = Nethermind.Crypto.Bls.P2Affine;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -54,10 +54,8 @@ public partial class Bls12381G2MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        // skip clear as whole buffer is filled in point decoding
-        // dest) is fully written by Zero()+Decode() during point decoding, so the pool's zero-clear
-        // is wasted. Dead infinity slots are never read.
-        using ArrayPoolList<long> pointBuffer = new(SafeArrayPool<long>.Shared, nItems * G2.Sz, nItems * G2.Sz, clearFirst: false);
+        // clearFirst: false — every slot MultiMultAffine reads is written during decode below
+        using ArrayPoolList<long> pointBuffer = new(SafeArrayPool<long>.Shared, nItems * G2Affine.Sz, nItems * G2Affine.Sz, clearFirst: false);
         using ArrayPoolList<byte> scalarBuffer = new(SafeArrayPool<byte>.Shared, nItems * 32, nItems * 32, clearFirst: false);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
@@ -77,39 +75,23 @@ public partial class Bls12381G2MsmPrecompile
         if (npoints == 0)
             return Eip2537.G2Infinity;
 
-        Result result = Result.Success;
-
+        Memory<long> pointMemory = pointBuffer.AsMemory();
+        Memory<byte> scalarMemory = scalarBuffer.AsMemory();
         // decode points to rawPoints buffer
         // n.b. subgroup checks carried out as part of decoding
-#pragma warning disable CS0162 // Unreachable code detected
-        if (Eip2537.DisableConcurrency)
-        {
-            for (int i = 0; i < pointDestinations.Count && result; i++)
-            {
-                result = Eip2537.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), pointDestinations[i], i);
-            }
-        }
-        else
-        {
-            Memory<long> pointMemory = pointBuffer.AsMemory();
-            Memory<byte> scalarMemory = scalarBuffer.AsMemory();
-            Parallel.For(0, pointDestinations.Count, (index, state) =>
-            {
-                Result local = Eip2537.TryDecodeG2ToBuffer(inputData, pointMemory, scalarMemory, pointDestinations[index], index);
-                if (!local)
-                {
-                    result = local;
-                    state.Break();
-                }
-            });
-        }
-#pragma warning restore CS0162 // Unreachable code detected
+        Result result = Eip2537.DecodeAll(pointDestinations.Count, new G2Decoder(inputData, pointMemory, scalarMemory, pointDestinations));
 
         if (!result)
             return result.Error!;
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
-        G2 res = new G2(stackalloc long[G2.Sz]).MultiMult(pointBuffer.AsSpan(), scalarBuffer.AsSpan(), npoints);
+        G2 res = new G2(stackalloc long[G2.Sz]).MultiMultAffine(pointBuffer.AsSpan(), scalarBuffer.AsSpan(), npoints);
         return res.EncodeRaw();
+    }
+
+    private readonly struct G2Decoder(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, ArrayPoolList<int> destinations)
+        : Eip2537.IItemDecoder
+    {
+        public Result Decode(int index) => Eip2537.TryDecodeG2ToBuffer(inputData, pointBuffer, scalarBuffer, destinations[index], index);
     }
 }

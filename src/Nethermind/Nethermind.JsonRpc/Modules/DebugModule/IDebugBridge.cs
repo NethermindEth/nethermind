@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
@@ -18,7 +19,10 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 public interface IDebugBridge
 {
     GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
-    GethLikeTxTrace? GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+
+    /// <remarks>Retained for out-of-tree plugins; nothing in the repository calls it.</remarks>
+    [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
+    GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
@@ -31,10 +35,33 @@ public interface IDebugBridge
     byte[] GetBlockRlp(BlockParameter param);
     byte[] GetDbValue(string dbName, byte[] key);
     object GetConfigValue(string category, string name);
-    ChainLevelInfo GetLevelInfo(long number);
-    int DeleteChainSlice(long startNumber, bool force = false);
-    void UpdateHeadBlock(Hash256 blockHash);
-    Task<bool> MigrateReceipts(long from, long to);
+    ChainLevelInfo GetLevelInfo(ulong number);
+    /// <summary>Deletes chain levels from the given block number onward.</summary>
+    /// <remarks>
+    /// Requires paused, drained block processing and preserves historical sync progress, including when forced.
+    /// Requires no active initial synchronization. Deletion at or below the sync pivot also requires completed historical sync.
+    /// Replacement heads require a canonical body and state available for processing. A deleted pivot moves to the
+    /// surviving head after successful deletion, provided all retained historical progress is at or below that head.
+    /// </remarks>
+    /// <returns>The number of deleted levels, an invalid-params error for an invalid range, or a resource-unavailable error when maintenance is unsafe.</returns>
+    ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false);
+    /// <inheritdoc cref="UpdateHeadBlock(BlockParameter)"/>
+    bool UpdateHeadBlock(Hash256 blockHash);
+    /// <summary>Rewinds to a canonical block with state available for block processing and prunes abandoned flat-state snapshots.</summary>
+    /// <remarks>
+    /// Does not requeue removed transactions or clear receipt indexes, safe/finalized hashes or historical download progress.
+    /// Availability checks enforce retention, not a full scan for missing trie descendants.
+    /// Receipt lookups may still return removed transactions. Requires paused, drained block processing and quiescent persistence.
+    /// Refuses active initial synchronization. A pivot above the target must move with it: the rewind is refused unless historical
+    /// downloads are complete and every retained progress marker is at or below the target. Backfill permits rewinds at or above the pivot.
+    /// Concurrent synchronization may receive retryable canonical-update refusals during maintenance.
+    /// Returns false on mutation contention or overlap with another debug head reset or chain-slice deletion.
+    /// Same-payload replay remains unsupported because processed markers and cached VALID results are retained;
+    /// use fresh replacement payloads.
+    /// </remarks>
+    /// <returns>Whether the rewind succeeded.</returns>
+    bool UpdateHeadBlock(BlockParameter blockParameter);
+    Task<bool> MigrateReceipts(ulong from, ulong to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
     SyncReportSummary GetCurrentSyncStage();
     bool HaveNotSyncedHeadersYet();
@@ -44,5 +71,5 @@ public interface IDebugBridge
     TxReceipt[]? GetReceiptsForBlock(BlockParameter param);
     Transaction? GetTransactionFromHash(Hash256 hash);
     Hash256? GetTransactionBlockHash(Hash256 transactionHash);
-    IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
 }

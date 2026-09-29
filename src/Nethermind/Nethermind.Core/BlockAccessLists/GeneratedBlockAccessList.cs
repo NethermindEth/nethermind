@@ -70,7 +70,7 @@ public class GeneratedBlockAccessList
         }
     }
 
-    public void Clear() => _accountChanges.Clear();
+    public void Clear() => _accountChanges.ClearAndTrim();
     public void Reset() => Clear();
 
     /// <summary>

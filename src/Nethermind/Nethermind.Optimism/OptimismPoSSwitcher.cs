@@ -6,7 +6,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Optimism;
 
-public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNumber) : IPoSSwitcher
+public class OptimismPoSSwitcher(ISpecProvider specProvider, ulong bedrockBlockNumber) : IPoSSwitcher
 {
     public OptimismPoSSwitcher(ISpecProvider specProvider, OptimismChainSpecEngineParameters optimismChainSpecEngineParameters)
         : this(specProvider, optimismChainSpecEngineParameters.BedrockBlockNumber!.Value)
@@ -21,7 +21,7 @@ public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNu
 
     public Hash256? ConfiguredTerminalBlockHash => null;
 
-    public long? ConfiguredTerminalBlockNumber => null;
+    public ulong? ConfiguredTerminalBlockNumber => null;
 
     public event EventHandler TerminalBlockReached { add { } remove { } }
 

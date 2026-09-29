@@ -236,6 +236,82 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
+        public void Can_remove_and_return_value()
+        {
+            LruCache<Address, Account> cache = new(Capacity, "test");
+            cache.Set(_addresses[0], _accounts[0]);
+
+            Assert.That(cache.TryRemove(_addresses[0], out Account? removed), Is.True);
+            Assert.That(removed, Is.EqualTo(_accounts[0]));
+            Assert.That(cache.TryRemove(_addresses[0], out removed), Is.False);
+            Assert.That(removed, Is.Null);
+        }
+
+        [Test]
+        public void Evict_is_called_when_capacity_replaces_oldest()
+        {
+            int evicted = 0;
+            LruCache<int, int> cache = new TestEvictingLruCache<int, int>(2, "test", value => evicted = value);
+
+            cache.Set(1, 10);
+            cache.Set(2, 20);
+            cache.Set(3, 30);
+
+            Assert.That(evicted, Is.EqualTo(10));
+        }
+
+        [Test]
+        public void Evict_is_called_when_existing_value_is_replaced()
+        {
+            int evicted = 0;
+            LruCache<int, int> cache = new TestEvictingLruCache<int, int>(2, "test", value => evicted = value);
+
+            cache.Set(1, 10);
+            cache.Set(1, 11);
+
+            Assert.That(evicted, Is.EqualTo(10));
+            Assert.That(cache.Get(1), Is.EqualTo(11));
+        }
+
+        [Test]
+        public void TryRemove_returns_value_without_calling_evict()
+        {
+            int evicted = 0;
+            LruCache<int, int> cache = new TestEvictingLruCache<int, int>(2, "test", value => evicted = value);
+            cache.Set(1, 10);
+
+            Assert.That(cache.TryRemove(1, out int removed), Is.True);
+
+            Assert.That(removed, Is.EqualTo(10));
+            Assert.That(evicted, Is.Zero);
+        }
+
+        [Test]
+        public void Disposing_cache_disposes_evicted_values()
+        {
+            DisposingLruCache<int, DisposableValue> cache = new(1, "test");
+            DisposableValue evicted = new();
+
+            cache.Set(1, evicted);
+            cache.Set(2, new DisposableValue());
+
+            Assert.That(evicted.IsDisposed, Is.True);
+        }
+
+        [Test]
+        public void Disposing_cache_try_remove_transfers_ownership()
+        {
+            DisposingLruCache<int, DisposableValue> cache = new(1, "test");
+            DisposableValue removed = new();
+            cache.Set(1, removed);
+
+            Assert.That(cache.TryRemove(1, out DisposableValue? actual), Is.True);
+
+            Assert.That(actual, Is.SameAs(removed));
+            Assert.That(removed.IsDisposed, Is.False);
+        }
+
+        [Test]
         public void Clear_should_free_all_capacity()
         {
             ICache<Address, Account> cache = Create();
@@ -259,6 +335,29 @@ namespace Nethermind.Core.Test.Caching
             {
                 Assert.That(cache.Get(_addresses[i]), Is.EqualTo(_accounts[MapForRefill(i)]));
             }
+        }
+
+        [TestCase(EvictionOperation.Delete, false)]
+        [TestCase(EvictionOperation.ReplaceExisting, true)]
+        [TestCase(EvictionOperation.ReplaceOldest, false)]
+        [TestCase(EvictionOperation.Clear, false)]
+        public async Task Evict_is_invoked_outside_lock(EvictionOperation operation, bool expectedContainsResult)
+        {
+            LruCache<int, int> cache = null!;
+            TaskCompletionSource<bool> evictResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            cache = new TestEvictingLruCache<int, int>(2, "test", _ => evictResult.SetResult(cache.Contains(1)));
+            cache.Set(1, 10);
+            if (operation == EvictionOperation.ReplaceOldest)
+            {
+                cache.Set(2, 20);
+            }
+
+            Task operationTask = Task.Run(() => RunEvictionOperation(cache, operation));
+            Task completedTask = await Task.WhenAny(operationTask, Task.Delay(TimeSpan.FromSeconds(5)));
+
+            Assert.That(completedTask, Is.SameAs(operationTask));
+            await operationTask;
+            Assert.That(await evictResult.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(expectedContainsResult));
         }
 
         [Test]
@@ -300,6 +399,51 @@ namespace Nethermind.Core.Test.Caching
                     _ = new LruCache<int, int>(maxCapacity, "test");
                 });
 
+        }
+
+        private static void RunEvictionOperation(LruCache<int, int> cache, EvictionOperation operation)
+        {
+            switch (operation)
+            {
+                case EvictionOperation.Delete:
+                    cache.Delete(1);
+                    return;
+                case EvictionOperation.ReplaceExisting:
+                    cache.Set(1, 11);
+                    return;
+                case EvictionOperation.ReplaceOldest:
+                    cache.Set(3, 30);
+                    return;
+                case EvictionOperation.Clear:
+                    cache.Clear();
+                    return;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
+            }
+        }
+
+        public enum EvictionOperation
+        {
+            Delete,
+            ReplaceExisting,
+            ReplaceOldest,
+            Clear
+        }
+
+        private sealed class TestEvictingLruCache<TKey, TValue>(
+            int maxCapacity,
+            string name,
+            Action<TValue> evict) : LruCache<TKey, TValue>(maxCapacity, name)
+            where TKey : notnull
+        {
+            protected override void Evict(TValue value) => evict(value);
+        }
+
+        private sealed class DisposableValue : IDisposable
+        {
+            public bool IsDisposed { get; private set; }
+
+            public void Dispose() => IsDisposed = true;
         }
     }
 }

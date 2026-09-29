@@ -35,6 +35,7 @@ public class TrieWarmerTests
         _config = new FlatDbConfig { TrieWarmerWorkerCount = 2 };
     }
 
+
     [Test]
     public async Task PushAddressJob_CallsWarmUpStateTrie()
     {
@@ -91,12 +92,12 @@ public class TrieWarmerTests
         Address address = new("0x2222222222222222222222222222222222222222");
 
         Assert.That(warmer.PushAddressJob(addressWarmer, address, sequenceId: 1), Is.True);
-        await Eventually.AssertAsync<AssertionException>(() => Assert.That(addressWarmer.Calls, Is.EqualTo(1)));
+        await WaitForConditionAsync(() => addressWarmer.Calls == 1, "addressWarmer.Calls should be 1");
 
         await Task.Delay(50);
 
         Assert.That(warmer.PushAddressJob(addressWarmer, address, sequenceId: 2), Is.True);
-        await Eventually.AssertAsync<AssertionException>(() => Assert.That(addressWarmer.Calls, Is.EqualTo(2)));
+        await WaitForConditionAsync(() => addressWarmer.Calls == 2, "addressWarmer.Calls should be 2");
 
         await warmer.DisposeAsync();
     }
@@ -124,7 +125,7 @@ public class TrieWarmerTests
             Assert.That(storageWarmer.MaxConcurrency, Is.LessThanOrEqualTo(WorkerCount));
 
             storageWarmer.Release();
-            await Eventually.AssertAsync<AssertionException>(() => Assert.That(storageWarmer.Calls, Is.EqualTo(JobCount)));
+            await WaitForConditionAsync(() => storageWarmer.Calls == JobCount, $"storageWarmer.Calls should be {JobCount}");
         }
         finally
         {
@@ -274,5 +275,18 @@ public class TrieWarmerTests
     {
         Spmc,
         Mpmc
+    }
+
+    private static async Task WaitForConditionAsync(Func<bool> condition, string message, int timeoutMs = 1000)
+    {
+        int delay = 10;
+        int elapsed = 0;
+        while (elapsed < timeoutMs)
+        {
+            if (condition()) return;
+            await Task.Delay(delay);
+            elapsed += delay;
+        }
+        Assert.Fail(message);
     }
 }

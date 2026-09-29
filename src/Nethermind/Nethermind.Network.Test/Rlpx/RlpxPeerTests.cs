@@ -3,9 +3,8 @@
 
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
@@ -23,21 +22,28 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public async Task Start_stop()
         {
+            IIPResolver ipResolver = Substitute.For<IIPResolver>();
+            ipResolver.Resolve(Arg.Any<CancellationToken>())
+                .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.None)));
+            NetworkConfig networkConfig = new()
+            {
+                ProcessingThreadCount = 1,
+                P2PPort = GegAvailableLocalPort(),
+                LocalIp = null,
+                ConnectTimeoutMs = 200,
+                SimulateSendLatencyMs = 0,
+            };
+
             RlpxHost host = new(
                 Substitute.For<IMessageSerializationService>(),
-                new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
                 Substitute.For<IHandshakeService>(),
                 Substitute.For<ISessionMonitor>(),
                 NullDisconnectsAnalyzer.Instance,
-                new NetworkConfig()
-                {
-                    ProcessingThreadCount = 1,
-                    P2PPort = GegAvailableLocalPort(),
-                    LocalIp = null,
-                    ConnectTimeoutMs = 200,
-                    SimulateSendLatencyMs = 0,
-                },
-                LimboLogs.Instance);
+                networkConfig,
+                ipResolver,
+                Substitute.For<IPrivilegedIpProvider>(),
+                LimboLogs.Instance,
+                new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance));
             await host.Init();
             await host.Shutdown();
         }

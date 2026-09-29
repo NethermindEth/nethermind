@@ -18,6 +18,10 @@ namespace Nethermind.Core.Collections
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
     public sealed class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int>
     {
+        // Removing entries one by one beats zeroing every bucket only while few remain: add, restore, clear and reuse
+        // cycles on Address and StorageCell journals put the crossover between about Capacity/100 and Capacity/1000.
+        private const int SparseClearCapacityDivisor = 256;
+
         private readonly List<T> _items = [];
         private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
 
@@ -44,7 +48,7 @@ namespace Nethermind.Core.Collections
 
         [DoesNotReturn, StackTraceHidden]
         private void ThrowInvalidRestore(int snapshot)
-            => throw new InvalidOperationException($"{nameof(JournalSet<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
+            => throw new InvalidOperationException($"{nameof(JournalSet<>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
         public bool Add(T item)
         {
@@ -60,11 +64,23 @@ namespace Nethermind.Core.Collections
 
         public void Clear()
         {
+            if (Count <= _set.Capacity / SparseClearCapacityDivisor)
+            {
+                foreach (T item in CollectionsMarshal.AsSpan(_items))
+                {
+                    _set.Remove(item);
+                }
+            }
+            else
+            {
+                _set.Clear();
+            }
+
             _items.Clear();
-            _set.Clear();
         }
 
-        public HashSet<T>.Enumerator GetEnumerator() => _set.GetEnumerator();
+        /// <summary>Enumerates the items in the order they were first added, excluding those dropped by <see cref="Restore"/>.</summary>
+        public List<T>.Enumerator GetEnumerator() => _items.GetEnumerator();
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
@@ -72,11 +88,6 @@ namespace Nethermind.Core.Collections
         public bool IsReadOnly => false;
         void ICollection<T>.Add(T item) => Add(item);
         public bool Contains(T item) => _set.Contains(item);
-        /// <summary>
-        /// Gets the first item added to the set.
-        /// </summary>
-        /// <remarks>The caller must ensure the set is not empty.</remarks>
-        public T First => _items[0];
-        public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
+        public void CopyTo(T[] array, int arrayIndex) => _items.CopyTo(array, arrayIndex);
     }
 }

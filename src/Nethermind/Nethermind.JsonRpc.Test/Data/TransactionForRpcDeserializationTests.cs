@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -20,7 +21,7 @@ public class TransactionForRpcDeserializationTests
     [TestCaseSource(nameof(TxJsonTestCases))]
     public TxType Test_TxTypeIsDetected_ForDifferentFieldSet(string txJson)
     {
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson)!;
         Result<Transaction> result = transactionForRpc.ToTransaction();
         return result.Data?.Type ?? transactionForRpc.Type ?? TxType.Legacy;
     }
@@ -42,8 +43,14 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"type":null}""");
             yield return Make(TxType.EIP1559, """{"additionalField":""}""");
             yield return Make(TxType.EIP1559, """{"MaxFeePerBlobGas":"0x0"}""");
-            yield return Make(TxType.Legacy,
+            yield return Make(TxType.EIP1559,
                 """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x1","gas":"0x0","input":null,"maxPriorityFeePerGas":"0x1"}""");
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""");
+            yield return Make(TxType.Blob, """{"gasPrice":"0x1","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blobVersionedHashes":["0x01f1872d656b7a820d763e6001728b9b883f829b922089ec6ad7f5f1665470dc"]}""");
+            yield return Make(TxType.SetCode, """{"gasPrice":"0x1","authorizationList":[]}""");
+            yield return Make(TxType.Legacy, """{"gasPrice":"0x1","accessList":null}""");
+            yield return Make(TxType.Legacy, """{"accessList":null,"gasPrice":"0x1","blobVersionedHashes":null,"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"gasPrice":"0x1","accessList":null,"maxFeePerGas":"0x1"}""");
 
             yield return Make(TxType.AccessList, """{"type":null,"accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[]}""");
@@ -77,13 +84,18 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"type":"0x2"}""");
             yield return Make(TxType.Blob, """{"type":"0x3"}""");
             yield return Make(TxType.SetCode, """{"type":"0x4"}""");
+
+            string largeInput = "0x" + new string('a', 64 * 1024);
+            yield return Make(TxType.EIP1559, $$"""{"type":"0x2","input":"{{largeInput}}","maxFeePerGas":"0x1"}""");
+            yield return Make(TxType.Legacy, $$"""{"gasPrice":"0x1","input":"{{largeInput}}"}""");
+            yield return Make(TxType.AccessList, $$"""{"accessList":[],"input":"{{largeInput}}"}""");
         }
     }
 
     [TestCaseSource(nameof(SpecAwareResolutionCases))]
     public TxType Test_DefaultedType_IsResolvedBySpec(string txJson, IReleaseSpec? spec)
     {
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson)!;
         Result<Transaction> result = transactionForRpc.ToTransaction(spec: spec);
         Assert.That(result.IsError, Is.False, result.Error);
         return result.Data!.Type;
@@ -111,6 +123,8 @@ public class TransactionForRpcDeserializationTests
 
             // Discriminator-matched type is not defaulted → preserved
             yield return Make(TxType.AccessList, """{"accessList":[]}""", Istanbul.Instance);
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", Istanbul.Instance);
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", London.Instance);
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""", Istanbul.Instance);
 
             // gasPrice → Legacy: defaulted, but downgrade is a no-op so result is Legacy on any spec
@@ -127,11 +141,23 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"input":"0x1ab"}""", TestName = "EIP1559 tx odd-length input")]
     public void Test_OddLengthInputOrData_ThrowsJsonException(string txJson) => Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>(txJson));
 
+    [TestCase("""{"data":"0x602a","input":null}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":null,"data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":"0x602a","data":null}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":null,"input":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":null}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":null,"input":null}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":"0x602a","input":"0x"}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":"0x602a","input":""}""", ExpectedResult = "0x")]
+    [TestCase("""{"input":"","data":"0x602a"}""", ExpectedResult = "0x602a")]
+    public string Test_InputDataAliasResolution(string txJson) =>
+        _serializer.Deserialize<TransactionForRpc>(txJson)!.ToTransaction().Data!.Data.ToArray().ToHexString(true);
+
     [TestCaseSource(nameof(DefaultedTypeResolutionCases))]
     public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)
     {
         TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(
-            """{"to":"0x0000000000000000000000000000000000000001","data":"0x01"}""");
+            """{"to":"0x0000000000000000000000000000000000000001","data":"0x01"}""")!;
 
         Transaction tx = rpc.ToTransaction(spec: spec).Data!;
         Assert.That(tx.AccessList is not null, Is.EqualTo(hasAccessList));
@@ -155,7 +181,7 @@ public class TransactionForRpcDeserializationTests
     public void Test_BlobTransaction_WithTooManyBlobHashes_ReturnsBlobGasLimitError_WhenUserInputValidated()
     {
         TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(
-            """{"type":"0x3","to":"0x0000000000000000000000000000000000000001","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000","0x0100000000000000000000000000000000000000000000000000000000000001","0x0100000000000000000000000000000000000000000000000000000000000002","0x0100000000000000000000000000000000000000000000000000000000000003","0x0100000000000000000000000000000000000000000000000000000000000004","0x0100000000000000000000000000000000000000000000000000000000000005","0x0100000000000000000000000000000000000000000000000000000000000006"]}""");
+            """{"type":"0x3","to":"0x0000000000000000000000000000000000000001","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000","0x0100000000000000000000000000000000000000000000000000000000000001","0x0100000000000000000000000000000000000000000000000000000000000002","0x0100000000000000000000000000000000000000000000000000000000000003","0x0100000000000000000000000000000000000000000000000000000000000004","0x0100000000000000000000000000000000000000000000000000000000000005","0x0100000000000000000000000000000000000000000000000000000000000006"]}""")!;
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, spec: Cancun.Instance);
 

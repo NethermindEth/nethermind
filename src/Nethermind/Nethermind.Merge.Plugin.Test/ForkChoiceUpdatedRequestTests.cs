@@ -18,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             ForkchoiceStateV1 initial = new(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC);
             string? serialized = _serializer.Serialize(initial);
-            ForkchoiceStateV1 deserialized = _serializer.Deserialize<ForkchoiceStateV1>(serialized);
+            ForkchoiceStateV1 deserialized = _serializer.Deserialize<ForkchoiceStateV1>(serialized)!;
             Assert.That(JToken.Parse(_serializer.Serialize(deserialized)), Is.EqualTo(JToken.Parse(_serializer.Serialize(initial))).Using(JToken.EqualityComparer));
         }
     }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Merge.Plugin.GC;
+using Nethermind.Core.Memory;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -16,7 +16,7 @@ namespace Nethermind.Merge.Plugin
 
         public string? TerminalBlockHash { get; set; }
 
-        public long? TerminalBlockNumber { get; set; }
+        public ulong? TerminalBlockNumber { get; set; }
 
         [Obsolete("Use BlocksConfig.SecondsPerSlot")]
         public ulong SecondsPerSlot { get; set; } = 12;
@@ -27,7 +27,7 @@ namespace Nethermind.Merge.Plugin
 
         public GcLevel SweepMemory { get; set; } = GcLevel.Gen1;
 
-        public GcCompaction CompactMemory { get; set; } = GcCompaction.Yes;
+        public GcCompaction CompactMemory { get; set; } = GcCompaction.No;
 
         public int CollectionsPerDecommit { get; set; } = 25;
 

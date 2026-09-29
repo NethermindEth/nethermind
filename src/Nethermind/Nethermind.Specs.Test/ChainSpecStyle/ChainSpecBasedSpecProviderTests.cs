@@ -80,16 +80,16 @@ public class ChainSpecBasedSpecProviderTests
         return LoadGethGenesisFromString(genesisJson);
     }
 
-    [TestCase(0, null, false)]
-    [TestCase(0, 0ul, false)]
-    [TestCase(0, 4660ul, false)]
-    [TestCase(1, 4660ul, false)]
-    [TestCase(1, 4661ul, false)]
-    [TestCase(4, 4672ul, true)]
-    [TestCase(4, 4673ul, true)]
-    [TestCase(5, 4680ul, true)]
+    [TestCase(0ul, null, false)]
+    [TestCase(0ul, 0ul, false)]
+    [TestCase(0ul, 4660ul, false)]
+    [TestCase(1ul, 4660ul, false)]
+    [TestCase(1ul, 4661ul, false)]
+    [TestCase(4ul, 4672ul, true)]
+    [TestCase(4ul, 4673ul, true)]
+    [TestCase(5ul, 4680ul, true)]
     [NonParallelizable]
-    public void Timestamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
+    public void Timestamp_activation_equal_to_genesis_timestamp_loads_correctly(ulong blockNumber, ulong? timestamp, bool isEip3855Enabled)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
@@ -136,58 +136,38 @@ public class ChainSpecBasedSpecProviderTests
     }
 
 
-    [TestCase(0, null, false, false, false)]
-    [TestCase(0, 0ul, false, false, false)]
-    [TestCase(0, 4660ul, false, false, false)]
-    [TestCase(1, 4660ul, false, false, false)]
-    [TestCase(1, 4661ul, false, false, false)]
-    [TestCase(1, 4672ul, false, false, false)]
-    [TestCase(2, 4673ul, false, false, true)]
-    [TestCase(3, 4680ul, false, false, true)]
-    [TestCase(4, 4672ul, false, true, false)]
-    [TestCase(5, 4672ul, true, true, false)]
-    [TestCase(5, 4673ul, true, true, false)]
-    [TestCase(6, 4680ul, true, true, false)]
-    [NonParallelizable]
-    public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
+    // A chainspec is either misconfigured or it is not, so a verdict that changes with the activation being
+    // queried was never a verdict about the file: (2, 4673) and (3, 4680) - which the predecessor of this test
+    // required the warning for - are a node whose head is below the block-4 fork asking what applies at the
+    // current time, i.e. an ordinary syncing node (#13202).
+    [TestCase(0ul, null)]
+    [TestCase(0ul, 0ul)]
+    [TestCase(0ul, 4660ul)]
+    [TestCase(1ul, 4660ul)]
+    [TestCase(1ul, 4661ul)]
+    [TestCase(1ul, 4672ul)]
+    [TestCase(2ul, 4673ul)]
+    [TestCase(3ul, 4680ul)]
+    [TestCase(4ul, 4672ul)]
+    [TestCase(5ul, 4672ul)]
+    [TestCase(5ul, 4673ul)]
+    [TestCase(6ul, 4680ul)]
+    public void Never_warns_that_the_chainspec_is_misconfigured(ulong blockNumber, ulong? timestamp)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
-        Assert.That(chainSpec.Parameters.Eip2537Transition, Is.Null);
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
         ILogger logger = new(iLogger);
         ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec, logManager);
-        ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
-            .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
-        expectedSpec.Name = "Genesis_with_non_zero_timestamp";
-        expectedSpec.IsEip3651Enabled = true;
-        expectedSpec.IsEip3198Enabled = isEip3198Enabled;
-        expectedSpec.IsEip3855Enabled = isEip3855Enabled;
-        expectedSpec.Eip1559TransitionBlock = 0;
-        expectedSpec.DifficultyBombDelay = 0;
-        List<ForkActivation> forkActivationsToTest =
-        [
-            (blockNumber, timestamp),
-        ];
 
-        foreach (ForkActivation activation in forkActivationsToTest)
-        {
-            provider.GetSpec(activation);
-        }
+        provider.GetSpec(new ForkActivation(blockNumber, timestamp));
 
-        if (receivesWarning)
-        {
-            iLogger.Received(1).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
-        }
-        else
-        {
-            iLogger.DidNotReceive().Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
-        }
+        iLogger.DidNotReceive().Warn(Arg.Is<string>(static text => text.Contains("misconfigured")));
     }
 
     public static IEnumerable<TestCaseData> SepoliaActivations
@@ -210,6 +190,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp + 1000)) { TestName = "BPO1" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp)) { TestName = "First BPO2" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp + 1000)) { TestName = "BPO2" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp - 1)) { TestName = "Before Amsterdam" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp)) { TestName = "First Amsterdam" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp + 1000)) { TestName = "Amsterdam" };
         }
     }
 
@@ -252,7 +235,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(3338477UL));
             Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(786432));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei));
             Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(393216));
@@ -263,7 +246,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)5007716));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(5007716UL));
             Assert.That(spec.MaxBlobCount, Is.EqualTo(9));
             Assert.That(spec.TargetBlobCount, Is.EqualTo(6));
             Assert.That(spec.Eip2935ContractAddress, Is.EqualTo(Eip2935Constants.BlockHashHistoryAddress));
@@ -297,10 +280,10 @@ public class ChainSpecBasedSpecProviderTests
         VerifyPragueSpecificsForMainnetHoodiAndSepolia(chainId, postOsakaSpec);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)8346193));
+            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo(8346193UL));
             Assert.That(postBPO1Spec.MaxBlobCount, Is.EqualTo(15));
             Assert.That(postBPO1Spec.TargetBlobCount, Is.EqualTo(10));
-            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)11684671));
+            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo(11684671UL));
             Assert.That(postBPO2Spec.MaxBlobCount, Is.EqualTo(21));
             Assert.That(postBPO2Spec.TargetBlobCount, Is.EqualTo(14));
         }
@@ -343,6 +326,13 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.Zero);
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Hoodi));
+
+            // Shanghai and Cancun are active from the execution genesis, which predates the beacon chain.
+            IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters).Where(static t => t > HoodiSpecProvider.GenesisTimestamp);
+            foreach (ulong t in timestamps)
+            {
+                Assert.That(ValidateSlotByTimestamp(t, HoodiSpecProvider.BeaconChainGenesisTimestampConst), Is.True);
+            }
         }
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoodiSpecProvider.CancunTimestamp));
@@ -525,7 +515,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(1112826UL));
             Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(262144));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei));
             Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(131072));
@@ -676,7 +666,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         IReleaseSpec oldSpec = oldSpecProvider.GetSpec(activation);
         IReleaseSpec newSpec = newSpecProvider.GetSpec(activation);
-        long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
+        ulong? daoBlockNumber = newSpecProvider.DaoBlockNumber;
 
         bool isMainnet = daoBlockNumber is not null;
         if (isMainnet)
@@ -718,6 +708,118 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(propertyInfo.GetValue(actualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
                 activation + "." + propertyInfo.Name);
         }
+    }
+
+    // GetFinalSpec skips everything above SpecProviderExtensions.LastScheduledForkTimestamp so undated forks
+    // stay out of it. Widening that band must not swallow a fork a chain has actually scheduled — it would
+    // do so silently, by landing the probe in an earlier bucket.
+    [Test]
+    public void Final_spec_skips_only_the_unscheduled_fork_band([Values("foundation", "sepolia", "hoodi", "gnosis", "chiado")] string chain)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadChainSpecFromChainFolder(chain));
+
+        foreach (ForkActivation activation in provider.TransitionActivations)
+        {
+            Assert.That(activation.Timestamp, Is.Null.Or.LessThanOrEqualTo(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp),
+                $"{chain} schedules a fork above the unscheduled-fork band, which GetFinalSpec would skip");
+        }
+    }
+
+    public static IEnumerable<TestCaseData> BeaconChainGenesisTimestampCases
+    {
+        get
+        {
+            yield return new TestCaseData("foundation", MainnetSpecProvider.Instance, MainnetSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("foundation");
+            yield return new TestCaseData("sepolia", SepoliaSpecProvider.Instance, SepoliaSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("sepolia");
+            yield return new TestCaseData("hoodi", HoodiSpecProvider.Instance, HoodiSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("hoodi");
+            yield return new TestCaseData("gnosis", GnosisSpecProvider.Instance, GnosisSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("gnosis");
+            yield return new TestCaseData("chiado", ChiadoSpecProvider.Instance, ChiadoSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("chiado");
+        }
+    }
+
+    [TestCaseSource(nameof(BeaconChainGenesisTimestampCases))]
+    public void Beacon_chain_genesis_timestamp_matches_hard_coded_provider(string chain, ISpecProvider hardCodedProvider, ulong expected)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadChainSpecFromChainFolder(chain));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.BeaconChainGenesisTimestamp, Is.EqualTo(expected), $"{chain} chainspec");
+            Assert.That(hardCodedProvider.BeaconChainGenesisTimestamp, Is.EqualTo(expected), $"{chain} hard-coded provider");
+        }
+    }
+
+    // #13202: "Chainspec file is misconfigured!" was emitted once per eth_estimateGas call on a syncing mainnet
+    // node running the chainspec we ship. eth_estimateGas asked for the spec at (head + 1, wall-clock now), so
+    // while the head was below the chain's largest block transition and the clock was past the first timestamp
+    // fork, the old per-call check was always true.
+    [TestCase("foundation")]
+    [TestCase("gnosis")]
+    public void No_misconfiguration_warning_for_a_shipped_chainspec_below_its_last_block_transition(string chain)
+    {
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder(chain);
+        CapturingLogger logger = new();
+        ChainSpecBasedSpecProvider provider = new(chainSpec, new OneLoggerLogManager(new(logger)));
+
+        ulong lastBlockTransition = provider.TransitionActivations
+            .Where(static a => a.Timestamp is null)
+            .Select(static a => a.BlockNumber)
+            .DefaultIfEmpty(0UL)
+            .Max();
+        ulong firstTimestampTransition = provider.TransitionActivations
+            .Where(static a => a.Timestamp is not null)
+            .Select(static a => a.Timestamp!.Value)
+            .Min();
+
+        // A node halfway to the last block-number fork, asked "what spec applies right now?".
+        ulong staleHead = lastBlockTransition / 2;
+        ulong now = firstTimestampTransition + 1;
+        provider.GetSpec(new ForkActivation(staleHead + 1, now));
+
+        Assert.That(
+            logger.Lines.Where(static l => l.Contains("misconfigured")),
+            Is.Empty,
+            $"{chain} is correctly configured; a node below block {lastBlockTransition} is behind, not misconfigured");
+    }
+
+    // The replacement check, which the old one could not express: a block-number transition placed after a timestamp
+    // transition ends up compared by timestamp and can never activate, so it must not load silently.
+    [Test]
+    public void Block_transition_after_a_timestamp_transition_is_rejected_at_load()
+    {
+        (ForkActivation, IReleaseSpec)[] transitions =
+        [
+            (new ForkActivation(0UL), Frontier.Instance),
+            (new ForkActivation(100UL, 1_000UL), Shanghai.Instance),
+            (new ForkActivation(200UL), London.Instance),
+        ];
+
+        Assert.That(
+            () => new TransitionsOnlySpecProvider(transitions),
+            Throws.InstanceOf<ArgumentException>().With.Message.Contains("can never activate"));
+    }
+
+    private sealed class CapturingLogger : InterfaceLogger
+    {
+        public List<string> Lines { get; } = [];
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => true;
+        public bool IsError => true;
+
+        public void Info(string text) => Lines.Add(text);
+        public void Warn(string text) => Lines.Add(text);
+        public void Debug(string text) => Lines.Add(text);
+        public void Trace(string text) => Lines.Add(text);
+        public void Error(string text, Exception? ex = null) => Lines.Add(text);
+    }
+
+    private sealed class TransitionsOnlySpecProvider : SpecProviderBase
+    {
+        public TransitionsOnlySpecProvider((ForkActivation Activation, IReleaseSpec Spec)[] transitions) =>
+            LoadTransitions(transitions);
     }
 
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
@@ -838,6 +940,48 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(preAmsterdam.IsEip7981Enabled, Is.False);
             Assert.That(amsterdam.IsEip7976Enabled, Is.True);
             Assert.That(amsterdam.IsEip7981Enabled, Is.True);
+        }
+    }
+
+    [Test]
+    public void Frame_family_eips_activate_only_at_their_own_transition_timestamp()
+    {
+        const ulong eip8141Timestamp = 10;
+        const ulong eip8250Timestamp = 20;
+        const ulong eip8272Timestamp = 30;
+        const ulong eip7906Timestamp = 40;
+        const ulong eip7805Timestamp = 50;
+        const ulong eip8037Timestamp = 60;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip8141TransitionTimestamp = eip8141Timestamp,
+                Eip8250TransitionTimestamp = eip8250Timestamp,
+                Eip8272TransitionTimestamp = eip8272Timestamp,
+                Eip7906TransitionTimestamp = eip7906Timestamp,
+                Eip7805TransitionTimestamp = eip7805Timestamp,
+                Eip8037TransitionTimestamp = eip8037Timestamp,
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8141Timestamp - 1)).IsEip8141Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8141Timestamp)).IsEip8141Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8250Timestamp - 1)).IsEip8250Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8250Timestamp)).IsEip8250Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8272Timestamp - 1)).IsEip8272Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8272Timestamp)).IsEip8272Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7906Timestamp - 1)).IsEip7906Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7906Timestamp)).IsEip7906Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7805Timestamp - 1)).IsEip7805Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7805Timestamp)).IsEip7805Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp - 1)).IsEip8037Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp)).IsEip8037Enabled, Is.True);
         }
     }
 
@@ -1037,8 +1181,9 @@ public class ChainSpecBasedSpecProviderTests
         """;
 
         ChainSpec chainSpec = LoadChainSpecFromString(chainSpecJson);
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
-        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
+        Assert.That(genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
     [Test]
@@ -1067,8 +1212,9 @@ public class ChainSpecBasedSpecProviderTests
         """;
 
         ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
-        Assert.That(chainSpec.Genesis.BaseFeePerGas, Is.EqualTo(UInt256.Parse("18446744073709551616")));
+        Assert.That(genesis.BaseFeePerGas, Is.EqualTo(UInt256.Parse("18446744073709551616")));
     }
 
     [TestCase(null, 0ul, TestName = "Geth genesis Amsterdam slot number: absent defaults to zero")]
@@ -1105,13 +1251,13 @@ public class ChainSpecBasedSpecProviderTests
         """;
 
         ChainSpec chainSpec = LoadGethGenesisFromString(genesisJson);
+        Block genesis = chainSpec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
-        Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
+        Assert.That(genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
-    [TestCase(1ul)]
-    [TestCase(3151908ul)]
-    public void Geth_genesis_defaults_deposit_contract_address_when_prague_is_active(ulong chainId)
+    [Test]
+    public void Geth_genesis_defaults_deposit_contract_address_when_prague_is_active([Values(1ul, 3151908ul)] ulong chainId)
     {
         string genesisJson = $$"""
         {
@@ -1164,7 +1310,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(provider.GenesisSpec.TargetBlobCount, Is.EqualTo(expectedTargetBlobs));
             Assert.That(provider.GenesisSpec.MaxBlobCount, Is.EqualTo(expectedMaxBlobs));
-            Assert.That(provider.GenesisSpec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)expectedBlobBaseFeeUpdateFraction));
+            Assert.That(provider.GenesisSpec.BlobBaseFeeUpdateFraction, Is.EqualTo(expectedBlobBaseFeeUpdateFraction));
         }
     }
 
@@ -1258,11 +1404,11 @@ public class ChainSpecBasedSpecProviderTests
         {
             const int NoneAllowed = 0;
             const int Default = 6;
-            static TestCaseData MakeTestCase(string testName, int eip4844Timestamp, int eip7002Timestamp, (int timestamp, int max)[] settings, ulong[] expectedActivationSettings)
+            static TestCaseData MakeTestCase(string testName, ulong eip4844Timestamp, ulong eip7002Timestamp, (ulong timestamp, ulong max)[] settings, ulong[] expectedActivationSettings)
                 => new([
-                    (ulong)eip4844Timestamp,
-                    (ulong)eip7002Timestamp,
-                    settings.Select(s => new BlobScheduleSettings { Timestamp = (ulong)s.timestamp, Max = (ulong)s.max }).ToArray(),
+                    eip4844Timestamp,
+                    eip7002Timestamp,
+                    settings.Select(s => new BlobScheduleSettings { Timestamp = s.timestamp, Max = s.max }).ToArray(),
                     expectedActivationSettings])
                 { TestName = $"BlobScheduleActivations: {testName}" };
 

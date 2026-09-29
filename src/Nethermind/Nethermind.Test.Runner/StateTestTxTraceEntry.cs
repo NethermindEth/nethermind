@@ -15,9 +15,9 @@ namespace Nethermind.Test.Runner
         [JsonPropertyName("op")]
         public byte Operation { get; set; }
 
-        public long Gas { get; set; }
+        public ulong Gas { get; set; }
 
-        public long GasCost { get; set; }
+        public ulong GasCost { get; set; }
 
         public string Memory { get; set; }
 
@@ -27,10 +27,10 @@ namespace Nethermind.Test.Runner
 
         public int Depth { get; set; }
 
-        public int Refund { get; set; }
+        public long Refund { get; set; }
 
         [JsonPropertyName("opName")]
-        public string? OperationName { get; set; }
+        public string OperationName { get; set; } = string.Empty;
 
         public string? Error { get; set; } = string.Empty;
 

@@ -351,7 +351,7 @@ public class BatchedTrieVisitor<TNodeContext>
                         (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
                         try
                         {
-                            Hash256 theKeccak = nodeToResolve.Keccak;
+                            Hash256? theKeccak = nodeToResolve.Keccak;
                             nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
                             nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
                         }
@@ -408,7 +408,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
                     for (int i = 0; i < TrieNode.BranchesCount; i++)
                     {
-                        TrieNode child = node.GetChild(nodeResolver, ref emptyPath, i);
+                        TrieNode? child = node.GetChild(nodeResolver, ref emptyPath, i);
                         if (child is not null)
                         {
                             child.ResolveKey(nodeResolver, ref emptyPath);
@@ -452,7 +452,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     {
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
-                        Rlp.ValueDecoderContext decoderContext = new(node.Value.AsSpan());
+                        RlpReader decoderContext = new(node.Value.AsSpan());
                         if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");
@@ -467,7 +467,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
                             if (node.TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
                             {
-                                nextToVisit.Add((storageRoot!, storageContext, trieVisitContext));
+                                nextToVisit.Add((storageRoot, storageContext, trieVisitContext));
                             }
                             else
                             {
@@ -507,7 +507,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int Compare(int item1, int item2) =>
-            _items[item1].Item1.Keccak.CompareTo(_items[item2].Item1.Keccak);
+            _items[item1].Item1.Keccak!.CompareTo(_items[item2].Item1.Keccak);
     }
 }
 

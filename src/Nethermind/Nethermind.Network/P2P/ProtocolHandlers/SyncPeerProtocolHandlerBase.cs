@@ -10,7 +10,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -21,6 +20,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using MemoryAllowance = Nethermind.TxPool.MemoryAllowance;
@@ -29,18 +29,21 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
-        internal static ulong HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
-        public Node Node => Session?.Node;
-        public string ClientId => Node?.ClientId;
+        protected const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+
+        internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
+        internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
+        internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
+        public Node Node => Session.Node;
+        public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
         public PublicKey Id => Node.Id;
-        string ITxPoolPeer.Enode => Node?.ToString();
+        string ITxPoolPeer.Enode => Node.ToString();
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
 
-        public long HeadNumber { get; set; }
+        public ulong HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
 
         // this means that we know what the number, hash, and total diff of the head block is
@@ -53,8 +56,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
-        protected AssociativeKeyCache<ValueHash256>? _notifiedTransactions;
-        protected AssociativeKeyCache<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
+        private TransactionHashCache.PeerCache? _notifiedTransactions;
+        private object? _notifiedTransactionsLock;
+        private protected TransactionHashCache.PeerCache NotifiedTransactions =>
+            LazyInitializer.EnsureInitialized(ref _notifiedTransactions, ref _notifiedTransactionsLock, static () => SharedTransactionHashes.Cache.CreatePeerCache());
+
+        private static class SharedTransactionHashes
+        {
+            // Allow for different inbound histories across peers as well as the current pool.
+            // TxPool sets MemPoolSize before peers start; this process-wide capacity is fixed on first use.
+            internal static readonly TransactionHashCache Cache = new(4 * MemoryAllowance.MemPoolSize);
+        }
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
@@ -110,7 +122,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 token);
         }
 
-        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
@@ -149,15 +161,29 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         async Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
+            Hash256? requestedHash = hash ?? _remoteHeadBlockHash;
+            if (requestedHash is null) return null;
+
             GetBlockHeadersMessage msg = new();
-            msg.StartBlockHash = hash ?? _remoteHeadBlockHash;
+            msg.StartBlockHash = requestedHash;
             msg.MaxHeaders = 1;
             msg.Reverse = 0;
             msg.Skip = 0;
 
             using IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
             ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
-            return headersSpan.Length > 0 ? headersSpan[0] : null;
+
+            // A peer without the block answers with an empty list, or with an item that decodes to a null header.
+            BlockHeader? header = headersSpan.Length == 0 ? null : headersSpan[0];
+            if (header is null) return null;
+
+            if (header.Hash != requestedHash)
+            {
+                Disconnect(DisconnectReason.UnexpectedHeaderHash, "header hash inconsistent with request");
+                return null;
+            }
+
+            return header;
         }
 
         async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
@@ -183,11 +209,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
-        private bool ShouldNotifyTransaction(Hash256? hash) => hash is not null && NotifiedTransactions.Set(hash.ValueHash256);
+        private bool ShouldNotifyTransaction(Transaction tx, bool sendFullTx)
+            => sendFullTx || (tx.Hash is not null && ShouldNotifyTransactionCore(tx));
+
+        protected virtual bool ShouldNotifyTransactionCore(Transaction tx)
+            => NotifiedTransactions.Set(tx.Hash!.ValueHash256);
 
         public void SendNewTransaction(Transaction tx)
         {
-            if (ShouldNotifyTransaction(tx.Hash))
+            if (ShouldNotifyTransaction(tx, sendFullTx: false))
             {
                 SendNewTransactionCore(tx);
             }
@@ -195,7 +225,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected virtual void SendNewTransactionCore(Transaction tx)
         {
-            if (!tx.SupportsBlobs) //additional protection from sending full tx with blob
+            if (!tx.CarriesBlobs) //additional protection from sending full tx with blob
             {
                 SendMessage(new ArrayPoolList<Transaction>(1) { tx });
             }
@@ -207,7 +237,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             foreach (Transaction tx in txs)
             {
-                if (sendFullTx || ShouldNotifyTransaction(tx.Hash))
+                if (ShouldNotifyTransaction(tx, sendFullTx))
                 {
                     yield return tx;
                 }
@@ -230,7 +260,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 }
 
-                if (tx.Hash is not null && !tx.SupportsBlobs) //additional protection from sending full tx with blob
+                if (tx.Hash is not null && !tx.CarriesBlobs) //additional protection from sending full tx with blob
                 {
                     txsToSend.Add(tx);
                     packetSizeLeft -= txSize;
@@ -303,7 +333,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     ? ArrayPoolList<BlockHeader>.Empty()
                     : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
-            headers = FixHeadersForGeth(headers);
+            headers = TruncateHeadersAtFirstMissing(headers);
 
             return Task.FromResult(new BlockHeadersMessage(headers));
         }
@@ -337,18 +367,25 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 Block? block = SyncServer.Find(hashes[i]);
                 if (block is null)
                 {
-                    // GetBlockBodies responses are sparse: unavailable hashes are omitted from the response.
                     continue;
                 }
 
-                sizeEstimate += MessageSizeEstimator.EstimateSize(block);
+                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                // Cap the message size; return the prefix (bodies match request hashes positionally).
+                if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
                 {
                     break;
                 }
 
                 blocks.Add(block);
+                sizeEstimate += blockSize;
+
+                // Soft limit keeps the common-case response small.
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
             }
 
             return Task.FromResult(new BlockBodiesMessage(blocks));
@@ -371,10 +408,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-            ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
+            ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
 
             ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Length; i++)
+            for (int i = 0; i < hashes.Length && i < MaxReceiptsLookups; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -387,38 +424,45 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 {
                     break;
                 }
-                sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                ulong blockSize = MessageSizeEstimator.EstimateSize(blockTxReceipts);
+
+                // Cap the message size; return the prefix (receipts match request hashes positionally).
+                if (sizeEstimate + blockSize > HardOutgoingReceiptsMessageSizeLimit)
                 {
+                    // An empty prefix means the block alone does not fit, so this peer can never get it from us.
+                    if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node:c}: estimated {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
                     break;
                 }
 
                 txReceipts.Add(blockTxReceipts);
+                sizeEstimate += blockSize;
+
+                // Soft limit keeps the common-case response small.
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
             }
 
             return Task.FromResult(new ReceiptsMessage(txReceipts));
         }
 
-        private static IOwnedReadOnlyList<BlockHeader> FixHeadersForGeth(IOwnedReadOnlyList<BlockHeader> headers)
+        private static IOwnedReadOnlyList<BlockHeader> TruncateHeadersAtFirstMissing(IOwnedReadOnlyList<BlockHeader> headers)
         {
-            int emptyBlocksAtTheEnd = 0;
             ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+            int toTake = headersSpan.Length;
             for (int i = 0; i < headersSpan.Length; i++)
             {
-                if (headersSpan[headersSpan.Length - 1 - i] is null)
+                if (headersSpan[i] is null)
                 {
-                    emptyBlocksAtTheEnd++;
-                }
-                else
-                {
+                    toTake = i;
                     break;
                 }
             }
 
-            if (emptyBlocksAtTheEnd != 0)
+            if (toTake != headersSpan.Length)
             {
-                int toTake = headersSpan.Length - emptyBlocksAtTheEnd;
                 if (headers is ArrayPoolList<BlockHeader> asArrayPoolList)
                 {
                     asArrayPoolList.Truncate(toTake);

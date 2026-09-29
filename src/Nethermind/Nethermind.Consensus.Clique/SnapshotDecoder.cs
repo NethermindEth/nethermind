@@ -11,16 +11,16 @@ namespace Nethermind.Consensus.Clique
 {
     internal sealed class SnapshotDecoder : RlpDecoder<Snapshot>
     {
-        protected override Snapshot DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Snapshot DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.ReadSequenceLength();
 
             // Block number
-            long number = (long)decoderContext.DecodeUInt256();
+            ulong number = (ulong)decoderContext.DecodeUInt256();
             // Hash
             Hash256 hash = decoderContext.DecodeKeccak();
             // Signers
-            SortedList<Address, long> signers = DecodeSigners(ref decoderContext);
+            SortedList<Address, ulong> signers = DecodeSigners(ref decoderContext);
             // Votes
             List<Vote> votes = DecodeVotes(ref decoderContext);
             // Tally
@@ -30,16 +30,16 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
-        public override void Encode(RlpStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int signersLength, int votesLength, int tallyLength) =
                 GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            stream.Encode(item.Number);
-            stream.Encode(item.Hash);
-            EncodeSigners(stream, item.Signers, signersLength);
-            EncodeVotes(stream, item.Votes, votesLength);
-            EncodeTally(stream, item.Tally, tallyLength);
+            writer.StartSequence(contentLength);
+            writer.Encode(item.Number);
+            writer.Encode(item.Hash);
+            EncodeSigners(ref writer, item.Signers, signersLength);
+            EncodeVotes(ref writer, item.Votes, votesLength);
+            EncodeTally(ref writer, item.Tally, tallyLength);
 
         }
 
@@ -65,23 +65,23 @@ namespace Nethermind.Consensus.Clique
             return (contentLength, signersLength, votesLength, tallyLength);
         }
 
-        private static SortedList<Address, long> DecodeSigners(ref Rlp.ValueDecoderContext decoderContext)
+        private static SortedList<Address, ulong> DecodeSigners(ref RlpReader decoderContext)
         {
             decoderContext.ReadSequenceLength();
             int length = decoderContext.DecodePositiveInt();
             decoderContext.GuardLimit(length);
-            SortedList<Address, long> signers = new(GenericComparer.GetOptimized<Address>());
+            SortedList<Address, ulong> signers = new(GenericComparer.GetOptimized<Address>());
             for (int i = 0; i < length; i++)
             {
                 Address signer = decoderContext.DecodeAddress();
-                long signedAt = (long)decoderContext.DecodeUInt256();
+                ulong signedAt = (ulong)decoderContext.DecodeUInt256();
                 signers.Add(signer, signedAt);
             }
 
             return signers;
         }
 
-        private static List<Vote> DecodeVotes(ref Rlp.ValueDecoderContext decoderContext)
+        private static List<Vote> DecodeVotes(ref RlpReader decoderContext)
         {
             decoderContext.ReadSequenceLength();
             int length = decoderContext.DecodePositiveInt();
@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.Clique
             for (int i = 0; i < length; i++)
             {
                 Address signer = decoderContext.DecodeAddress();
-                long block = (long)decoderContext.DecodeUInt256();
+                ulong block = (ulong)decoderContext.DecodeUInt256();
                 Address address = decoderContext.DecodeAddress();
                 bool authorize = decoderContext.DecodeBool();
                 Vote vote = new(signer, block, address, authorize);
@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.Clique
             return votes;
         }
 
-        private static Dictionary<Address, Tally> DecodeTally(ref Rlp.ValueDecoderContext decoderContext)
+        private static Dictionary<Address, Tally> DecodeTally(ref RlpReader decoderContext)
         {
             decoderContext.ReadSequenceLength();
             int length = decoderContext.DecodePositiveInt();
@@ -117,12 +117,12 @@ namespace Nethermind.Consensus.Clique
             return tally;
         }
 
-        private static int GetSignersContentLength(SortedList<Address, long> signers)
+        private static int GetSignersContentLength(SortedList<Address, ulong> signers)
         {
             int signerCount = signers.Count;
             int contentLength = Rlp.LengthOf(signerCount);
             int i = 0;
-            foreach ((Address address, long signedAt) in signers)
+            foreach ((Address address, ulong signedAt) in signers)
             {
                 contentLength += Rlp.LengthOf(address);
                 contentLength += Rlp.LengthOf((UInt256)signedAt);
@@ -131,17 +131,16 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private static void EncodeSigners(RlpStream stream, SortedList<Address, long> signers, int contentLength)
+        private static void EncodeSigners<TWriter>(ref TWriter writer, SortedList<Address, ulong> signers, int contentLength)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            stream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
             int signerCount = signers.Count;
-            stream.Encode(signerCount);
-            int i = 0;
-            foreach ((Address address, long signedAt) in signers)
+            writer.Encode(signerCount);
+            foreach ((Address address, ulong signedAt) in signers)
             {
-                stream.Encode(address);
-                stream.Encode(signedAt);
-                i += 2;
+                writer.Encode(address);
+                writer.Encode(signedAt);
             }
         }
 
@@ -160,19 +159,18 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private static void EncodeVotes(RlpStream stream, List<Vote> votes, int contentLength)
+        private static void EncodeVotes<TWriter>(ref TWriter writer, List<Vote> votes, int contentLength)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            stream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
             int voteCount = votes.Count;
-            stream.Encode(voteCount);
-            Rlp[] rlp = new Rlp[4 * voteCount + 1];
-            rlp[0] = Rlp.Encode(voteCount);
+            writer.Encode(voteCount);
             for (int i = 0; i < voteCount; i++)
             {
-                stream.Encode(votes[i].Signer);
-                stream.Encode(votes[i].Block);
-                stream.Encode(votes[i].Address);
-                stream.Encode(votes[i].Authorize);
+                writer.Encode(votes[i].Signer);
+                writer.Encode(votes[i].Block);
+                writer.Encode(votes[i].Address);
+                writer.Encode(votes[i].Authorize);
             }
         }
 
@@ -191,20 +189,17 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private static void EncodeTally(RlpStream stream, Dictionary<Address, Tally> tally, int contentLength)
+        private static void EncodeTally<TWriter>(ref TWriter writer, Dictionary<Address, Tally> tally, int contentLength)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            stream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
             int tallyCount = tally.Count;
-            stream.Encode(tallyCount);
-            Rlp[] rlp = new Rlp[3 * tallyCount + 1];
-            rlp[0] = Rlp.Encode(tallyCount);
-            int i = 0;
+            writer.Encode(tallyCount);
             foreach (KeyValuePair<Address, Tally> tallyItem in tally)
             {
-                stream.Encode(tallyItem.Key);
-                stream.Encode(tallyItem.Value.Votes);
-                stream.Encode(tallyItem.Value.Authorize);
-                i++;
+                writer.Encode(tallyItem.Key);
+                writer.Encode(tallyItem.Value.Votes);
+                writer.Encode(tallyItem.Value.Authorize);
             }
         }
     }

@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Transactions
 
         public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig)
         {
-            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig));
+            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig) { IncludeRejectionMessage = false });
             return this;
         }
 

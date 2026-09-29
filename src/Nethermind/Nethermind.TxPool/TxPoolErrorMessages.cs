@@ -1,0 +1,43 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.TxPool;
+
+/// <summary>
+/// User-facing rejection phrases for <see cref="AcceptTxResult"/> codes surfaced through the RPC layer.
+/// </summary>
+public static class TxPoolErrorMessages
+{
+    // Geth-canonical mempool rejection phrases
+    public const string AlreadyKnown = "already known";
+    public const string TransactionUnderpriced = "transaction underpriced";
+    public const string ReplacementTransactionUnderpriced = "replacement transaction underpriced";
+    public const string GasLimitReached = "gas limit reached";
+    public const string NonceTooHigh = "nonce too high";
+    public const string NonceTooLow = "nonce too low";
+    public const string SenderNotEoa = "sender not an eoa";
+
+    // Nethermind-specific mempool rejection phrases
+    public const string FailedToRecoverSender = "failed to recover sender";
+    public const string TransactionOverflow = "transaction cost overflow";
+    public const string TransactionInvalid = "transaction invalid";
+    public const string NonceTooFarInFuture = "nonce too far in future";
+    public const string PendingTransactionTypeConflict = "pending transaction type conflict";
+    public const string UnsupportedTransactionType = "unsupported transaction type";
+    public const string TransactionTooLarge = "transaction too large";
+    public const string DelegationNonceGap = "delegation nonce gap";
+    public const string DelegationAuthorityHasPendingTx = "delegation authority has pending transaction";
+    public const string NodeIsSyncing = "node is syncing";
+    public const string FrameTxExpired = "frame transaction expired";
+    public const string FrameTxVerifyGasTooHigh = "frame transaction validation prefix exceeds MAX_VERIFY_GAS";
+    public const string FrameTxVerifyStateGasTooHigh = "frame transaction validation prefix exceeds MAX_VERIFY_STATE_GAS";
+    public const string KeyedNonceUnmet = "keyed nonce sequence not current";
+    public const string FrameTxPayerExposureExceeded = "frame transaction payer exposure exceeds balance";
+    public const string FrameTxNoPayer = "frame transaction never approves a payer";
+    public const string FrameSimulationFailed = "frame transaction validation-prefix simulation failed";
+    public const string FrameSimulationDeferred = "frame transaction validation-prefix simulation deferred";
+    public const string FrameTxMissingSidecar = "blob-carrying frame transaction is missing its blob sidecar";
+    public const string FrameTxVerifyAfterPrefix = "frame transaction has a VERIFY frame after its validation prefix";
+    public const string FrameTxMisplacedExpiryFrame = "frame transaction has an expiry verifier frame that does not lead its frame list";
+    public const string NonCanonicalPaymasterLimitReached = "non-canonical paymaster already sponsors the maximum number of pending frame transactions";
+}

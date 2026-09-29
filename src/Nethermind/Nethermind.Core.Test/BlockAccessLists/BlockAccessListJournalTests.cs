@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -19,6 +22,237 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 [TestFixture]
 public class BlockAccessListJournalTests
 {
+    [Test]
+    public void Coverage_reduces_workers_and_checks_partial_words(
+        [Values(0, 1, 7, 8, 9, 63, 64, 65, 511, 512, 513)] int count, [Values] bool omitLast, [Values] bool wideKeys,
+        [Values(1, 2, 8)] int workerCount)
+    {
+        UInt256[] slots = new UInt256[count];
+        for (int i = 0; i < count; i++)
+            slots[i] = wideKeys ? new UInt256((ulong)(count - i), (ulong)i, (ulong)i / 2, (ulong)i / 4) : (UInt256)i;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(slots).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage[] workers = new BalReadCoverage[workerCount];
+        for (int i = 0; i < workers.Length; i++) workers[i] = plan.CreateCoverage();
+        int marked = omitLast ? Math.Max(0, count - 1) : count;
+        for (int i = 0; i < marked; i++)
+        {
+            StorageCell cell = new(TestItem.AddressA, slots[i]);
+            workers[i % workerCount].TryMark(cell);
+            workers[i % workerCount].TryMark(cell);
+        }
+        ulong chargeableReads = 0;
+        foreach (BalReadCoverage worker in workers) chargeableReads += worker.ChargeableReadCount;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chargeableReads, Is.EqualTo((ulong)marked));
+            Assert.That(plan.TryFindUncovered(out _), Is.EqualTo(omitLast && count > 0));
+        }
+    }
+
+    [Test]
+    public void Coverage_resolves_collisions_and_rejects_missing_keys([Values] bool collideAccounts)
+    {
+        List<StorageCell> reads = [];
+        ReadOnlyAccountChanges[] accounts = new ReadOnlyAccountChanges[collideAccounts ? 16 : 1];
+        for (int account = 0; account < accounts.Length; account++)
+        {
+            Address address = collideAccounts ? CollidingAddress(account + 1) : TestItem.AddressA;
+            UInt256[] slots = new UInt256[collideAccounts ? account % 3 + 1 : 16];
+            for (int i = 0; i < slots.Length; i++)
+            {
+                ulong limb = (ulong)i + 1;
+                slots[i] = collideAccounts ? (UInt256)limb : new UInt256(limb, limb, limb, limb);
+                reads.Add(new StorageCell(address, slots[i]));
+            }
+            accounts[account] = new(address, [], slots, [], [], []);
+        }
+        using BalReadStoragePlan plan = new(new ReadOnlyBlockAccessList(accounts, accounts.Length + reads.Count));
+        // Inspect the bounded cache so these lookups must exercise the binary-search fallback.
+        int[] index = (int[])typeof(BalReadStoragePlan)
+            .GetField(collideAccounts ? "_addressIndex" : "_slotIndex", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(plan)!;
+        Assert.That(index.AsSpan(0, 4).ToArray(), Is.EqualTo(new[] { 1, 2, 3, 4 }));
+        Assert.That(index.AsSpan(0, 32).ToArray(), Does.Not.Contain(5));
+        BalReadCoverage coverage = plan.CreateCoverage();
+        for (int i = 0; i < reads.Count; i++)
+        {
+            StorageCell cell = reads[i];
+            Assert.That(plan.TryGetOrdinal(new StorageCell(new Address(cell.Address.Bytes), cell.Index), out int ordinal), Is.True);
+            Assert.That(ordinal, Is.EqualTo(i));
+            Assert.That(coverage.TryMark(cell), Is.True);
+        }
+        StorageCell missing = collideAccounts
+            ? new StorageCell(CollidingAddress(17), UInt256.One)
+            : new StorageCell(TestItem.AddressA, new UInt256(17, 17, 17, 17));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(plan.TryGetOrdinal(missing, out _), Is.False);
+            Assert.That(plan.TryGetOrdinal(new StorageCell(reads[0].Address, UInt256.MaxValue), out _), Is.False);
+            if (!collideAccounts) Assert.That(plan.TryGetOrdinal(new StorageCell(TestItem.AddressA, UInt256.One), out _), Is.False);
+            Assert.That(plan.TryFindUncovered(out _), Is.False);
+            Assert.That(coverage.ChargeableReadCount, Is.EqualTo(reads.Count));
+        }
+
+        static Address CollidingAddress(int index)
+        {
+            byte[] bytes = new byte[Address.Size];
+            bytes[0] = bytes[8] = (byte)index;
+            return new Address(bytes);
+        }
+    }
+
+    [Test]
+    public void Coverage_distinguishes_accounts_and_reuses_cached_hits_and_misses()
+    {
+        StorageCell first = new(TestItem.AddressA, 1);
+        StorageCell last = new(TestItem.AddressA, 3);
+        StorageCell other = new(TestItem.AddressB, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(first.Address).WithStorageReads(first.Index, last.Index).TestObject,
+            Build.An.AccountChanges.WithAddress(other.Address).WithStorageReads(other.Index).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage worker = plan.CreateCoverage();
+        StorageCell[] misses = [new(first.Address, 0), new(first.Address, 2), new(first.Address, 4), new(TestItem.AddressC, 1)];
+        for (int slice = 0; slice < 2; slice++)
+        {
+            worker.StartSlice();
+            foreach (StorageCell miss in misses)
+            {
+                Assert.That(worker.TryMark(miss), Is.False);
+                Assert.That(worker.TryMark(miss), Is.False);
+            }
+            Assert.That(worker.ChargeableReadCount, Is.Zero);
+            Assert.That(worker.TryMark(first), Is.True);
+            Assert.That(worker.TryMark(new StorageCell(new Address(first.Address.Bytes), first.Index)), Is.True);
+            Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
+            Assert.That(worker.TryMark(other), Is.True);
+            Assert.That(worker.ChargeableReadCount, Is.EqualTo(2));
+            Assert.That(worker.TryMark(last), Is.True);
+            Assert.That(worker.ChargeableReadCount, Is.EqualTo(3));
+        }
+        Assert.That(plan.TryFindUncovered(out _), Is.False);
+        plan.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => worker.TryMark(last));
+        Assert.Throws<ObjectDisposedException>(() => plan.TryGetOrdinal(last, out _));
+    }
+
+    [Test]
+    public void Coverage_clears_dirty_rentals_and_ignores_excess_capacity([Values(65, 513)] int count)
+    {
+        UInt256[] slots = new UInt256[count];
+        for (int i = 0; i < count; i++) slots[i] = (UInt256)i;
+        using BalReadStoragePlan plan = new(Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(slots).TestObject).TestObject);
+        DirtyCoveragePool pool = new();
+        BalReadCoverage worker = new(plan, pool);
+        try
+        {
+            Assert.That(worker.FirstUncovered(), Is.Zero);
+            for (int i = 0; i < count - 1; i++) worker.TryMark(new StorageCell(TestItem.AddressA, slots[i]));
+            Assert.That(worker.FirstUncovered(), Is.EqualTo(count - 1));
+            StorageCell last = new(TestItem.AddressA, slots[^1]);
+            worker.TryMark(last);
+            Assert.That(worker.FirstUncovered(), Is.EqualTo(-1));
+            worker.StartSlice();
+            worker.TryMark(last);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
+                Assert.That(worker.FirstUncovered(), Is.EqualTo(-1));
+            }
+        }
+        finally
+        {
+            worker.Release();
+        }
+        worker.Release();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.Returns, Is.EqualTo(1));
+            Assert.That(worker.Plan, Is.Null);
+        }
+        Assert.Throws<ObjectDisposedException>(() => worker.TryMark(new StorageCell(TestItem.AddressA, slots[^1])));
+        BalReadCoverage reused = new(plan, pool);
+        try
+        {
+            Assert.That(reused.FirstUncovered(), Is.Zero);
+            Assert.That(reused.ChargeableReadCount, Is.Zero);
+            reused.TryMark(new StorageCell(TestItem.AddressA, slots[^1]));
+            Assert.That(reused.ChargeableReadCount, Is.EqualTo(1));
+            Assert.That(reused.FirstUncovered(), Is.Zero);
+        }
+        finally
+        {
+            reused.Release();
+        }
+        Assert.That(pool.Returns, Is.EqualTo(2));
+    }
+
+    private sealed class DirtyCoveragePool : ArrayPool<ulong>
+    {
+        public ulong[] Buffer { get; private set; } = [];
+        public int Returns { get; private set; }
+
+        public override ulong[] Rent(int minimumLength)
+        {
+            if (Buffer.Length == 0)
+            {
+                Buffer = new ulong[minimumLength + 7];
+                Array.Fill(Buffer, ulong.MaxValue);
+            }
+            return Buffer;
+        }
+
+        public override void Return(ulong[] array, bool clearArray = false)
+        {
+            Assert.That(array, Is.SameAs(Buffer));
+            Returns++;
+            if (clearArray) Array.Clear(array);
+        }
+    }
+
+    private static readonly Address[] SystemAddresses =
+    [
+        Eip7002Constants.WithdrawalRequestPredeployAddress,
+        Eip7251Constants.ConsolidationRequestPredeployAddress,
+        Eip8282Constants.BuilderDepositRequestPredeployAddress,
+        Eip8282Constants.BuilderExitRequestPredeployAddress
+    ];
+
+    [Test]
+    public void Coverage_reuses_slice_storage_and_excludes_system_reads(
+        [ValueSource(nameof(SystemAddresses))] Address systemAddress, [Values(1, 65)] int systemReads)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        StorageCell system = new(systemAddress, 2);
+        UInt256[] systemSlots = new UInt256[systemReads];
+        for (int i = 0; i < systemSlots.Length; i++) systemSlots[i] = (UInt256)(i + 2);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject,
+            Build.An.AccountChanges.WithAddress(system.Address).WithStorageReads(systemSlots).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage worker = plan.CreateCoverage();
+        worker.TryMark(cell);
+        foreach (UInt256 slot in systemSlots) worker.TryMark(new StorageCell(systemAddress, slot));
+        Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
+        for (int i = 0; i < 10_000; i++)
+        {
+            worker.StartSlice();
+            worker.TryMark(cell);
+            worker.TryMark(cell);
+            worker.TryMark(system);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
+            Assert.That(plan.TryFindUncovered(out _), Is.False, "earlier slices still cover system reads");
+        }
+        plan.Dispose();
+        Assert.That(worker.Plan, Is.Null);
+        Assert.Throws<ObjectDisposedException>(() => worker.TryMark(cell));
+    }
+
     [Test]
     public void AddCodeChange_with_equal_before_after_does_not_create_account_changes()
     {
@@ -61,35 +295,48 @@ public class BlockAccessListJournalTests
             Assert.That(accountChanges.NonceChange!.Value.Value, Is.EqualTo(1u));
             Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(codeBeforeSnapshot));
 
-            Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
-            Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)11).ToBigEndianWord()));
+            Assert.That(accountChanges.StorageChanges.TryGetValue(slot, out StorageChange slotChange), Is.True);
+            Assert.That(slotChange.Value, Is.EqualTo((UInt256)11));
         }
     }
 
     [Test]
-    public void Restore_after_delete_account_restores_within_block_change_entries()
+    public void Restore_after_delete_account_restores_within_block_change_entries([Values(0, 1, 64)] int slotCount)
     {
-        UInt256 slot = 9;
         BlockAccessListAtIndex slice = new() { Index = 1 };
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 50);
         slice.AddNonceChange(TestItem.AddressA, 3);
         slice.AddCodeChange(TestItem.AddressA, before: [], after: new byte[] { 0x60, 0x01 });
-        slice.AddStorageChange(TestItem.AddressA, slot, before: 0, after: 77);
+        slice.AddStorageRead(TestItem.AddressA, 999);
+        for (int i = 0; i < slotCount; i++)
+            slice.AddStorageChange(TestItem.AddressA, (UInt256)i, before: 0, after: (UInt256)(77 + i));
 
         int snapshot = slice.TakeSnapshot();
 
         slice.DeleteAccount(TestItem.AddressA, oldBalance: 50);
-        slice.Restore(snapshot);
-
         AccountChangesAtIndex accountChanges = slice.GetAccountChanges(TestItem.AddressA)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges.StorageChangeCount, Is.Zero);
+            Assert.That(accountChanges.StorageReads, Has.Count.EqualTo(slotCount + 1));
+            for (int i = 0; i < slotCount; i++)
+                Assert.That(accountChanges.StorageReads, Does.Contain((UInt256)i));
+        }
+
+        slice.Restore(snapshot);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accountChanges.BalanceChange!.Value.Value, Is.EqualTo((UInt256)50));
             Assert.That(accountChanges.NonceChange!.Value.Value, Is.EqualTo(3u));
             Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(new byte[] { 0x60, 0x01 }));
 
-            Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
-            Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)77).ToBigEndianWord()));
+            Assert.That(accountChanges.StorageChangeCount, Is.EqualTo(slotCount));
+            Assert.That(accountChanges.StorageReads, Is.EquivalentTo(new UInt256[] { 999 }));
+            for (int i = 0; i < slotCount; i++)
+            {
+                Assert.That(accountChanges.StorageChanges.TryGetValue((UInt256)i, out StorageChange slotChange), Is.True);
+                Assert.That(slotChange.Value, Is.EqualTo((UInt256)(77 + i)));
+            }
         }
     }
 
@@ -114,7 +361,105 @@ public class BlockAccessListJournalTests
         {
             Assert.That(accountChanges!.BalanceChange, Is.Null);
             Assert.That(accountChanges.NonceChange, Is.Null);
-            Assert.That(accountChanges.TryGetStorageChange(slot, out _), Is.False);
+            Assert.That(accountChanges.StorageChanges.TryGetValue(slot, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Storage_overwrites_preserve_snapshot_and_read_membership([Values] bool returnToOriginal)
+    {
+        BlockAccessListAtIndex slice = new() { Index = 3 };
+        UInt256 key = UInt256.MaxValue;
+        slice.AddStorageRead(TestItem.AddressA, in key);
+        slice.AddStorageChange(TestItem.AddressA, in key, 7, 11);
+        slice.AddStorageRead(TestItem.AddressA, in key);
+        int snapshot = slice.TakeSnapshot();
+        slice.AddStorageChange(TestItem.AddressA, in key, 11, 13);
+        UInt256 last = returnToOriginal ? 7u : 17u;
+        slice.AddStorageChange(TestItem.AddressA, in key, 13, in last);
+
+        AccountChangesAtIndex account = slice.GetAccountChanges(TestItem.AddressA)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.HasStorageChange(in key), Is.EqualTo(!returnToOriginal));
+            Assert.That(account.StorageReads.Contains(key), Is.EqualTo(returnToOriginal));
+        }
+        if (!returnToOriginal) Assert.That(account.StorageChanges[key].Value, Is.EqualTo(last));
+
+        slice.AddStorageChange(TestItem.AddressA, in key, in last, 19);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChanges[key].Value, Is.EqualTo((UInt256)19));
+            Assert.That(account.StorageReads, Does.Not.Contain(key));
+        }
+
+        slice.Restore(snapshot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChanges[key].Value, Is.EqualTo((UInt256)11));
+            Assert.That(account.StorageChanges[key].Index, Is.EqualTo(3u));
+            Assert.That(account.StorageReads, Does.Not.Contain(key));
+        }
+    }
+
+    [Test]
+    public void Storage_journal_coalesces_interleaved_writes_between_nested_snapshots([Values] bool separateAccounts)
+    {
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        StorageCell[] cells = [new(TestItem.AddressA, 0), new(TestItem.AddressA, UInt256.MaxValue),
+            new(separateAccounts ? TestItem.AddressB : TestItem.AddressA, 3)];
+        int empty = slice.TakeSnapshot();
+        WriteRepeated(7, 11);
+        int outer = slice.TakeSnapshot();
+        Assert.That(outer, Is.EqualTo(cells.Length));
+        WriteRepeated(11, 7);
+        int inner = slice.TakeSnapshot();
+        Assert.That(inner - outer, Is.EqualTo(cells.Length));
+        AssertValue(7);
+
+        WriteRepeated(7, 29);
+        slice.Restore(inner);
+        AssertValue(7);
+        WriteRepeated(7, 53);
+        slice.Restore(inner);
+        AssertValue(7);
+        slice.Restore(outer);
+        AssertValue(11);
+        slice.Restore(empty);
+        AssertValue(7);
+
+        slice.Clear();
+        WriteRepeated(7, 11);
+        Assert.That(slice.TakeSnapshot(), Is.EqualTo(cells.Length));
+        slice.Restore(0);
+        AssertValue(7);
+
+        void WriteRepeated(uint before, uint after)
+        {
+            UInt256 current = before;
+            for (uint repeat = 0; repeat < 64; repeat++)
+            {
+                UInt256 next = repeat == 63 ? after : repeat + 100;
+                foreach (StorageCell cell in cells) slice.AddStorageChange(in cell, in current, in next);
+                current = next;
+            }
+        }
+
+        void AssertValue(uint expected)
+        {
+            foreach (StorageCell cell in cells)
+            {
+                AccountChangesAtIndex account = slice.GetAccountChanges(cell.Address)!;
+                if (expected == 7)
+                {
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(account.HasStorageChange(cell.Index), Is.False);
+                        Assert.That(account.StorageReads, Does.Contain(cell.Index));
+                    }
+                }
+                else Assert.That(account.StorageChanges[cell.Index].Value, Is.EqualTo((UInt256)expected));
+            }
         }
     }
 }

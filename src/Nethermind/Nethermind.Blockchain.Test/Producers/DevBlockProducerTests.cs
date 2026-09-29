@@ -35,7 +35,7 @@ public class DevBlockProducerTests
 
         IManualBlockProductionTrigger trigger = container.Resolve<IManualBlockProductionTrigger>();
 
-        container.Resolve<IMainProcessingContext>().BlockchainProcessor.Start();
+        container.Resolve<IMainProcessingContext>().BlockProcessingQueue.Start();
         container.Resolve<IBlockProducerRunner>().Start();
 
         blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);

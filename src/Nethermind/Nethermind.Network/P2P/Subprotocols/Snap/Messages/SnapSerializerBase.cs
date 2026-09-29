@@ -9,17 +9,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     public abstract class SnapSerializerBase<T> : IZeroInnerMessageSerializer<T> where T : MessageBase
     {
         public abstract void Serialize(IByteBuffer byteBuffer, T message);
-        protected abstract T Deserialize(ref Rlp.ValueDecoderContext ctx);
+        protected abstract T Deserialize(ref RlpReader ctx);
         public abstract int GetLength(T message, out int contentLength);
 
-        protected NettyRlpStream GetRlpStreamAndStartSequence(IByteBuffer byteBuffer, T msg)
+        protected ByteBufferRlpWriter GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, T msg)
         {
             int totalLength = GetLength(msg, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(contentLength);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
 
-            return stream;
+            return writer;
         }
 
         public T Deserialize(IByteBuffer byteBuffer) =>

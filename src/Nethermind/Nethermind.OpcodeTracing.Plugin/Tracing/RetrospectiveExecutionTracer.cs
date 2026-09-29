@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -32,12 +31,12 @@ public sealed class RetrospectiveExecutionTracer
     private readonly OpcodeCounter _counter;
     private readonly ILogger _logger;
     private readonly int _maxDegreeOfParallelism;
-    private readonly ConcurrentQueue<long> _skippedBlocks = new();
+    private readonly ConcurrentQueue<ulong> _skippedBlocks = new();
 
     /// <summary>
     /// Gets the block numbers that were skipped due to unavailable state.
     /// </summary>
-    public IReadOnlyCollection<long> SkippedBlocks => _skippedBlocks;
+    public IReadOnlyCollection<ulong> SkippedBlocks => _skippedBlocks;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RetrospectiveExecutionTracer"/> class.
@@ -91,7 +90,7 @@ public sealed class RetrospectiveExecutionTracer
         }
 
         // Generate block numbers without int cast to avoid overflow for large ranges
-        IEnumerable<long> blockNumbers = GenerateBlockNumbers(range);
+        IEnumerable<ulong> blockNumbers = GenerateBlockNumbers(range);
 
         // Configure parallel processing options
         ParallelOptions parallelOptions = new()
@@ -108,9 +107,9 @@ public sealed class RetrospectiveExecutionTracer
         }).ConfigureAwait(false);
     }
 
-    private static IEnumerable<long> GenerateBlockNumbers(BlockRange range)
+    private static IEnumerable<ulong> GenerateBlockNumbers(BlockRange range)
     {
-        for (long i = range.StartBlock; i <= range.EndBlock; i++)
+        for (ulong i = range.StartBlock; i <= range.EndBlock; i++)
         {
             yield return i;
         }
@@ -119,13 +118,13 @@ public sealed class RetrospectiveExecutionTracer
     /// <summary>
     /// Processes a single block by replaying all its transactions with the EVM.
     /// This method is synchronous and thread-safe for parallel execution.
-    /// State availability is checked via exception handling rather than pre-checking,
-    /// matching the pattern used by debug_traceBlock.
+    /// Parent state availability is checked when the scope opens; nodes missing mid-execution surface as
+    /// <see cref="MissingTrieNodeException"/>, matching the pattern used by debug_traceBlock.
     /// </summary>
     /// <param name="blockNumber">The block number to process.</param>
     /// <param name="progress">The progress tracker.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    private void ProcessBlockSync(long blockNumber, TracingProgress progress, CancellationToken cancellationToken)
+    private void ProcessBlockSync(ulong blockNumber, TracingProgress progress, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -142,15 +141,25 @@ public sealed class RetrospectiveExecutionTracer
         }
 
         // Process the block with our opcode counting tracer
-        // State availability is determined by catching MissingTrieNodeException during processing
         try
         {
-            long[] blockOpcodes = ProcessBlock(block, cancellationToken);
-            _counter.AccumulateFrom(blockOpcodes);
+            long[]? blockOpcodes = ProcessBlock(block, cancellationToken);
+            if (blockOpcodes is null)
+            {
+                // State is genuinely unavailable (pruned or not synced)
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"State unavailable for block {blockNumber}");
+                }
+                _skippedBlocks.Enqueue(blockNumber);
+            }
+            else
+            {
+                _counter.AccumulateFrom(blockOpcodes);
+            }
         }
         catch (MissingTrieNodeException ex)
         {
-            // State is genuinely unavailable (pruned or not synced)
             if (_logger.IsWarn)
             {
                 _logger.Warn($"State unavailable for block {blockNumber}: {ex.Message}");
@@ -181,22 +190,18 @@ public sealed class RetrospectiveExecutionTracer
     /// </summary>
     /// <param name="block">The block to process.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Array of opcode counts (256 elements, one per possible opcode byte).</returns>
-    private long[] ProcessBlock(Block block, CancellationToken cancellationToken)
+    /// <returns>Array of opcode counts (256 elements, one per possible opcode byte), or <c>null</c> when the block's parent state is unavailable.</returns>
+    private long[]? ProcessBlock(Block block, CancellationToken cancellationToken)
     {
         long[] blockOpcodes = new long[256];
-
-        // Get parent header for state context
-        BlockHeader? parentHeader = block.IsGenesis
-            ? null
-            : _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
 
         // Create independent processing environment for this block (thread-safe for parallel processing)
         IReadOnlyTxProcessorSource txProcessorSource = _txProcessingEnvFactory.Create();
         try
         {
             // Create isolated processing scope based on parent state
-            using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(parentHeader);
+            if (!txProcessorSource.TryBuildAtTarget(block.Header, out IReadOnlyTxProcessingScope? scope)) return null;
+            using IDisposable _ = scope;
 
             // Clone the header to avoid mutating the shared cached instance from BlockTree
             BlockHeader tracingHeader = block.Header.Clone();

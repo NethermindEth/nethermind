@@ -36,7 +36,7 @@ public interface IBlockAccessListManager
     void WaitForBalWarmup();
 
     void Setup(Block block);
-    void SpendGas(long gas);
+    void SpendGas(ulong gas);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
     ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null);
     void NextTransaction();
@@ -57,9 +57,9 @@ public interface IBlockAccessListManager
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
+    void InstallPredeploys(IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
-    void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress);
 }
 
 /// <summary>

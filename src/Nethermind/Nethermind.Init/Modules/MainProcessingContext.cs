@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -22,13 +21,10 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
 {
     public MainProcessingContext(
         ILifetimeScope rootLifetimeScope,
-        IReceiptConfig receiptConfig,
         IInitConfig initConfig,
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
-        CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
-        IBlockTree blockTree,
         IProcessExitSource processExitSource,
         ILogManager logManager)
     {
@@ -50,24 +46,15 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
-                    new BlockchainProcessor(
-                        blockTree,
-                        branchProcessor,
-                        compositeBlockPreprocessorStep,
-                        worldStateManager.GlobalStateReader,
-                        logManager,
-                        new BlockchainProcessor.Options
-                        {
-                            StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                            DumpOptions = initConfig.AutoDump
-                        },
-                        processingStats)
-                    {
-                        IsMainProcessor = true // Manual construction because of this flag
-                    })
-                .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
-                .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
+                .AddScoped<BlockchainProcessor.Options, IReceiptConfig, IBlocksConfig>((receiptConfig, blocksConfig) => new()
+                {
+                    StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                    DumpOptions = initConfig.AutoDump,
+                    ProcessingCores = blocksConfig.ProcessingCores
+                })
+                .AddScoped<BlockchainProcessor>()
+                .Bind<IBlockchainProcessor, BlockchainProcessor>()
+                .Bind<IBlockProcessingQueue, BlockchainProcessor>()
                 // And finally, to wrap things up.
                 .AddScoped<Components>()
                 ;
@@ -78,7 +65,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         if (initConfig.ExitOnInvalidBlock)
         {
             ILogger exitLogger = logManager.GetClassLogger<MainProcessingContext>();
-            _components.BlockchainProcessor.InvalidBlock += (_, _) =>
+            _components.BlockProcessingQueue.InvalidBlock += (_, _) =>
             {
                 if (exitLogger.IsInfo) exitLogger.Info("Exiting on invalid block");
                 processExitSource.Exit(ExitCodes.InvalidBlock);

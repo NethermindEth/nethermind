@@ -33,10 +33,11 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     private static readonly Task<bool> True = Task.FromResult(true);
     private static readonly Task<bool> False = Task.FromResult(false);
 
-    // JwtAuthentication is created once from JsonRpc.JwtSecretFile during startup and registered as a singleton.
-    // The JWT secret is immutable for the process lifetime, so this thread-local HMAC is keyed by that process constant.
+    // Warmup and live RPC use distinct secrets on shared thread-pool threads.
     [ThreadStatic]
     private static HMACSHA256? _hmac;
+    [ThreadStatic]
+    private static byte[]? _hmacSecret;
 
     // Known HS256 JWT header Base64Url encodings used by consensus clients
     // {"alg":"HS256","typ":"JWT"}
@@ -111,7 +112,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
                 throw;
             }
 
-            if (logger.IsWarn) logger.Warn($"The authentication secret hasn't been found in '{fileInfo.FullName}'so it has been automatically created.");
+            if (logger.IsWarn) logger.Warn($"The authentication secret file '{fileInfo.FullName}' was not found or was empty, so it has been automatically created.");
 
             return new(secret, timestamper, logger);
         }
@@ -147,6 +148,17 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return FromSecret(hexSecret, timestamper, logger);
         }
     }
+
+    /// <summary>Creates a short-lived token for the isolated startup pipeline request.</summary>
+    internal string CreateWarmupToken() => new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false }
+        .CreateToken(new SecurityTokenDescriptor
+        {
+            IssuedAt = _timestamper.UtcNow,
+            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(_secretBytes)
+            {
+                CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false }
+            }, SecurityAlgorithms.HmacSha256)
+        });
 
     public Task<bool> Authenticate(string? token)
     {
@@ -238,7 +250,13 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
 
         Span<byte> computedHash = stackalloc byte[SHA256HashBytes];
-        if (!(_hmac ??= new HMACSHA256(_secretBytes)).TryComputeHash(signedBytes, computedHash, out _))
+        if (!ReferenceEquals(_hmacSecret, _secretBytes))
+        {
+            _hmac?.Dispose();
+            _hmac = new HMACSHA256(_secretBytes);
+            _hmacSecret = _secretBytes;
+        }
+        if (!_hmac!.TryComputeHash(signedBytes, computedHash, out _))
             return false;
 
         Span<byte> sigBytes = stackalloc byte[SHA256HashBytes];
@@ -266,7 +284,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         // Overflow-safe absolute-difference check: casting to ulong maps negative values to
         // large positives, so (ulong)(a - b + c) > (ulong)(2*c) is equivalent to |a - b| > c
         // without needing Math.Abs (which can overflow on long.MinValue).
-        if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        if ((ulong)(iat - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
         {
             if (_logger.IsWarn) WarnTokenExpiredIat(iat, nowUnixSeconds);
             return true;
@@ -402,7 +420,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         long issuedAtUnix = jwtToken.IssuedAt.ToUnixTimeSeconds();
 
         // Unsigned range check: |iat - now| <= TTL without Math.Abs overflow guard
-        if ((ulong)(issuedAtUnix - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        if ((ulong)(issuedAtUnix - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
         {
             if (_logger.IsWarn) WarnTokenExpired(issuedAtUnix, nowUnixSeconds);
             return false;
@@ -478,7 +496,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
 
         // Unsigned range check: |iat - now| <= TTL
-        if ((ulong)(_cachedTokenIat - nowUnixSeconds + JwtTokenTtl) > (ulong)(JwtTokenTtl * 2))
+        if ((ulong)(_cachedTokenIat - nowUnixSeconds + JwtTokenTtl) > JwtTokenTtl * 2UL)
         {
             Volatile.Write(ref _cachedToken, null);
             return false;

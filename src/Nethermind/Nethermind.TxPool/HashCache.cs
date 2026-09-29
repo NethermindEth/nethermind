@@ -28,11 +28,10 @@ namespace Nethermind.TxPool
         private readonly AssociativeKeyCache<ValueHash256> _currentBlockCache = new(
             SafeCapacity);
 
-        public bool Get(Hash256 hash)
-        {
-            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
-            return _currentBlockCache.GetNoRefresh(in valueHash) || _longTermCache.Get(in valueHash);
-        }
+        public bool Get(Hash256 hash) => Get(in hash.ValueHash256);
+
+        public bool Get(in ValueHash256 hash) =>
+            _currentBlockCache.GetNoRefresh(in hash) || _longTermCache.Get(in hash);
 
         public void SetLongTerm(Hash256 hash)
         {
@@ -50,6 +49,12 @@ namespace Nethermind.TxPool
         {
             ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
             _longTermCache.Delete(in valueHash);
+        }
+
+        public void DeleteFromCurrentBlock(Hash256 hash)
+        {
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
+            _currentBlockCache.Delete(in valueHash);
         }
 
         public void Delete(Hash256 hash)

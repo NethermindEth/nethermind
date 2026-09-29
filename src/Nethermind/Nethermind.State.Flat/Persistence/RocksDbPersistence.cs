@@ -7,9 +7,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager) : IPersistence
+public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null) : IPersistence
 {
-    private readonly WriteBufferAdjuster _adjuster = new(db);
+    private readonly WriteBufferAdjuster _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
     private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<RocksDbPersistence>());
 
@@ -19,7 +19,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
+        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot(flags);
         try
         {
             BaseTriePersistence.Reader trieReader = new(

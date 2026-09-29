@@ -23,6 +23,7 @@ namespace Nethermind.Network
         private bool _wasInitialized = false;
         private Dictionary<uint, Fork> DictForks { get; set; }
         internal Fork[] Forks { get; set; }
+        private ForkActivation[] _activations = [];
         private bool _hasTimestampFork;
 
         internal void EnsureInitialized()
@@ -35,7 +36,7 @@ namespace Nethermind.Network
             Hash256 genesisHash = syncServer.Genesis!.Hash;
 
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
-            ForkActivation[] transitionActivations = specProvider.TransitionActivations;
+            ForkActivation[] transitionActivations = _activations = GetForkActivations();
             DictForks = [];
             Forks = new Fork[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
@@ -51,6 +52,13 @@ namespace Nethermind.Network
             }
         }
 
+        /// <summary>The forks, in ascending activation order, that the EIP-2124 checksum is built from.</summary>
+        /// <remarks>
+        /// Chains whose fork schedule is not fully described by the spec transitions - because a fork is gated
+        /// on engine parameters rather than on a release spec - override this to contribute the missing entries.
+        /// </remarks>
+        protected virtual ForkActivation[] GetForkActivations() => specProvider.TransitionActivations;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SetFork(int index, uint crc, Fork fork)
         {
@@ -65,7 +73,8 @@ namespace Nethermind.Network
 
             static ulong GetActivation(ForkActivation forkActivation) =>
                 GetActivationPrimitive(forkActivation.Timestamp, 4UL)
-                ?? (ulong)GetActivationPrimitive(forkActivation.BlockNumber, 4L);
+                ?? GetActivationPrimitive(forkActivation.BlockNumber, 4UL)
+                ?? 0UL;
 
             index += 1;
             return index < transitionActivations.Length
@@ -73,7 +82,7 @@ namespace Nethermind.Network
                 : 0;
         }
 
-        public ForkId GetForkId(long headNumber, ulong headTimestamp)
+        public ForkId GetForkId(ulong headNumber, ulong headTimestamp)
         {
             EnsureInitialized();
 
@@ -117,7 +126,7 @@ namespace Nethermind.Network
                                   && (forkIsLast || IsTimestamp(found.Id.Next)) &&
                                   (peerForkIsLast || IsTimestamp(peerId.Next));
 
-            ulong headActivation = usingTimestamp ? head.Timestamp : (ulong)head.Number;
+            ulong headActivation = usingTimestamp ? head.Timestamp : head.Number;
 
             if (found.Id.Next != peerId.Next) // if the next fork is different
             {
@@ -137,6 +146,20 @@ namespace Nethermind.Network
             }
 
             return ValidationResult.Valid;
+        }
+
+        /// <inheritdoc/>
+        public bool IsForkIdCompatible(ForkId peerId)
+        {
+            EnsureInitialized();
+
+            if (!DictForks.TryGetValue(peerId.ForkHash, out Fork found))
+            {
+                return false;
+            }
+
+            // EIP-2124 uses next=0 when no following fork is known.
+            return peerId.Next == 0 || found.Id.Next == 0 || peerId.Next == found.Id.Next;
         }
 
         public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head)
@@ -167,7 +190,7 @@ namespace Nethermind.Network
                 currentFork = new Fork(new ForkActivation(0, 0), currentFork.Id);
             }
 
-            bool isNextPresent = GetNextActivation(indexOfActive - 1, specProvider.TransitionActivations) is not 0;
+            bool isNextPresent = GetNextActivation(indexOfActive - 1, _activations) is not 0;
 
             return new ForkActivationsSummary
             {

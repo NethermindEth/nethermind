@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -14,6 +16,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init;
 using Nethermind.Specs;
@@ -31,12 +35,113 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
+    private const ulong Eip8037NewAccountTransferGas = GasCostOf.TransactionEip2780
+        + Eip8038Constants.ColdAccountAccess
+        + GasCostOf.TxValueCostEip2780
+        + (ulong)GasCostOf.NewAccountState;
+    private const string FreshRecipientAddress = "0xc278000000000000000000000000000000000000";
+
+    [Test]
+    public async Task Rpc_discards_unobserved_logs(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [Range(0, 4)] int topicCount,
+        [Values(0, 128)] int logSize,
+        [Values] bool stateOverride)
+    {
+        Hash256[] topics = new Hash256[topicCount];
+        Array.Fill(topics, TestItem.KeccakA);
+        byte[] code = Prepare.EvmCode.PushData(7).Op(Instruction.SLOAD).Op(Instruction.POP)
+            .PushData(0x42).Log(logSize, 1024, topics)
+            .Op(Instruction.MSIZE).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).Op(Instruction.MSTORE)
+            .PushData(64).PushData(0).Op(Instruction.RETURN).Done;
+        await AssertRpcLogSuppression(method, code, stateOverride, expectLogs: true);
+    }
+
+    [Test]
+    public async Task Rpc_log_suppression_preserves_failures(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [ValueSource(nameof(FailingRpcLogCode))] byte[] code)
+        => await AssertRpcLogSuppression(method, code, stateOverride: true, expectLogs: false);
+
+    private static IEnumerable<byte[]> FailingRpcLogCode()
+    {
+        yield return Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.LOG4).Done;
+        yield return Prepare.EvmCode.PushData(1).PushData(UInt256.MaxValue).Op(Instruction.LOG0).Done;
+        yield return Prepare.EvmCode.Log(1_000_000, 0).Done;
+        yield return Prepare.EvmCode.Log(128, 1024).PushData(32).PushData(1024).Op(Instruction.REVERT).Done;
+    }
+
+    private static async Task AssertRpcLogSuppression(string method, byte[] code, bool stateOverride, bool expectLogs)
+    {
+        using RpcLogObserver observer = new();
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance), configurer: builder =>
+            builder.AddDecorator<ITransactionProcessor>((_, processor) => new LogObservingProcessor(processor, observer)));
+        Transaction tx = Build.A.Transaction.WithGasLimit(500_000).WithGasPrice(0)
+            .WithTo(stateOverride ? TestItem.AddressB : null)
+            .WithData(stateOverride ? [] : code).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(BlockchainIds.Mainnet));
+        // An access list request with a zero gas price after London is rejected before it runs.
+        if (method == "eth_createAccessList")
+            transaction.GasPrice = null;
+
+        object[] parameters = stateOverride
+            ? [transaction, "latest", new Dictionary<Address, AccountOverride> { [TestItem.AddressB] = new() { Code = code } }]
+            : [transaction, "latest"];
+
+        TestRpcBlockchain test = ctx.Test;
+        observer.LogCount = 0;
+        string baseline = await test.TestEthRpc(method, parameters);
+        int baselineLogs = observer.LogCount;
+        observer.SuppressLogs = true;
+        observer.LogCount = 0;
+        observer.ExecutionCount = 0;
+        string optimized = await test.TestEthRpc(method, parameters);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized, Is.EqualTo(baseline));
+            Assert.That(observer.ExecutionCount, Is.GreaterThan(0));
+            Assert.That(observer.LogCount, Is.Zero);
+            if (expectLogs)
+            {
+                Assert.That(baselineLogs, Is.GreaterThan(0));
+                if (method == "eth_createAccessList" && stateOverride)
+                    Assert.That(JToken.Parse(optimized)["result"]!["accessList"]!.HasValues, Is.True);
+            }
+        }
+    }
+
+    private sealed class RpcLogObserver : TxTracer
+    {
+        public override bool IsTracingReceipt => true;
+        public override bool IsCollectingLogs => !SuppressLogs;
+        public bool SuppressLogs { get; set; }
+        public int LogCount { get; set; }
+        public int ExecutionCount { get; set; }
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+            => LogCount += logs.Length;
+    }
+
+    private sealed class LogObservingProcessor(ITransactionProcessor inner, RpcLogObserver observer) : ITransactionProcessor
+    {
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+        {
+            observer.ExecutionCount++;
+            return inner.Process(transaction, new CompositeTxTracer(txTracer, observer), options);
+        }
+
+        public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+    }
+
     [Test]
     public async Task Eth_call_web3_sample()
     {
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\"}}");
+            $"{{\"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\"}}")!;
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "0x0");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
@@ -48,7 +153,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         AssertAccountDoesNotExist(ctx, Address.SystemUser);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\"}}");
+            $"{{\"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\"}}")!;
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "0x0");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
@@ -61,11 +166,11 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         AssertAccountDoesNotExist(ctx, TestAccount);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\":\"{TestAccountAddress}\",\"gasPrice\":\"0x100000\", \"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\", \"value\": 500, \"gas\": 1000000}}");
+            $"{{\"from\":\"{TestAccountAddress}\",\"gasPrice\":\"0x100000\", \"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\", \"value\": 500, \"gas\": 1000000}}")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
-        Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient sender balance"));
+        Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(TxErrorMessages.InsufficientFundsForGas));
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
@@ -75,7 +180,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         AssertAccountDoesNotExist(ctx, TestAccount);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\":\"{TestAccountAddress}\", \"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\"}}");
+            $"{{\"from\":\"{TestAccountAddress}\", \"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\"}}")!;
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "0x0");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
@@ -97,6 +202,53 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
+    [TestCase("0xfe", "invalid opcode: INVALID", TestName = "Designated invalid opcode")]
+    [TestCase("0x0c", "invalid opcode: opcode 0xc not defined", TestName = "Unassigned opcode")]
+    [TestCase("0x01", "stack underflow (0 <=> 2)", TestName = "Stack underflow")]
+    [TestCase("0x600056", "invalid jump destination", TestName = "Invalid jump destination")]
+    public async Task Eth_call_execution_failure_is_reported_with_the_standard_text(string code, string expected)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","data":"0x01"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"0xc200000000000000000000000000000000000000":{"code":"{{{code}}}"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected), serialized);
+    }
+
+    [Test]
+    public async Task Eth_call_invalid_use_of_an_opcode_the_spec_defines_keeps_its_text()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        // PUSH1 0, PUSH1 0, PUSH1 0, APPROVE: APPROVE outside a frame transaction is a bad instruction.
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","data":"0x01"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x600060006000aa"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("invalid instruction"), serialized);
+    }
+
+    [Test]
+    public async Task Eth_call_stack_overflow_is_reported_with_the_standard_text()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        string code = "0x" + string.Concat(Enumerable.Repeat("5f", 1025));
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","data":"0x01"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"0xc200000000000000000000000000000000000000":{"code":"{{{code}}}"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("stack limit reached 1024 (1023)"), serialized);
+    }
+
     [Test]
     public async Task Eth_call_no_recipient_should_work_as_init()
     {
@@ -111,7 +263,7 @@ public partial class EthRpcModuleTests
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32003,\"message\":\"stack underflow\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"stack underflow (0 <=> 2)\"},\"id\":67}"));
     }
 
 
@@ -221,7 +373,7 @@ public partial class EthRpcModuleTests
 
         AccessListTransactionForRpc transaction =
             test.JsonSerializer.Deserialize<AccessListTransactionForRpc>(
-                $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+                $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}")!;
 
         transaction.AccessList = accessList;
         string serialized = await test.TestEthRpc("eth_call", transaction, "0x0");
@@ -233,7 +385,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{BatTokenAddress}\", \"to\": \"{BatTokenAddress}\"}}");
+            $"{{\"from\": \"{BatTokenAddress}\", \"to\": \"{BatTokenAddress}\"}}")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
@@ -243,7 +395,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"gas\": \"0x0\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"gas\": \"0x0\"}}")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
@@ -252,12 +404,40 @@ public partial class EthRpcModuleTests
             Does.Contain("intrinsic gas too low"));
     }
 
+    [TestCase(Eip8037NewAccountTransferGas - 1, true)]
+    [TestCase(Eip8037NewAccountTransferGas, false)]
+    public async Task Eth_call_value_transfer_to_fresh_account_reports_runtime_out_of_gas(ulong gasLimit, bool expectedError)
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        LegacyTransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<LegacyTransactionForRpc>(
+            $$"""{"from":"{{SecondaryTestAddress}}","to":"{{FreshRecipientAddress}}","value":"0x1","gas":"0x{{gasLimit:X}}"}""")
+            ?? throw new InvalidOperationException("Transaction deserialization returned null.");
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{SecondaryTestAddress}\":{{\"balance\":\"0xde0b6b3a7640000\"}}}}")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        JToken response = JToken.Parse(serialized);
+
+        if (expectedError)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+                Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("out of gas"));
+            }
+        }
+        else
+        {
+            Assert.That(response["result"]!.Value<string>(), Is.EqualTo("0x"));
+        }
+    }
+
     [Test]
     public async Task Eth_call_with_gas_pricing()
     {
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x10\"}}");
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x10\"}}")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
@@ -267,7 +447,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x100000000\"}}");
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x100000000\"}}")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
@@ -277,7 +457,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"type\": \"0x2\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"type\": \"0x2\"}}")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
@@ -289,7 +469,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = BaseFeeReturnCode.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
@@ -302,7 +482,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = BaseFeeReturnCode.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+            $"{{\"type\": \"0x2\", \"data\": \"{dataStr}\"}}")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
@@ -315,7 +495,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = CoinbaseReturnCode.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{dataStr}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{dataStr}\"}}")!;
         object? blockOverride = JsonSerializer.Deserialize<object>(
             $"{{\"feeRecipient\":\"{TestItem.AddressC}\"}}");
 
@@ -331,11 +511,11 @@ public partial class EthRpcModuleTests
 
         string dataStr = BaseFeeReturnCode.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"type\": \"0x2\", \"value\":\"{1.Ether}\", \"data\": \"{dataStr}\"}}");
+            $"{{\"type\": \"0x2\", \"value\":\"{1.Ether}\", \"data\": \"{dataStr}\"}}")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
-        Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient sender balance"));
+        Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(TxErrorMessages.InsufficientFundsForGas));
     }
 
     [Test]
@@ -362,7 +542,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
@@ -384,7 +564,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x080a1c27"},"id":67}"""));
@@ -411,7 +591,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: revert","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
@@ -495,10 +675,10 @@ public partial class EthRpcModuleTests
         ctx.Test.RpcConfig.GasCap = 5_000_000;
 
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
-        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32003,\"message\":\"out of gas\"}},\"id\":67}}")).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\"}},\"id\":67}}")).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -525,7 +705,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_gas_available_is_capped_by_gas_cap()
     {
         using Context ctx = await Context.Create();
-        long gasCap = 50_000;
+        ulong gasCap = 50_000;
         ctx.Test.RpcConfig.GasCap = gasCap;
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
@@ -535,17 +715,17 @@ public partial class EthRpcModuleTests
 
         // Request 100K gas — should be capped to 50K by GasCap
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            """{"to":"0xc200000000000000000000000000000000000000", "gas":"0x186A0"}""");
+            """{"to":"0xc200000000000000000000000000000000000000", "gas":"0x186A0"}""")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
         string result = JToken.Parse(serialized).Value<string>("result")!;
-        long gasAvailable = (long)Bytes.FromHexString(result).ToUInt256();
+        ulong gasAvailable = (ulong)Bytes.FromHexString(result).ToUInt256();
 
         // gas available = gasLimit - intrinsicGas; if gas cap works, gasLimit ≤ 50K so gas available < 50K
         // Without gas cap, gas available would be ~79K (100K - 21K intrinsic)
         Assert.That(gasAvailable, Is.LessThan(gasCap));
-        Assert.That(gasAvailable, Is.GreaterThan(0));
+        Assert.That(gasAvailable, Is.GreaterThan(0UL));
     }
 
     /// <summary>
@@ -561,9 +741,42 @@ public partial class EthRpcModuleTests
         string blockNumberResponse = await ctx.Test.TestEthRpc("eth_blockNumber");
         string blockNumber = JToken.Parse(blockNumberResponse).Value<string>("result")!;
         string blockResponse = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockNumber, false);
-        long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
+        ulong blockGasLimit = Convert.ToUInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
-        long gasCap = blockGasLimit * 10;
+        ulong gasCap = blockGasLimit * 10;
+
+        // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
+        // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
+        UInt256 gasAvailable = await GasAvailableForGaslessCall(ctx, gasCap);
+
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+    }
+
+    /// <summary>
+    /// EIP-7825's execution-gas cap is enforced by <c>TxValidator</c> and the gas estimator, never by the
+    /// transaction processor, so it must not clamp the gas-less default on the validation-skipping call paths.
+    /// 16,777,216 is below both a typical <c>JsonRpc.GasCap</c> and the mainnet block gas limit, so clamping
+    /// there would silently under-execute heavy simulations that omit <c>gas</c>.
+    /// </summary>
+    [Test]
+    public async Task Eth_call_without_gas_under_eip7825_still_defaults_to_gas_cap()
+    {
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        ulong gasCap = Eip7825Constants.DefaultTxGasLimitCap * 4;
+
+        UInt256 gasAvailable = await GasAvailableForGaslessCall(ctx, gasCap);
+
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap),
+            $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not the EIP-7825 execution-gas cap ({Eip7825Constants.DefaultTxGasLimitCap})");
+    }
+
+    /// <summary>
+    /// Sets <c>ctx.Test.RpcConfig.GasCap</c>, then runs an <c>eth_call</c> with no <c>gas</c> field
+    /// and returns the gas available at the start of contract execution.
+    /// </summary>
+    private static async Task<UInt256> GasAvailableForGaslessCall(Context ctx, ulong gasCap)
+    {
         ctx.Test.RpcConfig.GasCap = gasCap;
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
@@ -571,18 +784,33 @@ public partial class EthRpcModuleTests
         object? stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
-        // No gas field — should default to gasCap, not blockGasLimit.
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            """{"to":"0xc200000000000000000000000000000000000000"}""");
+            """{"to":"0xc200000000000000000000000000000000000000"}""")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
-        string result = JToken.Parse(serialized).Value<string>("result")!;
-        UInt256 gasAvailable = Bytes.FromHexString(result).ToUInt256();
+        return Bytes.FromHexString(JToken.Parse(serialized).Value<string>("result")!).ToUInt256();
+    }
 
-        // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
-        // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
-        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+    /// <summary>
+    /// A gas-less call defaults its gas limit to the RPC gas cap, which is unbounded when
+    /// <c>JsonRpc.GasCap</c> is unset or <c>0</c>. EIP-8037 rejects any transaction above
+    /// TX_MAX_TOTAL_GAS_LIMIT regardless of validation being skipped, so the default has to be
+    /// clamped to that cap or the call is rejected before it runs.
+    /// </summary>
+    [TestCase(0UL, TestName = "Eth_call_without_gas_is_clamped_to_eip8037_total_cap(uncapped)")]
+    [TestCase(1_000_000_000_000UL, TestName = "Eth_call_without_gas_is_clamped_to_eip8037_total_cap(above cap)")]
+    public async Task Eth_call_without_gas_is_clamped_to_eip8037_total_cap(ulong gasCap)
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"{SecondaryTestAddress}\"}}")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
     [Test]
@@ -627,6 +855,122 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
+    [Test]
+    public async Task Eth_call_contract_creation_reports_runtime_out_of_gas()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        Transaction tx = Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+        tx.GasLimit = intrinsicGas.Standard + (ulong)GasCostOf.CreateState - 1;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.To = null;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        JToken response = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("out of gas"));
+        }
+    }
+
+    [Test]
+    public async Task Eth_call_contract_creation_reports_code_deposit_out_of_gas()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        byte[] code = Prepare.EvmCode
+            .PushData(32) // size
+            .PushData(0) // offset
+            .Op(Instruction.RETURN) // returns 32 zero bytes; deposit costs 32 * GasCostOf.CodeDeposit
+            .Done;
+        Transaction tx = Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        tx.To = null;
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, Cancun.Instance);
+        // Covers intrinsic and initcode execution but not the 6,400 gas code deposit.
+        tx.GasLimit = intrinsicGas.Standard + 1_000;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        JToken response = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("out of gas"));
+        }
+    }
+
+    [Test]
+    public async Task Eth_call_contract_creation_reports_ef_prefix_invalid_code()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        byte[] code = Prepare.EvmCode
+            .PushData(new byte[] { 0xEF, 0x00 })
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(2)
+            .PushData(30)
+            .Op(Instruction.RETURN) // returns 0xEF00, rejected by EIP-3541
+            .Done;
+        Transaction tx = Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.To = null;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        JToken response = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("invalid code: must not begin with 0xef"));
+        }
+    }
+
+    [Test]
+    public async Task Eth_call_contract_creation_reports_address_collision()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        Transaction tx = Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.To = null;
+
+        Address collisionAddress = ContractAddress.From(TestItem.AddressA, 0);
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{TestItem.AddressA}\":{{\"nonce\":\"0x0\"}},\"{collisionAddress}\":{{\"code\":\"0x6000\"}}}}")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        JToken response = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("contract address collision"));
+        }
+    }
+
     [TestCase(null)]
     [TestCase(new byte[0])]
     public async Task Eth_call_to_is_null_and_not_contract_creation(byte[]? data)
@@ -662,9 +1006,8 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified\"},\"id\":67}"));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Eth_call_no_blobs_in_blob_tx(bool isNull)
+    [Test]
+    public async Task Eth_call_no_blobs_in_blob_tx([Values] bool isNull)
     {
         using Context ctx = await Context.Create();
         Transaction tx = Build.A.Transaction
@@ -727,6 +1070,186 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"missing \\\"to\\\" in blob transaction\"},\"id\":67}"));
     }
 
+    private const string TipFeeSender = "0x7f554713be84160fdf0178cc8df86f5aabd33397";
+    private const string TipFeeTarget = "0xc200000000000000000000000000000000000000";
+    private const ulong TipFeeGas = 100_000;
+    private const string OneEtherBalance = "0xde0b6b3a7640000";
+
+    // PUSH1 1, PUSH1 0, SSTORE, STOP
+    private const string TipFeeTargetCode = "0x600160005500";
+
+    [TestCase("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}""", OneEtherBalance, "0", TestName = "Priority fee only")]
+    [TestCase("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}""", "0x0", "0", TestName = "Priority fee only, empty sender")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", OneEtherBalance, "10", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "0x0", "10", TestName = "Fee cap below the priority fee, empty sender")]
+    public async Task Eth_call_priority_fee_above_fee_cap_fails_before_execution(string feeFields, string balance, string maxFeePerGas)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", TipFeeRequest(feeFields), "latest", TipFeeState(balance));
+
+        string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+            Is.EqualTo($"err: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 1000000000, maxFeePerGas: {maxFeePerGas} (supplied gas {TipFeeGas})"),
+            serialized);
+    }
+
+    [Test]
+    public async Task Eth_call_legacy_gas_price_is_unaffected_by_the_fee_order_check()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", TipFeeRequest("""{"gasPrice":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""{"jsonrpc":"2.0","result":"0x","id":67}""")).Using(JToken.EqualityComparer), serialized);
+    }
+
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "maxFeePerGas (0xa) < maxPriorityFeePerGas (0x3b9aca00)", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x3b9aca00"}""", "maxFeePerGas must be non-zero", TestName = "Zero fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0"}""", "maxFeePerGas must be non-zero", TestName = "Zero fee cap and zero priority fee")]
+    [TestCase("""{"gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Zero gas price")]
+    [TestCase("""{"type":"0x2","gasPrice":"0x1","maxFeePerGas":"0xa"}""", "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified", TestName = "Gas price next to a fee cap")]
+    public async Task Eth_createAccessList_rejects_malformed_fee_fields(string feeFields, string expected)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", TipFeeRequest(feeFields), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected), serialized);
+    }
+
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x3b9aca00"}""", TestName = "Fee cap only")]
+    [TestCase("""{"gasPrice":"0x3b9aca00"}""", TestName = "Gas price")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x3b9aca00","maxPriorityFeePerGas":"0x3b9aca00"}""", TestName = "Fee cap equal to the priority fee")]
+    public async Task Eth_createAccessList_well_formed_fee_fields_run(string feeFields)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", TipFeeRequest(feeFields), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(serialized)["result"]?["gasUsed"], Is.Not.Null, serialized);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_fee_fields_before_london_are_rejected()
+    {
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+            Is.EqualTo("maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"), serialized);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_priority_fee_whose_filled_fee_cap_exceeds_256_bits_fails_on_the_low_bits()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
+        UInt256 priorityFee = UInt256.MaxValue;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest($$"""{"type":"0x2","maxPriorityFeePerGas":"{{priorityFee.ToHexString(skipLeadingZeros: true)}}"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
+        UInt256 lowBits = baseFee * 2 - 1;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseFee, Is.EqualTo((UInt256)765_625_000), "the hash below is for this base fee");
+            // The transaction is named with the 257-bit fee cap it was filled with: chain 1, nonce 0, 100000 gas,
+            // no value, data or access list.
+            Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+                Is.EqualTo($"failed to apply transaction: 0xbfa8edae1a51ad390e4b8db674e2c44d4964c3c30973ff14db0f67fb82cd0e28 err: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: {priorityFee}, maxFeePerGas: {lowBits}"),
+                serialized);
+        }
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_priority_fee_only_fills_the_fee_cap_from_the_base_fee()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string priced = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
+        string unpriced = await ctx.Test.TestEthRpc("eth_createAccessList", TipFeeRequest("""{"type":"0x2"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(priced)["result"]?["gasUsed"]?.Value<string>(), Is.EqualTo(JToken.Parse(unpriced)["result"]?["gasUsed"]?.Value<string>()).And.Not.Null,
+            $"a funded sender runs as an unpriced request: {priced}");
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_priority_fee_only_charges_the_filled_fee_cap()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState("0x0"));
+
+        string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
+        UInt256 want = TipFeeGas * (1_000_000_000 + baseFee * 2);
+        string? message = JToken.Parse(serialized)["error"]?["message"]?.Value<string>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.StartWith("failed to apply transaction: 0x"), serialized);
+            Assert.That(message, Does.EndWith($" err: insufficient funds for gas * price + value: address {sender} have 0 want {want}"),
+                "the fee cap is the priority fee plus twice the base fee");
+        }
+    }
+
+    [TestCase(Instruction.GASPRICE, TestName = "GASPRICE")]
+    [TestCase(Instruction.BASEFEE, TestName = "BASEFEE")]
+    public async Task Eth_createAccessList_zero_priority_fee_only_runs_with_the_filled_fee_cap(Instruction opcode)
+    {
+        // The target reads the balance of the address its fee opcode returns, so that value lands in the access list.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
+        string code = Prepare.EvmCode.Op(opcode).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done.ToHexString(true);
+        string explicitFeeCap = (baseFee * 2).ToHexString(skipLeadingZeros: true);
+
+        string defaulted = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x0"}"""), "latest", TipFeeState(OneEtherBalance, code));
+        string priced = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest($$"""{"type":"0x2","maxPriorityFeePerGas":"0x0","maxFeePerGas":"{{explicitFeeCap}}"}"""), "latest", TipFeeState(OneEtherBalance, code));
+
+        Address observed = new(baseFee.ToBigEndian()[12..]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseFee.IsZero, Is.False, "precondition: the head block has a base fee");
+            Assert.That(JToken.Parse(defaulted)["result"], Is.EqualTo(JToken.Parse(priced)["result"]).Using(JToken.EqualityComparer),
+                $"a zero priority fee with a filled fee cap runs as the explicitly priced request: {defaulted}");
+            Assert.That(JToken.Parse(defaulted)["result"]?["accessList"]?[0]?["address"]?.Value<string>(), Is.EqualTo(observed.ToString()),
+                "the fee opcode sees the base fee");
+        }
+    }
+
+    [Test]
+    public async Task Eth_estimateGas_fee_cap_below_the_priority_fee_fails_before_any_gas_is_bought()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas",
+            TipFeeRequest("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+            Is.EqualTo($"failed with {TipFeeGas} gas: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 1000000000, maxFeePerGas: 10"),
+            serialized);
+    }
+
+    private static object? TipFeeRequest(string feeFields)
+    {
+        JsonObject request = JsonNode.Parse(feeFields)!.AsObject();
+        request["from"] = TipFeeSender;
+        request["to"] = TipFeeTarget;
+        request["gas"] = TipFeeGas.ToHexString(true);
+        return JsonSerializer.Deserialize<object>(request.ToJsonString());
+    }
+
+    private static object? TipFeeState(string balance, string code = TipFeeTargetCode) =>
+        JsonSerializer.Deserialize<object>($$$"""{"{{{TipFeeSender}}}":{"balance":"{{{balance}}}"},"{{{TipFeeTarget}}}":{"code":"{{{code}}}"}}""");
+
     [Test]
     public async Task Eth_call_maxFeePerGas_smaller_then_maxPriorityFeePerGas()
     {
@@ -745,8 +1268,8 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
-        Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas (1) < maxPriorityFeePerGas (2)\"},\"id\":67}"));
+        // Before London the fee fields do not price a call, so the pair is not checked.
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
     [TestCase(null, RpcTransactionErrors.InvalidBlobVersionedHashSize, TestName = "BlobVersionedHash null")]
@@ -821,7 +1344,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32003,\"message\":\"Precompile MODEXP failed with error: one or more of base/exponent/modulus length exceeded 1024 bytes\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Precompile MODEXP failed with error: one or more of base/exponent/modulus length exceeded 1024 bytes\"},\"id\":67}"));
     }
 
     [TestCase("""{"input":"0x23e52","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length input")]
@@ -837,24 +1360,45 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_null_input_or_data_is_omitted(
+        [Values(
+            """{"data":"0x602a60005260206000f3","input":null}""",
+            """{"input":null,"data":"0x602a60005260206000f3"}""",
+            """{"input":"0x602a60005260206000f3","data":null}""")] string calldata)
+    {
+        using Context ctx = await Context.Create();
+        string from = $"\"from\":\"{TestItem.AddressA}\"";
+        using JsonDocument withNull = JsonDocument.Parse($"{{{from},{calldata[1..]}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{from},\"data\":\"0x602a60005260206000f3\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", withNull.RootElement, "latest");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
+            Assert.That(serialized, Is.EqualTo(await ctx.Test.TestEthRpc("eth_call", omitted.RootElement, "latest")));
+        }
+    }
+
+    [Test]
     public async Task Eth_call_non_existent_block_returns_not_found()
     {
         using Context ctx = await Context.Create();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0xEF04bc7821433f080461BBAE815182E3d7bBb61A\",\"to\":\"0x4debB0dF4da8D1f51EF67B727c3F1c0eCC7ed009\",\"gas\":\"0x5208\"}");
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0xEF04bc7821433f080461BBAE815182E3d7bBb61A\",\"to\":\"0x4debB0dF4da8D1f51EF67B727c3F1c0eCC7ed009\",\"gas\":\"0x5208\"}")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "0xFFFFFFFF");
 
         Assert.That(JToken.Parse(serialized)["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
         Assert.That(JToken.Parse(serialized)["error"]!["message"]!.Value<string>(), Is.EqualTo("header not found"));
     }
 
-    private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit)
+    private static async Task TestEthCallOutOfGas(Context ctx, ulong? specifiedGasLimit)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\"{gasParam}, \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\"{gasParam}, \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
-        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32003,\"message\":\"out of gas\"}},\"id\":67}}")).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"out of gas\"}},\"id\":67}}")).Using(JToken.EqualityComparer));
     }
 
     // Each test uses a state override to inject one-opcode contract code at the target address,
@@ -902,24 +1446,26 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_feeless_with_positive_blockOverride_baseFeePerGas_succeeds()
+    public async Task Eth_call_feeless_with_positive_blockOverride_baseFeePerGas_uses_zero_base_fee()
     {
         // Scenario: caller sends no fee fields (fee-less call) but blockOverride.baseFeePerGas > 0.
         using Context ctx = await Context.CreateWithLondonEnabled();
 
         object? transaction = JsonSerializer.Deserialize<object>(
-            $"{{\"from\":\"{SecondaryTestAddress}\",\"to\":\"0xc200000000000000000000000000000000000000\"}}");
+            $"{{\"from\":\"{SecondaryTestAddress}\",\"to\":\"{SecondaryTestAddress}\",\"data\":\"{BaseFeeReturnCode.ToHexString(true)}\"}}");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{SecondaryTestAddress}\":{{\"code\":\"{BaseFeeReturnCode.ToHexString(true)}\"}}}}");
         object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x100"}""");
 
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
 
-        Assert.That(JToken.Parse(serialized)["error"], Is.Null, "fee-less call must succeed even when blockOverride.baseFeePerGas > 0");
+        Assert.That(JToken.Parse(serialized)["result"]?.Value<string>(), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
     }
 
     [TestCase(
         """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000"}""",
         """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""",
-        """{"blobBaseFee":"0x02"}""",
+        """{"blobBaseFee":"0x2"}""",
         "0x0000000000000000000000000000000000000000000000000000000000000002",
         null,
         TestName = "BLOBBASEFEE opcode returns overridden value")]
@@ -929,7 +1475,14 @@ public partial class EthRpcModuleTests
         """{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"balance":"0x56BC75E2D63100000"}}""",
         """{"blobBaseFee":"0xb","baseFeePerGas":"0x1"}""",
         null,
-        BlockErrorMessages.InsufficientMaxFeePerBlobGas,
+        "max fee per blob gas less than block blob gas fee",
+        TestName = "blob tx rejected when maxFeePerBlobGas below blobBaseFee override")]
+    [TestCase(
+        """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","maxFeePerBlobGas":"0xa","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"],"gas":"0x5208"}""",
+        """{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"balance":"0x56BC75E2D63100000"}}""",
+        """{"blobBaseFee":"0xb","baseFeePerGas":"0x1"}""",
+        null,
+        "max fee per blob gas less than block blob gas fee",
         TestName = "blob tx rejected when maxFeePerBlobGas below blobBaseFee override")]
 
     public async Task Eth_call_blobBaseFeePerGas_override_test(
@@ -985,7 +1538,7 @@ public partial class EthRpcModuleTests
         string serialized = await test.TestEthRpc("eth_call", tx, "latest", stateOverride, null);
         Assert.That(
             JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
-            Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas));
+            Does.Contain("max fee per blob gas less than block blob gas fee"));
     }
 
     [TestCase(
@@ -1006,7 +1559,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
 
         JToken parsed = JToken.Parse(serialized);
-        Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
+        Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
         Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(expectedMessage));
     }
 
@@ -1023,23 +1576,6 @@ public partial class EthRpcModuleTests
 
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
-    }
-
-    /// <summary>
-    /// Regression: state overrides with only storage (no code/balance/nonce) create an account
-    /// that is EIP-158 empty.
-    /// </summary>
-    [Test]
-    public async Task Eth_call_state_override_with_storage_blocks_create2_via_eip7610()
-    {
-        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
-        (object stateOverride, object transaction) = BuildEip7610Fixture();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
-        JToken parsed = JToken.Parse(serialized);
-        byte[] returnData = Bytes.FromHexString(parsed["result"]!.Value<string>()!);
-
-        Assert.That(returnData, Is.EqualTo(new byte[32]));
     }
 
     [TestCaseSource(nameof(ZeroBalanceWantCases))]
@@ -1060,8 +1596,8 @@ public partial class EthRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-            Assert.That(message, Does.Contain("insufficient sender balance for gas * price + value"));
+            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(message, Does.Contain(TxErrorMessages.InsufficientFundsForGas));
             Assert.That(message, Does.Contain(expectedDetailSubstring));
         }
     }
@@ -1126,4 +1662,44 @@ public partial class EthRpcModuleTests
             "required balance exceeds 256 bits")
         { TestName = "Blob: blob base fee overflow reports 256-bit limit" };
     }
+
+    // EIP-1474: QUANTITY fields in BlockOverrides must not have leading zero digits.
+    [TestCase("""{"number":"0x0b"}""", TestName = "leading zero in number")]
+    [TestCase("""{"time":"0x0b"}""", TestName = "leading zero in time")]
+    [TestCase("""{"gasLimit":"0x0b"}""", TestName = "leading zero in gasLimit")]
+    [TestCase("""{"baseFeePerGas":"0x0b"}""", TestName = "leading zero in baseFeePerGas")]
+    [TestCase("""{"blobBaseFee":"0x0b"}""", TestName = "leading zero in blobBaseFee")]
+    public async Task Eth_call_block_override_leading_zero_quantity_is_rejected(string blockOverrideJson)
+    {
+        using Context ctx = await Context.Create();
+        object transaction = JsonSerializer.Deserialize<object>("""{"to":"0xc200000000000000000000000000000000000000"}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+
+        JToken parsed = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("leading zero"));
+        }
+    }
+
+    [TestCase("""{"number":"0x0"}""", TestName = "zero is valid in number")]
+    [TestCase("""{"number":"0xb"}""", TestName = "no leading zero in number")]
+    [TestCase("""{"time":"0xb"}""", TestName = "no leading zero in time")]
+    [TestCase("""{"gasLimit":"0xb"}""", TestName = "no leading zero in gasLimit")]
+    [TestCase("""{"baseFeePerGas":"0xb"}""", TestName = "no leading zero in baseFeePerGas")]
+    [TestCase("""{"blobBaseFee":"0xb"}""", TestName = "no leading zero in blobBaseFee")]
+    public async Task Eth_call_block_override_valid_quantity_is_accepted(string blockOverrideJson)
+    {
+        using Context ctx = await Context.Create();
+        object transaction = JsonSerializer.Deserialize<object>("""{"to":"0xc200000000000000000000000000000000000000"}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null);
+    }
+
 }

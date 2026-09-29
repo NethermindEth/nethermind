@@ -18,12 +18,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public sealed class BlockGasLimitContract : Contract, IBlockGasLimitContract
     {
         private IConstantContract Constant { get; }
-        public long Activation { get; }
+        public ulong Activation { get; }
 
         public BlockGasLimitContract(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            long transitionBlock,
+            ulong transitionBlock,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
             : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {

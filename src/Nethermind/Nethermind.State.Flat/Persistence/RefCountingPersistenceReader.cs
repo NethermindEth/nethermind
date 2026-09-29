@@ -38,7 +38,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public Account? GetAccount(Address address) =>
         _innerReader.GetAccount(address);
 
-    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
+    public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
 
     public StateId CurrentState => _innerReader.CurrentState;
@@ -52,7 +52,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
         _innerReader.GetAccountRaw(addrHash);
 
-    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
+    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) =>
         _innerReader.TryGetStorageRaw(addrHash, slotHash, ref value);
 
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>

@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NodeBuffer = System.Collections.Generic.List<(Nethermind.Trie.TreePath Path, Nethermind.Trie.TrieNode Node)>;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -29,14 +30,80 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
 
-    public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
+    public abstract class AbstractMinimalCommitter : ICommitter
     {
-        public void Dispose() { }
+        private const int InitialNodeBufferCapacity = 128;
+        // A large block's parallel commit fills more buffers than the default pool retains, so the
+        // dropped ones re-grew through LOH-sized doublings on every block; retain enough of them,
+        // bounded per buffer so an outlier block cannot pin memory. The process-wide ceiling is
+        // 256 * 65536 = 16,777,216 cleared node-reference tuples (~1.6 GB at the measured 96 B per
+        // (TreePath, TrieNode)); in-use buffers are not included.
+        private const int MaxRetainedNodeBuffers = 256;
+        private const int MaxRetainedNodeBufferCapacity = 1 << 16;
+        private static readonly ObjectPool<NodeBuffer> NodeBufferPool =
+            new DefaultObjectPool<NodeBuffer>(new NodeBufferPoolPolicy(), MaxRetainedNodeBuffers);
 
-        public abstract TrieNode CommitNode(ref TreePath path, TrieNode node);
+        private ThreadLocal<NodeBuffer>? _parallelBuffers;
 
-        bool ICommitter.TryRequestConcurrentQuota() => quota.TryRequestConcurrencyQuota();
-        void ICommitter.ReturnConcurrencyQuota() => quota.ReturnConcurrencyQuota();
+        public TrieNode CommitNode(ref TreePath path, TrieNode node)
+        {
+            ThreadLocal<NodeBuffer>? parallelBuffers = Volatile.Read(ref _parallelBuffers);
+            if (parallelBuffers is null)
+            {
+                WriteNode(path, node);
+            }
+            else
+            {
+                parallelBuffers.Value!.Add((path, node));
+            }
+            return node;
+        }
+
+        protected abstract void WriteNode(in TreePath path, TrieNode node);
+
+        protected abstract void PublishNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers);
+
+        public void Dispose()
+        {
+            ThreadLocal<NodeBuffer>? parallelBuffers = _parallelBuffers;
+            if (parallelBuffers is null) return;
+
+            IList<NodeBuffer> buffers = parallelBuffers.Values;
+            try
+            {
+                PublishNodes(buffers);
+            }
+            finally
+            {
+                try
+                {
+                    parallelBuffers.Dispose();
+                }
+                finally
+                {
+                    foreach (NodeBuffer buffer in buffers) NodeBufferPool.Return(buffer);
+                }
+            }
+        }
+
+        bool ICommitter.TryEnableParallelCommit()
+        {
+            _parallelBuffers ??= new(static () => NodeBufferPool.Get(), trackAllValues: true);
+            return true;
+        }
+
+        private sealed class NodeBufferPoolPolicy : IPooledObjectPolicy<NodeBuffer>
+        {
+            public NodeBuffer Create() => new(InitialNodeBufferCapacity);
+
+            public bool Return(NodeBuffer buffer)
+            {
+                if (buffer.Capacity > MaxRetainedNodeBufferCapacity) return false;
+
+                buffer.Clear();
+                return true;
+            }
+        }
     }
 
     public class UnsupportedOperationException(string message) : Exception(message);

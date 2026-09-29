@@ -15,6 +15,7 @@ public partial class BlockProcessor
         event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
         AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx,
-            IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider);
+            IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider,
+            ulong cumulativeBlockExecutionGas, ulong cumulativeBlockStateGas);
     }
 }

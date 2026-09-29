@@ -71,12 +71,19 @@ rootCommand.SetAction(async (parseResult, ct) =>
     };
 
     string name = parseResult.GetValue(nameOption) ?? string.Join('|', parseResult.GetRequiredValue(testsOption));
-    using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(1) };
     using INotifier notifier = GetNotifier(name, parseResult.GetRequiredValue(devOption));
+    using RpcClient target = new(args.TargetUrl);
+    using RpcClient? reference = args.ReferenceUrl is { } referenceUrl ? new(referenceUrl) : null;
+    ReorgTracker reorgTracker = new();
+    BlockProvider blockProvider = new(target);
+    EmptyTestsTracker emptyTests = new();
 
     TimeSpan? reportAt = parseResult.GetValue(reportAtOption);
-    IStatsReporter stats = reportAt is { } time ? new StatsReporter(notifier, time) : NullStatsReporter.Instance;
-    MonitorRunner runner = new(args, notifier, stats, client);
+    IStatsReporter stats = reportAt is { } time ? new StatsReporter(notifier, time, reorgTracker, emptyTests) : NullStatsReporter.Instance;
+    target.OnRequestStart += stats.RecordTargetRequest;
+    reference?.OnRequestStart += stats.RecordReferenceRequest;
+
+    MonitorRunner runner = new(args, notifier, stats, target, reference, reorgTracker, blockProvider, emptyTests);
 
     await Task.WhenAll(
         runner.RunAsync(ct),

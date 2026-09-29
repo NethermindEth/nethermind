@@ -52,11 +52,8 @@ public class TransactionProcessorFeeTests
     [TearDown]
     public void TearDown() => _worldStateCloser.Dispose();
 
-    [TestCase(true, true)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(false, false)]
-    public void Check_fees_with_fee_collector(bool isTransactionEip1559, bool withFeeCollector)
+    [Test]
+    public void Check_fees_with_fee_collector([Values] bool isTransactionEip1559, [Values] bool withFeeCollector)
     {
         if (withFeeCollector)
         {
@@ -79,6 +76,39 @@ public class TransactionProcessorFeeTests
 
         Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
         Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+    }
+
+    [Test]
+    public void Base_fee_collected_is_capped_at_effective_price_when_validation_skipped()
+    {
+        // Regression: eth_simulateV1 with validation disabled may run a maxFeePerGas = 0 < baseFee tx.
+        // The sender pays effectiveGasPrice = 0, so the fee collector must not be credited baseFee * gasUsed
+        // (= 0xa * 0x5208, which would mint value); it is capped at what was actually paid. A 0 < maxFeePerGas
+        // < baseFee tx cannot reach PayFees (rejected as MaxFeePerGasBelowBaseFee in BuyGas), so the effective
+        // price here is either 0 or >= baseFee.
+        _spec.FeeCollector = TestItem.AddressC;
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .WithMaxFeePerGas(0).WithMaxPriorityFeePerGas(0)
+            .WithType(TxType.EIP1559).WithGasLimit(21000).TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressB).WithBaseFeePerGas(10).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        FeesTracer feesTracer = new();
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(feesTracer);
+        receiptsTracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = receiptsTracer.StartNewTxTrace(tx);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        _transactionProcessor.Process(tx, txTracer, ExecutionOptions.SkipValidationAndCommit);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        Assert.That(feesTracer.Fees, Is.EqualTo(UInt256.Zero));       // no tip to the coinbase
+        Assert.That(feesTracer.BurntFees, Is.EqualTo(UInt256.Zero));  // capped base fee (0), not baseFee * gasUsed
+        Assert.That(_stateProvider.GetBalance(TestItem.AddressC), Is.EqualTo(UInt256.Zero)); // fee collector not credited
     }
 
     private readonly Address SelfDestructAddress = new("0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3");
@@ -118,9 +148,8 @@ public class TransactionProcessorFeeTests
         Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Check_paid_fees_multiple_transactions(bool withFeeCollector)
+    [Test]
+    public void Check_paid_fees_multiple_transactions([Values] bool withFeeCollector)
     {
         if (withFeeCollector)
         {
@@ -147,9 +176,8 @@ public class TransactionProcessorFeeTests
         Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)84000));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Check_paid_fees_with_blob(bool withFeeCollector)
+    [Test]
+    public void Check_paid_fees_with_blob([Values] bool withFeeCollector)
     {
         UInt256 initialBalance = 0;
         if (withFeeCollector)
@@ -221,9 +249,8 @@ public class TransactionProcessorFeeTests
         Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)102000));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Should_stop_when_cancellation(bool withCancellation)
+    [Test]
+    public void Should_stop_when_cancellation([Values] bool withCancellation)
     {
         Transaction tx1 = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.EIP1559)
@@ -303,9 +330,8 @@ public class TransactionProcessorFeeTests
         Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
     }
 
-    [TestCase(TxType.EIP1559)]
-    [TestCase(TxType.Legacy)]
-    public void CallAndRestore_returns_descriptive_error_when_maxFeePerGas_below_baseFee(TxType txType)
+    [Test]
+    public void CallAndRestore_returns_descriptive_error_when_maxFeePerGas_below_baseFee([Values(TxType.EIP1559, TxType.Legacy)] TxType txType)
     {
         UInt256 baseFee = 100;
         UInt256 feeCap = 50;

@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
-using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 
@@ -61,6 +61,12 @@ namespace Nethermind.Network
         public static NonBlocking.ConcurrentDictionary<MsgType, long> DiscoveryMessagesSent { get; } = new();
 
         [CounterMetric]
+        [Description("Number of sent discovery messages by protocol")]
+        [DetailedMetric]
+        [KeyIsLabel("protocol", "message_type")]
+        public static NonBlocking.ConcurrentDictionary<DiscoveryMessageKey, long> DiscoveryMessagesSentByProtocol { get; } = new();
+
+        [CounterMetric]
         [Description("Number of sent discovery message")]
         [DetailedMetric]
         [KeyIsLabel("message_type")]
@@ -113,5 +119,9 @@ namespace Nethermind.Network
         [DetailedMetric]
         [KeyIsLabel("filter")]
         public static NonBlocking.ConcurrentDictionary<string, long> PeerCandidateFilter { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of incoming transactions skipped before RLP decoding for exceeding the configured size limit.")]
+        public static long OversizedTransactionsSkipped;
     }
 }

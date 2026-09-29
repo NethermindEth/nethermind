@@ -51,21 +51,11 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         if (tx.IsDeposit())
             return UInt256.Zero;
 
-        UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
+        worldState.Get(_l1BaseFeeSlot, out UInt256 l1BaseFee);
 
         if (opSpecHelper.IsFjord(header))
         {
-            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
-
-            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot);
-
-            const int baseFeeFieldsStart = 16;
-            const int fieldSize = sizeof(uint);
-
-            int l1BaseFeeScalarStart = scalarData.Length > baseFeeFieldsStart ? scalarData.Length - baseFeeFieldsStart : 0;
-            int l1BaseFeeScalarEnd = l1BaseFeeScalarStart + (scalarData.Length >= baseFeeFieldsStart ? fieldSize : fieldSize - baseFeeFieldsStart + scalarData.Length);
-            UInt256 l1BaseFeeScalar = new(scalarData[l1BaseFeeScalarStart..l1BaseFeeScalarEnd], true);
-            UInt256 l1BlobBaseFeeScalar = new(scalarData[l1BaseFeeScalarEnd..(l1BaseFeeScalarEnd + fieldSize)], true);
+            ReadEcotoneScalars(worldState, out UInt256 blobBaseFee, out UInt256 l1BaseFeeScalar, out UInt256 l1BlobBaseFeeScalar);
 
             uint fastLzSize = ComputeFlzCompressLen(tx);
 
@@ -79,71 +69,40 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
         if (opSpecHelper.IsEcotone(header))
         {
-            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
-
-            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot);
-
-            const int baseFeeFieldsStart = 16;
-            const int fieldSize = sizeof(uint);
-
-            int l1BaseFeeScalarStart = scalarData.Length > baseFeeFieldsStart ? scalarData.Length - baseFeeFieldsStart : 0;
-            int l1BaseFeeScalarEnd = l1BaseFeeScalarStart + (scalarData.Length >= baseFeeFieldsStart ? fieldSize : fieldSize - baseFeeFieldsStart + scalarData.Length);
-            UInt256 l1BaseFeeScalar = new(scalarData[l1BaseFeeScalarStart..l1BaseFeeScalarEnd], true);
-            UInt256 l1BlobBaseFeeScalar = new(scalarData[l1BaseFeeScalarEnd..(l1BaseFeeScalarEnd + fieldSize)], true);
+            ReadEcotoneScalars(worldState, out UInt256 blobBaseFee, out UInt256 l1BaseFeeScalar, out UInt256 l1BlobBaseFeeScalar);
 
             return ComputeL1CostEcotone(dataGas, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar);
         }
         else
         {
-            UInt256 overhead = new(worldState.Get(_overheadSlot), true);
-            UInt256 feeScalar = new(worldState.Get(_scalarSlot), true);
+            worldState.Get(_overheadSlot, out UInt256 overhead);
+            worldState.Get(_scalarSlot, out UInt256 feeScalar);
 
             return ComputeL1CostPreEcotone(dataGas + overhead, l1BaseFee, feeScalar);
         }
     }
 
-    public UInt256 ComputeOperatorCost(long gas, BlockHeader header, IWorldState worldState)
+    private void ReadEcotoneScalars(IWorldState worldState, out UInt256 blobBaseFee, out UInt256 l1BaseFeeScalar, out UInt256 l1BlobBaseFeeScalar)
+    {
+        worldState.Get(_blobBaseFeeSlot, out blobBaseFee);
+
+        // Both scalars share one slot: l1BaseFeeScalar in big-endian bytes 16..20, l1BlobBaseFeeScalar in bytes 20..24.
+        worldState.Get(_baseFeeScalarSlot, out UInt256 scalarData);
+        l1BaseFeeScalar = (uint)(scalarData[1] >> 32);
+        l1BlobBaseFeeScalar = (uint)scalarData[1];
+    }
+
+    public UInt256 ComputeOperatorCost(ulong gas, BlockHeader header, IWorldState worldState)
     {
         if (!opSpecHelper.IsIsthmus(header))
             return UInt256.Zero;
 
-        ReadOnlySpan<byte> span = worldState.Get(_operatorFeeParamsSlot);
-        if (span.IsEmpty)
-            return UInt256.Zero;
-
-        const int scalarSize = 4;
-        const int constantSize = 8;
-        const int size = scalarSize + constantSize;
-
-        (uint scalar, ulong constant) operatorFee;
-
-        switch (span.Length)
-        {
-            case size:
-                operatorFee = Parse(span);
-                break;
-            case > size:
-                operatorFee = Parse(span.Slice(span.Length - size));
-                break;
-            case < size:
-                Span<byte> aligned = stackalloc byte[size];
-                span.CopyTo(aligned.Slice(size - span.Length));
-                operatorFee = Parse(aligned);
-                break;
-        }
+        worldState.Get(_operatorFeeParamsSlot, out UInt256 parameters);
+        (uint scalar, ulong constant) operatorFee = ((uint)parameters[1], parameters[0]);
 
         return opSpecHelper.IsJovian(header)
-            ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant // TODO: tests
+            ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant
             : (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
-
-        static (uint scalar, ulong constant) Parse(scoped ReadOnlySpan<byte> span)
-        {
-            const int feeStart = 4;
-
-            uint operatorFeeScalar = ReadUInt32BigEndian(span[..feeStart]);
-            ulong operatorFeeConstant = ReadUInt64BigEndian(span[feeStart..]);
-            return (operatorFeeScalar, operatorFeeConstant);
-        }
     }
 
     // https://specs.optimism.io/protocol/jovian/exec-engine.html#da-footprint-block-limit
@@ -160,31 +119,36 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
             if (tx.Type == TxType.DepositTx)
                 continue;
 
-            UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
-            UInt256 daUsageEstimate = DaFootprintScale.IsZero ?
-                default :
-                UInt256.Max(
-                    MinTransactionSizeScaled,
-                    flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
-                ) / DaFootprintScale;
-
-            footprint += daUsageEstimate * daFootprintScalar;
+            footprint += ComputeDaUsageEstimate(tx) * daFootprintScalar;
         }
 
         return footprint;
     }
+
+    internal static UInt256 ComputeDaUsageEstimate(Transaction tx)
+    {
+        UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
+        return DaUsageFromEstimatedSize(UInt256.Max(
+            MinTransactionSizeScaled,
+            flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
+        ));
+    }
+
+    /// <summary>Scales the Fjord estimated size that <see cref="ComputeL1CostFjord"/> reports down to the DA usage estimate.</summary>
+    internal static UInt256 DaUsageFromEstimatedSize(in UInt256 estimatedSize) =>
+        DaFootprintScale.IsZero ? default : estimatedSize / DaFootprintScale;
 
     [SkipLocalsInit]
     public static UInt256 ComputeDataGas(Transaction tx, bool isRegolith)
     {
         byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 
-        long zeroCount = encoded.Count(static b => b == 0);
-        long nonZeroCount = encoded.Length - zeroCount;
+        ulong zeroCount = (ulong)encoded.Count(static b => b == 0);
+        ulong nonZeroCount = (ulong)encoded.Length - zeroCount;
         // Add pre-EIP-3529 overhead
-        nonZeroCount += isRegolith ? 0 : OptimismConstants.PreRegolithNonZeroCountOverhead;
+        nonZeroCount += isRegolith ? 0UL : OptimismConstants.PreRegolithNonZeroCountOverhead;
 
-        return (ulong)(zeroCount * GasCostOf.TxDataZero + nonZeroCount * GasCostOf.TxDataNonZeroEip2028);
+        return zeroCount * GasCostOf.TxDataZero + nonZeroCount * GasCostOf.TxDataNonZeroEip2028;
     }
 
     // Fjord L1 formula:
@@ -320,7 +284,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
     // https://specs.optimism.io/protocol/jovian/exec-engine.html#scalar-loading
     // https://specs.optimism.io/protocol/jovian/l1-attributes.html
-    private static UInt256 GetDaFootprintScalar(Block block)
+    internal static UInt256 GetDaFootprintScalar(Block block)
     {
         Transaction? firstTx = block.Transactions.FirstOrDefault();
         if (firstTx?.Type is not TxType.DepositTx)

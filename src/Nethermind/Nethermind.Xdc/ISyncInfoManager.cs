@@ -1,18 +1,21 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
-using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Types;
-using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
 public interface ISyncInfoManager
 {
-    void ProcessSyncInfo(SyncInfo syncInfo);
-    SyncInfo GetSyncInfo();
+    /// <summary>Verifies the quorum certificate of a received <see cref="SyncInfo"/> and commits it if it passes.</summary>
+    /// <param name="quorumCert">The received certificate, or <c>null</c> when the peer sent none.</param>
+    /// <returns>Why the certificate was skipped, or <c>null</c> when it was committed.</returns>
+    string? ProcessQuorumCertificate(QuorumCertificate? quorumCert);
 
-    IDictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> GetReceivedSyncInfos();
-    bool VerifySyncInfo(SyncInfo syncInfo, out string error);
+    /// <summary>Verifies the timeout certificate of a received <see cref="SyncInfo"/> and applies it if it passes.</summary>
+    /// <param name="timeoutCert">The received certificate, or <c>null</c> when the peer sent none.</param>
+    /// <returns>Why the certificate was skipped, or <c>null</c> when it was applied.</returns>
+    string? ProcessTimeoutCertificate(TimeoutCertificate? timeoutCert);
+
+    SyncInfo GetSyncInfo();
 }

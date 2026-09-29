@@ -100,7 +100,8 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
         {
             Interlocked.Decrement(ref _requestCount);
             request.ResponseSize = size;
-            request.CompletionSource.TrySetResult(data);
+            if (!request.CompletionSource.TrySetResult(data))
+                data?.TryDispose();
         }
         else
         {

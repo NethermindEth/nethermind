@@ -30,6 +30,7 @@ public interface IRbuilderRpcModule
         IDictionary<Address, AccountChange> accountDiff);
 
     [JsonRpcMethod(IsImplemented = true,
+        ResultCanBeNull = true,
         Description = "Get account data",
         IsSharable = true)]
     ResultWrapper<AccountState?> rbuilder_getAccount(Address address, BlockParameter block);
@@ -45,7 +46,7 @@ public interface IRbuilderRpcModule
 public class AccountChange
 {
     [JsonPropertyName("nonce")]
-    public UInt256? Nonce { get; set; }
+    public ulong? Nonce { get; set; }
 
     [JsonPropertyName("balance")]
     public UInt256? Balance { get; set; }

@@ -25,7 +25,7 @@ public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
 
     public void SetSkip(bool skip) => Skip = skip;
 
-    public abstract TTrace BuildResult(long fromBlock = 0, long toBlock = 0);
+    public abstract TTrace BuildResult(ulong fromBlock = 0UL, ulong toBlock = 0UL);
 
     protected void Build()
     {

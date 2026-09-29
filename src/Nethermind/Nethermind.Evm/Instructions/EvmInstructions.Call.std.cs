@@ -1,0 +1,90 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
+
+namespace Nethermind.Evm;
+
+public static partial class EvmInstructions
+{
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static partial bool TryInlineStaticPrecompileCall<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        in UInt256 dataOffset,
+        UInt256 dataLength,
+        in UInt256 outputOffset,
+        UInt256 outputLength,
+        IPrecompile precompile,
+        Address target,
+        Address codeSource,
+        ulong gasLimitUl,
+        out EvmExceptionType result)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        Debug.Assert(vm.ReturnData is null, "Inline precompiles continue the current opcode chain.");
+        if (TTracingInst.IsActive || vm.IsTracingActions || !vm.CanExecutePrecompileCallDirectly(precompile, codeSource))
+        {
+            result = default;
+            return false;
+        }
+
+        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
+        TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
+        IReleaseSpec spec = vm.Spec;
+
+        if (!TGasPolicy.TryConsumePrecompileGas(ref childGas, precompile, callData, spec))
+        {
+            TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
+            vm.ReturnDataBuffer = default;
+            result = stack.PushZero<TTracingInst, OnFlag>();
+            return true;
+        }
+
+        ReadOnlyMemory<byte> outputData;
+        if (precompile is IdentityPrecompile)
+        {
+            // ID cannot fail and returns its input unchanged, so copy straight into a reusable buffer
+            // rather than allocating an array per call. The data still has to live somewhere this frame
+            // cannot overwrite, because RETURNDATACOPY may read it after the frame writes memory again.
+            outputData = vm.CopyToPrecompileScratch(callData.Span);
+        }
+        else
+        {
+            if (!(vm.TryRunPrecompileDirectly(precompile, callData, spec, out Result<byte[]> output) && output))
+            {
+                TGasPolicy.ClearExecutionGas(ref childGas);
+                TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
+                vm.ReturnDataBuffer = default;
+                result = stack.PushZero<TTracingInst, OnFlag>();
+                return true;
+            }
+
+            outputData = output.Data;
+        }
+
+        vm.WorldState.AddToBalanceAndCreateIfNotExists(target, UInt256.Zero, spec);
+
+        TGasPolicy.Refund(ref gas, in childGas);
+        vm.ReturnDataBuffer = outputData;
+
+        int copyLength = outputData.Length;
+        if (outputLength < (UInt256)copyLength)
+            copyLength = (int)outputLength.ToLong();
+
+        vm.VmState.Memory.SaveAfterGas(in outputOffset, outputData.Span[..copyLength]);
+
+        result = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+        return true;
+    }
+}

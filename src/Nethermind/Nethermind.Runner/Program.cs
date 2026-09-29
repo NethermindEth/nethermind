@@ -24,6 +24,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Logging.Microsoft;
 using Nethermind.Logging.NLog;
 using Nethermind.Runner;
 using Nethermind.Runner.Ethereum;
@@ -38,10 +39,12 @@ using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
 using Testably.Abstractions;
-using Nethermind.Network.Discovery.Discv5;
 #if !DEBUG
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 #endif
+
+if (!BitConverter.IsLittleEndian)
+    throw new PlatformNotSupportedException("Nethermind requires a little-endian platform.");
 
 DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
@@ -231,7 +234,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     processExitSource = new(cancellationToken);
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
-    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins);
+    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins, parseResult.GetValue(BasicOptions.Command));
 
     try
     {
@@ -472,6 +475,7 @@ RootCommand CreateRootCommand()
 {
     RootCommand rootCommand =
     [
+        BasicOptions.Command,
         BasicOptions.Configuration,
         BasicOptions.ConfigurationDirectory,
         BasicOptions.DatabasePath,
@@ -575,6 +579,12 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 
 static class BasicOptions
 {
+    public static Argument<string?> Command { get; } = new("command")
+    {
+        Description = "A standalone command to run instead of the node. Runs only that command and exits; an unknown name lists what is available.",
+        Arity = ArgumentArity.ZeroOrOne
+    };
+
     public static Option<string> Configuration { get; } =
         new("--config", "-c")
         {

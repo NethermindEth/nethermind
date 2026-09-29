@@ -23,9 +23,10 @@ internal sealed class TestEraFile : IDisposable
     private TestEraFile(TempPath tmpFile) => _tmpFile = tmpFile;
 
     public static async Task<TestEraFile> Create(
-        int preMergeCount,
-        int postMergeCount,
-        ISpecProvider? specProvider = null)
+        uint preMergeCount,
+        uint postMergeCount,
+        ISpecProvider? specProvider = null,
+        Transaction? transaction = null)
     {
         specProvider ??= MainnetSpecProvider.Instance;
         TempPath tmpFile = TempPath.GetTempFile();
@@ -33,13 +34,14 @@ internal sealed class TestEraFile : IDisposable
         TestEraFile file = new(tmpFile);
         HeaderDecoder headerDecoder = new();
 
-        long number = 0;
+        ulong number = 0;
         UInt256 td = BlockHeaderBuilder.DefaultDifficulty;
 
-        for (int i = 0; i < preMergeCount; i++, number++, td += BlockHeaderBuilder.DefaultDifficulty)
+        for (uint i = 0; i < preMergeCount; i++, number++, td += BlockHeaderBuilder.DefaultDifficulty)
         {
             TxReceipt receipt = Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject;
-            Block block = Build.A.Block.WithNumber(number).WithTotalDifficulty(td).TestObject;
+            Block block = Build.A.Block.WithNumber(number).WithTotalDifficulty(td)
+                .WithTransactions(transaction is null ? [] : [transaction]).TestObject;
             block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
                 [receipt], specProvider.GetSpec(block.Header), block.ReceiptsRoot);
             block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
@@ -47,10 +49,11 @@ internal sealed class TestEraFile : IDisposable
             await writer.Add(block, [receipt]);
         }
 
-        for (int i = 0; i < postMergeCount; i++, number++)
+        for (uint i = 0; i < postMergeCount; i++, number++)
         {
             TxReceipt receipt = Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject;
-            Block block = Build.A.Block.WithNumber(number).WithPostMergeRules().TestObject;
+            Block block = Build.A.Block.WithNumber(number).WithPostMergeRules()
+                .WithTransactions(transaction is null ? [] : [transaction]).TestObject;
             block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
                 [receipt], specProvider.GetSpec(block.Header), block.ReceiptsRoot);
             block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);

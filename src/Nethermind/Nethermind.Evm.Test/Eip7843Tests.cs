@@ -12,13 +12,13 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class Eip7843Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
 
     [Test]
     public void SLOTNUMTest()
     {
-        const long GasCostOfCallingWrapper = GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.Memory;
+        const ulong GasCostOfCallingWrapper = GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.Memory;
         const ulong SlotNumber = 1000;
 
         byte[] code = Prepare.EvmCode

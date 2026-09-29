@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -36,9 +32,15 @@ public partial class BlockAccessListManager
     {
         foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Length > 0)
+            // Storage-only entries must not create; a predeploy installing code without a nonce is why the
+            // code branch alone can need this. TODO: remove once every predeploy declares a nonce.
+            if (accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+            }
+
+            if (accountChanges.BalanceChanges.Length > 0)
+            {
                 UInt256 oldBalance = stateProvider.GetBalance(accountChanges.Address);
                 UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
                 if (newBalance > oldBalance)
@@ -53,7 +55,6 @@ public partial class BlockAccessListManager
 
             if (accountChanges.NonceChanges.Length > 0)
             {
-                stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
             }
 
@@ -68,11 +69,7 @@ public partial class BlockAccessListManager
                 int slotCount = slotChange.Changes.Length;
                 if (slotCount > 0)
                 {
-                    // StorageChange.Value is now EvmWord (Vector256<byte>) in big-endian wire form.
-                    EvmWord value = slotChange.Changes[^1].Value;
-                    ReadOnlySpan<byte> valueBytes = MemoryMarshal.CreateReadOnlySpan(
-                        ref Unsafe.As<EvmWord, byte>(ref value), 32);
-                    stateProvider.Set(storageCell, [.. valueBytes.WithoutLeadingZeros()]);
+                    stateProvider.Set(in storageCell, in slotChange.Changes[^1].Value);
                 }
             }
         }

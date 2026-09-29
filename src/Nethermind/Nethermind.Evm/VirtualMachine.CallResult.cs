@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
@@ -45,6 +46,7 @@ public partial class VirtualMachine<TGasPolicy>
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; }
+        [MemberNotNullWhen(false, nameof(StateToExecute))]
         public bool IsReturn => StateToExecute is null;
         //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
         public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;

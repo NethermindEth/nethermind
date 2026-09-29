@@ -9,13 +9,13 @@ public class EraEConfig : IEraEConfig
 {
     public string? ImportDirectory { get; set; }
     public string? ExportDirectory { get; set; }
-    public long From { get; set; }
-    public long To { get; set; }
+    public ulong From { get; set; }
+    public ulong To { get; set; }
     public string? TrustedAccumulatorFile { get; set; }
-    public int MaxEraSize { get; set; } = EraWriter.MaxEraSize;
+    public ulong MaxEraSize { get; set; } = EraWriter.MaxEraSize;
     public string? NetworkName { get; set; }
     public int Concurrency { get; set; }
-    public long ImportBlocksBufferSize { get; set; } = 4096;
+    public ulong ImportBlocksBufferSize { get; set; } = 4096;
     public string? BeaconNodeUrl { get; set; }
     public string? RemoteBaseUrl { get; set; }
     public string? RemoteDownloadDirectory { get; set; }

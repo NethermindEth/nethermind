@@ -34,13 +34,13 @@ public sealed class EraStore : IEraStore
     private readonly int _maxOpenFile;
     private readonly ConcurrentDictionary<int, (long Epoch, EraReader Reader)> _openedReader = new();
 
-    private readonly int _maxEraSize;
+    private readonly ulong _maxEraSize;
     private readonly int _verifyConcurrency;
     private volatile bool _disposed;
 
-    private readonly Lazy<(long First, long Last)> _blockRange;
+    private readonly Lazy<(ulong First, ulong Last)> _blockRange;
 
-    public (long First, long Last) BlockRange => _blockRange.Value;
+    public (ulong First, ulong Last) BlockRange => _blockRange.Value;
 
     private int LastEpoch { get; }
     private int FirstEpoch { get; } = int.MaxValue;
@@ -50,7 +50,7 @@ public sealed class EraStore : IEraStore
         IBlockValidator blockValidator,
         IFileSystem fileSystem,
         string networkName,
-        int maxEraSize,
+        ulong maxEraSize,
         ISet<ValueHash256>? trustedAccumulators,
         string directory,
         int verifyConcurrency = 0,
@@ -59,7 +59,7 @@ public sealed class EraStore : IEraStore
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(blockValidator);
         ArgumentException.ThrowIfNullOrEmpty(networkName);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxEraSize, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxEraSize, 0UL);
 
         _specProvider = specProvider;
         _blockValidator = blockValidator;
@@ -100,7 +100,7 @@ public sealed class EraStore : IEraStore
         if (!hasEraFile)
             throw new EraException($"No relevant era files (.ere or .erae) found for network '{networkName}' in directory {directory}.");
 
-        _blockRange = new Lazy<(long, long)>(() =>
+        _blockRange = new Lazy<(ulong, ulong)>(() =>
         {
             using EraRenter f = RentReader(FirstEpoch, out EraReader firstReader);
             using EraRenter l = RentReader(LastEpoch, out EraReader lastReader);
@@ -108,7 +108,7 @@ public sealed class EraStore : IEraStore
         });
     }
 
-    private long GetEpochNumber(long blockNumber) => blockNumber / _maxEraSize;
+    private long GetEpochNumber(ulong blockNumber) => (long)(blockNumber / _maxEraSize);
 
     private EraReader GetReader(long epoch) => !_epochs.TryGetValue(epoch, out string? path)
         ? throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.")
@@ -152,19 +152,17 @@ public sealed class EraStore : IEraStore
         }
     }
 
-    public bool HasEpoch(long blockNumber) => _epochs.ContainsKey(GetEpochNumber(blockNumber));
+    public bool HasEpoch(ulong blockNumber) => _epochs.ContainsKey(GetEpochNumber(blockNumber));
 
-    public long NextEraStart(long blockNumber)
+    public ulong NextEraStart(ulong blockNumber)
     {
         long epoch = GetEpochNumber(blockNumber);
         using EraRenter _ = RentReader(epoch, out EraReader reader);
         return reader.LastBlock + 1;
     }
 
-    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default)
+    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(number);
-
         long epoch = GetEpochNumber(number);
         if (!_epochs.ContainsKey(epoch))
             return (null, null);

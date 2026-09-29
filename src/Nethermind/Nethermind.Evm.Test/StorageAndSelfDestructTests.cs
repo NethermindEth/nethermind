@@ -19,7 +19,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class StorageAndSelfDestructTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.MuirGlacierBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.MuirGlacierBlockNumber;
 
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test
                 .Call(contractAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            long gasLimit = 1000000;
+            ulong gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1);
             Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
@@ -141,7 +141,7 @@ namespace Nethermind.Evm.Test
                 .Call(deploymentAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            long gasLimit = 1000000;
+            ulong gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1);
             // deploy create 2
@@ -247,7 +247,7 @@ namespace Nethermind.Evm.Test
                 .CallWithValue(deploymentAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            long gasLimit = 1000000;
+            ulong gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1);
             // deploy create 2
@@ -361,11 +361,11 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(deploymentAddress, UInt256.One);
             TestState.InsertCode(deploymentAddress, contractCode, MuirGlacier.Instance);
 
-            TestState.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
+            TestState.Set(new StorageCell(deploymentAddress, 7), new UInt256(new byte[] { 7 }, isBigEndian: true));
             TestState.Commit(MuirGlacier.Instance);
             TestState.CommitTree(0);
 
-            long gasLimit = 1000000;
+            ulong gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1);
             // deploy create 2

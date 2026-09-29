@@ -12,7 +12,7 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
 {
     private static readonly XdcBlockInfoDecoder _xdcBlockInfoDecoder = new();
 
-    protected override Vote DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Vote DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -38,22 +38,22 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
         return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
-    public override void Encode(RlpStream stream, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        _xdcBlockInfoDecoder.Encode(stream, item.ProposedBlockInfo, rlpBehaviors);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        _xdcBlockInfoDecoder.Encode(ref writer, item.ProposedBlockInfo, rlpBehaviors);
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
             Span<byte> sigBuffer = stackalloc byte[Signature.Size];
             item.Signature.WriteBytesWithRecoveryTo(sigBuffer);
-            stream.Encode(sigBuffer);
+            writer.Encode(sigBuffer);
         }
-        stream.Encode(item.GapNumber);
+        writer.Encode(item.GapNumber);
     }
 
     public override Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -61,10 +61,11 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
         if (item is null)
             return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
 
-        return new Rlp(rlpStream.Data.ToArray());
+        return new Rlp(bytes);
     }
 
     public override int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

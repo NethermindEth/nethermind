@@ -11,26 +11,62 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class BlockBodyDecoderTests
 {
+    [Test, NonParallelizable]
+    public void Transaction_pool_use_matches_decoder_ownership(
+        [Values("body", "unwrapped-body", "block")] string format,
+        [Values] bool skipPooledTransactions)
+    {
+        BlockBody body = new([Build.A.Transaction.Signed().TestObject], []);
+        BlockDecoder blockDecoder = new();
+        byte[] bytes = format == "block"
+            ? blockDecoder.Encode(new Block(Build.A.BlockHeader.TestObject, body)).Bytes
+            : BlockBodyDecoder.Instance.Encode(body).Bytes;
+
+        HashSet<Transaction> pooled = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
+        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+
+        RlpReader reader = new(bytes);
+        RlpBehaviors behaviors = skipPooledTransactions ? RlpBehaviors.SkipPooledTransactions : RlpBehaviors.None;
+        if (format == "unwrapped-body") reader.ReadSequenceLength();
+        BlockBody decoded = format switch
+        {
+            "block" => blockDecoder.DecodeGuardNotNull(ref reader, behaviors).Body,
+            "body" => BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader, behaviors),
+            _ => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions: !skipPooledTransactions)
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.EqualTo(body).UsingBlockBodyComparer());
+            Assert.That(pooled.Contains(decoded.Transactions[0]), Is.EqualTo(format is "body" or "unwrapped-body" && !skipPooledTransactions));
+        }
+    }
+
     [TestCaseSource(nameof(ValidBodies))]
     public void Roundtrip(BlockBody body)
     {
         int length = BlockBodyDecoder.Instance.GetLength(body, RlpBehaviors.None);
-        RlpStream stream = new(length);
-        BlockBodyDecoder.Instance.Encode(stream, body);
-        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
-        BlockBody decodedBody = BlockBodyDecoder.Instance.Decode(ref ctx);
+        byte[] bytes = new byte[length];
+        RlpWriter writer = new(bytes);
+        BlockBodyDecoder.Instance.Encode(ref writer, body);
+        RlpReader ctx = new(bytes);
+        BlockBody decodedBody = BlockBodyDecoder.Instance.DecodeGuardNotNull(ref ctx);
 
         Assert.That(decodedBody, Is.EqualTo(body).UsingBlockBodyComparer());
     }
 
     // check for RlpLimitException specifically, which should fire before decoding, so 0xC0 placeholders are fine here.
-    [TestCase(60_000, 0, null, TestName = "transactions")]
+    // Tx bound at the default 1 GGas MaxBlockGas:
+    // 1,000,000,000 / GasCostOf.TransactionEip2780 (12,000) + 1 == 83,334 entries.
+    [TestCase(83_335, 0, null, TestName = "transactions")]
     [TestCase(0, 3, null, TestName = "uncles")]
     [TestCase(0, 0, 64_001, TestName = "withdrawals")]
     public void Decode_count_over_limit_throws(int txCount, int uncleCount, int? withdrawalCount) =>
         Assert.Throws<RlpLimitException>(() => DecodeBody(BuildBodyStream(txCount, uncleCount, withdrawalCount)));
 
     // array of 0xC0's (interpreted as null) within the count limit
+    [TestCase(83_334, 0, null, TestName = "transaction at count limit")]
     [TestCase(10, 0, null, TestName = "transaction")]
     [TestCase(0, 1, null, TestName = "uncle")]
     [TestCase(0, 0, 6, TestName = "withdrawal")]
@@ -57,31 +93,32 @@ public class BlockBodyDecoderTests
         ).SetName("transactions + withdrawals");
     }
 
-    private static void DecodeBody(RlpStream stream)
+    private static void DecodeBody(byte[] bytes)
     {
-        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
-        BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, stream.Data.Length);
+        RlpReader ctx = new(bytes);
+        BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, bytes.Length, usePooledTransactions: false);
     }
 
-    private static RlpStream BuildBodyStream(int txCount, int uncleCount, int? withdrawalCount)
+    private static byte[] BuildBodyStream(int txCount, int uncleCount, int? withdrawalCount)
     {
         int totalLength = Rlp.LengthOfSequence(txCount)
                         + Rlp.LengthOfSequence(uncleCount)
                         + (withdrawalCount.HasValue ? Rlp.LengthOfSequence(withdrawalCount.Value) : 0);
 
-        RlpStream stream = new(totalLength);
-        WriteEmptyItems(stream, txCount);
-        WriteEmptyItems(stream, uncleCount);
+        byte[] bytes = new byte[totalLength];
+        RlpWriter writer = new(bytes);
+        WriteEmptyItems(ref writer, txCount);
+        WriteEmptyItems(ref writer, uncleCount);
         if (withdrawalCount.HasValue)
-            WriteEmptyItems(stream, withdrawalCount.Value);
+            WriteEmptyItems(ref writer, withdrawalCount.Value);
 
-        return stream;
+        return bytes;
 
-        static void WriteEmptyItems(RlpStream s, int count)
+        static void WriteEmptyItems(ref RlpWriter writer, int count)
         {
-            s.StartSequence(count);
+            writer.StartSequence(count);
             for (int i = 0; i < count; i++)
-                s.StartSequence(0); // 0xC0 — empty-list placeholder (decodes as null)
+                writer.StartSequence(0); // 0xC0 - empty-list placeholder (decodes as null)
         }
     }
 }

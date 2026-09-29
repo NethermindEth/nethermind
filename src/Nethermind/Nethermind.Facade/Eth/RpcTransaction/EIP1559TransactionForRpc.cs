@@ -37,16 +37,13 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             : transaction.MaxFeePerGas;
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         if (validateUserInput)
         {
             // Reject ambiguous input: both gasPrice and EIP-1559 fields
             if (GasPrice is not null && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null))
                 return RpcTransactionErrors.GasPriceInEip1559;
-
-            if (MaxFeePerGas < MaxPriorityFeePerGas)
-                return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
         }
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
@@ -56,8 +53,9 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
 
         if (tx.Supports1559)
         {
-            tx.GasPrice = MaxPriorityFeePerGas ?? UInt256.Zero;
-            tx.DecodedMaxFeePerGas = MaxFeePerGas ?? UInt256.Zero;
+            // A dynamic-fee type priced with gasPrice: the single price stands in for the missing fee cap and tip.
+            tx.GasPrice = MaxPriorityFeePerGas ?? GasPrice ?? UInt256.Zero;
+            tx.DecodedMaxFeePerGas = MaxFeePerGas ?? GasPrice ?? UInt256.Zero;
         }
 
         return tx;
@@ -65,6 +63,24 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
 
     public override bool ShouldSetBaseFee() =>
         base.ShouldSetBaseFee() || MaxFeePerGas.IsPositive() || MaxPriorityFeePerGas.IsPositive();
+
+    public override Result FillDefaults(in TxFillContext context)
+    {
+        if (GasPrice is { } gasPrice)
+        {
+            if (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null)
+                return RpcTransactionErrors.GasPriceInEip1559;
+
+            // Same gasPrice pricing as ToTransaction, made explicit so the filled tx validates as-is.
+            MaxPriorityFeePerGas = gasPrice;
+            MaxFeePerGas = gasPrice;
+            GasPrice = null;
+        }
+
+        MaxPriorityFeePerGas ??= context.MaxPriorityFeePerGas;
+        MaxFeePerGas ??= context.BaseFee * 2 + MaxPriorityFeePerGas.Value;
+        return Result.Success;
+    }
 
     public new static EIP1559TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);

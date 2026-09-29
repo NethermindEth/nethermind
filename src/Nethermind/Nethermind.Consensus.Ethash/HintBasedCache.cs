@@ -34,14 +34,26 @@ namespace Nethermind.Consensus.Ethash
         private readonly ILogger _logger = logManager?.GetClassLogger<HintBasedCache>() ?? throw new ArgumentNullException(nameof(logManager));
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Hint(Guid guid, long start, long end)
+        public void Hint(Guid guid, ulong start, ulong end)
         {
-            uint startEpoch = (uint)(start / Ethash.EpochLength);
-            uint endEpoch = (uint)(end / Ethash.EpochLength);
+            // Widened to ulong: a truncating cast to uint would wrap an out-of-range block number down to a
+            // small epoch and silently accept it.
+            ulong startEpoch = start / Ethash.EpochLength;
+            ulong endEpoch = end / Ethash.EpochLength;
+
+            if (endEpoch < startEpoch)
+            {
+                throw new InvalidOperationException($"Hint range is inverted: {startEpoch} > {endEpoch}");
+            }
 
             if (endEpoch - startEpoch > 10)
             {
                 throw new InvalidOperationException("Hint too wide");
+            }
+
+            if (endEpoch > Ethash.MaxEpoch)
+            {
+                throw new InvalidOperationException($"Hint epoch {endEpoch} exceeds the maximum supported epoch {Ethash.MaxEpoch}");
             }
 
             ref HashSet<uint>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_epochsPerGuid, guid, out bool exists);
@@ -86,7 +98,7 @@ namespace Nethermind.Consensus.Ethash
 
             if (currentMin > startEpoch || currentMax < endEpoch)
             {
-                for (long i = startEpoch; i <= endEpoch; i++)
+                for (ulong i = startEpoch; i <= endEpoch; i++)
                 {
                     uint epoch = (uint)i;
                     if (epochForGuid.Add(epoch))

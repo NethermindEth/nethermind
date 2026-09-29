@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Test
             public async Task<(T, string)> GetData()
             {
                 string jsonData = await GetJsonData();
-                return (_serializer.Deserialize<T>(jsonData), jsonData);
+                return (_serializer.Deserialize<T>(jsonData)!, jsonData);
             }
 
             public async Task<string> GetJsonData() => await File.ReadAllTextAsync(_file.AbsolutePath);

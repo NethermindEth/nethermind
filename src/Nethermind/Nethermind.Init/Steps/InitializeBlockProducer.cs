@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Init.Steps
@@ -18,6 +19,7 @@ namespace Nethermind.Init.Steps
     public class InitializeBlockProducer(
         INethermindApi api,
         IServiceStopper serviceStopper,
+        IBlockProductionPolicy blockProductionPolicy,
         Lazy<IEnumerable<IBlockProducerFactory>> blockProducerFactories,
         Lazy<IEnumerable<IBlockProducerRunnerFactory>> blockProducerRunnerFactories) : IStep
     {
@@ -25,7 +27,7 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken _)
         {
-            if (!_api.BlockProductionPolicy!.ShouldStartBlockProduction())
+            if (!blockProductionPolicy.ShouldStartBlockProduction())
             {
                 return Task.CompletedTask;
             }

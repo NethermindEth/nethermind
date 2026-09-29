@@ -14,35 +14,38 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IDb _blocksDb;
         private readonly int _length;
-        private Rlp.ValueDecoderContext _decoderContext;
+        private RlpReader _reader;
         private readonly int _startingPosition;
 
         private readonly TxReceipt[]? _receipts;
         private int _receiptIndex;
 
         private readonly Func<IReceiptsRecovery.IRecoveryContext>? _recoveryContextFactory;
+        private readonly Func<IReceiptsRecovery.IRecoveryContext>? _logRecoveryContextFactory;
         private IReceiptsRecovery.IRecoveryContext? _recoveryContext;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
         private bool _recoveryContextConfigured;
 
-        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder,
+            Func<IReceiptsRecovery.IRecoveryContext?>? logRecoveryContextFactory = null)
         {
-            _decoderContext = receiptsData.AsRlpValueContext();
+            _reader = new RlpReader(receiptsData);
             _blocksDb = blocksDb;
             _receipts = null;
             _receiptIndex = 0;
             _recoveryContextFactory = recoveryContextFactory;
+            _logRecoveryContextFactory = logRecoveryContextFactory ?? recoveryContextFactory;
             _recoveryContextConfigured = false;
             _recoveryContext = null;
             _receiptRefDecoder = receiptRefDecoder;
 
-            if (_decoderContext.Length > 0 && _decoderContext.PeekByte() == ReceiptArrayStorageDecoder.CompactEncoding)
+            if (_reader.Length > 0 && _reader.PeekByte() == ReceiptArrayStorageDecoder.CompactEncoding)
             {
-                _decoderContext.ReadByte();
+                _reader.ReadByte();
             }
 
-            _startingPosition = _decoderContext.Position;
-            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
+            _startingPosition = _reader.Position;
+            _length = receiptsData.Length == 0 ? 0 : _reader.ReadSequenceLength() + _reader.Position;
         }
 
         /// <summary>
@@ -51,7 +54,7 @@ namespace Nethermind.Blockchain.Receipts
         /// <param name="receipts"></param>
         public ReceiptsIterator(TxReceipt[] receipts)
         {
-            _decoderContext = new Rlp.ValueDecoderContext();
+            _reader = new RlpReader();
             _length = receipts.Length;
             _blocksDb = null;
             _receipts = receipts;
@@ -63,9 +66,16 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_receipts is null)
             {
-                if (_decoderContext.Position < _length)
+                if (_reader.Position < _length)
                 {
-                    _receiptRefDecoder.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    if (_reader.IsNextItemEmptyList())
+                    {
+                        _reader.Position = _length;
+                        current = default;
+                        return false;
+                    }
+
+                    _receiptRefDecoder.DecodeStructRef(ref _reader, RlpBehaviors.Storage, out current);
                     _recoveryContext?.RecoverReceiptData(ref current);
                     _receiptIndex++;
                     return true;
@@ -84,19 +94,28 @@ namespace Nethermind.Blockchain.Receipts
             return false;
         }
 
-        public void RecoverIfNeeded(ref TxReceiptStructRef current)
+        public void RecoverIfNeeded(ref TxReceiptStructRef current) => RecoverIfNeeded(ref current, _recoveryContextFactory);
+
+        /// <summary>
+        /// Recovers only the block hash and number, transaction index and transaction hash, which is all a log carries;
+        /// the other receipt fields stay as decoded for the rest of the iteration.
+        /// </summary>
+        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current) =>
+            RecoverIfNeeded(ref current, _logRecoveryContextFactory);
+
+        private void RecoverIfNeeded(ref TxReceiptStructRef current, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory)
         {
             if (_recoveryContextConfigured) return;
 
-            _recoveryContext = _recoveryContextFactory?.Invoke();
+            _recoveryContext = recoveryContextFactory?.Invoke();
             if (_recoveryContext is not null)
             {
                 // Need to replay the context.
-                _decoderContext.Position = _startingPosition;
-                if (_length != 0) _decoderContext.ReadSequenceLength();
+                _reader.Position = _startingPosition;
+                if (_length != 0) _reader.ReadSequenceLength();
                 for (int i = 0; i < _receiptIndex; i++)
                 {
-                    _receiptRefDecoder.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    _receiptRefDecoder.DecodeStructRef(ref _reader, RlpBehaviors.Storage, out current);
                     _recoveryContext?.RecoverReceiptData(ref current);
                 }
             }
@@ -106,9 +125,9 @@ namespace Nethermind.Blockchain.Receipts
 
         public readonly void Dispose()
         {
-            if (_receipts is null && !_decoderContext.Data.IsEmpty)
+            if (_receipts is null && !_reader.Data.IsEmpty)
             {
-                _blocksDb?.DangerousReleaseMemory(_decoderContext.Data);
+                _blocksDb?.DangerousReleaseMemory(_reader.Data);
             }
             _recoveryContext?.Dispose();
         }
@@ -118,8 +137,8 @@ namespace Nethermind.Blockchain.Receipts
                 ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder)
                 : new LogEntriesIterator(receipt.Logs);
 
-        public readonly Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) =>
-            _receiptRefDecoder.DecodeTopics(valueDecoderContext);
+        public readonly Hash256[] DecodeTopics(RlpReader reader) =>
+            _receiptRefDecoder.DecodeTopics(reader);
 
         public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;
     }

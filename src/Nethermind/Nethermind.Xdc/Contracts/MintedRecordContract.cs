@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -28,7 +27,7 @@ public class MintedRecordContract : IMintedRecordContract
     {
         XdcTransactionProcessor xdcTransactionProcessor = (XdcTransactionProcessor)transactionProcessor;
         IWorldState worldState = xdcTransactionProcessor.RewardWorldState;
-        UInt256 epochNumber = (ulong)spec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / (ulong)spec.EpochLength;
+        UInt256 epochNumber = spec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / spec.EpochLength;
         UInt256 blockNumber = (UInt256)header.Number;
 
         worldState.CreateAccountIfNotExists(MintedRecordAddress, UInt256.Zero);
@@ -62,43 +61,35 @@ public class MintedRecordContract : IMintedRecordContract
         WriteStorage(worldState, MintedRecordPostMintedBase + epochNumber, totalMinted);
         WriteStorage(worldState, MintedRecordPostBurnedBase + epochNumber, totalBurned);
         WriteStorage(worldState, MintedRecordPostRewardBlockBase + epochNumber, blockNumber);
-        worldState.IncrementNonce(MintedRecordAddress, UInt256.One, out _);
+        worldState.IncrementNonce(MintedRecordAddress, 1UL, out _);
     }
 
-    private static UInt256 ReadStorage(IWorldState worldState, UInt256 slot)
+    public bool TryGetOnsetEpoch(IWorldState worldState, out UInt256 onsetEpoch)
     {
-        ReadOnlySpan<byte> value = worldState.Get(new StorageCell(MintedRecordAddress, slot));
-        if (value.Length == 0)
+        // The accounting account's nonce is bumped on every update, so a zero nonce means the upgrade never ran.
+        if (worldState.GetNonce(MintedRecordAddress) == 0)
         {
-            return UInt256.Zero;
+            onsetEpoch = UInt256.Zero;
+            return false;
         }
 
-        return new UInt256(value, isBigEndian: true);
+        onsetEpoch = ReadStorage(worldState, MintedRecordOnsetEpochSlot);
+        return true;
+    }
+
+    public MintedRecordAccounting GetEpochAccounting(IWorldState worldState, UInt256 epoch) => new(
+        ReadStorage(worldState, MintedRecordPostMintedBase + epoch),
+        ReadStorage(worldState, MintedRecordPostBurnedBase + epoch),
+        ReadStorage(worldState, MintedRecordPostRewardBlockBase + epoch));
+
+    private static UInt256 ReadStorage(IWorldState worldState, in UInt256 slot)
+    {
+        worldState.Get(new StorageCell(MintedRecordAddress, slot), out UInt256 value);
+        return value;
     }
 
     private static void WriteStorage(IWorldState worldState, UInt256 slot, in UInt256 value) =>
-        worldState.Set(new StorageCell(MintedRecordAddress, slot), ToStorageBytes(value));
-
-    private static byte[] ToStorageBytes(in UInt256 value)
-    {
-        if (value.IsZero)
-        {
-            return [];
-        }
-
-        Span<byte> full = stackalloc byte[32];
-        value.ToBigEndian(full);
-        int firstNonZero = 0;
-        while (firstNonZero < full.Length && full[firstNonZero] == 0)
-        {
-            firstNonZero++;
-        }
-
-        int length = full.Length - firstNonZero;
-        byte[] compact = new byte[length];
-        full.Slice(firstNonZero).CopyTo(compact);
-        return compact;
-    }
+        worldState.Set(new StorageCell(MintedRecordAddress, slot), in value);
 
     private static UInt256 AddSaturating(UInt256 left, UInt256 right) =>
         UInt256.AddOverflow(left, right, out UInt256 result) ? UInt256.MaxValue : result;

@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -24,13 +26,19 @@ namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
+        private static ulong ParseULong(string? hex) =>
+            Bytes.FromHexString(hex).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+
+        private static ulong? ParseULongNullable(string? hex) =>
+            hex is null ? null : (ulong?)Bytes.FromHexString(hex).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+
         private static ForkActivation TransitionForkActivation(string transitionInfo)
         {
             const string timestampPrefix = "Time";
             const char kSuffix = 'k';
             if (!transitionInfo.StartsWith(timestampPrefix))
             {
-                return new ForkActivation(int.Parse(transitionInfo));
+                return new ForkActivation(ulong.Parse(transitionInfo));
             }
 
             transitionInfo = transitionInfo.Remove(0, timestampPrefix.Length);
@@ -55,22 +63,22 @@ namespace Ethereum.Test.Base
                 new Hash256(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
-                (ulong)Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
+                ParseULong(headerJson.Number),
+                ParseULong(headerJson.GasLimit),
+                ParseULong(headerJson.Timestamp),
                 Bytes.FromHexString(headerJson.ExtraData),
-                headerJson.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(headerJson.BlobGasUsed).ToUnsignedBigInteger(),
-                headerJson.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(headerJson.ExcessBlobGas).ToUnsignedBigInteger(),
+                ParseULongNullable(headerJson.BlobGasUsed),
+                ParseULongNullable(headerJson.ExcessBlobGas),
                 headerJson.ParentBeaconBlockRoot is null ? null : new Hash256(headerJson.ParentBeaconBlockRoot),
                 headerJson.RequestsHash is null ? null : new Hash256(headerJson.RequestsHash),
-                headerJson.SlotNumber is null ? null : (ulong)Bytes.FromHexString(headerJson.SlotNumber).ToUnsignedBigInteger()
+                headerJson.SlotNumber is null ? null : ParseULong(headerJson.SlotNumber)
             )
             {
                 Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom)),
-                GasUsed = (long)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger(),
+                GasUsed = ParseULong(headerJson.GasUsed),
                 Hash = new Hash256(headerJson.Hash),
                 MixHash = new Hash256(headerJson.MixHash),
-                Nonce = (ulong)Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger(),
+                Nonce = ParseULong(headerJson.Nonce),
                 ReceiptsRoot = new Hash256(headerJson.ReceiptTrie),
                 StateRoot = new Hash256(headerJson.StateRoot),
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
@@ -80,7 +88,7 @@ namespace Ethereum.Test.Base
 
             if (headerJson.BaseFeePerGas is not null)
             {
-                header.BaseFeePerGas = (ulong)Bytes.FromHexString(headerJson.BaseFeePerGas).ToUnsignedBigInteger();
+                header.BaseFeePerGas = ParseULong(headerJson.BaseFeePerGas);
             }
 
             return header;
@@ -93,7 +101,9 @@ namespace Ethereum.Test.Base
                 return engineNewPayload.ValidationError;
             }
 
-            int validationErrorParamIndex = newPayloadVersion >= 4 ? 4 : 3;
+            // An inline validation error trails the real arguments, and newPayloadV6 adds a fifth one,
+            // so index 4 there is the inclusion list rather than the error.
+            int validationErrorParamIndex = newPayloadVersion >= 6 ? 5 : newPayloadVersion >= 4 ? 4 : 3;
             if (engineNewPayload.Params.Length <= validationErrorParamIndex)
             {
                 return null;
@@ -109,10 +119,49 @@ namespace Ethereum.Test.Base
             };
         }
 
+        /// <summary>
+        /// Parses the JSON-RPC error code an engine fixture expects <c>engine_newPayloadV*</c> to
+        /// answer with, or null when it expects the payload to be validated.
+        /// </summary>
+        /// <exception cref="FormatException">The fixture carries an <c>errorCode</c> that is not an integer.</exception>
+        public static int? ParseErrorCode(TestEngineNewPayloadsJson engineNewPayload)
+        {
+            if (engineNewPayload.ErrorCode is null)
+            {
+                return null;
+            }
+
+            return int.TryParse(engineNewPayload.ErrorCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out int errorCode)
+                ? errorCode
+                : throw new FormatException($"Invalid engine payload errorCode: '{engineNewPayload.ErrorCode}'");
+        }
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson, ulong chainId = BlockchainIds.Mainnet)
         {
-            PrivateKey privateKey = new(transactionJson.SecretKey);
+            // A fixture that pins an explicit v/r/s carries no secret key that could reproduce it.
+            PrivateKey? privateKey = transactionJson.SecretKey is null ? null : new PrivateKey(transactionJson.SecretKey);
+
+            // Invalid-tx state tests carry the actual signed tx in txbytes; the template below is
+            // re-signed pre-EIP-155, which cannot reproduce signature-level invalidity (e.g. INVALID_CHAINID).
+            if (postStateJson.ExpectException is not null && postStateJson.Txbytes is not null)
+            {
+                try
+                {
+                    Transaction decoded = Rlp.Decode<Transaction>(postStateJson.Txbytes, RlpBehaviors.SkipTypedWrapping);
+                    decoded.SenderAddress = privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
+                    return decoded;
+                }
+                catch (RlpException)
+                {
+                    // Undecodable txbytes: fall back to the template; non-signature invalidity
+                    // (e.g. intrinsic gas) is still caught by tx validation at execution time.
+                }
+            }
+
+            // Without a secret key the template cannot be signed back into the transaction the fixture
+            // describes, and the only fixtures that omit one are the ones asserting a bad signature, so
+            // mark it intentionally invalid rather than hand the named sender a valid transfer.
+            Address senderAddress = privateKey?.Address ?? Address.Zero;
             Transaction transaction = new()
             {
                 Type = transactionJson.Type,
@@ -123,7 +172,7 @@ namespace Ethereum.Test.Base
                 Nonce = transactionJson.Nonce,
                 To = transactionJson.To,
                 Data = transactionJson.Data[postStateJson.Indexes.Data],
-                SenderAddress = privateKey.Address,
+                SenderAddress = senderAddress,
                 Signature = new Signature(1, 1, 27),
                 BlobVersionedHashes = transactionJson.BlobVersionedHashes,
                 MaxFeePerBlobGas = transactionJson.MaxFeePerBlobGas
@@ -212,7 +261,7 @@ namespace Ethereum.Test.Base
             // absent from the pre-state, TransactionProcessor.RecoverSenderIfNeeded re-recovers a
             // bogus sender from the placeholder signature and then crashes incrementing its nonce.
             // Address.Zero marks an intentionally-invalid transaction, so leave those as-is.
-            if (transaction.SenderAddress != Address.Zero)
+            if (privateKey is not null && transaction.SenderAddress != Address.Zero)
             {
                 new EthereumEcdsa(chainId).Sign(privateKey, transaction, isEip155Enabled: false);
                 transaction.Hash = transaction.CalculateHash();
@@ -313,6 +362,7 @@ namespace Ethereum.Test.Base
             {
                 Name = name,
                 Category = category,
+                ForkName = testJson.Network,
                 Network = testJson.EthereumNetwork,
                 NetworkAfterTransition = testJson.EthereumNetworkAfterTransition,
                 TransitionForkActivation = testJson.TransitionForkActivation,
@@ -340,6 +390,7 @@ namespace Ethereum.Test.Base
 
         private static readonly EthereumJsonSerializer _serializer = new();
         private static readonly ConcurrentDictionary<SpecOverrideCacheKey, IReleaseSpec> _overriddenSpecs = new();
+        private const string NeitherShapeMessage = "Fixture matches neither the standard nor the trimmed blockchain test shape.";
 
         public static IEnumerable<GeneralStateTest> ConvertStateTest(string json) =>
             ConvertStateTests(_serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json));
@@ -393,16 +444,29 @@ namespace Ethereum.Test.Base
             return tests;
         }
 
-        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
-        {
-            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
-            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
-        }
+        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json) =>
+            ConvertToBlockchainTests(Encoding.UTF8.GetBytes(json));
 
+        /// <remarks>Only deserialization falls back between shapes, so a conversion failure surfaces as itself.</remarks>
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(ReadOnlySpan<byte> json)
         {
-            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
-            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
+            Dictionary<string, BlockchainTestJson> tests;
+            try
+            {
+                tests = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
+            }
+            catch (Exception standardShapeException)
+            {
+                try
+                {
+                    tests = CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json));
+                }
+                catch (Exception trimmedShapeException)
+                {
+                    throw new AggregateException(NeitherShapeMessage, standardShapeException, trimmedShapeException);
+                }
+            }
+            return ConvertToBlockchainTests(tests);
         }
 
         // Some BAL fixtures use the trimmed HalfBlockchainTestJson shape; coerce on demand.
@@ -440,7 +504,8 @@ namespace Ethereum.Test.Base
 
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
-            IReleaseSpec spec = SpecNameParser.Parse(name);
+            IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(name));
+            // The blob schedule stays keyed by the name the fixture declares, not by the alias target.
             if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
             {
                 return spec;
@@ -449,7 +514,7 @@ namespace Ethereum.Test.Base
             SpecOverrideCacheKey key = new(name, blobCount.Max, blobCount.Target, blobCount.BaseFeeUpdateFraction);
             return _overriddenSpecs.GetOrAdd(key, static key =>
             {
-                IReleaseSpec spec = SpecNameParser.Parse(key.Name);
+                IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(key.Name));
                 return new OverridableReleaseSpec(spec)
                 {
                     MaxBlobCount = System.Convert.ToUInt64(key.MaxBlobCount, 16),

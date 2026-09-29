@@ -10,4 +10,10 @@ namespace Nethermind.Network
     {
         public Node Node { get; } = node;
     }
+
+    /// <summary>
+    /// Raised when a node is explicitly removed by the operator (e.g. via admin_removePeer).
+    /// Receivers must disconnect any active P2P session unconditionally.
+    /// </summary>
+    public class ExplicitNodeRemovalEventArgs(Node node) : NodeEventArgs(node);
 }

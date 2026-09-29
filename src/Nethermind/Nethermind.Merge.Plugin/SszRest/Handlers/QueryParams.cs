@@ -11,19 +11,19 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 internal static class QueryParams
 {
     /// <summary>
-    /// Reads a required <see cref="long"/> query parameter named <paramref name="name"/> and
+    /// Reads a required <see cref="ulong"/> query parameter named <paramref name="name"/> and
     /// validates it with <paramref name="isValid"/>. On failure, <paramref name="errorTask"/>
     /// is set to a pending <c>400 invalid-request</c> response that the caller MUST await.
     /// </summary>
-    public static bool TryReadLong(
+    public static bool TryReadUlong(
         HttpContext ctx,
         string name,
-        Func<long, bool> isValid,
+        Func<ulong, bool> isValid,
         string validationDescription,
-        out long value,
+        out ulong value,
         [NotNullWhen(false)] out Task? errorTask)
     {
-        if (long.TryParse(ctx.Request.Query[name], out value) && isValid(value))
+        if (ulong.TryParse(ctx.Request.Query[name], out value) && isValid(value))
         {
             errorTask = null;
             return true;

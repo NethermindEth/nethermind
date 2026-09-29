@@ -1,0 +1,11 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Network.Discovery.Discv4.Messages;
+
+namespace Nethermind.Network.Discovery.Discv4;
+
+public interface IDiscoveryMsgListener
+{
+    Task OnIncomingMsg(DiscoveryMsg msg);
+}

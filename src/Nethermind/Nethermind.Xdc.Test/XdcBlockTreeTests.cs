@@ -6,8 +6,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
@@ -17,23 +19,36 @@ namespace Nethermind.Xdc.Test;
 [TestFixture, Parallelizable(ParallelScope.All)]
 internal class XdcBlockTreeTests
 {
-    [Test]
-    public void Suggest_BlockBelowFinalizedHeight_WhenKnown_ReturnsAlreadyKnown()
+    [TestCase(true, TestName = "Suggest_BlockBelowFinalizedHeight_WhenBodyAlreadyStored_ReturnsAlreadyKnownAndKeepsTheBody")]
+    [TestCase(false, TestName = "Suggest_BlockBelowFinalizedHeight_WhenOnlyHeaderKnown_ReturnsAlreadyKnownAndKeepsTheBody")]
+    public void Suggest_BlockBelowFinalizedHeight_WhenKnown_ReturnsAlreadyKnownAndKeepsTheBody(bool bodyAlreadyStored)
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
-        Block block2 = XdcBlock(2, block1.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
+        Block block2 = XdcBlock(2UL, block1.Hash!);
 
         blockTree.SuggestBlock(genesis);
-        blockTree.SuggestBlock(block1);
+        if (bodyAlreadyStored)
+        {
+            blockTree.SuggestBlock(block1);
+        }
+        else
+        {
+            blockTree.Insert(block1.Header); // sync inserts headers ahead of the bodies
+        }
         blockTree.SuggestBlock(block2);
         blockTree.UpdateHeadBlock(block2.Hash!);
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
-        Assert.That(blockTree.SuggestBlock(block1), Is.EqualTo(AddBlockResult.AlreadyKnown));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.SuggestBlock(block1), Is.EqualTo(AddBlockResult.AlreadyKnown));
+            Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
+                Is.Not.Null, "the finalized-height branch must delegate to the base so a re-suggested body is kept");
+        }
     }
 
     [Test]
@@ -41,9 +56,9 @@ internal class XdcBlockTreeTests
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
-        Block block2 = XdcBlock(2, block1.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
+        Block block2 = XdcBlock(2UL, block1.Hash!);
 
         blockTree.SuggestBlock(genesis);
         blockTree.SuggestBlock(block1);
@@ -52,7 +67,7 @@ internal class XdcBlockTreeTests
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
-        Block unknown = XdcBlock(1, genesis.Hash!, nonce: 1);
+        Block unknown = XdcBlock(1UL, genesis.Hash!, nonce: 1UL);
         Assert.That(blockTree.SuggestBlock(unknown), Is.EqualTo(AddBlockResult.InvalidBlock));
     }
 
@@ -61,10 +76,10 @@ internal class XdcBlockTreeTests
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
-        Block block2 = XdcBlock(2, block1.Hash!);
-        Block block3 = XdcBlock(3, block2.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
+        Block block2 = XdcBlock(2UL, block1.Hash!);
+        Block block3 = XdcBlock(3UL, block2.Hash!);
 
         blockTree.SuggestBlock(genesis);
         blockTree.SuggestBlock(block1);
@@ -74,7 +89,7 @@ internal class XdcBlockTreeTests
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
-        Block block3Alt = XdcBlock(3, block2.Hash!, nonce: 1);
+        Block block3Alt = XdcBlock(3UL, block2.Hash!, nonce: 1UL);
         Assert.That(blockTree.SuggestBlock(block3Alt), Is.EqualTo(AddBlockResult.Added));
     }
 
@@ -83,14 +98,14 @@ internal class XdcBlockTreeTests
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
-        Block block2 = XdcBlock(2, block1.Hash!);
-        Block block3 = XdcBlock(3, block2.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
+        Block block2 = XdcBlock(2UL, block1.Hash!);
+        Block block3 = XdcBlock(3UL, block2.Hash!);
 
         // block2Fork forks at height 2 — same height as the finalized block
-        Block block2Fork = XdcBlock(2, block1.Hash!, nonce: 1);
-        Block block3Fork = XdcBlock(3, block2Fork.Hash!);
+        Block block2Fork = XdcBlock(2UL, block1.Hash!, nonce: 1UL);
+        Block block3Fork = XdcBlock(3UL, block2Fork.Hash!);
 
         blockTree.SuggestBlock(genesis);
         blockTree.SuggestBlock(block1);
@@ -109,19 +124,75 @@ internal class XdcBlockTreeTests
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
         blockTree.SuggestBlock(genesis);
         blockTree.SuggestBlock(block1);
         blockTree.UpdateHeadBlock(block1.Hash!);
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block1.Hash!, 1, block1.Number));
 
-        Block disconnected = XdcBlock(2, Keccak.Compute("other"));
+        Block disconnected = XdcBlock(2UL, Keccak.Compute("other"));
         Assert.That(blockTree.SuggestBlock(disconnected), Is.EqualTo(AddBlockResult.UnknownParent));
     }
 
-    private static Block XdcBlock(long number, Hash256 parentHash, ulong nonce = 0)
+    [TestCase(5UL, false, true)] // higher round from a remote (non-self-mined) block overrides an equal-TD self-mined head
+    [TestCase(1UL, false, false)] // same round from a remote block does not override - self-mined tie-break still applies
+    [TestCase(1UL, true, true)] // same round, also self-mined, overrides (unchanged proposal-race behavior)
+    [TestCase(0UL, true, false)] // lower round does not override, even if self-mined
+    public void IsSameTdButPreferred_BreaksEqualTdTieByRoundThenSelfMined(ulong candidateRound, bool candidateSelfMined, bool expectedOverride)
+    {
+        XdcBlockHeader head = XdcHeaderWithRound(1UL, Keccak.Zero, round: 1, selfMined: true);
+        head.TotalDifficulty = 2;
+        XdcBlockHeader candidate = XdcHeaderWithRound(1UL, Keccak.Zero, round: candidateRound, selfMined: candidateSelfMined, nonce: 1UL);
+        candidate.TotalDifficulty = head.TotalDifficulty;
+
+        Assert.That(XdcBlockTree.IsSameTdButPreferred(candidate, head), Is.EqualTo(expectedOverride));
+    }
+
+    [Test]
+    public void IsSameTdButPreferred_DifferentTotalDifficulty_NeverOverrides()
+    {
+        XdcBlockHeader head = XdcHeaderWithRound(1UL, Keccak.Zero, round: 1, selfMined: false);
+        XdcBlockHeader candidate = XdcHeaderWithRound(1UL, Keccak.Zero, round: 5, selfMined: true, nonce: 1UL);
+        head.TotalDifficulty = 2;
+        candidate.TotalDifficulty = 3;
+
+        Assert.That(XdcBlockTree.IsSameTdButPreferred(candidate, head), Is.False);
+    }
+
+    [Test]
+    public void IsSameTdButPreferred_MissingConsensusData_NeverOverrides()
+    {
+        XdcBlockHeader head = XdcHeaderWithRound(1UL, Keccak.Zero, round: 1, selfMined: false);
+        head.TotalDifficulty = 2;
+        XdcBlockHeader candidate = Build.A.XdcBlockHeader().WithNumber(1UL).TestObject;
+        candidate.TotalDifficulty = head.TotalDifficulty;
+
+        Assert.That(XdcBlockTree.IsSameTdButPreferred(candidate, head), Is.False);
+    }
+
+    private static XdcBlockHeader XdcHeaderWithRound(ulong number, Hash256 parentHash, ulong round, bool selfMined, ulong nonce = 0)
+    {
+        XdcBlockHeader header = new(
+            parentHash,
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.One,
+            number,
+            XdcConstants.DefaultTargetGasLimit,
+            1_700_000_000,
+            [],
+            isSelfMined: selfMined)
+        {
+            Nonce = nonce
+        };
+        header.ExtraConsensusData = new ExtraFieldsV2(round, null!);
+        header.Hash = header.CalculateHash().ToHash256();
+        return header;
+    }
+
+    private static Block XdcBlock(ulong number, Hash256 parentHash, ulong nonce = 0)
     {
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithNumber(number)
@@ -137,7 +208,7 @@ internal class XdcBlockTreeTests
         IXdcConsensusContext consensus = Substitute.For<IXdcConsensusContext>();
         consensus.HighestCommitBlock.Returns((BlockRoundInfo)null!);
 
-        XdcHeaderStore xdcHeaderStore = new(new TestMemDb(), new TestMemDb());
+        XdcHeaderStore xdcHeaderStore = new(new TestMemDb(), new TestMemDb(), new XdcHeaderDecoder());
         BlockTreeBuilder builder = Build.A.BlockTree(MainnetSpecProvider.Instance)
             .WithHeaderStore(xdcHeaderStore)
             .WithoutSettingHead;
@@ -153,7 +224,9 @@ internal class XdcBlockTreeTests
             builder.ChainLevelInfoRepository,
             MainnetSpecProvider.Instance,
             builder.SyncConfig,
-            LimboLogs.Instance);
+            builder.StateBoundary,
+            LimboLogs.Instance,
+            new BlockTreeMutationLock());
 
         return (blockTree, consensus);
     }
