@@ -194,7 +194,7 @@ public class BlockSignatureBatchVectorTests
 
             fulu.ProcessSlots(state, block.Slot, cache);
             if (verify && !SignatureSets.VerifyProposerSignature(state, signedBlock, pubkeys))
-                throw new BeaconStateException($"Invalid proposer signature for the block at slot {block.Slot}");
+                throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
             // The Electra driver runs under the Electra blob limit, as its own ApplyBlock does.
             ulong maxBlobs = fulu.Fork == "electra"
                 ? spec.MaxBlobsPerBlockElectra
@@ -211,7 +211,7 @@ public class BlockSignatureBatchVectorTests
             BeaconBlockGloas block = signedBlock.Message!;
             gloas.ProcessSlots(state, block.Slot, cache);
             if (verify && !GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, pubkeys))
-                throw new BeaconStateException($"Invalid proposer signature for the block at slot {block.Slot}");
+                throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
             if (batched)
                 GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, new AcceptingNotifier(), spec, verify);
             else
