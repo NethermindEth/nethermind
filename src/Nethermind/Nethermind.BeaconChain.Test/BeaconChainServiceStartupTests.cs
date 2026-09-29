@@ -71,6 +71,20 @@ public class BeaconChainServiceStartupTests
         }
     }
 
+    /// <summary>A database written for another network must not seed this one; the anchor state's genesis_validators_root is checked on resume.</summary>
+    [Test]
+    public async Task A_resumed_anchor_from_another_network_fails_startup([Values] bool gloas)
+    {
+        (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas, nextCommittee: false, key: null, genesisValidatorsRoot: GloasTestFixtures.Hash(0x5A));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains("genesis_validators_root").And.Message.Contains("another network"));
+            Assert.That(errors, Is.Empty, "the background run never started");
+            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
+        }
+    }
+
     /// <summary>A valid resumed anchor passes validation: nothing refuses it, and the pubkey cache is built from its registry.</summary>
     [Test]
     public async Task A_resumed_anchor_with_valid_sync_committee_keys_goes_on_to_start([Values] bool gloas)
@@ -171,7 +185,7 @@ public class BeaconChainServiceStartupTests
         BeaconStateGloas state = first.PostState.Clone();
         if (!blockMatchesState)
         {
-            state.GenesisValidatorsRoot = GloasTestFixtures.Hash(0x5A);
+            state.Eth1DepositIndex++;
         }
 
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, new ForkedSignedBeaconBlock.OfGloas(first.Block));
@@ -587,12 +601,28 @@ public class BeaconChainServiceStartupTests
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
-    private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key)
+    private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, Hash256? genesisValidatorsRoot = null)
     {
         CacheWrittenMemDb metadata = new();
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
         // The run stops at the orchestrator, which has no network in this container.
         SeedAnchor(store, gloas, nextCommittee, key);
+        if (genesisValidatorsRoot is not null)
+        {
+            ForkCrossingChain chain = ForkCrossingChain.Instance;
+            if (gloas)
+            {
+                BeaconStateGloas foreign = chain.First.PostState.Clone();
+                foreign.GenesisValidatorsRoot = genesisValidatorsRoot;
+                store.PutState(chain.First.Root, BeaconStateGloas.Encode(foreign));
+            }
+            else
+            {
+                BeaconStateFulu foreign = chain.AnchorState.Clone();
+                foreign.GenesisValidatorsRoot = genesisValidatorsRoot;
+                store.PutState(chain.AnchorRoot, BeaconStateFulu.Encode(foreign));
+            }
+        }
 
         TestErrorLogManager logManager = new();
         PubkeyCache pubkeyCache = new();

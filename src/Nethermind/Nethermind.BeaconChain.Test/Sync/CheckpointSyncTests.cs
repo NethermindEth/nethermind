@@ -151,13 +151,11 @@ public class CheckpointSyncTests
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
-    /// <summary>The genesis validators root stored with the anchor must be the one the Gloas anchor state carries.</summary>
+    /// <summary>A checkpoint sync persists the anchor, its state and block, and no genesis-root metadata that nothing reads.</summary>
     [Test]
-    public async Task A_gloas_checkpoint_persists_the_genesis_validators_root_of_its_state()
+    public async Task A_gloas_checkpoint_writes_no_unread_genesis_validators_root_metadata()
     {
-        BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState.Clone();
-        state.GenesisValidatorsRoot = GloasTestFixtures.Hash(0x5A);
-        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, null);
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, null);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
 
         using (CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance))
@@ -165,7 +163,23 @@ public class CheckpointSyncTests
             await sync.RunAsync(CancellationToken.None);
         }
 
-        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.GenesisValidatorsRoot), Is.EqualTo(state.GenesisValidatorsRoot.BytesToArray()));
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.GenesisValidatorsRoot), Is.Null);
+    }
+
+    /// <summary>A fresh checkpoint sync refuses a state of another network, so a database that resume would refuse is never written.</summary>
+    [Test]
+    public void A_gloas_checkpoint_from_another_network_is_refused_before_anything_is_persisted()
+    {
+        BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState.Clone();
+        state.GenesisValidatorsRoot = GloasTestFixtures.Hash(0x5A);
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, null);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        InvalidDataException ex = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+
+        Assert.That(ex.Message, Does.Contain("genesis_validators_root").And.Contain("another network"));
+        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
     /// <summary>
