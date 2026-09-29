@@ -26,7 +26,8 @@ public partial class GasEstimator
     /// and its frame limits plus signature verification work within <paramref name="gasCap"/>, the work bound
     /// <c>FrameTransactionForRpc.ToTransaction</c> enforces on explicit limits. Frames are minimised in order: the
     /// frame being searched takes what the others leave, while each later frame holds a reservation measured by a
-    /// first probe that splits the rooms evenly.</remarks>
+    /// first probe that splits the rooms evenly. Probes run at the requested fees, or unpriced when the payer cannot
+    /// afford the rooms at them, and a final probe at the requested fees checks the filled transaction.</remarks>
     /// <param name="context">The block the estimate runs in; each probe runs in a copy of its header.</param>
     /// <param name="executionReverted">Whether the failure is a frame of an otherwise valid transaction reverting.</param>
     public Result<TxFrame[]> EstimateFrameGas(Transaction transaction, BlockExecutionContext context,
@@ -49,11 +50,6 @@ public partial class GasEstimator
             reservations[..frames.Length]);
         if (!search.TryPartitionRooms()) return Result<TxFrame[]>.Fail(CannotEstimateGasExceeded);
         search.ReserveEvenSplit();
-
-        UInt256 gasPrice = tx.GasPrice;
-        UInt256 feeCap = tx.DecodedMaxFeePerGas;
-        tx.GasPrice = 0;
-        tx.DecodedMaxFeePerGas = 0;
         search.MeasureReservations();
         if (!search.TryMinimizeFrames(out string? error))
         {
@@ -61,10 +57,6 @@ public partial class GasEstimator
             return Result<TxFrame[]>.Fail(error);
         }
         if (!search.FitsRooms()) return Result<TxFrame[]>.Fail(CannotEstimateGasExceeded);
-
-        tx.IntrinsicGasMemo = null;
-        tx.GasPrice = gasPrice;
-        tx.DecodedMaxFeePerGas = feeCap;
         return search.Verify(out executionReverted);
     }
 
@@ -118,6 +110,7 @@ public partial class GasEstimator
         private bool _capLimited;
         private int _probes;
         private bool _probesExhausted;
+        private bool _unpricedSearch;
         private TransactionResult _lastResult;
         private TxFrameReceipt[]? _receipts;
         private (int? Frame, EvmExceptionType? Error) _reservationFailure;
@@ -190,7 +183,13 @@ public partial class GasEstimator
         /// absorbs usage that shifts as earlier frames are minimised.</summary>
         public void MeasureReservations()
         {
-            Probe(realFees: false);
+            Probe();
+            // A payer that cannot afford the rooms at the requested fees never settles, so the search runs unpriced.
+            if (_tracer.Receipts is null && IsPriced)
+            {
+                _unpricedSearch = true;
+                Probe();
+            }
             TxFrameReceipt[]? split = _tracer.Receipts;
             for (int i = 0; i < _frames.Length; i++)
             {
@@ -226,7 +225,7 @@ public partial class GasEstimator
         /// <summary>Runs the filled transaction at its real fees, which decides the outcome.</summary>
         public Result<TxFrame[]> Verify(out bool executionReverted)
         {
-            bool succeeded = Probe(realFees: true);
+            bool succeeded = Probe(verifying: true);
             executionReverted = !succeeded && LastProbeReverted;
             if (succeeded) return _frames;
             string error = ProbeError();
@@ -406,7 +405,7 @@ public partial class GasEstimator
         // only a reservation until its own turn and may react to the gas it has; a smaller limit must not change that.
         private bool TryProbe(int index, bool atUpperLimits)
         {
-            bool succeeded = Probe(realFees: false);
+            bool succeeded = Probe();
             (int? Frame, EvmExceptionType? Error) failure = (_tracer.FailedFrame, _tracer.FrameError);
             bool reservationBound = failure.Frame > index && (atUpperLimits || failure == _reservationFailure);
             if (!succeeded && !reservationBound) return false;
@@ -421,16 +420,25 @@ public partial class GasEstimator
                 ? CannotEstimateGasExceeded
                 : ProbeError();
 
+        private readonly bool IsPriced => !_tx.GasPrice.IsZero || !_tx.DecodedMaxFeePerGas.IsZero || !_baseFee.IsZero;
+
+        /// <param name="verifying">Whether this is the final probe, which always runs at the requested fees.</param>
         /// <returns>Whether the probe ran every frame successfully.</returns>
-        private bool Probe(bool realFees)
+        private bool Probe(bool verifying = false)
         {
             _token.ThrowIfCancellationRequested();
             _probes++;
+            bool unpriced = _unpricedSearch && !verifying;
             Transaction probe = new();
             _tx.CopyTo(probe, copyHash: false);
             probe.GasLimit = FrameTxValidation.TotalGasLimit(_frames);
+            if (unpriced)
+            {
+                probe.GasPrice = 0;
+                probe.DecodedMaxFeePerGas = 0;
+            }
             _probeHeader.GasUsed = 0;
-            _probeHeader.BaseFeePerGas = realFees ? _baseFee : UInt256.Zero;
+            _probeHeader.BaseFeePerGas = unpriced ? UInt256.Zero : _baseFee;
             _tracer.Clear();
             _processor.SetBlockExecutionContext(in _probeContext);
             _lastResult = _processor.CallAndRestore(probe, _probeTracer);

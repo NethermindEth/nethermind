@@ -278,6 +278,27 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_EstimateGas_RunsFramesAtTheRequestedGasPrice([Values] bool explicitLimits)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 2;
+        request.MaxPriorityFeePerGas = 1;
+        if (explicitLimits)
+        {
+            (request.Frames![0].ExecutionGasLimit, request.Frames[0].StateGasLimit) = (50_000, 0);
+            (request.Frames[1].ExecutionGasLimit, request.Frames[1].StateGasLimit) = (50_000, 200_000);
+        }
+        // The second frame reverts unless GASPRICE is positive.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"0xde0b6b3a7640000"},"{{{request.Frames![1].Target}}}":{"code":"0x3a15600657005b5f5ffd"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0"}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
     public async Task FrameGas_EstimateGas_RespectsRpcGasCap([Values] bool tooSmall)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
