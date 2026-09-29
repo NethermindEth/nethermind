@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -137,8 +138,11 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    public enum ReceiptAvailability { Stored, Missing, Unreproducible }
+
+    // Without usable receipts both paths number the logs from the body they replay, as the receipts would.
     [Test]
-    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce()
+    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce([Values] ReceiptAvailability availability)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -151,7 +155,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
                 .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
-                .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => new CountingReceiptFinder(ctx.Resolve<IReceiptFinder>())));
+                .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => new CountingReceiptFinder(ctx.Resolve<IReceiptFinder>(), availability)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
         Transaction[] transactions = new Transaction[3];
@@ -163,21 +167,24 @@ public partial class DebugRpcModuleTests
         CountingReceiptFinder receipts = (CountingReceiptFinder)chain.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey);
 
         int before = receipts.BlockGets;
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash,
-            new GethTraceOptions { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""") });
+        GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""") };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, options);
+        int blockTraceGets = receipts.BlockGets - before;
+        string single = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactions[^1].Hash, options);
 
         JArray result = (JArray)JToken.Parse(response)["result"]!;
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(result, Has.Count.EqualTo(transactions.Length), response);
             for (int i = 0; i < result.Count; i++)
                 Assert.That((string)result[i]!["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{i:x}"), response);
-            // The sequential path counts logs as it replays and reads no receipts, so exactly one read shows the
-            // parallel path ran and its workers shared it.
-            Assert.That(receipts.BlockGets - before, Is.EqualTo(1));
+            Assert.That((string)JToken.Parse(single)["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{transactions.Length - 1:x}"), single);
+            // Read once on the calling thread: the parallel workers share it, and the replay it falls back to reads none.
+            Assert.That(blockTraceGets, Is.EqualTo(1));
         }
     }
 
-    private sealed class CountingReceiptFinder(IReceiptFinder inner) : IReceiptFinder
+    private sealed class CountingReceiptFinder(IReceiptFinder inner, ReceiptAvailability availability) : IReceiptFinder
     {
         private int _blockGets;
 
@@ -188,7 +195,12 @@ public partial class DebugRpcModuleTests
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
         {
             Interlocked.Increment(ref _blockGets);
-            return inner.Get(block, recover, recoverSender);
+            return availability switch
+            {
+                ReceiptAvailability.Missing => [],
+                ReceiptAvailability.Unreproducible => throw new ResourceNotFoundException($"No receipts for block {block.Number}"),
+                _ => inner.Get(block, recover, recoverSender)
+            };
         }
 
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inner.Get(blockHash, recover);

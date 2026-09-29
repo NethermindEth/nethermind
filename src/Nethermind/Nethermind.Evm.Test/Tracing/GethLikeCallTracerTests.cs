@@ -375,7 +375,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     {
         byte[] code = CreateNestedCallsCode();
         (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
-        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog) with { LogIndex = new BlockLogIndex(() => 5) });
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog) with { LogIndex = new BlockLogIndex(5) });
         using GethLikeTxTrace trace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
 
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;

@@ -261,7 +261,7 @@ public class FrameTxBlockReceiptsTests
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.SetOtherTracer(callTracer.WithCancellation(CancellationToken.None));
         receiptsTracer.StartNewBlockTrace(block);
-        receiptsTracer.StartNewTxTrace(tx);
+        using ITxTracer txTracer = receiptsTracer.StartNewTxTrace(tx);
         processor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();

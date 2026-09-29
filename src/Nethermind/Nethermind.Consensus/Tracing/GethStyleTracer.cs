@@ -205,18 +205,30 @@ public class GethStyleTracer(
             block.Header.BaseFeePerGas = UInt256.Zero;
         }
 
-        bool tracePreceding = !useBlockAsBase && TracesPrecedingForLogIndex(options, allowIndexed);
+        bool unaltered = allowIndexed && options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee;
+        BlockLogIndex? logIndex = null;
+        bool tracePreceding = false;
+        if (!useBlockAsBase && WantsLogIndex(options))
+        {
+            // Stored receipts describe only the unaltered canonical body; anything else numbers its logs from the
+            // transactions it runs, which then have to be traced too.
+            int txIndex = Array.FindIndex(block.Transactions, t => t.Hash == txHash);
+            int[]? firstLogIndexes = unaltered && txIndex >= 0 ? FirstLogIndexes(block) : null;
+            tracePreceding = firstLogIndexes is null;
+            logIndex = new BlockLogIndex(tracePreceding ? 0 : firstLogIndexes![txIndex]);
+        }
+
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : txHash };
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, useBlockAsBase ? null : ReplayLogIndex(filtered, block))
+            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
         {
-            bool unaltered = allowIndexed && options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee;
+            // A seed skips the prefix, whose logs a traced prefix is there to count.
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered ? prefixSeeds : null);
+                tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered && !tracePreceding ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, executionTracer, cancellationToken);
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
         }
@@ -239,12 +251,6 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        Hash256? keptTxHash = TracesPrecedingForLogIndex(options, allowIndexed) ? options.TxHash : null;
-        if (keptTxHash is not null)
-        {
-            options = options with { TxHash = null };
-        }
-
         // A block trace filtered to one transaction is that transaction's trace: the sequential tracer replays the
         // block and keeps one result, and the seeded single-transaction path produces the same result without the
         // replay. The block-level options the sequential path ignores stay with it.
@@ -255,20 +261,31 @@ public class GethStyleTracer(
             return new GethLikeTxTraceCollection(filtered);
         }
 
-        Func<Block, Transaction, BlockLogIndex> storedLogIndex = StoredLogIndex(block);
+        bool wantsLogIndex = WantsLogIndex(options);
         if (allowIndexed && writer is null && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
+            && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex)
             && parallelTracer.TryTrace(block, FindParent(block),
-                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, storedLogIndex),
+                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex),
                 afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
         {
             return new GethLikeTxTraceCollection(parallel);
         }
 
+        // The replay numbers logs from the body it runs, so a filtered trace still traces the transactions before
+        // its target to count their logs.
+        Hash256? keptTxHash = wantsLogIndex ? options.TxHash : null;
+        if (keptTxHash is not null)
+        {
+            options = options with { TxHash = null };
+        }
+
+        BlockLogIndex sharedLogIndex = new();
+
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, ReplayLogIndex(options, block))
+            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, (_, _) => sharedLogIndex)
             : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -287,10 +304,8 @@ public class GethStyleTracer(
         }
     }
 
-    /// <summary>A supplied body has no receipts of its own, so its callTracer log indexes can only come from tracing
-    /// the transactions before the requested one.</summary>
-    private static bool TracesPrecedingForLogIndex(GethTraceOptions options, bool allowIndexed) =>
-        !allowIndexed && options.Tracer == NativeCallTracer.CallTracer
+    private static bool WantsLogIndex(GethTraceOptions options) =>
+        options.Tracer == NativeCallTracer.CallTracer
         && options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions)?.WithLog == true;
 
     private static List<GethLikeTxTrace> KeepTrace(IReadOnlyCollection<GethLikeTxTrace> traces, Hash256 txHash)
@@ -305,26 +320,54 @@ public class GethStyleTracer(
         return kept;
     }
 
-    /// <summary>Resolves the block's receipts once for all its transactions: parallel workers share the lookup, so a
-    /// block whose receipts must be regenerated is re-executed once, not once per worker.</summary>
-    private Func<Block, Transaction, BlockLogIndex> StoredLogIndex(Block block)
+    /// <summary>Seeds each parallel worker's log index from the block's receipts, resolved once on the calling thread.</summary>
+    /// <returns><c>false</c> when the indexes are wanted but the receipts cannot supply them, leaving the block to the
+    /// sequential replay, which numbers logs from the body.</returns>
+    private bool TryGetParallelLogIndex(Block block, bool wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? logIndex)
     {
-        Lazy<TxReceipt[]> receipts = new(() => receiptFinder.Get(block));
-        return (_, tx) => new(() =>
+        logIndex = null;
+        if (!wantsLogIndex) return true;
+
+        int[]? firstLogIndexes = FirstLogIndexes(block);
+        if (firstLogIndexes is null) return false;
+
+        Dictionary<Hash256, int> firstLogIndexByTx = new(block.Transactions.Length);
+        for (int i = 0; i < block.Transactions.Length; i++)
         {
-            int txIndex = Array.FindIndex(block.Transactions, t => t.Hash == tx.Hash);
-            return txIndex > 0 ? receipts.Value.GetBlockLogFirstIndex(txIndex) : 0;
-        });
+            firstLogIndexByTx[block.Transactions[i].Hash!] = firstLogIndexes[i];
+        }
+
+        // A fresh counter per call: a worker may retry a transaction, and each tracer advances its own.
+        logIndex = (_, tx) => new BlockLogIndex(firstLogIndexByTx[tx.Hash!]);
+        return true;
     }
 
-    /// <summary>A replay tracing every transaction numbers logs from the body it runs, which a supplied or bad block
-    /// shares with no stored receipts even when its hash matches a stored block.</summary>
-    private Func<Block, Transaction, BlockLogIndex> ReplayLogIndex(GethTraceOptions options, Block block)
+    /// <summary>The block-wide index of each transaction's first log, from the block's receipts.</summary>
+    /// <returns><c>null</c> when the receipts are neither stored nor reproducible, or do not match the body.</returns>
+    private int[]? FirstLogIndexes(Block block)
     {
-        if (options.TxHash is not null) return StoredLogIndex(block);
+        TxReceipt[] receipts;
+        try
+        {
+            receipts = receiptFinder.Get(block);
+        }
+        catch (ResourceNotFoundException)
+        {
+            // The caller falls back to counting the logs of the body it replays.
+            return null;
+        }
 
-        BlockLogIndex shared = new();
-        return (_, _) => shared;
+        if (receipts.Length != block.Transactions.Length) return null;
+
+        int[] firstLogIndexes = new int[receipts.Length];
+        int next = 0;
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            firstLogIndexes[i] = next;
+            next += receipts[i].Logs?.Length ?? 0;
+        }
+
+        return firstLogIndexes;
     }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>

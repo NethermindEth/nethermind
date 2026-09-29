@@ -40,6 +40,14 @@ public record GethTraceOptions
     [JsonIgnore]
     public bool NoBaseFee { get; init; }
 
+    /// <summary>
+    /// Where the callTracer's <c>withLog</c> indexes start and how they carry across transactions.
+    /// </summary>
+    /// <remarks>
+    /// Set by the tracing entry points, never by the caller: one instance shared across a sequential block replay,
+    /// an independent receipt-seeded instance per transaction otherwise, and <c>null</c>, numbering from zero,
+    /// for a synthetic call.
+    /// </remarks>
     [JsonIgnore]
     public BlockLogIndex? LogIndex { get; init; }
 
