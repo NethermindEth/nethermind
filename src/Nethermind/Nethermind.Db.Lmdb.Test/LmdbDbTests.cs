@@ -18,6 +18,7 @@ public class LmdbDbTests
 {
     private const long TestMapSize = 64L * 1024 * 1024;
     private const int TestMaxReaders = 8192;
+    private const int TestMaxOperationsPerWave = 4096;
 
     private string DbPath => Path.Combine("testdb-lmdb", TestContext.CurrentContext.Test.ID);
     private LmdbDb _db = null!;
@@ -26,7 +27,7 @@ public class LmdbDbTests
     public void Setup()
     {
         if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
-        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders);
+        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave);
     }
 
     [TearDown]
@@ -163,7 +164,7 @@ public class LmdbDbTests
         _db.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
         _db.Dispose();
 
-        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders);
+        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave);
         Assert.That(_db.Get(TestItem.KeccakA.Bytes), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
     }
 
@@ -521,7 +522,7 @@ public class LmdbDbTests
         const long tinyMapSize = 128 * 1024; // small enough that a few KB of writes will exceed it at least once
         string path = Path.Combine("testdb-lmdb-mapgrowth", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("growth-test", path, tinyMapSize, TestMaxReaders);
+        using LmdbDb db = new("growth-test", path, tinyMapSize, TestMaxReaders, TestMaxOperationsPerWave);
         try
         {
             const int count = 200;
@@ -566,7 +567,7 @@ public class LmdbDbTests
         int snapshotsToHoldConcurrently = Math.Max(4, (126 / Math.Max(poolSize, 1)) + 2); // would exceed LMDB's own default of 126
         string path = Path.Combine("testdb-lmdb-manysnapshots", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("many-snapshots-test", path, TestMapSize, TestMaxReaders);
+        using LmdbDb db = new("many-snapshots-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave);
         try
         {
             db.Set([1], [1]);
@@ -619,5 +620,75 @@ public class LmdbDbTests
         _db.Get([1]);
         LmdbDb.DiagnosticsSnapshot third = _db.TakeAndResetDiagnostics();
         Assert.That(third.GetCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void MaxOperationsPerWave_splits_many_separate_write_batches_across_multiple_physical_commits()
+    {
+        // Regression for ILmdbConfig.MaxOperationsPerWave - see PLAN-LMDB.md "Known issues": an unbounded wave
+        // lets many small concurrent writers coalesce into one arbitrarily large physical commit, which blocks
+        // every concurrent CreateSnapshot caller (not just other writers) for that commit's entire duration.
+        // With a tiny cap, 20 single-operation concurrent writers must span at least 5 separate physical commits
+        // (ceil(20/4)), not get coalesced into one or a handful - and every write must still land correctly
+        // regardless of which physical commit it ended up in.
+        const int tinyWaveCap = 4;
+        string path = Path.Combine("testdb-lmdb-wavecap", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = new("wave-cap-test", path, TestMapSize, TestMaxReaders, tinyWaveCap);
+        try
+        {
+            const int writerCount = 20;
+            Parallel.For(0, writerCount, i => db.Set(BitConverter.GetBytes(i), BitConverter.GetBytes(i)));
+
+            for (int i = 0; i < writerCount; i++)
+            {
+                Assert.That(db.Get(BitConverter.GetBytes(i)), Is.EqualTo(BitConverter.GetBytes(i)));
+            }
+
+            LmdbDb.DiagnosticsSnapshot diagnostics = db.TakeAndResetDiagnostics();
+            Assert.That(diagnostics.WriteWaveCount, Is.GreaterThanOrEqualTo(writerCount / tinyWaveCap));
+            Assert.That(diagnostics.AvgWriteWaveOps, Is.LessThanOrEqualTo(tinyWaveCap));
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void MaxOperationsPerWave_does_not_split_a_single_callers_own_write_batch()
+    {
+        // The cap only bounds coalescing ACROSS separate queued writers - a single caller's own write batch
+        // (already-atomic by construction) must still commit as one physical transaction even if it exceeds the
+        // cap by itself, since splitting it would sacrifice its current all-or-nothing atomicity - see
+        // ILmdbConfig.MaxOperationsPerWave's remarks.
+        const int tinyWaveCap = 4;
+        const int opsInOneBatch = 50;
+        string path = Path.Combine("testdb-lmdb-wavecap-atomic", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = new("wave-cap-atomic-test", path, TestMapSize, TestMaxReaders, tinyWaveCap);
+        try
+        {
+            using (IWriteBatch batch = db.StartWriteBatch())
+            {
+                for (int i = 0; i < opsInOneBatch; i++)
+                {
+                    batch.PutSpan(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+                }
+            }
+
+            for (int i = 0; i < opsInOneBatch; i++)
+            {
+                Assert.That(db.Get(BitConverter.GetBytes(i)), Is.EqualTo(BitConverter.GetBytes(i)));
+            }
+
+            LmdbDb.DiagnosticsSnapshot diagnostics = db.TakeAndResetDiagnostics();
+            Assert.That(diagnostics.WriteWaveCount, Is.EqualTo(1));
+            Assert.That(diagnostics.AvgWriteWaveOps, Is.EqualTo(opsInOneBatch));
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
     }
 }

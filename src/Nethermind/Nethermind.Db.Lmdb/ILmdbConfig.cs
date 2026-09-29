@@ -47,4 +47,23 @@ public interface ILmdbConfig : IConfig
     /// </remarks>
     [ConfigItem(Description = "Reader-lock table size (max concurrently-open read transactions) for each of the Account and Storage LMDB environments. Exceeding it is process-fatal in LightningDB 0.23.0 - see PLAN-LMDB.md.", DefaultValue = "8192")]
     int MaxReaders { get; set; }
+
+    /// <summary>
+    /// Caps how many operations from separate, already-queued write batches <see cref="LmdbDb"/>'s group-commit
+    /// coordinator (<c>DrainIfLeader</c>) will coalesce into one physical LMDB write transaction. Every
+    /// concurrent <see cref="LmdbDb.CreateSnapshot"/> call is blocked for a commit's entire duration (see
+    /// PLAN-LMDB.md "Known issues" - this is a real correctness requirement, not a bug), so an unbounded wave can
+    /// turn one slow/large commit into a system-wide stall affecting every reader, not just the writers waiting
+    /// on it.
+    /// </summary>
+    /// <remarks>
+    /// This bounds coalescing <em>across separate queued write batches</em> only - it does not split a single
+    /// caller's own write batch (e.g. one <c>IWriteBatch</c> accumulated from many <c>PutSpan</c> calls before a
+    /// single <c>Dispose()</c>) into multiple physical commits, since doing so would sacrifice that batch's
+    /// current all-or-nothing atomicity. If a single write batch is itself larger than this cap, it is still
+    /// committed as one physical transaction, uncapped - see <see cref="LmdbDb.DiagnosticsSnapshot.AvgWriteWaveOps"/>
+    /// to check whether that is actually happening before assuming this setting is being honored.
+    /// </remarks>
+    [ConfigItem(Description = "Max operations coalesced from separate queued write batches into one physical LMDB commit. Does not split a single caller's own write batch - see PLAN-LMDB.md.", DefaultValue = "4096")]
+    int MaxOperationsPerWave { get; set; }
 }

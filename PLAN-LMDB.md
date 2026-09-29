@@ -357,6 +357,35 @@ fluke. Two hypotheses were checked and rejected before landing on the real one:
    operations coalesced per physical write-wave commit) specifically to confirm or kill this on the next
    check-in - a large ops/wave figure for Account and a small one for Storage would confirm it directly.
 
+**A separate, more concrete symptom surfaced independently of the ops/wave check-in: consensus-layer Engine API
+timeouts (`newPayload`/`forkchoiceUpdated`) and a visible "runs fine, stalls, resumes" pattern during live sync.**
+This matters regardless of which of the above throughput theories is ultimately correct, because of a real
+correctness requirement that was already documented but whose consequence hadn't been drawn out: `_writeCommitGate`
+must be held for a commit's *entire* duration (not just acquired and released quickly), and every concurrent
+`CreateSnapshot` call needs that same lock to build its reader pool safely - so **one slow or arbitrarily large
+physical commit blocks every concurrent reader across the whole column, not just other writers**, for as long as
+that commit takes. `DrainIfLeader`'s wave-building had no size limit - it coalesced everything currently queued
+into one physical transaction, so a write backlog could produce an arbitrarily large, arbitrarily slow single
+commit with no cap. Since typical CL implementations time out `newPayload` around 8s, and the node was observed
+running "in two speeds" (matching periods where everything - not just the write path - would stall for a slow
+commit's duration), this is a plausible direct explanation independent of root-causing the Account/Storage
+ops/wave asymmetry above.
+
+**Fix**: added `ILmdbConfig.MaxOperationsPerWave` (default 4096), enforced in `DrainIfLeader`'s wave-building
+loop - it stops coalescing *additional, separately-queued* `PendingWrite`s into the current wave once the
+running operation count reaches the cap. Deliberately scoped narrowly: it does **not** split a single caller's
+own write batch (e.g. one `IWriteBatch` accumulated across many `PutSpan` calls before one `Dispose()`) across
+multiple physical commits, since doing so would sacrifice that batch's current all-or-nothing atomicity - a
+call whose own batch already exceeds the cap still commits as one uncapped physical transaction. This means the
+fix only helps the "many small writes coalesced together" case, not the "one write batch is itself huge" case -
+if the ops/wave diagnostic confirms Account's slow waves are each essentially one already-huge write batch (not
+many small ones getting coalesced), this cap alone won't reduce Account's per-commit latency, and a further,
+more invasive change (splitting a single batch across commits, accepting a partial-atomicity trade-off that
+snap-synced data's re-fetchability may make tolerable - similar reasoning to why `DisableWAL` is already used)
+would be the next thing to consider, informed by that data rather than guessed at up front. Two new tests
+(`MaxOperationsPerWave_splits_many_separate_write_batches_across_multiple_physical_commits`,
+`MaxOperationsPerWave_does_not_split_a_single_callers_own_write_batch`) pin down exactly this scope boundary.
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,

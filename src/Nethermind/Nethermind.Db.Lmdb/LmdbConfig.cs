@@ -8,4 +8,5 @@ public class LmdbConfig : ILmdbConfig
     public bool Enabled { get; set; }
     public long InitialMapSizeBytes { get; set; } = 68719476736; // 64 GiB
     public int MaxReaders { get; set; } = 8192;
+    public int MaxOperationsPerWave { get; set; } = 4096;
 }

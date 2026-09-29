@@ -55,10 +55,13 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
 
     public string Name { get; }
 
-    public LmdbDb(string name, string path, long initialMapSizeBytes, int maxReaders)
+    private readonly int _maxOperationsPerWave;
+
+    public LmdbDb(string name, string path, long initialMapSizeBytes, int maxReaders, int maxOperationsPerWave)
     {
         Name = name;
         _path = path;
+        _maxOperationsPerWave = maxOperationsPerWave;
         Directory.CreateDirectory(path);
 
         // NoThreadLocalStorage: CreateSnapshot's reader pool hands pooled read transactions out via rent/return,
@@ -357,11 +360,12 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     }
 
     /// <summary>
-    /// Becomes the sole writer for as long as there is queued work: repeatedly drains everything currently in
-    /// <see cref="_pendingWrites"/> into one physical LMDB write transaction ("wave"), commits it once, and
-    /// signals every caller whose operations were part of that wave. If another thread is already draining, this
-    /// returns immediately - that thread's own loop will pick up the work this call just enqueued, since the
-    /// enqueue always happens before this check.
+    /// Becomes the sole writer for as long as there is queued work: repeatedly drains currently-queued writes -
+    /// up to <see cref="ILmdbConfig.MaxOperationsPerWave"/> operations' worth, see the cap's own remarks for why -
+    /// into one physical LMDB write transaction ("wave"), commits it once, and signals every caller whose
+    /// operations were part of that wave. If another thread is already draining, this returns immediately - that
+    /// thread's own loop will pick up the work this call just enqueued, since the enqueue always happens before
+    /// this check.
     /// </summary>
     private void DrainIfLeader()
     {
@@ -373,8 +377,17 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             {
                 while (_pendingWrites.TryDequeue(out PendingWrite? first))
                 {
+                    // Never splits a single caller's own PendingWrite (that would sacrifice its current
+                    // all-or-nothing atomicity) - only bounds how many SEPARATE, already-queued writes get
+                    // coalesced together. A caller whose own write batch already exceeds the cap by itself still
+                    // commits as one uncapped physical transaction - see ILmdbConfig.MaxOperationsPerWave.
                     List<PendingWrite> wave = [first];
-                    while (_pendingWrites.TryDequeue(out PendingWrite? more)) wave.Add(more);
+                    int opsInWave = first.Operations.Count;
+                    while (opsInWave < _maxOperationsPerWave && _pendingWrites.TryDequeue(out PendingWrite? more))
+                    {
+                        wave.Add(more);
+                        opsInWave += more.Operations.Count;
+                    }
 
                     try
                     {
