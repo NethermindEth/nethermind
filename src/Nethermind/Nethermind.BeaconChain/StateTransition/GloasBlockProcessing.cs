@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -709,13 +710,14 @@ public static class GloasBlockProcessing
     /// built against a state that is not any known block's post-state passes them all. The only
     /// thing that catches it is refusing every root <paramref name="states"/> does not know.
     /// </remarks>
+    /// <param name="hasher">Computes the state root the envelope's block root is checked against; <c>null</c> merkleizes the whole state.</param>
     /// <exception cref="BeaconStateException">The envelope names an unknown block, or fails any spec check.</exception>
-    public static void VerifyExecutionPayloadEnvelope(IGloasBlockStateProvider states, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys)
+    public static void VerifyExecutionPayloadEnvelope(IGloasBlockStateProvider states, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys, IBeaconStateHasher? hasher = null)
     {
         Hash256 blockRoot = signedEnvelope.Message!.BeaconBlockRoot ?? throw new BeaconStateException("Envelope carries no beacon block root");
         BeaconStateGloas state = states.GetGloasBlockState(blockRoot)
             ?? throw new BeaconStateException($"Envelope names beacon block {blockRoot}, whose post-state is not known");
-        VerifyExecutionPayloadEnvelopeAgainst(state, signedEnvelope, notifier, pubkeys);
+        VerifyExecutionPayloadEnvelopeAgainst(state, signedEnvelope, notifier, pubkeys, hasher);
     }
 
     /// <summary>
@@ -723,7 +725,7 @@ public static class GloasBlockProcessing
     /// only way in is <see cref="VerifyExecutionPayloadEnvelope"/>, which chooses <paramref name="state"/>
     /// by the envelope's own block root instead of trusting whatever a caller has to hand.
     /// </summary>
-    private static void VerifyExecutionPayloadEnvelopeAgainst(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys)
+    private static void VerifyExecutionPayloadEnvelopeAgainst(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys, IBeaconStateHasher? hasher)
     {
         ExecutionPayloadEnvelope envelope = signedEnvelope.Message!;
         ExecutionPayloadGloas payload = envelope.Payload!;
@@ -740,7 +742,7 @@ public static class GloasBlockProcessing
             Slot = state.LatestBlockHeader!.Slot,
             ProposerIndex = state.LatestBlockHeader.ProposerIndex,
             ParentRoot = state.LatestBlockHeader.ParentRoot,
-            StateRoot = SszRoots.HashTreeRoot(state),
+            StateRoot = hasher?.HashTreeRoot(state) ?? SszRoots.HashTreeRoot(state),
             BodyRoot = state.LatestBlockHeader.BodyRoot,
         };
         if (envelope.BeaconBlockRoot != SszRoots.HashTreeRoot(header))
