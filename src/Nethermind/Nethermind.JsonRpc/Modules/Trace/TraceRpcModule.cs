@@ -13,10 +13,12 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
@@ -204,6 +206,32 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
+        /// Returns an error message when eth_sendRawTransaction's chain-id check at <paramref name="spec"/> rejects signed
+        /// <paramref name="tx"/>, otherwise <see langword="null"/>.
+        /// </summary>
+        /// <remarks>
+        /// Execution doesn't reject a transaction for its chain: sender recovery hashes a typed transaction with its own chain id,
+        /// recovering the real sender, and, where the spec validates chain ids, a legacy one signed for another chain as
+        /// pre-EIP-155, recovering an unrelated address.
+        /// A legacy transaction's chain id is in its signature <c>v</c>, so the pool's <see cref="LegacySignatureTxValidator"/>
+        /// decides it and, as in eth_sendRawTransaction, accepts a pre-EIP-155 signature. A rejection names the chain when
+        /// <c>v</c> is for another one.
+        /// </remarks>
+        private string? GetChainIdError(Transaction tx, IReleaseSpec spec)
+        {
+            ulong chainId = blockchainBridge.GetChainId();
+            if (tx.Type != TxType.Legacy)
+            {
+                return tx.ChainId is { } txChainId && txChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, txChainId) : null;
+            }
+
+            ValidationResult result = new LegacySignatureTxValidator(chainId).IsWellFormed(tx, spec);
+            return result ? null
+                : tx.Signature?.ChainId is { } signedChainId && signedChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, signedChainId)
+                : result.Error;
+        }
+
+        /// <summary>
         /// Traces one raw transaction. Doesn't charge fees.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
@@ -213,7 +241,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 RlpReader ctx = new(data);
                 Transaction tx = _txDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
                 tx.CapGasLimit(jsonRpcConfig.GasCap);
-                return TraceTx(tx, traceTypes, BlockParameter.Latest);
+                return TraceTx(tx, traceTypes, BlockParameter.Latest, isSigned: true);
             }
             catch (RlpException)
             {
@@ -222,7 +250,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
-            Dictionary<Address, AccountOverride>? stateOverride = null)
+            Dictionary<Address, AccountOverride>? stateOverride = null, bool isSigned = false)
         {
             if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
             {
@@ -236,6 +264,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             BlockHeader header = headerSearch.Object!.Clone();
+            if (isSigned && GetChainIdError(tx, specProvider.GetSpec(header)) is { } chainError)
+            {
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail(chainError, ErrorCodes.TransactionRejected);
+            }
+
             Block block = new(header, [tx], []);
 
             return BuildStreamingSingleResult(

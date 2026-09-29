@@ -10,6 +10,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Specs;
@@ -67,7 +69,21 @@ public class ParityStyleTracerTests
     [Test]
     public void Can_trace_raw_parity_style_berlin_tx()
     {
-        ResultWrapper<ParityTxTraceFromReplay> result = _traceRpcModule.trace_rawTransaction(Bytes.FromHexString("01f85b821e8e8204d7847735940083030d408080853a60005500c080a0f43e70c79190701347517e283ef63753f6143a5225cbb500b14d98eadfb7616ba070893923d8a1fc97499f426524f9e82f8e0322dfac7c3d7e8a9eee515f0bcdc4"), new[] { "trace" });
+        // trace_rawTransaction rejects a transaction for another chain, so it is signed for this one.
+        ulong chainId = MainnetSpecProvider.Instance.ChainId;
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.AccessList)
+            .WithChainId(chainId)
+            .WithTo(null)
+            .WithCode(Bytes.FromHexString("3a60005500"))
+            .WithGasLimit(200_000)
+            .WithGasPrice(0)
+            .WithValue(0)
+            .SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA)
+            .TestObject;
+
+        ResultWrapper<ParityTxTraceFromReplay> result = _traceRpcModule.trace_rawTransaction(
+            TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes, new[] { "trace" });
         Assert.That(result.Data, Is.Not.Null);
     }
 
