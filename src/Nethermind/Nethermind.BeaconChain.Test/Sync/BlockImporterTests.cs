@@ -918,6 +918,37 @@ public class BlockImporterTests
     }
 
     /// <summary>
+    /// The tick that precedes on_block pulls up unrealized finality (phase0/fork-choice.md on_tick), which the checks before the
+    /// transition never saw. A block on a branch that tick finalizes away can never become canonical, so its refusal is recorded;
+    /// a block at the new finalized slot may still be a valid block of a dead branch and is not.
+    /// </summary>
+    [TestCase(Presets.SlotsPerEpoch + 1, true, TestName = "Block_refused_after_the_tick_finalized_a_conflicting_branch_is_recorded_as_failed")]
+    [TestCase(Presets.SlotsPerEpoch, false, TestName = "Block_refused_after_the_tick_at_the_finalized_slot_is_not_recorded_as_failed")]
+    public void Refusal_by_fork_choice_after_the_tick_is_recorded_only_for_a_validation_failure(ulong slot, bool recorded)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        WarningCapture warnings = new();
+        FailedBlockRoots failed = new();
+        ManualTimestamper time = new(TickFinalityFixture.SlotStart(chain.Spec, 2));
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, importClock: new SlotClock(chain.Spec, time), failedBlocks: failed);
+        UnsignedChain.ChainBlock offChain = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
+        UnsignedChain.ChainBlock child = chain.Extend(offChain.Root, slot, payloadHashByte: 0xa2);
+        Assert.That(importer.Import(offChain.Block, offChain.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        // Epoch 1 finalizes on the anchor, which leaves the slot-1 block off the finalized chain, but only once the store ticks into epoch 1.
+        TickFinalityFixture.SetUnrealizedFinality(importer, new CheckpointRef(1, chain.AnchorRoot));
+        time.Set(TickFinalityFixture.SlotStart(chain.Spec, slot));
+
+        BlockImportResult result = importer.Import(child.Block, child.Root, verifySignatures: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(warnings.Warnings, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
+            Assert.That(failed.Contains(child.Root), Is.EqualTo(recorded));
+        });
+    }
+
+    /// <summary>
     /// Fork choice checks availability against the live sidecar pool a second time, after the state transition. Columns that vanish
     /// in between are a delay, not a verdict: the block stays importable, so its root must not mark the sidecars of its children.
     /// </summary>
@@ -956,6 +987,37 @@ public class BlockImporterTests
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
             Assert.That(failed.Contains(brokenRoot), Is.True);
+        });
+    }
+
+    /// <summary>The Gloas arm of the tick-driven refusal: on_block refuses a block on a branch that the tick's pulled-up finality left.</summary>
+    [Test]
+    public void Gloas_block_refused_after_the_tick_finalized_a_conflicting_branch_is_recorded_as_failed()
+    {
+        const ulong forkSlot = 32;
+        SignedGloasChain chain = new();
+        WarningCapture warnings = new();
+        FailedBlockRoots failed = new();
+        ManualTimestamper time = new(TickFinalityFixture.SlotStart(chain.Spec, forkSlot + 1));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(warnings)), clock: new SlotClock(chain.Spec, time), failedBlocks: failed);
+        SignedGloasChain.Block finalized = chain.Next(null, forkSlot, full: false, 0xA1);
+        SignedGloasChain.Block otherBranch = chain.Next(null, forkSlot + 1, full: false, 0xA2);
+        SignedGloasChain.Block child = chain.Next(otherBranch, 2 * forkSlot, full: false, 0xA3);
+        foreach (SignedGloasChain.Block block in (SignedGloasChain.Block[])[finalized, otherBranch])
+        {
+            Assert.That(importer.Import(block.Forked, block.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        }
+
+        TickFinalityFixture.SetUnrealizedFinality(importer, new CheckpointRef(1, finalized.Root));
+        time.Set(TickFinalityFixture.SlotStart(chain.Spec, 2 * forkSlot));
+
+        BlockImportResult result = importer.Import(child.Forked, child.Root, verifySignatures: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(warnings.Warnings, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
+            Assert.That(failed.Contains(child.Root), Is.True);
         });
     }
 
