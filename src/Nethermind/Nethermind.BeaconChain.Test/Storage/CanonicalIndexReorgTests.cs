@@ -282,8 +282,11 @@ internal sealed class FailableCommitColumnsDb(TestMemColumnsDb<BeaconChainDbColu
 /// <summary>An importer over <see cref="UnsignedChain"/> whose canonical index lives in a store the test can read and count.</summary>
 internal sealed class CanonicalReorgFixture
 {
-    private CanonicalReorgFixture(UnsignedChain chain, FailableCommitColumnsDb db, BeaconChainStore store, BlockImporter importer)
+    private readonly ITimestamper _time;
+
+    private CanonicalReorgFixture(UnsignedChain chain, FailableCommitColumnsDb db, BeaconChainStore store, BlockImporter importer, ITimestamper time)
     {
+        _time = time;
         Chain = chain;
         Db = db;
         Store = store;
@@ -303,19 +306,20 @@ internal sealed class CanonicalReorgFixture
 
     public TestMemDb BlockIndex => (TestMemDb)Db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
 
-    public static CanonicalReorgFixture Create()
+    public static CanonicalReorgFixture Create(ITimestamper? time = null)
     {
         UnsignedChain chain = UnsignedChain.Create();
         FailableCommitColumnsDb db = new(new TestMemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStore store = new(db, chain.Spec);
         store.SetAnchor(chain.AnchorRoot, 0);
-        return new CanonicalReorgFixture(chain, db, store, CreateImporter(chain, store));
+        time ??= Timestamper.Default;
+        return new CanonicalReorgFixture(chain, db, store, CreateImporter(chain, store, time), time);
     }
 
     /// <summary>A new importer over the same store and anchor, as a restart builds one; blocks must be imported again.</summary>
-    public CanonicalReorgFixture Restart() => new(Chain, Db, Store, CreateImporter(Chain, Store));
+    public CanonicalReorgFixture Restart() => new(Chain, Db, Store, CreateImporter(Chain, Store, _time), _time);
 
-    private static BlockImporter CreateImporter(UnsignedChain chain, BeaconChainStore store)
+    private static BlockImporter CreateImporter(UnsignedChain chain, BeaconChainStore store, ITimestamper time)
     {
         ImportableBlobBlock anchor = chain.Anchor;
         BlockImporter importer = new(
@@ -327,7 +331,7 @@ internal sealed class CanonicalReorgFixture
             LimboLogs.Instance,
             new CustodySamplingAvailability(new NoCustody(), new DataColumnPoolSource(new DataColumnSidecarPool()), anchor.ClockAtEpoch(0)),
             static (_, _) => false,
-            new SlotClock(chain.Spec, Timestamper.Default),
+            new SlotClock(chain.Spec, time),
             // A copy: the importer advances its anchor state in place, and the chain still builds on the original.
             new ForkedBeaconState.OfFulu(anchor.AnchorState.Clone()),
             new ForkedSignedBeaconBlock.OfFulu(anchor.AnchorBlock),
