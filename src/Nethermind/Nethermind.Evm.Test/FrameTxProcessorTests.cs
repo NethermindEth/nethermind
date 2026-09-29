@@ -161,11 +161,11 @@ public partial class FrameTxProcessorTests
         int length = scheme == TxFrameSignature.SchemeSecp256k1 ? TxFrameSignature.Secp256k1SignatureLength : TxFrameSignature.P256SignatureLength;
         tx.FrameSignatures = [new TxFrameSignature(scheme, null, default, placeholder ? default : new byte[length])];
         Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
-        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
-        ExecutionOptions options = ExecutionOptions.Commit;
-        if (simulation) options |= ExecutionOptions.SkipFrameSignatureValidation;
+        EthereumTransactionProcessor processor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
+        processor.SkipSenderChecks = simulation;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
 
-        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, options);
+        TransactionResult result = processor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
 
         Assert.That(result.TransactionExecuted, Is.EqualTo(simulation && !reverts));
         if (simulation && reverts) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));

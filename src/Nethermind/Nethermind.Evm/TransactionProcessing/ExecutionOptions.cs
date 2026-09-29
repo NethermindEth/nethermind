@@ -50,9 +50,6 @@ public enum ExecutionOptions
     /// </summary>
     FrameSignaturesPreValidated = 64,
 
-    /// <summary>Skip protocol frame signature verification during simulation while retaining structural checks.</summary>
-    SkipFrameSignatureValidation = 128,
-
     /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>

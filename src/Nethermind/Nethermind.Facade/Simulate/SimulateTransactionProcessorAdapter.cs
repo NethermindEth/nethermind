@@ -37,9 +37,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         BlockReceiptsTracer? receiptsTracer = txTracer.GetTracer<BlockReceiptsTracer>();
         Debug.Assert(receiptsTracer is not null, $"Simulate must be traced through a {nameof(BlockReceiptsTracer)}.");
         ulong cumulativeStateGasBefore = receiptsTracer?.BlockStateGasUsed ?? 0;
-        ExecutionOptions options = simulateRequestState.Validate ? ExecutionOptions.Commit : ExecutionOptions.SkipValidationAndCommit;
-        if (transaction.SupportsFrames) options |= ExecutionOptions.SkipFrameSignatureValidation;
-        TransactionResult result = transactionProcessor.Process(transaction, txTracer, options);
+        TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
 
         ulong blockGasUsed = transaction.BlockGasUsed;
         ulong blockStateGasUsed = receiptsTracer?.BlockStateGasUsed.SaturatingSub(cumulativeStateGasBefore) ?? 0;

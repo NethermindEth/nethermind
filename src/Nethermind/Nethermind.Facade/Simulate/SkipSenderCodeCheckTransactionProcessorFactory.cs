@@ -10,7 +10,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Facade.Simulate;
 
-// Wraps a chain's own factory so the EIP-7928 BAL processors it builds skip the EIP-3607 sender-code check.
+// Wraps a chain's own factory so the EIP-7928 BAL processors it builds skip the sender checks eth_simulateV1 exempts.
 internal sealed class SkipSenderCodeCheckTransactionProcessorFactory(ITransactionProcessorFactory inner) : ITransactionProcessorFactory
 {
     public ITransactionProcessor Create(
@@ -30,7 +30,7 @@ internal sealed class SkipSenderCodeCheckTransactionProcessorFactory(ITransactio
     public static void Apply(ITransactionProcessor processor)
     {
         if (processor is not TransactionProcessorBase b)
-            throw new InvalidOperationException($"{processor.GetType().Name} cannot skip the EIP-3607 sender-code check required by eth_simulateV1.");
-        b.SkipSenderCodeCheck = true;
+            throw new InvalidOperationException($"{processor.GetType().Name} cannot skip the sender checks exempted by eth_simulateV1.");
+        b.SkipSenderChecks = true;
     }
 }
