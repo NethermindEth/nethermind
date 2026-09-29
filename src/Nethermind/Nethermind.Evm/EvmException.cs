@@ -38,6 +38,8 @@ public enum EvmExceptionType
     /// Reported to action tracers only; the operation itself pushes 0 and execution continues.
     /// </summary>
     CallDepthExceeded,
+    /// <summary>A CREATE nonce precheck failure reported only to action tracers; execution pushes 0 and continues.</summary>
+    NonceOverflow,
 }
 
 public static class EvmExceptionTypeExtensions
@@ -69,6 +71,7 @@ public static class EvmExceptionTypeExtensions
         EvmExceptionType.InvalidCode => nameof(EvmExceptionType.InvalidCode),
         EvmExceptionType.Suspend => nameof(EvmExceptionType.Suspend),
         EvmExceptionType.CallDepthExceeded => nameof(EvmExceptionType.CallDepthExceeded),
+        EvmExceptionType.NonceOverflow => nameof(EvmExceptionType.NonceOverflow),
         _ => ((int)type).ToString(),
     };
 }

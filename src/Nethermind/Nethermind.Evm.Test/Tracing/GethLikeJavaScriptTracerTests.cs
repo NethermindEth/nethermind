@@ -438,21 +438,30 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
-    [TestCase("flatCallTracer")]
-    [TestCase("noSuchTracer.js")]
-    [TestCase("_bigInteger")]
     [TestCase("../JSTracers/callTracer_legacy")]
-    [TestCase("callTracer_legacy.tracer")]
     [TestCase(null)]
     [TestCase("{ ) }")]
     public void Unusable_tracer_is_refused_on_construction(string? tracer) =>
         Assert.That(() => GetTracer(tracer!).Dispose(), Throws.ArgumentException);
 
+    [TestCase("flatCallTracer")]
+    [TestCase("noSuchTracer.js")]
+    [TestCase("_bigInteger")]
+    [TestCase("callTracer_legacy.tracer")]
     [TestCase("callTracer_legacy")]
     [TestCase(" opcountTracer.js ")]
     [TestCase("{ result: function(ctx, db) { return null } }")]
     public void Usable_tracer_is_accepted_on_construction(string tracer) =>
         Assert.That(() => GetTracer(tracer).Dispose(), Throws.Nothing);
+
+    [TestCase("CreateUint8ArrayCode")]
+    [TestCase("_bigInteger")]
+    public void Unknown_expression_does_not_shadow_runtime_helpers(string selector)
+    {
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(selector);
+        Assert.That(() => ExecuteBlock(tracer, MStore(), MainnetSpecProvider.CancunActivation),
+            Throws.TypeOf<System.IO.InvalidDataException>().With.Message.StartWith($"ReferenceError: {selector} is not defined"));
+    }
 
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 

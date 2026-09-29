@@ -75,7 +75,7 @@ internal sealed class TracerRuntime : IDisposable
     public V8Script GetTracerScript(string tracer) =>
         TryGetBuiltInName(tracer, out string fileName)
             ? GetScript(fileName, _builtInSources.Value[fileName], pack: true)
-            : GetScript(tracer, tracer, pack: true);
+            : GetScript("tracer:" + tracer, tracer, pack: true);
 
     private static bool TryGetBuiltInName(string tracer, out string fileName)
     {
