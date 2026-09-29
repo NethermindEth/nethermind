@@ -14,6 +14,7 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 namespace Nethermind.BeaconChain.Test.Crypto;
 
 /// <summary>The Fulu proposer signature check on an untrusted proposer index.</summary>
+[HardTimeout(60_000)]
 public class ProposerSignatureBoundsTests
 {
     /// <summary>

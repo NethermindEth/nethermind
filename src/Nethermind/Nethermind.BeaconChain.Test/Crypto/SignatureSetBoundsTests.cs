@@ -21,6 +21,7 @@ namespace Nethermind.BeaconChain.Test.Crypto;
 /// spec's limits as an invalid signature, never fault, and never let an index wrap onto another validator's key.
 /// </summary>
 [TestFixture]
+[HardTimeout(60_000)]
 public class SignatureSetBoundsTests
 {
     private const int KeyCount = 4;

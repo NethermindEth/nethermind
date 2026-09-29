@@ -30,6 +30,7 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// leaves to its caller, on a hand-built chain (<see cref="UnsignedChain"/>): no mainnet vector
 /// carries a body attester slashing, so the vectors never show whether a replayed one is honored.
 /// </summary>
+[HardTimeout(60_000)]
 public class ForkChoiceRunnerTests
 {
     private const ulong EffectiveBalance = 32 * GloasTestFixtures.Gwei;

@@ -21,6 +21,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// hasher must refuse it like the generated one instead of hashing a truncated or padded vector into a
 /// root that no other client can reproduce.
 /// </summary>
+[HardTimeout(60_000)]
 public class CachedHasherFixedVectorTests
 {
     private const int ValidatorCount = 64;

@@ -20,6 +20,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// <c>bls.Verify</c> runs <c>KeyValidate</c> on its key, so a builder key or a <c>from_bls_pubkey</c> at infinity
 /// (which pairs with the infinity signature) or outside G1 (which pairs like its subgroup part) must never verify.
 /// </summary>
+[HardTimeout(60_000)]
 public class MessageKeyValidationTests
 {
     public enum KeyKind
