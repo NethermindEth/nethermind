@@ -531,10 +531,7 @@ namespace Nethermind.Facade
             return new BlockExecutionContext(callHeader, releaseSpec, blobBaseFee);
         }
 
-        /// <summary>
-        /// The rejection of a priced call whose priority fee exceeds its fee cap, before any gas is bought; the
-        /// processor checks only the fee cap against the base fee when validation is skipped.
-        /// </summary>
+        /// <summary>Wraps <see cref="TransactionExtensions.GetTipAboveFeeCapError"/> as a <see cref="TransactionResult"/>.</summary>
         private static TransactionResult? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
             tx.GetTipAboveFeeCapError(spec) is { } error
                 ? TransactionResult.ErrorType.MalformedTransaction.WithDetail(error)
