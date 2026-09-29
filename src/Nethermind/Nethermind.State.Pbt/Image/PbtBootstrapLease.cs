@@ -8,7 +8,8 @@ namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Owns exclusively pinned bootstrap inputs for the native PBT anchor import.</summary>
 /// <remarks>The module's factory must keep source DBs immutable.
-/// A null portable stream pair selects the offline source.</remarks>
+/// A snapshot is imported alone; preimages take their values from the offline source; with neither, the offline
+/// source is imported whole.</remarks>
 internal abstract class PbtBootstrapLease : IDisposable
 {
     public abstract PbtImageAnchor Anchor { get; }

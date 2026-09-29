@@ -251,6 +251,28 @@ public class PbtAnchorPublicationTests
     }
 
     [Test]
+    public async Task Snapshot_alone_or_preimages_over_flat_publish_the_native_state(
+        [Values("anchor", "a1", "a2", "a3", "a4", "a5")] string name, [Values("snapshot", "preimages")] string mode)
+    {
+        using Harness harness = new(name);
+        ValueHash256 root;
+        if (mode == "snapshot")
+        {
+            using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
+            root = await harness.Publication.PublishSnapshot(snapshot, harness.Anchor, harness.Scratch.Path, () => true);
+        }
+        else
+        {
+            using BootstrapLease flat = new(harness, name, offline: true);
+            using FileStream preimages = OpenArtifact(name, "preimages.bin");
+            root = await harness.Publication.PublishPreimages(preimages, flat.OfflineSource!, flat.OfflineCode!, harness.Anchor, harness.Scratch.Path, () => true);
+        }
+
+        AssertPublishedState(harness, root, name);
+        Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
+    }
+
+    [Test]
     public void Bootstrap_step_follows_genesis_and_precedes_network()
     {
         RunnerStepDependenciesAttribute dependencies = (RunnerStepDependenciesAttribute)Attribute.GetCustomAttribute(

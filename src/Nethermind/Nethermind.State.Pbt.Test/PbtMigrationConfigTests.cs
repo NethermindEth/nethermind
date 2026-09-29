@@ -57,18 +57,15 @@ public class PbtMigrationConfigTests
     }
 
     [Test]
-    public void Accepts_distinct_sources([Values("genesis", "portable", "preimage", "none")] string source, [Values] FlatLayout layout)
+    public void Accepts_distinct_sources([Values("genesis", "snapshot", "preimages", "preimage", "none")] string source, [Values] FlatLayout layout)
     {
         PbtConfig config = Config();
         if (source != "genesis")
         {
             config.MigrationGenesisBootstrap = false;
             config.MigrationAnchor = 25;
-            if (source == "portable")
-            {
-                config.MigrationSnapshotPath = "source/snapshot.pbt";
-                config.MigrationPreimagesPath = "source/preimages.bin";
-            }
+            if (source == "snapshot") config.MigrationSnapshotPath = "source/snapshot.pbt";
+            else if (source == "preimages") config.MigrationPreimagesPath = "source/preimages.bin";
             else if (source == "preimage") config.MigrationPreimageSourcePath = "source/db";
         }
         FlatDbConfig flat = Flat();
@@ -79,7 +76,7 @@ public class PbtMigrationConfigTests
     [Test]
     public void Rejects_invalid_configuration([Values(
         "mirror", "fake", "import", "scan", "fake-root-snapshot", "flat-disabled",
-        "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "partial", "mixed", "no-anchor", "negative-anchor", "overlap", "whitespace")] string invalid)
+        "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "pair", "mixed", "no-anchor", "negative-anchor", "overlap", "whitespace")] string invalid)
     {
         PbtConfig config = Config();
         FlatDbConfig flat = Flat();
@@ -98,7 +95,7 @@ public class PbtMigrationConfigTests
             case "genesis-deletion": chain.Parameters.Eip6780TransitionTimestamp = 11; break;
             case "no-deletion": chain.Parameters.Eip6780TransitionTimestamp = null; break;
             case "late-deletion": chain.Parameters.Eip6780TransitionTimestamp = 100; break;
-            case "partial": config.MigrationSnapshotPath = "source/snapshot.pbt"; break;
+            case "pair": config.MigrationGenesisBootstrap = false; config.MigrationAnchor = 25; config.MigrationSnapshotPath = "source/snapshot.pbt"; config.MigrationPreimagesPath = "source/preimages.bin"; break;
             case "mixed": config.MigrationPreimageSourcePath = "source/db"; break;
             case "no-anchor": config.MigrationGenesisBootstrap = false; config.MigrationPreimageSourcePath = "source/db"; break;
             case "negative-anchor": config.MigrationAnchor = -1; break;

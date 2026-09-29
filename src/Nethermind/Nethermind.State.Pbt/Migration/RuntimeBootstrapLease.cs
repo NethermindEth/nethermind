@@ -27,7 +27,7 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
 
     public static RuntimeBootstrapLease Create(PbtImageAnchor anchor,
         string scratchDirectory, Func<bool> isCurrent, IPbtConfig configuration,
-        MigrationGenesisSource? genesisSource, IReadOnlyKeyValueStore code, ILogManager logManager)
+        MigrationGenesisSource? genesisSource, IPersistence localFlat, IReadOnlyKeyValueStore code, ILogManager logManager)
     {
         RuntimeBootstrapLease lease = new(anchor, scratchDirectory, isCurrent);
         try
@@ -36,8 +36,14 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
             {
                 lease._snapshot = File.Open(snapshot, FileMode.Open, FileAccess.Read, FileShare.Read);
                 lease._owned.Add(lease._snapshot);
-                lease._preimages = File.Open(configuration.MigrationPreimagesPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
+            }
+            else if (configuration.MigrationPreimagesPath is { } preimages)
+            {
+                lease._preimages = File.Open(preimages, FileMode.Open, FileAccess.Read, FileShare.Read);
                 lease._owned.Add(lease._preimages);
+                lease._source = localFlat.CreateReader();
+                lease._owned.Add(lease._source);
+                lease._code = code;
             }
             else if (configuration.MigrationPreimageSourcePath is { } sourcePath)
             {

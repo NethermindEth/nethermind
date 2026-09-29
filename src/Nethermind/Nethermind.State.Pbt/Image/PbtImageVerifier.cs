@@ -120,10 +120,10 @@ internal static class PbtImageVerifier
         }
     }
 
-    private delegate void TableFill(ref SortedTableBuilder<ArenaBufferWriter> table);
+    internal delegate void TableFill(ref SortedTableBuilder<ArenaBufferWriter> table);
 
     /// <summary>Stream already-ascending records into one table file.</summary>
-    private static void BuildTable(string path, TableFill fill)
+    internal static void BuildTable(string path, TableFill fill)
     {
         ArenaBufferWriter writer = new(File.Create(path), firstOffset: 0);
         try
@@ -357,14 +357,8 @@ internal static class PbtImageVerifier
         }
         if (!hasCodeHash) throw new InvalidDataException("Preimage or required account field has no snapshot leaf.");
         ValueHash256 codeHash = codeHashLeaf;
-        byte[] code = new byte[size];
+        byte[] code = codes.Assemble(codeHash, size, cancellationToken);
         int chunks = (int)(((long)size + 30) / 31);
-        for (int chunk = 0; chunk < chunks; chunk++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (codes.TryRead(codeHash, chunk, out ValueHash256 value))
-                value.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));
-        }
         if (ValueKeccak.Compute(code) != codeHash || Eip7702Constants.IsDelegatedCode(code))
             throw new InvalidDataException("Code bytes do not match the account code hash or delegation representation.");
         byte[] encodedChunks = PbtKeyDerivation.ChunkifyCode(code);
@@ -385,7 +379,7 @@ internal static class PbtImageVerifier
     /// <summary>The leaves no request claimed: one copy of each distinct bytecode, keyed by code hash.</summary>
     /// <remarks>Bytecode is shared between accounts, so <see cref="Consumed"/> counts each chunk once —
     /// comparing it against the residual size is what proves the snapshot carries nothing extra.</remarks>
-    private sealed class CodeTable(MappedByteFile residual)
+    internal sealed class CodeTable(MappedByteFile residual)
     {
         private readonly Dictionary<ValueHash256, int> _seen = [];
 
@@ -404,6 +398,20 @@ internal static class PbtImageVerifier
             if (!residual.TryRead(found.Offset, bytes)) throw new InvalidDataException("Truncated residual leaf.");
             value = new ValueHash256(bytes);
             return true;
+        }
+
+        /// <summary>Reassembles <paramref name="size"/> bytes of code from its stored chunks; absent chunks read as zeros.</summary>
+        public byte[] Assemble(in ValueHash256 codeHash, int size, CancellationToken cancellationToken)
+        {
+            byte[] code = new byte[size];
+            int chunks = (int)(((long)size + 30) / 31);
+            for (int chunk = 0; chunk < chunks; chunk++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (TryRead(codeHash, chunk, out ValueHash256 value))
+                    value.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));
+            }
+            return code;
         }
 
         /// <summary>Count one bytecode's stored chunks, the first time that bytecode is seen.</summary>

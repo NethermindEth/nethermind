@@ -57,7 +57,7 @@ internal sealed class PbtMigrationBootstrap(
         VerifyAlignment();
     }
 
-    internal static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationPreimageSourcePath is not null || configuration.MigrationGenesisBootstrap;
+    internal static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationPreimagesPath is not null || configuration.MigrationPreimageSourcePath is not null || configuration.MigrationGenesisBootstrap;
 
     private async Task Import(PbtBootstrapLease lease, CancellationToken cancellationToken)
     {
@@ -66,15 +66,18 @@ internal sealed class PbtMigrationBootstrap(
             lease.Anchor.ActivationTimestamp is { } activation && header.Timestamp >= activation)
             throw new InvalidDataException("Migration requires a trusted pre-activation anchor.");
         if (!lease.IsAnchorCurrent()) throw new InvalidOperationException("Migration anchor is no longer available.");
-        if (lease.Snapshot is { } snapshot && lease.Preimages is { } preimages)
+        if (lease.Snapshot is { } snapshot)
         {
-            if (lease.OfflineSource is not null || lease.OfflineCode is not null)
-                throw new InvalidDataException("Migration bootstrap has more than one source.");
-            await publication.Publish(snapshot, preimages, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
+            await publication.PublishSnapshot(snapshot, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
             return;
         }
-        if (lease.Snapshot is not null || lease.Preimages is not null || lease.OfflineSource is null || lease.OfflineCode is null)
-            throw new InvalidDataException("Migration bootstrap requires a portable pair or an immutable offline source and code store.");
+        if (lease.OfflineSource is null || lease.OfflineCode is null)
+            throw new InvalidDataException("Migration bootstrap requires a snapshot, preimages or an immutable offline source and code store.");
+        if (lease.Preimages is { } preimages)
+        {
+            await publication.PublishPreimages(preimages, lease.OfflineSource, lease.OfflineCode, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
+            return;
+        }
 
         Directory.CreateDirectory(lease.ScratchDirectory);
         string directory = Path.Combine(lease.ScratchDirectory, $"pbt-export-{Guid.NewGuid():N}");
@@ -117,6 +120,6 @@ internal sealed class PbtMigrationBootstrap(
         PbtImageAnchor anchor = PbtMigrationAnchor.Create(chainSpec, genesis, header);
         string scratch = Path.Combine(dbFactory.GetFullDbPath(new DbSettings("migration-work", "migration-work")), "bootstrap");
         return RuntimeBootstrapLease.Create(anchor, scratch, IsCurrent,
-            configuration, genesisBootstrap?.Source, dbProvider.CodeDb, logManager);
+            configuration, genesisBootstrap?.Source, flatPersistence, dbProvider.CodeDb, logManager);
     }
 }

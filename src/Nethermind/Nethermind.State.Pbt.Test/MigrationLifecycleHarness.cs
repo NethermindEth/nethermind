@@ -65,7 +65,6 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
         if (portable)
         {
             config.MigrationSnapshotPath = Path.Combine(fixtures, "canonical", "anchor", "snapshot.pbt");
-            config.MigrationPreimagesPath = Path.Combine(fixtures, "canonical", "anchor", "preimages.bin");
             config.MigrationAnchor = (long)blocks["anchor"].Number;
         }
         configureMigration?.Invoke(config);
