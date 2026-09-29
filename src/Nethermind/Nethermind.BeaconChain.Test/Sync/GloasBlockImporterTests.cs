@@ -344,10 +344,10 @@ public class GloasBlockImporterTests
 
     /// <summary>
     /// Forged votes under a PTC member's index each cost fork choice a BLS verify and are never penalized, so the router hands
-    /// fork choice one vote per (slot, validator): a flood of them is refused once, whatever their signatures.
+    /// fork choice a bounded number of votes per (slot, validator): a flood of them is refused that many times, whatever their signatures.
     /// </summary>
     [Test]
-    public void Forged_gossip_payload_attestations_under_one_member_cost_fork_choice_one_verify()
+    public void Forged_gossip_payload_attestations_under_one_member_cost_fork_choice_a_bounded_number_of_verifies()
     {
         SignedGloasChain chain = new();
         ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
@@ -372,10 +372,41 @@ public class GloasBlockImporterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(RefusedByForkChoice("gossip_payload_attestation") - refusedBefore, Is.EqualTo(1), "one verify for the pair");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries - 1));
+            Assert.That(RefusedByForkChoice("gossip_payload_attestation") - refusedBefore, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts), "the pair's verify attempts");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries - GossipRouter.PayloadAttestationVerifyAttempts));
             Assert.That(importer.OnGossipPayloadAttestation(genuine), Is.True, "fixture: the genuine vote verifies when it reaches fork choice");
         }
+    }
+
+    /// <summary>gloas/p2p-interface.md IGNOREs a PTC member's vote only after the first valid one, so a forgery that arrives first must not hide the genuine vote from fork choice.</summary>
+    [Test]
+    public void Genuine_gossip_payload_attestation_after_a_forgery_reaches_fork_choice()
+    {
+        SignedGloasChain chain = new();
+        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
+        SlotClock clock = new(chain.Spec, timestamper);
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock);
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block second = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        Import(importer, first, second);
+        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance);
+        int accepted = 0;
+        router.PayloadAttestationMessageReceived += vote =>
+        {
+            if (importer.OnGossipPayloadAttestation(vote))
+            {
+                accepted++;
+                router.MarkPayloadAttestationVerified(vote);
+            }
+        };
+        ulong member = second.PostState.GetPtc(ForkSlot + 1, chain.Spec).Indices![0];
+        PayloadAttestationMessage forged = PtcVote(second, member, payloadPresent: true);
+        forged.Signature = new BlsSignature([.. Enumerable.Repeat((byte)1, BlsSignature.Length)]);
+
+        router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(forged)));
+        router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(second, member, payloadPresent: true))));
+
+        Assert.That(accepted, Is.EqualTo(1), "the genuine vote verified after the forgery was refused");
     }
 
     /// <summary>A PTC member's signed vote on <paramref name="block"/>'s payload for its slot, the data available with the payload.</summary>
