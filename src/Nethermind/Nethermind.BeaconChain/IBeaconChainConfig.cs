@@ -43,6 +43,9 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "Consecutive goodbye-Fault disconnects from the same peer id before it is added to the in-memory ban list, which then refuses every further dial or reconnection attempt for that id regardless of the address it is next seen at.", DefaultValue = "3")]
     int FaultDisconnectsBeforeBan { get; set; }
 
+    [ConfigItem(Description = "How long, in minutes, a banned peer id is refused before it may connect again.", DefaultValue = "30")]
+    int PeerBanMinutes { get; set; }
+
     [ConfigItem(Description = "The interval, in epochs, between persisted beacon state snapshots.", DefaultValue = "32")]
     int StateSnapshotIntervalEpochs { get; set; }
 
