@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -108,6 +109,15 @@ public class FrameRpcWireFormatTests
             Assert.That(frame.ExecutionGasLimit, Is.EqualTo(50_000));
             Assert.That(frame.StateGasLimit, Is.EqualTo(1_000));
         }
+    }
+
+    [TestCase("executionGasLimit")]
+    [TestCase("stateGasLimit")]
+    public void FrameTransaction_WhenFrameHasLegacyGasField_IsRejected(string legacyField)
+    {
+        string json = $$"""{"type":"0x6","frames":[{"mode":0,"{{legacyField}}":"0xc350"}]}""";
+
+        Assert.That(() => Serializer.Deserialize<TransactionForRpc>(json), Throws.InstanceOf<JsonException>());
     }
 
     [Test]

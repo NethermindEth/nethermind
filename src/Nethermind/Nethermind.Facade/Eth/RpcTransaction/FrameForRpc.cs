@@ -10,6 +10,8 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 /// <summary>JSON-RPC view of an EIP-8141 frame: <c>[mode, flags, target, limits, value, data]</c>,
 /// where <c>limits = [execution, state]</c>.</summary>
+/// <remarks>Unknown members are rejected so a misnamed gas field fails the request instead of reading as zero gas.</remarks>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class FrameForRpc
 {
     /// <summary>The frame's kind, one of the <see cref="FrameMode"/> values: <c>0</c> default,

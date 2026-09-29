@@ -246,14 +246,14 @@ public class FrameTransactionForRpcTests
     [TestCase(GasCap, false, TestName = "ToTransaction_FrameGasAtTheCap_IsAccepted")]
     [TestCase(GasCap + 1, true, TestName = "ToTransaction_FrameGasAboveTheCap_IsRejected")]
     [TestCase(ulong.MaxValue, true, TestName = "ToTransaction_FrameGasOverflowingTheSum_IsRejected")]
-    public void FrameTransactionForRpc_ToTransaction_CapsTheFrameGasLimits(ulong frameGasLimit, bool expectedError)
+    public void FrameTransactionForRpc_ToTransaction_CapsTheFrameGasLimits(ulong frameGas, bool expectedError)
     {
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
             Frames =
             [
-                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = frameGasLimit },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = frameGas },
                 new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressC },
             ],
         };
@@ -477,7 +477,7 @@ public class FrameTransactionForRpcTests
                 "from": "0x0000000000000000000000000000000000000001",
                 "nonce": "0x3",
                 "nonceKeys": ["0x1", "0x7"],
-                "frames": [{"mode": 0, "flags": 3, "gasLimit": "0x186a0", "value": "0x0", "data": "0x"}]
+                "frames": [{"mode": 0, "flags": 3, "executionGas": "0x186a0", "value": "0x0", "data": "0x"}]
             }
             """;
 
