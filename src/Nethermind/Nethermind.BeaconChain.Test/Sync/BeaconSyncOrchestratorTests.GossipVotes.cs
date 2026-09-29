@@ -286,6 +286,154 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// A tick skipped behind a newer one never ticks fork choice by itself, yet a vote queued after it is checked against that slot
+    /// (gloas/fork-choice.md <c>on_payload_attestation_message</c>): fork choice must reach the skipped tick before the vote, not the newer tick.
+    /// </summary>
+    [Test]
+    public async Task Payload_attestation_queued_after_a_skipped_tick_reaches_fork_choice_at_that_tick()
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Orchestrator.RouteGossipEvents();
+        int ticksBefore = harness.Importer.Ticks.Count;
+        await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 1, CancellationToken.None);
+        Assert.That(PtcVote(router, slot, validatorIndex: 1), Is.EqualTo(MessageValidity.Ignored), "fixture: the vote is raised");
+        await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 2, CancellationToken.None);
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 1, WallSlot + 2]), "the skipped tick is applied for its vote, then the newest");
+            Assert.That(harness.Importer.TicksAtGossipOperations, Is.EqualTo((int[])[ticksBefore + 1]), "the vote is verified after the skipped tick and before the newest");
+        }
+    }
+
+    /// <summary>Votes stamped with a tick stuck behind a full work channel cannot be read yet, so only a bounded number may wait; earlier votes stay queued.</summary>
+    [Test]
+    public async Task Votes_stamped_with_a_tick_waiting_on_a_full_work_channel_are_bounded()
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Orchestrator.RouteGossipEvents();
+        const int earlyVotes = 3;
+        for (ulong validator = 0; validator < earlyVotes; validator++)
+        {
+            PtcVote(router, slot, validator);
+        }
+
+        while (harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.SlotTickItem(1)))
+        {
+        }
+
+        Task pendingTick = harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 1, CancellationToken.None).AsTask();
+        Assert.That(pendingTick.IsCompleted, Is.False, "fixture: the tick waits on the full work channel");
+
+        ulong droppedBefore = Metrics.BeaconChainGossipDropped;
+        for (ulong validator = earlyVotes; validator < earlyVotes + BeaconSyncOrchestrator.VoteQueueCapacity; validator++)
+        {
+            PtcVote(router, slot, validator);
+        }
+
+        ulong dropped = Metrics.BeaconChainGossipDropped - droppedBefore;
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await pendingTick.WaitAsync(TimeSpan.FromSeconds(10));
+        for (int pass = 0; pass < 10; pass++)
+        {
+            await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dropped, Is.EqualTo((ulong)(BeaconSyncOrchestrator.VoteQueueCapacity - BeaconSyncOrchestrator.MaxVotesAheadOfTick)), "votes past the bound are dropped");
+            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(earlyVotes + BeaconSyncOrchestrator.MaxVotesAheadOfTick), "the votes queued before the tick and the bounded ones are verified");
+        }
+    }
+
+    /// <summary>A tick skipped behind a newer stamped one that never reached the work channel still ticks fork choice before the vote read by the next pass.</summary>
+    [Test]
+    public async Task Payload_attestation_read_in_a_later_pass_still_reaches_fork_choice_at_the_skipped_tick()
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Orchestrator.RouteGossipEvents();
+        int ticksBefore = harness.Importer.Ticks.Count;
+        await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 1, CancellationToken.None);
+        Assert.That(PtcVote(router, slot, validatorIndex: 1), Is.EqualTo(MessageValidity.Ignored), "fixture: the vote is raised");
+        using CancellationTokenSource cancelled = new();
+        cancelled.Cancel();
+        Assert.CatchAsync<OperationCanceledException>(async () => await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 2, cancelled.Token), "fixture: the newer tick is stamped but never queued");
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 1]), "the skipped tick is applied for its vote");
+            Assert.That(harness.Importer.TicksAtGossipOperations, Is.EqualTo((int[])[ticksBefore + 1]), "the vote is verified after that tick");
+        }
+    }
+
+    /// <summary>
+    /// The allowance for votes waiting on a tick is given back when they are read or refused, so it does not run out over the node's lifetime:
+    /// after both paths ran, a full allowance of votes is queued without a drop.
+    /// </summary>
+    [Test]
+    public async Task Votes_stamped_with_a_tick_do_not_use_up_the_bound_once_read_or_refused()
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Orchestrator.RouteGossipEvents();
+        ulong validator = 0;
+        ulong nextTick = WallSlot + 1;
+
+        async Task DrainAsync()
+        {
+            for (int pass = 0; pass < 2 + BeaconSyncOrchestrator.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass; pass++)
+            {
+                await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+            }
+        }
+
+        // Read path: votes stamped with a queued tick are read after it.
+        await harness.Orchestrator.EnqueueSlotTickAsync(nextTick++, CancellationToken.None);
+        for (int i = 0; i < 5; i++)
+        {
+            PtcVote(router, slot, validator++);
+        }
+
+        await DrainAsync();
+
+        // Refused path: the vote channel is full when votes stamped with a queued tick arrive.
+        for (int i = 0; i < BeaconSyncOrchestrator.VoteQueueCapacity; i++)
+        {
+            PtcVote(router, slot, validator++);
+        }
+
+        await harness.Orchestrator.EnqueueSlotTickAsync(nextTick++, CancellationToken.None);
+        for (int i = 0; i < 10; i++)
+        {
+            PtcVote(router, slot, validator++);
+        }
+
+        await DrainAsync();
+
+        await harness.Orchestrator.EnqueueSlotTickAsync(nextTick++, CancellationToken.None);
+        ulong droppedBefore = Metrics.BeaconChainGossipDropped;
+        for (int i = 0; i < BeaconSyncOrchestrator.MaxVotesAheadOfTick; i++)
+        {
+            PtcVote(router, slot, validator++);
+        }
+
+        Assert.That(Metrics.BeaconChainGossipDropped - droppedBefore, Is.Zero, "a full allowance of votes still fits behind a queued tick");
+    }
+
     /// <summary>A vote queued while the worker drains other work must still wake it, though its wake is read in the same drain.</summary>
     [Test]
     public async Task Payload_attestation_arriving_during_a_pass_wakes_the_worker()

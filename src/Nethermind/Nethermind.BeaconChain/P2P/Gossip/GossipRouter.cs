@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -85,10 +86,12 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private const int SeenEnvelopeCacheSize = 1024;
     private const int EnvelopeBlockCacheSize = 1024;
     private const int SeenSlashedIndexCacheSize = 8192;
-    private const int SeenPayloadAttestationCacheSize = 2048;
 
     /// <summary>The most payload attestations raised for fork choice to verify per (slot, validator) pair while none has verified.</summary>
     internal const int PayloadAttestationVerifyAttempts = 3;
+
+    /// <summary>The most (slot, validator) pairs whose verify attempts are counted per slot; the least recently claimed one is evicted past it.</summary>
+    internal const int PayloadAttestationPairsPerSlot = (int)Presets.PtcSize * PayloadAttestationVerifyAttempts;
     private const int MaxDeferredMessages = 64;
 
     /// <summary>The most stored blocks decoded per slot for envelopes whose block is not cached and not canonical at a recent slot.</summary>
@@ -128,7 +131,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     // Each raised payload attestation costs fork choice a BLS verify: a pair gets a few attempts, and none once one has verified.
     private readonly Lock _payloadAttestationLock = new();
-    private readonly LruCache<(ulong Slot, ulong ValidatorIndex), PayloadAttestationPair> _payloadAttestationPairs = new(SeenPayloadAttestationCacheSize, "beacon gossip payload attestations");
+    // Keyed by slot and dropped a whole slot at a time; a flood of distinct indices evicts only unverified pairs, so it neither censors a vote nor reopens a verified pair.
+    private readonly Dictionary<ulong, SlotPayloadAttestations> _payloadAttestationPairs = [];
 
     private readonly StoredBlockSlots? _storedBlockSlots = store is null ? null : new(store, slotClock, logManager.GetClassLogger<GossipRouter>(), "beacon gossip stored block slots");
 
@@ -178,7 +182,10 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     {
         lock (_payloadAttestationLock)
         {
-            GetPayloadAttestationPair(vote).Verified = true;
+            if (GetSlotPayloadAttestations(vote.Data!.Slot, create: true) is { } slot)
+            {
+                slot.Verified.Add(vote.ValidatorIndex);
+            }
         }
     }
 
@@ -188,7 +195,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     {
         lock (_payloadAttestationLock)
         {
-            return _payloadAttestationPairs.TryGet((vote.Data!.Slot, vote.ValidatorIndex), out PayloadAttestationPair? pair) && pair.Verified;
+            return GetSlotPayloadAttestations(vote.Data!.Slot, create: false)?.Verified.Contains(vote.ValidatorIndex) == true;
         }
     }
 
@@ -203,25 +210,36 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     {
         lock (_payloadAttestationLock)
         {
-            PayloadAttestationPair pair = GetPayloadAttestationPair(vote);
-            if (pair.Attempts > 0)
+            if (GetSlotPayloadAttestations(vote.Data!.Slot, create: false) is { } slot
+                && slot.Pairs.TryGet(vote.ValidatorIndex, out PayloadAttestationPair? pair) && pair.Attempts > 0)
             {
                 pair.Attempts--;
             }
         }
     }
 
-    // Callers hold _payloadAttestationLock.
-    private PayloadAttestationPair GetPayloadAttestationPair(PayloadAttestationMessage vote)
+    // Callers hold _payloadAttestationLock. Null when the slot is not tracked and not created, or is too old to be voted.
+    private SlotPayloadAttestations? GetSlotPayloadAttestations(ulong slot, bool create)
     {
-        (ulong, ulong) key = (vote.Data!.Slot, vote.ValidatorIndex);
-        if (!_payloadAttestationPairs.TryGet(key, out PayloadAttestationPair? pair))
+        if (!_payloadAttestationPairs.TryGetValue(slot, out SlotPayloadAttestations? attestations))
         {
-            pair = new PayloadAttestationPair();
-            _payloadAttestationPairs.Set(key, pair);
+            // A vote for a slot before the previous one fails the current-slot rule, so a dropped slot never comes back.
+            ulong current = slotClock.CurrentSlot;
+            if (!create || slot + 1 < current)
+            {
+                return null;
+            }
+
+            foreach (ulong old in _payloadAttestationPairs.Keys.Where(s => s + 1 < current).ToArray())
+            {
+                _payloadAttestationPairs.Remove(old);
+            }
+
+            attestations = new SlotPayloadAttestations();
+            _payloadAttestationPairs[slot] = attestations;
         }
 
-        return pair;
+        return attestations;
     }
 
     /// <summary>Records the intersecting indices of an attester slashing that passed every gossip check, its signatures included.</summary>
@@ -746,8 +764,23 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     {
         lock (_payloadAttestationLock)
         {
-            PayloadAttestationPair pair = GetPayloadAttestationPair(vote);
-            if (pair.Verified || pair.Attempts >= PayloadAttestationVerifyAttempts)
+            if (GetSlotPayloadAttestations(vote.Data!.Slot, create: true) is not { } slot)
+            {
+                return Verdict.Ignore(GossipDropReason.StaleSlot);
+            }
+
+            if (slot.Verified.Contains(vote.ValidatorIndex))
+            {
+                return Verdict.Ignore(GossipDropReason.Duplicate);
+            }
+
+            if (!slot.Pairs.TryGet(vote.ValidatorIndex, out PayloadAttestationPair? pair))
+            {
+                pair = new PayloadAttestationPair();
+                slot.Pairs.Set(vote.ValidatorIndex, pair);
+            }
+
+            if (pair.Attempts >= PayloadAttestationVerifyAttempts)
             {
                 return Verdict.Ignore(GossipDropReason.Duplicate);
             }
@@ -950,7 +983,15 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private sealed class PayloadAttestationPair
     {
         public int Attempts;
-        public bool Verified;
+    }
+
+    private sealed class SlotPayloadAttestations
+    {
+        // Only votes fork choice accepted are marked, and it accepts only get_ptc members, so this holds at most PTC_SIZE indices.
+        public readonly HashSet<ulong> Verified = [];
+
+        // A flood reopens a spent pair only after PayloadAttestationPairsPerSlot newer pairs push it out.
+        public readonly LruCache<ulong, PayloadAttestationPair> Pairs = new(PayloadAttestationPairsPerSlot, "beacon gossip payload attestations");
     }
 
     private enum EnvelopeBlockLookup
