@@ -292,7 +292,14 @@ public partial class GasEstimator
                 if (i == index) continue;
                 ulong otherExecution = i < index ? _frames[i].ExecutionGasLimit : Reserved(i, execution: true, freeOutgrown);
                 ulong otherState = i < index ? _frames[i].StateGasLimit : Reserved(i, execution: false, freeOutgrown);
-                if (i > index) _frames[i] = WithGas(_frames[i], otherExecution, otherState);
+                if (i > index)
+                {
+                    // An earlier frame that took freed room can leave less than the reservations; they yield, so the
+                    // probe stays within the pools.
+                    if (_fillExecution[i]) otherExecution = Math.Min(otherExecution, execution);
+                    if (_fillState[i]) otherState = Math.Min(otherState, state);
+                    _frames[i] = WithGas(_frames[i], otherExecution, otherState);
+                }
                 if (_fillExecution[i]) execution = Deduct(execution, otherExecution);
                 if (_fillState[i]) state = Deduct(state, otherState);
             }

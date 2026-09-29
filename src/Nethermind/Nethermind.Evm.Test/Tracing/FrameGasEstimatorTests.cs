@@ -32,11 +32,12 @@ public class FrameGasEstimatorTests
         AssertFills(static i => (i % 2 == 0 ? 400_000UL : 20_000UL, 0), errorMargin: 0);
 
     /// <remarks>The first frame needs more than an even split, and the later frames are skipped with its batch, or fail
-    /// only because it did, so none of them measures a reservation there.</remarks>
-    [TestCase(true)]
-    [TestCase(false)]
-    public void EstimateFrameGas_FillsAFrameThatTookDownTheLaterFramesOnTheEvenSplit(bool atomicBatch) =>
-        AssertFills(static i => (i == 0 ? 6_000_000UL : 20_000UL, 0), errorMargin: 150, frameCount: 4,
+    /// only because it did, so none of them measures a reservation there. Needing more than two shares, it leaves the
+    /// later frames less room than their reservations.</remarks>
+    [Test]
+    public void EstimateFrameGas_FillsAFrameThatTookDownTheLaterFramesOnTheEvenSplit([Values] bool atomicBatch,
+        [Values(6_000_000UL, 10_000_000UL)] ulong firstFrameNeed) =>
+        AssertFills(i => (i == 0 ? firstFrameNeed : 20_000UL, 0), errorMargin: 150, frameCount: 4,
             atomicBatch ? FrameFlags.AtomicBatch : default, dependsOnEarlierFrames: !atomicBatch);
 
     [TestCase(0)]
