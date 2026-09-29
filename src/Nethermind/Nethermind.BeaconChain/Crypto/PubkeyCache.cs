@@ -26,12 +26,15 @@ public class PubkeyCache
 {
     private const byte FormatVersion = 1;
     private const int ValidatorsPerChunk = 65_536;
-    private const string CountKey = "pubkeys:count";
+    internal const string CountKey = "pubkeys:count";
 
     private long[] _points = [];
 
     // Per validator: 0 not yet checked, 1 in G1, 2 outside G1.
     private byte[] _subgroupChecks = [];
+
+    // Held while Extend copies and replaces the verdicts, so a warm-up that ends then either sees the replacement or had its verdicts copied.
+    private readonly Lock _subgroupChecksSwap = new();
 
     public int Count { get; private set; }
 
@@ -55,6 +58,46 @@ public class PubkeyCache
         if (check == 0)
             checks[validatorIndex] = check = GetPublicKey(validatorIndex).InGroup() ? (byte)1 : (byte)2;
         return check == 1;
+    }
+
+    /// <summary>Remembers the subgroup check of every cached key that has none yet, so block imports do not pay for them.</summary>
+    /// <remarks>
+    /// Fans out over at most half the processors so the importer keeps the rest. Safe beside <see cref="IsInSubgroup"/>, which stores the same
+    /// verdict, and beside <see cref="Extend"/>: a verdict is only ever stored for the key it was computed from. An <see cref="Extend"/>
+    /// that replaces the verdict array during the run makes it check the replacement again, as verdicts stored in the old array are lost.
+    /// </remarks>
+    /// <exception cref="OperationCanceledException">Cancelled; the verdicts stored so far stay.</exception>
+    internal virtual void WarmSubgroupChecks(CancellationToken cancellationToken)
+    {
+        ParallelOptions options = new() { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) };
+        byte[] checks;
+        do
+        {
+            // Extend stores the points before the checks, so reading them in the opposite order never pairs new checks with old points.
+            checks = Volatile.Read(ref _subgroupChecks);
+            long[] points = Volatile.Read(ref _points);
+            Parallel.For(0, Math.Min(checks.Length, points.Length / G1Affine.Sz), options, i =>
+            {
+                if (checks[i] == 0)
+                    checks[i] = new G1Affine(points.AsSpan(i * G1Affine.Sz, G1Affine.Sz)).InGroup() ? (byte)1 : (byte)2;
+            });
+        }
+        while (!IsCurrent(checks));
+    }
+
+    private bool IsCurrent(byte[] checks)
+    {
+        lock (_subgroupChecksSwap)
+        {
+            return ReferenceEquals(checks, _subgroupChecks);
+        }
+    }
+
+    /// <summary>Whether a validator's subgroup check is already remembered.</summary>
+    internal bool HasSubgroupCheck(int validatorIndex)
+    {
+        byte[] checks = _subgroupChecks;
+        return (uint)validatorIndex < (uint)checks.Length && checks[validatorIndex] != 0;
     }
 
     /// <summary>Returns a validator's cached public key and whether it is in the prime-order subgroup G1, which <c>KeyValidate</c> requires of every key a signature is verified under.</summary>
@@ -142,7 +185,6 @@ public class PubkeyCache
         long[] points = new long[checked(validators.Length * G1Affine.Sz)];
         _points.AsSpan(0, fromIndex * G1Affine.Sz).CopyTo(points);
         byte[] subgroupChecks = new byte[validators.Length];
-        _subgroupChecks.AsSpan(0, fromIndex).CopyTo(subgroupChecks);
 
         long firstInvalid = -1;
         Parallel.For(fromIndex, validators.Length, (i, state) =>
@@ -162,8 +204,13 @@ public class PubkeyCache
             throw new InvalidOperationException($"Validator {firstInvalid} has an invalid BLS public key.");
         }
 
-        _points = points;
-        _subgroupChecks = subgroupChecks;
+        lock (_subgroupChecksSwap)
+        {
+            _subgroupChecks.AsSpan(0, fromIndex).CopyTo(subgroupChecks);
+            Volatile.Write(ref _points, points);
+            Volatile.Write(ref _subgroupChecks, subgroupChecks);
+        }
+
         Count = validators.Length;
 
         if (!SamplesMatch(validators))

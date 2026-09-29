@@ -217,6 +217,29 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>A run stopped while the anchor kick is answered must not start the work that follows it, whether or not that work checks the token itself.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_run_cancelled_during_the_engine_kick_skips_the_work_that_follows_it(CancellationToken testToken)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        PeerBandTests.Node node = PeerBandTests.CreateNode();
+        await using BeaconP2P p2p = node.P2P;
+        Harness harness = CreateHarness(discovery: discovery, p2p: p2p, peerManager: new PeerManager(p2p, node.Config, node.StatusHolder, LimboLogs.Instance));
+        (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(AnchorSlot);
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(testToken);
+        int afterKick = 0;
+        harness.Engine.OnCall = cts.Cancel;
+
+        Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token, () => afterKick++));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "the kick was sent");
+            Assert.That(afterKick, Is.Zero);
+        }
+    }
+
     /// <summary>
     /// The anchor kick goes through the same send state as the head steps, so a head step that finds the anchor still the head
     /// does not send it again within the resend interval.
@@ -895,11 +918,14 @@ public partial class BeaconSyncOrchestratorTests
 
         public SignedBeaconBlock? CurrentBlock { get; set; }
 
+        public Action? OnCall { get; set; }
+
         public bool HasAnsweredNewPayload => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
         {
             FcuCalls.Add((headExecHash, safeExecHash, finalizedExecHash));
+            OnCall?.Invoke();
             return Task.FromResult(FcuResponses.Count > 0 ? FcuResponses.Dequeue() : PayloadStatusV1.Syncing);
         }
 
