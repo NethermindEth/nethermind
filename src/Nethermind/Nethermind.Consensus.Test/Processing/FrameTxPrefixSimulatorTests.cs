@@ -293,6 +293,33 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [Test]
+    public void Simulate_TimedOutThenBlockStarts_IsStillChargedToTheSender()
+    {
+        ManualTimeProvider time = new();
+        bool processingBlock = false;
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, timeoutMs: 1, time: time);
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
+            .Returns<TransactionResult>(call =>
+            {
+                time.Advance(TimeSpan.FromMilliseconds(50));
+                bool cancelled = call.ArgAt<ITxTracer>(1).IsCancelled;
+                processingBlock = true;
+                if (cancelled) throw new OperationCanceledException();
+                return TransactionResult.Ok;
+            });
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx(), preempt: () => processingBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.Yielded, Is.False);
+            Assert.That(result.NodeBound, Is.False);
+            Assert.That(result.Reason, Does.Contain("timed out"));
+        }
+    }
+
+    [Test]
     public void Simulate_PreemptedBeforeStart_DefersWithoutBuildingAnEnv()
     {
         IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();

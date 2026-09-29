@@ -59,10 +59,10 @@ public sealed class FrameTxValidationTracer(
     /// <inheritdoc/>
     /// <remarks>Polled by the interpreter every 1024 opcodes; aborting at the first violation denies a
     /// spammer the rest of the <c>MAX_VERIFY_GAS</c> budget per rejected transaction.</remarks>
-    bool ITxTracer.IsCancelled => Violated || TimedOut || Preempted || token.IsCancellationRequested;
+    bool ITxTracer.IsCancelled => Violated || TimedOut || (_preempted = _preempted || preempt?.Invoke() == true) || token.IsCancellationRequested;
 
     /// <summary>True once the preemption callback asked the simulation to stop.</summary>
-    public bool Preempted => _preempted || (_preempted = preempt?.Invoke() == true);
+    public bool Preempted => _preempted;
 
     private bool _preempted;
 
