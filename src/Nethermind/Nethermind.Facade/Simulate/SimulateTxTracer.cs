@@ -65,8 +65,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        // A frame transaction's logs follow its receipt, which drops a reverted call's logs and transfers.
-        if (_tx.SupportsFrames) (_callLogStarts ??= new Stack<int>()).Push(_logs.Count);
+        // Logs and synthetic transfers emitted by a reverted call frame do not survive in the transaction result.
+        (_callLogStarts ??= new Stack<int>()).Push(_logs.Count);
         if (!_isTracingTransfers) return;
         if (callType == ExecutionType.DELEGATECALL) return;
         if (!value.IsZero)
