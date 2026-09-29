@@ -76,6 +76,7 @@ public class CheckpointSync(
         try
         {
             ForkedBeaconState state = DecodeState(buffer.AsSpan(0, length));
+            ThrowIfWrongNetwork(state, spec);
             ThrowIfInvalidSyncCommitteeKeys(state);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -207,6 +208,22 @@ public class CheckpointSync(
         ThrowIfInvalidSyncCommitteeKeys(next, "next_sync_committee", state.Slot);
     }
 
+    /// <summary>Refuses an anchor state that belongs to another network than <paramref name="spec"/>.</summary>
+    /// <exception cref="InvalidDataException">The state's <c>genesis_validators_root</c> differs from the network's.</exception>
+    internal static void ThrowIfWrongNetwork(ForkedBeaconState state, BeaconChainSpec spec)
+    {
+        Hash256 genesisValidatorsRoot = state switch
+        {
+            ForkedBeaconState.OfFulu fulu => fulu.State.GenesisValidatorsRoot!,
+            ForkedBeaconState.OfGloas gloas => gloas.State.GenesisValidatorsRoot!,
+            _ => throw new NotSupportedException($"Unhandled beacon state shape {state.GetType().Name}"),
+        };
+        if (genesisValidatorsRoot != spec.GenesisValidatorsRoot)
+        {
+            throw new InvalidDataException($"The anchor state at slot {state.Slot} has genesis_validators_root {genesisValidatorsRoot}, but this network's is {spec.GenesisValidatorsRoot}; it belongs to another network. Use a checkpoint source of this network, or delete a beaconChain database written for another one.");
+        }
+    }
+
     private static void ThrowIfInvalidSyncCommitteeKeys(SyncCommittee committee, string field, ulong slot)
     {
         Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
@@ -317,13 +334,6 @@ public class CheckpointSync(
             store.PutForkedBlock(anchor.BlockRoot, anchor.Block);
         }
 
-        Hash256 genesisValidatorsRoot = anchor.State switch
-        {
-            ForkedBeaconState.OfFulu fulu => fulu.State.GenesisValidatorsRoot!,
-            ForkedBeaconState.OfGloas gloas => gloas.State.GenesisValidatorsRoot!,
-            _ => throw new NotSupportedException($"Unhandled beacon state shape {anchor.State.GetType().Name}"),
-        };
-        store.PutMetadata(BeaconChainMetadataKeys.GenesisValidatorsRoot, genesisValidatorsRoot.BytesToArray());
         // The anchor entry is written last: its presence marks a fully persisted checkpoint.
         store.SetAnchor(anchor.BlockRoot, LatestBlockHeader(anchor.State).Slot);
     }

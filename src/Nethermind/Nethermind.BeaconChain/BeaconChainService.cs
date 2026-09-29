@@ -142,6 +142,7 @@ public sealed class BeaconChainService(
         }
 
         ForkedBeaconState state = BeaconStateCodec.DecodeForked(stateSsz, spec);
+        CheckpointSync.ThrowIfWrongNetwork(state, spec);
         CheckpointSync.ThrowIfInvalidSyncCommitteeKeys(state);
         store.TryGetForkedBlock(anchorRoot, out ForkedSignedBeaconBlock? block);
         if (block is not null && (state, block) is not ((ForkedBeaconState.OfFulu, ForkedSignedBeaconBlock.OfFulu) or (ForkedBeaconState.OfGloas, ForkedSignedBeaconBlock.OfGloas)))
