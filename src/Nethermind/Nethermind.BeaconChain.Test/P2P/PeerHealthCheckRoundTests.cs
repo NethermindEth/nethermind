@@ -19,76 +19,153 @@ namespace Nethermind.BeaconChain.Test.P2P;
 /// </summary>
 public class PeerHealthCheckRoundTests
 {
-    private const int UnansweringPeers = 3;
+    private const int MaxConcurrentChecks = 8;
+
+    // Under the 15 s request timeout, so a status held this long still answers and a check that ran alone shows only as a missed rendezvous.
+    private static readonly TimeSpan RendezvousWait = TimeSpan.FromSeconds(10);
 
     [Test]
-    [CancelAfter(60_000)]
-    public async Task Unanswering_peers_are_checked_together_and_do_not_delay_a_live_peers_head_refresh(CancellationToken token)
+    [CancelAfter(120_000)]
+    public async Task Unanswering_peers_are_checked_together_with_a_live_peer_whose_head_is_refreshed(CancellationToken token)
     {
+        const int unansweringPeers = 3;
         Node client = CreateNode();
         SetMatchingStatus(client);
         StatusMessageV2 status = client.StatusHolder.CurrentStatus;
         ulong refreshedHead = status.HeadSlot + 1;
         using ManualResetEventSlim roundStarted = new();
-        using ManualResetEventSlim release = new();
-        // Keyed on the round, not on request order, since an admission may exchange status more than once.
-        ScriptedStatusSource[] unansweringStatus = [.. Enumerable.Range(0, UnansweringPeers).Select(_ => new ScriptedStatusSource(request =>
+        using ManualResetEventSlim allAsked = new();
+        int asked = 0;
+        int missedRendezvous = 0;
+        // Each round status is held until every peer has been asked, which only a round checking them together reaches.
+        StatusMessageV2 HeldUntilAllAsked(StatusMessageV2 answer)
         {
             if (roundStarted.IsSet)
             {
-                release.Wait(TimeSpan.FromSeconds(30));
+                if (Interlocked.Increment(ref asked) == unansweringPeers + 1)
+                {
+                    allAsked.Set();
+                }
+
+                if (!allAsked.Wait(RendezvousWait))
+                {
+                    Interlocked.Increment(ref missedRendezvous);
+                }
             }
 
-            return status;
-        }))];
-        ScriptedStatusSource liveStatus = new(request => WithHead(status, roundStarted.IsSet ? refreshedHead : status.HeadSlot));
-        Node[] unanswering = [.. unansweringStatus.Select(static s => CreateNode(s))];
-        Node live = CreateNode(liveStatus);
+            return answer;
+        }
+
+        Node[] unanswering = [.. Enumerable.Range(0, unansweringPeers).Select(_ => CreateNode(new ScriptedStatusSource(_ => HeldUntilAllAsked(status))))];
+        Node live = CreateNode(new ScriptedStatusSource(_ => HeldUntilAllAsked(WithHead(status, roundStarted.IsSet ? refreshedHead : status.HeadSlot))));
         Node[] servers = [.. unanswering, live];
 
         try
         {
-            foreach (Node node in (Node[])[.. servers, client])
-            {
-                await node.P2P.StartAsync(token);
-            }
+            PeerManager peerManager = await StartAndAdmitAsync(client, servers, token);
+            roundStarted.Set();
+            await peerManager.RunMaintenanceRoundAsync(token);
 
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            foreach (Node server in servers)
+            using (Assert.EnterMultipleScope())
             {
-                // Admission is not what this test checks, so a dial whose session the pinned libp2p loses is tried again.
-                bool admitted = false;
-                for (int attempt = 0; attempt < 3 && !admitted; attempt++)
+                Assert.That(missedRendezvous, Is.Zero, "every peer's status is requested before any is answered");
+                Assert.That(peerManager.GetBestPeers(0).SingleOrDefault(p => p.Id == LoopbackAddress(live.P2P))?.HeadSlot, Is.EqualTo(refreshedHead));
+            }
+        }
+        finally
+        {
+            allAsked.Set();
+            await DisposeAsync(client, servers);
+        }
+    }
+
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task A_round_checks_at_most_eight_peers_at_once_and_stops_when_cancelled(CancellationToken token)
+    {
+        const int peers = 2 * MaxConcurrentChecks;
+        Node client = CreateNode();
+        SetMatchingStatus(client);
+        StatusMessageV2 status = client.StatusHolder.CurrentStatus;
+        using ManualResetEventSlim roundStarted = new();
+        using ManualResetEventSlim release = new();
+        int inFlight = 0;
+        int maxInFlight = 0;
+        ScriptedStatusSource held = new(_ =>
+        {
+            if (roundStarted.IsSet)
+            {
+                int now = Interlocked.Increment(ref inFlight);
+                for (int seen = Volatile.Read(ref maxInFlight); now > seen; seen = Volatile.Read(ref maxInFlight))
                 {
-                    admitted = await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token);
+                    Interlocked.CompareExchange(ref maxInFlight, now, seen);
                 }
 
-                Assert.That(admitted, Is.True);
+                release.Wait(TimeSpan.FromSeconds(30));
+                Interlocked.Decrement(ref inFlight);
             }
 
-            int[] admissionRequests = [.. unansweringStatus.Select(static s => s.Requests)];
+            return status;
+        });
+        Node[] servers = [.. Enumerable.Range(0, peers).Select(_ => CreateNode(held))];
+
+        try
+        {
+            PeerManager peerManager = await StartAndAdmitAsync(client, servers, token);
+            using CancellationTokenSource roundCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
             roundStarted.Set();
-            Task round = peerManager.RunMaintenanceRoundAsync(token);
-            // Well under the 15 s request timeout, so no check of an unanswering peer can have ended before this.
-            await PeerSessionNodes.WaitUntilAsync(
-                () => unansweringStatus.Select((s, i) => s.Requests > admissionRequests[i]).All(static asked => asked) && LiveHead() == refreshedHead,
-                "every unanswering peer is asked before any answers, and the live peer's head is refreshed meanwhile",
-                token,
-                TimeSpan.FromSeconds(10));
-            release.Set();
-            await round;
+            Task round = peerManager.RunMaintenanceRoundAsync(roundCancellation.Token);
+            await PeerSessionNodes.WaitUntilAsync(() => Volatile.Read(ref inFlight) >= MaxConcurrentChecks, "the round never asked enough peers at once", token);
+            // Long enough for a check past the bound to have been started; the held ones cannot finish meanwhile.
+            await Task.Delay(TimeSpan.FromSeconds(1), token);
+            int observedMax = Volatile.Read(ref maxInFlight);
+            await roundCancellation.CancelAsync();
+            // Well under the request timeout, so only the round's token can end the held checks in time.
+            bool endedPromptly = await Task.WhenAny(round, Task.Delay(TimeSpan.FromSeconds(5), token)) == round;
 
-            Assert.That(LiveHead(), Is.EqualTo(refreshedHead));
-
-            ulong? LiveHead() => peerManager.GetBestPeers(0).SingleOrDefault(p => p.Id == LoopbackAddress(live.P2P))?.HeadSlot;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(observedMax, Is.EqualTo(MaxConcurrentChecks));
+                Assert.That(endedPromptly, Is.True, "cancelling the round ends the checks in flight");
+                Assert.That(round.IsCanceled, Is.True);
+                Assert.That(peerManager.PeerCount, Is.EqualTo(peers), "a cancelled check does not count against its peer");
+            }
         }
         finally
         {
             release.Set();
-            foreach (Node node in (Node[])[.. servers, client])
+            await DisposeAsync(client, servers);
+        }
+    }
+
+    private static async Task<PeerManager> StartAndAdmitAsync(Node client, Node[] servers, CancellationToken token)
+    {
+        foreach (Node node in (Node[])[.. servers, client])
+        {
+            await node.P2P.StartAsync(token);
+        }
+
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        foreach (Node server in servers)
+        {
+            // Admission is not what these tests check, so a dial whose session the pinned libp2p loses is tried again.
+            bool admitted = false;
+            for (int attempt = 0; attempt < 3 && !admitted; attempt++)
             {
-                await node.P2P.DisposeAsync();
+                admitted = await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token);
             }
+
+            Assert.That(admitted, Is.True);
+        }
+
+        return peerManager;
+    }
+
+    private static async Task DisposeAsync(Node client, Node[] servers)
+    {
+        foreach (Node node in (Node[])[.. servers, client])
+        {
+            await node.P2P.DisposeAsync();
         }
     }
 
