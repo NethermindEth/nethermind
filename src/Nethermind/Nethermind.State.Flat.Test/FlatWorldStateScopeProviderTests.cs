@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -739,6 +740,96 @@ public class FlatWorldStateScopeProviderTests
         Account? account = scope.Get(address);
         Assert.That(account, Is.Not.Null);
         Assert.That(account!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
+    public void DeferredStorageTrieCommit_CommitsTheSameStorageNodes([Values(1, 3)] int contractCount)
+    {
+        (HashSet<string> nodesInBatch, Hash256[] rootsInBatch) = CommitStorageSlots(deferStorageTrieCommit: false, contractCount);
+        (HashSet<string> nodesAtCommit, Hash256[] rootsAtCommit) = CommitStorageSlots(deferStorageTrieCommit: true, contractCount);
+
+        Assert.That(nodesAtCommit, Is.Not.Empty);
+        Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
+        Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
+    }
+
+    [Test]
+    public void DeferredStorageTrieCommit_NextBlockBuildsOnTheCommittedNodes([Values] bool deferStorageTrieCommit)
+    {
+        const int slotCount = 64;
+        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB];
+        foreach (Address address in addresses) ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        UInt256[] expected = new UInt256[slotCount + 1];
+
+        // Block 1: two batches, the second overwriting half of the first, as per-transaction root commits do.
+        for (int batch = 0; batch < 2; batch++)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length);
+            foreach (Address address in addresses)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+                for (int slot = batch * slotCount / 2; slot < slotCount; slot++)
+                {
+                    expected[slot] = (UInt256)(slot + 1 + batch * 1000);
+                    storageBatch.Set((UInt256)slot, expected[slot]);
+                }
+            }
+        }
+        scope.Commit(1);
+
+        // Block 2 updates the tries block 1 committed, so a node block 1 left out fails to resolve here.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length))
+        {
+            foreach (Address address in addresses)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 2);
+                expected[0] = 7;
+                expected[slotCount] = 9;
+                storageBatch.Set(0, expected[0]);
+                storageBatch.Set((UInt256)slotCount, expected[slotCount]);
+            }
+        }
+        scope.Commit(2);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot <= slotCount; slot++) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
+        expectedTree.UpdateRootHash();
+        foreach (Address address in addresses)
+        {
+            Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+        }
+    }
+
+    private static (HashSet<string> Nodes, Hash256[] Roots) CommitStorageSlots(bool deferStorageTrieCommit, int contractCount)
+    {
+        const int slotCount = 64;
+        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+        addresses = addresses[..contractCount];
+        foreach (Address address in addresses) ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length))
+        {
+            for (int contract = 0; contract < addresses.Length; contract++)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addresses[contract], slotCount);
+                for (int slot = 0; slot < slotCount; slot++) storageBatch.Set((UInt256)slot, (UInt256)(slot + 1 + contract * 100));
+            }
+        }
+        scope.Commit(1);
+
+        HashSet<string> nodes = [];
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> node in ctx.LastCommittedSnapshot!.StorageNodes)
+        {
+            nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{node.Value.Keccak}");
+        }
+
+        Hash256[] roots = new Hash256[addresses.Length];
+        for (int contract = 0; contract < addresses.Length; contract++) roots[contract] = scope.Get(addresses[contract])!.StorageRoot;
+        return (nodes, roots);
     }
 
     [Test]

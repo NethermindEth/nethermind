@@ -148,13 +148,17 @@ public sealed class FlatStorageTree(
     // No trees means nothing was written, so there is nothing to commit.
     public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
 
+    /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
+    internal bool HasUncommittedNodes => Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
+
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
         // A trie-less (history-backed) scope can't maintain the storage trie (its persistence reader throws on
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, GetTrees().Tree, onRootUpdated, _address, commit: true);
+        // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported valid.
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, GetTrees().Tree, onRootUpdated, _address, commit: !_config.DeferStorageTrieCommit);
         return new StorageTreeBulkWriteBatch(trieBatch, this);
     }
 
