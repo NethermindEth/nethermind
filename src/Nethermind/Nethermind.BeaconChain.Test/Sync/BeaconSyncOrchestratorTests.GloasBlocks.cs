@@ -582,16 +582,143 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// A restart replays a stored Gloas block, then its verified envelope, so the replayed tip is head at once and a full child
+    /// gossiped after it imports; without the envelope the child waits for a payload the node already had, and no peer is connected to serve it.
+    /// </summary>
+    [Test]
+    public async Task Replay_imports_the_stored_envelope_after_its_block_so_a_full_child_imports_on_it()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        SignedGloasChain.Block child = chain.Next(first, 33, full: true, 0xC2);
+        BeaconChainStore store = chain.CreateStore();
+        store.PutForkedBlock(first.Root, first.Forked);
+        store.SetCanonicalRoot(first.Forked.Slot, first.Root);
+        store.PutExecutionPayloadEnvelope(first.Root, first.Envelope);
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + 34 * chain.Spec.SecondsPerSlot).AddSeconds(6));
+        GossipRouter router = new(chain.Spec, new SlotClock(chain.Spec, clock), LimboLogs.Instance);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, SignedGloasChain.EnvelopeEngine engine) = CreateGloasOrchestrator(chain, store, clock, router);
+
+        await orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+        (Hash256 Head, Hash256 Safe, Hash256 Finalized)[] replayHeadStep = [.. engine.FcuCalls];
+        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(engine.EnvelopeCalls, Is.EqualTo(1), "the stored envelope is verified again by the engine");
+            Assert.That(replayHeadStep.Select(call => call.Head), Does.Contain(first.Envelope.Message!.Payload!.BlockHash), "the replayed tip is head with its payload, before any child arrives");
+            Assert.That(router.IsEnvelopeSeen(first.Root, first.Envelope.Message!.BuilderIndex), Is.True, "replay records the envelope like any imported one");
+            Assert.That(importer.IsKnown(child.Root), Is.True, "the full child imports on the replayed payload");
+        }
+    }
+
+    /// <summary>The store keeps envelopes from the finalized block on, and fork choice starts with no payloads, so a restart must import the anchor's stored envelope for its full child.</summary>
+    [Test]
+    public async Task Replay_imports_the_stored_envelope_of_a_gloas_anchor_so_its_full_child_imports()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block anchor = chain.Next(null, 32, full: false, 0xC1);
+        SignedGloasChain.Block child = chain.Next(anchor, 33, full: true, 0xC2);
+        BeaconChainStore store = chain.CreateStore();
+        store.PutExecutionPayloadEnvelope(anchor.Root, anchor.Envelope);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, SignedGloasChain.EnvelopeEngine engine) = CreateGloasOrchestrator(chain, store, gloasAnchor: anchor);
+
+        await orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(engine.EnvelopeCalls, Is.EqualTo(1));
+            Assert.That(importer.IsKnown(child.Root), Is.True, "the full child of the anchor imports on the replayed payload");
+        }
+    }
+
+    /// <summary>A stored envelope that cannot be decoded must not stop the restart: its block still replays and the envelope is left to the network.</summary>
+    [Test]
+    public async Task Replay_skips_an_unreadable_stored_envelope()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, chain.Spec);
+        store.PutForkedBlock(first.Root, first.Forked);
+        store.SetCanonicalRoot(first.Forked.Slot, first.Root);
+        db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).Set(first.Root.Bytes, [1, 2, 3]);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, SignedGloasChain.EnvelopeEngine engine) = CreateGloasOrchestrator(chain, store);
+
+        await orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.IsKnown(first.Root), Is.True);
+            Assert.That(orchestrator.SyncTip, Is.EqualTo((first.Root, 32UL)));
+            Assert.That(engine.EnvelopeCalls, Is.Zero);
+        }
+    }
+
+    /// <summary>A block the orchestrator drops after its retry age, and the children held for it, leave no deferral entry in the importer.</summary>
+    [Test]
+    public async Task Dropping_a_parked_block_releases_the_importers_deferral_entries()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        SignedGloasChain.Block parked = chain.Next(first, 33, full: true, 0xC2);
+        SignedGloasChain.Block child = chain.Next(parked, 34, full: false, 0xC3);
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + 34 * chain.Spec.SecondsPerSlot).AddSeconds(6));
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain, clock: clock);
+        await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(parked.Forked, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+        int deferredBefore = GloasBlockImporterTests.DeferredCount(importer);
+
+        ulong expiredSlot = 34 + 3 * chain.Spec.SlotsPerEpoch;
+        clock.Set(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + expiredSlot * chain.Spec.SecondsPerSlot));
+        await orchestrator.ProcessSlotAsync(expiredSlot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deferredBefore, Is.EqualTo(2), "fixture: the parked block and its held child are deferred");
+            Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero, "fixture: the child was dropped with its parent");
+            Assert.That(GloasBlockImporterTests.DeferredCount(importer), Is.Zero);
+        }
+    }
+
+    /// <summary>A block the orchestrator refuses because its retry set is full is dropped, so the importer must not keep the deferral it recorded for it.</summary>
+    [Test]
+    public async Task Refusing_a_block_at_a_full_retry_set_releases_the_importers_deferral()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain);
+        await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
+        const int retryCapacity = 128;
+        for (int i = 0; i < retryCapacity; i++)
+        {
+            await orchestrator.ImportBlockAsync(chain.Next(first, 33, full: true, (byte)(0x10 + i)).Forked, CancellationToken.None);
+        }
+
+        int deferredWhenFull = GloasBlockImporterTests.DeferredCount(importer);
+        await orchestrator.ImportBlockAsync(chain.Next(first, 33, full: true, (byte)(0x10 + retryCapacity)).Forked, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(retryCapacity), "fixture: the retry set is full");
+            Assert.That(deferredWhenFull, Is.EqualTo(retryCapacity), "fixture: every held block is deferred in the importer");
+            Assert.That(GloasBlockImporterTests.DeferredCount(importer), Is.EqualTo(retryCapacity), "the refused block keeps no deferral entry");
+        }
+    }
+
     /// <summary>An orchestrator on the real importer over <paramref name="chain"/>, its wall clock inside slot 34.</summary>
-    private static (BeaconSyncOrchestrator Orchestrator, BlockImporter Importer, SignedGloasChain.EnvelopeEngine Engine) CreateGloasOrchestrator(SignedGloasChain chain)
+    private static (BeaconSyncOrchestrator Orchestrator, BlockImporter Importer, SignedGloasChain.EnvelopeEngine Engine) CreateGloasOrchestrator(SignedGloasChain chain, BeaconChainStore? persisted = null, ManualTimestamper? clock = null, GossipRouter? router = null, SignedGloasChain.Block? gloasAnchor = null)
     {
         BeaconChainSpec spec = chain.Spec;
-        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + 34 * spec.SecondsPerSlot).AddSeconds(6));
+        ManualTimestamper timestamper = clock ?? new(DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + 34 * spec.SecondsPerSlot).AddSeconds(6));
         SlotClock slotClock = new(spec, timestamper);
-        BeaconChainStore store = chain.CreateStore();
+        BeaconChainStore store = persisted ?? chain.CreateStore();
         SignedGloasChain.EnvelopeEngine engine = new();
         StubPool pool = new([]);
-        BlockImporter importer = chain.CreateImporter(engine, store: store);
+        BlockImporter importer = chain.CreateImporter(engine, store: store, gloasAnchor: gloasAnchor);
         BeaconSyncOrchestrator orchestrator = new(
             new BeaconChainConfig(),
             spec,
@@ -601,10 +728,10 @@ public partial class BeaconSyncOrchestratorTests
             pool,
             new RangeSync(pool, LimboLogs.Instance, new DataColumnSidecarPool(), spec, RangeSyncTests.ClockAtGenesis(spec)),
             slotClock,
-            new GossipRouter(spec, slotClock, LimboLogs.Instance),
+            router ?? new GossipRouter(spec, slotClock, LimboLogs.Instance),
             new BeaconChainStatusHolder(spec, timestamper),
             LimboLogs.Instance);
-        orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
+        orchestrator.Initialize(importer, gloasAnchor?.Forked ?? new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), gloasAnchor?.Root ?? chain.AnchorRoot);
         orchestrator.GossipStarted = true;
         return (orchestrator, importer, engine);
     }

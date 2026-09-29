@@ -741,7 +741,28 @@ public class GloasBlockImporterTests
         Assert.That(DeferredCount(importer), Is.Zero, "on_block refuses a block at or below the finalized epoch's start slot, so it must not keep a deferral place");
     }
 
-    private static int DeferredCount(BlockImporter importer) =>
+    /// <summary>The orchestrator drops a block it gave up on; the importer forgets its deferral at once instead of holding the place until finality.</summary>
+    [Test]
+    public void Release_forgets_a_deferred_block_at_once()
+    {
+        SignedGloasChain chain = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block parked = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        Import(importer, first);
+        Assert.That(importer.Import(parked.Forked, parked.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture");
+        int before = DeferredCount(importer);
+
+        importer.Release(parked.Root);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(1));
+            Assert.That(DeferredCount(importer), Is.Zero);
+        }
+    }
+
+    internal static int DeferredCount(BlockImporter importer) =>
         ((ICollection)typeof(BlockImporter).GetField("_deferred", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!).Count;
 
     /// <summary>Signs <paramref name="block"/> with the key of the proposer it names, under the proposer domain of <paramref name="state"/>.</summary>
