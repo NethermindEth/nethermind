@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Data;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -48,19 +49,8 @@ public sealed class L1PostingApi(IJsonRpcClient l1, IJsonRpcClient builder, IJso
     public Task<RpcAnswer<Hash256>> SendRawTransaction(byte[] transaction, CancellationToken token) =>
         Answer<Hash256>(l1, "eth_sendRawTransaction", token, transaction.ToHexString(true));
 
-    public Task<RpcAnswer<object>> SendBundle(IReadOnlyList<byte[]> transactions, ulong block, BundleTarget target, CancellationToken token)
-    {
-        string[] encoded = new string[transactions.Count];
-        for (int i = 0; i < encoded.Length; i++)
-        {
-            encoded[i] = transactions[i].ToHexString(true);
-        }
-
-        object bundle = target.IsPinned
-            ? new { txs = encoded, blockNumber = block.ToHexString(true), minTimestamp = target.Timestamp, maxTimestamp = target.Timestamp }
-            : new { txs = encoded, blockNumber = block.ToHexString(true) };
-        return Answer<object>(builder, "eth_sendBundle", token, bundle);
-    }
+    public Task<RpcAnswer<object>> SendBundle(IReadOnlyList<byte[]> transactions, ulong block, BundleTarget target, CancellationToken token) =>
+        Answer<object>(builder, "eth_sendBundle", token, BundleRequest.Create(transactions, block, target));
 
     public Task<EezL1Receipt?> GetReceipt(Hash256 transaction, CancellationToken token) =>
         l1.Post<EezL1Receipt?>("eth_getTransactionReceipt", transaction).WaitAsync(token);
@@ -70,5 +60,30 @@ public sealed class L1PostingApi(IJsonRpcClient l1, IJsonRpcClient builder, IJso
         string response = await client.Post(method, parameters).WaitAsync(token) ?? throw new DataException($"{method} returned nothing.");
         JsonRpcResponse<T> answer = serializer.Deserialize<JsonRpcResponse<T>>(response) ?? throw new DataException($"{method} returned no JSON-RPC response.");
         return answer.Error is { } error ? new RpcAnswer<T>(default, error.Code, error.Message) : new RpcAnswer<T>(answer.Result, null, null);
+    }
+}
+
+/// <summary>The <c>eth_sendBundle</c> parameter.</summary>
+/// <remarks>
+/// The builder reads the timestamp bounds as JSON numbers; as hex strings they are accepted and the bundle is then never
+/// included, so they are written raw.
+/// </remarks>
+public sealed record BundleRequest(
+    [property: JsonPropertyName("txs")] string[] Transactions,
+    [property: JsonPropertyName("blockNumber")] string BlockNumber,
+    [property: JsonPropertyName("minTimestamp"), JsonConverter(typeof(NullableRawULongConverter)), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ulong? MinTimestamp,
+    [property: JsonPropertyName("maxTimestamp"), JsonConverter(typeof(NullableRawULongConverter)), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ulong? MaxTimestamp)
+{
+    /// <summary>A bundle for <paramref name="block"/>, pinned to the target's timestamp when the target has one.</summary>
+    public static BundleRequest Create(IReadOnlyList<byte[]> transactions, ulong block, BundleTarget target)
+    {
+        string[] encoded = new string[transactions.Count];
+        for (int i = 0; i < encoded.Length; i++)
+        {
+            encoded[i] = transactions[i].ToHexString(true);
+        }
+
+        ulong? pin = target.IsPinned ? target.Timestamp : null;
+        return new BundleRequest(encoded, block.ToHexString(true), pin, pin);
     }
 }
