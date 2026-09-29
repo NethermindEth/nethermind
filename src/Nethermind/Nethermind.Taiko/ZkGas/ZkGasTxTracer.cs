@@ -222,7 +222,7 @@ public sealed class ZkGasTxTracer : TxTracer
         {
             // Depth and balance short-circuits push zero without failing the step; REVM runs its call hook
             // before those checks, so the step counts as spawned.
-            if (error == EvmExceptionType.NotEnoughBalance)
+            if (error is EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded)
             {
                 _deferredSpawned = true;
                 return;
