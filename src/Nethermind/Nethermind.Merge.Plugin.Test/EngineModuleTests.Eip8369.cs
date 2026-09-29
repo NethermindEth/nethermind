@@ -63,6 +63,30 @@ public partial class EngineModuleTests
         }
     }
 
+    /// <summary>newPayloadWithWitnessV6 carries membership and claims as newPayloadV6 does; its response has no
+    /// compliance field, so the verdict is read off the forkchoiceUpdatedV5 that follows.</summary>
+    [TestCase(true, TestName = "Claims sent through newPayloadWithWitnessV6 excuse the omission")]
+    [TestCase(false, TestName = "Without claims newPayloadWithWitnessV6 judges the omission at the end of the payload")]
+    public async Task NewPayloadWithWitnessV6_carries_membership_and_claims(bool sendClaims)
+    {
+        using MergeTestBlockchain chain = await CreateProfile2Blockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        (GetPayloadV7Result built, byte[] frameTx, byte[] enabler, _) = await BuildProfile2Payload(chain);
+        ExecutionPayloadV4 payload = built.ExecutionPayload;
+        (byte[][] il, byte[][] membership) = Lists([frameTx, enabler]);
+
+        ResultWrapper<NewPayloadWithWitnessV1Result> newPayload = await rpc.engine_newPayloadWithWitnessV6(
+            payload, [], Keccak.Zero, built.ExecutionRequests, il, membership, sendClaims ? built.InclusionListClaims : null);
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), newPayload.Result.Error);
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(sendClaims));
+        }
+    }
+
     /// <summary>Claims change the verdict, so a result cached for the same block and list must not answer a
     /// request whose claims differ.</summary>
     [Test]
@@ -86,12 +110,11 @@ public partial class EngineModuleTests
         }
     }
 
-    /// <summary>EIP-8369 § Includers over the wire: the stuffing and the candidate at one committee position overrun
-    /// its VERIFY budget and excuse the candidate, while a list sent without membership, carrying no provenance,
-    /// applies no per-position budget at all.</summary>
+    /// <summary>EIP-8369 § Includers over the wire: the stuffing and the candidate overrun one committee position's
+    /// VERIFY budget and excuse the candidate, while at two positions each has its own budget and the candidate is judged.</summary>
     [TestCase(true, true, TestName = "Membership fills the VERIFY budget per committee position")]
-    [TestCase(false, false, TestName = "A list without membership falls back to no per-position VERIFY budget")]
-    public async Task NewPayloadV6_fills_the_verify_budget_per_position(bool withMembership, bool satisfied)
+    [TestCase(false, false, TestName = "Entries at separate committee positions draw on separate budgets")]
+    public async Task NewPayloadV6_fills_the_verify_budget_per_position(bool samePosition, bool satisfied)
     {
         using MergeTestBlockchain chain = await CreateProfile2Blockchain();
         // Each declares 600,000 of VERIFY gas, so whichever the fill takes second overruns the position's 1,048,576;
@@ -100,11 +123,15 @@ public partial class EngineModuleTests
         byte[] stuffing = TestItem.Addresses.Select(a => Encode(Profile2FrameTx(chain, a, 600_000)))
             .First(tx => Keccak.Compute(tx).CompareTo(Keccak.Compute(candidate)) < 0);
         byte[] enabler = Encode(Profile2Enabler());
-        (byte[][] il, byte[][] membership) = Lists([stuffing, candidate, enabler]);
-        (GetPayloadV7Result built, _) = await BuildWithFcu(chain, BuildBogotaPayloadAttributes(inclusionList: il));
+        // One payload, built with all three at one position so the candidate is tried first and omitted.
+        (byte[][] il, byte[][] built3) = Lists([stuffing, candidate, enabler]);
+        (GetPayloadV7Result built, _) = await BuildWithFcu(chain, BuildBogotaPayloadAttributes((il, built3)));
+        // Aligned with il = [stuffing, candidate, enabler]: the candidate alone at position 1.
+        byte[][] membership = samePosition ? built3 : [Bitvector(1), Bitvector(2), Bitvector(1)];
+        Assume.That(built.ExecutionPayload.Transactions, Is.EqualTo(new[] { enabler }));
 
         ResultWrapper<PayloadStatusV2> newPayload = await chain.EngineRpcModule.engine_newPayloadV6(
-            built.ExecutionPayload, [], Keccak.Zero, built.ExecutionRequests, il, withMembership ? membership : null);
+            built.ExecutionPayload, [], Keccak.Zero, built.ExecutionRequests, il, membership);
 
         Assert.That(newPayload.Data.InclusionListSatisfied, Is.EqualTo(satisfied), newPayload.Result.Error);
     }
@@ -205,6 +232,29 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(invalid ? MergeErrorCodes.InvalidPayloadAttributes : ErrorCodes.None), result.Result.Error);
     }
 
+    /// <summary>Wherever EIP-8141 and EIP-7805 are both active a list must come with its membership; under EIP-7805
+    /// alone there is no Profile 2 entry to attribute, so a list without one is still accepted.</summary>
+    [TestCase(true, TestName = "Membership is required when EIP-8141 frames are active")]
+    [TestCase(false, TestName = "Membership is optional under EIP-7805 alone")]
+    public async Task Membership_is_required_with_frame_transactions(bool frames)
+    {
+        using MergeTestBlockchain chain = frames ? await CreateProfile2Blockchain() : await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        Hash256 head = chain.BlockTree.HeadHash;
+        (GetPayloadV7Result built, _) = await BuildWithFcu(chain, BuildBogotaPayloadAttributes(Lists()));
+        byte[][] il = [Encode(Profile2Enabler())];
+
+        ResultWrapper<PayloadStatusV2> newPayload = await chain.EngineRpcModule.engine_newPayloadV6(
+            built.ExecutionPayload, [], Keccak.Zero, built.ExecutionRequests, il, inclusionListMembership: null);
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(head, Keccak.Zero, head), BuildBogotaPayloadAttributes(inclusionList: il));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newPayload.ErrorCode, Is.EqualTo(frames ? ErrorCodes.InvalidParams : ErrorCodes.None), newPayload.Result.Error);
+            Assert.That(fcu.ErrorCode, Is.EqualTo(frames ? MergeErrorCodes.InvalidPayloadAttributes : ErrorCodes.None), fcu.Result.Error);
+        }
+    }
+
     [TestCase(Eip8369Constants.MaxInclusionListClaims + 1, true, TestName = "Claims over MAX_INCLUSION_LIST_CLAIMS are invalid params")]
     [TestCase(Eip8369Constants.MaxInclusionListClaims, false, TestName = "Claims at MAX_INCLUSION_LIST_CLAIMS are accepted")]
     public async Task NewPayloadV6_bounds_the_claims(int count, bool invalid)
@@ -246,7 +296,7 @@ public partial class EngineModuleTests
     }
 
     /// <summary>PayloadAttributesV5 parses the membership from the wire, and it is part of the build's identity:
-    /// the same list without it is a different build, since membership changes the claims.</summary>
+    /// the same list under another membership is a different build, since membership changes the claims.</summary>
     [Test]
     public async Task ForkchoiceUpdatedV5_parses_membership_into_a_distinct_build()
     {
@@ -254,7 +304,7 @@ public partial class EngineModuleTests
         byte[] frameBytes = Encode(Profile2FrameTx(chain, Profile2Sender, 100_000));
         byte[] enablerBytes = Encode(Profile2Enabler());
         Hash256 head = chain.BlockTree.HeadHash;
-        PayloadAttributes flat = BuildBogotaPayloadAttributes(inclusionList: [frameBytes, enablerBytes]);
+        PayloadAttributes flat = BuildBogotaPayloadAttributes(inclusionList: []);
 
         using JsonDocument parsed = JsonDocument.Parse(await RpcTest.TestSerializedRequest(chain.EngineRpcModule, "engine_forkchoiceUpdatedV5",
             new ForkchoiceStateV1(head, Keccak.Zero, head),
@@ -270,7 +320,6 @@ public partial class EngineModuleTests
                 inclusionListTransactions = new[] { frameBytes.ToHexString(true), enablerBytes.ToHexString(true) },
                 inclusionListMembership = new[] { "0x0100", "0x0200" },
             }));
-        ResultWrapper<ForkchoiceUpdatedV2Result> flatFcu = await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(head, Keccak.Zero, head), flat);
         ResultWrapper<ForkchoiceUpdatedV2Result> membershipFcu = await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(head, Keccak.Zero, head), BuildBogotaPayloadAttributes(Lists([frameBytes], [enablerBytes])));
         ResultWrapper<ForkchoiceUpdatedV2Result> otherMembershipFcu = await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(
@@ -280,7 +329,6 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parsedId, Is.EqualTo(membershipFcu.Data.PayloadId), parsed.RootElement.ToString());
-            Assert.That(parsedId, Is.Not.EqualTo(flatFcu.Data.PayloadId));
             Assert.That(parsedId, Is.Not.EqualTo(otherMembershipFcu.Data.PayloadId));
         }
     }
@@ -302,7 +350,7 @@ public partial class EngineModuleTests
     {
         byte[] frameBytes = Encode(Profile2FrameTx(chain, Profile2Sender, 100_000));
         byte[] enablerBytes = Encode(Profile2Enabler());
-        (GetPayloadV7Result built, string payloadId) = await BuildWithFcu(chain, BuildBogotaPayloadAttributes(inclusionList: [frameBytes, enablerBytes]));
+        (GetPayloadV7Result built, string payloadId) = await BuildWithFcu(chain, BuildBogotaPayloadAttributes(Lists([frameBytes, enablerBytes])));
         return (built, frameBytes, enablerBytes, payloadId);
     }
 

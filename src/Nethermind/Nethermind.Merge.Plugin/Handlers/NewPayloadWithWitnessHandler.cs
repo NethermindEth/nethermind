@@ -52,14 +52,16 @@ public sealed class NewPayloadWithWitnessHandler(
         HandleAsync(
             request,
             nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6),
-            static async (module, payload) =>
+            async (module, payload) =>
             {
                 ResultWrapper<PayloadStatusV2> result = await module.engine_newPayloadV6(
                     payload.ExecutionPayload,
                     payload.BlobVersionedHashes!,
                     payload.ParentBeaconBlockRoot,
                     payload.ExecutionRequests,
-                    payload.InclusionListTransactions);
+                    payload.InclusionListTransactions,
+                    request.InclusionListMembership,
+                    request.InclusionListClaims);
                 return ResultWrapper<PayloadStatusV1>.From(result);
             });
 

@@ -286,6 +286,15 @@ public sealed class InclusionListExecutionPayloadParams(
     Hash256?[]? blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests,
-    byte[][]? inclusionListTransactions)
+    byte[][]? inclusionListTransactions,
+    byte[][]? inclusionListMembership = null,
+    InclusionListClaim[]? inclusionListClaims = null)
     : ExecutionPayloadParams<ExecutionPayloadV4>(
-        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions);
+        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions)
+{
+    /// <summary>EIP-8369 committee membership of each of <see cref="ExecutionPayloadParams.InclusionListTransactions"/>.</summary>
+    public byte[][]? InclusionListMembership => inclusionListMembership;
+
+    /// <summary>The builder's EIP-8369 claimed evaluation indices.</summary>
+    public InclusionListClaim[]? InclusionListClaims => inclusionListClaims;
+}

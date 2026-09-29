@@ -30,11 +30,10 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null)
         => getInclusionListTransactionsHandler.Handle(parentBlockHash);
 
-    /// <remarks>A list sent without its membership, as an older consensus client sends, carries no committee
-    /// provenance, so the EIP-8369 per-IL VERIFY budget is not applied to it.</remarks>
     public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions, byte[][]? inclusionListMembership = null, InclusionListClaim[]? inclusionListClaims = null)
     {
-        if (ValidateMembershipAndClaims(inclusionListTransactions, inclusionListMembership, inclusionListClaims) is { } error)
+        bool membershipRequired = RequiresMembership(_specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp));
+        if (ValidateMembershipAndClaims(inclusionListTransactions, inclusionListMembership, inclusionListClaims, membershipRequired) is { } error)
             return Task.FromResult(ResultWrapper<PayloadStatusV2>.Fail(error, ErrorCodes.InvalidParams));
 
         executionPayload.InclusionListMembership = inclusionListMembership;
@@ -44,12 +43,16 @@ public partial class EngineRpcModule : IEngineRpcModule
             EngineApiVersions.NewPayload.V6);
     }
 
+    /// <summary>Membership attributes Profile 2 entries to committee positions, so it is required wherever there
+    /// can be one: EIP-8141 frame transactions under EIP-7805.</summary>
+    private static bool RequiresMembership(IReleaseSpec spec) => spec is { IsEip7805Enabled: true, IsEip8141Enabled: true };
+
     /// <summary>bogota.md <c>engine_newPayloadV6</c> point 2; a missing list is left to the aggregate checks.</summary>
-    private static string? ValidateMembershipAndClaims(byte[][]? transactions, byte[][]? membership, InclusionListClaim[]? claims) =>
+    private static string? ValidateMembershipAndClaims(byte[][]? transactions, byte[][]? membership, InclusionListClaim[]? claims, bool membershipRequired) =>
         claims is { Length: > Eip8369Constants.MaxInclusionListClaims }
             ? $"Inclusion list claims exceed the maximum of {Eip8369Constants.MaxInclusionListClaims}"
             : membership is null
-                ? null
+                ? membershipRequired && transactions is not null ? "Inclusion list membership must be set" : null
                 : transactions is null
                     ? "Inclusion list membership requires inclusion list transactions"
                     : InclusionListMembership.Validate(transactions, membership);
@@ -59,9 +62,11 @@ public partial class EngineRpcModule : IEngineRpcModule
         Hash256?[] blobVersionedHashes,
         Hash256? parentBeaconBlockRoot,
         byte[][]? executionRequests,
-        byte[][]? inclusionListTransactions)
+        byte[][]? inclusionListTransactions,
+        byte[][]? inclusionListMembership = null,
+        InclusionListClaim[]? inclusionListClaims = null)
         => _newPayloadWithWitnessHandlerV6.HandleAsync(
-            new InclusionListExecutionPayloadParams(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions));
+            new InclusionListExecutionPayloadParams(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions, inclusionListMembership, inclusionListClaims));
 
     /// <summary>Runs <see cref="NewPayload"/> and maps its result onto the Bogota <see cref="PayloadStatusV2"/> shape.</summary>
     protected async Task<ResultWrapper<PayloadStatusV2>> NewPayloadWithInclusionList(IExecutionPayloadParams executionPayloadParams, int version)
@@ -102,7 +107,9 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (ValidateAndApplyCustodyColumns(custodyColumns) is { } error)
             return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(error, ErrorCodes.InvalidParams));
         // bogota.md engine_forkchoiceUpdatedV5 point 1.1 precedes the fork check.
-        if (payloadAttributes is not null && ValidateMembershipAndClaims(payloadAttributes.InclusionListTransactions, payloadAttributes.InclusionListMembership, null) is { } attributesError)
+        if (payloadAttributes is not null
+            && ValidateMembershipAndClaims(payloadAttributes.InclusionListTransactions, payloadAttributes.InclusionListMembership, null,
+                RequiresMembership(_specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)))) is { } attributesError)
             return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(attributesError, MergeErrorCodes.InvalidPayloadAttributes));
 
         return ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
