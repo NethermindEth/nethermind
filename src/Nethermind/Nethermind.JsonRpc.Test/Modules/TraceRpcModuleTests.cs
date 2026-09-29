@@ -720,7 +720,7 @@ public class TraceRpcModuleTests
 
     [Test]
     public async Task Trace_filter_null_member_is_omitted(
-        [Values("after", "count")] string member, [Values] bool streaming)
+        [Values("fromAddress", "toAddress", "mode", "after", "count")] string member, [Values] bool streaming)
     {
         Context context = new();
         await context.Build();
@@ -738,6 +738,38 @@ public class TraceRpcModuleTests
             Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result) && result.GetArrayLength() > 0, Is.True, response);
             Assert.That(response, Is.EqualTo(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", omitted.RootElement)));
         }
+    }
+
+    [Test]
+    public async Task Trace_filter_rejects_unknown_member_or_negative_bound_as_invalid_params(
+        [Values("\"unknownDiagnosticFlag\":true", "\"count\":-1", "\"after\":-1")] string member)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        using JsonDocument filter = JsonDocument.Parse($"{{\"fromBlock\":\"0x1\",\"toBlock\":\"latest\",{member}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", filter.RootElement);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error) ? error.GetProperty("code").GetInt32() : 0, Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [Test]
+    public async Task Trace_filter_reads_count_beyond_int_range(
+        [Values("\"0xffffffff\"", "4294967296", "18446744073709551615")] string count, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        const string range = "\"fromBlock\":\"0x1\",\"toBlock\":\"latest\"";
+        using JsonDocument withCount = JsonDocument.Parse($"{{{range},\"count\":{count}}}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{range}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", withCount.RootElement);
+
+        Assert.That(response, Is.EqualTo(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", omitted.RootElement)));
     }
 
     [Test]

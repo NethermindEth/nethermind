@@ -121,11 +121,11 @@ public class TxTraceFilterTests
 
     }
 
-    [TestCase(2, 2, false, TestName = "CountLeft")]
-    [TestCase(2, 3, true, TestName = "CountReached")]
+    [TestCase(2UL, 2, false, TestName = "CountLeft")]
+    [TestCase(2UL, 3, true, TestName = "CountReached")]
     [TestCase(null, 3, false, TestName = "NoCount")]
-    [TestCase(0, 0, true, TestName = "ZeroCount")]
-    public void IsExhausted_WhenMatchesAreConsumed_ReportsWhetherAnotherTraceCanBeAccepted(int? count, int matches, bool expected)
+    [TestCase(0UL, 0, true, TestName = "ZeroCount")]
+    public void IsExhausted_WhenMatchesAreConsumed_ReportsWhetherAnotherTraceCanBeAccepted(ulong? count, int matches, bool expected)
     {
         TxTraceFilter traceFilter = new(null, null, 1, count, TraceFilterMode.Intersection);
         ParityTraceAction action = new() { From = TestItem.AddressA };

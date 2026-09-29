@@ -382,6 +382,11 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
+    public async Task trace_filter_from_store_reads_after_and_count_as_unsigned(
+        [Values("\"0xffffffff\"", "18446744073709551615")] string count, [Values] bool streaming) =>
+        Assert.That(await FilterStore(streaming, $",\"after\":1,\"count\":{count}"), Is.EqualTo(new[] { StoreBToB, StoreAToC, StoreRewardToC }));
+
+    [Test]
     public void trace_filter_returns_invalid_params_for_reversed_range([Values(0, 1, 2)] int parallelization)
     {
         TestContext test = new(parallelization);

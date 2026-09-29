@@ -789,9 +789,10 @@ public class JsonRpcServiceTests
 
     [TestCase("", null)]
     [TestCase(",\"after\":null", null)]
-    [TestCase(",\"after\":1", 1)]
-    [TestCase(",\"after\":\"0x1\"", 1)]
-    public void Raw_utf8_params_read_null_trace_filter_after_as_omitted(string after, int? expected)
+    [TestCase(",\"after\":1", 1UL)]
+    [TestCase(",\"after\":\"0x1\"", 1UL)]
+    [TestCase(",\"after\":\"0xffffffff\"", 0xffffffffUL)]
+    public void Raw_utf8_params_read_null_trace_filter_after_as_omitted(string after, ulong? expected)
     {
         ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
         traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
@@ -802,13 +803,41 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public void Raw_utf8_params_reject_invalid_trace_filter_after([Values("true", "[]", "\"0xg\"")] string after)
+    public void Raw_utf8_params_reject_invalid_trace_filter_after_or_count(
+        [Values("after", "count")] string member,
+        [Values("true", "[]", "\"0xg\"", "-1", "\"-1\"", "18446744073709551616")] string value)
     {
         ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
 
-        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"after\":{after}}}]"), ErrorCodes.InvalidParams);
+        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"{member}\":{value}}}]"), ErrorCodes.InvalidParams);
 
         traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void Trace_filter_rejects_unknown_member_in_utf8_params(
+        [Values("\"unknownDiagnosticFlag\":true", "\"limit\":1", "\"fromAdress\":null")] string member)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",{member}}}]"), ErrorCodes.InvalidParams);
+
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void Trace_filter_reads_every_known_member_in_utf8_params()
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        RpcTest.AssertSuccess(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter),
+            $"[{{\"fromBlock\":\"0x1\",\"toBlock\":\"latest\",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[],\"mode\":\"union\",\"after\":1,\"count\":\"0xffffffff\"}}]"));
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(static filter =>
+            filter.FromBlock!.BlockNumber == 1 && filter.ToBlock!.Type == BlockParameterType.Latest
+            && filter.FromAddress!.Single() == TestItem.AddressA && filter.ToAddress!.Length == 0
+            && filter.Mode == TraceFilterMode.Union && filter.After == 1 && filter.Count == 0xffffffff));
     }
 
     [Test]
