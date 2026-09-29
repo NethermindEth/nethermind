@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
@@ -77,7 +80,44 @@ public static class Eip8369Profile2
     /// Below EIP-8141's own mempool ceiling the two readings cannot differ: <c>MAX_VERIFY_GAS</c> plus
     /// <c>MAX_VERIFY_STATE_GAS</c> is under the default <see cref="Eip8369Constants.MaxVerifyGasPerTx"/>.
     /// </remarks>
-    private static ulong VerifyBudgetCost(Transaction transaction) =>
+    public static ulong VerifyBudgetCost(Transaction transaction) =>
         FrameTxValidation.ValidationWorkGas(transaction)
             .SaturatingAdd(FrameTxValidation.ValidationWorkStateGas(transaction));
+
+    /// <summary>EIP-8369 § Includers: the Profile 2 entries the per-IL VERIFY budget fill admits.</summary>
+    /// <remarks>
+    /// Each list starts from <see cref="Eip8369Constants.MaxVerifyGasPerIl"/> and debits its occurrences in
+    /// order, before deduplication. An occurrence costlier than the per-transaction cap or the remaining budget
+    /// is ignored; otherwise the signature cost is debited, and the prefix cost too once the signatures verify.
+    /// An entry is admitted when any occurrence is, so one list exhausting its own budget cannot excuse another's.
+    /// Taking each member's occurrences rather than a wire layout keeps the fill independent of how the engine
+    /// API conveys membership.
+    /// </remarks>
+    /// <param name="inclusionLists">Each committee member's occurrences, in the order the fill processes them.</param>
+    /// <param name="maxVerifyGasPerTx"><c>MAX_VERIFY_GAS_PER_TX</c>; <c>0</c> lifts the cap.</param>
+    /// <param name="signaturesValid">Verifies an occurrence's protocol signatures; <c>null</c> takes them as valid.</param>
+    public static HashSet<Hash256AsKey> AdmitByVerifyBudget(
+        IEnumerable<IEnumerable<Transaction>> inclusionLists, ulong maxVerifyGasPerTx, Func<Transaction, bool>? signaturesValid)
+    {
+        HashSet<Hash256AsKey> admitted = [];
+        foreach (IEnumerable<Transaction> inclusionList in inclusionLists)
+        {
+            ulong remaining = Eip8369Constants.MaxVerifyGasPerIl;
+            foreach (Transaction tx in inclusionList)
+            {
+                if (!tx.SupportsFrames || tx.CarriesBlobs || tx.Hash is null) continue;
+
+                ulong cost = VerifyBudgetCost(tx);
+                if ((maxVerifyGasPerTx != 0 && cost > maxVerifyGasPerTx) || cost > remaining) continue;
+
+                ulong signatureCost = FrameTxValidation.SignatureVerificationWorkGas(tx);
+                remaining -= signatureCost;
+                if (signaturesValid is not null && !signaturesValid(tx)) continue;
+
+                remaining -= cost - signatureCost;
+                if (Classify(tx, maxVerifyGasPerTx) == Profile2Exclusion.None) admitted.Add(tx.Hash);
+            }
+        }
+        return admitted;
+    }
 }

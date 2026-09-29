@@ -26,4 +26,13 @@ public static class Eip8369Constants
     /// most transactions to enforcement, which is the side to err on while no enforcing EIP exists.
     /// </remarks>
     public const ulong MaxVerifyGasPerTx = MaxVerifyGasPerIl;
+
+    /// <summary><c>AA_VOPS_SLOT_COUNT</c>: the leading storage slots of <c>sender</c> and <c>payer</c> a Profile 2
+    /// validation prefix may read.</summary>
+    /// <remarks>A placeholder: EIP-8369 leaves the value to the enforcing Standards Track EIP.</remarks>
+    public const ulong AaVopsSlotCount = 4;
+
+    /// <summary><c>MAX_INCLUSION_LIST_CLAIMS</c>: the builder claims one payload may carry.</summary>
+    /// <remarks>A placeholder pending the EIP-7805 extension that encodes claims.</remarks>
+    public const int MaxInclusionListClaims = 1024;
 }

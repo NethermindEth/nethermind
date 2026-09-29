@@ -139,6 +139,15 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
+    /// <summary>One <see cref="InclusionListMembership"/> mask per entry of <see cref="InclusionListTransactions"/>,
+    /// or <c>null</c> when the list arrived without one and its provenance is unknown (EIP-8369).</summary>
+    [JsonIgnore]
+    public ushort[]? InclusionListMembership { get; set; }
+
+    /// <summary>The builder's EIP-8369 claimed evaluation indices for omitted inclusion-list entries.</summary>
+    [JsonIgnore]
+    public InclusionListClaim[]? InclusionListClaims { get; set; }
+
     // Set after the post-execution check: false means the block is valid and executable but did not
     // honour its inclusion list (EIP-7805).
     [JsonIgnore]

@@ -11,13 +11,14 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IInclusionListSatisfactionChecker"/>
-public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator, IBlocksConfig blocksConfig)
+public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator, IBlocksConfig blocksConfig, IProfile2EligibilityReplayer? profile2Replayer = null)
     : IInclusionListSatisfactionChecker
 {
     public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState)
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
         // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
-        return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec, txValidator, blocksConfig.FocilProfile2MaxVerifyGas);
+        return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec, txValidator, blocksConfig.FocilProfile2MaxVerifyGas,
+            suggestedBlock.InclusionListMembership, suggestedBlock.InclusionListClaims, profile2Replayer);
     }
 }

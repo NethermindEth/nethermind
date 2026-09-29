@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -19,12 +20,18 @@ public static class InclusionListValidator
 {
     private const int StackAllocEntries = 256;
 
-    public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx)
-        => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator, maxVerifyGasPerTx);
+    public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx, IProfile2EligibilityReplayer? replayer = null)
+        => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator, maxVerifyGasPerTx, block.InclusionListMembership, block.InclusionListClaims, replayer);
 
     /// <param name="maxVerifyGasPerTx">EIP-8369 <c>MAX_VERIFY_GAS_PER_TX</c>, above which a frame transaction is
     /// no Profile 2 candidate and its omission is excused; <c>0</c> lifts the cap.</param>
-    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx)
+    /// <param name="ilMembership">One <see cref="InclusionListMembership"/> mask per entry of <paramref name="il"/>, which
+    /// the EIP-8369 per-IL VERIFY budget is filled over; <c>null</c> skips the fill, as nothing attributes an entry.</param>
+    /// <param name="claims">The builder's EIP-8369 claimed evaluation indices.</param>
+    /// <param name="replayer">Decides Profile 2 eligibility; <c>null</c> enforces every omitted candidate that
+    /// passes the determinate checks.</param>
+    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx,
+        ushort[]? ilMembership = null, InclusionListClaim[]? claims = null, IProfile2EligibilityReplayer? replayer = null)
     {
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
@@ -42,7 +49,8 @@ public static class InclusionListValidator
         {
             Span<bool> included = rented is null ? stackalloc bool[il.Length] : rented.AsSpan(0, il.Length);
             included.Clear();
-            return IsSatisfied(block, il, included, state, spec, txValidator, maxVerifyGasPerTx);
+            Profile2Inputs profile2 = new(maxVerifyGasPerTx, ilMembership?.Length == il.Length ? ilMembership : null, claims, replayer);
+            return IsSatisfied(block, il, included, state, spec, txValidator, in profile2);
         }
         finally
         {
@@ -50,7 +58,7 @@ public static class InclusionListValidator
         }
     }
 
-    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx)
+    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, in Profile2Inputs profile2)
     {
         // Index the first copy of each hash; included copies satisfy every occurrence in the IL.
         Dictionary<Hash256, int> ilByHash = new(il.Length);
@@ -67,15 +75,79 @@ public static class InclusionListValidator
         }
 
         Dictionary<AddressAsKey, AccountStruct>? accountCache = null;
+        HashSet<Hash256AsKey>? admitted = null;
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i]) continue;
             if (il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
-            // EIP-8369: a frame transaction outside Profile 2 is enforced by no profile, so its omission is excused.
-            if (il[i].SupportsFrames && Eip8369Profile2.Classify(il[i], maxVerifyGasPerTx) != Profile2Exclusion.None) continue;
+            if (il[i].SupportsFrames)
+            {
+                // EIP-8369: a frame transaction outside Profile 2 is enforced by no profile, so its omission is excused.
+                if (Eip8369Profile2.Classify(il[i], profile2.MaxVerifyGasPerTx) != Profile2Exclusion.None) continue;
+                // Eligibility is a property of the bytes, so the first occurrence answers for every copy.
+                if (il[i].Hash is { } frameHash && ilByHash[frameHash] != i) continue;
+                if (IsProfile2OmissionUnjustified(il[i], block, il, state, spec, txValidator, in profile2, ref accountCache, ref admitted)) return false;
+                continue;
+            }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref accountCache)) return false;
         }
         return true;
+    }
+
+    /// <summary>The inputs EIP-8369 Profile 2 enforcement takes beyond the list itself.</summary>
+    private readonly record struct Profile2Inputs(ulong MaxVerifyGasPerTx, ushort[]? IlMembership, InclusionListClaim[]? Claims, IProfile2EligibilityReplayer? Replayer);
+
+    /// <summary>EIP-8369 § Attesters: whether omitting a Profile 2 candidate is unjustified.</summary>
+    /// <remarks>
+    /// Judged at the default index, the end of the payload, and again at a claimed index when the builder
+    /// committed one; the omission is unjustified only at both, so a claim can excuse but never condemn.
+    /// Gas remaining only grows towards the start of the payload, so the fit at the end covers the claim.
+    /// </remarks>
+    private static bool IsProfile2OmissionUnjustified(
+        Transaction tx,
+        Block block,
+        Transaction[] il,
+        IReadOnlyStateProvider state,
+        IReleaseSpec spec,
+        ITxValidator txValidator,
+        in Profile2Inputs profile2,
+        ref Dictionary<AddressAsKey, AccountStruct>? accountCache,
+        ref HashSet<Hash256AsKey>? admitted)
+    {
+        if (!CouldIncludeTx(tx, block, state, spec, txValidator, ref accountCache)) return false;
+
+        if (profile2.IlMembership is { } ilMembership)
+        {
+            admitted ??= Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(il, ilMembership), profile2.MaxVerifyGasPerTx,
+                profile2.Replayer is { } signatures ? occurrence => signatures.AreSignaturesValid(occurrence, spec) : null);
+            if (tx.Hash is null || !admitted.Contains(tx.Hash)) return false;
+        }
+
+        if (profile2.Replayer is not { } replayer) return true;
+
+        int end = block.Transactions.Length;
+        if (!replayer.IsEligible(block, tx, end, spec)) return false;
+        return tx.Hash is null
+            || ResolveClaimedIndex(profile2.Claims, tx.Hash, end) is not { } claimed
+            || claimed == end
+            || replayer.IsEligible(block, tx, claimed, spec);
+    }
+
+    /// <summary>The index <paramref name="claims"/> commits for <paramref name="hash"/>, or <c>null</c> for none.</summary>
+    /// <remarks>EIP-8369 § Builders: an out-of-range index defaults to the end of the payload. A hash claimed
+    /// more than once has no single commitment, so every claim for it is ignored.</remarks>
+    private static int? ResolveClaimedIndex(InclusionListClaim[]? claims, Hash256 hash, int transactionCount)
+    {
+        if (claims is null) return null;
+
+        int? index = null;
+        foreach (InclusionListClaim claim in claims)
+        {
+            if (claim.TransactionHash != hash) continue;
+            if (index is not null) return null;
+            index = claim.TransactionIndex < (ulong)transactionCount ? (int)claim.TransactionIndex : transactionCount;
+        }
+        return index;
     }
 
     /// <summary>Whether an omitted inclusion-list entry could have been appended to <paramref name="block"/>.</summary>

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -212,6 +214,207 @@ public class InclusionListValidatorTests
 
             Assert.That(InclusionListValidator.IsSatisfied(block, state, spec, _txValidator, maxVerifyGasPerTx), Is.EqualTo(satisfied));
         }
+    }
+
+    private static readonly Transaction _candidate = Candidate(1, 100_000);
+
+    /// <summary>EIP-8369 § Builders and § Attesters: the index an omitted Profile 2 candidate is replayed at,
+    /// and how a claim moves it. Each case names the indices the candidate is eligible at and the replays
+    /// the verdict is expected to take, so a resolution rule that picks the wrong index fails on the call.</summary>
+    public static IEnumerable<TestCaseData> ClaimCases
+    {
+        get
+        {
+            const int end = 3;
+            static TestCaseData Case(string name, InclusionListClaim[]? claims, int[] eligibleAt, bool satisfied, int[] replayedAt) =>
+                new(claims, eligibleAt, satisfied, replayedAt) { TestName = name };
+            Hash256 hash = _candidate.Hash!;
+
+            yield return Case("Unclaimed candidate eligible at the end is censoring", null, [end], false, [end]);
+            yield return Case("Unclaimed candidate ineligible at the end is excused by replay", null, [], true, [end]);
+            yield return Case("Claim excuses a candidate ineligible where the builder tried",
+                [new(hash, 1)], [end], true, [end, 1]);
+            yield return Case("Claim at index zero is before every block transaction",
+                [new(hash, 0)], [end], true, [end, 0]);
+            yield return Case("Claim leaves enforced a candidate eligible where the builder tried",
+                [new(hash, 1)], [1, end], false, [end, 1]);
+            yield return Case("Claim cannot condemn a candidate eligible only before the end",
+                [new(hash, 1)], [1], true, [end]);
+            yield return Case("Out-of-range claim resolves to the end of the payload",
+                [new(hash, 99)], [end], false, [end]);
+            yield return Case("Claim at the end is the default index", [new(hash, end)], [end], false, [end]);
+            yield return Case("Duplicate claims for one hash are all ignored",
+                [new(hash, 1), new(hash, 2)], [end], false, [end]);
+            yield return Case("Claim for a hash outside the list is ignored",
+                [new(Keccak.Compute("elsewhere"), 1)], [end], false, [end]);
+        }
+    }
+
+    [TestCaseSource(nameof(ClaimCases))]
+    public void Profile_2_omission_is_judged_at_the_resolved_evaluation_index(
+        InclusionListClaim[]? claims, int[] eligibleAt, bool satisfied, int[] replayedAt)
+    {
+        Block block = Profile2Block([_candidate], blockTxCount: 3, claims: claims);
+        FakeReplayer replayer = new((_, index) => System.Array.IndexOf(eligibleAt, index) >= 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IsSatisfied(block, replayer), Is.EqualTo(satisfied));
+            Assert.That(replayer.ReplayedAt, Is.EqualTo(replayedAt));
+        }
+    }
+
+    /// <summary>A claim is looked up only for an omitted candidate, so it cannot touch anything else.</summary>
+    [TestCase(true, TestName = "Claim for an included candidate is ignored")]
+    [TestCase(false, TestName = "Claim for a non-candidate is ignored")]
+    public void Claim_is_ignored_outside_an_omitted_candidate(bool included)
+    {
+        Transaction entry = included ? _candidate : WithHash(BuildFrameTx([Body(50_000)]), "non-candidate");
+        Block block = Profile2Block([entry], blockTxCount: 3, claims: [new(entry.Hash!, 1)], included: included ? [entry] : []);
+        FakeReplayer replayer = new((_, _) => true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IsSatisfied(block, replayer), Is.True);
+            Assert.That(replayer.ReplayedAt, Is.Empty);
+        }
+    }
+
+    /// <summary>EIP-8369 § Includers: the VERIFY budget filled per committee position, in ascending hash order.
+    /// Only the named candidate is eligible, so whether its omission is excused is the fill's verdict alone. A
+    /// candidate's order argument is the leading byte of its hash, which fixes where the fill takes it.</summary>
+    public static IEnumerable<TestCaseData> BudgetCases
+    {
+        get
+        {
+            static TestCaseData Case(string name, Transaction[][] lists, Transaction candidate, bool satisfied,
+                bool withMembership = true, Transaction? badSignature = null) =>
+                new(lists, withMembership, candidate, badSignature, satisfied) { TestName = name };
+
+            // 1-of-N: pooled into one budget, the stuffed position's 1,040,000 would leave the honest one 8,576.
+            Transaction honest = Candidate(3, 100_000);
+            yield return Case("One position stuffed with VERIFY cost cannot excuse another position's candidate",
+                [[Candidate(1, 520_000), Candidate(2, 520_000)], [honest]], honest, false);
+
+            Transaction first = Candidate(1, 600_000);
+            Transaction second = Candidate(3, 600_000);
+            yield return Case("Candidate over its own position's remaining budget is excused", [[first, second]], second, true);
+            yield return Case("A list without membership applies no per-position budget", [[first, second]], second, false, withMembership: false);
+            yield return Case("The fill takes a position's entries by hash, not by arrival", [[second, first]], second, true);
+            yield return Case("Candidate carried at several positions is enforced when any admits it",
+                [[first, second], [second]], second, false);
+            yield return Case("Candidate carried at several positions is excused when none admits it",
+                [[first, second], [Candidate(2, 600_000), second]], second, true);
+
+            // Of 1,048,576: the first debits 700,000 and leaves 348,576, which the second's cost exceeds.
+            Transaction last = Candidate(3, 300_000);
+            yield return Case("Occurrence over the remaining budget is ignored without a debit",
+                [[Candidate(1, 700_000), Candidate(2, 700_000), last]], last, false);
+
+            Transaction signed = Candidate(1, 700_000, signatures: 1);
+            Transaction afterSigned = Candidate(2, 400_000);
+            yield return Case("Invalid signatures keep only the signature debit", [[signed, afterSigned]], afterSigned, false, badSignature: signed);
+            yield return Case("Valid signatures debit the whole cost", [[signed, afterSigned]], afterSigned, true);
+        }
+    }
+
+    [TestCaseSource(nameof(BudgetCases))]
+    public void Profile_2_verify_budget_is_filled_per_committee_position(
+        Transaction[][] lists, bool withMembership, Transaction candidate, Transaction? badSignature, bool satisfied)
+    {
+        (Transaction[] il, ushort[] membership) = Membership(lists);
+        Block block = Profile2Block(il, blockTxCount: 0, membership: withMembership ? membership : null);
+        FakeReplayer replayer = new((tx, _) => ReferenceEquals(tx, candidate), tx => !ReferenceEquals(tx, badSignature));
+
+        Assert.That(IsSatisfied(block, replayer), Is.EqualTo(satisfied));
+    }
+
+    /// <summary>A membership that is not one mask per entry attributes nothing, so no per-position budget applies.</summary>
+    [TestCase(false, true, TestName = "Aligned membership fills the per-position budget")]
+    [TestCase(true, false, TestName = "Misaligned membership is ignored")]
+    public void Misaligned_membership_is_ignored(bool truncate, bool satisfied)
+    {
+        Transaction first = Candidate(1, 600_000);
+        Transaction second = Candidate(2, 600_000);
+        (Transaction[] il, ushort[] membership) = Membership([[first, second]]);
+        Block block = Profile2Block(il, blockTxCount: 0, membership: truncate ? membership[..1] : membership);
+
+        Assert.That(IsSatisfied(block, new FakeReplayer((tx, _) => ReferenceEquals(tx, second))), Is.EqualTo(satisfied));
+    }
+
+    /// <summary>Deduplicates committee positions' lists into one list and a membership mask per entry.</summary>
+    private static (Transaction[] Il, ushort[] Membership) Membership(Transaction[][] lists)
+    {
+        List<Transaction> il = [];
+        List<ushort> masks = [];
+        for (int position = 0; position < lists.Length; position++)
+        {
+            foreach (Transaction tx in lists[position])
+            {
+                int index = il.IndexOf(tx);
+                if (index < 0)
+                {
+                    il.Add(tx);
+                    masks.Add(0);
+                    index = il.Count - 1;
+                }
+                masks[index] |= (ushort)(1 << position);
+            }
+        }
+        return ([.. il], [.. masks]);
+    }
+
+    private sealed class FakeReplayer(Func<Transaction, int, bool> eligible, Func<Transaction, bool>? signaturesValid = null)
+        : IProfile2EligibilityReplayer
+    {
+        public List<int> ReplayedAt { get; } = [];
+
+        public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec) => signaturesValid?.Invoke(transaction) ?? true;
+
+        public bool IsEligible(Block block, Transaction transaction, int index, IReleaseSpec spec)
+        {
+            ReplayedAt.Add(index);
+            return eligible(transaction, index);
+        }
+    }
+
+    private static bool IsSatisfied(Block block, IProfile2EligibilityReplayer replayer) =>
+        InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _frameSpecProvider.GetSpec(block.Header), _txValidator, replayer: replayer);
+
+    private static Block Profile2Block(Transaction[] il, int blockTxCount, InclusionListClaim[]? claims = null, ushort[]? membership = null, Transaction[]? included = null)
+    {
+        List<Transaction> blockTxs = [.. included ?? []];
+        for (int i = blockTxs.Count; i < blockTxCount; i++)
+            blockTxs.Add(BuildTx(nonce: (ulong)i + 10, to: TestItem.AddressB));
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithTransactions([.. blockTxs])
+            .WithInclusionListTransactions(il)
+            .TestObject;
+        block.InclusionListMembership = membership;
+        block.InclusionListClaims = claims;
+        return block;
+    }
+
+    /// <param name="order">The hash's leading byte, which places the candidate in a position's fill order.</param>
+    private static Transaction Candidate(byte order, ulong verifyGas, int signatures = 0)
+    {
+        Transaction tx = WithHash(BuildFrameTx([SelfVerify(verifyGas)]), $"candidate-{order}-{verifyGas}-{signatures}");
+        byte[] hash = tx.Hash!.BytesToArray();
+        hash[0] = order;
+        tx.Hash = new Hash256(hash);
+        tx.FrameSignatures = new TxFrameSignature[signatures];
+        for (int i = 0; i < signatures; i++)
+            tx.FrameSignatures[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, new byte[32], new byte[65]);
+        return tx;
+    }
+
+    private static Transaction WithHash(Transaction tx, string id)
+    {
+        tx.Hash = Keccak.Compute(id);
+        return tx;
     }
 
     // A self-relay prefix: the sender approves its own execution and payment, so it pays for itself.
