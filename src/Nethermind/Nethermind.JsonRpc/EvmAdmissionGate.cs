@@ -63,6 +63,7 @@ internal sealed class EvmAdmissionGate
     /// <summary>The most slots requests without priority hold at once; a priority request may also take one more.</summary>
     internal int Permits { get; }
     internal TimeSpan Budget => _budget;
+    internal TimeProvider TimeProvider => _timeProvider;
     internal int InFlight => Volatile.Read(ref _inFlight);
     internal int PublicInFlight => Volatile.Read(ref _publicInFlight);
 

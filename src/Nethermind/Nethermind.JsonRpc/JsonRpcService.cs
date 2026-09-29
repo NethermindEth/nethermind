@@ -38,7 +38,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
-    internal EvmAdmissionGate EvmGate { get; } = new(jsonRpcConfig);
+    // Tests set a gate on a manual clock, which the batch charge then follows too.
+    internal EvmAdmissionGate EvmGate { get; init; } = new(jsonRpcConfig);
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -138,7 +139,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     // the budget.
     private async ValueTask<EvmAdmissionGate.Lease> AdmitBatchItemAsync(JsonRpcRequest request, StrongBox<TimeSpan> batchQueueWait, bool priority)
     {
-        long queuedAt = Stopwatch.GetTimestamp();
+        // The wait is charged on the clock that times it out, so what an item may wait and what it is charged agree.
+        TimeProvider clock = EvmGate.TimeProvider;
+        long queuedAt = clock.GetTimestamp();
         bool timedOut = false;
         try
         {
@@ -152,7 +155,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         finally
         {
             // A wait timer may fire a little early, but an item whose wait timed out has spent what was left all the same.
-            batchQueueWait.Value = timedOut ? EvmGate.Budget : batchQueueWait.Value + Stopwatch.GetElapsedTime(queuedAt);
+            batchQueueWait.Value = timedOut ? EvmGate.Budget : batchQueueWait.Value + clock.GetElapsedTime(queuedAt);
         }
     }
 
