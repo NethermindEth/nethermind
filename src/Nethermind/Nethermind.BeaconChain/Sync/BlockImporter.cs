@@ -54,6 +54,7 @@ public sealed class BlockImporter : IBlockImporter
     private static readonly StringLabel BodyAttesterSlashingRejected = new("body_attester_slashing");
     private static readonly StringLabel GossipAggregateRejected = new("gossip_aggregate");
     private static readonly StringLabel GossipAttesterSlashingRejected = new("gossip_attester_slashing");
+    private static readonly StringLabel GossipPayloadAttestationRejected = new("gossip_payload_attestation");
 
     /// <summary>Covers the orchestrator's retry set and gossip hold queue, 128 blocks each.</summary>
     private const int MaxDeferredBlocks = 256;
@@ -671,15 +672,17 @@ public sealed class BlockImporter : IBlockImporter
     /// <inheritdoc/>
     public HeadView ComputeHead()
     {
-        Hash256 head = _runner.GetHead();
-        // After GetHead, so the copy carries the weights this head was chosen by.
+        ForkChoiceNode headNode = _runner.GetHeadNode();
+        Hash256 head = headNode.Root;
+        // After GetHeadNode, so the copy carries the weights this head was chosen by.
         _forkChoiceSnapshots?.Current = _runner.Snapshot();
         AdoptHeadLineage(head);
         UpdateCanonicalIndex(head);
         return new HeadView(
             head,
             _runner.GetBlockSlot(head) ?? 0,
-            GetParentBlockHash(head) is { } headParentHash && !_runner.IsPayloadVerified(head) ? headParentHash : _runner.GetExecutionBlockHash(head),
+            // A pre-Gloas head is EMPTY and has no bid, so it keeps its own payload hash.
+            headNode.PayloadStatus == ForkChoicePayloadStatus.Full ? _runner.GetExecutionBlockHash(head) : GetParentBlockHash(head) ?? _runner.GetExecutionBlockHash(head),
             CheckpointExecutionHash(_runner.JustifiedCheckpoint.Root),
             CheckpointExecutionHash(_runner.FinalizedCheckpoint.Root),
             _runner.JustifiedCheckpoint,
@@ -774,30 +777,61 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     /// <inheritdoc/>
-    public void OnGossipAttesterSlashing(AttesterSlashing slashing)
+    public bool OnGossipAttesterSlashing(AttesterSlashing slashing)
     {
         try
         {
             _runner.OnAttesterSlashing(slashing);
+            return true;
         }
         catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAttesterSlashingRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected gossip attester slashing: {e.Message}");
+            return false;
         }
     }
 
     /// <inheritdoc/>
-    public void OnGossipAttesterSlashing(AttesterSlashingGloas slashing)
+    public bool OnGossipAttesterSlashing(AttesterSlashingGloas slashing)
     {
         try
         {
             _runner.OnAttesterSlashing(slashing);
+            return true;
         }
         catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAttesterSlashingRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected Gloas gossip attester slashing: {e.Message}");
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool OnGossipPayloadAttestation(PayloadAttestationMessage message)
+    {
+        // on_payload_attestation_message returns before any check for a vote whose slot is not its block's, recording nothing.
+        if (message.Data is not { BeaconBlockRoot: { } blockRoot } data || _runner.GetBlockSlot(blockRoot) != data.Slot)
+        {
+            return Refuse("it does not name a block fork choice holds at its slot");
+        }
+
+        try
+        {
+            _runner.OnPayloadAttestationMessage(message);
+            return true;
+        }
+        catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+        {
+            return Refuse(e.Message);
+        }
+
+        bool Refuse(string reason)
+        {
+            Metrics.BeaconChainForkChoiceRejections.Increment(GossipPayloadAttestationRejected);
+            if (_logger.IsTrace) _logger.Trace($"Rejected gossip payload attestation from validator {message.ValidatorIndex}: {reason}");
+            return false;
         }
     }
 

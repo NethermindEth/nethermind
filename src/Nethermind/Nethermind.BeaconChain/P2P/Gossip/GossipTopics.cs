@@ -38,9 +38,8 @@ public static class GossipTopics
     /// <summary>The topic names the gossip router subscribes to on every digest, pre-Gloas.</summary>
     public static readonly string[] SubscribedTopicNames = [BeaconBlock, BeaconAggregateAndProof, AttesterSlashing];
 
-    // payload_attestation_message is not subscribed until fork choice consumes PTC votes.
     /// <summary>The additional topic names that only exist from the Gloas fork onward.</summary>
-    public static readonly string[] GloasTopicNames = [ExecutionPayload];
+    public static readonly string[] GloasTopicNames = [ExecutionPayload, PayloadAttestationMessage];
 
     private const string TopicPrefix = "/eth2/";
     private const string TopicSuffix = "/ssz_snappy";
