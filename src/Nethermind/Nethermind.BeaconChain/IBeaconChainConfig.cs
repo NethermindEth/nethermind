@@ -49,6 +49,12 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The interval, in epochs, between persisted beacon state snapshots.", DefaultValue = "32")]
     int StateSnapshotIntervalEpochs { get; set; }
 
+    [ConfigItem(Description = "Overrides the Gloas fork epoch of the network selected via the execution layer's chain id, for following a network whose Gloas schedule changed since this release. Must not be below the network's Fulu fork epoch. When unset, the built-in schedule is used. For a network with no built-in Gloas epoch, GloasForkVersion must be set too.", DefaultValue = "null")]
+    ulong? GloasForkEpoch { get; set; }
+
+    [ConfigItem(Description = "Overrides the Gloas fork version of the network selected via the execution layer's chain id, as 4 bytes of hex (for example 0x90000076). Must differ from every earlier fork version of that network. When unset, the built-in version is used.", DefaultValue = "null")]
+    string? GloasForkVersion { get; set; }
+
     [ConfigItem(Description = "Whether to permanently disable the embedded driver when an external consensus client calls the engine API.", DefaultValue = "true")]
     bool DisableOnExternalCl { get; set; }
 }

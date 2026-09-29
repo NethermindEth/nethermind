@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.BeaconChain.Spec;
@@ -270,6 +273,78 @@ public class BeaconChainSpec
         BlockchainIds.Sepolia => Sepolia,
         _ => throw new UnsupportedBeaconNetworkException(chainId),
     };
+
+    /// <summary>
+    /// A copy of this spec with the Gloas activation epoch and/or fork version replaced, for following a
+    /// network whose Gloas parameters changed after this release. Both <see cref="Forks"/> and the scalar
+    /// Gloas fields are rewritten together, since the fork digest reads one and state processing the other.
+    /// </summary>
+    /// <param name="epoch"><c>GLOAS_FORK_EPOCH</c>, or <c>null</c> to keep this spec's.</param>
+    /// <param name="version"><c>GLOAS_FORK_VERSION</c> as 4 bytes of hex, or <c>null</c> to keep this spec's.</param>
+    /// <exception cref="InvalidConfigurationException">
+    /// The version is not 4 hex bytes or repeats an earlier fork's version, the epoch is below
+    /// <see cref="FuluForkEpoch"/>, or the override leaves no Gloas epoch or no version to apply.
+    /// </exception>
+    public BeaconChainSpec WithGloasForkOverride(ulong? epoch, string? version)
+    {
+        if (epoch is null && version is null) return this;
+
+        bool scheduled = GloasForkEpoch != Presets.FarFutureEpoch;
+        if (epoch == Presets.FarFutureEpoch && version is null && !scheduled) return this;
+
+        if (epoch is { } requested && requested < FuluForkEpoch)
+        {
+            throw new InvalidConfigurationException($"BeaconChain.GloasForkEpoch {requested} is below the Fulu fork epoch {FuluForkEpoch}; Gloas cannot activate before Fulu.", ExitCodes.ConflictingConfigurations);
+        }
+
+        if (epoch is null && !scheduled)
+        {
+            throw new InvalidConfigurationException("BeaconChain.GloasForkVersion has no effect because this network has no Gloas epoch; set BeaconChain.GloasForkEpoch as well.", ExitCodes.ConflictingConfigurations);
+        }
+
+        if (version is null && !scheduled)
+        {
+            throw new InvalidConfigurationException("BeaconChain.GloasForkEpoch needs BeaconChain.GloasForkVersion because the built-in Gloas fork version of a network without a Gloas epoch is not confirmed.", ExitCodes.ConflictingConfigurations);
+        }
+
+        byte[] gloasVersion = version is null ? GloasForkVersion : ParseForkVersion(version);
+        ForkScheduleEntry[] earlier = [.. Forks.Take(scheduled ? Forks.Length - 1 : Forks.Length)];
+        if (earlier.Any(f => f.Version.AsSpan().SequenceEqual(gloasVersion)))
+        {
+            throw new InvalidConfigurationException($"BeaconChain.GloasForkVersion {gloasVersion.ToHexString(withZeroX: true)} repeats an earlier fork version of this network.", ExitCodes.ConflictingConfigurations);
+        }
+
+        ulong gloasEpoch = epoch ?? GloasForkEpoch;
+        return new()
+        {
+            ChainId = ChainId,
+            CheckpointSyncUrl = CheckpointSyncUrl,
+            Bootnodes = Bootnodes,
+            SecondsPerSlot = SecondsPerSlot,
+            SlotsPerEpoch = SlotsPerEpoch,
+            GenesisTime = GenesisTime,
+            GenesisValidatorsRoot = GenesisValidatorsRoot,
+            Forks = gloasEpoch == Presets.FarFutureEpoch ? earlier : [.. earlier, new ForkScheduleEntry(gloasVersion, gloasEpoch)],
+            BlobSchedule = BlobSchedule,
+            ElectraForkEpoch = ElectraForkEpoch,
+            FuluForkEpoch = FuluForkEpoch,
+            MaxBlobsPerBlockElectra = MaxBlobsPerBlockElectra,
+            GloasForkEpoch = gloasEpoch,
+            GloasForkVersion = gloasVersion,
+        };
+    }
+
+    private static byte[] ParseForkVersion(string version)
+    {
+        ReadOnlySpan<char> digits = version.AsSpan().Trim();
+        if (digits.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) digits = digits[2..];
+        if (digits.Length != 8 || digits.ContainsAnyExcept("0123456789abcdefABCDEF"))
+        {
+            throw new InvalidConfigurationException($"BeaconChain.GloasForkVersion '{version}' is not 4 bytes of hex (for example 0x90000076).", ExitCodes.ConflictingConfigurations);
+        }
+
+        return Bytes.FromHexString(digits.ToString());
+    }
 
     /// <summary>The supported network a state with <paramref name="genesisValidatorsRoot"/> belongs to.</summary>
     /// <remarks>
