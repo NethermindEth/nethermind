@@ -16,6 +16,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 SELECT = REPO / "scripts" / "sync" / "select-networks.sh"
+CHECK_SHAPES = REPO / "scripts" / "sync" / "check-runner-shapes.sh"
 SYNC_LIB = REPO / ".github" / "actions" / "sync-chain" / "lib.sh"
 MATRIX = REPO / "scripts" / "config" / "testnet-matrix.json"
 MATRIX_WORKFLOWS = [
@@ -44,6 +45,12 @@ def select(matrix, network_filter):
         check=True,
     )
     return [entry["network"] for entry in json.loads(out.stdout)]
+
+
+def check_shapes(matrix):
+    return subprocess.run(
+        [str(CHECK_SHAPES)], input=json.dumps(matrix), capture_output=True, text=True
+    )
 
 
 def sh(snippet):
@@ -125,19 +132,53 @@ class TestnetMatrixTest(unittest.TestCase):
             self.assertIsInstance(entry["local_ssd_count"], int)
             self.assertIsInstance(entry["spot"], bool)
 
-    def test_local_ssd_count_matches_what_the_machine_type_can_carry(self):
-        # startup-script.sh fails the runner when the SSDs it finds differ from local_ssd_count,
-        # and -lssd types come with a fixed complement instead of taking --local-ssd.
-        bundled = {"c3d-standard-8-lssd": 1, "c3d-standard-16-lssd": 1, "c3d-standard-30-lssd": 2}
-        for entry in json.loads(MATRIX.read_text()):
-            machine_type, count = entry["machine_type"], entry["local_ssd_count"]
-            with self.subTest(network=entry["network"], machine_type=machine_type):
-                self.assertRegex(machine_type, r"^(c2|c3d)-")
-                if machine_type.endswith("-lssd"):
-                    self.assertIn(machine_type, bundled)
-                    self.assertEqual(count, bundled[machine_type])
-                elif machine_type.startswith("c3d-"):
-                    self.assertEqual(count, 0, "C3D only has Local SSD in its -lssd types")
+    def test_every_entry_syncs_on_local_ssd_its_machine_type_can_carry(self):
+        matrix = json.loads(MATRIX.read_text())
+        for entry in matrix:
+            with self.subTest(network=entry["network"]):
+                self.assertRegex(entry["machine_type"], r"^(c2|c3d)-")
+                # Zero leaves the sync on the 100 GB boot disk; startup-script.sh only warns.
+                self.assertGreaterEqual(entry["local_ssd_count"], 1)
+        result = check_shapes(matrix)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class RunnerShapeCheckTest(unittest.TestCase):
+    def check(self, machine_type, local_ssd_count):
+        entry = {"network": "n", "machine_type": machine_type, "local_ssd_count": local_ssd_count}
+        return entry, check_shapes([entry])
+
+    def test_shapes_the_runner_can_boot_pass_through_unchanged(self):
+        for machine_type, count in (
+            ("c2-standard-8", 2),
+            ("c3d-standard-8-lssd", 1),
+            ("c3d-standard-30-lssd", 2),
+            ("c3d-standard-8", 0),
+            ("n2-standard-8", 4),
+        ):
+            with self.subTest(machine_type=machine_type, local_ssd_count=count):
+                entry, result = self.check(machine_type, count)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), [entry])
+
+    def test_shapes_the_runner_cannot_boot_are_rejected(self):
+        for machine_type, count in (
+            ("c3d-standard-8-lssd", 2),
+            ("c3d-standard-16-lssd", 2),
+            ("c3d-standard-8", 1),
+        ):
+            with self.subTest(machine_type=machine_type, local_ssd_count=count):
+                _, result = self.check(machine_type, count)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(f"::error title=Sync matrix::n: {machine_type}", result.stderr)
+
+    def test_both_matrix_builders_check_the_final_matrix(self):
+        for workflow in MATRIX_WORKFLOWS:
+            with self.subTest(workflow=workflow.name):
+                text = workflow.read_text()
+                self.assertIn("check-runner-shapes.sh", text)
+                # After the machine_type override is applied, or the override goes unchecked.
+                self.assertLess(text.index("$machine_type"), text.index("check-runner-shapes.sh"))
 
 
 class ProvisioningModelTest(unittest.TestCase):

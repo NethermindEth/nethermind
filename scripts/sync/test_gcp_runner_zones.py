@@ -99,13 +99,14 @@ class OrderZonesTest(unittest.TestCase):
 
 
 class CreateErrorClassificationTest(unittest.TestCase):
-    """create.sh tries quota, then retryable, then fatal, so a message is classified by
+    """create.sh tries not-offered, quota, retryable, then fatal, so a message is classified by
     precedence rather than by matching exactly one pattern."""
 
     def classify(self, message):
         return sh(
             f"msg={shlex.quote(message)}; "
-            'if grep -qE "$QUOTA_CREATE_ERR" <<<"$msg"; then echo quota; '
+            'if grep -qE "$NOT_OFFERED_CREATE_ERR" <<<"$msg"; then echo not-offered; '
+            'elif grep -qE "$QUOTA_CREATE_ERR" <<<"$msg"; then echo quota; '
             'elif grep -qE "$RETRYABLE_CREATE_ERR" <<<"$msg"; then echo retryable; '
             'elif grep -qE "$FATAL_CREATE_ERR" <<<"$msg"; then echo fatal; '
             "else echo unrecognised; fi"
@@ -147,13 +148,26 @@ class CreateErrorClassificationTest(unittest.TestCase):
             "fatal",
         )
 
+    def test_a_machine_type_the_zone_lacks_is_its_own_class(self):
+        self.assertEqual(
+            self.classify(
+                "ERROR: (gcloud.compute.instances.create) Could not fetch resource:"
+                " - Invalid value for field 'resource.machineType': 'zones/europe-west2-a/"
+                "machineTypes/c3d-standard-8-lssd'. Machine type with name"
+                " 'c3d-standard-8-lssd' does not exist in zone 'europe-west2-a'."
+            ),
+            "not-offered",
+        )
+
     def test_an_unrecognised_message_matches_nothing(self):
         self.assertEqual(self.classify("ERROR: something entirely new"), "unrecognised")
 
     def test_create_sh_checks_the_classes_in_that_order(self):
         # classify() above models create.sh's branch order; pin it so the two cannot drift.
-        order = re.findall(r"\$(QUOTA|RETRYABLE|FATAL)_CREATE_ERR", (ACTION / "create.sh").read_text())
-        self.assertEqual(order, ["QUOTA", "RETRYABLE", "FATAL"])
+        order = re.findall(
+            r"\$(NOT_OFFERED|QUOTA|RETRYABLE|FATAL)_CREATE_ERR", (ACTION / "create.sh").read_text()
+        )
+        self.assertEqual(order, ["NOT_OFFERED", "QUOTA", "RETRYABLE", "FATAL"])
 
 
 class CreateZoneWalkTest(unittest.TestCase):
@@ -174,6 +188,11 @@ class CreateZoneWalkTest(unittest.TestCase):
       echo '[{"networkInterfaces":[{"accessConfigs":[{"natIP":"1.2.3.4"}]}]}]'
       exit 0
     fi
+    case ",${NOT_OFFERED_ZONES:-}," in
+      *",${zone},"*)
+        echo "ERROR: Machine type with name '$MACHINE_TYPE' does not exist in zone '$zone'." >&2
+        exit 1 ;;
+    esac
     case ",${CAPACITY_ZONES:-}," in
       *",${zone},"*) echo "ERROR: The zone '$zone' does not have enough resources available." >&2 ;;
       *)
@@ -298,6 +317,30 @@ class CreateZoneWalkTest(unittest.TestCase):
         self.assertEqual(
             attempts, ["europe-west1-b", "europe-west1-c", "europe-west1-d"]
         )
+
+    def test_a_zone_without_the_machine_type_moves_on_to_the_next(self):
+        code, out, attempts = self.create(
+            "europe-west2-a,europe-west1-b",
+            NOT_OFFERED_ZONES="europe-west2-a",
+            SUCCEED_ZONE="europe-west1-b",
+        )
+        self.assertEqual(code, 0, out)
+        self.assertEqual(attempts, ["europe-west2-a", "europe-west1-b"])
+
+    def test_a_machine_type_no_zone_offers_fails_after_one_pass(self):
+        zones = "europe-west1-b,europe-west2-a"
+        code, out, attempts = self.create(
+            zones,
+            PROVISIONING_MODEL="SPOT",
+            SPOT_FALLBACK_TO_STANDARD="true",
+            NOT_OFFERED_ZONES=zones,
+            SUCCEED_ZONE="",
+        )
+        self.assertEqual(code, 1, out)
+        self.assertEqual(attempts, zones.split(","))
+        self.assertEqual(set(self.models), {"SPOT"})
+        self.assertIn("is not offered in any of", out)
+        self.assertNotIn("spot_exhausted", self.outputs)
 
     def test_the_action_defaults_to_no_fallback(self):
         block = re.search(
