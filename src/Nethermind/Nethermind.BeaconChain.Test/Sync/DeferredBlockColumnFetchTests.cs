@@ -654,6 +654,123 @@ public class DeferredBlockColumnFetchTests
         }
     }
 
+    /// <summary>
+    /// A batch's first blob block waits for its columns while the running round delivers the batch and the next one; once its columns
+    /// arrive by root it imports, and every block behind it imports too, also when a later held block waits for its data in turn
+    /// (fulu/fork-choice.md <c>is_data_available</c>): the chain stays held behind that block, so the blocks the round delivers after it are held, not dropped.
+    /// </summary>
+    /// <remarks>The later block carries no blobs, so it starts no by-root fetch; the slot tick retries it.</remarks>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Blocks_behind_a_deferred_block_import_once_its_columns_arrive_by_root([Values] bool laterHeldBlockWaits, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        HeldChainDrain drain = await DrainHeldChainAsync(fixture, laterHeldBlockWaits, token);
+        int heldBehindLaterBlock = drain.Orchestrator.PendingGossipBlockCount;
+        ulong? heldSlot = drain.Orchestrator.RangeHeldSlot;
+
+        if (laterHeldBlockWaits)
+        {
+            drain.Importer.Stuck.Clear();
+            fixture.AdvanceSlots(1);
+            await drain.Orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        }
+
+        ForkedSignedBeaconBlock last = drain.Blocks[^1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported once its columns arrived");
+            Assert.That(heldBehindLaterBlock, Is.EqualTo(laterHeldBlockWaits ? drain.Blocks.Length - WaitingIndex - 1 : 0), "the blocks behind the waiting block, of both batches, are held");
+            Assert.That(heldSlot, Is.EqualTo(laterHeldBlockWaits ? last.Slot : null), "rounds keep starting past the held blocks");
+            Assert.That(drain.Blocks.Skip(1).Select(static b => b.ComputeMessageRoot()), Is.All.Matches<Hash256>(drain.Importer.IsKnown), "every block of both batches imports");
+            Assert.That(drain.Orchestrator.SyncTip, Is.EqualTo((last.ComputeMessageRoot(), last.Slot)));
+            Assert.That(drain.Orchestrator.PendingGossipBlockCount, Is.Zero);
+            Assert.That(drain.Orchestrator.RangeHeldSlot, Is.Null);
+        }
+    }
+
+    /// <summary>
+    /// A held block that never gets its data keeps the blocks behind it held while its retry lives, and rounds do not fetch them again;
+    /// once the retry expires it is dropped with them, loudly, and the next round fetches them again from the sync tip, so sync never waits on it forever.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Blocks_behind_a_held_block_that_never_gets_its_data_are_fetched_again_once_its_retry_expires(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        RangeSyncPeerSelectionTests.AllLevelsCapture log = new();
+        HeldChainDrain drain = await DrainHeldChainAsync(fixture, laterHeldBlockWaits: true, token, new OneLoggerLogManager(new ILogger(log)));
+        ForkedSignedBeaconBlock waiting = drain.Blocks[WaitingIndex];
+        Hash256 waitingRoot = waiting.ComputeMessageRoot();
+
+        fixture.AdvanceSlots(1);
+        await drain.Orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        drain.RequestedStarts.Clear();
+        await drain.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await drain.Orchestrator.ProcessQueuedAsync(token);
+        List<ulong> whileRetried = [.. drain.RequestedStarts];
+        int heldWhileRetried = drain.Orchestrator.PendingGossipBlockCount;
+
+        fixture.AdvanceSlots(2 * fixture.Chain.Spec.SlotsPerEpoch + 1);
+        await drain.Orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        int heldAfterExpiry = drain.Orchestrator.PendingGossipBlockCount;
+        ulong? heldSlotAfterExpiry = drain.Orchestrator.RangeHeldSlot;
+        drain.RequestedStarts.Clear();
+        await drain.Orchestrator.FeedRangeSyncRoundAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drain.Importer.ImportCalls.Count(root => root == waitingRoot), Is.GreaterThan(1), "the waiting block is retried on the slot tick");
+            Assert.That(heldWhileRetried, Is.EqualTo(drain.Blocks.Length - WaitingIndex - 1), "the blocks behind it stay held while it is retried");
+            Assert.That(whileRetried, Is.Not.Empty.And.All.GreaterThan(drain.Blocks[^1].Slot), "no round asks for a held block while it is retried");
+            Assert.That(log.Lines.Count(line => line.Contains($"Dropping block {waitingRoot}")), Is.EqualTo(1), "the drop is logged");
+            Assert.That(heldAfterExpiry, Is.Zero, "the blocks behind it are dropped with it");
+            Assert.That(heldSlotAfterExpiry, Is.Null);
+            Assert.That(drain.RequestedStarts, Has.Some.LessThanOrEqualTo(waiting.Slot), "the next round asks for the dropped block again");
+        }
+    }
+
+    /// <summary>The index in <see cref="HeldChainDrain.Blocks"/> of the held block that may wait for its data after the deferred block imports.</summary>
+    private const int WaitingIndex = 2;
+
+    /// <summary>The first batch served by range, the deferred block first; the rest of <see cref="HeldChainDrain.Blocks"/> is the next batch.</summary>
+    private const int FirstBatchLength = 5;
+
+    private sealed record HeldChainDrain(BeaconSyncOrchestrator Orchestrator, StuckBlocksImporter Importer, List<ulong> RequestedStarts, ForkedSignedBeaconBlock[] Blocks);
+
+    /// <summary>
+    /// A round delivers the deferred blob block and the blocks above it, which are held; a custodian joins and the block imports by root,
+    /// importing the held blocks with it up to the one at <see cref="WaitingIndex"/> when <paramref name="laterHeldBlockWaits"/>; then the
+    /// round still running delivers the next batch.
+    /// </summary>
+    private static async Task<HeldChainDrain> DrainHeldChainAsync(Fixture fixture, bool laterHeldBlockWaits, CancellationToken token, ILogManager? logs = null)
+    {
+        ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), .. Fixture.ChainAbove(fixture.Chain.BlockRoot, slots: [2, 3, 4, 5, 6, 7, 8]).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        List<ulong> requestedStarts = [];
+        fixture.Peers.Add(fixture.RangePeer("server", headSlot: 1000, requestedStarts, blocks[..FirstBatchLength]));
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token, fillers: 0, logs);
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+        await orchestrator.ProcessQueuedAsync(token);
+        Assert.That(orchestrator.PendingGossipBlockCount, Is.EqualTo(FirstBatchLength - 1), "fixture: the batch is held behind its deferred first block");
+
+        // From here the importer answers for the chain above the deferred block as it would once each parent is known.
+        importer.Accepted.UnionWith(blocks[1..].Select(static b => b.ComputeMessageRoot()));
+        if (laterHeldBlockWaits)
+        {
+            importer.Stuck.Add(blocks[WaitingIndex].ComputeMessageRoot());
+        }
+
+        fixture.AdmitPeer(fixture.Peer("custodian", fixture.Sampled));
+        await orchestrator.SettleColumnFetchesAsync(token);
+        foreach (ForkedSignedBeaconBlock block in blocks[FirstBatchLength..])
+        {
+            orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(block));
+        }
+
+        await orchestrator.ProcessQueuedAsync(token);
+        return new HeldChainDrain(orchestrator, importer, requestedStarts, blocks);
+    }
+
     /// <summary>A deferred block that another route imported no longer holds the range blocks above it, whose blocks are fetched from the tip again.</summary>
     [Test]
     [CancelAfter(60_000)]
@@ -715,10 +832,13 @@ public class DeferredBlockColumnFetchTests
         }
     }
 
-    /// <summary>Blocks held above a deferred head are held for nothing once its retry expires, so the next round asks for them again from the head.</summary>
+    /// <summary>
+    /// Blocks held above a deferred head are held for nothing once its retry expires, so the next round asks for them again from the head;
+    /// a block off their chain that waits for its data meanwhile does not take them over.
+    /// </summary>
     [Test]
     [CancelAfter(30_000)]
-    public async Task Blocks_held_above_a_deferred_head_are_fetched_again_once_the_head_is_dropped(CancellationToken token)
+    public async Task Blocks_held_above_a_deferred_head_are_fetched_again_once_the_head_is_dropped([Values] bool unrelatedBlockWaits, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
         SignedBeaconBlock[] chain = Fixture.ChainAbove(fixture.Chain.BlockRoot, slots: [2, 3]);
@@ -731,14 +851,29 @@ public class DeferredBlockColumnFetchTests
         await orchestrator.FeedRangeSyncRoundAsync(token);
         await orchestrator.ProcessQueuedAsync(token);
         requestedStarts.Clear();
+        BlockImportResult unrelated = BlockImportResult.DataUnavailable;
+        if (unrelatedBlockWaits)
+        {
+            // Deferred an epoch later, so it still waits when the head block's retry expires.
+            fixture.AdvanceSlots(fixture.Chain.Spec.SlotsPerEpoch);
+            unrelated = await orchestrator.ImportBlockAsync(SecondBlobBlock(fixture), token);
+            await orchestrator.SettleColumnFetchesAsync(token);
+            fixture.AdvanceSlots(fixture.Chain.Spec.SlotsPerEpoch + 1);
+        }
+        else
+        {
+            fixture.AdvanceSlots(2 * fixture.Chain.Spec.SlotsPerEpoch + 1);
+        }
 
         // The retry expires and drops the head block with the blocks held for it.
-        fixture.AdvanceSlots(2 * fixture.Chain.Spec.SlotsPerEpoch + 1);
         await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         await orchestrator.FeedRangeSyncRoundAsync(token);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(unrelated, Is.EqualTo(BlockImportResult.DataUnavailable), "fixture: the unrelated block waits for its data");
+            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(unrelatedBlockWaits ? 1 : 0), "fixture: only the head block's retry expired");
+            Assert.That(orchestrator.RangeHeldSlot, Is.Null);
             Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
             Assert.That(requestedStarts.Min(), Is.EqualTo(fixture.Chain.Block.Message!.Slot), "the dropped blocks are fetched again from the head");
         }
@@ -1070,10 +1205,10 @@ public class DeferredBlockColumnFetchTests
     private const int RetrySetCapacity = 128;
 
     /// <summary>An orchestrator over the real importer wrapped so that <paramref name="fixture"/>'s retry set holds <paramref name="fillers"/> blocks.</summary>
-    private static async Task<(BeaconSyncOrchestrator Orchestrator, StuckBlocksImporter Importer)> CreateOrchestratorWithFullRetrySetAsync(Fixture fixture, CancellationToken token, int fillers = RetrySetCapacity)
+    private static async Task<(BeaconSyncOrchestrator Orchestrator, StuckBlocksImporter Importer)> CreateOrchestratorWithFullRetrySetAsync(Fixture fixture, CancellationToken token, int fillers = RetrySetCapacity, ILogManager? logs = null)
     {
         StuckBlocksImporter importer = new(fixture.Importer);
-        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator(logs: logs);
         orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.AnchorBlock), fixture.Chain.AnchorRoot);
         for (int i = 0; i < fillers; i++)
         {
@@ -1086,9 +1221,14 @@ public class DeferredBlockColumnFetchTests
         return (orchestrator, importer);
     }
 
-    /// <summary>Answers <see cref="BlockImportResult.DataUnavailable"/> for the blocks in <see cref="Stuck"/>, <see cref="BlockImportResult.EngineUnavailable"/> for those in <see cref="EngineDown"/>, and defers to <paramref name="inner"/> for the rest.</summary>
+    /// <summary>
+    /// Answers <see cref="BlockImportResult.DataUnavailable"/> for the blocks in <see cref="Stuck"/>, <see cref="BlockImportResult.EngineUnavailable"/> for those in <see cref="EngineDown"/>,
+    /// and defers to <paramref name="inner"/> for the rest; a scripted block whose parent is not known answers <see cref="BlockImportResult.UnknownParent"/>, as the real importer does.
+    /// </summary>
     private sealed class StuckBlocksImporter(IBlockImporter inner) : IBlockImporter
     {
+        private readonly HashSet<Hash256> _accepted = [];
+
         public HashSet<Hash256> Stuck { get; } = [];
 
         public HashSet<Hash256> EngineDown { get; } = [];
@@ -1098,15 +1238,21 @@ public class DeferredBlockColumnFetchTests
 
         public List<Hash256> ImportCalls { get; } = [];
 
-        public bool IsKnown(Hash256 blockRoot) => inner.IsKnown(blockRoot);
+        public bool IsKnown(Hash256 blockRoot) => _accepted.Contains(blockRoot) || inner.IsKnown(blockRoot);
 
         public bool IsExpectedProposer(ForkedSignedBeaconBlock block) => inner.IsExpectedProposer(block);
 
         public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {
             ImportCalls.Add(blockRoot);
+            bool scripted = Stuck.Contains(blockRoot) || Accepted.Contains(blockRoot) || EngineDown.Contains(blockRoot);
+            if (scripted && !IsKnown(block.ParentRoot))
+            {
+                return BlockImportResult.UnknownParent;
+            }
+
             return Stuck.Contains(blockRoot) ? BlockImportResult.DataUnavailable
-                : Accepted.Contains(blockRoot) ? BlockImportResult.Imported
+                : Accepted.Contains(blockRoot) ? (_accepted.Add(blockRoot) ? BlockImportResult.Imported : BlockImportResult.AlreadyKnown)
                 : EngineDown.Contains(blockRoot) ? BlockImportResult.EngineUnavailable
                 : inner.Import(block, blockRoot, verifySignatures);
         }
