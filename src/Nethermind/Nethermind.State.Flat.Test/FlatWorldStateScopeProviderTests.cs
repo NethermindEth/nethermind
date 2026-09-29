@@ -745,7 +745,8 @@ public class FlatWorldStateScopeProviderTests
     public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd)
     {
         const int slotCount = 40;
-        IdleStorageApplier.MinIdleGap = TimeSpan.Zero;
+        // Open however recently an earlier test committed a block.
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
         using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
@@ -808,20 +809,28 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void EarlyStorageApply_SkipsBlocksProcessedBackToBack()
     {
-        IdleStorageApplier.MinIdleGap = TimeSpan.FromHours(1);
-        try
-        {
-            using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
-            FlatWorldStateScope scope = ctx.Scope;
-            scope.Commit(1);
+        // Open for the first block however recently an earlier test committed one.
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Assert.That(scope.AppliesStorageWritesEarly, Is.True);
 
-            // The next block in the scope starts right after the commit, so it runs without the early apply thread.
-            Assert.That(scope.AppliesStorageWritesEarly, Is.False);
-        }
-        finally
-        {
-            IdleStorageApplier.MinIdleGap = TimeSpan.Zero;
-        }
+        IdleStorageApplier.MinIdleGap = TimeSpan.FromHours(1);
+        scope.Commit(1);
+
+        // The next block starts right after the commit, so it runs without the early apply thread, both in this scope
+        // and in a new one.
+        Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+        using TestContext next = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        Assert.That(next.Scope.AppliesStorageWritesEarly, Is.False);
+    }
+
+    // The gap is process-wide, like the thread it gates, so a test that changes it puts back the value it found.
+    private static IDisposable SetMinIdleGap(TimeSpan gap)
+    {
+        TimeSpan previous = IdleStorageApplier.MinIdleGap;
+        IdleStorageApplier.MinIdleGap = gap;
+        return new Reactive.AnonymousDisposable(() => IdleStorageApplier.MinIdleGap = previous);
     }
 
     [Test]
