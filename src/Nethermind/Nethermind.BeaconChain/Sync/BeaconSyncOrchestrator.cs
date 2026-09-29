@@ -116,11 +116,14 @@ public sealed class BeaconSyncOrchestrator(
         new BoundedChannelOptions(WorkQueueCapacity) { SingleReader = true });
 
     // Each queued vote costs a BLS verify and a forged one is never penalized, so votes wait apart: a flood of them must not fill _work and drop gossip blocks.
-    private readonly Channel<WorkItem> _votes = Channel.CreateBounded<WorkItem>(
+    private readonly Channel<QueuedVote> _votes = Channel.CreateBounded<QueuedVote>(
         new BoundedChannelOptions(VoteQueueCapacity) { SingleReader = true });
 
     /// <summary>1 while a <see cref="VoteWakeItem"/> may be queued in the work channel, so a vote flood adds at most one item there.</summary>
     private int _voteWakeQueued;
+
+    /// <summary>The newest slot tick the worker has read; a vote queued after a newer tick waits for that tick.</summary>
+    private ulong _reachedSlotTick;
 
     /// <summary>The newest slot tick queued, written before the tick is; a queued tick older than it is skipped.</summary>
     private ulong _newestSlotTick;
@@ -226,6 +229,9 @@ public sealed class BeaconSyncOrchestrator(
     {
         public static readonly VoteWakeItem Instance = new();
     }
+
+    /// <summary>A queued gossip vote; <paramref name="NewestSlotTick"/> is the newest slot tick queued before it.</summary>
+    private readonly record struct QueuedVote(WorkItem Item, ulong NewestSlotTick);
 
     /// <summary>An execution payload envelope to import; <paramref name="Source"/> is the req/resp peer that served it, if any.</summary>
     internal abstract record EnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source) : WorkItem;
@@ -435,25 +441,36 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>
-    /// Processes at most <see cref="VotesPerPass"/> queued gossip votes, then every queued work item, then runs a head step if
-    /// any imported; one pass of <see cref="RunWorkerAsync"/>.
+    /// Processes at most <see cref="VotesPerPass"/> queued gossip votes, then every queued work item, each slot tick after every vote
+    /// queued before it, then runs a head step if any imported; one pass of <see cref="RunWorkerAsync"/>.
     /// </summary>
     internal async Task ProcessQueuedAsync(CancellationToken token)
     {
-        // Votes first, so one queued before a slot tick is not checked against the next slot (gloas/fork-choice.md on_payload_attestation_message).
-        for (int i = 0; i < VotesPerPass && _votes.Reader.TryRead(out WorkItem? vote); i++)
+        // Votes first, so one queued before a slot tick is not checked against the next slot, but none queued after a tick the worker has not reached (gloas/fork-choice.md on_payload_attestation_message).
+        for (int i = 0; i < VotesPerPass && TryReadVoteBefore(_reachedSlotTick + 1, out QueuedVote vote); i++)
         {
-            await ProcessItemAsync(vote, token);
+            await ProcessItemAsync(vote.Item, token);
         }
 
         while (_work.Reader.TryRead(out WorkItem? item))
         {
+            if (item is SlotTickItem tick)
+            {
+                while (TryReadVoteBefore(tick.Slot, out QueuedVote vote))
+                {
+                    await ProcessItemAsync(vote.Item, token);
+                }
+
+                _reachedSlotTick = Math.Max(_reachedSlotTick, tick.Slot);
+            }
+
             await ProcessItemAsync(item, token);
         }
 
-        // Cleared after the drain, which may have read the queued wake, and fenced before the peek, so leftover or later votes always wake the worker.
+        // Cleared after the drain, which may have read the queued wake, and fenced before the peek, so leftover or later votes always wake the worker;
+        // a vote waiting for a tick not yet reached is woken by that tick.
         Interlocked.Exchange(ref _voteWakeQueued, 0);
-        if (_votes.Reader.TryPeek(out _))
+        if (_votes.Reader.TryPeek(out QueuedVote next) && next.NewestSlotTick <= _reachedSlotTick)
         {
             WakeForVotes();
         }
@@ -463,6 +480,10 @@ public sealed class BeaconSyncOrchestrator(
             await RunHeadStepAsync(token);
         }
     }
+
+    // Reads the next vote only if it was queued before the tick of tickSlot; the single reader makes the peek and the read one step.
+    private bool TryReadVoteBefore(ulong tickSlot, out QueuedVote vote) =>
+        _votes.Reader.TryPeek(out vote) && vote.NewestSlotTick < tickSlot && _votes.Reader.TryRead(out vote);
 
     private async Task ProcessItemAsync(WorkItem item, CancellationToken token)
     {
@@ -495,7 +516,11 @@ public sealed class BeaconSyncOrchestrator(
 
                 break;
             case GossipPayloadAttestationItem payloadAttestation:
-                _importer!.OnGossipPayloadAttestation(payloadAttestation.Message);
+                if (!gossipRouter.IsPayloadAttestationVerified(payloadAttestation.Message) && _importer!.OnGossipPayloadAttestation(payloadAttestation.Message))
+                {
+                    gossipRouter.MarkPayloadAttestationVerified(payloadAttestation.Message);
+                }
+
                 break;
             // on_tick steps through every skipped slot, so only the newest tick of a backlog needs the per-slot work;
             // each older one would send another forkchoiceUpdated for the same head.
@@ -1563,19 +1588,25 @@ public sealed class BeaconSyncOrchestrator(
         gossipRouter.AttesterSlashingReceived += slashing => QueueVote(new GossipAttesterSlashingItem(slashing));
         gossipRouter.GloasAttesterSlashingReceived += slashing => QueueVote(new GossipGloasAttesterSlashingItem(slashing));
         gossipRouter.ExecutionPayloadEnvelopeReceived += envelope => _work.Writer.TryWrite(new GossipEnvelopeItem(envelope));
-        gossipRouter.PayloadAttestationMessageReceived += vote => QueueVote(new GossipPayloadAttestationItem(vote));
+        gossipRouter.PayloadAttestationMessageReceived += vote =>
+        {
+            if (!QueueVote(new GossipPayloadAttestationItem(vote)))
+            {
+                gossipRouter.ReleasePayloadAttestation(vote);
+            }
+        };
     }
 
-    private void QueueVote(WorkItem vote)
+    private bool QueueVote(WorkItem vote)
     {
-        if (_votes.Writer.TryWrite(vote))
+        if (_votes.Writer.TryWrite(new QueuedVote(vote, Volatile.Read(ref _newestSlotTick))))
         {
             WakeForVotes();
+            return true;
         }
-        else
-        {
-            Metrics.BeaconChainGossipDropped++;
-        }
+
+        Metrics.BeaconChainGossipDropped++;
+        return false;
     }
 
     // A wake refused by a full work channel is not needed: the worker has a pass to run, and each pass reads the votes.
