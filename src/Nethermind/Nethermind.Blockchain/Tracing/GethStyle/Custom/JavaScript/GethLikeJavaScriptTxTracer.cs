@@ -21,7 +21,6 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperationStart, ITraceOperationGasCost, ITraceRevertFault
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan MaxTimeout = TimeSpan.FromMinutes(2);
 
     private readonly dynamic _tracer;
     private readonly Log _log = new();
@@ -29,7 +28,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
-    private readonly CancellationTokenSource _cts;
+    private readonly GethTraceDeadline? _deadline;
     private readonly CancellationTokenRegistration _ctsRegistration;
     private bool _disposed;
     private bool _failedBeforeExecution;
@@ -62,20 +61,27 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _db = db;
         _ctx = ctx;
 
-        Engine.CurrentEngine = _engine;
-        _tracer = engine.CreateTracer(options.Tracer);
-        _functions = GetAvailableFunctions((object)_tracer);
-        if (_functions.HasFlag(TracerFunctions.setup))
+        _deadline = options.ExecutionCancellation is null ? new GethTraceDeadline() : null;
+        CancellationToken token = options.ExecutionCancellation ?? _deadline!.Token;
+        try
         {
+            _ctsRegistration = token.Register(static e => ((Engine)e!).Interrupt(), engine);
             Engine.CurrentEngine = _engine;
-            _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
+            _tracer = engine.CreateTracer(options.Tracer);
+            _functions = GetAvailableFunctions((object)_tracer);
+            if (_functions.HasFlag(TracerFunctions.setup))
+            {
+                Engine.CurrentEngine = _engine;
+                _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
+            }
+            _deadline?.Start(options.Timeout ?? DefaultTimeout);
         }
-
-        TimeSpan timeout = options.Timeout ?? DefaultTimeout;
-        if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
-            throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
-        _cts = new CancellationTokenSource(timeout);
-        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+        catch
+        {
+            _ctsRegistration.Dispose();
+            _deadline?.Dispose();
+            throw;
+        }
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -217,7 +223,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
-        if (error == EvmExceptionType.NotEnoughBalance && _log.op?.Value is
+        if (error is EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded && _log.op?.Value is
             Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL)
             return;
         if (_failedBeforeExecution)
@@ -405,7 +411,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         {
             base.Dispose();
             _ctsRegistration.Dispose();
-            _cts.Dispose();
+            _deadline?.Dispose();
         }
         finally
         {

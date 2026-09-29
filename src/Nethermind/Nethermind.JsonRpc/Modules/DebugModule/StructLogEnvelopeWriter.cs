@@ -29,10 +29,12 @@ internal static class StructLogEnvelopeWriter
         CancellationToken cancellationToken,
         Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace,
         ILogger logger,
-        ulong fallbackGas = 0UL)
+        ulong fallbackGas = 0UL,
+        Action? onDeadlineExpired = null)
     {
         GethLikeTxTrace? trace = null;
         Exception? failure = null;
+        bool emitFooter = true;
 
         writer.WriteStartObject();
         writer.WritePropertyName("structLogs"u8);
@@ -44,29 +46,41 @@ internal static class StructLogEnvelopeWriter
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
+            if (ex is TimeoutException { Message: "execution timeout" })
+            {
+                if (pipeWriter is not StagingPipeWriter { IsCommitted: true })
+                {
+                    emitFooter = false;
+                    throw;
+                }
+                onDeadlineExpired?.Invoke();
+            }
             failure = ex;
         }
         finally
         {
-            writer.WriteEndArray();
-            string? errorMessage;
-            int errorCode;
-            if (failure is not null)
+            if (emitFooter)
             {
-                errorMessage = FormatErrorMessage(failure);
-                errorCode = ResolveErrorCode(failure);
+                writer.WriteEndArray();
+                string? errorMessage;
+                int errorCode;
+                if (failure is not null)
+                {
+                    errorMessage = FormatErrorMessage(failure);
+                    errorCode = ResolveErrorCode(failure);
+                }
+                else if (trace is null)
+                {
+                    errorMessage = "tracing failed: trace not found";
+                    errorCode = ErrorCodes.ResourceNotFound;
+                }
+                else
+                {
+                    errorMessage = null;
+                    errorCode = default;
+                }
+                WriteFooter(writer, trace, errorMessage, errorCode, fallbackGas);
             }
-            else if (trace is null)
-            {
-                errorMessage = "tracing failed: trace not found";
-                errorCode = ErrorCodes.ResourceNotFound;
-            }
-            else
-            {
-                errorMessage = null;
-                errorCode = default;
-            }
-            WriteFooter(writer, trace, errorMessage, errorCode, fallbackGas);
         }
 
         LogFailure(logger, failure);
@@ -92,7 +106,7 @@ internal static class StructLogEnvelopeWriter
 
         for (Exception? current = failure; current is not null; current = current.InnerException)
         {
-            if (current is InsufficientBalanceException or InvalidBlockException or InvalidTransactionException) return ErrorCodes.InvalidInput;
+            if (current is TimeoutException { Message: "execution timeout" } or InsufficientBalanceException or InvalidBlockException or InvalidTransactionException) return ErrorCodes.InvalidInput;
         }
 
         return ErrorCodes.InternalError;
@@ -100,6 +114,7 @@ internal static class StructLogEnvelopeWriter
 
     internal static string FormatErrorMessage(Exception failure) => failure switch
     {
+        TimeoutException { Message: "execution timeout" } => "execution timeout",
         InvalidTransactionException tx => $"tracing failed: {FormatErrorDescription(tx.Reason)}",
         _ => $"tracing failed: {failure.Message}",
     };
@@ -150,7 +165,7 @@ internal static class StructLogEnvelopeWriter
 
     private static void LogFailure(ILogger logger, Exception? failure)
     {
-        if (failure is null) return;
+        if (failure is null or TimeoutException { Message: "execution timeout" }) return;
         if (logger.IsWarn) logger.Warn($"debug_trace streaming failed mid-response: {failure}");
     }
 }

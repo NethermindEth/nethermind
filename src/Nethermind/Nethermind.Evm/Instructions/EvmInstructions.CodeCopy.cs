@@ -367,13 +367,17 @@ public static partial class EvmInstructions
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
-        // Charge gas for accessing the account's state.
-        if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))
-            goto OutOfGas;
+        ulong traceGasCost = TTracingInst.IsActive
+            ? vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.ExtCodeCost, Eip8038.IsActive ? Eip8038Constants.WarmAccess : 0)
+            : 0;
+        bool gasAvailable = TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address);
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
-        if (Eip8038.IsActive && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
-            goto OutOfGas;
+        if (gasAvailable && Eip8038.IsActive)
+            gasAvailable = TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess);
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable) goto OutOfGas;
 
         vm.WorldState.AddAccountRead(address);
 
