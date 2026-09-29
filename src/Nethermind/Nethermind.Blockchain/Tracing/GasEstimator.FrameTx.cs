@@ -19,6 +19,7 @@ public partial class GasEstimator
     private const int MaxFrameProbes = 512;
     private const double OptimisticMultiplier = 64d / 63d;
     private const string InvalidErrorMarginNegative = "Invalid error margin, cannot be negative.";
+    private const int RebalanceLevels = 2;
 
     /// <summary>Fills omitted frame limits by replaying the complete transaction in the caller's state scope.</summary>
     /// <remarks>Every probe keeps its omitted execution and state limits within the rooms the final limits must fit,
@@ -110,6 +111,8 @@ public partial class GasEstimator
         private readonly int _errorMargin;
         private readonly int _executionCount;
         private readonly int _stateCount;
+        private ulong _executionRoom;
+        private ulong _stateRoom;
         private ulong _executionPool;
         private ulong _statePool;
         private bool _capLimited;
@@ -155,12 +158,12 @@ public partial class GasEstimator
             if (fixedGas > _gasCap) return false;
 
             ulong fillBudget = _gasCap - fixedGas;
-            ulong executionRoom = _executionCap - reservedExecution;
-            ulong stateRoom = _stateCap - reservedState;
-            _executionPool = _executionCount == 0 ? 0 : Math.Min(executionRoom, fillBudget);
-            _statePool = _stateCount == 0 ? 0 : Math.Min(stateRoom, fillBudget);
+            _executionRoom = _executionCap - reservedExecution;
+            _stateRoom = _stateCap - reservedState;
+            _executionPool = _executionCount == 0 ? 0 : Math.Min(_executionRoom, fillBudget);
+            _statePool = _stateCount == 0 ? 0 : Math.Min(_stateRoom, fillBudget);
             // When the gas cap cannot cover both rooms, neither dimension is squeezed below half of the budget.
-            _capLimited = (_executionCount > 0 && _executionPool < executionRoom) || (_stateCount > 0 && _statePool < stateRoom);
+            _capLimited = (_executionCount > 0 && _executionPool < _executionRoom) || (_stateCount > 0 && _statePool < _stateRoom);
             if (_executionPool + _statePool > fillBudget)
             {
                 _capLimited = true;
@@ -206,7 +209,7 @@ public partial class GasEstimator
                 if (!_fillExecution[i] && !_fillState[i]) continue;
                 RaiseToUpperLimits(i);
                 _reservationFailure = default;
-                if (_probes < MaxFrameProbes - 1 && !TryProbe(i, atUpperLimits: true) && !TryProbeFreeingOutgrownRoom(i, out error))
+                if (_probes < MaxFrameProbes - 1 && !TryProbe(i, atUpperLimits: true) && !TryRecoverUpperProbe(i, out error))
                     return false;
                 if (_fillState[i]) Minimize(i, false, _receipts?[i]);
                 if (_fillExecution[i]) Minimize(i, true, _receipts?[i]);
@@ -232,25 +235,71 @@ public partial class GasEstimator
                 : error);
         }
 
-        /// <summary>Retries the upper probe of frame <paramref name="index"/> with the later frames that failed the
-        /// even split holding nothing, or reports the first probe's failure.</summary>
-        /// <remarks>Such a frame may have failed or been skipped there only because this one did, so its reservation
-        /// measured nothing.</remarks>
-        private bool TryProbeFreeingOutgrownRoom(int index, [NotNullWhen(false)] out string? error)
+        /// <summary>Retries a failed upper probe of frame <paramref name="index"/> with more room, or reports the
+        /// first probe's failure.</summary>
+        private bool TryRecoverUpperProbe(int index, [NotNullWhen(false)] out string? error)
         {
             error = ProbeFailure(index);
             bool reverted = LastProbeReverted;
-            if (_tracer.FailedFrame == index && _probes < MaxFrameProbes - 1 && HoldsOutgrownRoom(index))
+            bool outOfGas = _tracer.FrameError == EvmExceptionType.OutOfGas;
+            if (_tracer.FailedFrame == index && (TryFreeingOutgrownRoom(index) || (outOfGas && TryRebalancing(index))))
             {
-                RaiseToUpperLimits(index, freeOutgrown: true);
-                if (TryProbe(index, atUpperLimits: true))
-                {
-                    error = null;
-                    return true;
-                }
+                error = null;
+                return true;
             }
             LastProbeReverted = reverted;
             return false;
+        }
+
+        /// <summary>Probes frame <paramref name="index"/> with the later frames that failed the even split holding nothing.</summary>
+        /// <remarks>Such a frame may have failed or been skipped there only because this one did, so its reservation
+        /// measured nothing.</remarks>
+        private bool TryFreeingOutgrownRoom(int index)
+        {
+            if (_probes >= MaxFrameProbes - 1 || !HoldsOutgrownRoom(index)) return false;
+            RaiseToUpperLimits(index, freeOutgrown: true);
+            return TryProbe(index, atUpperLimits: true);
+        }
+
+        /// <summary>Probes frame <paramref name="index"/> with its room split differently between the dimensions,
+        /// moving the capacity it takes from one pool to the other.</summary>
+        /// <remarks>Only the gas cap couples the pools, so this applies only when it binds. A failed probe does not say
+        /// which dimension ran short, so split points on both sides of the current one are tried, coarsest first.</remarks>
+        private bool TryRebalancing(int index)
+        {
+            if (!_capLimited) return false;
+            (ulong execution, ulong state) = RaiseToUpperLimits(index);
+            ulong total = execution + state;
+            ulong most = Math.Min(total, _executionRoom - (_executionPool - execution));
+            ulong least = total - Math.Min(total, _stateRoom - (_statePool - state));
+            if (!_fillState[index]) return most > execution && TryShift(index, execution, state, most);
+            if (!_fillExecution[index]) return least < execution && TryShift(index, execution, state, least);
+            for (int level = 1; level <= RebalanceLevels; level++)
+            {
+                ulong parts = 1UL << level;
+                for (ulong part = 1; part < parts; part += 2)
+                {
+                    if (most > execution && TryShift(index, execution, state, execution + (most - execution) / parts * part)) return true;
+                    if (least < execution && TryShift(index, execution, state, execution - (execution - least) / parts * part)) return true;
+                }
+            }
+            return false;
+        }
+
+        /// <param name="execution">The execution room the upper probe left frame <paramref name="index"/>.</param>
+        /// <param name="state">The state room the upper probe left frame <paramref name="index"/>.</param>
+        /// <param name="shifted">The execution room to try instead, the state room taking the rest.</param>
+        private bool TryShift(int index, ulong execution, ulong state, ulong shifted)
+        {
+            if (_probes >= MaxFrameProbes - 1) return false;
+            ulong shiftedState = execution + state - shifted;
+            TxFrame frame = _frames[index];
+            _frames[index] = WithGas(frame, _fillExecution[index] ? shifted : frame.ExecutionGasLimit,
+                _fillState[index] ? shiftedState : frame.StateGasLimit);
+            if (!TryProbe(index, atUpperLimits: true)) return false;
+            _executionPool = _executionPool - execution + shifted;
+            _statePool = _statePool - state + shiftedState;
+            return true;
         }
 
         private bool HoldsOutgrownRoom(int index)
@@ -282,8 +331,9 @@ public partial class GasEstimator
             return fixedGas;
         }
 
-        // Frames before index hold their final limits and later frames their reservations; index takes the rest.
-        private void RaiseToUpperLimits(int index, bool freeOutgrown = false)
+        // Frames before index hold their final limits and later frames their reservations; index takes the rest,
+        // returned in both dimensions even where it has an explicit limit.
+        private (ulong Execution, ulong State) RaiseToUpperLimits(int index, bool freeOutgrown = false)
         {
             ulong execution = _executionPool;
             ulong state = _statePool;
@@ -305,6 +355,7 @@ public partial class GasEstimator
             }
             _frames[index] = WithGas(_frames[index], _fillExecution[index] ? execution : _frames[index].ExecutionGasLimit,
                 _fillState[index] ? state : _frames[index].StateGasLimit);
+            return (execution, state);
         }
 
         // Seeded from the frame's measured use; without one, the first accepted probe supplies it.

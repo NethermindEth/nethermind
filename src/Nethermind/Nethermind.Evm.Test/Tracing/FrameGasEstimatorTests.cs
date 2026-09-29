@@ -40,6 +40,13 @@ public class FrameGasEstimatorTests
         AssertFills(i => (i == 0 ? firstFrameNeed : 20_000UL, 0), errorMargin: 150, frameCount: 4,
             atomicBatch ? FrameFlags.AtomicBatch : default, dependsOnEarlierFrames: !atomicBatch);
 
+    /// <remarks>The gas cap cannot cover both rooms, so the even split halves it, below what the first frame needs in
+    /// one of its dimensions.</remarks>
+    [TestCase(700_000UL, 0UL)]
+    [TestCase(50_000UL, 700_000UL)]
+    public void EstimateFrameGas_MovesCapacityBetweenDimensionsUnderTheGasCap(ulong execution, ulong state) =>
+        AssertFills(i => i == 0 ? (execution, state) : (20_000UL, 0UL), errorMargin: 150, frameCount: 2, gasCap: 1_000_000);
+
     [TestCase(0)]
     [TestCase(Eip8141Constants.MaxFrames + 1)]
     public void EstimateFrameGas_FrameCountOutOfRange_Fails(int frameCount)
@@ -64,7 +71,7 @@ public class FrameGasEstimatorTests
 
     /// <param name="flags">Flags for every frame but the last, so <see cref="FrameFlags.AtomicBatch"/> batches them all.</param>
     private static void AssertFills(Func<int, (ulong Execution, ulong State)> need, int errorMargin, int frameCount = Eip8141Constants.MaxFrames,
-        FrameFlags flags = default, bool dependsOnEarlierFrames = false)
+        FrameFlags flags = default, bool dependsOnEarlierFrames = false, ulong gasCap = GasCap)
     {
         FixedNeedProcessor processor = new(need, dependsOnEarlierFrames);
         GasEstimator estimator = new(processor, Substitute.For<IReadOnlyStateProvider>());
@@ -76,13 +83,13 @@ public class FrameGasEstimatorTests
         bool[] fill = new bool[frames.Length];
         Array.Fill(fill, true);
 
-        Result<TxFrame[]> result = estimator.EstimateFrameGas(tx, new BlockExecutionContext(header, Eip8141Prototype.Instance), fill, fill, GasCap, errorMargin, CancellationToken.None, out _);
+        Result<TxFrame[]> result = estimator.EstimateFrameGas(tx, new BlockExecutionContext(header, Eip8141Prototype.Instance), fill, fill, gasCap, errorMargin, CancellationToken.None, out _);
 
         Assert.That(result.IsError, Is.False, result.Error);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(processor.MaxExecutionLimits, Is.LessThanOrEqualTo(Eip7825Constants.DefaultTxGasLimitCap));
-            Assert.That(processor.MaxTotalLimits, Is.LessThanOrEqualTo(GasCap));
+            Assert.That(processor.MaxTotalLimits, Is.LessThanOrEqualTo(gasCap));
             Assert.That(processor.Probes, Is.LessThanOrEqualTo(512));
             for (int i = 0; i < result.Data!.Length; i++)
             {
