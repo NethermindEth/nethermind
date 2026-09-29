@@ -1688,7 +1688,6 @@ public class TraceRpcModuleTests
 
     private static bool IsPriced(CallFees fees) => fees is CallFees.GasPrice or CallFees.FeeCap;
 
-    // Returns BASEFEE as a word.
     private static readonly byte[] BaseFeeReturnCode = Prepare.EvmCode
         .Op(Instruction.BASEFEE)
         .PushData(0)
@@ -1740,7 +1739,6 @@ public class TraceRpcModuleTests
         string trace = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call.RootElement, new[] { "trace" }, "latest");
         string eth = await RpcTest.TestSerializedRequest(blockchain.EthRpcModule, "eth_call", call.RootElement, "latest");
 
-        // A call priced at zero runs with a zero base fee, as eth_call runs it; a priced call sees the block's.
         string expected = Word(IsPriced(fees) ? baseFee : UInt256.Zero);
         using (Assert.EnterMultipleScope())
         {
