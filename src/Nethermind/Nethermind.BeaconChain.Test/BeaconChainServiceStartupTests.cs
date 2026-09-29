@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -118,10 +119,12 @@ public class BeaconChainServiceStartupTests
     {
         PubkeyCache pubkeyCache = new();
         KickEngine engine = new(pubkeyCache);
-        await using IContainer container = KickContainer(engine, pubkeyCache).Build();
-        SeedAnchor(container.Resolve<BeaconChainStore>(), gloas, nextCommittee: false, key: null);
+        CacheWrittenMemDb metadata = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
+        await using IContainer container = KickContainer(engine, pubkeyCache).AddSingleton(store).Build();
+        SeedAnchor(store, gloas, nextCommittee: false, key: null);
         BeaconChainService service = container.Resolve<BeaconChainService>();
-        engine.OnCall = service.Stop;
+        metadata.OnCacheWritten = service.Stop;
 
         await service.Start();
 
@@ -175,9 +178,11 @@ public class BeaconChainServiceStartupTests
         TestErrorLogManager logManager = new();
         PubkeyCache pubkeyCache = new();
         KickEngine engine = new(pubkeyCache);
-        await using IContainer container = KickContainer(engine, pubkeyCache, logManager, new BeaconChainConfig { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1" }).Build();
+        CacheWrittenMemDb metadata = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
+        await using IContainer container = KickContainer(engine, pubkeyCache, logManager, new BeaconChainConfig { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1" }).AddSingleton(store).Build();
         BeaconChainService service = container.Resolve<BeaconChainService>();
-        engine.OnCall = service.Stop;
+        metadata.OnCacheWritten = service.Stop;
 
         await service.Start();
 
@@ -226,26 +231,189 @@ public class BeaconChainServiceStartupTests
         TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
         KickEngine engine = new(pubkeyCache) { Answer = answer.Task };
         TestErrorLogManager logManager = new();
-        GatedColumnsDb db = new();
-        BeaconChainStore store = new(db, GloasCheckpointFiles.Spec);
+        ReadGate gate = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, new GatedMemDb(gate)), GloasCheckpointFiles.Spec);
         await using IContainer container = KickContainer(engine, pubkeyCache, logManager).AddSingleton(store).Build();
         SeedAnchor(store, gloas: false, nextCommittee: false, key: null);
         BeaconChainService service = container.Resolve<BeaconChainService>();
         Task run = service.Start();
         await engine.Called.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        db.Gate.Arm();
+        gate.Arm();
         answer.SetResult(PayloadStatusV1.Syncing);
-        await db.Gate.Reached.WaitAsync(TimeSpan.FromSeconds(30));
+        await gate.Reached.WaitAsync(TimeSpan.FromSeconds(30));
 
         Task stopping = service.StopAsync();
 
         Assert.That(stopping.IsCompleted, Is.False, "the run is still inside the cache build");
-        db.Gate.Release();
+        gate.Release();
         await stopping.WaitAsync(TimeSpan.FromSeconds(30));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(run.IsCompletedSuccessfully, Is.True, "the run had unwound when the stop completed");
             Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
+        }
+    }
+
+    /// <summary>
+    /// A run stopped while the first forkchoiceUpdated is answered is a stopped run: it must not spend seconds on a cache build
+    /// nobody will use, and must not leave a persisted cache behind for a start that never happened.
+    /// </summary>
+    [Test]
+    public async Task A_run_stopped_during_the_first_forkchoice_updated_builds_and_persists_no_pubkey_cache([Values] bool gloas)
+    {
+        TestErrorLogManager logManager = new();
+        PubkeyCache pubkeyCache = new();
+        KickEngine engine = new(pubkeyCache);
+        await using IContainer container = KickContainer(engine, pubkeyCache, logManager).Build();
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        SeedAnchor(store, gloas, nextCommittee: false, key: null);
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+        engine.OnCall = service.Stop;
+
+        await service.Start();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(engine.PubkeysHeldAtCall, Is.EqualTo(new[] { 0 }), "the call was made");
+            Assert.That(pubkeyCache.Count, Is.Zero, "no build");
+            Assert.That(new PubkeyCache().TryLoad(store, (gloas ? ForkCrossingChain.Instance.First.PostState.Validators : ForkCrossingChain.Instance.AnchorState.Validators)!), Is.False, "nothing persisted");
+            Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
+        }
+    }
+
+    /// <summary>
+    /// The first epoch of imports after a start would otherwise pay one subgroup check per validator inline, seconds per block on a
+    /// mainnet registry; the run warms them once the cache is built, so a block import finds every verdict remembered.
+    /// </summary>
+    [Test]
+    public async Task The_subgroup_checks_of_every_cached_pubkey_are_remembered_shortly_after_the_cache_is_built()
+    {
+        TestErrorLogManager logManager = new();
+        PubkeyCache pubkeyCache = new();
+        TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        KickEngine engine = new(pubkeyCache) { Answer = answer.Task };
+        ReadGate gate = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.BlockIndex, new GatedMemDb(gate)), GloasCheckpointFiles.Spec);
+        await using IContainer container = KickContainer(engine, pubkeyCache, logManager).AddSingleton(store).Build();
+        SeedAnchor(store, gloas: false, nextCommittee: false, key: null);
+        int validators = ForkCrossingChain.Instance.AnchorState.Validators!.Length;
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+        Task run = service.Start();
+        await engine.Called.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        // The first read of the block index is the replay of stored blocks, which holds the run before it starts the network.
+        gate.Arm();
+        answer.SetResult(PayloadStatusV1.Syncing);
+        await gate.Reached.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        while (pubkeyCache.Count != validators || !Enumerable.Range(0, validators).All(pubkeyCache.HasSubgroupCheck))
+        {
+            await Task.Delay(10, timeout.Token);
+        }
+
+        service.Stop();
+        gate.Release();
+        await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.IsCompletedSuccessfully, Is.True);
+            Assert.That(logManager.Errors, Is.Empty);
+            Assert.That(Enumerable.Range(0, validators).All(pubkeyCache.IsInSubgroup), Is.True);
+        }
+    }
+
+    /// <summary>The bootstrap of an anchor without a block has no engine kick to stop at, so a stop after the anchor is loaded must itself stop the cache build.</summary>
+    [Test]
+    public async Task A_state_file_only_bootstrap_stopped_before_the_cache_build_builds_and_persists_no_pubkey_cache()
+    {
+        TestErrorLogManager logManager = new();
+        PubkeyCache pubkeyCache = new();
+        KickEngine engine = new(pubkeyCache);
+        OnReadMemDb blocks = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Blocks, blocks), GloasCheckpointFiles.Spec);
+        await using IContainer container = KickContainer(engine, pubkeyCache, logManager).AddSingleton(store).Build();
+        byte[] stateSsz = SyncCommitteeKeyAnchors.EncodeState(gloas: false, nextCommittee: false, key: null, out Hash256 blockRoot);
+        store.PutState(blockRoot, stateSsz);
+        store.SetAnchor(blockRoot, 0);
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+        blocks.OnRead = service.Stop;
+
+        await service.Start();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pubkeyCache.Count, Is.Zero, "no build");
+            Assert.That(new PubkeyCache().TryLoad(store, ForkCrossingChain.Instance.AnchorState.Validators!), Is.False, "nothing persisted");
+            Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
+        }
+    }
+
+    /// <summary>The warm-up is the run's own work, so a stop must cancel it and only return once it has left the cache.</summary>
+    [Test]
+    public async Task A_stop_cancels_the_subgroup_warm_up_and_returns_only_after_it_has_ended()
+    {
+        TestErrorLogManager logManager = new();
+        BlockingWarmCache pubkeyCache = new();
+        TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        KickEngine engine = new(pubkeyCache) { Answer = answer.Task };
+        ReadGate gate = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.BlockIndex, new GatedMemDb(gate)), GloasCheckpointFiles.Spec);
+        await using IContainer container = KickContainer(engine, pubkeyCache, logManager).AddSingleton(store).Build();
+        SeedAnchor(store, gloas: false, nextCommittee: false, key: null);
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+        Task run = service.Start();
+        await engine.Called.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        gate.Arm();
+        answer.SetResult(PayloadStatusV1.Syncing);
+        await gate.Reached.WaitAsync(TimeSpan.FromSeconds(30));
+        await pubkeyCache.Started.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Task stopping = service.StopAsync();
+        gate.Release();
+        await pubkeyCache.Cancelled.WaitAsync(TimeSpan.FromSeconds(30));
+        await Task.Delay(500);
+
+        Assert.That(stopping.IsCompleted, Is.False, "the warm-up is still inside the cache");
+        pubkeyCache.Release.Set();
+        await stopping.WaitAsync(TimeSpan.FromSeconds(30));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pubkeyCache.Ended, Is.True);
+            Assert.That(run.IsCompletedSuccessfully, Is.True);
+            Assert.That(logManager.Errors, Is.Empty);
+        }
+    }
+
+    /// <summary>A run that fails without a stop must not leave its warm-up running behind it.</summary>
+    [Test]
+    public async Task A_failed_run_cancels_the_subgroup_warm_up()
+    {
+        TestErrorLogManager logManager = new();
+        BlockingWarmCache pubkeyCache = new();
+        pubkeyCache.Release.Set();
+        TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        KickEngine engine = new(pubkeyCache) { Answer = answer.Task };
+        OnReadMemDb blockIndex = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.BlockIndex, blockIndex), GloasCheckpointFiles.Spec);
+        await using IContainer container = KickContainer(engine, pubkeyCache, logManager).AddSingleton(store).Build();
+        SeedAnchor(store, gloas: false, nextCommittee: false, key: null);
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+        Task run = service.Start();
+        await engine.Called.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        // The replay of stored blocks is the first read of the block index; it fails once the warm-up is running.
+        blockIndex.OnRead = () =>
+        {
+            pubkeyCache.Started.Wait(TimeSpan.FromSeconds(30));
+            throw new InvalidOperationException("scripted failure");
+        };
+        answer.SetResult(PayloadStatusV1.Syncing);
+
+        await run.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pubkeyCache.ObservedCancellation, Is.True, "the warm-up was cancelled by the failure, not left to run on");
+            Assert.That(logManager.Errors, Has.Count.EqualTo(1), "only the failure itself is reported");
         }
     }
 
@@ -332,15 +500,64 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    /// <summary>An in-memory column store whose metadata column blocks on <see cref="Gate"/>.</summary>
-    private sealed class GatedColumnsDb : IColumnsDb<BeaconChainDbColumns>
+    /// <summary>Runs <see cref="OnRead"/> before each read.</summary>
+    private sealed class OnReadMemDb : MemDb
     {
-        private readonly Dictionary<BeaconChainDbColumns, IDb> _columns;
+        public Action? OnRead { get; set; }
 
-        public GatedColumnsDb() =>
-            _columns = Enum.GetValues<BeaconChainDbColumns>().ToDictionary(static c => c, c => c == BeaconChainDbColumns.Metadata ? (IDb)new GatedMemDb(Gate) : new MemDb());
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            OnRead?.Invoke();
+            return base.Get(key, flags);
+        }
+    }
 
-        public ReadGate Gate { get; } = new();
+    /// <summary>A cache whose warm-up holds until it is cancelled and released, so a test can observe what a stop does to it.</summary>
+    private sealed class BlockingWarmCache : PubkeyCache
+    {
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private volatile bool _ended;
+
+        public Task Started => _started.Task;
+        public Task Cancelled => _cancelled.Task;
+        public ManualResetEventSlim Release { get; } = new();
+        public bool ObservedCancellation { get; private set; }
+        public bool Ended => _ended;
+
+        internal override void WarmSubgroupChecks(CancellationToken cancellationToken)
+        {
+            _started.TrySetResult();
+            ObservedCancellation = cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
+            if (ObservedCancellation)
+                _cancelled.TrySetResult();
+            Release.Wait(TimeSpan.FromSeconds(30));
+            _ended = true;
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+    }
+
+    /// <summary>Runs <see cref="OnCacheWritten"/> once the pubkey cache's count entry is stored, which <see cref="PubkeyCache.Persist"/> writes last.</summary>
+    private sealed class CacheWrittenMemDb : MemDb
+    {
+        public Action? OnCacheWritten { get; set; }
+
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            base.Set(key, value, flags);
+            if (key.SequenceEqual(Encoding.UTF8.GetBytes(PubkeyCache.CountKey)))
+            {
+                OnCacheWritten?.Invoke();
+            }
+        }
+    }
+
+    /// <summary>An in-memory column store whose <paramref name="column"/> is <paramref name="replacement"/>.</summary>
+    private sealed class ColumnsDbWith(BeaconChainDbColumns column, IDb replacement) : IColumnsDb<BeaconChainDbColumns>
+    {
+        private readonly Dictionary<BeaconChainDbColumns, IDb> _columns =
+            Enum.GetValues<BeaconChainDbColumns>().ToDictionary(static c => c, c => c == column ? replacement : new MemDb());
+
         public IEnumerable<BeaconChainDbColumns> ColumnKeys => _columns.Keys;
         public IDb GetColumnDb(BeaconChainDbColumns key) => _columns[key];
         public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
@@ -372,7 +589,8 @@ public class BeaconChainServiceStartupTests
 
     private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key)
     {
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        CacheWrittenMemDb metadata = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
         // The run stops at the orchestrator, which has no network in this container.
         SeedAnchor(store, gloas, nextCommittee, key);
 
@@ -384,7 +602,7 @@ public class BeaconChainServiceStartupTests
         using CheckpointSync checkpointSync = new(config, GloasCheckpointFiles.Spec, store, logManager);
         using BeaconChainService service = new(config, GloasCheckpointFiles.Spec, store, pubkeyCache, checkpointSync,
             container.Resolve<BeaconSyncOrchestrator>(), container.Resolve<ExternalClDetector>(), logManager);
-        engine.OnCall = service.Stop;
+        metadata.OnCacheWritten = service.Stop;
         Task run;
         try
         {
