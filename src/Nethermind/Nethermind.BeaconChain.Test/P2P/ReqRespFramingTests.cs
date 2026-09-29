@@ -94,6 +94,8 @@ public class ReqRespFramingTests
     [TestCase("0x00ff060000734e6150705900050000d8ea82a200", false, Description = "an empty compressed frame")]
     [TestCase("0x00ff060000734e6150705901040000d8ea82a2", false, Description = "an empty uncompressed frame")]
     [TestCase("0x00ff060000734e61507059fe030000000000", false, Description = "a padding frame")]
+    [TestCase("0x00ff060000734e6150705900060000d8ea82a28000", false, Description = "an empty compressed block with a non-canonical zero length")]
+    [TestCase("0x00ff060000734e6150705900090000d8ea82a28080808000", false, Description = "an empty compressed block with a five byte zero length")]
     [TestCase("0x00ff060000734e6150705980000000", false, Description = "an empty skippable frame")]
     [TestCase("0x00ff060000734e61507059fe03000000000000050000d8ea82a200", false, Description = "padding then an empty compressed frame")]
     [TestCase("0x00ff060000734e6150705900", true, Description = "a byte after the stream identifier")]
@@ -109,9 +111,16 @@ public class ReqRespFramingTests
     [TestCase("0x00ff060000734e6150705900060000d8ea82a20000", true, Description = "an empty compressed block with a trailing byte")]
     [TestCase("0x00ff060000734e6150705900050000d8ea82a201", true, Description = "a compressed block declaring a byte it does not carry")]
     [TestCase("0x00ff060000734e6150705900050000d8ea82a280", true, Description = "a compressed block whose length varint never ends")]
+    [TestCase("0x00ff060000734e6150705900060000d8ea82a28001", true, Description = "a non-canonical length varint that is not zero")]
+    [TestCase("0x00ff060000734e6150705900070000d8ea82a2800000", true, Description = "a non-canonical zero length with a trailing byte")]
+    [TestCase("0x00ff060000734e61507059000a0000d8ea82a2808080808000", true, Description = "a zero length varint longer than five bytes")]
     [TestCase("0x00ff060000734e61507058", true, Description = "a stream identifier with the wrong content")]
     [TestCase("0x00ff000000", true, Description = "an empty stream identifier")]
     [TestCase("0x00ff060000734e", true, Description = "cut stream identifier")]
+    [TestCase("0x00ff060000734e61507059fe03", true, Description = "a cut frame header after the stream identifier")]
+    [TestCase("0x00ff060000734e61507059fe03000000", true, Description = "a cut padding frame")]
+    [TestCase("0x00ff060000734e6150705901000000", true, Description = "an uncompressed frame shorter than its checksum")]
+    [TestCase("0x00ff060000734e6150705900050000d8ea82", true, Description = "a cut empty compressed frame")]
     public async Task Zero_length_request_is_read_as_empty_only_where_the_type_allows_it(string wireHex, bool malformed)
     {
         using MemoryStream strict = new(Bytes.FromHexString(wireHex));

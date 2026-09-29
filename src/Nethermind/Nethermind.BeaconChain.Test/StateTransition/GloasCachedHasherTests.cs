@@ -25,6 +25,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// <see cref="CachedBeaconStateHasher"/> over <see cref="BeaconStateGloas"/>, and the Gloas state-root
 /// call sites that must hash through the caller's <see cref="IBeaconStateHasher"/>.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasCachedHasherTests
 {
     /// <summary>

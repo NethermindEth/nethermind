@@ -21,6 +21,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// <c>next_epoch % EPOCHS_PER_SYNC_COMMITTEE_PERIOD == 0</c> the old next committee becomes current and a
 /// fresh <c>get_next_sync_committee</c> becomes next; at every other epoch both are left as they are.
 /// </summary>
+[HardTimeout(60_000)]
 public class SyncCommitteeUpdatesTests
 {
     private const int ValidatorCount = 64;
