@@ -56,8 +56,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public ulong Timestamp { get; set => field = Bind(value, PayloadFields.Timestamp); }
 
+    /// <summary>
+    /// Payload fields tracked for presence, with the set each <c>ExecutionPayloadV*</c> structure requires.
+    /// </summary>
     [Flags]
-    private protected enum PayloadFields : ushort
+    private protected enum PayloadFields : uint
     {
         None = 0,
         BaseFeePerGas = 1 << 0,
@@ -74,13 +77,21 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         StateRoot = 1 << 11,
         Timestamp = 1 << 12,
         Transactions = 1 << 13,
-        All = (1 << 14) - 1
+        Withdrawals = 1 << 14,
+        BlobGasUsed = 1 << 15,
+        ExcessBlobGas = 1 << 16,
+        BlockAccessList = 1 << 17,
+        SlotNumber = 1 << 18,
+        V1 = (1 << 14) - 1,
+        V2 = V1 | Withdrawals,
+        V3 = V2 | BlobGasUsed | ExcessBlobGas,
+        V4 = V3 | BlockAccessList | SlotNumber
     }
 
     // Defaults hide an omitted JSON key once binding is done, so setters record presence while it runs.
     private protected PayloadFields _unboundFields;
 
-    private T Bind<T>(T value, PayloadFields payloadField)
+    private protected T Bind<T>(T value, PayloadFields payloadField)
     {
         _unboundFields = value is null ? _unboundFields | payloadField : _unboundFields & ~payloadField;
         return value;
@@ -93,7 +104,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     internal string? UnboundFieldName =>
         _unboundFields == PayloadFields.None
             ? null
-            : JsonNamingPolicy.CamelCase.ConvertName(((PayloadFields)(1 << BitOperations.TrailingZeroCount((uint)_unboundFields))).ToString());
+            : JsonNamingPolicy.CamelCase.ConvertName(((PayloadFields)(1u << BitOperations.TrailingZeroCount((uint)_unboundFields))).ToString());
 
     protected byte[][] _encodedTransactions = [];
 
@@ -122,7 +133,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// Gets or sets a collection of <see cref="Withdrawal"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>.
     /// </summary>
-    public Withdrawal[]? Withdrawals { get; set; }
+    public Withdrawal[]? Withdrawals { get; set => field = Bind(value, PayloadFields.Withdrawals); }
 
 
     /// <summary>

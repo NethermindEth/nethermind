@@ -295,9 +295,7 @@ public partial class EngineModuleTests
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), requestStr, "[]", "0x169630f535b4a41330164c6e5c92b1224c0c407f582d407d0ac3d206cd32fd52");
 
         JsonRpcResponse rpcResponse = await jsonRpcService.SendRequestAsync(request, context);
-        JsonRpcErrorResponse? response = (rpcResponse) as JsonRpcErrorResponse;
-        Assert.That(response?.Error, Is.Not.Null);
-        Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(RpcTest.AssertError(rpcResponse).Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     private async Task<(JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 correctExecutionPayload, MergeTestBlockchain chain)>
@@ -330,6 +328,8 @@ public partial class EngineModuleTests
             payload["slotNumber"] = "0x1";
         }
 
+        // The control payload carries exactly this version's fields, so no other field is demanded.
+        Assert.That(payload.Select(static p => p.Key), Is.EquivalentTo(RequiredPayloadFields(version).Select(static f => f.Field)));
         using (JsonRpcResponse controlResponse = await jsonRpcService.SendRequestAsync(BuildRequest(payload), context))
         {
             Assert.That(controlResponse is ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success }, "the complete payload must pass parameter validation");
@@ -358,40 +358,47 @@ public partial class EngineModuleTests
 
     private static IEnumerable<TestCaseData> RequiredPayloadFieldsTestSource()
     {
-        // Values the JSON binder itself refuses get the generic message.
-        const string bindingError = "Invalid params";
-        (string Field, string NullError, string OmittedError)[] v3Fields =
-        [
-            BaseField("parentHash"), BaseField("feeRecipient"), BaseField("stateRoot"), BaseField("receiptsRoot"),
-            BaseField("logsBloom"), BaseField("prevRandao"), BaseField("blockNumber", bindingError), BaseField("gasLimit", bindingError),
-            BaseField("gasUsed", bindingError), BaseField("timestamp", bindingError), BaseField("extraData"),
-            BaseField("baseFeePerGas", bindingError), BaseField("blockHash"), BaseField("transactions", bindingError),
-            ("withdrawals", "Withdrawals must be set", "Withdrawals must be set"),
-            ("blobGasUsed", "Blob gas used must be set", bindingError),
-            ("excessBlobGas", "Excess blob gas must be set", bindingError)
-        ];
-        (string Field, string NullError, string OmittedError)[] v4Fields =
-        [
-            .. v3Fields,
-            ("blockAccessList", "Block access list must be set", bindingError),
-            ("slotNumber", "Slot number must be set", bindingError)
-        ];
-
         foreach (int version in (int[])[EngineApiVersions.NewPayload.V3, EngineApiVersions.NewPayload.V4, EngineApiVersions.NewPayload.V5])
         {
-            foreach ((string field, string nullError, string omittedError) in version >= EngineApiVersions.NewPayload.V5 ? v4Fields : v3Fields)
+            foreach ((string field, string nullError, string omittedError) in RequiredPayloadFields(version))
             {
                 yield return new TestCaseData(version, field, false, nullError);
                 yield return new TestCaseData(version, field, true, omittedError);
             }
         }
-
-        static (string, string, string) BaseField(string field, string? nullError = null)
-        {
-            string error = $"{field} must be set";
-            return (field, nullError ?? error, error);
-        }
     }
+
+    // Values the JSON binder itself refuses get the generic message.
+    private const string BindingError = "Invalid params";
+
+    private static readonly (string Field, string NullError, string OmittedError)[] ExecutionPayloadV3Fields =
+    [
+        BaseField("parentHash"), BaseField("feeRecipient"), BaseField("stateRoot"), BaseField("receiptsRoot"),
+        BaseField("logsBloom"), BaseField("prevRandao"), BaseField("blockNumber", BindingError), BaseField("gasLimit", BindingError),
+        BaseField("gasUsed", BindingError), BaseField("timestamp", BindingError), BaseField("extraData"),
+        BaseField("baseFeePerGas", BindingError), BaseField("blockHash"), BaseField("transactions", BindingError),
+        ForkField("withdrawals", "Withdrawals must be set"),
+        ForkField("blobGasUsed", "Blob gas used must be set"),
+        ForkField("excessBlobGas", "Excess blob gas must be set")
+    ];
+
+    private static readonly (string Field, string NullError, string OmittedError)[] ExecutionPayloadV4Fields =
+    [
+        .. ExecutionPayloadV3Fields,
+        ForkField("blockAccessList", "Block access list must be set"),
+        ForkField("slotNumber", "Slot number must be set")
+    ];
+
+    private static (string Field, string NullError, string OmittedError)[] RequiredPayloadFields(int newPayloadVersion) =>
+        newPayloadVersion >= EngineApiVersions.NewPayload.V5 ? ExecutionPayloadV4Fields : ExecutionPayloadV3Fields;
+
+    private static (string, string, string) BaseField(string field, string? nullError = null)
+    {
+        string error = $"{field} must be set";
+        return (field, nullError ?? error, error);
+    }
+
+    private static (string, string, string) ForkField(string field, string error) => (field, error, error);
 
     [Test]
     public async Task NewPayloadV3_should_decline_empty_fields()

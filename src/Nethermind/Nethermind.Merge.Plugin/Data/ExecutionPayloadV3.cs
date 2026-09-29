@@ -16,9 +16,14 @@ namespace Nethermind.Merge.Plugin.Data;
 /// </summary>
 public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<ExecutionPayloadV3>, IJsonOnDeserializing
 {
+    /// <summary>
+    /// The fields <c>engine_newPayload</c> must receive, present and non-<c>null</c>, for this payload version.
+    /// </summary>
+    private protected virtual PayloadFields RequiredFields => PayloadFields.V3;
+
     /// <inheritdoc/>
     /// <remarks>Arms presence tracking: <c>engine_newPayloadV3</c>+ must reject an omitted or <c>null</c> field.</remarks>
-    void IJsonOnDeserializing.OnDeserializing() => _unboundFields = PayloadFields.All;
+    void IJsonOnDeserializing.OnDeserializing() => _unboundFields = RequiredFields;
 
     protected new static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayloadV3, new()
     {
@@ -56,13 +61,11 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    [JsonRequired]
-    public sealed override ulong? BlobGasUsed { get; set; }
+    public sealed override ulong? BlobGasUsed { get; set => field = Bind(value, PayloadFields.BlobGasUsed); }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    [JsonRequired]
-    public sealed override ulong? ExcessBlobGas { get; set; }
+    public sealed override ulong? ExcessBlobGas { get; set => field = Bind(value, PayloadFields.ExcessBlobGas); }
 }

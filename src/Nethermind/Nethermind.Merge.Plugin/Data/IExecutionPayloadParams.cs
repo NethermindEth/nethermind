@@ -193,12 +193,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     private ValidationResult ValidateEngineApiVersionParams(IReleaseSpec spec, int version, out string? error)
     {
-        if (executionPayload.UnboundFieldName is { } unboundField)
-        {
-            error = $"{unboundField} must be set";
-            return ValidationResult.Fail;
-        }
-
         if (spec.WithdrawalsEnabled && executionPayload.Withdrawals is null)
         {
             error = "Withdrawals must be set";
@@ -248,6 +242,13 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (spec.IsEip7843Enabled && executionPayload.SlotNumber is null)
         {
             error = "Slot number must be set";
+            return ValidationResult.Fail;
+        }
+
+        // Runs after the fork checks above, which also guard payloads not bound from JSON and keep their messages.
+        if (executionPayload.UnboundFieldName is { } unboundField)
+        {
+            error = $"{unboundField} must be set";
             return ValidationResult.Fail;
         }
 
