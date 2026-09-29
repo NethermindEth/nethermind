@@ -156,6 +156,43 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// An unchanged fork choice state tells the EL nothing, so it is not re-sent every head step; it is re-sent after
+    /// <see cref="BeaconSyncOrchestrator.ForkchoiceResendInterval"/>, since the EL counts a silent CL as gone.
+    /// </summary>
+    [TestCase(false, 1, 1, TestName = "Unchanged head within the resend interval is not re-sent")]
+    [TestCase(false, 61, 2, TestName = "Unchanged head is re-sent once the resend interval has passed")]
+    [TestCase(true, 1, 2, TestName = "A changed head is sent at once")]
+    public async Task Forkchoice_updated_is_sent_when_the_state_changes_or_the_resend_interval_passes(bool changeHead, int secondsLater, int expectedFcus)
+    {
+        Harness harness = CreateHarness();
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 3, execHash: TestItem.KeccakB);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        harness.Timestamper.Add(TimeSpan.FromSeconds(secondsLater));
+        if (changeHead) harness.Importer.Head = CreateHead(TestItem.KeccakC, 101, finalizedEpoch: 3, execHash: TestItem.KeccakD);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(expectedFcus));
+    }
+
+    [Test]
+    public async Task An_invalid_verdict_is_never_reused_for_an_unchanged_head()
+    {
+        Harness harness = CreateHarness();
+        HeadView head = CreateHead(TestItem.KeccakA, 103, finalizedEpoch: 3, execHash: TestItem.KeccakB);
+        harness.Importer.Head = head;
+        harness.Importer.HeadAfterInvalidation = head;
+        harness.Engine.FcuResponses.Enqueue(PayloadStatusV1.Invalid(TestItem.KeccakF));
+        harness.Engine.FcuResponses.Enqueue(PayloadStatusV1.Invalid(TestItem.KeccakF));
+
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        // The first step sends and retries once after INVALID; the second asks again rather than reusing the verdict.
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(3));
+    }
+
     [Test]
     public async Task Finalized_checkpoint_advance_triggers_on_finalized_exactly_once()
     {
@@ -198,7 +235,7 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(harness.Orchestrator.CurrentGossipDigest, Is.EqualTo(bpo2Digest), "digest rotated at the BPO epoch");
             Assert.That(topics.Keys, Does.Contain(GossipTopics.Topic(bpo2Digest, GossipTopics.BeaconBlock)), "router re-subscribed on the new digest");
             Assert.That(harness.Importer.Ticks, Does.Contain(preRotationSlot).And.Contain(Bpo2Epoch * Spec.SlotsPerEpoch), "fork-choice ticked per slot");
-            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(2), "head FCU per slot tick");
+            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "the head FCU is sent once; the unchanged head is not re-sent on the next tick");
         }
     }
 
