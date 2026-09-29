@@ -398,17 +398,39 @@ public class BeaconJsonBodiesTests
     }
 
     [Test]
-    public async Task Headers_by_parent_root_is_501_for_a_parent_stored_before_the_index_existed()
+    public async Task Headers_by_parent_root_is_500_for_a_stored_parent_the_index_holds_no_complete_entry_for()
     {
-        Hash256 legacyParent = BeaconApiTestHost.TestRoot(0x60);
+        Hash256 unindexedParent = BeaconApiTestHost.TestRoot(0x60);
         Hash256 child = BeaconApiTestHost.TestRoot(0x61);
-        _host.WriteLegacyBlock(legacyParent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
-        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 1, legacyParent));
+        _host.WriteLegacyBlock(unindexedParent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 1, unindexedParent));
 
-        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={legacyParent}", Json);
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={unindexedParent}", Json);
         JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
-        Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)501), "one child is known, but siblings stored before the index would be missing: a one-element list would be a lie");
-        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("not indexed"));
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError), "one child is known, but a one-element list from a damaged index would be a lie");
+        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("no complete entry"));
+    }
+
+    [Test]
+    public async Task Headers_by_parent_root_lists_every_child_of_a_pending_block_that_is_stored_again_or_pruned_and_stored_again([Values] bool prunedFirst)
+    {
+        Hash256 parent = BeaconApiTestHost.TestRoot(0x62);
+        Hash256 child = BeaconApiTestHost.TestRoot(0x63);
+        SignedBeaconBlock parentBlock = BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00));
+        _host.WriteLegacyBlock(parent, parentBlock);
+        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 1, parent));
+        if (prunedFirst)
+        {
+            _host.Store.DeleteBlock(parent);
+        }
+
+        _host.Store.PutBlock(parent, parentBlock);
+
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
+        string raw = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").EnumerateArray().Select(entry => entry.GetProperty("root").GetString()),
+            Is.EqualTo(new[] { child.ToString() }));
     }
 
     [Test]
