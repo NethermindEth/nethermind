@@ -124,14 +124,14 @@ public abstract class ReqRespProtocolBase
     /// than let through: an unattributable stream is exactly the one an attacker would arrange, so
     /// the cap must not be escapable by withholding identity.
     /// </remarks>
-    protected IDisposable? TryEnterInbound(ISessionContext context, string protocolId)
+    protected InboundRequest? TryEnterInbound(ISessionContext context, string protocolId)
     {
         PeerId? peerId = context.State.RemotePeerId;
         if (peerId is null)
         {
             if (Interlocked.Increment(ref _unattributedInboundRequests) <= MaxConcurrentRequests)
             {
-                return new UnattributedSlot(this);
+                return new InboundRequest(this, context, protocolId, new UnattributedSlot(this));
             }
 
             Interlocked.Decrement(ref _unattributedInboundRequests);
@@ -142,7 +142,7 @@ public abstract class ReqRespProtocolBase
         int count = _inboundRequestsByPeer.AddOrUpdate(peerId, 1, static (_, existing) => existing + 1);
         if (count <= MaxConcurrentRequests)
         {
-            return new InboundSlot(_inboundRequestsByPeer, peerId);
+            return new InboundRequest(this, context, protocolId, new InboundSlot(_inboundRequestsByPeer, peerId));
         }
 
         Release(_inboundRequestsByPeer, peerId);
@@ -169,6 +169,73 @@ public abstract class ReqRespProtocolBase
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>Receives the peer of an inbound request that broke the protocol after the listener began serving it, for the peer manager to score.</summary>
+    internal Action<PeerId, string>? RequestViolationSink { get; init; }
+
+    private void ReportViolation(ISessionContext context, string protocolId, string detail)
+    {
+        RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+        if (context.State.RemotePeerId is { } peerId)
+        {
+            RequestViolationSink?.Invoke(peerId, $"{protocolId}: {detail}");
+        }
+    }
+
+    /// <summary>An inbound stream being served: it holds the peer's concurrency slot and, once the request is read, watches the stream for bytes that must not follow it.</summary>
+    /// <remarks>A request is complete once its payload is read, so serving starts without waiting for the requester's EOF; bytes that arrive later are reported, not waited for.</remarks>
+    protected sealed class InboundRequest(ReqRespProtocolBase owner, ISessionContext context, string protocolId, IDisposable slot) : IDisposable
+    {
+        private readonly CancellationTokenSource _served = new();
+
+        /// <exception cref="Eth2ReqRespException">The request is malformed, or bytes after it are already buffered.</exception>
+        public async Task<byte[]> ReadRequestAsync(Stream stream, int maxSize, CancellationToken token, bool allowEmpty = false)
+        {
+            (byte[] payload, ReqRespFraming.RequestTail tail) = await ReqRespFraming.ReadRequestWithTailAsync(stream, maxSize, token, allowEmpty);
+            Watch(stream, tail);
+            return payload;
+        }
+
+        /// <summary>Accepts a request that has no content, such as <c>metadata</c>.</summary>
+        /// <exception cref="Eth2ReqRespException">Bytes are already buffered.</exception>
+        public async Task AcceptRequestWithoutPayloadAsync(Stream stream, CancellationToken token)
+        {
+            await ReqRespFraming.RejectTrailingBytesAsync(stream, token);
+            Watch(stream, ReqRespFraming.RequestTail.Open);
+        }
+
+        private void Watch(Stream stream, ReqRespFraming.RequestTail tail)
+        {
+            if (!tail.IsClosed)
+            {
+                _ = ObserveAsync(stream, tail);
+            }
+        }
+
+        // Runs beside serving, so whatever goes wrong here must stay out of the response.
+        private async Task ObserveAsync(Stream stream, ReqRespFraming.RequestTail tail)
+        {
+            try
+            {
+                string? violation = await tail.WatchAsync(stream, _served.Token);
+                if (violation is not null)
+                {
+                    owner.ReportViolation(context, protocolId, violation);
+                }
+            }
+            catch (Exception)
+            {
+                // Nothing awaits this task, so an escaping exception would surface as an unobserved one.
+            }
+        }
+
+        public void Dispose()
+        {
+            _served.Cancel();
+            _served.Dispose();
+            slot.Dispose();
         }
     }
 
@@ -245,7 +312,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
             return;
@@ -254,7 +321,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
         try
         {
-            TRequest request = DecodeRequest(await ReqRespFraming.ReadRequestAsync(stream, MaxRequestSize, cts.Token));
+            TRequest request = DecodeRequest(await inboundSlot.ReadRequestAsync(stream, MaxRequestSize, cts.Token));
             await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, EncodeResponse(HandleRequest(request)), cts.Token);
         }
         catch (Eth2ReqRespException e)
