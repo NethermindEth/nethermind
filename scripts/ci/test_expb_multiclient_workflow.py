@@ -440,7 +440,7 @@ fi
         self.assertIn("cell: ${{ fromJson(needs.resolve.outputs.cells) }}", text)
         # A cache key needs a separator after the cell id: 'fusaka' is a prefix of 'fusaka-delay1s', so a bare
         # 'fusaka-' restore prefix would hand one cell the other's master baseline.
-        keys = re.findall(r"expb-master-metrics-v\d+-\S+", text)
+        keys = re.findall(r"expb-master-metrics-v\d+-.*", text)
         self.assertTrue(keys)
         for key in keys:
             self.assertIn("-run-", key, key)
@@ -475,6 +475,7 @@ fi
                     "IMAGE_REVISION": "a" * 40,
                     "RUN_URL": "https://example.invalid/run",
                     "CLIENT": "nethermind",
+                    "RUNNER_TEMP": to_bash(root),
                 },
             )
         self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
