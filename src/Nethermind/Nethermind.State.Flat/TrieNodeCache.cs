@@ -168,9 +168,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
             return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
         }
 
-        // Bounded by the processor count like the rest of block processing, so a single-processor benchmark adds
-        // the nodes on the committing thread rather than splitting them with the pool by timing.
-        Parallel.For(0, ShardCount, ParallelUnbalancedWork.DefaultOptions, (i) =>
+        // ParallelUnbalancedWork, like the rest of block processing: bounded by the processor count, and a single worker runs
+        // on the committing thread without queueing. Under the BCL loop, even at one degree, the population cost moved between
+        // runs by up to 1.74x on identical data, so the thread that ran the shards was not fixed.
+        ParallelUnbalancedWork.For(0, ShardCount, ParallelUnbalancedWork.DefaultOptions, (i) =>
         {
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
