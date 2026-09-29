@@ -123,7 +123,9 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         // pop: trie node cache population; compact: snapshot compaction; persist: the inline persistence job.
         ulong[]? phases = t_commitPhases;
         string steps = t_commitPhasesSeen == 0b1111 && phases is not null
-            ? $" pop={phases[1] - phases[0]} compact={phases[2] - phases[1]} persist={phases[3] - phases[2]}"
+            ? $" pop={phases[1] - phases[0]} compact={phases[2] - phases[1]} persist={phases[3] - phases[2]}" +
+              $" popslots={Nethermind.State.Flat.TrieNodeCache.LastAddSlots} popnodes={Nethermind.State.Flat.TrieNodeCache.LastAddNodes}" +
+              $" popclear={Nethermind.State.Flat.TrieNodeCache.LastAddShardsCleared}"
             : string.Empty;
         Block block = e.Block;
         if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}");

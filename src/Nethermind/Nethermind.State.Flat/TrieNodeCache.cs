@@ -99,9 +99,25 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return false;
     }
 
+    /// <summary>Benchmark diagnostics of the last <see cref="Add"/>: shard slots walked, nodes held, shards evicted.</summary>
+    public static long LastAddSlots { get; private set; }
+
+    /// <inheritdoc cref="LastAddSlots"/>
+    public static long LastAddNodes { get; private set; }
+
+    /// <inheritdoc cref="LastAddSlots"/>
+    public static long LastAddShardsCleared { get; private set; }
+
     public void Add(TransientResource transientResource)
     {
         transientResource.WaitForExclusiveLease();
+
+        // Benchmark diagnostics: what this call walks, so run-to-run cost differences can be told from data differences.
+        long slots = 0;
+        for (int i = 0; i < ShardCount; i++) slots += transientResource.Nodes.Shards[i].Length;
+        LastAddSlots = slots;
+        LastAddNodes = transientResource.Nodes.Count;
+        LastAddShardsCleared = 0;
 
         if (_maxCacheMemoryThreshold == 0)
         {
@@ -180,6 +196,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
         while (currentTotalMemory > _maxCacheMemoryThreshold)
         {
             wasPruned = true;
+            LastAddShardsCleared++;
             int shardToClear = _nextShardToClear;
 
             // Prune any remaining reference
