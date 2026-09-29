@@ -14,21 +14,14 @@ public class FrameReceiptForRpc
     {
     }
 
-    /// <param name="receipt">The transaction receipt the frame belongs to, which places its logs in the block.</param>
     /// <param name="frameReceipt">The frame's receipt entry.</param>
-    /// <param name="blockTimestamp">The timestamp of the including block.</param>
-    /// <param name="logIndexStart">The block-global index of the frame's first log.</param>
-    public FrameReceiptForRpc(TxReceipt receipt, TxFrameReceipt frameReceipt, ulong blockTimestamp, int logIndexStart)
+    /// <param name="logs">The frame's slice of the transaction receipt's own RPC logs.</param>
+    public FrameReceiptForRpc(TxFrameReceipt frameReceipt, LogEntryForRpc[] logs)
     {
         Status = frameReceipt.Status;
         ExecutionGasUsed = frameReceipt.ExecutionGasUsed;
         StateGasUsed = frameReceipt.StateGasUsed;
-        LogEntry[] logs = frameReceipt.Logs;
-        Logs = new LogEntryForRpc[logs.Length];
-        for (int i = 0; i < logs.Length; i++)
-        {
-            Logs[i] = new LogEntryForRpc(receipt, logs[i], blockTimestamp, logIndexStart + i);
-        }
+        Logs = logs;
     }
 
     [JsonConverter(typeof(ByteConverter))]

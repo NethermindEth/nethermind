@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -42,11 +43,12 @@ namespace Nethermind.JsonRpc.Data
                 Payer = receipt.Payer;
                 TxFrameReceipt[] frameReceipts = receipt.FrameReceipts ?? [];
                 FrameReceiptForRpc[] frameReceiptsForRpc = new FrameReceiptForRpc[frameReceipts.Length];
-                int frameLogIndexStart = logIndexStart;
+                int frameLogStart = 0;
                 for (int i = 0; i < frameReceipts.Length; i++)
                 {
-                    frameReceiptsForRpc[i] = new FrameReceiptForRpc(receipt, frameReceipts[i], blockTimestamp, frameLogIndexStart);
-                    frameLogIndexStart += frameReceipts[i].Logs.Length;
+                    int frameLogCount = frameReceipts[i].Logs.Length;
+                    frameReceiptsForRpc[i] = new FrameReceiptForRpc(frameReceipts[i], Logs.AsSpan(frameLogStart, frameLogCount).ToArray());
+                    frameLogStart += frameLogCount;
                 }
 
                 FrameReceipts = frameReceiptsForRpc;

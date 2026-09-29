@@ -537,7 +537,8 @@ public class FrameTransactionForRpcTests
         receipt.Logs = [FrameLog, FrameLog];
         receipt.FrameReceipts = [.. receipt.FrameReceipts!, new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, []), new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 1_000, 0, [FrameLog])];
 
-        using JsonDocument doc = JsonDocument.Parse(Serializer.Serialize(new ReceiptForRpc(TestItem.KeccakB, receipt, blockTimestamp: 0x10, new TxGasInfo(UInt256.One), logIndexStart: 5)));
+        ReceiptForRpc receiptForRpc = new(TestItem.KeccakB, receipt, blockTimestamp: 0x10, new TxGasInfo(UInt256.One), logIndexStart: 5);
+        using JsonDocument doc = JsonDocument.Parse(Serializer.Serialize(receiptForRpc));
         JsonElement logs = doc.RootElement.GetProperty("logs");
         JsonElement frames = doc.RootElement.GetProperty("frameReceipts");
 
@@ -549,6 +550,8 @@ public class FrameTransactionForRpcTests
             Assert.That(frames[3].GetProperty("logs")[0].GetProperty("logIndex").GetString(), Is.EqualTo("0x6"));
             Assert.That(JsonElement.DeepEquals(frames[0].GetProperty("logs")[0], logs[0]), Is.True);
             Assert.That(JsonElement.DeepEquals(frames[3].GetProperty("logs")[0], logs[1]), Is.True);
+            Assert.That(receiptForRpc.FrameReceipts![0].Logs![0], Is.SameAs(receiptForRpc.Logs![0]));
+            Assert.That(receiptForRpc.FrameReceipts![3].Logs![0], Is.SameAs(receiptForRpc.Logs![1]));
         }
     }
 
