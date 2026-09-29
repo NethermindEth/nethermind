@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test;
 [TestFixture]
 [Explicit("measurement harness")]
 [NonParallelizable]
-public class FrameTxFloodMeasurement
+public partial class FrameTxFloodMeasurement
 {
     private const long BlockGasLimit = 30_000_000;
 
@@ -985,19 +985,27 @@ public class FrameTxFloodMeasurement
     /// <summary>
     /// Runs an open-loop flood using absolute deadlines, preserving offered load when simulation falls behind.
     /// </summary>
+    /// <remarks>
+    /// The optional arguments serve the declared gas/s arms: <paramref name="submit"/> routes the flood through the
+    /// gossip scheduler, <paramref name="beforeWindow"/> advances the head, <paramref name="window"/> and
+    /// <paramref name="poolSize"/> size longer or faster windows, and <paramref name="onWindowEnd"/> reads counters
+    /// that only exist after the generator stops. Left unset, the flood is the one every earlier arm measures.
+    /// </remarks>
     private FloodOutcome MeasureUnderFloodGeneric(
         int offeredRate, Action warmup, Func<TimeSpan, List<double>> measure, Func<long>? rejectionCounter = null,
-        Action? onWindowStart = null)
+        Action? onWindowStart = null, Func<Transaction, AcceptTxResult>? submit = null, Action? beforeWindow = null,
+        TimeSpan? window = null, int poolSize = FloodPoolSize, Action? onWindowEnd = null)
     {
-        _floodTxs = BuildFloodTransactions(_saltCursor);
-        _saltCursor += FloodPoolSize;
+        _floodTxs = BuildFloodTransactions(_saltCursor, poolSize);
+        _saltCursor += poolSize;
 
         using FloodGenerator generator = new(
-            tx => _chain.TxPool.SubmitTx(tx, TxHandlingOptions.None), _floodTxs, offeredRate);
+            submit ?? (tx => _chain.TxPool.SubmitTx(tx, TxHandlingOptions.None)), _floodTxs, offeredRate);
 
         return generator.Run(() =>
         {
             warmup();
+            beforeWindow?.Invoke();
 
             int submittedAtStart = Volatile.Read(ref generator.Submitted);
             int rejectedAtStart = Volatile.Read(ref generator.Rejected);
@@ -1009,7 +1017,7 @@ public class FrameTxFloodMeasurement
             onWindowStart?.Invoke();
             long windowStart = Stopwatch.GetTimestamp();
 
-            List<double> sampleMicros = measure(MeasureWindow);
+            List<double> sampleMicros = measure(window ?? MeasureWindow);
 
             long windowEnd = Stopwatch.GetTimestamp();
 
@@ -1018,6 +1026,7 @@ public class FrameTxFloodMeasurement
             // accounting the rows assert on.
             Assert.That(generator.Stop(), Is.True,
                 "the generator did not stop, so its counters would be read while it still writes them");
+            onWindowEnd?.Invoke();
 
             int submittedInWindow = generator.Submitted - submittedAtStart;
             int rejectedInWindow = rejectionCounter is null
@@ -1060,13 +1069,14 @@ public class FrameTxFloodMeasurement
     /// Builds the production-wired pool and block processor, seeding both state views with identical attacker
     /// code because simulation and block processing intentionally use separate world-state scopes.
     /// </summary>
-    private async Task BuildChain(string shape, ulong ceiling, bool shedding = false)
+    private async Task BuildChain(string shape, ulong ceiling, bool shedding = false, bool computeVictim = false)
     {
         byte[] attackCode = LoadAttackCode(shape, ceiling);
+        byte[] computeVictimCode = FrameTxPrefixShapes.Code("keccak-wide");
 
         _shedding = shedding;
         ulong verifyGasCeiling = shape == "signature-stuffed" ? ceiling : 0;
-        _chain = await FloodTestBlockchain.CreateFlood(verifyGasCeiling, shedding, builder =>
+        _chain = await FloodTestBlockchain.CreateFlood(verifyGasCeiling, shedding, computeVictim, builder =>
         {
             builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
@@ -1074,12 +1084,18 @@ public class FrameTxFloodMeasurement
                 {
                     worldState.CreateAccount(Attacker, AttackerBalance);
                     worldState.InsertCode(Attacker, attackCode, specProvider.GenesisSpec);
+                    if (computeVictim)
+                    {
+                        worldState.CreateAccount(ComputeVictimContract, UInt256.Zero);
+                        worldState.InsertCode(ComputeVictimContract, computeVictimCode, specProvider.GenesisSpec);
+                    }
                     worldState.RecalculateStateRoot();
                 }));
         });
 
         _parent = _chain.BlockTree.Head!.Header;
         _workloadBlock = BuildWorkloadBlock();
+        if (computeVictim) _computeBlock = BuildComputeBlock();
         _saltCursor = 0;
 
         if (!_fixtureWarmed)
@@ -1126,9 +1142,9 @@ public class FrameTxFloodMeasurement
             .TestObject;
     }
 
-    private Transaction[] BuildFloodTransactions(int saltBase)
+    private Transaction[] BuildFloodTransactions(int saltBase, int count = FloodPoolSize)
     {
-        Transaction[] txs = new Transaction[FloodPoolSize];
+        Transaction[] txs = new Transaction[count];
         for (int i = 0; i < txs.Length; i++) txs[i] = FloodFrameTx(saltBase + i);
         return txs;
     }
@@ -1249,18 +1265,23 @@ public class FrameTxFloodMeasurement
     {
         private ulong _verifyGasCeiling;
         private bool _shedding;
+        private bool _computeVictim;
 
         public static async Task<FloodTestBlockchain> CreateFlood(
-            ulong verifyGasCeiling, bool shedding, Action<ContainerBuilder>? configurer = null)
+            ulong verifyGasCeiling, bool shedding, bool computeVictim, Action<ContainerBuilder>? configurer = null)
         {
-            FloodTestBlockchain chain = new() { _verifyGasCeiling = verifyGasCeiling, _shedding = shedding };
+            FloodTestBlockchain chain = new() { _verifyGasCeiling = verifyGasCeiling, _shedding = shedding, _computeVictim = computeVictim };
             await chain.Build(configurer);
             return chain;
         }
 
         protected override IEnumerable<IConfig> CreateConfigs() =>
         [
-            new BlocksConfig { MinGasPrice = 0 },
+            // A node pre-warms and parallelises on spare cores. Pinned to one core, both only re-run the compute
+            // victim's calls on the core under measurement, so that victim runs its block once, serially.
+            _computeVictim
+                ? new BlocksConfig { MinGasPrice = 0, PreWarming = PreWarmMode.None, ParallelExecution = false }
+                : new BlocksConfig { MinGasPrice = 0 },
             new TxPoolConfig
             {
                 FrameTxMaxVerifyGas = _verifyGasCeiling,

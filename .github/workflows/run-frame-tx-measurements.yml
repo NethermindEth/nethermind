@@ -44,7 +44,7 @@ jobs:
   measure:
     name: Measure the frame-transaction validation prefix
     runs-on: [self-hosted, reproducible-benchmarks]
-    timeout-minutes: 120
+    timeout-minutes: 300
     steps:
       # Must run before checkout, or a checkout/setup failure skips the wipe while the always() steps below still fire.
       - name: Resolve the output directory
@@ -259,7 +259,8 @@ jobs:
 
           # Named so a self-ignored case fails loudly instead of quietly shrinking the sweep.
           mempool_markers=('shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'case=signature_reject')
-          flood_markers=('case=flood_delay' 'shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'shape=signature-stuffed')
+          flood_markers=('case=flood_delay' 'shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'shape=signature-stuffed'
+            'case=gas_capacity' 'case=production_gas_capacity' 'case=periodic_import_gas_capacity' 'case=fresh_head_gas_capacity')
           if (( RAISE_VERIFY_GAS >= 400000 )); then
             mempool_markers+=('verify_gas=400000' 'shape=groth16-400k')
             flood_markers+=('shape=groth16-400k')
