@@ -412,7 +412,7 @@ public class CarryForwardCachingPersistenceTests
                     ModelPersistence.State state = ModelPersistence.LastReaderState!;
                     for (int i = 0; i < readsPerReader; i++)
                     {
-                        string? mismatch = random.Next(8) == 0
+                        string? mismatch = random.Next(4) == 0
                             ? model.CheckAccountRead(reader, state, random)
                             : model.CheckSlotRead(reader, state, random);
                         if (mismatch is not null) mismatches.Add(mismatch);
