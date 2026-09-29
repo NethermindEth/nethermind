@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -692,13 +693,16 @@ public sealed class BeaconSyncOrchestrator(
     private async Task RunColumnFetchAsync(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token)
     {
         bool complete = false;
+        if (_logger.IsDebug) _logger.Debug($"By-root column fetch for {root} started");
+        long startedAt = Stopwatch.GetTimestamp();
         try
         {
             complete = await fetch(token);
+            if (_logger.IsDebug) _logger.Debug($"By-root column fetch for {root} ended after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms, {(complete ? "every sampled column held" : "columns still missing")}");
         }
         catch (Exception e)
         {
-            if (!token.IsCancellationRequested && _logger.IsDebug) _logger.Debug($"By-root column fetch for {root} failed and is retried on the slot tick: {e.Message}");
+            if (!token.IsCancellationRequested && _logger.IsDebug) _logger.Debug($"By-root column fetch for {root} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms and is retried on the slot tick: {e.Message}");
         }
 
         try
@@ -1419,6 +1423,7 @@ public sealed class BeaconSyncOrchestrator(
 
         IBlockImporter importer = _importer!;
         HeadView head = importer.ComputeHead();
+        if (_logger.IsDebug) _logger.Debug($"Head step: head {head.HeadRoot} at slot {head.HeadSlot}, sync tip slot {_syncTip.Slot}, justified epoch {head.Justified.Epoch}, finalized epoch {head.Finalized.Epoch}, wall slot {slotClock.CurrentSlot}");
         if (head.HeadExecutionHash is { } headExec)
         {
             PayloadStatusV1 status = await ForkchoiceUpdatedAsync(head, headExec);
