@@ -706,7 +706,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(genesisHash, Keccak.Zero, Keccak.Zero),
             BuildBogotaPayloadAttributes(inclusionList: [], timestamp: Timestamper.UnixTime.Seconds + 2, slotNumber: 2));
-        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> built = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 block = built.Data!.ExecutionPayload;
         byte[][] requests = built.Data!.ExecutionRequests!;
         Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [])).Data.Status, Is.EqualTo(PayloadStatus.Valid));
