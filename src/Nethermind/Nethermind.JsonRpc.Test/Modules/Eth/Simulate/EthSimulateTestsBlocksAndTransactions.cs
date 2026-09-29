@@ -1729,6 +1729,203 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// Regression test: under EIP-7928 each call runs on a per-transaction processor, which must charge the
+    /// blob fee at the <c>blobBaseFee</c> override rather than at the fee derived from <c>excessBlobGas</c>.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_charges_blob_fee_at_block_override_on_bal_path([Values(0, 3)] int blobBaseFee)
+    {
+        const ulong baseFee = 0xf;
+        UInt256 initialBalance = 1.Ether;
+        Address balanceProbe = new("0xc200000000000000000000000000000000000000");
+
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        byte[] validHash = new byte[32];
+        validHash[0] = 0x01;
+        // PUSH20 <AddressA> BALANCE PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN
+        byte[] probeBytecode = Bytes.Concat(Bytes.FromHexString("0x73"), TestItem.AddressA.Bytes, Bytes.FromHexString("0x315f5260205ff3"));
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { BlobBaseFee = (UInt256)blobBaseFee, BaseFeePerGas = baseFee },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = initialBalance } },
+                        { TestItem.AddressB, new AccountOverride { Balance = initialBalance } },
+                        { balanceProbe, new AccountOverride { Code = probeBytecode } }
+                    },
+                    Calls =
+                    [
+                        new BlobTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressC,
+                            MaxFeePerGas = baseFee,
+                            MaxPriorityFeePerGas = 0,
+                            MaxFeePerBlobGas = 10,
+                            BlobVersionedHashes = [validHash],
+                            GasPrice = null
+                        },
+                        new EIP1559TransactionForRpc
+                        {
+                            From = TestItem.AddressB,
+                            To = balanceProbe,
+                            MaxFeePerGas = baseFee,
+                            MaxPriorityFeePerGas = 0,
+                            GasPrice = null
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+        Assert.That(calls.Select(static c => c.Error), Is.All.Null);
+        UInt256 expected = initialBalance - calls[0].GasUsed!.Value * baseFee - Eip4844Constants.GasPerBlob * (UInt256)blobBaseFee;
+        Assert.That(new UInt256(calls[1].ReturnData, isBigEndian: true), Is.EqualTo(expected));
+    }
+
+    /// <summary>
+    /// Regression test: under EIP-7928 each call runs on a per-transaction processor, whose code repository must
+    /// see <c>movePrecompileToAddress</c>. The moved-to address runs the precompile; the original address does not.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_moves_precompile_on_bal_path()
+    {
+        Address movedTo = Address.FromNumber(0x123456);
+        // ecrecover(hash, v, r, s) input whose signer is 0xb11cad98ad3f8114e0b3a1f6e7228bc8424df48a.
+        byte[] ecrecoverInput = Bytes.FromHexString("0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8000000000000000000000000000000000000000000000000000000000000001cb7cf302145348387b9e69fde82d8e634a0f8761e78da3bfa059efced97cbed0d2a66b69167cafe0ccfc726aec6ee393fea3cf0e4f3f9c394705e0f56d9bfe1c9");
+        byte[] signer = Bytes.FromHexString("0x000000000000000000000000b11cad98ad3f8114e0b3a1f6e7228bc8424df48a");
+
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { Address.FromNumber(1), new AccountOverride { MovePrecompileToAddress = movedTo } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = movedTo, Input = ecrecoverInput, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(1), Input = ecrecoverInput, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+        Assert.That(calls[0].ReturnData, Is.EqualTo(signer));
+        Assert.That(calls[1].ReturnData, Is.Empty);
+    }
+
+    /// <summary>
+    /// Under EIP-7928 a moved precompile's origin runs its overriding code, and a delegation designation there
+    /// resolves like on any other account.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_delegation_at_moved_precompile_origin_on_bal_path()
+    {
+        Address delegate42 = new("0xc300000000000000000000000000000000000000");
+        byte[] designation = Bytes.Concat(Eip7702Constants.DelegationHeader, delegate42.Bytes);
+
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { Address.FromNumber(1), new AccountOverride { MovePrecompileToAddress = Address.FromNumber(0x123456), Code = designation } },
+                        // PUSH1 0x2a PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN
+                        { delegate42, new AccountOverride { Code = Bytes.FromHexString("0x602a5f5260205ff3") } }
+                    },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(1), GasPrice = UInt256.Zero }]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateCallResult call = result.Data![0].Calls.Single();
+        Assert.That(call.Error, Is.Null);
+        Assert.That(new UInt256(call.ReturnData, isBigEndian: true), Is.EqualTo((UInt256)42));
+    }
+
+    /// <summary>
+    /// Under EIP-7928 an EIP-7702 delegation set by one call must be visible to the next call, even when the
+    /// authority's code was overridden: the per-transaction code repositories read code overrides from the state.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_delegation_replaces_code_override_on_bal_path()
+    {
+        Address delegate42 = new("0xc300000000000000000000000000000000000000");
+
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        AuthorizationTuple authorization = new EthereumEcdsa(chain.SpecProvider.ChainId)
+            .Sign(TestItem.PrivateKeyB, chain.SpecProvider.ChainId, delegate42, 0);
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressB, new AccountOverride { Code = [] } },
+                        // PUSH1 0x2a PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN
+                        { delegate42, new AccountOverride { Code = Bytes.FromHexString("0x602a5f5260205ff3") } }
+                    },
+                    Calls =
+                    [
+                        new SetCodeTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressC,
+                            AuthorizationList = AuthorizationListForRpc.FromAuthorizationList([authorization]),
+                            MaxFeePerGas = 0,
+                            MaxPriorityFeePerGas = 0,
+                            GasPrice = null
+                        },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+        Assert.That(calls.Select(static c => c.Error), Is.All.Null);
+        Assert.That(new UInt256(calls[1].ReturnData, isBigEndian: true), Is.EqualTo((UInt256)42));
+    }
+
+    /// <summary>
     /// Regression test for #13683: under EIP-7843 <c>SLOTNUM</c> must return a value instead of faulting
     /// with an invalid instruction, and the value must advance block by block across a multi-block
     /// simulation. Covers an already-post-fork chain, a pre-fork head whose block override activates the

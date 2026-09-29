@@ -13,10 +13,10 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState) : IOverridableCodeInfoRepository
+public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState, CodeOverrideStore? overrides = null) : IOverridableCodeInfoRepository
 {
-    private readonly Dictionary<Address, CodeInfo> _codeOverrides = [];
-    private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = [];
+    private readonly Dictionary<Address, CodeInfo> _codeOverrides = (overrides ??= new CodeOverrideStore()).Code;
+    private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = overrides.Precompiles;
 
     public bool IsCodeOverridable => true;
 
