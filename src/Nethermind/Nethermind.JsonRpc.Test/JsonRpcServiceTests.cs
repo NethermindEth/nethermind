@@ -509,7 +509,7 @@ public class JsonRpcServiceTests
         Exception failure = new JsonException("Cannot serialize trace");
         if (wrapped) failure = new TargetInvocationException(failure);
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
-            .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplayStreamingResult(
+            .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
                 (_, _, _) => throw failure, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
         using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
         using MemoryStream stream = new();
@@ -529,7 +529,7 @@ public class JsonRpcServiceTests
         InvalidOperationException failure = new("Result write failed");
         FailingReplayResult result = deferred ? new DeferredFailingReplayResult(failure) : new FailingReplayResult(failure);
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
-            .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(result));
+            .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(result));
         using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
         Pipe pipe = new();
         try
@@ -597,7 +597,7 @@ public class JsonRpcServiceTests
         pool.GetModule(false).Returns(rpcModule);
         using CancellationTokenSource timeout = new();
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
-            .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplayStreamingResult(
+            .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
                 (_, _, _) => throw new JsonException("Cannot serialize trace", cause), timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
         using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
         using MemoryStream stream = new();
@@ -635,7 +635,7 @@ public class JsonRpcServiceTests
         else
         {
             rpcModule.Configure().trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
-                .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(
+                .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(
                     new ParityTxTraceFromReplayStreamingResult(EmitThenThrow, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
         }
         using JsonRpcResponse response = TestRequestWithPool(pool, method, parameters);
