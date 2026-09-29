@@ -57,6 +57,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return EvmExceptionType.None;
 
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = _opcodeHandlers;
+        Debug.Assert(!TablesHaveFastPaths<TTracingInst>() || handlers.Length == 2 * FallbackHandlersOffset,
+            "A table with fast paths must carry the plain handlers its fallbacks read.");
 
         // Safety: the opcode table remains pinned for the complete tail-call chain. Every bytecode read is
         // preceded by a program-counter bounds check, and a byte is a valid index into its first 256 entries.

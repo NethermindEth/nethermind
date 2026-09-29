@@ -111,7 +111,7 @@ public class HostMemoryFastPathTests
 
     private static IEnumerable<TestCaseData> Cases()
     {
-        byte[] twoWords = Code([PUSH32, .. WordA, PUSH1, 0, MSTORE, PUSH32, .. WordB, PUSH1, 32, MSTORE]);
+        byte[] twoWords = [PUSH32, .. WordA, PUSH1, 0, MSTORE, PUSH32, .. WordB, PUSH1, 32, MSTORE];
         foreach (Setup setup in Enum.GetValues<Setup>())
         {
             // Two words active: loads at the active size less 32, less 31 and at it, and at the initialized size less 1 and plus 1.
@@ -175,7 +175,7 @@ public class HostMemoryFastPathTests
 
     private static IEnumerable<TestCaseData> FallbackCases()
     {
-        byte[] twoWords = Code([PUSH32, .. WordA, PUSH1, 0, MSTORE, PUSH32, .. WordB, PUSH1, 32, MSTORE]);
+        byte[] twoWords = [PUSH32, .. WordA, PUSH1, 0, MSTORE, PUSH32, .. WordB, PUSH1, 32, MSTORE];
         // The two stores grow fresh memory within its initialized inline tier.
         yield return Fallbacks("Stores growing fresh memory", Setup.Fresh, twoWords, 0);
         // A reused frame initializes nothing, so the first store at 0 extends the initialized prefix without a gap.
@@ -419,8 +419,6 @@ public class HostMemoryFastPathTests
 
     private static TestCaseData Fallbacks(string name, Setup setup, byte[] code, int fallbacks, ulong gas = AmpleGas) =>
         new TestCaseData(code, setup, fallbacks, gas).SetName($"{{m}}({name})");
-
-    private static byte[] Code(byte[] code) => code;
 
     private static byte[] Push2(ushort value) => [PUSH2, (byte)(value >> 8), (byte)value];
 

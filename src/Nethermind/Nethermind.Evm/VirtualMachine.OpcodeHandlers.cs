@@ -88,12 +88,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// </remarks>
     internal const int FallbackHandlersOffset = byte.MaxValue + 1;
 
+    /// <summary>
+    /// Whether the dispatch tables for <typeparamref name="TTracingInst"/> hold fast paths and so carry the fallback half:
+    /// untraced tables under <see cref="GasPolicy.EthereumGasPolicy"/>, where <see cref="IOpcodeBody.HasUntracedFastPath"/> can be true.
+    /// </summary>
+    private static bool TablesHaveFastPaths<TTracingInst>() where TTracingInst : struct, IFlag =>
+        !TTracingInst.IsActive && DispatchFlags.UntracedFastPaths && typeof(TGasPolicy) == typeof(GasPolicy.EthereumGasPolicy);
+
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]
         GenerateOpcodeHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        bool fastPaths = !TTracingInst.IsActive && DispatchFlags.UntracedFastPaths;
+        bool fastPaths = TablesHaveFastPaths<TTracingInst>();
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] lookup =
             new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[fastPaths ? 2 * FallbackHandlersOffset : FallbackHandlersOffset];
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType> badInstruction =
