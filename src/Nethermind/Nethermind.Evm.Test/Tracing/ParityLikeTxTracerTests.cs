@@ -96,6 +96,82 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Action.Result, Is.Null);
     }
 
+    // PUSH4 PUSH1 MSTORE (with one word of memory) PUSH1 PUSH1 REVERT: 3 + 3 + 6 + 3 + 3 = 18 gas.
+    private static readonly byte[] RevertDeadbeefCode = Prepare.EvmCode
+        .PushData("0xdeadbeef")
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .Revert(4, 28)
+        .Done;
+
+    [Test]
+    public void Reverted_frame_keeps_gas_used_and_output([Values("call", "create", "nested call", "nested create")] string frame)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, RevertDeadbeefCode, Spec);
+        (ParityLikeTxTrace trace, _, _) = frame switch
+        {
+            "call" => ExecuteAndTraceParityCall(RevertDeadbeefCode),
+            "create" => ExecuteInitAndTraceParityCall(RevertDeadbeefCode),
+            "nested call" => ExecuteAndTraceParityCall(Prepare.EvmCode.Call(TestItem.AddressC, 50000).Op(Instruction.STOP).Done),
+            _ => ExecuteAndTraceParityCall(Prepare.EvmCode.Create(RevertDeadbeefCode, 0).Op(Instruction.STOP).Done),
+        };
+        ParityTraceAction action = frame.StartsWith("nested") ? trace.Action!.Subtraces.Single() : trace.Action!;
+        Assert.That(action.Result, Is.Not.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(action.Type, Is.EqualTo(frame.EndsWith("create") ? "create" : "call"));
+            Assert.That(action.Error, Is.EqualTo("Reverted"));
+            Assert.That(action.Result!.GasUsed, Is.EqualTo(18UL));
+            Assert.That(action.Result.Output, Is.EqualTo(Bytes.FromHexString("0xdeadbeef")));
+            Assert.That(action.Result.Address, Is.Null);
+            Assert.That(action.Result.Code, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Failed_frame_uses_parity_error_label(
+        [Values("Mutable Call In Static Context", "Out of stack", "Out of bounds", "Invalid code")] string expectedError)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done, Spec);
+        Prepare outOfStack = Prepare.EvmCode;
+        for (int i = 0; i <= 1024; i++) outOfStack.PushData(0);
+        (ParityLikeTxTrace trace, _, _) = expectedError switch
+        {
+            "Mutable Call In Static Context" => ExecuteAndTraceParityCall(Prepare.EvmCode.StaticCall(TestItem.AddressC, 50000).Op(Instruction.STOP).Done),
+            "Out of stack" => ExecuteAndTraceParityCall(outOfStack.Done),
+            "Out of bounds" => ExecuteAndTraceParityCall(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).Op(Instruction.RETURNDATACOPY).Done),
+            // EIP-3541: returned code must not begin with 0xEF.
+            _ => ExecuteAndTraceParityCall(MainnetSpecProvider.ShanghaiActivation,
+                Prepare.EvmCode.Create(Prepare.EvmCode.PushData(0xEF).PushData(0).Op(Instruction.MSTORE8).Return(1, 0).Done, 0).Op(Instruction.STOP).Done),
+        };
+        ParityTraceAction action = trace.Action!.Subtraces.Count == 1 ? trace.Action.Subtraces[0] : trace.Action;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(action.Error, Is.EqualTo(expectedError));
+            Assert.That(action.Result, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Failure_without_a_frame_uses_parity_error_label()
+    {
+        Transaction tx = Build.A.Transaction.WithTo(null).TestObject;
+        ParityLikeTxTracer tracer = new(Build.A.Block.WithTransactions(tx).TestObject, tx, ParityTraceTypes.Trace);
+        // A creation colliding with an existing account fails before its frame starts.
+        tracer.MarkAsFailed(TestItem.AddressA, default, [], nameof(EvmExceptionType.TransactionCollision));
+        ParityTraceAction action = tracer.BuildResult().Action!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(action.Error, Is.EqualTo("Contract address collision"));
+            Assert.That(action.Result, Is.Null);
+        }
+    }
+
     [Test]
     public void On_failure_block_and_tx_fields_are_set()
     {
