@@ -344,6 +344,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.MSTORE] = OpcodeHandler<MStoreOpcode<TTracingInst, OnFlag>, TTracingInst, TCancelable>();
         }
 
+        ConfigureBuildHandlers<TTracingInst, TCancelable>(lookup, spec);
+
         // Only NativeAOT has fat function pointers.
         if (!RuntimeFeature.IsDynamicCodeSupported)
         {
@@ -353,6 +355,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         return lookup;
     }
+
+    /// <summary>Replaces entries of a freshly built table with handlers that only this build carries.</summary>
+    static partial void ConfigureBuildHandlers<TTracingInst, TCancelable>(
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] lookup,
+        IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag;
 
     /// <summary>NativeAOT's tag on a fat function pointer (its <c>FatFunctionPointerConstants.Offset</c>).</summary>
     private const nint FatFunctionPointerTag = 2;
