@@ -39,6 +39,7 @@ public class PbtConfig : IPbtConfig
     public int ScanTreeConcurrency { get; set; }
 
     public bool CarryForwardCache { get; set; } = true;
+    public bool PromoteHintedAccounts { get; set; } = true;
     public bool NativeNodeGroupMemory { get; set; } = true;
 
     public string RocksDbOptions { get; set; } =

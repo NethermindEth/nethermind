@@ -439,6 +439,27 @@ public class PbtWorldStateScopeTests
     }
 
     [Test]
+    public async Task Account_reads_are_promoted_into_the_snapshot_and_hints_only_when_enabled([Values] bool promoteHintedAccounts)
+    {
+        await using PbtTestContext ctx = new(config: new PbtConfig { PromoteHintedAccounts = promoteHintedAccounts });
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        Account hinted = Build.An.Account.WithBalance(1).TestObject;
+        scope.Get(TestItem.AddressA);
+        scope.HintGet(TestItem.AddressA, hinted);
+        scope.HintGet(TestItem.AddressB, hinted);
+        scope.Get(TestItem.AddressB);
+
+        using PbtSnapshot snapshot = scope.Bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.Content.Accounts.TryGetValue(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), out Account? readA), Is.True, "a read is promoted");
+            Assert.That(readA, Is.Null, "a later hint never shadows a promoted read");
+            Assert.That(snapshot.Content.Accounts.ContainsKey(PbtKeyDerivation.AddressKeyHash(TestItem.AddressB)), Is.EqualTo(promoteHintedAccounts),
+                "a hint is promoted only when enabled, and a read served by a hint never promotes it");
+        }
+    }
+
+    [Test]
     public async Task Read_only_provider_does_not_queue_warmup_jobs()
     {
         RecordingTrieWarmer warmer = new();

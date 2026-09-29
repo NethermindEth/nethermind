@@ -117,12 +117,24 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetNodeGroup(storagePath);
     }
 
-    public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address));
+    public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address), out _);
 
-    private Account? GetAccount(in ValueHash256 addressHash)
+    /// <summary>Reads an account, promoting one found past the write buffer and the hint memo into the write buffer.</summary>
+    /// <remarks>The promoted account is sealed into the next snapshot, so later heads read it from the newest layer.</remarks>
+    public Account? GetAndPromoteAccount(Address address)
     {
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
+        Account? account = GetAccount(addressHash, out bool isBuffered);
+        if (!isBuffered) PromoteAccount(addressHash, account);
+        return account;
+    }
+
+    private Account? GetAccount(in ValueHash256 addressHash, out bool isBuffered)
+    {
+        isBuffered = true;
         if (WriteBuffer.Accounts.TryGetValue(addressHash, out Account? account)) return account;
         if (_hintedAccounts.TryGetValue(addressHash, out account)) return account;
+        isBuffered = false;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out account)) return account;
         return readOnlyBundle.GetAccount(addressHash);
@@ -130,6 +142,16 @@ public sealed class PbtSnapshotBundle(
 
     /// <summary>Records an account the layer above read past this bundle; a value already written or hinted here wins, and the memo is dropped with the write buffer at snapshot collection.</summary>
     public void HintAccount(Address address, Account? account) => _hintedAccounts.TryAdd(PbtKeyDerivation.AddressKeyHash(address), account);
+
+    /// <summary>Carries an account the layer above read past this bundle into the write buffer; a value already written here wins.</summary>
+    public void PromoteAccount(Address address, Account? account) => PromoteAccount(PbtKeyDerivation.AddressKeyHash(address), account);
+
+    private void PromoteAccount(in ValueHash256 addressHash, Account? account)
+    {
+        // ContainsKey is lock-free; TryAdd alone would take the bucket lock on every hot re-promote.
+        ConcurrentDictionary<ValueHash256, Account?> accounts = WriteBuffer.Accounts;
+        if (!accounts.ContainsKey(addressHash)) accounts.TryAdd(addressHash, account);
+    }
 
     public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(address, PbtKeyDerivation.AddressKeyHash(address), slot);
 
@@ -156,7 +178,7 @@ public sealed class PbtSnapshotBundle(
     public void SetAccount(Address address, Account? account)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-        Account? previous = GetAccount(addressHash);
+        Account? previous = GetAccount(addressHash, out _);
         // Code chunk leaves are shared per code hash without a reference count, so a non-delegation code hash
         // can never be replaced or removed once set (EIP-6780 and EIP-161 guarantee this in protocol execution).
         if (previous is { HasCode: true } && previous.CodeHash != account?.CodeHash)
