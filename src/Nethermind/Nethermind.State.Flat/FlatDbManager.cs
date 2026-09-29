@@ -41,6 +41,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     /// </summary>
     public static Action<int>? CommitPhase { get; set; }
 
+    /// <summary>
+    /// Benchmark switch (<c>NETHERMIND_FLAT_FRESH_TRANSIENT=1</c>): give every block a new transient resource of the initial
+    /// size instead of a pooled one. A pooled resource keeps the capacity earlier blocks grew it to, which the trie node
+    /// cache population walks, and which one a block gets depends on when the previous holders released theirs.
+    /// </summary>
+    internal static bool FreshTransientResources { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_FRESH_TRANSIENT") == "1";
+
     private readonly ILogger _logger;
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
