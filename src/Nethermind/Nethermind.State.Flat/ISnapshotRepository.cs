@@ -17,6 +17,10 @@ public interface ISnapshotRepository
     /// <summary>Total persisted snapshots across the base/compacted/CompactSized buckets.</summary>
     int PersistedSnapshotCount { get; }
 
+    /// <summary>Monotonic count of in-memory base snapshots removed so far, by persistence, conversion
+    /// to the persisted tier or fork pruning.</summary>
+    long RemovedBaseSnapshotCount { get; }
+
     /// <summary>Register <paramref name="stateId"/> as a known in-memory tip: adds it to the block-ordered
     /// set and records it as the last-registered tip.</summary>
     void AddStateId(in StateId stateId);
