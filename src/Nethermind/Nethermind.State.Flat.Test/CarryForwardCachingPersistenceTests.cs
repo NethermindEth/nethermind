@@ -76,11 +76,39 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
     }
 
-    [TestCase(false, 1, true, TestName = "WriteBatch_SlotSetWithinCapacity_KeptForTheNextBatch")]
-    [TestCase(false, 2, false, TestName = "WriteBatch_SlotSetBeyondCapacity_NotKept")]
-    [TestCase(true, 1, true, TestName = "WriteBatch_AccountSetWithinCapacity_KeptForTheNextBatch")]
-    [TestCase(true, 2, false, TestName = "WriteBatch_AccountSetBeyondCapacity_NotKept")]
-    public async Task WriteBatch_CommittedWrittenSet_KeptOnlyWithinTheCacheCapacity(bool accounts, int written, bool kept)
+    [TestCase(false, 1, 1, TestName = "GetAccount_WriteSetWithinCap_UnwrittenAccountCarriedForward")]
+    [TestCase(false, 2, 2, TestName = "GetAccount_WriteSetOverCap_DropsAllCachedAccounts")]
+    [TestCase(true, 1, 1, TestName = "TryGetSlot_WriteSetWithinCap_UnwrittenSlotCarriedForward")]
+    [TestCase(true, 2, 2, TestName = "TryGetSlot_WriteSetOverCap_DropsAllCachedSlots")]
+    public async Task Read_AfterCommit_WriteSetCapDecidesCarryForward(bool writeSlots, int writes, int expectedInnerReads)
+    {
+        FakePersistence inner = new();
+        await using CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+        Address[] writtenAccounts = [TestItem.AddressB, TestItem.AddressC];
+
+        ReadUnwritten();
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            for (int i = 0; i < writes; i++)
+            {
+                if (writeSlots) batch.SetStorage(Address, (UInt256)(i + 2), BaseFlatPersistence.DecodeSlotValue([0x22]));
+                else batch.SetAccount(writtenAccounts[i], new Account(1, 100));
+            }
+        }
+        inner.ReaderState = Basis1;
+        ReadUnwritten();
+
+        Assert.That(writeSlots ? inner.SlotReads : inner.AccountReads, Is.EqualTo(expectedInnerReads));
+
+        void ReadUnwritten()
+        {
+            if (writeSlots) ReadSlot(cache, 1);
+            else ReadAccount(cache, TestItem.AddressA);
+        }
+    }
+
+    [Test]
+    public async Task WriteBatch_CommittedWrittenSet_KeptForTheNextBatch([Values] bool accounts, [Values(1, 2)] int written)
     {
         FakePersistence inner = new();
         await using CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
@@ -94,7 +122,7 @@ public class CarryForwardCachingPersistenceTests
             }
         }
 
-        Assert.That(accounts ? cache.HasSpareWrittenAccounts : cache.HasSpareWrittenSlots, Is.EqualTo(kept));
+        Assert.That(accounts ? cache.HasSpareWrittenAccounts : cache.HasSpareWrittenSlots, Is.True);
     }
 
     [TestCaseSource(nameof(CacheReadCases))]

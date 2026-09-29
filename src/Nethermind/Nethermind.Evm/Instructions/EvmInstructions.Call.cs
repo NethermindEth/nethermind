@@ -210,20 +210,19 @@ public static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth ||
             (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
         {
+            EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
+            if (vm.IsTracingActions)
+                TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckError);
+
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = default;
             EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
-            // Optionally report memory changes for refund tracing.
-            if (vm.IsTracingRefunds)
-            {
-                // Specific to Parity tracing: inspect 32 bytes from data offset.
-                ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
-                vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
-            }
-
             if (TTracingInst.IsActive)
-                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), EvmExceptionType.NotEnoughBalance);
+            {
+                vm.TraceCallOutputWindow(in outputOffset, in outputLength);
+                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), precheckError);
+            }
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
@@ -278,6 +277,29 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
+    }
+
+    /// <summary>
+    /// Reports a call that failed its depth or balance precheck as an action that entered no frame; the gas it
+    /// would have forwarded, including the stipend, returns at once.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceRejectedCall<TGasPolicy, TOpCall>(
+        VirtualMachine<TGasPolicy> vm,
+        in UInt256 dataOffset,
+        in UInt256 dataLength,
+        Address codeSource,
+        in UInt256 callValue,
+        ulong gas,
+        bool isPrecompile,
+        EvmExceptionType error)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+    {
+        ExecutionEnvironment env = vm.VmState.Env;
+        // The call already paid to expand memory over its input.
+        vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
+        vm.TxTracer.ReportRejectedAction(gas, gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, error, isPrecompile);
     }
 
     // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest

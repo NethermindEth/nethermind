@@ -323,14 +323,28 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= parent.RentWrittenAccounts()).Add(addr);
+            if (!_clearAll) TrackWrite(_writtenAccounts ??= parent.RentWrittenAccounts(), addr);
             inner.SetAccount(addr, account);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
-            (_writtenSlots ??= parent.RentWrittenSlots()).Add((addr, slot));
+            if (!_clearAll) TrackWrite(_writtenSlots ??= parent.RentWrittenSlots(), (addr, slot));
             inner.SetStorage(addr, slot, value);
+        }
+
+        private void TrackWrite<TKey>(HashSet<TKey> written, TKey key)
+        {
+            if (written.Count < parent._maxEntriesPerKind || written.Contains(key))
+            {
+                written.Add(key);
+                return;
+            }
+
+            _clearAll = true;
+            parent.ReturnWrittenSets(_writtenAccounts, _writtenSlots);
+            _writtenAccounts = null;
+            _writtenSlots = null;
         }
 
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
