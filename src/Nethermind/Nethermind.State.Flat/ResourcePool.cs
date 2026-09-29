@@ -166,7 +166,7 @@ public class ResourcePool : IResourcePool
         public SnapshotContent GetSnapshotContent()
         {
             Metrics.ActivePooledResource.AddBy(_snapshotLabel, 1);
-            if (_snapshotPool.TryGet(out SnapshotContent? snapshotContent))
+            if (!FlatDbManager.FreshSnapshotContent && _snapshotPool.TryGet(out SnapshotContent? snapshotContent))
             {
                 Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
                 return snapshotContent;
@@ -189,7 +189,7 @@ public class ResourcePool : IResourcePool
         public SortedSnapshotContent GetSortedSnapshotContent()
         {
             Metrics.ActivePooledResource.AddBy(_sortedLabel, 1);
-            if (_sortedPool.TryGet(out SortedSnapshotContent? sortedContent))
+            if (!FlatDbManager.FreshSnapshotContent && _sortedPool.TryGet(out SortedSnapshotContent? sortedContent))
             {
                 Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
                 return sortedContent;

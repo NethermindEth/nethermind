@@ -118,6 +118,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
         LastAddSlots = slots;
         LastAddNodes = transientResource.Nodes.Count;
         LastAddShardsCleared = 0;
+        FlatDbManager.CommitPhase?.Invoke(5);
 
         if (_maxCacheMemoryThreshold == 0)
         {
@@ -187,6 +188,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 }
             }
         });
+
+        FlatDbManager.CommitPhase?.Invoke(6);
 
         long currentTotalMemory = 0;
         for (int i = 0; i < ShardCount; i++) currentTotalMemory += _shardMemoryUsages[i];

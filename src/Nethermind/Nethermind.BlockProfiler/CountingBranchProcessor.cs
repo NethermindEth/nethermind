@@ -41,6 +41,11 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     // Counter readings at FlatDbManager's inline commit steps (see FlatDbManager.CommitPhase), on the committing thread.
     [ThreadStatic] private static ulong[]? t_commitPhases;
+
+    /// <summary><c>NETHERMIND_COUNT_PIN_CPU=n</c> runs each counted branch on CPU n, restoring the thread's CPU set afterwards.</summary>
+    private static readonly int s_pinCpu = int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_COUNT_PIN_CPU"), out int cpu) ? cpu : -1;
+    private static int s_pinLogged;
+    private ulong[]? _savedAffinity;
     [ThreadStatic] private static int t_commitPhasesSeen;
 
     /// <summary>
@@ -96,6 +101,12 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
     {
         _forcedGCExclusion = GCScheduler.Instance.ExcludeForcedGC();
+        if (s_pinCpu >= 0)
+        {
+            _savedAffinity = ThreadAffinity.PinCurrentThread(s_pinCpu);
+            if (Interlocked.Exchange(ref s_pinLogged, 1) == 0 && _logger.IsInfo)
+                _logger.Info(_savedAffinity is null ? $"EXPB-COUNT could not pin branches to CPU {s_pinCpu}" : $"EXPB-COUNT branches pinned to CPU {s_pinCpu}");
+        }
         // The region's own collection runs here, before the window opens.
         NoGcRegion.TryEnter(_logger);
         _branch = Window.Start();
@@ -122,19 +133,24 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         ulong commit = _judgedRead ? _block.StartInstructions + instructions - _judged.Instructions : 0;
         // pop: trie node cache population; compact: snapshot compaction; persist: the inline persistence job.
         ulong[]? phases = t_commitPhases;
-        string steps = t_commitPhasesSeen == 0b1111 && phases is not null
+        const int popParts = (1 << 0) | (1 << 4) | (1 << 5) | (1 << 6) | (1 << 1);
+        string popSplit = (t_commitPhasesSeen & popParts) == popParts && phases is not null
+            // pre: walk the inputs; loop: add them to the shards; post: memory sum and eviction; release: return the resource.
+            ? $" popparts={phases[5] - phases[0]}/{phases[6] - phases[5]}/{phases[4] - phases[6]}/{phases[1] - phases[4]}"
+            : string.Empty;
+        string steps = (t_commitPhasesSeen & 0b1111) == 0b1111 && phases is not null
             ? $" pop={phases[1] - phases[0]} compact={phases[2] - phases[1]} persist={phases[3] - phases[2]}" +
               $" popslots={Nethermind.State.Flat.TrieNodeCache.LastAddSlots} popnodes={Nethermind.State.Flat.TrieNodeCache.LastAddNodes}" +
               $" popclear={Nethermind.State.Flat.TrieNodeCache.LastAddShardsCleared}"
             : string.Empty;
         Block block = e.Block;
-        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}");
+        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit}");
     }
 
     private static void OnCommitPhase(int phase)
     {
-        if ((uint)phase >= 4 || !ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample sample)) return;
-        (t_commitPhases ??= new ulong[4])[phase] = sample.Instructions;
+        if ((uint)phase >= 7 || !ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample sample)) return;
+        (t_commitPhases ??= new ulong[7])[phase] = sample.Instructions;
         t_commitPhasesSeen |= 1 << phase;
     }
 
@@ -148,6 +164,11 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     {
         bool stopped = _branch.TryStop(out string counts, out _);
         bool regionHeld = NoGcRegion.Exit();
+        if (_savedAffinity is not null)
+        {
+            ThreadAffinity.Restore(_savedAffinity);
+            _savedAffinity = null;
+        }
         _forcedGCExclusion?.Dispose();
         _forcedGCExclusion = null;
         ReleaseVerdict(e.Exception is null && e.ProcessedBlocksCount == e.SuggestedBlocks.Count);

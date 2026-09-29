@@ -37,7 +37,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     /// <summary>
     /// Benchmark hook, called on the committing thread at the inline commit's step boundaries: 0 before and 1 after the
-    /// trie node cache population, 2 after compaction, 3 after the inline persistence job.
+    /// trie node cache population, 2 after compaction, 3 after the inline persistence job; within the population, 5 after
+    /// the cache walks its inputs, 6 after it adds them, 4 before the resource is released.
     /// </summary>
     public static Action<int>? CommitPhase { get; set; }
 
@@ -47,6 +48,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     /// cache population walks, and which one a block gets depends on when the previous holders released theirs.
     /// </summary>
     internal static bool FreshTransientResources { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_FRESH_TRANSIENT") == "1";
+
+    /// <summary>
+    /// Benchmark switch (<c>NETHERMIND_FLAT_FRESH_CONTENT=1</c>): compaction takes new snapshot contents instead of pooled
+    /// ones. A pooled content keeps the dictionary capacity earlier compactions grew it to, which clearing and walking it
+    /// cost in proportion to, and which one a compaction gets depends on when earlier snapshots were released.
+    /// </summary>
+    internal static bool FreshSnapshotContent { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_FRESH_CONTENT") == "1";
 
     private readonly ILogger _logger;
     private readonly IPersistenceManager _persistenceManager;
@@ -266,6 +274,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         try
         {
             _trieNodeCache.Add(transientResource);
+            CommitPhase?.Invoke(4);
         }
         finally
         {

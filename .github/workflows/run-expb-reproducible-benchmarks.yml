@@ -1183,6 +1183,22 @@ jobs:
             echo "Pinned the client to CPUs ${cpuset} for resources.cpu=${cpu_count}."
           fi
 
+          # NETHERMIND_COUNT_OFFLINE_SMT=1 takes the second hyperthread of every client core offline for the run, so each
+          # client thread has a physical core to itself. expb's SMT stabilizer restores them after the scenario.
+          if printf '%s' "${CLIENT_ENV:-}" | grep -q 'NETHERMIND_COUNT_OFFLINE_SMT=1'; then
+            client_cpus="$("${YQ}" -r '.resources.cpuset // ""' "${RENDERED_CONFIG_FILE}")"
+            declare -A smt_offline=()
+            for cpu in $(expand_cpus "${client_cpus}"); do
+              mapfile -t smt_siblings < <(expand_cpus "$(< "${topology}/cpu${cpu}/topology/thread_siblings_list")")
+              for sibling in "${smt_siblings[@]:1}"; do smt_offline[${sibling}]=1; done
+            done
+            smt_list="$(printf '%s\n' "${!smt_offline[@]}" | sort -n | paste -sd, -)"
+            if [[ -n "${smt_list}" ]]; then
+              L="[${smt_list}]" "${YQ}" -i '.offline_cpus = (strenv(L) | from_yaml)' "${RENDERED_CONFIG_FILE}"
+              echo "Taking hyperthread siblings ${smt_list} offline for the run."
+            fi
+          fi
+
           # Zero disables the CPU quota; omitting cpu would restore EXPB's default quota.
           "${YQ}" -i '.resources.cpu = 0' "${RENDERED_CONFIG_FILE}"
 
