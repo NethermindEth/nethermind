@@ -147,7 +147,7 @@ public class OptimismEngineRpcModuleTest
         };
 
         _ = await RpcTest.TestSerializedRequest(
-            rpcModule, nameof(IOptimismEngineRpcModule.engine_newPayloadV3), payload, new Hash256?[] { }, Hash256.Zero);
+            rpcModule, nameof(IOptimismEngineRpcModule.engine_newPayloadV3), payload, System.Array.Empty<Hash256?>(), Hash256.Zero);
 
         Assert.That(delegatedPayload, Is.TypeOf<OptimismExecutionPayloadV3>());
         OptimismReleaseSpec spec = new()
