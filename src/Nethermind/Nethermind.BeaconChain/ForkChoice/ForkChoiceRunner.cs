@@ -66,7 +66,7 @@ public sealed class ForkChoiceRunner
     /// <summary>The committed bid's <c>parent_block_hash</c> of each Gloas block, keyed by block root.</summary>
     private readonly Dictionary<Hash256, Hash256> _parentBlockHashes = [];
 
-    /// <summary>The slot and proposer of each registered block, for <c>is_proposer_equivocation</c>; its keys are a subset of <see cref="_blockTimeliness"/>'s, so both are pruned together.</summary>
+    /// <summary>The slot and proposer of each registered block, for <c>is_proposer_equivocation</c>; pruned by slot, and <see cref="_blockTimeliness"/> keeps the roots it holds, so <c>should_apply_proposer_boost</c> sees both for the same blocks.</summary>
     private readonly Dictionary<Hash256, BlockProposer> _blockProposers = [];
 
     /// <summary>Committee shufflings only; safe to share across forks (keyed by decision root). The balance memo is never used through this instance.</summary>
@@ -276,7 +276,8 @@ public sealed class ForkChoiceRunner
     /// <summary>
     /// Prunes fork-choice state below the finalized checkpoint: the proto-array block tree (subject
     /// to its prune threshold), the cached checkpoint states and justified balances of epochs
-    /// before the finalized one, and the per-block records of every block the tree no longer holds.
+    /// before the finalized one, and the per-block records of every block the tree no longer holds
+    /// (the proposer and timeliness records only of those at or before the finalized slot).
     /// </summary>
     public void Prune()
     {
@@ -284,19 +285,38 @@ public sealed class ForkChoiceRunner
         _protoArray.MaybePrune(finalized.Root);
         PruneCheckpointCache(_checkpointStates, finalized.Epoch);
         PruneCheckpointCache(_justifiedBalances, finalized.Epoch);
-        PruneUnknownRoots(_blockTimeliness);
-        PruneUnknownRoots(_blockProposers);
+        PruneProposersAtOrBelowFinalizedSlot(BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch));
+        PruneUnknownRoots(_blockTimeliness, _blockProposers.ContainsKey);
         PruneUnknownRoots(_parentBlockHashes);
         PruneUnknownRoots(_ptcVotes);
         _payloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
     }
 
-    private void PruneUnknownRoots<TValue>(Dictionary<Hash256, TValue> byRoot)
+    /// <summary>
+    /// Drops the proposer records of blocks the tree no longer holds and whose slot is at or before the finalized slot. A block off
+    /// the finalized chain keeps its record until finality passes its slot: the spec's unpruned <c>store.blocks</c> still counts it in
+    /// <c>is_proposer_equivocation</c>.
+    /// </summary>
+    private void PruneProposersAtOrBelowFinalizedSlot(ulong finalizedSlot)
+    {
+        List<Hash256>? stale = null;
+        foreach ((Hash256 root, BlockProposer proposer) in _blockProposers)
+        {
+            if (proposer.Slot <= finalizedSlot && !_protoArray.ContainsBlock(root)) (stale ??= []).Add(root);
+        }
+
+        if (stale is not null)
+        {
+            foreach (Hash256 root in stale) _blockProposers.Remove(root);
+        }
+    }
+
+    private void PruneUnknownRoots<TValue>(Dictionary<Hash256, TValue> byRoot, Func<Hash256, bool>? isRetained = null)
     {
         List<Hash256>? stale = null;
         foreach (Hash256 root in byRoot.Keys)
         {
-            if (!_protoArray.ContainsBlock(root)) (stale ??= []).Add(root);
+            if (!_protoArray.ContainsBlock(root) && isRetained?.Invoke(root) != true) (stale ??= []).Add(root);
         }
 
         if (stale is not null)
@@ -621,14 +641,21 @@ public sealed class ForkChoiceRunner
         if ((executionStatus == ExecutionStatus.Irrelevant) != (executionBlockHash is null))
             throw new ForkChoiceException($"Block {blockRoot} must carry an execution block hash if and only if execution is enabled");
 
+        // A valid post-state never names a checkpoint epoch after its block's own; a huge one would stall get_head or freeze finality.
+        ulong blockEpoch = BeaconStateAccessors.ComputeEpochAtSlot(slot);
+        foreach (ulong epoch in (ReadOnlySpan<ulong>)[stateJustified.Epoch, stateFinalized.Epoch, pulledUp.CurrentJustifiedCheckpoint.Epoch, pulledUp.FinalizedCheckpoint.Epoch])
+        {
+            if (epoch > blockEpoch)
+                throw new ForkChoiceException($"Block {blockRoot} names checkpoint epoch {epoch}, after its own epoch {blockEpoch}");
+        }
+
         // Proposer boost for the first block of the slot arriving before get_attestation_due_ms, which Gloas moves earlier
         // (specs/phase0/fork-choice.md and specs/gloas/fork-choice.md record_block_timeliness).
-        const ulong BasisPoints = 10_000;
         ulong slotDurationMs = _spec.SecondsPerSlot * 1000;
         ulong secondsSinceGenesis = Time - GenesisTime;
         ulong timeIntoSlotMs = (secondsSinceGenesis > ulong.MaxValue / 1000 ? ulong.MaxValue : secondsSinceGenesis * 1000) % slotDurationMs;
-        ulong attestationDueMs = (IsGloasSlot(slot) ? GloasTiming.AttestationDueBpsGloas : GloasTiming.AttestationDueBps) * slotDurationMs / BasisPoints;
-        ulong ptcDueMs = GloasTiming.PayloadAttestationDueBps * slotDurationMs / BasisPoints;
+        ulong attestationDueMs = (IsGloasSlot(slot) ? GloasTiming.AttestationDueBpsGloas : GloasTiming.AttestationDueBps) * slotDurationMs / Presets.BasisPoints;
+        ulong ptcDueMs = GloasTiming.PayloadAttestationDueBps * slotDurationMs / Presets.BasisPoints;
         bool isCurrentSlot = slot == _store.CurrentSlot;
         BlockTimeliness timeliness = new(isCurrentSlot && timeIntoSlotMs < attestationDueMs, isCurrentSlot && timeIntoSlotMs < ptcDueMs);
         bool isTimely = timeliness.Attestation;
@@ -1152,12 +1179,11 @@ public sealed class ForkChoiceRunner
     /// <summary>The spec's <c>is_proposing_on_time</c>: whether the wall clock is at most <c>get_proposer_reorg_cutoff_ms</c> into the slot.</summary>
     private bool IsProposingOnTime()
     {
-        const ulong BasisPoints = 10_000;
         ulong slotDurationMs = _spec.SecondsPerSlot * 1000;
         ulong secondsSinceGenesis = Time - GenesisTime;
         // The spec's seconds_to_milliseconds saturates at UINT64_MAX.
         ulong timeIntoSlotMs = (secondsSinceGenesis > ulong.MaxValue / 1000 ? ulong.MaxValue : secondsSinceGenesis * 1000) % slotDurationMs;
-        return timeIntoSlotMs <= GloasTiming.ProposerReorgCutoffBps * slotDurationMs / BasisPoints;
+        return timeIntoSlotMs <= GloasTiming.ProposerReorgCutoffBps * slotDurationMs / Presets.BasisPoints;
     }
 
     /// <summary>
@@ -1226,7 +1252,7 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>The spec's <c>is_proposer_equivocation</c>: whether another block in the store has the same slot and proposer as <paramref name="root"/>.</summary>
-    private bool IsProposerEquivocation(Hash256 root)
+    internal bool IsProposerEquivocation(Hash256 root)
     {
         if (!_blockProposers.TryGetValue(root, out BlockProposer proposer))
             return false;

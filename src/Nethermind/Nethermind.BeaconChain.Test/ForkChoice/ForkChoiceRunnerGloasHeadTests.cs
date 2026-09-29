@@ -6,8 +6,10 @@ using System.Linq;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -217,6 +219,86 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(child.Root), "fixture bug");
 
         Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(child.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.ProposerScore));
+    }
+
+    /// <summary>
+    /// specs/gloas/fork-choice.md <c>should_apply_proposer_boost</c> reads the proposer of the boosted block's parent, which can be
+    /// the finalized block itself. Pruning drops proposer records by slot, but a block still in the tree keeps its own, so a weak
+    /// finalized parent neither stalls the head nor loses the boost of its child.
+    /// </summary>
+    [Test]
+    public void A_boosted_child_of_the_finalized_block_keeps_its_boost_after_pruning()
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = harness.First;
+        harness.TickTo(first.Slot);
+        harness.Import(first);
+        harness.TickTo(first.Slot + 1);
+        GloasForkChoiceHarness.Block child = harness.Child(first, first.Slot + 1, full: false, 0xC1);
+        BeaconStateGloas finalizing = child.PostState.Clone();
+        Checkpoint finalized = new() { Epoch = ForkCrossingChain.ForkEpoch, Root = first.Root };
+        finalizing.CurrentJustifiedCheckpoint = finalized;
+        finalizing.FinalizedCheckpoint = finalized;
+        harness.Runner.OnBlock(child.Signed, finalizing);
+        Assert.That(harness.Runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, first.Root)), "fixture bug");
+        Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(child.Root), "fixture bug");
+
+        harness.Runner.Prune();
+
+        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(child.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.ProposerScore));
+    }
+
+    /// <summary>
+    /// The spec's <c>store.block_timeliness</c> is never pruned, so a PTC-timely proposal on a fork that finality left behind still
+    /// makes the parent's proposer an early equivocator, and the boost stays withheld, until finality passes that fork block's slot.
+    /// The fork block (slot 321) is imported before the finalized block (slot 320), so the proto-array's prune removes it.
+    /// </summary>
+    [Test]
+    public void A_pruned_fork_block_still_withholds_the_boost_until_finality_passes_its_slot()
+    {
+        const ulong FinalizedSlot = 10 * Presets.SlotsPerEpoch;
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = harness.First;
+        harness.TickTo(FinalizedSlot + 1, secondsIntoSlot: 8);
+        harness.Import(first);
+
+        GloasForkChoiceHarness.Block finalized = first;
+        GloasForkChoiceHarness.Block fork = first;
+        for (ulong slot = first.Slot + 1; slot <= FinalizedSlot; slot++)
+        {
+            if (slot == FinalizedSlot)
+            {
+                fork = harness.Child(finalized, FinalizedSlot + 1, full: false, 0xA2);
+                harness.Import(fork);
+            }
+
+            finalized = harness.Child(finalized, slot, full: false, (byte)(0xC0 + slot % 0x20));
+            harness.Import(finalized);
+        }
+
+        GloasForkChoiceHarness.Block parent = harness.Child(finalized, FinalizedSlot + 1, full: false, 0xA1);
+        BeaconStateGloas finalizing = parent.PostState.Clone();
+        Checkpoint checkpoint = new() { Epoch = 10, Root = finalized.Root };
+        finalizing.CurrentJustifiedCheckpoint = checkpoint;
+        finalizing.FinalizedCheckpoint = checkpoint;
+        harness.Runner.OnBlock(parent.Signed, finalizing);
+        Assert.That(harness.Runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(10, finalized.Root)), "fixture bug");
+        Assert.That(fork.ProposerIndex, Is.EqualTo(parent.ProposerIndex), "fixture bug: both blocks are the same proposer's");
+
+        harness.TickTo(FinalizedSlot + 2);
+        GloasForkChoiceHarness.Block boosted = harness.Child(parent, FinalizedSlot + 2, full: false, 0xB1);
+        harness.Import(boosted);
+        Assert.That(harness.Runner.ProposerBoostRoot, Is.EqualTo(boosted.Root), "fixture bug");
+        ForkChoiceNode boostedNode = new(boosted.Root, ForkChoicePayloadStatus.Pending);
+        Assert.That(harness.Runner.GetWeight(boostedNode), Is.Zero, "fixture bug: the equivocation withholds the boost");
+
+        harness.Runner.Prune();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
+            Assert.That(harness.Runner.GetWeight(boostedNode), Is.Zero);
+        }
     }
 
     /// <summary>
