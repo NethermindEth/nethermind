@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Text.Json;
 using Collections.Pooled;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -19,8 +17,8 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     private readonly Transaction? _transaction;
     private readonly long _limit;
     private long _resultSize;
-    private Utf8JsonWriter? _sizeWriter;
-    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>>? _sizeStorageByAddress;
+    private readonly PooledSet<StorageCell>? _sizeStorageSlots;
+    private readonly PooledDictionary<AddressAsKey, int>? _sizeStorageCounts;
 
     private bool LimitReached => _limit != 0 && _resultSize > _limit;
 
@@ -29,7 +27,10 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         _transaction = transaction;
         _limit = options.Limit;
         if (_limit > 0 && !options.DisableStorage)
-            _sizeStorageByAddress = new(4);
+        {
+            _sizeStorageSlots = new(4);
+            _sizeStorageCounts = new(4);
+        }
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -49,18 +50,16 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         base.AddTraceEntry(entry);
         if (_limit <= 0) return;
 
-        PooledDictionary<UInt256, UInt256>? storage = null;
-        if (_sizeStorageByAddress is not null && entry.StorageDelta is { } delta)
+        int? storageCount = null;
+        if (_sizeStorageCounts is not null && entry.StorageDelta is { } delta)
         {
-            if (!_sizeStorageByAddress.TryGetValue(delta.Address, out storage))
-                _sizeStorageByAddress[delta.Address] = storage = new(4);
-            storage[delta.Key] = delta.Value;
+            _sizeStorageCounts.TryGetValue(delta.Address, out int count);
+            if (_sizeStorageSlots!.Add(new StorageCell(delta.Address, delta.Key)))
+                _sizeStorageCounts[delta.Address] = ++count;
+            storageCount = count;
         }
 
-        _sizeWriter ??= new(Stream.Null, new JsonWriterOptions { SkipValidation = true });
-        _sizeWriter.Reset();
-        GethLikeTxTraceConverter.WriteEntry(_sizeWriter, entry, storage);
-        _resultSize += _sizeWriter.BytesCommitted + _sizeWriter.BytesPending;
+        _resultSize += GethLikeTxTraceConverter.GetEntrySize(entry, storageCount);
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -109,13 +108,8 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
     public override void Dispose()
     {
-        if (_sizeStorageByAddress is not null)
-        {
-            foreach (PooledDictionary<UInt256, UInt256> storage in _sizeStorageByAddress.Values)
-                storage.Dispose();
-            _sizeStorageByAddress.Dispose();
-        }
-        _sizeWriter?.Dispose();
+        _sizeStorageSlots?.Dispose();
+        _sizeStorageCounts?.Dispose();
         base.Dispose();
     }
 }
