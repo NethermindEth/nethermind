@@ -38,6 +38,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
@@ -2197,6 +2198,28 @@ public class TraceRpcModuleTests
     }
 
     private static UInt256 HexValue(JToken? value) => new(Bytes.FromHexString(value?.Value<string>() ?? "0x0"), isBigEndian: true);
+
+    [TestCase(TxType.Blob)]
+    [TestCase(TxType.FrameTx)]
+    public void Unpriced_blob_fee_calculator_prices_only_blobs_under_a_zero_cap_at_zero(TxType type)
+    {
+        UnpricedBlobFeeCalculator calculator = new(BlobBaseFeeCalculator.Instance);
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(10_000_000).TestObject;
+        ulong fraction = Cancun.Instance.BlobBaseFeeUpdateFraction;
+        BlobGasCalculator.TryCalculateFeePerBlobGas(header, fraction, out UInt256 blobBaseFee);
+        byte[][] blobHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]];
+
+        bool unpriced = calculator.TryCalculateBlobFees(header, new Transaction { Type = type, MaxFeePerBlobGas = 0, BlobVersionedHashes = blobHashes },
+            fraction, out UInt256 unpricedFee, out UInt256 unpricedTotal);
+        bool priced = calculator.TryCalculateBlobFees(header, new Transaction { Type = type, MaxFeePerBlobGas = blobBaseFee, BlobVersionedHashes = blobHashes },
+            fraction, out UInt256 pricedFee, out UInt256 pricedTotal);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((unpriced, unpricedFee, unpricedTotal), Is.EqualTo((true, UInt256.Zero, UInt256.Zero)));
+            Assert.That((priced, pricedFee, pricedTotal), Is.EqualTo((true, blobBaseFee, (UInt256)Eip4844Constants.GasPerBlob * blobBaseFee)));
+        }
+    }
 
     [Test]
     public async Task Trace_call_sees_the_base_fee_eth_call_sees([Values] CallFees fees, [Values] bool streaming)

@@ -155,10 +155,13 @@ namespace Nethermind.Facade
             return blockHash is not null ? receiptStorage.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, CancellationToken cancellationToken) =>
-            HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
+        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, CancellationToken cancellationToken)
+        {
+            blobBaseFeeOverride = GetBlobBaseFeeOverride(tx, blobBaseFeeOverride);
+            return HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
                 ? CallExclusive(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken)
                 : CallShareable(header, tx, cancellationToken);
+        }
 
         private CallOutput CallShareable(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
@@ -210,6 +213,19 @@ namespace Nethermind.Facade
         private static bool HasOverrides(Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride) =>
             stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null || blockOverride is not null;
 
+        /// <summary>
+        /// Returns the blob base fee override <paramref name="tx"/> runs with: zero for a blob call without a positive blob
+        /// fee cap, which then pays no blob fee, as in Geth's eth_call, and <paramref name="blobBaseFeeOverride"/> otherwise.
+        /// </summary>
+        private static UInt256? GetBlobBaseFeeOverride(Transaction tx, UInt256? blobBaseFeeOverride)
+        {
+            if (!tx.CarriesBlobs || !(tx.MaxFeePerBlobGas ?? UInt256.Zero).IsZero)
+                return blobBaseFeeOverride;
+
+            tx.MaxFeePerBlobGas = UInt256.Zero;
+            return UInt256.Zero;
+        }
+
         public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken)
         {
             using SimulateReadOnlyBlocksProcessingEnvPool.PooledScope pooled = simulateEnvPool.Begin(header);
@@ -228,13 +244,8 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, CancellationToken cancellationToken)
         {
-            // A blob transaction without a blob fee cap is estimated with blob gas priced at zero.
             BlobFeeCapFill blobFeeCapFill = new(tx.SupportsBlobs && tx.MaxFeePerBlobGas is null, blobBaseFeeOverride);
-            if (tx.SupportsBlobs && (tx.MaxFeePerBlobGas ?? UInt256.Zero).IsZero)
-            {
-                tx.MaxFeePerBlobGas = UInt256.Zero;
-                blobBaseFeeOverride = UInt256.Zero;
-            }
+            blobBaseFeeOverride = GetBlobBaseFeeOverride(tx, blobBaseFeeOverride);
 
             return HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
                 ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, blockOverride, gasCap, blobFeeCapFill, cancellationToken)
