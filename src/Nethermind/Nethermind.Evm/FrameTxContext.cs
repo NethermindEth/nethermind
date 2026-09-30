@@ -30,7 +30,6 @@ namespace Nethermind.Evm;
 /// <param name="maxFeePerGas">EIP-1559 <c>max_fee_per_gas</c> of the envelope.</param>
 /// <param name="maxFeePerBlobGas">EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope, zero when it carries no blobs.</param>
 /// <param name="legacyNonce">The sender's account nonce before any frame executed.</param>
-/// <param name="recentRootReferences">EIP-8272 recent-root references of the signed envelope.</param>
 /// <param name="nonceKeys">EIP-8250 nonce keys, or <see langword="null"/> for a plain account nonce.</param>
 public sealed class FrameTxContext(
     Address sender,
@@ -43,7 +42,6 @@ public sealed class FrameTxContext(
     in UInt256 maxFeePerGas,
     in UInt256 maxFeePerBlobGas,
     in UInt256 legacyNonce,
-    RecentRootReference[]? recentRootReferences = null,
     UInt256[]? nonceKeys = null)
 {
     /// <summary>The transaction sender: the default target of a frame and signer of an entry that names none.</summary>
@@ -90,10 +88,6 @@ public sealed class FrameTxContext(
 
     /// <summary>EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope; zero when it carries no blobs.</summary>
     public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
-
-    /// <summary>The EIP-8272 recent-root references of the signed envelope, empty when it carries none.</summary>
-    /// <remarks>Absent and empty are different envelopes but indistinguishable to executing code.</remarks>
-    public RecentRootReference[] RecentRootReferences { get; } = recentRootReferences ?? [];
 
     /// <summary>Index of the frame currently executing; set by the outer loop before each frame.</summary>
     public int CurrentFrameIndex { get; set; }

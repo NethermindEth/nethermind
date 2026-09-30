@@ -46,8 +46,6 @@ public class FrameTxDecoderTests
             Assert.That(decoded.Nonce, Is.EqualTo(tx.Nonce));
         }
 
-        AssertReferencesEqual(decoded.RecentRootReferences, tx.RecentRootReferences);
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
@@ -167,7 +165,7 @@ public class FrameTxDecoderTests
             _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
         }
 
-        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing signature"));
+        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing element"));
     }
 
     [Test]
@@ -258,74 +256,25 @@ public class FrameTxDecoderTests
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
 
-    // An absent list is a different envelope from an empty one, so neither may reuse the other's hash.
-    [Test]
-    public void ComputeSigHash_RecentRootReferencesChange_HashChanges()
+    [TestCaseSource(nameof(TrailingListCases))]
+    public void Decode_PayloadWithTrailingList_Throws(Rlp trailing)
     {
-        Transaction none = CreateFrameTx();
-        Transaction empty = CreateFrameTx();
-        empty.RecentRootReferences = [];
-        Transaction referencing = CreateFrameTx();
-        referencing.RecentRootReferences = [Reference(slot: 7)];
-        Transaction otherSlot = CreateFrameTx();
-        otherSlot.RecentRootReferences = [Reference(slot: 8)];
-
-        using (Assert.EnterMultipleScope())
+        void Decode()
         {
-            Assert.That(FrameTxSigHash.ComputeValue(empty), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(none)));
-            Assert.That(FrameTxSigHash.ComputeValue(referencing), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(empty)));
-            Assert.That(FrameTxSigHash.ComputeValue(otherSlot), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(referencing)));
+            RlpReader reader = new(TypedPayload(FrameTxBody(trailing: trailing)));
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
         }
+
+        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing element"));
     }
 
-    [TestCaseSource(nameof(MalformedReferenceListCases))]
-    public void Decode_MalformedRecentRootReferenceList_Throws(Rlp references) =>
-        Assert.That(() => DecodeReferenceEnvelope(references), Throws.InstanceOf<RlpException>());
-
-    // Control for the malformed cases above: without it any exception from the surrounding payload would satisfy them.
-    [Test]
-    public void Decode_WellFormedRecentRootReferenceList_Decodes()
+    private static IEnumerable<TestCaseData> TrailingListCases()
     {
-        Transaction tx = DecodeReferenceEnvelope(Rlp.Encode(new[]
-        {
-            EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray())
-        }));
-
-        Assert.That(tx.RecentRootReferences, Has.Length.EqualTo(1));
-    }
-
-    private static IEnumerable<TestCaseData> MalformedReferenceListCases()
-    {
-        Rlp wellFormed = EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray());
-
+        yield return new TestCaseData(Rlp.OfEmptyList).SetName("Decode_PayloadWithTrailingEmptyList_Throws");
         yield return new TestCaseData(Rlp.Encode(new[]
         {
-            EncodeReference(new byte[31], 7, TestItem.KeccakB.BytesToArray())
-        })).SetName("Decode_ReferenceWithUndersizedSourceId_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[]
-        {
-            Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L) })
-        })).SetName("Decode_ReferenceMissingRoot_Throws");
-        Rlp[] overTheCap = new Rlp[Eip8272Constants.MaxRecentRootReferences + 1];
-        Array.Fill(overTheCap, wellFormed);
-        yield return new TestCaseData(Rlp.Encode(overTheCap))
-            .SetName("Decode_MoreReferencesThanTheCap_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[] { Rlp.OfEmptyList }))
-            .SetName("Decode_EmptyListAsAReference_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[]
-        {
-            Rlp.Encode(new[]
-            {
-                Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L),
-                Rlp.Encode(TestItem.KeccakB.BytesToArray()), Rlp.Encode(0L)
-            })
-        })).SetName("Decode_ReferenceWithAFourthElement_Throws");
-    }
-
-    private Transaction DecodeReferenceEnvelope(Rlp references)
-    {
-        RlpReader reader = new(TypedPayload(FrameTxBody(trailing: references)));
-        return _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+            Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L), Rlp.Encode(TestItem.KeccakB.BytesToArray()) })
+        })).SetName("Decode_PayloadWithTrailingRecentRootReferenceList_Throws");
     }
 
     /// <summary>
@@ -355,32 +304,6 @@ public class FrameTxDecoderTests
         return payload;
     }
 
-    private static Rlp EncodeReference(byte[] sourceId, ulong slot, byte[] root) =>
-        Rlp.Encode(new[] { Rlp.Encode(sourceId), Rlp.Encode(slot), Rlp.Encode(root) });
-
-    private static RecentRootReference Reference(ulong slot) =>
-        new(TestItem.KeccakA.ValueHash256, slot, TestItem.KeccakB.ValueHash256);
-
-    private static void AssertReferencesEqual(RecentRootReference[]? actual, RecentRootReference[]? expected)
-    {
-        if (expected is null)
-        {
-            Assert.That(actual, Is.Null);
-            return;
-        }
-
-        Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Length, Is.EqualTo(expected.Length));
-        using (Assert.EnterMultipleScope())
-        {
-            for (int i = 0; i < expected.Length; i++)
-            {
-                Assert.That(actual[i].SourceId, Is.EqualTo(expected[i].SourceId));
-                Assert.That(actual[i].Slot, Is.EqualTo(expected[i].Slot));
-                Assert.That(actual[i].Root, Is.EqualTo(expected[i].Root));
-            }
-        }
-    }
 
     [Test]
     public void ComputeSigHash_MaxFeePerBlobGasChanges_HashChanges()
@@ -449,14 +372,6 @@ public class FrameTxDecoderTests
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, FilledBytes(32, 0xab), FilledBytes(TxFrameSignature.Secp256k1SignatureLength, 0x22)),
             new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressD, default, FilledBytes(TxFrameSignature.P256SignatureLength, 0x33)),
         ])).SetName("Roundtrip_AllSignatureSchemes");
-
-        Transaction emptyReferences = CreateFrameTx();
-        emptyReferences.RecentRootReferences = [];
-        yield return new TestCaseData(emptyReferences).SetName("Roundtrip_EmptyRecentRootReferenceList");
-
-        Transaction referencing = CreateFrameTx();
-        referencing.RecentRootReferences = [Reference(slot: 0), Reference(slot: ulong.MaxValue)];
-        yield return new TestCaseData(referencing).SetName("Roundtrip_RecentRootReferences");
 
         Transaction keyed = CreateFrameTx();
         keyed.NonceKeys = [UInt256.Zero];
@@ -744,21 +659,15 @@ public class FrameTxDecoderTests
     }
 
     [Test]
-    public void Decode_DeclaredLengthOverrunsTheBuffer_ReportsTruncatedReferences([Range(1, 4)] int overrun)
+    public void Decode_DeclaredLengthOverrunsTheBuffer_ThrowsRlpException([Range(1, 4)] int overrun)
     {
-        // Inflating the declared payload length without adding bytes leaves the end-of-payload checkpoint
-        // past the last real field, so the decoder enters the trailing recent-root-reference list and reads
-        // off the end of the buffer. That must surface as an RLP error naming the list, not as a bare
-        // IndexOutOfRangeException and not as a truncated signature — a frame transaction has no envelope
-        // signature to truncate.
         byte[] payload = EncodeConsensusPayload(CreateFrameTx());
         // Byte 0 is the transaction type, byte 1 the payload sequence prefix.
         Assert.That(payload[1] + overrun, Is.LessThanOrEqualTo(ShortSequencePrefixMax),
             "the overrun must keep the short-form prefix, or it declares a length of length instead");
         payload[1] += (byte)overrun;
 
-        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>()
-            .With.Message.Contains("RLP data is truncated").And.Message.Contains("recent root reference"));
+        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>());
     }
 
     /// <summary>An RLP list of <paramref name="count"/> single-byte items, without materialising the items.</summary>
