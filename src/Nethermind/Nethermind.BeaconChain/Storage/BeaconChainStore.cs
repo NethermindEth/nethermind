@@ -1083,6 +1083,125 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         return UInt128.Zero;
     }
 
+    /// <summary>Why a stored slot fails <see cref="FindIncompleteDataColumnSlot"/>.</summary>
+    internal enum DataColumnShortfall
+    {
+        None,
+        /// <summary>The canonical block's slot index entry lacks a required column.</summary>
+        ColumnNotIndexed,
+        /// <summary>The slot index names a column whose record is not stored.</summary>
+        RecordMissing,
+        /// <summary>The canonical block carries blobs, but the slot index holds none of its columns.</summary>
+        NoColumns,
+        /// <summary>The canonical block is not stored, so whether it needs columns is unknown.</summary>
+        BlockMissing,
+        /// <summary>The required columns are unknown.</summary>
+        RequiredColumnsUnknown,
+        /// <summary>Reading the store failed.</summary>
+        ReadFailed,
+    }
+
+    /// <summary>The highest canonical slot from <paramref name="from"/> through <paramref name="through"/> whose stored data columns fall short of <paramref name="required"/>.</summary>
+    /// <remarks>
+    /// The scan runs down from <paramref name="through"/> and stops at the first shortfall, so every slot above the result is complete.
+    /// Only a canonical block with blob commitments needs columns, and from Gloas only once its payload envelope is stored: a slot index
+    /// entry shows it has some, and without one the block is read.
+    /// A column counts when its record key exists; the record is not decoded. Slots before Fulu, or below the retention window as of
+    /// <paramref name="currentEpoch"/> (fulu/p2p-interface.md), are not visited.
+    /// </remarks>
+    /// <param name="currentEpoch">The wall-clock epoch that sets the retention window; <c>null</c> does not bound the scan by it.</param>
+    /// <param name="required">The columns such a block must have, bit <c>i</c> for column <c>i</c>; <c>null</c> fails the first block that needs columns.</param>
+    /// <returns>The slot, or <c>null</c> when every visited slot is complete.</returns>
+    internal ulong? FindIncompleteDataColumnSlot(ulong from, ulong through, ulong? currentEpoch, UInt128? required, out DataColumnShortfall shortfall)
+    {
+        if (spec is not null)
+        {
+            from = Math.Max(from, spec.FuluForkEpoch > ulong.MaxValue / spec.SlotsPerEpoch ? ulong.MaxValue : spec.FuluForkEpoch * spec.SlotsPerEpoch);
+            if (currentEpoch is { } epoch)
+            {
+                from = Math.Max(from, DataAvailabilityBoundary.ComputeStartSlot(epoch, spec));
+            }
+        }
+
+        shortfall = DataColumnShortfall.None;
+        if (from > through)
+        {
+            return null;
+        }
+
+        Span<byte> key = stackalloc byte[ColumnKeyLength];
+        for (ulong slot = through; ; slot--)
+        {
+            shortfall = CheckStoredDataColumns(slot, required, key);
+            if (shortfall != DataColumnShortfall.None)
+            {
+                return slot;
+            }
+
+            if (slot == from)
+            {
+                return null;
+            }
+        }
+    }
+
+    private DataColumnShortfall CheckStoredDataColumns(ulong slot, UInt128? required, Span<byte> key)
+    {
+        try
+        {
+            if (!TryGetCanonicalRoot(slot, out Hash256? root))
+            {
+                return DataColumnShortfall.None;
+            }
+
+            // gloas/fork-choice.md checks availability when the payload envelope is imported; a builder can withhold it, and then no column was needed.
+            if (spec is not null && SignedBeaconBlockCodec.IsGloasSlot(slot, spec) && !_envelopes.KeyExists(root.Bytes))
+            {
+                return DataColumnShortfall.None;
+            }
+
+            UInt128 stored = GetStoredDataColumns(slot, root);
+            if (stored == UInt128.Zero)
+            {
+                return !TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block) ? DataColumnShortfall.BlockMissing
+                    : BlobCommitmentCount(block) == 0 ? DataColumnShortfall.None
+                    : DataColumnShortfall.NoColumns;
+            }
+
+            if (required is not { } mask)
+            {
+                return DataColumnShortfall.RequiredColumnsUnknown;
+            }
+
+            if ((stored & mask) != mask)
+            {
+                return DataColumnShortfall.ColumnNotIndexed;
+            }
+
+            for (UInt128 remaining = stored; remaining != UInt128.Zero; remaining &= remaining - UInt128.One)
+            {
+                WriteColumnKey(key, root, (ulong)UInt128.TrailingZeroCount(remaining));
+                if (!_dataColumns.KeyExists(key))
+                {
+                    return DataColumnShortfall.RecordMissing;
+                }
+            }
+
+            return DataColumnShortfall.None;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return DataColumnShortfall.ReadFailed;
+        }
+    }
+
+    private static int BlobCommitmentCount(ForkedSignedBeaconBlock block) => block switch
+    {
+        ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message?.Body?.BlobKzgCommitments?.Length ?? 0,
+        ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message?.Body?.SignedExecutionPayloadBid?.Message?.BlobKzgCommitments?.Length ?? 0,
+        _ => throw new NotSupportedException($"Unhandled block {block.GetType().Name}"),
+    };
+
     /// <summary>The slot from which the store holds every data column sidecar it was given, as last recorded; <c>false</c> before the first.</summary>
     public bool TryGetDataColumnFloor(out ulong slot)
     {
