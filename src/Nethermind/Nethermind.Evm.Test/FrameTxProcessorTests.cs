@@ -3060,6 +3060,25 @@ public partial class FrameTxProcessorTests
         Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
     }
 
+    [TestCase(4UL, TransactionResult.ErrorType.TransactionNonceTooLow, TestName = "a later key ahead of the sequence reports too low")]
+    [TestCase(0UL, TransactionResult.ErrorType.TransactionNonceTooHigh, TestName = "a later key behind the sequence reports too high")]
+    public void Execute_KeyedNonce_ReportsTheFirstMismatchedKey(ulong laterKeySeq, TransactionResult.ErrorType expectedError)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, [(UInt256)1], nonceSeq: 2);
+        if (laterKeySeq > 0)
+        {
+            KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, [(UInt256)7], laterKeySeq - 1);
+        }
+
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonce: 3, SelfVerifyFrame());
+        tx.NonceKeys = [1, 7];
+
+        Assert.That(Process(tx).Error, Is.EqualTo(expectedError));
+    }
+
     [Test]
     public void Execute_KeyedNonce_RecordsTheNonceManagerSlotInBal()
     {

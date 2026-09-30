@@ -79,6 +79,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
         ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
+        for (int i = 1; current == tx.Nonce && i < nonceKeys.Length; i++)
+        {
+            current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[i]);
+        }
+
         return FrameTxNonceMismatch(tx.Nonce < current);
     }
 
