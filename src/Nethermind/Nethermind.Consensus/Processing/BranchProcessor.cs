@@ -104,6 +104,9 @@ public class BranchProcessor(
             BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
 
             BlockHeader? preBlockBaseBlock = baseBlock;
+            // Set by the commit-point re-open, which already targets the next block, so the EIP-8347 boundary
+            // check at the top of the next iteration does not re-open the scope a second time.
+            bool scopeOpenedForNextBlock = false;
 
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             // Production, tracing and eth_simulate never report inclusion-list compliance.
@@ -116,9 +119,20 @@ public class BranchProcessor(
                 suggestedBlock = suggestedBlocks[i];
                 if (i > 0)
                 {
+                    bool wasEip8347Enabled = spec.IsEip8347Enabled;
                     // Refresh spec
                     spec = specProvider.GetSpec(suggestedBlock.Header);
+
+                    // EIP-8347: the state backend is selected from the target block, so a scope opened for a block
+                    // on one side of the activation cannot execute the first block on the other side. Safe here: the
+                    // previous iteration cancelled and drained the prewarmer and WaitForCacheClear() joined the cache clear.
+                    if (worldStateCloser is not null && !scopeOpenedForNextBlock && spec.IsEip8347Enabled != wasEip8347Enabled)
+                    {
+                        worldStateCloser.Dispose();
+                        worldStateCloser = BeginTargetScope(suggestedBlock);
+                    }
                 }
+                scopeOpenedForNextBlock = false;
                 // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();
                 if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
@@ -203,6 +217,7 @@ public class BranchProcessor(
 
                     worldStateCloser?.Dispose();
                     worldStateCloser = BeginTargetScope(suggestedBlocks[i + 1]);
+                    scopeOpenedForNextBlock = true;
                 }
 
                 preBlockBaseBlock = processedBlock.Header;

@@ -11,7 +11,6 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -39,7 +38,7 @@ public partial class BlockAccessListManager
 {
     private interface ITxProcessorWithWorldStateManager : IDisposable
     {
-        void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan);
+        void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan);
         TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0u);
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
@@ -66,7 +65,6 @@ public partial class BlockAccessListManager
         }
 
         private Block? _currentBlock;
-        private Hash256? _parentStateRoot;
         private BlockExecutionContext _currentCtx;
         private int _lastBalIndex;
         private BalReadStoragePlan? _readPlan;
@@ -104,12 +102,11 @@ public partial class BlockAccessListManager
             }
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
         {
             _readPlan = readPlan;
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
-            _parentStateRoot = parentStateRoot;
 
             int previousSize = _lastBalIndex + 1;
             int newLastBalIndex = block.Transactions.Length + 1;
@@ -255,7 +252,6 @@ public partial class BlockAccessListManager
                 ThrowParentStateUnavailable(targetBlock);
             }
 
-            Debug.Assert(scope.WorldState.StateRoot == _parentStateRoot, "parent readers must read the pre-state the block executes on");
             return new ParentReaderLease(source, _parentReaderEnvPool, scope);
         }
 
@@ -314,7 +310,7 @@ public partial class BlockAccessListManager
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
         {
             if (readPlan is not null)
                 ThrowReadCoverageUnavailable();

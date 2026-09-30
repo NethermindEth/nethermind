@@ -1,0 +1,83 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers.Binary;
+using BenchmarkDotNet.Attributes;
+using Nethermind.Pbt;
+
+namespace Nethermind.Benchmarks.State;
+
+[MemoryDiagnoser]
+public class PbtNodePathBenchmark
+{
+    private byte[] _bytes;
+    private PbtStorageNodePath _path;
+
+    [Params(0, 1, 8, 64, 272, 524, 528)]
+    public int BitDepth { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        byte[] keyBytes = new byte[66];
+        new Random(8297).NextBytes(keyBytes);
+        _path = PbtNodePathOperations.Prefix<PbtStorageNodePath>(keyBytes, keyBytes.Length * 8, BitDepth);
+        _bytes = new byte[(BitDepth + 7) >> 3];
+        PbtNodePathOperations.CopyTo(_path, _bytes);
+    }
+
+    [Benchmark]
+    public PbtStorageNodePath Construct() => new(_bytes, BitDepth);
+
+    [Benchmark]
+    public PbtStorageNodePath LocateAndReconstruct()
+    {
+        PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(_path);
+        return PbtFourLevelGroupGeometry.PathOf(location.GroupKey, location.Position);
+    }
+}
+
+[MemoryDiagnoser]
+public class PbtNodePathAppendBenchmark
+{
+    private PbtStorageNodePath _path;
+    private byte[] _prefix;
+
+    [Params(1, 8, 272, 528)]
+    public int ResultBitDepth { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        byte[] keyBytes = new byte[66];
+        new Random(8297).NextBytes(keyBytes);
+        PbtStorageTreeKey key = new(keyBytes);
+        int pathDepth = Math.Min(7, ResultBitDepth - 1);
+        _path = PbtNodePathOperations.Prefix<PbtStorageNodePath>(keyBytes, keyBytes.Length * 8, pathDepth);
+        int prefixBits = ResultBitDepth - pathDepth - 1;
+        _prefix = new byte[2 + PbtBitPrefix.ByteCount(prefixBits)];
+        BinaryPrimitives.WriteUInt16BigEndian(_prefix, (ushort)prefixBits);
+        PbtBitPrefix.CopyBits(key.Bytes, pathDepth, prefixBits, _prefix.AsSpan(2), 0);
+    }
+
+    [Benchmark]
+    public PbtStorageNodePath Append() => _path.Append(CompressedPrefix.FromValidated(_prefix), 1);
+}
+
+[MemoryDiagnoser]
+[GenericTypeArguments(typeof(PbtNodePath))]
+[GenericTypeArguments(typeof(PbtStorageNodePath))]
+public class PbtNodePathMemoryBenchmark<TPath> where TPath : struct, IPbtNodePath<TPath>
+{
+    private byte[] _bytes;
+
+    [Params(0, 8, 272)]
+    public int BitDepth { get; set; }
+
+    [GlobalSetup]
+    public void Setup() => _bytes = new byte[(BitDepth + 7) / 8];
+
+    [Benchmark]
+    public TPath Construct() => TPath.Create(_bytes, BitDepth);
+}

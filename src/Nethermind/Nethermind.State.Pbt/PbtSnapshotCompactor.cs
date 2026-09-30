@@ -1,0 +1,67 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Core.Crypto;
+using Nethermind.Pbt;
+using Nethermind.Logging;
+
+namespace Nethermind.State.Pbt;
+
+/// <summary>Merges consecutive canonical snapshot diffs without changing newest-write precedence.</summary>
+public class PbtSnapshotCompactor(
+    IPbtResourcePool resourcePool,
+    PbtCompactionSchedule schedule,
+    PbtSnapshotRepository repository,
+    IPbtConfig config,
+    ILogManager? logManager = null)
+{
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtSnapshotCompactor>();
+
+    public bool DoCompactSnapshot(in StateId stateId)
+    {
+        ulong width = schedule.GetCompactSize(stateId.BlockNumber);
+        if (width <= 1) return false;
+        if (width < (ulong)config.CompactSize && stateId.BlockNumber >= (ulong)config.CompactSize)
+            repository.RemoveCompactedAt(stateId.BlockNumber - (ulong)config.CompactSize);
+        using PbtSnapshotPooledList chain = new((int)width);
+        long floor = checked((long)stateId.BlockNumber - (long)width);
+        if (!repository.TryLeaseCompactionWindow(stateId, floor, chain)) return false;
+        if (_logger.IsDebug) _logger.Debug($"Compacting Pbt snapshots {chain[0].From} -> {stateId}: chainCount={chain.Count}, snapshots={repository.Count}, compactedSnapshots={repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
+        PbtSnapshot compacted = Compact(chain);
+        bool added = repository.TryAddCompacted(compacted);
+        if (_logger.IsDebug) _logger.Debug($"Completed Pbt compaction up to {stateId}: added={added}, snapshots={repository.Count}, compactedSnapshots={repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
+        return added;
+    }
+
+    public PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst)
+    {
+        PbtResourcePool.Usage usage = PbtResourcePool.CompactUsage(chainOldestFirst.Count);
+        PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);
+        try
+        {
+            for (int i = 0; i < chainOldestFirst.Count; i++)
+            {
+                PbtSnapshotContent content = chainOldestFirst[i].Content;
+                foreach ((ValueHash256 addressHash, bool isNewStorage) in content.SelfDestructedStorageAddresses) merged.ClearStorage(addressHash, isNewStorage);
+                foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) merged.Accounts[addressHash] = account;
+                foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in content.Storages) merged.SetRun(runKey, run.Clone());
+                foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) merged.Codes[codeHash] = code;
+                foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.AccountNodeGroups) merged.SetNodeGroup(groupKey, payload);
+                foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.CodeNodeGroups) merged.SetNodeGroup(groupKey, payload);
+                foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.StorageNodeGroups) merged.SetNodeGroup(groupKey, payload);
+            }
+
+            PbtSnapshot newest = chainOldestFirst[^1];
+            return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage);
+        }
+        catch
+        {
+            resourcePool.ReturnSnapshotContent(usage, merged);
+            throw;
+        }
+    }
+}

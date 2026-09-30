@@ -82,9 +82,13 @@ public class PreBlockCaches
     internal int StorageBypassCount => _storageBypass.Count;
 
     /// <summary>
-    /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
-    /// (<see cref="IWorldStateScopeProvider.IScope.HintWarmAccount"/>); may disappear at any time.
+    /// The main processing scope, registered as a factory for reference-counted trie warm-up session borrows.
     /// </summary>
+    /// <remarks>
+    /// Registration, removal, and <see cref="IWorldStateScopeProvider.IScope.CreateTrieWarmupSession"/> calls
+    /// must hold the lock on this cache instance. Borrowers release their references on disposal;
+    /// the main scope's disposal stops further warm-up without waiting for active reads.
+    /// </remarks>
     public IWorldStateScopeProvider.IScope? MainScope
     {
         get => _mainScope;

@@ -44,7 +44,8 @@ public class DebugRpcModule(
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
-    IBlockForRpcFactory blockForRpcFactory)
+    IBlockForRpcFactory blockForRpcFactory,
+    IMigrationTelemetry? migrationTelemetry = null)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
@@ -52,6 +53,12 @@ public class DebugRpcModule(
     // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
     private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
+
+    public ResultWrapper<MigrationProgressForRpc> debug_migrationProgress() =>
+        ResultWrapper<MigrationProgressForRpc>.Success(migrationTelemetry?.GetProgress() ?? MigrationProgressForRpc.Inactive);
+
+    public ResultWrapper<Hash256?> debug_shadowStateRoot(Hash256 blockHash) =>
+        ResultWrapper<Hash256?>.Success(migrationTelemetry?.GetShadowRoot(blockHash));
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
     {

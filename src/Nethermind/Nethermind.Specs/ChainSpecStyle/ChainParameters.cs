@@ -188,6 +188,8 @@ public class ChainParameters
     public ulong? Eip7708TransitionTimestamp { get; set; }
     public ulong? Eip8024TransitionTimestamp { get; set; }
     public ulong? Eip8246TransitionTimestamp { get; set; }
+    /// <summary>EIP-8347 activation Unix timestamp in seconds; null disables activation.</summary>
+    public ulong? Eip8347TransitionTimestamp { get; set; }
     public ulong? Eip8038TransitionTimestamp { get; set; }
     public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip8141TransitionTimestamp { get; set; }

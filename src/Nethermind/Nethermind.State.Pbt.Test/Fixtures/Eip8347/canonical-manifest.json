@@ -1,0 +1,83 @@
+{
+  "eips": "f3079a09e8c606afcb0e5e1a309ff228b88dc067",
+  "method": "test-only fixed-width Keccak-order encoder; independent bounded parser checks exact state key set; legacy geth verifier remains separate root oracle",
+  "artifacts": [
+    {
+      "name": "anchor",
+      "preimageDigest": "0x72d744d45da598b0c0cedb2233c722164b4c303897ed293dea1261efebf418c5",
+      "snapshotDigest": "0x6f2af911adc9630cddaec54a736932708920a009984f87f13dd3abb325a3af8f",
+      "accounts": 8,
+      "verified": true
+    },
+    {
+      "name": "a1",
+      "preimageDigest": "0x8021a8fbf7d571eaa89d805739eb1f64912651bf8fcda82029f23847d3af7905",
+      "snapshotDigest": "0x1db2dac8bce73a526024ac3722ada29bfbe5e89059303400db091685cf097eb6",
+      "accounts": 10,
+      "verified": true
+    },
+    {
+      "name": "a2",
+      "preimageDigest": "0x6ccb804c4cd794c063f4a446398cec202a92a2a0974d4f1784e1b8afa664fab5",
+      "snapshotDigest": "0x2f414178b62f54504dd556f40fd4ff93f57cfd3c2de530bdd9d479d19b7f7b53",
+      "accounts": 10,
+      "verified": true
+    },
+    {
+      "name": "a3",
+      "preimageDigest": "0xd6b63cc81f4f730629aa2f543175fc1e552f84964cceb60af22ad4bf6942db5f",
+      "snapshotDigest": "0xebacbe9f0620dc0500478e4b942a3554339e002812dc3679bf8c6410ce4aa30f",
+      "accounts": 10,
+      "verified": true
+    },
+    {
+      "name": "a4",
+      "preimageDigest": "0x73fd1b143805bd6b7bdf3c55365223f2b41acf8280ec0ce4cc7f9d0521e93d1d",
+      "snapshotDigest": "0xd931d6530f34b256977ada1a839c9f55a4a19e11666fe11507c2196458bfd53c",
+      "accounts": 10,
+      "verified": true
+    },
+    {
+      "name": "a5",
+      "preimageDigest": "0xe4fe1068ea4ef21c97b69d7f1c5b4f04c83ffa0a87caab8915fcdb6ee6238f57",
+      "snapshotDigest": "0x36fb40948b8e4900e0c63a5d0121e46ac6d5c53d057b02fe83e39f42f79c3711",
+      "accounts": 10,
+      "verified": true
+    },
+    {
+      "name": "b2",
+      "preimageDigest": "0x6ccb804c4cd794c063f4a446398cec202a92a2a0974d4f1784e1b8afa664fab5",
+      "snapshotDigest": "0x531655107e912858f151d8bd895d7f0d08cbb6bf782611b84cfb50e590479b72",
+      "accounts": 10,
+      "verified": true
+    },
+    {
+      "name": "b3",
+      "preimageDigest": "0xd6b63cc81f4f730629aa2f543175fc1e552f84964cceb60af22ad4bf6942db5f",
+      "snapshotDigest": "0x4401106eb5fed7127013300044c7966278dd469cf695b6f06cc6e57b14dd6fef",
+      "accounts": 10,
+      "verified": true
+    },
+    {
+      "name": "b4",
+      "preimageDigest": "0x73fd1b143805bd6b7bdf3c55365223f2b41acf8280ec0ce4cc7f9d0521e93d1d",
+      "snapshotDigest": "0x0fe9ed4e58434d163db4c8eaf3e21dec3e0c645535b2986579a8cde111fecc2a",
+      "accounts": 10,
+      "verified": true
+    },
+    {
+      "name": "b5",
+      "preimageDigest": "0xe4fe1068ea4ef21c97b69d7f1c5b4f04c83ffa0a87caab8915fcdb6ee6238f57",
+      "snapshotDigest": "0xcd781502eabb69445e96910d18102c57f32551464fecfe0618d671441fb9453b",
+      "accounts": 10,
+      "verified": true
+    },
+    {
+      "name": "b6",
+      "preimageDigest": "0x277263eee73bf7edbe425d160a7ef277d659e7c1c90d7c36596aa72168f025ef",
+      "snapshotDigest": "0x1e072ea25d0b4aab8ad69226a0607f445ca22f8a04356bc8aca848286ab5eefb",
+      "accounts": 10,
+      "verified": true
+    }
+  ]
+}

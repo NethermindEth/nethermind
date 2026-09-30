@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "reference": "e31a37fb88c2b75c0897c033bd3f4279dee42268",
+  "eips": "f3079a09e8c606afcb0e5e1a309ff228b88dc067",
+  "method": "reference lifecycle -\u003e enumerated logical state -\u003e independent MPT reconstruction -\u003e convertState -\u003e importState verifyOnly",
+  "artifacts": [
+    {
+      "name": "anchor",
+      "mptRoot": "0x0c91bddae32f113682076539cabe784698f592ace190dc3f7feb51e72dbb3e8d",
+      "pbtRoot": "0xd7936293b851534fa6af126bdc2f5db471069aeea9b614856e0e1e871524522e",
+      "blockHash": "0x35091d8791b6a548f2b95f4e8c0ad60efae033f4ccddbf58c60be1b36a107fce",
+      "number": 0,
+      "snapshot": "images/anchor/snapshot.pbt",
+      "preimages": "images/anchor/preimages.bin",
+      "snapshotDigest": "0xd615a28fd296830234008ebc22fd6c15ca8b08b18393f7aa7e6baa4f98975bf0",
+      "preimageDigest": "0x9a6dcd3c2d4744f67b511cf8a6dae1294255c4986c7d919bd54b7483de4cc02f",
+      "verified": true
+    },
+    {
+      "name": "a1",
+      "mptRoot": "0x9f8aa1acb2a6931a173d529ae7ea2dc39a2951d252f59f7ee2ba8304f6a41626",
+      "pbtRoot": "0xd9809fd955656fcd6dad2a40b1e0870af002276f321089005e7e77094ad565e5",
+      "blockHash": "0x9dffdfe257cdacd04682fe8dbc7059333770386e27d6921a0c9f7fbd0748f679",
+      "number": 1,
+      "snapshot": "images/a1/snapshot.pbt",
+      "preimages": "images/a1/preimages.bin",
+      "snapshotDigest": "0x23b8e081344273c96e44d1e600b96884f7997f269632869fcc95ebec64723ec0",
+      "preimageDigest": "0x3fa8c12970339300f783c576fcf6cc2736d5b9adb9f81deae13e471104e4593e",
+      "verified": true
+    },
+    {
+      "name": "a2",
+      "mptRoot": "0xce150f3aecefa5c884d1c2933e889dce7cd87e5b46fb6369ee957213bf062d7e",
+      "pbtRoot": "0x6acb93a5f1031a270936331a7641c0c20a1412cbab0dab9cb7af9cf8c66ddc8c",
+      "blockHash": "0x420380458114f7f63e046a9745b061c05d8f3cea39df3ba9e753a8551dd957f5",
+      "number": 2,
+      "snapshot": "images/a2/snapshot.pbt",
+      "preimages": "images/a2/preimages.bin",
+      "snapshotDigest": "0xfe5cd89debbc1a68aceea93a33877df2d9bab203b23cdaf255852175dd9be886",
+      "preimageDigest": "0xac790b1e616782c714f4e07a86a428bc9a859b45c44fdffb1f45299c26ff312e",
+      "verified": true
+    },
+    {
+      "name": "a3",
+      "mptRoot": "0xd9e0b05835f463b224d49475a95666f3bd5b854e334380034ca5fe9d3c549de5",
+      "pbtRoot": "0x22c9e3dd8ae32d6b7dc7811eab09036809cceabaf6a5d46606b1dc85e297664e",
+      "blockHash": "0x0fbcf09dbbb680373dc98cf370b0c05f417a1ad582449e3809b87e0b6ce5aaf8",
+      "number": 3,
+      "snapshot": "images/a3/snapshot.pbt",
+      "preimages": "images/a3/preimages.bin",
+      "snapshotDigest": "0x410a26018dad6c9abb3fc41180b0284e97f95062e7f8263203db5a38ec0f1f98",
+      "preimageDigest": "0xd4cb1c9f396104e7712b12aac8efb3c7f25727ea9fda49c172a10ef3408e84ba",
+      "verified": true
+    },
+    {
+      "name": "a4",
+      "mptRoot": "0xcb7dbc9613c89e19d8711bc2fb8956398c76781f9571b8cca18adc94dd802d4e",
+      "pbtRoot": "0x49d2cab1ba2c41ebd9eebcc438779bdc1b1abc978db1b91383fa4d87c8fe7e03",
+      "blockHash": "0xdc37258811adfbf0149b00eaf248624e6bdf3ddde94ef11ff520d8a9bd324be6",
+      "number": 4,
+      "snapshot": "images/a4/snapshot.pbt",
+      "preimages": "images/a4/preimages.bin",
+      "snapshotDigest": "0x677b524a04183e2d85dfdbaf0cfa4a7e41e825ec4ddce2d69b0aaf9aa265dbb3",
+      "preimageDigest": "0xd3c2fc1ed35cced08d72eb10385e4b62a924bd8db1e8c46ac22925888c69ecec",
+      "verified": true
+    },
+    {
+      "name": "a5",
+      "mptRoot": "0x5811aa3c24463aafd21722a8b938d87ef278c5efca3d46e0cbc89ca04d27fb4b",
+      "pbtRoot": "0xbfcc1454aecf0c2409bfa25caaf6cc4fc7aad23be93a18f448865b2aacd5b853",
+      "blockHash": "0x9a44e7fa2390b3ee204e6fa2f735acdca57d511c74ab07b43020d8c7da17c402",
+      "number": 5,
+      "snapshot": "images/a5/snapshot.pbt",
+      "preimages": "images/a5/preimages.bin",
+      "snapshotDigest": "0x00a7192f382d62e8fea92dd85abc91d0d10836037fbafbda08d31bfbb64f4649",
+      "preimageDigest": "0x77998a61ff04a5d8a9ad17e49ce6e667dbc83ba22acdf1b847cc55dae91bc55b",
+      "verified": true
+    },
+    {
+      "name": "b2",
+      "mptRoot": "0xb2d98f2713add164b69b550e8b95793bef0ce0734bbb6cdb0e39bc54a229d773",
+      "pbtRoot": "0xd3e2edf9a5f042c4dc4f27949b7ea6e3d050b0361ac8a788b2543cbe6f3839a1",
+      "blockHash": "0xe309005ba3c6baaeebdb8101fa3cfcfd7eed855da50372e66071db46ec9a17c9",
+      "number": 2,
+      "snapshot": "images/b2/snapshot.pbt",
+      "preimages": "images/b2/preimages.bin",
+      "snapshotDigest": "0xcc14d1ac2531444c9047e924ecdb1b1be2b4e08b451a3227257d70eeb8f5ab54",
+      "preimageDigest": "0xac790b1e616782c714f4e07a86a428bc9a859b45c44fdffb1f45299c26ff312e",
+      "verified": true
+    },
+    {
+      "name": "b3",
+      "mptRoot": "0x8f1c272e0ee90483d57f7b5728fbb25e180968bcac7e221fb7518cac429db576",
+      "pbtRoot": "0xe6c2b92eb992cd195c6ca18f6b3f3bb3b0a33a317f623921d5b9a2205d337d2f",
+      "blockHash": "0x8e34cbeb83bc1eb91c30235316e4ae61ce7c598a7931562e6410b479429f3195",
+      "number": 3,
+      "snapshot": "images/b3/snapshot.pbt",
+      "preimages": "images/b3/preimages.bin",
+      "snapshotDigest": "0xac95cbebe6b0793b41c405b9b3d1e4d1ac2de6d4f7cbd73470ded142073a1d71",
+      "preimageDigest": "0xd4cb1c9f396104e7712b12aac8efb3c7f25727ea9fda49c172a10ef3408e84ba",
+      "verified": true
+    },
+    {
+      "name": "b4",
+      "mptRoot": "0x5e5a8e86007d1115545b134957bd1bb45c36277d93ce6bf637045042fe30a991",
+      "pbtRoot": "0x6d32eca460e3765a556fd450ef051c71a269a66319a16bb0bde34c398d7b8e9a",
+      "blockHash": "0x8578ff363c9c3ee6866d5c4a67249c6254c1439588c6403b06f84ef6d8435a67",
+      "number": 4,
+      "snapshot": "images/b4/snapshot.pbt",
+      "preimages": "images/b4/preimages.bin",
+      "snapshotDigest": "0xb9ed839fca2b2ad1ab1176979a41c88005bc848658460ed10e42e54e64f214e4",
+      "preimageDigest": "0xd3c2fc1ed35cced08d72eb10385e4b62a924bd8db1e8c46ac22925888c69ecec",
+      "verified": true
+    },
+    {
+      "name": "b5",
+      "mptRoot": "0xd9e438d7d0a5361adf4dc20a33a2501700fe2006fe0cb36e226ddbc46e6b914c",
+      "pbtRoot": "0x7d5b2907d21574e58c08e031388158c24a0568b576347123467f42f54b137b92",
+      "blockHash": "0x27fe10b133837ededf8fca0c4f4b8dc6132f5ca28b90e7679c683d8c9555141c",
+      "number": 5,
+      "snapshot": "images/b5/snapshot.pbt",
+      "preimages": "images/b5/preimages.bin",
+      "snapshotDigest": "0x4062bfd638fbbb9e203e0dacbfc31818d2c6e6026c5987a7063ad1d7a8458091",
+      "preimageDigest": "0x77998a61ff04a5d8a9ad17e49ce6e667dbc83ba22acdf1b847cc55dae91bc55b",
+      "verified": true
+    },
+    {
+      "name": "b6",
+      "mptRoot": "0xae628d51e9d1edf3d2cc458f1e0f4247a009e266298a592639a0f7d5540e53e5",
+      "pbtRoot": "0xccc10ca16f8191a19e1e4655b73fb37e9ad4f5609ed4b7af35f3f95371d161ba",
+      "blockHash": "0x337a995310dd3e54154f42cfcd022716781013d0f8c8d17720f1155fdb6ea3cc",
+      "number": 6,
+      "snapshot": "images/b6/snapshot.pbt",
+      "preimages": "images/b6/preimages.bin",
+      "snapshotDigest": "0x2250ab638463e619a685dc49036091aa1fc2fd7aa8a5d72139e40e2dda7cae35",
+      "preimageDigest": "0x2050c62820b994bcf141a35f70d9fa396fb6c79758903a585b429effec522060",
+      "verified": true
+    }
+  ]
+}
