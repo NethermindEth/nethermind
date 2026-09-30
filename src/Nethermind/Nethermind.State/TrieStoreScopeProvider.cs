@@ -382,13 +382,18 @@ public class TrieStoreScopeProvider(
         StorageTree storageTree,
         Action<Address, Hash256> onRootUpdated,
         AddressAsKey address,
-        bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
+        bool commit = false,
+        int minWritesToHashInParallel = StorageTreeBulkWriteBatch.MinWritesToHashInParallel) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         public const int MIN_ENTRIES_TO_BATCH = 16;
 
+        /// <summary>Writes above which a batch that only hashes its tree hashes it in parallel.</summary>
+        private const int MinWritesToHashInParallel = 64;
+
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
+        private int _writes;
 
         private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
             estimatedEntries > MIN_ENTRIES_TO_BATCH
@@ -421,6 +426,7 @@ public class TrieStoreScopeProvider(
             bool isZero = value.IsZero;
             ReadOnlySpan<byte> encoded = isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word);
             _wasSetCalled = true;
+            _writes++;
             if (_bulkWrite is null)
             {
                 storageTree.Set(index, encoded, isZero);
@@ -457,7 +463,6 @@ public class TrieStoreScopeProvider(
         public void Dispose()
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;
-            int bulkCount = 0;
             if (_bulkWrite is not null)
             {
                 if (_hasSelfDestruct)
@@ -467,7 +472,6 @@ public class TrieStoreScopeProvider(
 
                 _pendingHashes?.Batch.Flush(_bulkWrite.AsSpan());
                 _pendingHashes = null;
-                bulkCount = _bulkWrite.Count;
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
                 storageTree.BulkSet(asRef);
             }
@@ -480,7 +484,7 @@ public class TrieStoreScopeProvider(
                 }
                 else
                 {
-                    storageTree.UpdateRootHash(bulkCount > 64);
+                    storageTree.UpdateRootHash(_writes > minWritesToHashInParallel);
                 }
                 onRootUpdated(address, storageTree.RootHash);
             }
