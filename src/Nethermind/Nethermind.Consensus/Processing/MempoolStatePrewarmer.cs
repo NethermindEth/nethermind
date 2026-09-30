@@ -31,14 +31,25 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
     private readonly Lazy<ITxSource> _txSource;
     private readonly IBlockTree _blockTree;
+    private readonly Lazy<IBlockProcessingQueue> _processingQueue;
+    private const int QueueNotSubscribed = 0;
+    private const int QueueSubscribed = 1;
+    // Disposed: never subscribed again.
+    private const int QueueClosed = 2;
+    private int _queueSubscription;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockCachePreWarmer _preWarmer;
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
     private readonly ulong _maxHeadAgeSeconds;
     private readonly bool _enabled;
-    private readonly CancellationTokenSource _cts = new();
     private int _disposed;
+
+    // The newest session's token source, cancelled once a block is queued for processing: that block's processing scope
+    // joins the session anyway, so it stops while the block is recovered and handed over, not when the scope opens.
+    private readonly Lock _sessionLock = new();
+    private CancellationTokenSource? _session;
+    private long _sessionGeneration;
 
     // Monotonic: a queued pass runs only while it still reflects the latest head.
     private long _generation;
@@ -48,6 +59,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         IBlockCachePreWarmer preWarmer,
         IBlockProducerTxSourceFactory txSourceFactory,
         IBlockTree blockTree,
+        Lazy<IBlockProcessingQueue> processingQueue,
         ISpecProvider specProvider,
         ITimestamper timestamper,
         IBlocksConfig blocksConfig,
@@ -56,6 +68,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         _preWarmer = preWarmer;
         _txSource = new Lazy<ITxSource>(txSourceFactory.Create, LazyThreadSafetyMode.PublicationOnly);
         _blockTree = blockTree;
+        _processingQueue = processingQueue;
         _specProvider = specProvider;
         _timestamper = timestamper;
         _logger = logManager.GetClassLogger<MempoolStatePrewarmer>();
@@ -70,20 +83,61 @@ public sealed class MempoolStatePrewarmer : IDisposable
         }
     }
 
+    // Resolved on the first head rather than at construction: the queue's processor depends on the prewarmer this is
+    // activated with. Under the session lock, so dispose cannot run between the check and the subscription.
+    private void SubscribeToProcessingQueue()
+    {
+        if (Volatile.Read(ref _queueSubscription) != QueueNotSubscribed) return;
+        using (_sessionLock.EnterScope())
+        {
+            if (_queueSubscription != QueueNotSubscribed) return;
+            IBlockProcessingQueue queue = _processingQueue.Value;
+            queue.BlockAdded += OnBlockQueued;
+            queue.BlockRemoved += OnBlockRemoved;
+            _queueSubscription = QueueSubscribed;
+        }
+    }
+
+    private void OnBlockQueued(object? sender, BlockEventArgs e)
+    {
+        CancellationTokenSource? session;
+        using (_sessionLock.EnterScope()) session = _session;
+        session?.Cancel();
+    }
+
+    // A queued block can leave without success, some before ever reaching a processing scope, and then no new head
+    // follows to start another session; warm again from the unchanged head.
+    private void OnBlockRemoved(object? sender, BlockRemovedEventArgs e)
+    {
+        // Processed and committed, so a new head, if any, starts the next session; or the queue itself failed, as at shutdown.
+        if (e.ProcessingResult is ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied or ProcessingResult.QueueException) return;
+
+        // Read before the head: a head published after this read must win, so the restart claims the next generation
+        // only if none has been taken since, and a newer head's session is never displaced by the old head's.
+        long generation = Volatile.Read(ref _generation);
+        if (_blockTree.Head is not Block head || IsTooOld(head)) return;
+        if (Interlocked.CompareExchange(ref _generation, generation + 1, generation) == generation) ScheduleWarm(head, generation + 1);
+    }
+
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         Block head = e.Block;
 
         // Skip while catching up: a stale head means there is no idle gap to fill.
-        if (head.Header.Timestamp + _maxHeadAgeSeconds < _timestamper.UnixTime.Seconds) return;
+        if (IsTooOld(head)) return;
 
-        long generation = Interlocked.Increment(ref _generation);
-        // Queue off the notification thread so head updates are never delayed.
+        SubscribeToProcessingQueue();
+        ScheduleWarm(head, Interlocked.Increment(ref _generation));
+    }
+
+    private bool IsTooOld(Block head) => head.Header.Timestamp + _maxHeadAgeSeconds < _timestamper.UnixTime.Seconds;
+
+    // Queued off the notification thread so head updates are never delayed.
+    private void ScheduleWarm(Block head, long generation) =>
         ThreadPool.UnsafeQueueUserWorkItem(
             static state => state.self.PreWarmFromMempool(state.head, state.generation),
             (self: this, head, generation),
             preferLocal: false);
-    }
 
     private void PreWarmFromMempool(Block head, long generation)
     {
@@ -97,13 +151,27 @@ public sealed class MempoolStatePrewarmer : IDisposable
             Dictionary<AddressAsKey, int> warmedPerSender = [];
             Dictionary<AddressAsKey, SenderSelection> selectedBySender = [];
 
+            // Not linked or disposed: it only carries this session's cancellation, and holds no registration or timer.
+            CancellationTokenSource session = new();
+            CancellationTokenSource? replaced;
+            using (_sessionLock.EnterScope())
+            {
+                // A pass for an older head that ran late must not displace the newer head's session.
+                if (Volatile.Read(ref _disposed) != 0 || generation <= _sessionGeneration) return;
+                replaced = _session;
+                _sessionGeneration = generation;
+                _session = session;
+            }
+            // Starting the new session joins the replaced one only when the new head's spec warms at all.
+            replaced?.Cancel();
+
             _preWarmer.StartSpeculativePreWarm(
                 headHeader,
                 next.Spec,
                 generation,
-                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, warmedPerSender, selectedBySender),
+                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, warmedPerSender, selectedBySender, token),
                 IdlePassDelayMs,
-                _cts.Token);
+                session.Token);
         }
         catch (Exception ex)
         {
@@ -161,12 +229,12 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// rather than leaving the whole gap warming the cells of a block that never arrived. Its spec travels with it, so a
     /// fork activating inside the gap warms under the spec the predicted block would run rather than the session's.
     /// </remarks>
-    private (Block Block, IReleaseSpec Spec) BuildDeltaBlock(BlockHeader parent, Dictionary<AddressAsKey, int> warmedPerSender,
-        Dictionary<AddressAsKey, SenderSelection> selectedBySender)
+    private (Block Block, IReleaseSpec Spec)? BuildDeltaBlock(BlockHeader parent, Dictionary<AddressAsKey, int> warmedPerSender,
+        Dictionary<AddressAsKey, SenderSelection> selectedBySender, CancellationToken token)
     {
         NextBlockContext next = PrepareNextBlockContext(parent);
-        Transaction[] delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender);
-        return (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
+        Transaction[]? delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender, token);
+        return delta is null ? null : (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
     }
 
     /// <summary>
@@ -175,14 +243,23 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// full set replayed so later-nonce txs see their predecessors' state.
     /// </summary>
     /// <remarks>The optional scratch dictionary is owned by one speculative session and cleared between passes.</remarks>
-    internal static Transaction[] SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
-        Dictionary<AddressAsKey, SenderSelection>? bySender = null)
+    /// <returns>The delta, or <see langword="null"/> when <paramref name="token"/> ends the pass before selection completes;
+    /// nothing is then recorded as warmed.</returns>
+    internal static Transaction[]? SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
+        Dictionary<AddressAsKey, SenderSelection>? bySender = null, CancellationToken token = default)
     {
         bySender ??= [];
         bySender.Clear();
         using ArrayPoolListRef<(Transaction tx, int next)> transactions = new(orderedTxs is ICollection<Transaction> collection ? collection.Count : 0);
         foreach (Transaction tx in orderedTxs)
         {
+            // Each pull runs the producer's ordering and filters; a block arriving must not wait for the whole selection.
+            if (token.IsCancellationRequested)
+            {
+                bySender.Clear();
+                return null;
+            }
+
             if (tx.SenderAddress is not Address sender) continue;
             ref SenderSelection group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out bool exists);
             int index = transactions.Count;
@@ -258,8 +335,21 @@ public sealed class MempoolStatePrewarmer : IDisposable
         {
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
         }
-        _cts.Cancel();
-        _cts.Dispose();
+
+        CancellationTokenSource? session;
+        using (_sessionLock.EnterScope())
+        {
+            if (_queueSubscription == QueueSubscribed)
+            {
+                IBlockProcessingQueue queue = _processingQueue.Value;
+                queue.BlockAdded -= OnBlockQueued;
+                queue.BlockRemoved -= OnBlockRemoved;
+            }
+            _queueSubscription = QueueClosed;
+            session = _session;
+            _session = null;
+        }
+        session?.Cancel();
     }
 
     internal struct SenderSelection

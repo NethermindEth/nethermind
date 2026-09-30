@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
@@ -133,6 +136,79 @@ public partial class DebugRpcModuleTests
             Assert.That((JArray)JToken.Parse(unfiltered)["result"]!, Has.Count.EqualTo(3), "precondition: without the filter the indexed block traces whole");
             Assert.That(counter.Calls, Is.EqualTo(1 + 3), "the filtered request took the seeded single-transaction path and executed its target alone; the whole-block request executed each transaction once");
         }
+    }
+
+    public enum ReceiptAvailability { Stored, Missing, Unreproducible }
+
+    // Without usable receipts both paths number the logs from the body they replay, as the receipts would.
+    [Test]
+    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce([Values] ReceiptAvailability availability)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using ParallelTraceBudget budget = new(2);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => new CountingReceiptFinder(ctx.Resolve<IReceiptFinder>(), availability)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithCode(Prepare.EvmCode.Log(0, 0).STOP().Done).WithNonce(nonce + (ulong)i)
+                .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        IndexThroughTheCapture(chain, index, block, parent);
+        CountingReceiptFinder receipts = (CountingReceiptFinder)chain.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey);
+
+        int before = receipts.BlockGets;
+        GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""") };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, options);
+        int blockTraceGets = receipts.BlockGets - before;
+        string single = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactions[^1].Hash, options);
+
+        JArray result = (JArray)JToken.Parse(response)["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Count.EqualTo(transactions.Length), response);
+            for (int i = 0; i < result.Count; i++)
+                Assert.That((string)result[i]!["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{i:x}"), response);
+            Assert.That((string)JToken.Parse(single)["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{transactions.Length - 1:x}"), single);
+            // Read once on the calling thread: the parallel workers share it, and the replay it falls back to reads none.
+            Assert.That(blockTraceGets, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class CountingReceiptFinder(IReceiptFinder inner, ReceiptAvailability availability) : IReceiptFinder
+    {
+        private int _blockGets;
+
+        public int BlockGets => Volatile.Read(ref _blockGets);
+
+        public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
+
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
+        {
+            Interlocked.Increment(ref _blockGets);
+            return availability switch
+            {
+                ReceiptAvailability.Missing => [],
+                ReceiptAvailability.Unreproducible => throw new ResourceNotFoundException($"No receipts for block {block.Number}"),
+                _ => inner.Get(block, recover, recoverSender)
+            };
+        }
+
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inner.Get(blockHash, recover);
+
+        public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
+
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) =>
+            inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
     }
 
     private static void IndexThroughTheCapture(TestRpcBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent)

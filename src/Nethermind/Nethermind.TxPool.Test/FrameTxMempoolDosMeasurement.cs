@@ -840,12 +840,13 @@ public class FrameTxMempoolDosMeasurement
             Transaction tx,
             bool signaturesPreValidated = false,
             bool local = false,
-            CancellationToken token = default)
+            CancellationToken token = default,
+            Func<bool>? preempt = null)
         {
             long start = Stopwatch.GetTimestamp();
             try
             {
-                return inner.Simulate(tx, signaturesPreValidated: signaturesPreValidated, local: local, token: token);
+                return inner.Simulate(tx, signaturesPreValidated: signaturesPreValidated, local: local, token: token, preempt: preempt);
             }
             finally
             {

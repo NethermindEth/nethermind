@@ -509,7 +509,7 @@ public class JsonRpcServiceTests
         Exception failure = new JsonException("Cannot serialize trace");
         if (wrapped) failure = new TargetInvocationException(failure);
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
-            .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplayStreamingResult(
+            .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
                 (_, _, _) => throw failure, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
         using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
         using MemoryStream stream = new();
@@ -529,7 +529,7 @@ public class JsonRpcServiceTests
         InvalidOperationException failure = new("Result write failed");
         FailingReplayResult result = deferred ? new DeferredFailingReplayResult(failure) : new FailingReplayResult(failure);
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
-            .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(result));
+            .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(result));
         using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
         Pipe pipe = new();
         try
@@ -597,7 +597,7 @@ public class JsonRpcServiceTests
         pool.GetModule(false).Returns(rpcModule);
         using CancellationTokenSource timeout = new();
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
-            .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplayStreamingResult(
+            .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
                 (_, _, _) => throw new JsonException("Cannot serialize trace", cause), timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
         using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
         using MemoryStream stream = new();
@@ -635,7 +635,7 @@ public class JsonRpcServiceTests
         else
         {
             rpcModule.Configure().trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
-                .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(
+                .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(
                     new ParityTxTraceFromReplayStreamingResult(EmitThenThrow, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
         }
         using JsonRpcResponse response = TestRequestWithPool(pool, method, parameters);
@@ -767,6 +767,80 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Raw_utf8_params_read_null_input_as_omitted()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule
+            .eth_call(
+                Arg.Any<SignableTransactionForRpc>(),
+                Arg.Any<BlockParameter?>(),
+                Arg.Any<Dictionary<Address, AccountOverride>?>(),
+                Arg.Any<BlockOverride?>())
+            .ReturnsForAnyArgs(static _ => ResultWrapper<HexBytes>.Success(default));
+
+        RpcTest.AssertSuccess(TestRawRequest(ethRpcModule, "eth_call", """[{"data":"0x602a","input":null},"latest"]"""));
+
+        ethRpcModule.Received(1).eth_call(
+            Arg.Is<SignableTransactionForRpc>(static tx => tx is LegacyTransactionForRpc && ((LegacyTransactionForRpc)tx).Input!.SequenceEqual(new byte[] { 0x60, 0x2a })),
+            Arg.Any<BlockParameter?>(),
+            Arg.Any<Dictionary<Address, AccountOverride>?>(),
+            Arg.Any<BlockOverride?>());
+    }
+
+    [TestCase("", null)]
+    [TestCase(",\"after\":null", null)]
+    [TestCase(",\"after\":1", 1UL)]
+    [TestCase(",\"after\":\"0x1\"", 1UL)]
+    [TestCase(",\"after\":\"0xffffffff\"", 0xffffffffUL)]
+    public void Raw_utf8_params_read_trace_filter_after(string after, ulong? expected)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        RpcTest.AssertSuccess(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\"{after}}}]"));
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(filter => filter.After == expected));
+    }
+
+    [Test]
+    public void Raw_utf8_params_reject_invalid_trace_filter_after_or_count(
+        [Values("after", "count")] string member,
+        [Values("true", "[]", "\"0xg\"", "-1", "\"-1\"", "18446744073709551616")] string value)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"{member}\":{value}}}]"), ErrorCodes.InvalidParams);
+
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void Trace_filter_rejects_unknown_member_in_utf8_params(
+        [Values("\"unknownDiagnosticFlag\":true", "\"limit\":1", "\"fromAddresses\":null")] string member)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",{member}}}]"), ErrorCodes.InvalidParams);
+
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void Trace_filter_reads_every_known_member_in_utf8_params()
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        RpcTest.AssertSuccess(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter),
+            $"[{{\"fromBlock\":\"0x1\",\"toBlock\":\"latest\",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[],\"mode\":\"union\",\"after\":1,\"count\":\"0xffffffff\"}}]"));
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(static filter =>
+            filter.FromBlock!.BlockNumber == 1 && filter.ToBlock!.Type == BlockParameterType.Latest
+            && filter.FromAddress!.Single() == TestItem.AddressA && filter.ToAddress!.Length == 0
+            && filter.Mode == TraceFilterMode.Union && filter.After == 1 && filter.Count == 0xffffffff));
+    }
+
+    [Test]
     public void Missing_marker_on_an_optional_argument_binds_its_default([Values(false, true)] bool rawUtf8)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -810,6 +884,35 @@ public class JsonRpcServiceTests
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
         ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+    }
+
+    // Real requests carry UTF-8 params, so the trace_filter mode converter is also checked on that path.
+    [TestCase("\"garbage\"")]
+    [TestCase("\"Union\"")]
+    public void Trace_filter_rejects_unknown_mode_in_utf8_params(string mode)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        JsonRpcResponse response = TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"mode\":{mode}}}]");
+
+        AssertInvalidParamsWithoutData(response, "invalid trace filter mode, expected \"intersection\" or \"union\"");
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    // An explicit null mode is the same as omitting it.
+    [TestCase("", TraceFilterMode.Intersection)]
+    [TestCase(",\"mode\":null", TraceFilterMode.Intersection)]
+    [TestCase(",\"mode\":\"union\"", TraceFilterMode.Union)]
+    public void Trace_filter_reads_mode_in_utf8_params(string mode, TraceFilterMode expected)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        using JsonRpcResponse response = TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\"{mode}}}]");
+
+        RpcTest.AssertSuccess(response);
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(filter => filter.Mode == expected));
     }
 
     // #13156: a parameter the caller got wrong is answered with -32602; it must not also cost the operator a WARN line

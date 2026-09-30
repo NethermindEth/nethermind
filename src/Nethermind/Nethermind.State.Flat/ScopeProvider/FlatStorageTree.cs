@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -17,7 +16,6 @@ public sealed class FlatStorageTree(
     ITrieWarmer trieCacheWarmer,
     SnapshotBundle bundle,
     IFlatDbConfig config,
-    ConcurrencyController concurrencyQuota,
     Hash256 storageRoot,
     Address address,
     ILogManager logManager) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
@@ -27,7 +25,6 @@ public sealed class FlatStorageTree(
     private readonly ITrieWarmer _trieCacheWarmer = trieCacheWarmer;
     private readonly FlatWorldStateScope _scope = scope;
     private readonly SnapshotBundle _bundle = bundle;
-    private readonly ConcurrencyController _concurrencyQuota = concurrencyQuota;
     private readonly ILogManager _logManager = logManager;
     private readonly Hash256 _storageRoot = storageRoot;
     private Hash256? _addressHash;
@@ -51,7 +48,7 @@ public sealed class FlatStorageTree(
     private Trees CreateTrees()
     {
         Hash256 addressHash = AddressHash;
-        StorageTree tree = new(new StorageTrieStoreAdapter(_bundle, _concurrencyQuota, addressHash), _storageRoot, _logManager);
+        StorageTree tree = new(new StorageTrieStoreAdapter(_bundle, addressHash), _storageRoot, _logManager);
 
         // Set the rootref manually. Cut the call to find nodes by about 1/4th.
         StorageTree warmup = new(new StorageTrieStoreWarmerAdapter(_bundle, addressHash), _logManager);
@@ -148,8 +145,14 @@ public sealed class FlatStorageTree(
         GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
     }
 
+    // Matches PatriciaTree.Commit, which splits the commit, hashing included, across threads above 4 writes.
+    private const int MinWritesToHashInParallel = 4;
+
     // No trees means nothing was written, so there is nothing to commit.
     public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
+
+    /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
+    internal bool HasUncommittedNodes => Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
@@ -157,7 +160,10 @@ public sealed class FlatStorageTree(
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, GetTrees().Tree, onRootUpdated, _address, commit: true);
+        // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported
+        // valid. The hash then goes parallel from the size at which a commit would split the tree across threads.
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, GetTrees().Tree, onRootUpdated, _address,
+            commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel);
         return new StorageTreeBulkWriteBatch(trieBatch, this);
     }
 

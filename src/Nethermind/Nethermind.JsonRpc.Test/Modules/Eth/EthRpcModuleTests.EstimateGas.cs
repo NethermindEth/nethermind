@@ -8,16 +8,19 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -31,6 +34,144 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
+    private static FrameTransactionForRpc UnsignedFrameRequest() => new()
+    {
+        From = TestItem.AddressC,
+        To = TestItem.AddressC,
+        MaxFeePerGas = 0,
+        MaxPriorityFeePerGas = 0,
+        Frames =
+        [
+            new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 50_000 },
+            new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGas = 50_000 },
+        ],
+        Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+    };
+
+    [Test]
+    public async Task FrameRpc_SimulateValidation_SkipsProtocolSignatureChecks([Values] bool placeholder, [Values] bool validation)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+        transaction.Gas = 200_000;
+        transaction.MaxFeePerGas = 1_000_000_000;
+        if (!placeholder) transaction.Signatures![0].Signature = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        object payload = new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation };
+
+        string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+    }
+
+    [Test]
+    public async Task FrameRpc_SimulateValidation_RetainsOtherChecks(
+        [Values("nonce", "signatureLength", "recoveryId", "verify")] string invalid, [Values] bool validation)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+        transaction.Gas = 200_000;
+        transaction.MaxFeePerGas = 1_000_000_000;
+        if (invalid == "nonce") transaction.Nonce = 100;
+        if (invalid == "signatureLength") transaction.Signatures![0].Signature = new byte[64];
+        if (invalid == "recoveryId")
+        {
+            byte[] signature = new byte[65];
+            signature[0] = 27;
+            transaction.Signatures![0].Signature = signature;
+        }
+        if (invalid == "verify") transaction.Signatures![0].Signer = TestItem.AddressB;
+        object payload = new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation };
+
+        string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
+
+        JToken parsed = JToken.Parse(response);
+        if (invalid == "nonce" && !validation)
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+            return;
+        }
+
+        string error = invalid switch
+        {
+            "nonce" => "nonce",
+            "signatureLength" => "signature has the wrong length",
+            "recoveryId" => "recovery id",
+            _ => "VERIFY frame reverted"
+        };
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(error), response);
+    }
+
+    [Test]
+    public async Task FrameRpc_UnsignedTransaction_Succeeds(
+        [Values("eth_call", "eth_estimateGas", "eth_fillTransaction", "eth_simulateV1")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+
+        object request = method == "eth_simulateV1"
+            ? new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation = false }
+            : transaction;
+        string response = await ctx.Test.TestEthRpc(method, request);
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        Assert.That(parsed["result"], Is.Not.Null);
+        if (method == "eth_call") Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"));
+        if (method == "eth_simulateV1")
+        {
+            JToken call = parsed["result"]![0]!["calls"]![0]!;
+            JArray frames = (JArray)call["frameResults"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(call["status"]!.Value<string>(), Is.EqualTo("0x1"));
+                Assert.That(frames, Has.Count.EqualTo(2));
+                foreach (JToken frame in frames)
+                {
+                    Assert.That(frame["status"]!.Value<string>(), Is.EqualTo("0x1"));
+                    Assert.That(frame["returnData"]!.Value<string>(), Is.EqualTo("0x"));
+                    Assert.That(frame["gasUsed"]!.Value<string>(), Does.StartWith("0x"));
+                    Assert.That(frame["executionGasUsed"]!.Value<string>(), Does.StartWith("0x"));
+                    Assert.That(frame["stateGasUsed"]!.Value<string>(), Is.EqualTo("0x0"));
+                    Assert.That((JArray)frame["logs"]!, Is.Empty);
+                }
+            }
+        }
+        if (method == "eth_fillTransaction")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((JArray)parsed["result"]!["tx"]!["frames"]!, Has.Count.EqualTo(2));
+                Assert.That((JArray)parsed["result"]!["tx"]!["signatures"]!, Has.Count.EqualTo(1));
+            }
+        }
+    }
+
+    [Test]
+    public async Task FrameRpc_EstimateGas_PlaceholderCoversSignedTransaction()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc signed = UnsignedFrameRequest();
+        signed.Nonce = ctx.Test.ReadOnlyState.GetNonce(TestItem.AddressC);
+        Transaction tx = signed.ToTransaction().Data!;
+        tx.ChainId = ctx.Test.Bridge.GetChainId();
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyC, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        signed.Signatures![0].Signature = vrs;
+
+        string placeholderEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", UnsignedFrameRequest());
+        string signedEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", signed);
+
+        Assert.That(JToken.Parse(signedEstimate)["error"], Is.Null, signedEstimate);
+        Assert.That(Convert.ToUInt64(JToken.Parse(placeholderEstimate)["result"]!.Value<string>(), 16),
+            Is.GreaterThanOrEqualTo(Convert.ToUInt64(JToken.Parse(signedEstimate)["result"]!.Value<string>(), 16)), placeholderEstimate);
+    }
+
     [Test]
     public async Task Eth_estimateGas_web3_should_return_insufficient_balance_error()
     {
@@ -1163,6 +1304,8 @@ public partial class EthRpcModuleTests
     /// </remarks>
     [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6"}""")]
     [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6","frames":[]}""")]
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","type":"0x6"}""")]
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","type":"0x6","frames":[]}""")]
     public async Task Eth_estimateGas_frame_transaction_without_frames_returns_error(string txJson)
     {
         TestSpecProvider specProvider = new(Eip8141Prototype.Instance);

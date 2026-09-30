@@ -876,14 +876,46 @@ public class RpcModuleTests
             Assert.That(missedRounds[1].ParentBlockHash, Is.EqualTo(block1802.Hash));
             Assert.That(missedRounds[1].ParentBlockNum, Is.EqualTo((UInt256)1802));
         }
-
-        static XdcBlockHeader BuildHeader(ulong number, ulong round, Hash256 parentHash) =>
-            Build.A.XdcBlockHeader()
-                .WithNumber(number)
-                .WithParentHash(parentHash)
-                .WithExtraConsensusData(new ExtraFieldsV2(round, Build.A.QuorumCertificate().TestObject))
-                .TestObject;
     }
+
+    [Test]
+    public void GetMissedRoundsInEpochByBlockNum_FirstEpoch_TreatsSwitchBlockWithoutExtraDataAsRoundZero()
+    {
+        XdcBlockHeader genesis = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
+        XdcBlockHeader block1 = BuildHeader(1, 2, genesis.Hash!);
+        XdcBlockHeader block2 = BuildHeader(2, 3, block1.Hash!);
+        Address[] masternodes = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+
+        _blockTree.FindHeader(2).Returns(block2);
+        _blockTree.FindHeader(block1.Hash!).Returns(block1);
+        _blockTree.FindHeader(genesis.Hash!).Returns(genesis);
+        _epochSwitchManager.GetEpochSwitchInfo(block2).Returns(new EpochSwitchInfo(
+            masternodes,
+            [],
+            [],
+            new BlockRoundInfo(genesis.Hash!, 0, 0)));
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(XdcTestHelper.CreateXdcReleaseSpec(epochLength: 900, switchBlock: 0));
+
+        ResultWrapper<PublicApiMissedRoundsMetadata> result =
+            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(new BlockParameter(2));
+
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        MissedRoundInfo[] missedRounds = result.Data!.MissedRounds!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missedRounds, Has.Length.EqualTo(1));
+            Assert.That(missedRounds[0].Round, Is.EqualTo(1));
+            Assert.That(missedRounds[0].Miner, Is.EqualTo(TestItem.AddressB));
+            Assert.That(missedRounds[0].ParentBlockHash, Is.EqualTo(genesis.Hash));
+        }
+    }
+
+    private static XdcBlockHeader BuildHeader(ulong number, ulong round, Hash256 parentHash) =>
+        Build.A.XdcBlockHeader()
+            .WithNumber(number)
+            .WithParentHash(parentHash)
+            .WithExtraConsensusData(new ExtraFieldsV2(round, Build.A.QuorumCertificate().TestObject))
+            .TestObject;
 
     [Test]
     public void GetMissedRoundsInEpochByBlockNum_ShouldReturnFail_WhenInvalidBlockNumber()
