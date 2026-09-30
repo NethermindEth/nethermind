@@ -20,6 +20,35 @@ public class TransactionDiffViewTests
     private static readonly byte[] Code = [0x60, 0x00];
     private static readonly byte[] Designator = [0xef, 0x01, 0x00, .. High.Bytes];
 
+    [Test]
+    public void TopicEvents_ExcludeSignatureTopicsAndDeduplicateEachLog()
+    {
+        Hash256 topic = new(new string('f', 64));
+        Hash256 signature = new(new string('a', 64));
+        LogEntry[] logs =
+        [
+            new(Low, [], [topic]),
+            new(Mid, [], [signature, topic, topic]),
+            new(High, [], [signature, topic]),
+        ];
+        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessListAtIndex(), logs);
+        ValueHash256 topicValue = topic.ValueHash256;
+        ValueHash256 signatureValue = signature.ValueHash256;
+        UInt256 first = 0, second = 1, pastEnd = 2, huge = UInt256.MaxValue;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(view.TopicEventCount(in topicValue), Is.EqualTo(2));
+            Assert.That(view.TopicEventCount(in signatureValue), Is.Zero);
+            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in first, out int firstGlobal), Is.True);
+            Assert.That(firstGlobal, Is.EqualTo(1));
+            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in second, out int secondGlobal), Is.True);
+            Assert.That(secondGlobal, Is.EqualTo(2));
+            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in pastEnd, out _), Is.False);
+            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in huge, out _), Is.False);
+        }
+    }
+
     [TestCase(false, 1, TestName = "Code appearing on a codeless account is a deployment")]
     [TestCase(true, 0, TestName = "Code replacing existing code is not a deployment")]
     public void Build_EnumeratesDeploymentsByPreTxCode(bool hadCode, int expected)

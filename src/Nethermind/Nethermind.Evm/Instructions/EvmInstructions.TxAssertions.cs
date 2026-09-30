@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -125,7 +126,21 @@ public static partial class EvmInstructions
 
         // Spec stack order: param on top, address second, in3 (slot key / local index / unused) third.
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (param > 0x0A) return EvmExceptionType.BadInstruction;
+        if (param > 0x0C) return EvmExceptionType.BadInstruction;
+        if (param >= 0x0B)
+        {
+            if (!stack.PopUInt256(out UInt256 topicValue) || !stack.PopUInt256(out UInt256 localIndex))
+                return EvmExceptionType.StackUnderflow;
+            if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+            Span<byte> topicBytes = stackalloc byte[32];
+            topicValue.ToBigEndian(topicBytes);
+            ValueHash256 topic = new(topicBytes);
+            return param == 0x0B
+                ? localIndex.IsZero ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.TopicEventCount(in topic)) : EvmExceptionType.BadInstruction
+                : view.TryGetTopicEventGlobalIndex(in topic, in localIndex, out int globalIndex)
+                    ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)globalIndex)
+                    : EvmExceptionType.BadInstruction;
+        }
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 in3)) return EvmExceptionType.StackUnderflow;

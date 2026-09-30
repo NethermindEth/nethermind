@@ -4103,6 +4103,26 @@ public partial class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
+    [TestCase((byte)0x0B, 0ul, 2ul)]
+    [TestCase((byte)0x0C, 0ul, 1ul)]
+    [TestCase((byte)0x0C, 1ul, 2ul)]
+    public void Execute_TxDiff_ReadsPerTopicViews(byte param, ulong index, ulong expected)
+    {
+        UInt256 topic = UInt256.MaxValue;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(topic).PushData(0).PushData(0).Op(Instruction.LOG1)
+            .PushData(topic).PushData(topic).PushData(0x22).PushData(0).PushData(0).Op(Instruction.LOG3)
+            .PushData(topic).PushData(0x22).PushData(0).PushData(0).Op(Instruction.LOG2).Done);
+        byte[] query = Prepare.EvmCode.PushData(index).PushData(topic).PushData((UInt256)param).Op(Instruction.TXDIFF).Done;
+        DeployContract(Recipient, PostTxAssertAll((query, To32(expected))));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.PostTx, target: Recipient)));
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
     [Test]
     public void Execute_TxTraceAndEventDataCopy_ReadTransactionLogs()
     {
