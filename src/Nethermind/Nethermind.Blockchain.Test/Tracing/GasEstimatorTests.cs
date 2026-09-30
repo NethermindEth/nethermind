@@ -36,8 +36,10 @@ public class GasEstimatorTests
         Assert.That(estimation.Error, Is.EqualTo(TxErrorMessages.InvalidTxType(London.Instance.Name)));
     }
 
-    [Test]
-    public void Estimate_frame_transaction_caps_the_complete_budget([Values(0ul, 50_000ul, 100_000ul)] ulong gasCap)
+    [TestCase(0ul, false)]
+    [TestCase(50_000ul, true)]
+    [TestCase(100_000ul, false)]
+    public void Estimate_frame_transaction_caps_the_complete_budget(ulong gasCap, bool expectFailure)
     {
         Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(25_000), FrameTxTestFrames.Execution(15_000));
         FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out _, out _, out ulong budget, estimateSignatureBytes: true);
@@ -47,8 +49,8 @@ public class GasEstimatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(budget, Is.GreaterThan(50_000ul));
-            Assert.That(estimation.Error, gasCap == 50_000 ? Is.EqualTo($"{GasEstimator.GasExceedsAllowanceMsgPrefix} ({gasCap})") : Is.Null);
-            Assert.That(estimation.Gas, Is.EqualTo(gasCap == 50_000 ? 0ul : budget));
+            Assert.That(estimation.Error, expectFailure ? Is.EqualTo($"{GasEstimator.GasExceedsAllowanceMsgPrefix} ({gasCap})") : Is.Null);
+            Assert.That(estimation.Gas, Is.EqualTo(expectFailure ? 0ul : budget));
         }
     }
 

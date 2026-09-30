@@ -160,8 +160,9 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo(TxErrorMessages.InvalidTxType(London.Instance.Name)), response);
     }
 
-    [Test]
-    public async Task FrameRpc_EstimateGas_RespectsTheCompleteGasCap([Values(50_000ul, 100_000ul)] ulong gasCap)
+    [TestCase(50_000ul, true)]
+    [TestCase(100_000ul, false)]
+    public async Task FrameRpc_EstimateGas_RespectsTheCompleteGasCap(ulong gasCap, bool expectFailure)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         ctx.Test.RpcConfig.GasCap = gasCap;
@@ -172,12 +173,19 @@ public partial class EthRpcModuleTests
         string response = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
         JToken parsed = JToken.Parse(response);
-        if (gasCap == 50_000)
+        if (expectFailure)
+        {
             Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo($"{GasEstimator.GasExceedsAllowanceMsgPrefix} ({gasCap})"), response);
+        }
         else
         {
             Assert.That(parsed["error"], Is.Null, response);
-            Assert.That(Convert.ToUInt64(parsed["result"]!.Value<string>(), 16), Is.LessThanOrEqualTo(gasCap));
+            ulong estimate = Convert.ToUInt64(parsed["result"]!.Value<string>(), 16);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(estimate, Is.GreaterThan(50_000ul));
+                Assert.That(estimate, Is.LessThanOrEqualTo(gasCap));
+            }
         }
     }
 
