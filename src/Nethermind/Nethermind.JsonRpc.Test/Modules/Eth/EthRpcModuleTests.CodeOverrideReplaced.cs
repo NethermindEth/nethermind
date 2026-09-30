@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -25,6 +26,9 @@ public partial class EthRpcModuleTests
     private static readonly Address OverrideDelegate1 = new("0xc2000000000000000000000000000000000000b2");
     private static readonly Address OverrideDelegate2 = new("0xc2000000000000000000000000000000000000b3");
     private static readonly Address OverrideDeployer = new("0xc2000000000000000000000000000000000000b4");
+    private static readonly Address OverrideSelfDestructor = new("0xc2000000000000000000000000000000000000b5");
+    private static readonly Address OverrideObserver = new("0xc2000000000000000000000000000000000000b6");
+    private static readonly Address OverrideReverter = new("0xc2000000000000000000000000000000000000b7");
 
     private static byte[] Returning(int value) => Prepare.EvmCode.PushData(value).PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done;
 
@@ -116,5 +120,49 @@ public partial class EthRpcModuleTests
         // A cleared authority has no code left, so the call to it returns nothing.
         string expected = clear ? "0x" : ((UInt256)2).ToBigEndian().ToHexString(true);
         Assert.That(JToken.Parse(serialized)["result"]?.Value<string>(), Is.EqualTo(expected), serialized);
+    }
+
+    // Before Cancun a SELFDESTRUCT deletes the account when its transaction ends, so the later calls of one
+    // eth_simulateV1 request, in the same block or the next, must find the overridden account codeless.
+    [TestCase(false, false, false)]
+    [TestCase(false, false, true)]
+    [TestCase(false, true, false)] // A reverted SELFDESTRUCT deletes nothing.
+    [TestCase(true, false, false)] // EIP-6780: nor does one of an account the transaction did not create.
+    public async Task Selfdestruct_of_a_code_override_is_seen_by_later_calls(bool eip6780, bool reverted, bool nextBlock)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(eip6780 ? Cancun.Instance : Shanghai.Instance));
+
+        // Called with calldata it self-destructs; called without, it jumps to the JUMPDEST at 7 and returns 42.
+        byte[] selfDestructor = Prepare.EvmCode
+            .Op(Instruction.CALLDATASIZE).Op(Instruction.ISZERO).PushData(7).Op(Instruction.JUMPI)
+            .Op(Instruction.CALLER).Op(Instruction.SELFDESTRUCT)
+            .Op(Instruction.JUMPDEST).Data(Returning(42)).Done;
+        // Returns the size of the self-destructor's code and what a call to it returns.
+        byte[] observer = Prepare.EvmCode
+            .PushData(OverrideSelfDestructor).Op(Instruction.EXTCODESIZE).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(32).PushData(0).PushData(0).PushData(OverrideSelfDestructor).PushData(100_000).Op(Instruction.STATICCALL).Op(Instruction.POP)
+            .Return(64, 0).Done;
+        byte[] reverter = Prepare.EvmCode.CallWithInput(OverrideSelfDestructor, 100_000, [1]).Revert(0, 0).Done;
+        Dictionary<Address, AccountOverride> stateOverride = new()
+        {
+            [OverrideSelfDestructor] = new() { Code = selfDestructor },
+            [OverrideObserver] = new() { Code = observer },
+            [OverrideReverter] = new() { Code = reverter },
+        };
+        LegacyTransactionForRpc destroy = new() { From = TestItem.AddressA, To = reverted ? OverrideReverter : OverrideSelfDestructor, Input = [1], Gas = 200_000, GasPrice = 0 };
+        LegacyTransactionForRpc observe = new() { From = TestItem.AddressA, To = OverrideObserver, Gas = 200_000, GasPrice = 0 };
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = nextBlock
+                ? [new() { StateOverrides = stateOverride, Calls = [destroy] }, new() { Calls = [observe] }]
+                : [new() { StateOverrides = stateOverride, Calls = [destroy, observe] }]
+        };
+
+        string serialized = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
+
+        byte[] expected = !eip6780 && !reverted
+            ? new byte[64]
+            : Bytes.Concat(((UInt256)selfDestructor.Length).ToBigEndian(), ((UInt256)42).ToBigEndian());
+        Assert.That(JToken.Parse(serialized)["result"]?.Last?["calls"]?.Last?["returnData"]?.Value<string>(), Is.EqualTo(expected.ToHexString(true)), serialized);
     }
 }
