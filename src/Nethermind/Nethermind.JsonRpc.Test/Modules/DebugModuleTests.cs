@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -21,6 +22,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
@@ -459,13 +461,77 @@ public class DebugModuleTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
-        ResultWrapper<IEnumerable<BadBlock>> blocks = CreateModule().debug_getBadBlocks();
-        Assert.That(blocks.Data.Count(), Is.EqualTo(1));
+        ResultWrapper<IEnumerable<BadBlock>?> blocks = CreateModule().debug_getBadBlocks();
+        Assert.That(blocks.Data!.Count(), Is.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
-            Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+            Assert.That(blocks.Data!.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
+            Assert.That(blocks.Data!.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
         }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task DebugGetBadBlocks_WithoutFile_ReturnsList(bool passNull)
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+
+        string response = passNull
+            ? await SerializedRequest("debug_getBadBlocks", [null])
+            : await SerializedRequest("debug_getBadBlocks");
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WithFile_WritesListAndReturnsNull()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _debugBridge.GetBadBlocks().Returns([block]);
+        using TempPath tempPath = TempPath.GetTempFile();
+
+        string response = await SerializedRequest("debug_getBadBlocks", tempPath.Path);
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+        using JsonDocument written = JsonDocument.Parse(File.ReadAllText(tempPath.Path));
+        Assert.That(written.RootElement.GetArrayLength(), Is.EqualTo(1));
+        Assert.That(written.RootElement[0].GetProperty("hash").GetString(), Is.EqualTo(block.Hash!.ToString()));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WithExistingFile_FailsAndKeepsFile()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath tempPath = TempPath.GetTempFile();
+        File.WriteAllText(tempPath.Path, "keep");
+
+        string response = await SerializedRequest("debug_getBadBlocks", tempPath.Path);
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"location would overwrite an existing file\"},\"id\":67}"));
+        Assert.That(File.ReadAllText(tempPath.Path), Is.EqualTo("keep"));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WithPathInMissingDirectory_Fails()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath directory = TempPath.GetTempDirectory();
+
+        string response = await SerializedRequest("debug_getBadBlocks", Path.Combine(directory.Path, "bad-blocks.json"));
+
+        Assert.That(response, Does.StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Cannot write bad blocks to "));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WithExtraArgument_ReturnsInvalidParams()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath tempPath = TempPath.GetTempFile();
+
+        string response = await SerializedRequest("debug_getBadBlocks", tempPath.Path, "extra");
+
+        Assert.That(response, Does.Contain("\"code\":-32602"));
+        Assert.That(File.Exists(tempPath.Path), Is.False);
     }
 
     [Test]

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -19,6 +20,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
@@ -680,10 +682,30 @@ public class DebugRpcModule(
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
-    public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
+    public ResultWrapper<IEnumerable<BadBlock>?> debug_getBadBlocks(string? file = null)
     {
-        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
-        return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
+        BadBlock[] badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory)).ToArray();
+        if (file is null)
+        {
+            return ResultWrapper<IEnumerable<BadBlock>?>.Success(badBlocks);
+        }
+
+        // Geth extension: write the list to a new file and return null. CreateNew never overwrites an existing file.
+        try
+        {
+            using FileStream stream = new(file, FileMode.CreateNew, FileAccess.Write);
+            JsonSerializer.Serialize(stream, badBlocks, EthereumJsonSerializer.JsonOptions);
+        }
+        catch (IOException) when (File.Exists(file) || Directory.Exists(file))
+        {
+            return ResultWrapper<IEnumerable<BadBlock>?>.Fail("location would overwrite an existing file", ErrorCodes.Default);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return ResultWrapper<IEnumerable<BadBlock>?>.Fail($"Cannot write bad blocks to {file}: {e.Message}", ErrorCodes.Default);
+        }
+
+        return ResultWrapper<IEnumerable<BadBlock>?>.Success(null);
     }
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
