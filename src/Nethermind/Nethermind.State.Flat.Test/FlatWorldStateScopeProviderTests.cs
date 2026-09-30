@@ -1334,6 +1334,66 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(ExpectedStorageRoot((1, 5), (2, 6), (3, 8), (4, 9))));
     }
 
+    // The early apply is on and its idle gap open, so only the stream keeps it out.
+    [Test]
+    public void StreamStorageWrites_ReplacesTheEarlyApply([Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    {
+        const int slotCount = 40;
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(config: new FlatDbConfig
+        {
+            ApplyStorageWritesOnIdleThread = true,
+            StreamStorageWrites = true,
+            DeferStorageTrieCommit = deferStorageTrieCommit
+        }, trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+
+        // Every slot once, then slot 1 again and slot 2 back to its pre-block zero, which the flush skips.
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+        int applies = 0;
+        storageTree.OnStorageWritesApplied = () => applies++;
+        UInt256[] expected = new UInt256[slotCount];
+        for (int slot = 0; slot < slotCount; slot++) storageTree.HintSet((UInt256)slot, expected[slot] = (UInt256)(slot + 1));
+        Assert.That(warmer.RunStorageWriteJobs(), Is.EqualTo(1));
+        storageTree.HintSet(1, expected[1] = 1000);
+        storageTree.HintSet(2, expected[2] = 0);
+        Assert.That(warmer.RunStorageWriteJobs(), Is.EqualTo(1));
+        // The stream has filled the trie, but until a write batch publishes it the root is the pre-block one.
+        Assert.That(storageTree.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+            if (clearAtBlockEnd) storageBatch.Clear();
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                if (slot != 2) storageBatch.Set((UInt256)slot, expected[slot]);
+            }
+        }
+        // Deferred, the batch only hashed the trie and leaves its nodes to the scope commit.
+        Assert.That(storageTree.HasUncommittedNodes, Is.EqualTo(deferStorageTrieCommit));
+        scope.Commit(1);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            if (!expected[slot].IsZero) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
+        }
+        expectedTree.UpdateRootHash();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(applies, Is.EqualTo(2), "both jobs must have applied their writes");
+            Assert.That(storageTree.UsedEarlyApply, Is.False);
+            Assert.That(scope.EarlyApplyCounts, Is.EqualTo((0, 0, 0, 0)));
+            Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+            Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+        }
+    }
+
     private static FlatDbConfig StreamingConfig(bool deferStorageTrieCommit) =>
         new() { StreamStorageWrites = true, DeferStorageTrieCommit = deferStorageTrieCommit };
 
