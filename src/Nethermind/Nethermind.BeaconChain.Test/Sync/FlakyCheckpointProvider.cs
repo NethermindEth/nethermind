@@ -26,6 +26,10 @@ internal enum StateResponse
     DropMidBody,
     /// <summary>Promises the whole body, sends half and then sends nothing more while the connection stays open.</summary>
     StallMidBody,
+    /// <summary>Sends the body in small chunks, each within <see cref="FlakyCheckpointProvider.TrickleInterval"/> of the last, over <see cref="FlakyCheckpointProvider.TrickleDuration"/> in all.</summary>
+    Trickle,
+    /// <summary>Accepts the request and never sends the response headers while the connection stays open.</summary>
+    NoHeaders,
     ServerError,
     NotFound,
 }
@@ -35,6 +39,7 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
 {
     private readonly WebApplication _app;
     private readonly CancellationTokenSource _stopping = new();
+    private readonly TaskCompletionSource<byte[]> _stallEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _stateRequests;
     private int _blockRequests;
 
@@ -45,6 +50,13 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
     public int StateRequests => Volatile.Read(ref _stateRequests);
 
     public int BlockRequests => Volatile.Read(ref _blockRequests);
+
+    public static TimeSpan TrickleInterval { get; } = TimeSpan.FromMilliseconds(250);
+
+    public static TimeSpan TrickleDuration { get; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Completes with the half body a <see cref="StateResponse.StallMidBody"/> answer flushed, once it begins to send nothing more.</summary>
+    public Task<byte[]> StallEntered => _stallEntered.Task;
 
     /// <param name="responseFor">Maps the 1-based number of a state request to its answer.</param>
     /// <param name="state">The state served, <see cref="ForkCrossingChain.First"/>'s post-state when omitted; the block is always the one of that chain.</param>
@@ -61,7 +73,21 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         WebApplication app = builder.Build();
         FlakyCheckpointProvider provider = new(app);
-        static async Task Answer(HttpContext c, StateResponse response, byte[] body, string? consensusVersion, CancellationToken stopping)
+        static async Task Hold(HttpContext c, CancellationToken stopping)
+        {
+            using CancellationTokenSource held = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted, stopping);
+            try
+            {
+                await Task.Delay(Timeout.Infinite, held.Token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            c.Abort();
+        }
+
+        async Task Answer(HttpContext c, StateResponse response, byte[] body, string? consensusVersion, CancellationToken stopping)
         {
             switch (response)
             {
@@ -86,18 +112,24 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
                     c.Response.ContentLength = body.Length;
                     await c.Response.Body.WriteAsync(body.AsMemory(0, body.Length / 2));
                     await c.Response.Body.FlushAsync();
-                    using (CancellationTokenSource held = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted, stopping))
+                    provider._stallEntered.TrySetResult(body[..(body.Length / 2)]);
+                    await Hold(c, stopping);
+                    break;
+                case StateResponse.Trickle:
+                    c.Response.ContentType = "application/octet-stream";
+                    c.Response.ContentLength = body.Length;
+                    int chunks = (int)(TrickleDuration / TrickleInterval);
+                    int chunkLength = (body.Length + chunks - 1) / chunks;
+                    for (int offset = 0; offset < body.Length; offset += chunkLength)
                     {
-                        try
-                        {
-                            await Task.Delay(Timeout.Infinite, held.Token);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                        }
+                        await c.Response.Body.WriteAsync(body.AsMemory(offset, Math.Min(chunkLength, body.Length - offset)), stopping);
+                        await c.Response.Body.FlushAsync(stopping);
+                        await Task.Delay(TrickleInterval, stopping);
                     }
 
-                    c.Abort();
+                    break;
+                case StateResponse.NoHeaders:
+                    await Hold(c, stopping);
                     break;
                 case StateResponse.ServerError:
                     c.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
