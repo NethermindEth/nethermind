@@ -465,6 +465,41 @@ The `Warn`-level outlier lines for both writes and slow snapshots are visible at
 config change. Both are timestamped by the ambient logger, so they can be matched directly against a
 consensus client's own logged timestamp for a specific `newPayload` timeout.
 
+**Found via the new per-event logs: GC pauses are a minor contributor (mostly 0ms, occasionally ~64ms), not
+the dominant cause - but the log pattern revealed a different, real bug.** A live run's `Warn` lines showed
+clusters of `LmdbStorage` writes with wildly different, tiny operation counts (2, 3, 8, 9, 10 ops) all
+reporting **nearly identical durations within each cluster** (e.g. eight separate writes all at ~103.3-103.5ms,
+a later batch all at ~317.5-326.4ms) - alongside one huge Account or Storage write (42,000+ or 49,780
+operations) in the same window. A 3-operation write cannot organically take over 100ms; many unrelated writes
+finishing at the *same* moment despite unrelated operation counts is the signature of all of them queuing
+behind one shared blocking event and being released together once it clears.
+
+Root cause: `DrainIfLeader`'s single leader thread processed one dequeued `PendingWrite` to full completion
+before ever re-checking the queue. For an oversized write routed to `CommitLargeWriteInChunks`, "full
+completion" meant running its *entire* multi-chunk sequence (~11 chunks for a 42,000-operation write) before
+looking at the queue again - so every other write submitted during that whole sequence, however trivial,
+queued behind the entire thing rather than just behind one chunk. This was a real fairness bug introduced by
+the chunking fix itself: bounding *physical commit size* (done, and confirmed working via `AvgWriteWaveOps`)
+is not the same as bounding how long one *logical write request* can monopolize the single-writer role once it
+needs multiple chunks.
+
+**Fix**: `CommitLargeWriteInChunks` now calls a new, reentrant `DrainPendingWrites` between each chunk, so a
+large write's chunking yields to whatever else is queued instead of running to completion uninterrupted.
+`DrainIfLeader`'s own dequeue loop was extracted into this same method, since both need identical
+coalesce-or-chunk logic; nesting depth is bounded by how many oversized writes happen to be paused mid-chunk
+at the same moment (naturally small in practice), not by total volume processed, since each nested call fully
+drains before returning. A new test
+(`CommitLargeWriteInChunks_yields_to_other_queued_writes_between_chunks`) drives a large write with 200 chunks
+concurrently against 32 small writers and asserts at least one small write completes before the large write's
+entire sequence finishes - with the pre-fix monopolizing behavior, every small write would necessarily show up
+strictly after it. All 52 tests pass, repeated 5x for this specific test given its concurrency-timing nature.
+
+This does not, on its own, explain why reads (`CreateSnapshot`) would block on writes - that remains the
+separate, already-understood mechanism (`_writeCommitGate`'s consistency requirement for the reader pool, see
+above). What it does explain is why *other writes* - and anything synchronously waiting on one, including
+whatever in `newPayload`'s own path submits a write through this same coordinator - could stall for the
+duration of an entire unrelated oversized batch rather than just one bounded chunk of it.
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,

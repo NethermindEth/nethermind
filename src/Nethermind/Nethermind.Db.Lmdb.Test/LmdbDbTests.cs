@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -723,6 +724,82 @@ public class LmdbDbTests
             LmdbDb.DiagnosticsSnapshot diagnostics = db.TakeAndResetDiagnostics();
             Assert.That(diagnostics.WriteWaveCount, Is.EqualTo(1));
             Assert.That(diagnostics.AvgWriteWaveOps, Is.EqualTo(opsInOneBatch));
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void CommitLargeWriteInChunks_yields_to_other_queued_writes_between_chunks()
+    {
+        // Regression: without yielding between chunks, the single leader thread processed one oversized
+        // write's ENTIRE multi-chunk sequence before ever looking at the queue again, starving every other
+        // queued write (however trivial) for that whole duration - observed in production as many small,
+        // unrelated writes measuring 100-300ms in near-identical clusters, all queued behind one in-flight
+        // ~40,000-operation write on an unrelated column. Drives a genuinely large number of chunks and
+        // concurrent small writers to make the interleaving this fix restores overwhelmingly likely to show
+        // up in completion order, without depending on exact timing.
+        const int tinyWaveCap = 4;
+        const int chunksInLargeWrite = 200;
+        const int opsInLargeWrite = tinyWaveCap * chunksInLargeWrite;
+        const int smallWriterCount = 32;
+        string path = Path.Combine("testdb-lmdb-wavecap-fairness", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = new("wave-cap-fairness-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, LimboLogs.Instance);
+        try
+        {
+            ConcurrentQueue<string> completionOrder = new();
+            using Barrier barrier = new(1 + smallWriterCount);
+
+            Task largeWriteTask = Task.Run(() =>
+            {
+                barrier.SignalAndWait();
+                using (IWriteBatch batch = db.StartWriteBatch())
+                {
+                    for (int i = 0; i < opsInLargeWrite; i++)
+                    {
+                        batch.PutSpan(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+                    }
+                }
+
+                completionOrder.Enqueue("large");
+            });
+
+            Task[] smallWriteTasks = new Task[smallWriterCount];
+            for (int t = 0; t < smallWriterCount; t++)
+            {
+                int key = 1_000_000 + t;
+                smallWriteTasks[t] = Task.Run(() =>
+                {
+                    barrier.SignalAndWait();
+                    db.Set(BitConverter.GetBytes(key), BitConverter.GetBytes(key));
+                    completionOrder.Enqueue($"small-{key}");
+                });
+            }
+
+            Task.WaitAll([largeWriteTask, .. smallWriteTasks]);
+
+            // Correctness first: every write must land regardless of how they interleaved.
+            for (int i = 0; i < opsInLargeWrite; i++)
+            {
+                Assert.That(db.Get(BitConverter.GetBytes(i)), Is.EqualTo(BitConverter.GetBytes(i)));
+            }
+
+            for (int t = 0; t < smallWriterCount; t++)
+            {
+                int key = 1_000_000 + t;
+                Assert.That(db.Get(BitConverter.GetBytes(key)), Is.EqualTo(BitConverter.GetBytes(key)));
+            }
+
+            // Fairness: with the old monopolizing behavior, EVERY small write would appear strictly after
+            // "large" in completion order (the leader could not service anything else until the whole
+            // 200-chunk sequence finished). At least one completing first is direct evidence of interleaving.
+            List<string> order = [.. completionOrder];
+            int largeIndex = order.IndexOf("large");
+            Assert.That(largeIndex, Is.GreaterThan(0),
+                "No small write completed before the large write finished its entire chunk sequence - it monopolized the writer role instead of yielding between chunks.");
         }
         finally
         {

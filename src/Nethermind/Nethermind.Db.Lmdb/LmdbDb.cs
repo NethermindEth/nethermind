@@ -419,36 +419,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
 
             try
             {
-                while (_pendingWrites.TryDequeue(out PendingWrite? first))
-                {
-                    if (first.Operations.Count > _maxOperationsPerWave)
-                    {
-                        CommitLargeWriteInChunks(first);
-                        continue;
-                    }
-
-                    List<PendingWrite> wave = [first];
-                    int opsInWave = first.Operations.Count;
-                    // An oversized item encountered while coalescing is deferred rather than folded into this
-                    // wave (it needs CommitLargeWriteInChunks, not this loop) - handled right after this wave
-                    // commits, before returning to the outer dequeue loop, so overall processing order relative
-                    // to the queue is preserved.
-                    PendingWrite? deferredLargeWrite = null;
-                    while (opsInWave < _maxOperationsPerWave && _pendingWrites.TryDequeue(out PendingWrite? more))
-                    {
-                        if (more.Operations.Count > _maxOperationsPerWave)
-                        {
-                            deferredLargeWrite = more;
-                            break;
-                        }
-
-                        wave.Add(more);
-                        opsInWave += more.Operations.Count;
-                    }
-
-                    CommitWaveAndSignal(wave);
-                    if (deferredLargeWrite is not null) CommitLargeWriteInChunks(deferredLargeWrite);
-                }
+                DrainPendingWrites();
             }
             finally
             {
@@ -460,6 +431,48 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             // own DrainIfLeader call saw _writerActive still set and returned without draining anything. Go
             // around again rather than leaving that work stranded until an unrelated future write picks it up.
             if (_pendingWrites.IsEmpty) return;
+        }
+    }
+
+    /// <summary>
+    /// Drains everything currently in <see cref="_pendingWrites"/>, coalescing small writes into capped waves and
+    /// routing oversized ones to <see cref="CommitLargeWriteInChunks"/>. Reentrant by design: that method calls
+    /// this same routine between each of its own chunks, so a large write's chunking yields to whatever else is
+    /// queued instead of monopolizing the writer role for its entire multi-chunk duration - see that method's
+    /// remarks for why this matters. Nesting depth is bounded by how many oversized writes happen to be paused
+    /// mid-chunk at once, not by total volume processed, since each nested call fully drains before returning.
+    /// </summary>
+    private void DrainPendingWrites()
+    {
+        while (_pendingWrites.TryDequeue(out PendingWrite? first))
+        {
+            if (first.Operations.Count > _maxOperationsPerWave)
+            {
+                CommitLargeWriteInChunks(first);
+                continue;
+            }
+
+            List<PendingWrite> wave = [first];
+            int opsInWave = first.Operations.Count;
+            // An oversized item encountered while coalescing is deferred rather than folded into this
+            // wave (it needs CommitLargeWriteInChunks, not this loop) - handled right after this wave
+            // commits, before returning to the outer dequeue loop, so overall processing order relative
+            // to the queue is preserved.
+            PendingWrite? deferredLargeWrite = null;
+            while (opsInWave < _maxOperationsPerWave && _pendingWrites.TryDequeue(out PendingWrite? more))
+            {
+                if (more.Operations.Count > _maxOperationsPerWave)
+                {
+                    deferredLargeWrite = more;
+                    break;
+                }
+
+                wave.Add(more);
+                opsInWave += more.Operations.Count;
+            }
+
+            CommitWaveAndSignal(wave);
+            if (deferredLargeWrite is not null) CommitLargeWriteInChunks(deferredLargeWrite);
         }
     }
 
@@ -499,6 +512,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     /// plausibly enough to blow past a consensus client's <c>newPayload</c> timeout.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Unlike the coalesced-wave path, a failure partway through here is <em>not</em> all-or-nothing: earlier
     /// chunks may already be permanently committed by the time a later one fails, so this caller's write batch
     /// can end up partially applied. Accepted specifically because the callers that produce oversized batches
@@ -507,6 +521,16 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     /// crash because sync re-fetches and redoes it - the same reasoning extends to tolerating a rare partial
     /// application on a non-crash failure here. This is not assumed to hold for every possible caller of this
     /// plugin in general, only confirmed for the specific ones observed producing oversized batches in practice.
+    /// </para>
+    /// <para>
+    /// Calls <see cref="DrainPendingWrites"/> between chunks - observed in practice without this: a single
+    /// leader thread processes one dequeued <see cref="PendingWrite"/> to full completion before ever looking
+    /// at the queue again, so "full completion" of one ~40,000-operation write meant its entire ~11-chunk
+    /// sequence ran before any OTHER queued write got a turn - including trivial 2-3 operation writes on the
+    /// unrelated column, which measured 100-300ms in near-identical clusters despite their own work being
+    /// negligible, because they were simply queued behind this write's whole multi-chunk duration. Yielding
+    /// here between chunks lets small, latency-sensitive writes interleave instead.
+    /// </para>
     /// </remarks>
     private void CommitLargeWriteInChunks(PendingWrite write)
     {
@@ -525,6 +549,8 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
                 write.Done.Set();
                 return;
             }
+
+            DrainPendingWrites();
         }
 
         write.Done.Set();
