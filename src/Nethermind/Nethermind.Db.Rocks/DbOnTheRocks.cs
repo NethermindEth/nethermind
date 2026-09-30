@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -43,6 +44,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private static readonly FlushOptions _defaultFlushOptions = new();
 
     private bool _isDisposing;
+    private int _pinnedSlices;
+    private static readonly TimeSpan PinnedSliceDrainTimeout = TimeSpan.FromSeconds(10);
     private bool _isDisposed;
 
     private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = [];
@@ -1092,31 +1095,67 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, out nint handle, ReadFlags flags)
     {
-        ObjectDisposedException.ThrowIf(_isDisposing, this);
-
-        ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
-        PinnedSlice slice;
+        // Counted before the disposing check, so Dispose either waits for this slice or this read sees it disposing.
+        Interlocked.Increment(ref _pinnedSlices);
+        bool pinned = false;
         try
         {
-            if (!_db.TryGetPinned(key, out slice, cf, readOptions))
-            {
-                handle = default;
-                return null;
-            }
-        }
-        catch (RocksDbException e)
-        {
-            HandleFatalDbError(e);
-            throw;
-        }
+            ObjectDisposedException.ThrowIf(_isDisposing, this);
 
-        ReadOnlySpan<byte> value = slice.Value;
-        handle = slice.DangerousDetach();
-        return value;
+            ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
+            PinnedSlice slice;
+            try
+            {
+                if (!_db.TryGetPinned(key, out slice, cf, readOptions))
+                {
+                    handle = default;
+                    return null;
+                }
+            }
+            catch (RocksDbException e)
+            {
+                HandleFatalDbError(e);
+                throw;
+            }
+
+            ReadOnlySpan<byte> value = slice.Value;
+            handle = slice.DangerousDetach();
+            pinned = true;
+            return value;
+        }
+        finally
+        {
+            if (!pinned) Interlocked.Decrement(ref _pinnedSlices);
+        }
     }
 
-    public void DangerousReleaseHandle(nint handle) =>
+    public void DangerousReleaseHandle(nint handle)
+    {
         PinnedSlice.DangerousDestroy(handle);
+        if (handle != 0) Interlocked.Decrement(ref _pinnedSlices);
+    }
+
+    /// <summary>Waits for the slices <see cref="GetNativeSlice(ReadOnlySpan{byte}, IColumnFamilyHandle?, out nint, ReadFlags)"/> handed out to be released.</summary>
+    /// <remarks>
+    /// A pinned slice must be released before its database closes, and a background reader, such as a code read ahead
+    /// of execution, can still hold one when shutdown disposes the database. A slice never released would hang shutdown,
+    /// so the wait gives up after <see cref="PinnedSliceDrainTimeout"/> with a warning.
+    /// </remarks>
+    private void WaitForPinnedSlices()
+    {
+        long start = Stopwatch.GetTimestamp();
+        SpinWait spin = default;
+        while (Volatile.Read(ref _pinnedSlices) != 0)
+        {
+            if (Stopwatch.GetElapsedTime(start) > PinnedSliceDrainTimeout)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Closing DB {Name} with {Volatile.Read(ref _pinnedSlices)} pinned slices not released");
+                return;
+            }
+
+            spin.SpinOnce();
+        }
+    }
 
     public void Remove(ReadOnlySpan<byte> key)
     {
@@ -1754,6 +1793,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (Interlocked.CompareExchange(ref _isDisposing, true, false)) return;
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
+        WaitForPinnedSlices();
 
         foreach (IDisposable dbMetricsUpdater in _metricsUpdaters)
         {

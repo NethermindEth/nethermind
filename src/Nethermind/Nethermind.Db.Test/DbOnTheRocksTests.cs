@@ -617,6 +617,23 @@ namespace Nethermind.Db.Test
             Assert.That(() => ReadBy(db, path, key, 64), Throws.InstanceOf<ObjectDisposedException>());
         }
 
+        // A background code read can still hold a pinned slice when shutdown disposes the database; the slice must be
+        // released before RocksDB closes, or releasing it afterwards touches freed native memory.
+        [Test]
+        public void Dispose_waits_for_a_pinned_slice_to_be_released_before_closing_the_db()
+        {
+            byte[] key = [1, 2, 3];
+            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
+
+            Task disposing = Task.Run(db.Dispose);
+            Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the database closed under a pinned slice");
+
+            db.DangerousReleaseHandle(handle);
+            Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the slice was released");
+        }
+
         private static void ReadBy(DbOnTheRocks db, GetPath path, byte[] key, int length)
         {
             IReadOnlyKeyValueStore keyValueStore = db;
