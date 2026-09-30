@@ -109,7 +109,12 @@ public partial class EngineModuleTests
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(payload), "[]", null);
 
         using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
-        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error.Message, Is.EqualTo("blobGasUsed must be set"));
+        }
     }
 
     [Test]

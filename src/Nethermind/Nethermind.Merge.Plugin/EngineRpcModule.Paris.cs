@@ -102,7 +102,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             // A payload that does not match the method's structure is invalid params before it is an unsupported fork.
             if (executionPayload.HasUnboundField)
             {
-                string unboundError = $"{executionPayload.UnboundFieldName} must be set";
+                string unboundError = executionPayload.UnboundFieldError;
                 if (_logger.IsWarn) _logger.Warn(unboundError);
                 return ResultWrapper<PayloadStatusV1>.Fail(unboundError, ErrorCodes.InvalidParams);
             }
