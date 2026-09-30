@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using InlineIL;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
@@ -301,6 +304,144 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             state.OpCodeCount = opCodeCount;
             state.FinalProgramCounter = pc;
             return exceptionType;
+        }
+
+        /// <summary>PUSH2 on the carried gas and head, running a following JUMP or JUMPI itself as <c>InstructionPush2</c> does.</summary>
+        /// <remarks>
+        /// Written out rather than run on a copy of the stack: the fused jump reads the bitmap and the code length, and a copy
+        /// loads every field it will read up front, which keeps them live across the body in callee-saved registers. The
+        /// frame is read where each field is needed instead. Faults, charges and the program counter they leave follow
+        /// <c>EvmInstructions.InstructionPush2</c> exactly, including the fused opcodes it counts on the virtual machine.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteCarriedPush2<TCancelable>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            nint pc,
+            nint head,
+            nint opCodeCount)
+            where TCancelable : struct, IFlag
+        {
+            pc++;
+            opCodeCount++;
+            EvmExceptionType exceptionType;
+            if (gas < VeryLowGasCost.GasCost)
+                goto OutOfGas;
+            gas -= VeryLowGasCost.GasCost;
+
+            // A following jump or implicit STOP does not exempt PUSH2 from the stack limit.
+            if (head >= EvmStack.MaxStackSize - 1)
+            {
+                pc += 2;
+                exceptionType = EvmExceptionType.StackOverflow;
+                goto Exit;
+            }
+
+            // Untraced code is padded, so the immediate and the opcode after it are readable even past the end.
+            byte nextInstruction = Unsafe.Add(ref stack.Code, pc + 2);
+            if (nextInstruction is (byte)Instruction.JUMP or (byte)Instruction.JUMPI)
+            {
+                int destination = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, pc)));
+                if (DispatchFlags.CountOpcodes)
+                    state.Vm.OpCodeCount++;
+                if (nextInstruction == (byte)Instruction.JUMP)
+                {
+                    if (gas < JumpGasCost.GasCost)
+                        goto OutOfGas;
+                    gas -= JumpGasCost.GasCost;
+                }
+                else
+                {
+                    if (gas < JumpIGasCost.GasCost)
+                        goto OutOfGas;
+                    gas -= JumpIGasCost.GasCost;
+                    if (head < 1)
+                    {
+                        exceptionType = EvmExceptionType.StackUnderflow;
+                        goto Exit;
+                    }
+
+                    head--;
+                    if (EvmStack.IsSlotZero(ref stack.SlotUnchecked(head)))
+                    {
+                        pc += 3;
+                        goto Dispatch;
+                    }
+                }
+
+                if (!stack.IsJumpDestination(destination))
+                {
+                    exceptionType = EvmExceptionType.InvalidJumpDestination;
+                    goto Exit;
+                }
+
+                // Skip the JUMPDEST byte just validated, charging its gas and count here.
+                pc = (nint)destination + 1;
+                if (Sse.IsSupported && (nuint)pc < (nuint)stack.CodeLength)
+                    Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref stack.Code, pc)));
+                if (DispatchFlags.CountOpcodes)
+                    state.Vm.OpCodeCount++;
+                if (gas < JumpDestGasCost.GasCost)
+                    goto OutOfGas;
+                gas -= JumpDestGasCost.GasCost;
+                goto Dispatch;
+            }
+
+            // Build the word in a register and store it once, in limb layout.
+            ulong word = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, pc)));
+            ref byte slot = ref stack.SlotUnchecked(head);
+            if (Vector256.IsHardwareAccelerated)
+            {
+                Unsafe.WriteUnaligned(ref slot, Vector256.Create(word, 0UL, 0UL, 0UL));
+            }
+            else
+            {
+                ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
+                limbs = word;
+                Unsafe.Add(ref limbs, 1) = 0;
+                Unsafe.Add(ref limbs, 2) = 0;
+                Unsafe.Add(ref limbs, 3) = 0;
+            }
+            head++;
+            pc += 2;
+
+        Dispatch:
+            nint next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
+            if (TCancelable.IsActive && opCodeCount >= state.CancellationPollAt)
+            {
+                exceptionType = EvmExceptionType.None;
+                goto Exit;
+            }
+
+            IL.EnsureLocal(in next);
+
+            IL.Emit.Ldarg(nameof(stack));
+            IL.Emit.Ldarg(nameof(gas));
+            IL.Emit.Ldarg(nameof(state));
+            IL.Emit.Ldarg(nameof(pc));
+            IL.Emit.Ldarg(nameof(head));
+            IL.Emit.Ldarg(nameof(opCodeCount));
+            IL.Push(next);
+            IL.Emit.Tail();
+            IL.Emit.Calli(new StandAloneMethodSig(
+                CallingConventions.Standard,
+                TypeRef.Type<EvmExceptionType>(),
+                TypeRef.Type<EvmStack>().MakeByRefType(),
+                TypeRef.Type<ulong>(),
+                TypeRef.Type<DispatchState>().MakeByRefType(),
+                TypeRef.Type<nint>(),
+                TypeRef.Type<nint>(),
+                TypeRef.Type<nint>()));
+            IL.Emit.Ret();
+            throw IL.Unreachable();
+
+        OutOfGas:
+            gas = 0;
+            exceptionType = EvmExceptionType.OutOfGas;
+        Exit:
+            return ExitCarried(ref stack, ref state, gas, pc, head, opCodeCount, exceptionType);
         }
 
         /// <summary>JUMPI through the write-back adapter.</summary>

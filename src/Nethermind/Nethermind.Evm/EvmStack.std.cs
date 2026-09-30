@@ -21,6 +21,11 @@ public ref partial struct EvmStack
         Head = head;
     }
 
+    /// <summary>The slot at <paramref name="index"/>, counted up from the bottom of the stack, for callers that have bounded the index.</summary>
+    /// <remarks>Register dispatch carries the head outside <see cref="Head"/>, so its handlers address slots by the head they hold.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal readonly ref byte SlotUnchecked(nint index) => ref Unsafe.Add(ref _stack, index * WordSize);
+
     /// <summary>Reports whether <paramref name="destination"/> is a valid jump destination in <see cref="Code"/>.</summary>
     /// <remarks>
     /// The bitmap is resolved when the stack is built (<see cref="InitializeJumpDestinations"/>), so a jump

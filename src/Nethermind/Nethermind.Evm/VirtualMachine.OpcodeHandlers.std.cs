@@ -14,9 +14,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        CarriesRegisters<TTracingInst>()
-            ? AsTableEntry(&RawCalliHelper.ExecuteCarriedOpcode<TOpcode, TCancelable, OnFlag>)
-            : &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>;
+        !CarriesRegisters<TTracingInst>()
+            ? &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>
+            // PUSH2 fuses a following jump, which a copy of the stack would keep too many values live for.
+            : typeof(TOpcode) == typeof(Push2Opcode<OffFlag>)
+                ? AsTableEntry(&RawCalliHelper.ExecuteCarriedPush2<TCancelable>)
+                : AsTableEntry(&RawCalliHelper.ExecuteCarriedOpcode<TOpcode, TCancelable, OnFlag>);
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
         TerminatingOpcodeHandler<TOpcode, TTracingInst, TCancelable>()
