@@ -17,4 +17,6 @@ public enum BeaconChainDbColumns
     Metadata,
     /// <summary>Beacon block root to snappy-compressed SSZ <c>SignedExecutionPayloadEnvelope</c>, with a slot index for pruning.</summary>
     ExecutionPayloadEnvelopes,
+    /// <summary>Block root and column index to a data column sidecar record, with a slot index for pruning and the retention floor.</summary>
+    DataColumnSidecars,
 }

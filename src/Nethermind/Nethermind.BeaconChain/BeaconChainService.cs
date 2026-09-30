@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
@@ -35,7 +36,8 @@ public sealed class BeaconChainService(
     CheckpointSync checkpointSync,
     BeaconSyncOrchestrator orchestrator,
     ExternalClDetector externalClDetector,
-    ILogManager logManager) : IDisposable, IStoppableService
+    ILogManager logManager,
+    DataColumnSidecarPool? columnPool = null) : IDisposable, IStoppableService
 {
     private static readonly TimeSpan DefaultStartRetryDelay = TimeSpan.FromSeconds(30);
 
@@ -66,9 +68,16 @@ public sealed class BeaconChainService(
 
         // A database or resumed anchor this build refuses leaves the execution layer without a driver, so it fails startup instead of the background run.
         store.EnsureSchemaVersion();
+        SeedColumnFloor();
         _runTask = RunAsync(LoadPersistedAnchor());
         return _runTask;
     }
+
+    // The importer resumes with this as the canonical index top, so the sidecars of every slot up to it were never given to this process.
+    private void SeedColumnFloor() =>
+        columnPool?.SeedCompletelyServableFloor(store.TryGetAnchor(out _, out ulong anchorSlot)
+            ? Math.Max(anchorSlot, store.GetCanonicalIndexTopSlot() ?? 0)
+            : store.GetCanonicalIndexTopSlot());
 
     private async Task RunAsync((ForkedBeaconState State, ForkedSignedBeaconBlock? Block, Hash256 BlockRoot)? persistedAnchor)
     {
