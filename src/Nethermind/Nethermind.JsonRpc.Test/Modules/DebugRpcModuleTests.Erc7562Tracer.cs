@@ -161,13 +161,14 @@ public partial class DebugRpcModuleTests
         }));
         string init = codeSize < 0 ? "000000000000" : "61" + codeSize.ToString("x4") + "6000f3";
         string factory = "65" + init + "6000526006601a6000f000";
+        const string javascript = "{exits:[],fault:function(){},enter:function(){},exit:function(f){this.exits.push({gasUsed:f.getGasUsed(),error:f.getError()||null});},result:function(ctx){return {error:ctx.error||null,exits:this.exits};}}";
         Dictionary<string, object> tx = new() { ["from"] = FlatSender, ["gas"] = "0x186a0" };
         if (rootCreate) tx["data"] = "0x" + init;
         else tx["to"] = FlatTarget;
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", tx, "latest", new
         {
             tracer = mux ? "muxTracer" : "erc7562Tracer",
-            tracerConfig = mux ? new Dictionary<string, object> { ["erc7562Tracer"] = new { }, ["callTracer"] = new { } } : null,
+            tracerConfig = mux ? new Dictionary<string, object> { ["erc7562Tracer"] = new { }, ["callTracer"] = new { }, [javascript] = new { } } : null,
             stateOverrides = ErcOverrides(factory)
         });
         JToken envelope = JToken.Parse(response);
@@ -179,7 +180,9 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(result["outOfGas"]!.Value<bool>(), Is.False);
             Assert.That(creation["outOfGas"]!.Value<bool>(), Is.EqualTo(!rootCreate && codeSize == 512));
-            Assert.That(creation["error"] is not null, Is.EqualTo(failed));
+            Assert.That(creation["error"]?.Value<string>(), Is.EqualTo(failed ? "contract creation code storage out of gas" : null));
+            if (failed)
+                Assert.That(creation["gasUsed"]!.Value<string>(), Is.EqualTo(rootCreate ? "0x186a0" : fork == "Homestead" ? "0xb783" : "0xb4a3"));
             Assert.That(creation["to"] is not null, Is.EqualTo(!failed));
             if (!rootCreate && fork == "Frontier" && codeSize == 512)
             {
@@ -192,8 +195,29 @@ public partial class DebugRpcModuleTests
                 Assert.That(creation["gasUsed"]!.Value<string>(), Is.EqualTo(native["gasUsed"]!.Value<string>()));
                 Assert.That(creation["error"]?.Value<string>(), Is.EqualTo(native["error"]?.Value<string>()));
                 Assert.That(creation["to"]?.Value<string>(), Is.EqualTo(native["to"]?.Value<string>()));
+                JToken js = envelope["result"]![javascript]!;
+                JToken jsCreation = rootCreate ? js : js["exits"]![0]!;
+                Assert.That(jsCreation["error"]?.Value<string>(), Is.EqualTo(failed ? "contract creation code storage out of gas" : null));
+                if (failed && !rootCreate)
+                    Assert.That(js["exits"]![0]!["gasUsed"]!.Value<ulong>(), Is.EqualTo(fork == "Homestead" ? 46979UL : 46243UL));
             }
         }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_erc7562Tracer_invalid_deployment_is_not_code_storage_out_of_gas(
+        [Values("60ef60005360016000f3", "6160016000f3")] string init)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = FlatSender, gas = "0x186a0", data = "0x" + init }, "latest", new
+            {
+                tracer = "erc7562Tracer", stateOverrides = ErcOverrides("00")
+            });
+        JToken envelope = JToken.Parse(response);
+        Assert.That(envelope["error"], Is.Null, response);
+        Assert.That(envelope["result"]!["error"]?.Value<string>(),
+            Is.Not.Null.And.Not.EqualTo("contract creation code storage out of gas"));
     }
 
     [TestCase("{\"withLog\":1}", "json: cannot unmarshal number into Go struct field erc7562TracerConfig.withLog of type bool")]

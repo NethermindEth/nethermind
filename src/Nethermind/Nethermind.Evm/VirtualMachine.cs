@@ -696,6 +696,9 @@ public partial class VirtualMachine<TGasPolicy>(
 
             if (IsTracingActions)
             {
+                _txTracer.ReportActionRemainingGas(0);
+                if (!invalidCode && executionDepositCost != ulong.MaxValue)
+                    _txTracer.ReportActionErrorDetails("contract creation code storage out of gas");
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
@@ -1262,6 +1265,9 @@ public partial class VirtualMachine<TGasPolicy>(
                 // When the spec mandates charging for top-level creation, report an out-of-gas error.
                 if (spec.ChargeForTopLevelCreate)
                 {
+                    _txTracer.ReportActionRemainingGas(0);
+                    if (codeDepositGasCost != ulong.MaxValue && !CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
+                        _txTracer.ReportActionErrorDetails("contract creation code storage out of gas");
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
