@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -132,5 +133,39 @@ public class MemoizingCodeInfoRepositoryTests
         (MemoizingCodeInfoRepository repository, _, ICodeInfoRepository inner) = Build([0x60, 0x00], delegation: TestItem.AddressC);
         Lookup(repository, TestItem.AddressA, 3);
         Assert.That(InnerLookups(inner), Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Forwards_whether_code_is_overridable([Values] bool overridable)
+    {
+        // A wrapper that answers false under overrides would let the simple-transfer fast path skip an overridden recipient.
+        (MemoizingCodeInfoRepository repository, _, ICodeInfoRepository inner) = Build([0x60, 0x00]);
+        inner.IsCodeOverridable.Returns(overridable);
+        Assert.That(repository.IsCodeOverridable, Is.EqualTo(overridable));
+    }
+
+    [Test]
+    public void Stops_remembering_new_addresses_once_full()
+    {
+        const int capacity = 4096;
+        (MemoizingCodeInfoRepository repository, ResolvedCodeMemo memo, ICodeInfoRepository inner) = Build([0x60, 0x00]);
+        for (int i = 0; i < capacity; i++) Lookup(repository, Contract(i), 1);
+
+        Lookup(repository, Contract(0), 2);
+        Lookup(repository, Contract(capacity), 3);
+        Assert.That(InnerLookups(inner), Is.EqualTo(capacity + 3));
+
+        // A clear makes room again.
+        memo.Clear();
+        Lookup(repository, Contract(capacity), 3);
+        Assert.That(InnerLookups(inner), Is.EqualTo(capacity + 3 + 1));
+    }
+
+    // Leading bytes set, so the address never takes the precompile skip.
+    private static Address Contract(int index)
+    {
+        byte[] bytes = new byte[Address.Size];
+        BinaryPrimitives.WriteInt32BigEndian(bytes, index + 1);
+        return new Address(bytes);
     }
 }
