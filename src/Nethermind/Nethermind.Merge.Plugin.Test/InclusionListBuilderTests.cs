@@ -73,6 +73,16 @@ public class InclusionListBuilderTests
         return TxDecoder.Instance.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
     }
 
+    private static Transaction MinimalTx(PrivateKey sender) => Build.A.Transaction
+        .WithNonce(0)
+        .WithValue(0)
+        .WithGasPrice(0)
+        .WithGasLimit(0)
+        .WithTo(null)
+        .WithData([])
+        .SignedAndResolved(sender)
+        .TestObject;
+
     [Test]
     public void Empty_pool_yields_empty_inclusion_list() =>
         Assert.That(BuildBuilder(PoolOf()).GetInclusionList(), Is.Empty);
@@ -371,7 +381,7 @@ public class InclusionListBuilderTests
     }
 
     [Test]
-    public void Handles_more_senders_than_the_sample_capacity()
+    public void Handles_more_transactions_than_the_sample_capacity()
     {
         Transaction[] txs = [.. Enumerable.Range(0, TestItem.PrivateKeys.Length)
             .SelectMany(i => new[] { TxOfSize(0, 0, TestItem.PrivateKeys[i]), TxOfSize(0, 1, TestItem.PrivateKeys[i]) })];
@@ -380,6 +390,29 @@ public class InclusionListBuilderTests
 
         Assert.That(il.Count, Is.LessThanOrEqualTo(Eip7805Constants.MaxTransactionsPerInclusionList));
         Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+    }
+
+    private static IEnumerable<TestCaseData> ReservoirCases()
+    {
+        yield return new TestCaseData(0).SetName("Reservoir_saturates_the_byte_budget_at_the_smallest_encoded_transaction_size");
+        yield return new TestCaseData(TestItem.PrivateKeys.Length / 2).SetName("Reservoir_saturates_the_byte_budget_when_half_the_senders_are_skipped_for_size");
+    }
+
+    [TestCaseSource(nameof(ReservoirCases))]
+    public void Reservoir_saturates_the_byte_budget(int sendersSkippedForSize)
+    {
+        Transaction[] txs = [.. TestItem.PrivateKeys.Select((key, i) => i < sendersSkippedForSize
+            ? TxOfSize(Eip7805Constants.MaxBytesPerInclusionList, 0, key)
+            : MinimalTx(key))];
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(txs)).GetInclusionList();
+        int totalBytes = il.Sum(t => t.Count);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(totalBytes, Is.GreaterThan(Eip7805Constants.MaxBytesPerInclusionList - 100));
+            Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        }
     }
 
     [Test]
