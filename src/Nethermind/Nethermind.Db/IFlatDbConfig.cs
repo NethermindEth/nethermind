@@ -142,7 +142,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Only hash the storage tries before a block is reported valid, and write their nodes when the block commits, as the state trie already does. `false` writes each storage trie's nodes before the block is reported valid.", DefaultValue = "true")]
     bool DeferStorageTrieCommit { get; set; }
 
-    [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
+    [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie or ParallelStorageRoot.", DefaultValue = "true")]
     bool ApplyStorageWritesOnIdleThread { get; set; }
 
     [ConfigItem(Description = "Apply committed storage writes into the storage tries on a background thread while the block's transactions are still executing, so the block-end storage root computation only commits already-built tries. Ignored when VerifyWithTrie is enabled.", DefaultValue = "false")]
