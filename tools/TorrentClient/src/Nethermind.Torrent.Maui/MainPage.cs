@@ -890,45 +890,6 @@ public sealed class MainPage : ContentPage
             ]));
         }
 
-        if (job.IsComplete && job.Files.Count > 0)
-        {
-            stack.Add(new BoxView { HeightRequest = 1, BackgroundColor = BorderColor });
-            Grid filesHeading = new()
-            {
-                ColumnDefinitions =
-                {
-                    new ColumnDefinition(GridLength.Star),
-                    new ColumnDefinition(GridLength.Auto),
-                },
-            };
-            filesHeading.Add(new Label { Text = "Files", FontAttributes = FontAttributes.Bold, TextColor = TextColor, FontSize = 14 }, 0, 0);
-            if (job.Files.Count > 4)
-            {
-                Button allFiles = new()
-                {
-                    Text = "View all",
-                    FontSize = 12,
-                    TextColor = PrimaryColor,
-                    BackgroundColor = Colors.Transparent,
-                    Padding = new Thickness(8, 0),
-                };
-                allFiles.Clicked += (_, _) => SetActiveTab("Files");
-                ToolTipProperties.SetText(allFiles, "View all files");
-                AddHoverFeedback(allFiles, hovered => (hovered ? MutedBackground : Colors.Transparent,
-                    hovered ? PrimaryHover : PrimaryColor), track: false);
-                filesHeading.Add(allFiles, 1, 0);
-            }
-
-            stack.Add(filesHeading);
-            int count = Math.Min(job.Files.Count, 4);
-            for (int i = 0; i < count; i++)
-            {
-                View row = CreateFileRow(job);
-                row.BindingContext = job.Files[i];
-                stack.Add(row);
-            }
-        }
-
         return new ScrollView { Content = stack };
     }
 

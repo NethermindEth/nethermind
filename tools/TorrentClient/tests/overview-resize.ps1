@@ -16,6 +16,8 @@ public static class TorrentResizeTestWindow
     public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr handle, out Rect rect);
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr handle);
     public struct Rect { public int Left, Top, Right, Bottom; }
 }
 '@
@@ -36,17 +38,22 @@ try {
             throw "Could not resize the app to $width px."
         }
 
+        [TorrentResizeTestWindow]::SetForegroundWindow($handle) | Out-Null
         Start-Sleep -Milliseconds 400
         $window = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
         $elements = $window.FindAll(
             [System.Windows.Automation.TreeScope]::Descendants,
             [System.Windows.Automation.Condition]::TrueCondition)
         $bounds = @{}
+        $overviewSelected = $false
         $completeStateVisible = $false
         $transferActionVisible = $false
-        $filePreviewVisible = $false
+        $fileRowVisible = $false
         foreach ($element in $elements) {
             $name = $element.Current.Name
+            if ($name -eq 'Overview, selected tab') {
+                $overviewSelected = $true
+            }
             if ($ExpectComplete -and ($name -eq 'Current speed' -or $name -match '^Down .*B/s')) {
                 throw "At $width px, a completed torrent displays a transfer-speed claim."
             }
@@ -57,7 +64,7 @@ try {
                 $transferActionVisible = $true
             }
             if ($name -like 'Reveal * in file manager' -and $element.Current.BoundingRectangle.Width -gt 0) {
-                $filePreviewVisible = $true
+                $fileRowVisible = $true
             }
             if ($name -in @('Integrity', 'Storage', 'Folder')) {
                 $rect = $element.Current.BoundingRectangle
@@ -67,12 +74,14 @@ try {
             }
         }
 
-        if ($ExpectComplete -and (-not $completeStateVisible -or -not $transferActionVisible -or -not $filePreviewVisible)) {
-            throw "At $width px, completed state=$completeStateVisible, action=$transferActionVisible, file preview=$filePreviewVisible."
-        }
-
-        if (-not $bounds.ContainsKey('Integrity') -or -not $bounds.ContainsKey('Storage')) {
+        if (-not $overviewSelected -or -not $bounds.ContainsKey('Integrity') -or -not $bounds.ContainsKey('Storage')) {
             throw "At $width px, show a selected torrent's Overview tab before running this check."
+        }
+        if ($fileRowVisible) {
+            throw "At $width px, the Overview tab contains a file row."
+        }
+        if ($ExpectComplete -and (-not $completeStateVisible -or -not $transferActionVisible)) {
+            throw "At $width px, completed state=$completeStateVisible, action=$transferActionVisible."
         }
         if ([Math]::Abs($bounds.Integrity.Top - $bounds.Storage.Top) -gt 2) {
             throw "At $width px, Storage moved below Integrity."
