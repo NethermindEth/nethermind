@@ -256,7 +256,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 RlpReader ctx = new(data);
                 Transaction tx = _txDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-                tx.CapGasLimit(jsonRpcConfig.GasCap);
+                ulong gasCap = jsonRpcConfig.GasCap.EffectiveGasCap();
+                if (tx.GasLimit > gasCap)
+                {
+                    return ResultWrapper<ParityTxTraceFromReplay>.Fail(
+                        $"Signed transaction gas limit exceeds the RPC gas cap of {gasCap}.",
+                        ErrorCodes.ClientLimitExceededError);
+                }
                 return TraceTx(tx, traceTypes, BlockParameter.Latest, isSigned: true);
             }
             catch (RlpException)
