@@ -53,14 +53,13 @@ public class PbtOfflineSourceTests
                     if (code.Length != 0) codes[account.CodeHash.Bytes] = code;
                 }, (address, slot, value) => batch.SetStorage(address, slot, value));
             using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-            using ScratchProbeStream snapshot = new(directory), preimages = new(directory);
+            using MemoryStream snapshot = new(), preimages = new();
             PbtOfflineSource.WriteArtifacts(reader, codes, anchor, directory, snapshot, preimages, LimboLogs.Instance,
                 bufferBytes, workerCount, CancellationToken.None);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(snapshot.ToArray(), Is.EqualTo(expectedSnapshot));
                 Assert.That(preimages.ToArray(), Is.EqualTo(expectedPreimages));
-                Assert.That(preimages.ScratchFilesAtFirstWrite, Is.LessThan(snapshot.ScratchFilesAtFirstWrite!), "leaf runs outlive the snapshot");
                 Assert.That(reader.CurrentState, Is.EqualTo(new FlatStateId(header)));
                 Assert.That(Directory.GetFileSystemEntries(directory), Is.Empty);
             }
@@ -204,17 +203,5 @@ public class PbtOfflineSourceTests
                 Throws.TypeOf<InvalidDataException>().With.Message.Contains("Conflicting"));
         }
         finally { Directory.Delete(directory, recursive: true); }
-    }
-
-    /// <summary>Counts the scratch files present when the export first writes to this output.</summary>
-    private sealed class ScratchProbeStream(string scratchDirectory) : MemoryStream
-    {
-        public int? ScratchFilesAtFirstWrite { get; private set; }
-
-        public override void Write(ReadOnlySpan<byte> buffer)
-        {
-            ScratchFilesAtFirstWrite ??= Directory.GetFiles(scratchDirectory, "*", SearchOption.AllDirectories).Length;
-            base.Write(buffer);
-        }
     }
 }

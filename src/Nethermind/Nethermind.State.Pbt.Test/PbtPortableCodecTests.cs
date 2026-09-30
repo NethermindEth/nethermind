@@ -39,8 +39,9 @@ public class PbtPortableCodecTests
             List<RebuildEntry> leaves = [.. PbtSnapshotCodec.ReadLeaves(snapshotInput)];
             using MemoryStream snapshotOutput = new();
             using MemoryStream preimageOutput = new();
-            PbtArtifactWriter.PbtArtifactDigests digests = PbtArtifactWriter.Write(snapshotOutput, preimageOutput, root, PbtSnapshotLayout.Of(leaves),
-                leaves, ReadAccounts(preimageInput));
+            PbtArtifactWriter.PbtArtifactDigests digests = new(
+                PbtArtifactWriter.WriteSnapshot(snapshotOutput, root, PbtSnapshotLayout.Of(leaves), leaves),
+                PbtArtifactWriter.WritePreimages(preimageOutput, ReadAccounts(preimageInput)));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(snapshotOutput.ToArray(), Is.EqualTo(snapshot));

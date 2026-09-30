@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using Nethermind.Core;
@@ -71,12 +72,42 @@ internal static class PbtOfflineSource
             ulong leafCount = 0;
             PbtSnapshotLayout layout = new();
             ulong accountCount = (ulong)totals.Accounts;
-            ValueHash256 root = PbtRightmostGroupStore.CalculateRoot(CountLeaves(), PbtRightmostGroupStore.DefaultWindowSize, workers, cancellationToken);
-            PbtArtifactWriter.PbtArtifactDigests digests = PbtArtifactWriter.Write(snapshot, preimages, root, layout,
-                SnapshotLeaves(), Accounts(), cancellationToken);
+            // The preimage stream needs nothing from the leaves, so its spool drains alongside the leaf spool's.
+            using CancellationTokenSource failed = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            Task<ValueHash256> snapshotDigest = StartDrain(() =>
+            {
+                ValueHash256 root = PbtRightmostGroupStore.CalculateRoot(CountLeaves(), PbtRightmostGroupStore.DefaultWindowSize, workers, failed.Token);
+                return PbtArtifactWriter.WriteSnapshot(snapshot, root, layout, SnapshotLeaves(), failed.Token);
+            });
+            Task<ValueHash256> preimageDigest = StartDrain(() => PbtArtifactWriter.WritePreimages(preimages, Accounts(), failed.Token));
+            // Joined without the token for the same reason as the scan workers.
+            try
+            {
+                Task.WaitAll([snapshotDigest, preimageDigest], CancellationToken.None);
+            }
+            catch (AggregateException failures)
+            {
+                // Prefer the failure that cancelled the other drain over the cancellation it caused there.
+                ReadOnlyCollection<Exception> causes = failures.Flatten().InnerExceptions;
+                ExceptionDispatchInfo.Capture(causes.FirstOrDefault(static cause => cause is not OperationCanceledException) ?? causes[0]).Throw();
+            }
+            PbtArtifactWriter.PbtArtifactDigests digests = new(snapshotDigest.Result, preimageDigest.Result);
             if (logger.IsInfo)
                 logger.Info($"PBT export wrote {leafCount:N0} leaves for {accountCount:N0} accounts and {totals.Slots:N0} slots in {exporting.Elapsed:hh\\:mm\\:ss}.");
             return digests;
+
+            Task<ValueHash256> StartDrain(Func<ValueHash256> drain) => Task.Factory.StartNew(() =>
+            {
+                try
+                {
+                    return drain();
+                }
+                catch
+                {
+                    failed.Cancel();
+                    throw;
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
             void LogFinalMerge(string spool)
             {
@@ -141,7 +172,7 @@ internal static class PbtOfflineSource
             IEnumerable<RebuildEntry> SnapshotLeaves()
             {
                 foreach (RebuildEntry entry in Leaves("PBT export snapshot", leafCount)) yield return entry;
-                // The snapshot is the spool's last reader, so its runs need not outlive it into the preimage drain.
+                // The snapshot is the spool's last reader, so its runs need not outlive it while the preimage drain finishes.
                 leaves.Dispose();
             }
 
