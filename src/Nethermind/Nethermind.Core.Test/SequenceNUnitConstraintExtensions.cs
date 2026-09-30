@@ -70,6 +70,7 @@ public sealed class SequenceEqualConstraint<T> : Constraint
             {
                 ReadOnlyMemory<T> memory => memory.ToArray(),
                 Memory<T> memory => memory.ToArray(),
+                IEnumerable<T> sequence => sequence.ToArray(),
                 _ => (object?)actual
             });
     }

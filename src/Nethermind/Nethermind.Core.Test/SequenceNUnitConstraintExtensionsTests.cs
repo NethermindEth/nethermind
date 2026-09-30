@@ -84,6 +84,10 @@ public class SequenceNUnitConstraintExtensionsTests
     }
 
     [Test]
+    public void Actual_container_equality_is_ignored_like_ToArray_would() =>
+        AssertFails(new LengthEqualList(2), Is.SequenceEqualTo(new byte[] { 1 }));
+
+    [Test]
     public void Default_array_segment_does_not_match_an_empty_expected() =>
         Assert.That(() => Assert.That(default(ArraySegment<byte>), Is.SequenceEqualTo(Array.Empty<byte>())), Throws.Exception);
 
@@ -103,6 +107,11 @@ public class SequenceNUnitConstraintExtensionsTests
         {
             yield return reads++ == 0 ? (byte)2 : (byte)1;
         }
+    }
+
+    private sealed class LengthEqualList(params byte[] items) : List<byte>(items), IEquatable<byte[]>
+    {
+        public bool Equals(byte[]? other) => other?.Length == Count;
     }
 
     private sealed class IdEqualList(int id, params int[] items) : List<int>(items)
