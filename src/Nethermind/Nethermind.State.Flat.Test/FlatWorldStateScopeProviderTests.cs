@@ -1137,12 +1137,11 @@ public class FlatWorldStateScopeProviderTests
     // 2. Block 2 writes slot 1 and a job applies it, then puts slot 1 back to its block-start value.
     // 3. The final batch skips slot 1 as unchanged, so the restoring write can only come from the stream, whether a
     //    job applied it or the final batch catches it up.
-    [TestCase(true, TestName = "HintSet_SlotRestoredAfterJobApplied_EndsBlockAtBlockStartValue")]
-    [TestCase(false, TestName = "HintSet_SlotRestoredWithRestoreStillPending_EndsBlockAtBlockStartValue")]
-    public void HintSet_SlotRestoredToBlockStartValue_EndsBlockAtThatValue(bool restoreApplied)
+    [Test]
+    public void HintSet_SlotRestoredToBlockStartValue_EndsBlockAtThatValue([Values] bool restoreApplied, [Values] bool deferStorageTrieCommit)
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
+        using TestContext ctx = new(config: StreamingConfig(deferStorageTrieCommit), trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
         CommitSlots(scope, TestItem.AddressA, 1, (1, 5), (2, 6));
@@ -1159,10 +1158,10 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void StorageWriteBatch_WhenNoJobRan_AppliesCommittedWrites()
+    public void StorageWriteBatch_WhenNoJobRan_AppliesCommittedWrites([Values] bool deferStorageTrieCommit)
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
+        using TestContext ctx = new(config: StreamingConfig(deferStorageTrieCommit), trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
         CommitSlots(scope, TestItem.AddressA, 1, (1, 5));
@@ -1178,10 +1177,10 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void StorageWriteBatch_Clear_DropsWritesCommittedBeforeIt()
+    public void StorageWriteBatch_Clear_DropsWritesCommittedBeforeIt([Values] bool deferStorageTrieCommit)
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
+        using TestContext ctx = new(config: StreamingConfig(deferStorageTrieCommit), trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
         CommitSlots(scope, TestItem.AddressA, 1, (1, 5), (2, 6));
@@ -1207,10 +1206,10 @@ public class FlatWorldStateScopeProviderTests
     // 3. Slot 1 goes back to its block-start value, which the final batch skips as unchanged: without the roll back the
     //    trie would keep the failed job's write.
     [Test]
-    public void ApplyStorageWrites_WhenJobFailsAfterChangingTrie_FinalBatchRollsItBack()
+    public void ApplyStorageWrites_WhenJobFailsAfterChangingTrie_FinalBatchRollsItBack([Values] bool deferStorageTrieCommit)
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
+        using TestContext ctx = new(config: StreamingConfig(deferStorageTrieCommit), trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
         CommitSlots(scope, TestItem.AddressA, 1, (1, 5), (2, 6));
@@ -1227,10 +1226,10 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void ApplyStorageWrites_WhileWriteBatchIsOpen_LeavesTrieAlone()
+    public void ApplyStorageWrites_WhileWriteBatchIsOpen_LeavesTrieAlone([Values] bool deferStorageTrieCommit)
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
+        using TestContext ctx = new(config: StreamingConfig(deferStorageTrieCommit), trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
 
@@ -1265,15 +1264,90 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(warmer.RunStorageWriteJobs(), Is.Zero, "a scope that does not stream storage writes only warms paths");
     }
 
+    [Test]
+    public void StreamStorageWrites_CommitsNoNodesOfATrieNoBatchTook([Values] bool deferStorageTrieCommit)
+    {
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(config: StreamingConfig(deferStorageTrieCommit), trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
+
+        // A job applies the write, but no write batch ever takes the contract, as for one the flush skips.
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressA);
+        bool applied = false;
+        storageTree.OnStorageWritesApplied = () => applied = true;
+        storageTree.HintSet(1, 7);
+        Assert.That(warmer.RunStorageWriteJobs(), Is.EqualTo(1));
+        Assert.That(applied, Is.True, "the job must have applied the write");
+        Assert.That(storageTree.HasUncommittedNodes, Is.False);
+
+        scope.Commit(1);
+
+        Assert.That(ctx.LastCommittedSnapshot!.StorageNodes, Is.Empty);
+    }
+
+    // 1. Block 1's first batch writes slots 1 and 2, then a later round writes slot 1 again before a second batch, as
+    //    per-transaction root commits do.
+    // 2. Deferred, the first batch only hashed the trie, so the stream stays closed until the scope commit and the
+    //    second batch applies the round itself. Otherwise the first batch committed the trie and a job may build on it.
+    // 3. Block 2 updates the trie block 1 committed, so a node block 1 left out fails to resolve there.
+    [Test]
+    public void StreamStorageWrites_BetweenTwoBatchesOfABlock_KeepsTheCommittedNodes([Values] bool deferStorageTrieCommit)
+    {
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(config: StreamingConfig(deferStorageTrieCommit), trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
+
+        WriteSlots(scope, TestItem.AddressA, (1, 5), (2, 6));
+        scope.CreateStorageTree(TestItem.AddressA).HintSet(1, 7);
+        Assert.That(warmer.RunStorageWriteJobs(), Is.EqualTo(deferStorageTrieCommit ? 0 : 1));
+        WriteSlots(scope, TestItem.AddressA, (1, 7));
+        scope.Commit(1);
+
+        CommitSlots(scope, TestItem.AddressA, 2, (3, 8));
+
+        Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(ExpectedStorageRoot((1, 7), (2, 6), (3, 8))));
+    }
+
+    // Not deferred, a job may run between two batches of a block, on a trie the first one committed. When it fails
+    // there, the second batch rolls the trie back to what the first one committed.
+    [Test]
+    public void ApplyStorageWrites_WhenJobFailsAfterACommittingBatch_RollsBackToThatBatch()
+    {
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(config: StreamingConfig(deferStorageTrieCommit: false), trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
+
+        WriteSlots(scope, TestItem.AddressA, (1, 5), (2, 6));
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressA);
+        storageTree.OnStorageWritesApplied = static () => throw new InvalidOperationException("job fails after applying");
+        storageTree.HintSet(1, 7);
+        Assert.That(warmer.RunStorageWriteJobs(), Is.EqualTo(1));
+        storageTree.HintSet(1, 5);
+        WriteSlots(scope, TestItem.AddressA, (3, 8));
+        scope.Commit(1);
+
+        CommitSlots(scope, TestItem.AddressA, 2, (4, 9));
+
+        Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(ExpectedStorageRoot((1, 5), (2, 6), (3, 8), (4, 9))));
+    }
+
+    private static FlatDbConfig StreamingConfig(bool deferStorageTrieCommit) =>
+        new() { StreamStorageWrites = true, DeferStorageTrieCommit = deferStorageTrieCommit };
+
     private static void CommitSlots(FlatWorldStateScope scope, Address address, ulong blockNumber, params (int Index, int Value)[] slots)
     {
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
-        {
-            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slots.Length);
-            foreach ((int index, int value) in slots) storageBatch.Set((UInt256)index, (UInt256)value);
-        }
-
+        WriteSlots(scope, address, slots);
         scope.Commit(blockNumber);
+    }
+
+    private static void WriteSlots(FlatWorldStateScope scope, Address address, params (int Index, int Value)[] slots)
+    {
+        using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+        using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slots.Length);
+        foreach ((int index, int value) in slots) storageBatch.Set((UInt256)index, (UInt256)value);
     }
 
     private static Hash256 ExpectedStorageRoot(params (int Index, int Value)[] slots)

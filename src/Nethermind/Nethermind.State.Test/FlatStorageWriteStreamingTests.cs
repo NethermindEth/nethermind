@@ -37,20 +37,15 @@ public class FlatStorageWriteStreamingTests
 
     private static readonly IReleaseSpec Spec = Cancun.Instance;
 
-    [TestCase(1, TestName = "StateRoot_StreamedStorageWrites_MatchesTrieBackend_Seed1")]
-    [TestCase(2, TestName = "StateRoot_StreamedStorageWrites_MatchesTrieBackend_Seed2")]
-    [TestCase(3, TestName = "StateRoot_StreamedStorageWrites_MatchesTrieBackend_Seed3")]
-    [TestCase(4, TestName = "StateRoot_StreamedStorageWrites_MatchesTrieBackend_Seed4")]
-    [TestCase(5, TestName = "StateRoot_StreamedStorageWrites_MatchesTrieBackend_Seed5")]
-    [TestCase(6, TestName = "StateRoot_StreamedStorageWrites_MatchesTrieBackend_Seed6")]
-    public void StateRoot_StreamedStorageWrites_MatchesTrieBackend(int seed)
+    [Test]
+    public void StateRoot_StreamedStorageWrites_MatchesTrieBackend([Range(1, 6)] int seed, [Values] bool deferStorageTrieCommit)
     {
         List<Block> blocks = GenerateBlocks(new Random(seed));
 
         Hash256[] expected = Execute(TestWorldStateFactory.CreateForTest(), blocks, pauses: false);
 
         Hash256[] actual;
-        using (IContainer container = CreateStreamingFlatContainer())
+        using (IContainer container = CreateStreamingFlatContainer(deferStorageTrieCommit))
         {
             IWorldState flatState = new WorldState(container.Resolve<IWorldStateManager>().GlobalWorldState, LimboLogs.Instance);
             actual = Execute(flatState, blocks, pauses: true);
@@ -59,12 +54,13 @@ public class FlatStorageWriteStreamingTests
         Assert.That(actual, Is.EqualTo(expected), "every block's root must be the one the trie backend computes from the same writes");
     }
 
-    private static IContainer CreateStreamingFlatContainer()
+    private static IContainer CreateStreamingFlatContainer(bool deferStorageTrieCommit)
     {
         ConfigProvider configProvider = new();
         IFlatDbConfig flatConfig = configProvider.GetConfig<IFlatDbConfig>();
         flatConfig.Enabled = true;
         flatConfig.StreamStorageWrites = true;
+        flatConfig.DeferStorageTrieCommit = deferStorageTrieCommit;
         return new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)

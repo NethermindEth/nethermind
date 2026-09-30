@@ -755,7 +755,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 _dirtyAccounts.Clear();
 
                 Interlocked.Increment(ref scope._hintSequenceId);
-                scope.OpenStorageWrites();
+                // Deferred, the tries this batch hashed hold nodes the bundle has yet to get, so a job failing on one
+                // could not roll it back to them: the stream stays closed until the scope commit.
+                if (!scope._configuration.DeferStorageTrieCommit) scope.OpenStorageWrites();
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]

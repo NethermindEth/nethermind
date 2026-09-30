@@ -71,6 +71,10 @@ public sealed class FlatStorageTree(
     private bool _writesScheduled;
     private bool _writesFaulted;
 
+    // Set once a job applied writes that no write batch has taken over yet. Such a trie holds writes the block never
+    // reported, so the scope commit drops it instead of writing its nodes.
+    private volatile bool _holdsUnbatchedWrites;
+
     // The root the tree last had without any early-applied write. A faulted job rolls the trie back to it, which leaves
     // the final write batch exactly the work it would have had without the early writes.
     private Hash256 _committedRoot = storageRoot;
@@ -173,6 +177,8 @@ public sealed class FlatStorageTree(
             {
                 try
                 {
+                    // Before the apply: a job that fails part-way has changed the trie too.
+                    _holdsUnbatchedWrites = true;
                     ApplyToTrie(writes);
                     OnStorageWritesApplied?.Invoke();
 
@@ -256,6 +262,8 @@ public sealed class FlatStorageTree(
             _writesFaulted = false;
         }
 
+        // The batch takes over every write so far and reports the root it ends with.
+        _holdsUnbatchedWrites = false;
         try
         {
             if (faulted) GetTrees().Tree.RootHash = _committedRoot;
@@ -443,6 +451,7 @@ public sealed class FlatStorageTree(
         // Trieless scopes too: IWorldState.GetStorageRoot still reads RootHash there.
         GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
         _committedRoot = Keccak.EmptyTreeHash;
+        _holdsUnbatchedWrites = false;
     }
 
     // Matches PatriciaTree.Commit, which splits the commit, hashing included, across threads above 4 writes.
@@ -452,7 +461,11 @@ public sealed class FlatStorageTree(
     public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
 
     /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
-    internal bool HasUncommittedNodes => Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
+    /// <remarks>
+    /// A trie holding streamed writes no write batch took over, as for a contract the flush skips, has none: the block
+    /// never reported its root, so its nodes must not reach the bundle.
+    /// </remarks>
+    internal bool HasUncommittedNodes => !_holdsUnbatchedWrites && Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
