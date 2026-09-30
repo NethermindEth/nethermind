@@ -148,8 +148,10 @@ public sealed class ReadOnlySnapshotBundle(
     /// an <c>eth_call</c> reads - costs one filter probe instead of one dictionary probe per snapshot.
     /// </summary>
     /// <remarks>
-    /// For read-only execution only. The first call builds the filter inline (about a millisecond at mainnet sizes),
-    /// once per bundle; reads racing that build take the plain loop instead of waiting.
+    /// For read-only execution only. The first call builds the filter inline, once per bundle; reads racing that
+    /// build take the plain loop instead of waiting. The build costs about a millisecond at mainnet sizes (8 layers,
+    /// 75k slots) and is paid back after about 4,000 definite misses. Bundles are cached per base block for at most
+    /// 15 s, so reads spread over many blocks pay one build per block and window.
     /// </remarks>
     public void GetSlotFiltered(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out UInt256? value)
     {
