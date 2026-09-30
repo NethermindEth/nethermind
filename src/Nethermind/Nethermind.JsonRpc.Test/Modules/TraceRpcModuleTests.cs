@@ -28,6 +28,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using NSubstitute;
+using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 using Nethermind.Blockchain.Find;
@@ -1905,12 +1906,8 @@ public class TraceRpcModuleTests
     }
 
     // Shaped like trace-interop's field-data-input-equal and field-data-input-differ probes.
-    [TestCase("\"data\":\"0x602a60005260206000f3\"")]
-    [TestCase("\"input\":\"0x602a60005260206000f3\"")]
-    [TestCase("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x602a60005260206000f3\"")]
-    [TestCase("\"data\":null,\"input\":\"0x602a60005260206000f3\"")]
-    [TestCase("\"input\":null,\"data\":\"0x602a60005260206000f3\"")]
-    public async Task Trace_call_accepts_data_or_input_when_they_agree(string calldata)
+    [Test]
+    public async Task Trace_call_accepts_data_or_input_when_they_agree([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.MatchingCallData))] string calldata)
     {
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
@@ -1924,9 +1921,7 @@ public class TraceRpcModuleTests
 
     [Test]
     public async Task Trace_call_rejects_differing_data_and_input(
-        [Values("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x600160005260206000f3\"",
-            "\"input\":\"0x600160005260206000f3\",\"data\":\"0x602a60005260206000f3\"",
-            "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"")] string calldata,
+        [ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.DifferingCallData))] string calldata,
         [Values("trace_call", "trace_callMany")] string method)
     {
         Context context = new();

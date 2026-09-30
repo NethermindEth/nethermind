@@ -15,7 +15,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>, IJsonOnDeserialized
+public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>, IJsonOnDeserializing, IJsonOnDeserialized
 {
     public static TxType TxType => TxType.Legacy;
 
@@ -36,14 +36,25 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? Value { get; set; }
 
-    // Required for compatibility with some CLs like Prysm
-    // Accept during deserialization, ignore during serialization; it is merged into Input once the object is read
-    // See: https://github.com/NethermindEth/nethermind/pull/6067
+    /// <summary>Sets calldata through the legacy alias for <see cref="Input"/>.</summary>
+    /// <remarks>
+    /// Accepted during deserialization for compatibility with clients such as Prysm, but never serialized.
+    /// When JSON supplies both aliases, their non-null values must be equal; assignments in code update <see cref="Input"/> directly.
+    /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Data { set => _data = value ?? _data; private get => null; }
+    public byte[]? Data
+    {
+        private get => null;
+        set
+        {
+            if (_isDeserializing) _data = value ?? _data;
+            else Input = value;
+        }
+    }
 
     private byte[]? _data;
+    private bool _isDeserializing;
 
     /// <remarks>
     /// <see cref="Data"/> is an alias when deserializing: a request may set either or both, but both must be equal.
@@ -53,13 +64,17 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Input { get; set => field = value ?? field; }
 
+    void IJsonOnDeserializing.OnDeserializing() => _isDeserializing = true;
+
     void IJsonOnDeserialized.OnDeserialized()
     {
+        _isDeserializing = false;
         if (_data is null) return;
         if (Input is not null && !Input.AsSpan().SequenceEqual(_data))
             throw new SafePublicMessageFormatException(RpcTransactionErrors.DataAndInputDiffer);
 
         Input = _data;
+        _data = null;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]

@@ -27,6 +27,7 @@ using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
 using Newtonsoft.Json.Linq;
+using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 using Nethermind.Abi;
 using Nethermind.Core.Messages;
@@ -1412,12 +1413,8 @@ public partial class EthRpcModuleTests
     }
 
     // Shaped like trace-interop's field-data-input-equal and field-data-input-differ probes.
-    [TestCase("\"data\":\"0x602a60005260206000f3\"")]
-    [TestCase("\"input\":\"0x602a60005260206000f3\"")]
-    [TestCase("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x602a60005260206000f3\"")]
-    [TestCase("\"data\":null,\"input\":\"0x602a60005260206000f3\"")]
-    [TestCase("\"input\":null,\"data\":\"0x602a60005260206000f3\"")]
-    public async Task Eth_call_accepts_data_or_input_when_they_agree(string calldata)
+    [Test]
+    public async Task Eth_call_accepts_data_or_input_when_they_agree([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.MatchingCallData))] string calldata)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
         using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
@@ -1427,10 +1424,8 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
     }
 
-    [TestCase("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x600160005260206000f3\"")]
-    [TestCase("\"input\":\"0x600160005260206000f3\",\"data\":\"0x602a60005260206000f3\"")]
-    [TestCase("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"")]
-    public async Task Eth_call_rejects_differing_data_and_input(string calldata)
+    [Test]
+    public async Task Eth_call_rejects_differing_data_and_input([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.DifferingCallData))] string calldata)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
         using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
