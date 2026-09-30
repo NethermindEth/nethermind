@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             if (BlockHash is not null && (FromBlock is not null || ToBlock is not null))
             {
-                throw new BlockParameterParseException("cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other");
+                throw new BlockParameterParseException(ErrorMessages.BlockHashAndRange);
             }
         }
     }

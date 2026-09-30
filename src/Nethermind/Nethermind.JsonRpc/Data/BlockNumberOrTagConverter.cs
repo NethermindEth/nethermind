@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Data;
 /// <remarks>
 /// Applied to a property, so an explicit null leaves it null instead of reading as latest.
 /// </remarks>
-public sealed class BlockNumberOrTagConverter : JsonConverter<BlockParameter>
+internal sealed class BlockNumberOrTagConverter : JsonConverter<BlockParameter>
 {
     public override BlockParameter Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {

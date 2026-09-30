@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Data;
 /// <remarks>
 /// Applied to a property, so an explicit null still leaves it null.
 /// </remarks>
-public sealed class NonEmptyHash256Converter : JsonConverter<Hash256>
+internal sealed class NonEmptyHash256Converter : JsonConverter<Hash256>
 {
     public override Hash256 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         ((JsonConverter<Hash256>)options.GetConverter(typeof(Hash256))).Read(ref reader, typeToConvert, options)
