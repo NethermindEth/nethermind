@@ -176,6 +176,22 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <remarks>The spec IGNOREs later envelopes for the pair only once a valid one is seen, so an unverified envelope must never mark it.</remarks>
     internal void MarkEnvelopeSeen(Hash256 blockRoot, ulong builderIndex) => _seenEnvelopes.Set((blockRoot, builderIndex));
 
+    /// <summary>Whether a payload attestation must come from a member of its slot's PTC, as told by <see cref="SetPtc"/>; unset, every validator index is tracked.</summary>
+    internal bool RequiresPtc { get; set; }
+
+    /// <summary>Tells the router the members of the PTC for <paramref name="slot"/> read from the head state, or <see langword="null"/> when the head state cannot tell.</summary>
+    /// <remarks>Each call replaces the slot's members, so a head that changes its committee is followed. Only a member's pair is ever tracked once <see cref="RequiresPtc"/> is set.</remarks>
+    internal void SetPtc(ulong slot, ulong[]? members)
+    {
+        lock (_payloadAttestationLock)
+        {
+            if (GetSlotPayloadAttestations(slot, create: true) is { } attestations)
+            {
+                attestations.Members = members is null ? null : [.. members];
+            }
+        }
+    }
+
     /// <summary>Records that a payload attestation passed its signature check in fork choice, so later votes for its (slot, validator) pair are ignored.</summary>
     /// <remarks>The spec IGNOREs later votes for the pair only once a valid one is seen, so an unverified vote must never mark it.</remarks>
     internal void MarkPayloadAttestationVerified(PayloadAttestationMessage vote)
@@ -407,7 +423,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             envelope => ExecutionPayloadEnvelopeReceived?.Invoke(envelope));
 
     /// <summary>
-    /// Runs every <c>payload_attestation_message</c> rule except PTC membership and the signature, which need the block's state:
+    /// Runs every <c>payload_attestation_message</c> rule except the signature (and PTC membership until <see cref="RequiresPtc"/> is set):
     /// a vote passing them is raised for fork choice to verify and is never forwarded.
     /// </summary>
     /// <remarks>
@@ -774,6 +790,20 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 return Verdict.Ignore(GossipDropReason.Duplicate);
             }
 
+            // gloas/p2p-interface.md: [REJECT] validator_index not in get_ptc(head state, data.slot). No pair is tracked before this passes.
+            if (RequiresPtc)
+            {
+                if (slot.Members is not { } members)
+                {
+                    return Verdict.Ignore(GossipDropReason.InvalidField);
+                }
+
+                if (!members.Contains(vote.ValidatorIndex))
+                {
+                    return Verdict.Reject(GossipDropReason.InvalidField);
+                }
+            }
+
             if (!slot.Pairs.TryGet(vote.ValidatorIndex, out PayloadAttestationPair? pair))
             {
                 pair = new PayloadAttestationPair();
@@ -990,7 +1020,10 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         // Only votes fork choice accepted are marked, and it accepts only get_ptc members, so this holds at most PTC_SIZE indices.
         public readonly HashSet<ulong> Verified = [];
 
-        // A flood reopens a spent pair only after PayloadAttestationPairsPerSlot newer pairs push it out.
+        // The PTC of the slot from the head state; null while unknown. With RequiresPtc set only members are tracked, so this cache never fills.
+        public HashSet<ulong>? Members;
+
+        // Without RequiresPtc a flood reopens a spent pair only after PayloadAttestationPairsPerSlot newer pairs push it out.
         public readonly LruCache<ulong, PayloadAttestationPair> Pairs = new(PayloadAttestationPairsPerSlot, "beacon gossip payload attestations");
     }
 
