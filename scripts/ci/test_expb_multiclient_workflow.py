@@ -742,6 +742,37 @@ fi
                 if metrics:
                     self.assertIn("ERROR=no_metrics", metrics)
 
+    def test_cpus_a_cancelled_run_left_offline_come_back(self):
+        # A run cancelled mid-scenario leaves the hyperthreads expb took offline, and every later run then fails its
+        # whole-core pinning.
+        bodies = extract_steps(WORKFLOW, "Bring back CPUs a cancelled run left offline")
+        self.assertEqual(2, len(bodies))
+        # The single-image job separates its steps with a blank line, which the body extraction keeps.
+        self.assertEqual(bodies[0].rstrip("\n"), bodies[1].rstrip("\n"))
+        with tempfile.TemporaryDirectory(prefix="expb-cpus-test-") as directory:
+            cpus = Path(directory) / "cpu"
+            # cpu0 has no online file, as on a real box; cpufreq is not a CPU.
+            for cpu, state in ((0, None), (1, "1"), (2, "0"), (3, "0")):
+                (cpus / f"cpu{cpu}").mkdir(parents=True)
+                if state is not None:
+                    (cpus / f"cpu{cpu}" / "online").write_text(state + "\n", encoding="utf-8")
+            (cpus / "cpufreq").mkdir()
+            script = Path(directory) / "step.sh"
+            script.write_text(bodies[0], encoding="utf-8")
+            proc = subprocess.run(
+                [self.bash, "--noprofile", "--norc", "-eo", "pipefail", to_bash(script), to_bash(cpus)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+            self.assertEqual(
+                ["1", "1", "1"],
+                [(cpus / f"cpu{cpu}" / "online").read_text(encoding="utf-8").strip() for cpu in (1, 2, 3)],
+            )
+            self.assertIn("Brought cpu2 back online.", proc.stdout)
+            self.assertIn("Brought cpu3 back online.", proc.stdout)
+            self.assertNotIn("cpu1", proc.stdout)
+
     def test_an_instruction_cell_needs_a_count_for_every_measured_block(self):
         counts = ["EXPB-COUNT block={} instr=1000 cycles=500\n".format(100 + index) for index in range(3)]
         for analyzer in self.analyzers:

@@ -1048,6 +1048,28 @@ jobs:
           fi
           docker version
 
+      - name: Bring back CPUs a cancelled run left offline
+        shell: bash
+        run: |
+          set -uo pipefail
+          # expb takes each client core's second hyperthread offline for a scenario and brings it back afterwards, so
+          # a run cancelled mid-scenario leaves those CPUs offline. The whole-core pinning then cannot read their
+          # topology and every later run fails, while a later scenario that finds them offline leaves them so.
+          # This body is duplicated in both benchmark jobs; scripts/ci/test_expb_multiclient_workflow.py asserts the
+          # copies match and drives this body against a synthetic CPU tree.
+          # Positional, like the overlay reap: only that test passes a directory.
+          cpus="${1:-/sys/devices/system/cpu}"
+          for online in "${cpus}"/cpu[0-9]*/online; do
+            [[ -r "${online}" && "$(cat "${online}")" == "0" ]] || continue
+            cpu="$(basename "$(dirname "${online}")")"
+            if { echo 1 > "${online}"; } 2>/dev/null || echo 1 | sudo -n tee "${online}" > /dev/null 2>&1; then
+              echo "Brought ${cpu} back online."
+            else
+              echo "::warning::Could not bring ${cpu} back online."
+            fi
+          done
+          exit 0
+
       - name: Restore cached master metrics
         id: restore-master-metrics
         if: github.event_name == 'pull_request'
@@ -2977,6 +2999,28 @@ jobs:
             run_as_root systemctl start docker || run_as_root service docker start
           fi
           docker version
+
+      - name: Bring back CPUs a cancelled run left offline
+        shell: bash
+        run: |
+          set -uo pipefail
+          # expb takes each client core's second hyperthread offline for a scenario and brings it back afterwards, so
+          # a run cancelled mid-scenario leaves those CPUs offline. The whole-core pinning then cannot read their
+          # topology and every later run fails, while a later scenario that finds them offline leaves them so.
+          # This body is duplicated in both benchmark jobs; scripts/ci/test_expb_multiclient_workflow.py asserts the
+          # copies match and drives this body against a synthetic CPU tree.
+          # Positional, like the overlay reap: only that test passes a directory.
+          cpus="${1:-/sys/devices/system/cpu}"
+          for online in "${cpus}"/cpu[0-9]*/online; do
+            [[ -r "${online}" && "$(cat "${online}")" == "0" ]] || continue
+            cpu="$(basename "$(dirname "${online}")")"
+            if { echo 1 > "${online}"; } 2>/dev/null || echo 1 | sudo -n tee "${online}" > /dev/null 2>&1; then
+              echo "Brought ${cpu} back online."
+            else
+              echo "::warning::Could not bring ${cpu} back online."
+            fi
+          done
+          exit 0
       - name: Ensure EXPB config file exists
         shell: bash
         run: |
