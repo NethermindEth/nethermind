@@ -39,6 +39,19 @@ namespace Nethermind.TxPool
         IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default);
 
         /// <summary>
+        /// Non-blob txs grouped by sender address, limited to senders holding a non-frame transaction the next
+        /// block could include. Kept buckets come back whole, frame transactions included.
+        /// </summary>
+        /// <param name="baseFee">Base fee the next block will charge.</param>
+        /// <remarks>For a caller that discards EIP-8141 frame transactions anyway: judging a bucket's frames too
+        /// costs an EIP-8250 NONCE_MANAGER state read per nonce key they select, and hands back senders holding
+        /// nothing such a caller can use.
+        /// <para>The default body only approximates that: it falls back to the full readiness filter, so an
+        /// implementation that does not override it pays those reads and may return frame-only senders.</para></remarks>
+        IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256 baseFee) =>
+            GetPendingTransactionsBySender(filterToReadyTx: true, baseFee);
+
+        /// <summary>
         /// Blob txs light equivalences grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>

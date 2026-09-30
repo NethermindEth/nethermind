@@ -63,7 +63,7 @@ public class InclusionListBuilderTests
             .ToDictionary(g => g.Key, g => g.OrderBy(tx => tx.Nonce).ToArray());
         foreach (Address sender in emptyBucketSenders ?? []) bySender[new AddressAsKey(sender)] = [];
         ITxPool pool = Substitute.For<ITxPool>();
-        pool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>()).Returns(bySender);
+        pool.GetPendingTransactionsBySenderWithReadyNonFrameTx(Arg.Any<UInt256>()).Returns(bySender);
         return pool;
     }
 
@@ -145,7 +145,7 @@ public class InclusionListBuilderTests
 
         BuildBuilder(pool, baseFee: 17).GetInclusionList().Dispose();
 
-        pool.Received().GetPendingTransactionsBySender(true, (UInt256)17);
+        pool.Received().GetPendingTransactionsBySenderWithReadyNonFrameTx((UInt256)17);
     }
 
     // The named parent, not the head, fixes the fee the candidates are filtered against.
@@ -157,7 +157,7 @@ public class InclusionListBuilderTests
 
         BuildBuilder(pool, baseFee: 17).GetInclusionList(parent).Dispose();
 
-        pool.Received().GetPendingTransactionsBySender(true, (UInt256)23);
+        pool.Received().GetPendingTransactionsBySenderWithReadyNonFrameTx((UInt256)23);
     }
 
     // Listing a frame transaction spends the byte cap for nothing, and its per-key nonce would break the
