@@ -56,19 +56,11 @@ internal sealed class PbtAnchorPublication(
         Stopwatch importing = Stopwatch.StartNew();
         if (ImportedEarlier(anchor) is { } imported) return imported;
 
-        // Staging and folding must read the same immutable bytes, even if the input file is replaced.
-        string copyPath = Path.Combine(scratchDirectory, $"pbt-source-{Guid.NewGuid():N}");
         Directory.CreateDirectory(scratchDirectory);
-        try
-        {
-            await using FileStream copiedSnapshot = new(copyPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-            await snapshot.CopyToAsync(copiedSnapshot, cancellationToken);
-            copiedSnapshot.Position = 0;
-            ValueHash256 claimedRoot = PbtSnapshotCodec.ReadHeader(copiedSnapshot);
-            if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
-            return await ImportLeaves(anchor, scratchDirectory, token => SnapshotLeaves(copiedSnapshot, token), leafCount: 0, claimedRoot, preimages, isAnchorCurrent, importing, cancellationToken);
-        }
-        finally { File.Delete(copyPath); }
+        snapshot.Position = 0;
+        ValueHash256 claimedRoot = PbtSnapshotCodec.ReadHeader(snapshot);
+        if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
+        return await ImportLeaves(anchor, scratchDirectory, token => SnapshotLeaves(snapshot, token), leafCount: 0, claimedRoot, preimages, isAnchorCurrent, importing, cancellationToken);
     }
 
     /// <summary>Imports the native PBT state at the anchor from preimages, taking every value from the flat state.</summary>
