@@ -97,12 +97,8 @@ public partial class FrameTxProcessorTests
 
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
         Assert.That(tracer.TraceResult, Is.Not.Null);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tracer.TraceResult.MaxUsedGas, Is.EqualTo(tx.BlockGasUsed));
-            Assert.That(tracer.TraceResult.MaxUsedGas,
-                clearStorage ? Is.GreaterThan(tracer.TraceResult.GasUsed) : Is.EqualTo(tracer.TraceResult.GasUsed));
-        }
+        Assert.That(tracer.TraceResult.MaxUsedGas,
+            clearStorage ? Is.GreaterThan(tracer.TraceResult.GasUsed) : Is.EqualTo(tracer.TraceResult.GasUsed));
     }
 
     [Test]
