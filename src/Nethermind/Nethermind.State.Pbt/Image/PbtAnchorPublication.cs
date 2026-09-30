@@ -131,7 +131,7 @@ internal sealed class PbtAnchorPublication(
     {
         PrepareStaging(anchor, cancellationToken);
         (ulong Accounts, ulong Slots) staged;
-        using (LogicalBatch batch = new(target, cancellationToken))
+        using (LogicalBatch batch = new(target, config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount, cancellationToken))
         {
             staged = PbtLeafStaging.Stage(batch, Reported(StagePhase, leaves(cancellationToken), leafCount), scratchDirectory, anchor.MaxBufferedCodeBytes, cancellationToken);
             batch.Commit();
@@ -140,7 +140,7 @@ internal sealed class PbtAnchorPublication(
         {
             using (IPbtPersistence.IReader reader = target.CreateReader())
                 if (PbtImageVerifier.Verify(preimages, reader, anchor, scratchDirectory, config.MigrationVerifyBucketBytes, config.ExportSortBufferBytes,
-                        config.ExportConcurrency, logManager, cancellationToken) != staged)
+                        config.ImportConcurrency, logManager, cancellationToken) != staged)
                     throw new InvalidDataException("Snapshot holds state its preimages do not list.");
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
         }
@@ -202,7 +202,7 @@ internal sealed class PbtAnchorPublication(
         }, CancellationToken.None);
         try
         {
-            ValueHash256 root = await new PbtRebuilder(target, config, logManager).Rebuild(channel.Reader, anchorState, linked.Token, 16_384, expectedRoot);
+            ValueHash256 root = await new PbtRebuilder(target, config, config.ImportConcurrency, logManager).Rebuild(channel.Reader, anchorState, linked.Token, 16_384, expectedRoot);
             await producer;
             return root;
         }
@@ -301,15 +301,16 @@ internal sealed class PbtAnchorPublication(
     {
         private readonly PbtRocksDbPersistence _target;
         private readonly CancellationTokenSource _cancellation;
-        private readonly Task[] _flushers = new Task[Environment.ProcessorCount];
+        private readonly Task[] _flushers;
         private Channel<IPbtPersistence.IWriteBatch> _pending = null!;
         private ExceptionDispatchInfo? _failure;
         private IPbtPersistence.IWriteBatch? _batch;
         private int _count;
 
-        public LogicalBatch(PbtRocksDbPersistence target, CancellationToken cancellationToken)
+        public LogicalBatch(PbtRocksDbPersistence target, int flusherCount, CancellationToken cancellationToken)
         {
             _target = target;
+            _flushers = new Task[flusherCount];
             _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             StartFlushers();
         }
@@ -368,7 +369,7 @@ internal sealed class PbtAnchorPublication(
         private void StartFlushers()
         {
             _pending = Channel.CreateBounded<IPbtPersistence.IWriteBatch>(
-                new BoundedChannelOptions(2 * Environment.ProcessorCount) { SingleWriter = true });
+                new BoundedChannelOptions(2 * _flushers.Length) { SingleWriter = true });
             for (int i = 0; i < _flushers.Length; i++)
                 _flushers[i] = Task.Run(Flush, CancellationToken.None);
         }

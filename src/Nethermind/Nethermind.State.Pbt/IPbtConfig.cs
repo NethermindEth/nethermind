@@ -68,6 +68,11 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Bytes of listed accounts and slots the EIP-8347 preimage verifier queues in its bucket tables, shared by all its workers, before the preimage reader pauses.", DefaultValue = "4294967296", HiddenFromDocs = true)]
     long MigrationVerifyBucketBytes { get; set; }
 
+    /// <summary>Threads each parallel stage of the background EIP-8347 migration import may use. Defaults to 1.</summary>
+    /// <remarks>The import runs alongside block processing, so it is kept narrow unless raised.</remarks>
+    [ConfigItem(Description = "Maximum number of threads each parallel stage of the background EIP-8347 migration import (offline export scan, staging writes, preimage verification, tree fold) uses, leaving room for block processing. 0 uses the processor count.", DefaultValue = "1")]
+    int ImportConcurrency { get; set; }
+
     /// <summary>Whether to report the known child header's state root instead of the computed PBT root. Defaults to false.</summary>
     [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root. Does not affect flat mirror mode.", DefaultValue = "false")]
     bool FakeMatchingStateRoot { get; set; }

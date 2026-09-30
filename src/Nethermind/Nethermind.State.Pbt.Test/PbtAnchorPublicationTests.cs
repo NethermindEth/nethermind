@@ -107,7 +107,7 @@ public class PbtAnchorPublicationTests
     {
         // Tiny buffers keep the verifier's reader pausing on full buckets while its workers sweep them, and spill many spool runs.
         using Harness harness = new(name, tinyVerifyBuffer
-            ? new PbtConfig { MigrationVerifyBucketBytes = 4096, ExportSortBufferBytes = 1024, ExportConcurrency = 2 }
+            ? new PbtConfig { MigrationVerifyBucketBytes = 4096, ExportSortBufferBytes = 1024, ImportConcurrency = 2 }
             : new PbtConfig());
         ValueHash256 root = await harness.Publish();
         AssertPublishedState(harness, root, name);
@@ -328,9 +328,9 @@ public class PbtAnchorPublicationTests
 
     /// <remarks>Stages several times the staging batch size, so the writes span many batches written by parallel flushers.</remarks>
     [Test]
-    public async Task Snapshot_staged_across_many_batches_publishes_every_account_and_slot()
+    public async Task Snapshot_staged_across_many_batches_publishes_every_account_and_slot([Values(0, 1)] int importConcurrency)
     {
-        using Harness harness = new("anchor");
+        using Harness harness = new("anchor", new PbtConfig { ImportConcurrency = importConcurrency });
         Address[] addresses = new Address[1000];
         List<RebuildEntry> leaves = [];
         for (int index = 0; index < addresses.Length; index++)
@@ -343,7 +343,7 @@ public class PbtAnchorPublicationTests
             leaves.Add(new(PbtStateKey.Storage(address, 100), new ValueHash256(((UInt256)(index + 1)).ToBigEndian())));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
-        ValueHash256 expectedRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, CancellationToken.None);
+        ValueHash256 expectedRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         using MemoryStream snapshot = new();
         PbtSnapshotCodec.Write(snapshot, expectedRoot, PbtSnapshotLayout.Of(leaves), leaves);
         snapshot.Position = 0;
@@ -496,7 +496,7 @@ public class PbtAnchorPublicationTests
             default: throw new ArgumentOutOfRangeException(nameof(corruption));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
-        ValueHash256 attackerRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, CancellationToken.None);
+        ValueHash256 attackerRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         MemoryStream snapshot = new();
         PbtSnapshotCodec.Write(snapshot, attackerRoot, PbtSnapshotLayout.Of(leaves), leaves);
         snapshot.Position = 0;
