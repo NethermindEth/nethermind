@@ -643,6 +643,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("atomic batch flag in validation prefix");
                 }
 
+                bool senderHadCode = isDeployFrame && WorldState.IsContract(sender);
+
                 frameContext.CurrentFrameIndex = i;
 
                 TxFrame boundedFrame = CapFrameGas(frame, Eip8141Constants.MaxVerifyGas - verifyGasUsed, out bool capped);
@@ -684,7 +686,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 // A deploy frame that leaves tx.sender codeless would have the VERIFY frames behind it
                 // validate against default code instead of the account being deployed.
-                if (isDeployFrame && WorldState.GetCodeHash(sender) == Keccak.OfAnEmptyString)
+                if (isDeployFrame && (senderHadCode || WorldState.GetCodeHash(sender) == Keccak.OfAnEmptyString))
                 {
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame installed no code at tx.sender");
                 }

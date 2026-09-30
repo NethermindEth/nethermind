@@ -456,6 +456,27 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
+    public void Simulate_TimestampThroughExpiryVerifierHelper_IsRejected()
+    {
+        DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
+        byte[] code = Prepare.EvmCode
+            .PushData(UInt256.MaxValue).PushData(0).Op(Instruction.MSTORE)
+            .PushData(0).PushData(0).PushData(8).PushData(0)
+            .PushData(Eip8141Constants.ExpiryVerifierAddress).PushData(30_000)
+            .Op(Instruction.STATICCALL).Op(Instruction.POP)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.True);
+            Assert.That(tracer.ViolationReason, Is.EqualTo("banned opcode TIMESTAMP in validation prefix"));
+        }
+    }
+
+    [Test]
     public void Simulate_TimestampInCanonicalExpiryVerifier_Allowed()
     {
         DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
@@ -565,7 +586,7 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_DeployFrameCreatesOverAnExistingAccount_RecordsViolation()
+    public void Simulate_DeployFrameCreatesOverAnExistingAccount_IsRejected()
     {
         // A create that opens no frame returned zero on a collision the prefix must not turn on —
         // here a front-run of the very deployment the frame intends.
@@ -574,9 +595,14 @@ public class FrameTxValidationPrefixSimulationTests
         DeployContract(deployed, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = DeployTx(deployed);
 
-        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx);
+        (TransactionResult result, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx);
 
-        Assert.That(tracer.ViolationReason, Does.Contain("CREATE opened no creation frame"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("deploy frame installed no code"));
+            Assert.That(tracer.Payer, Is.Null);
+        }
     }
 
     [Test]
@@ -772,11 +798,8 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_DeployFrameInstallingNothingOverADeployedSender_ResolvesThePayer()
+    public void Simulate_DeployFrameInstallingNothingOverADeployedSender_IsRejected()
     {
-        // The guard is that tx.sender carries code once the deploy frame is done, so a deploy frame that
-        // creates nothing passes it vacuously when the sender is already deployed. That is intended: the
-        // VERIFY frames behind it run the sender's real code either way.
         DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         DeployContract(Factory, Prepare.EvmCode.Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
@@ -786,8 +809,8 @@ public class FrameTxValidationPrefixSimulationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.ViolationReason, Is.Null);
-            Assert.That(result.TransactionExecuted, Is.True);
-            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(tracer.Payer, Is.Null);
         }
     }
 
