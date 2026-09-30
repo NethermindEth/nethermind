@@ -123,14 +123,15 @@ public class PbtOfflineSourceTests
     /// however the partitioned producers happened to spread it across runs.</remarks>
     [Test]
     public void Spool_merges_runs_in_key_order_collapsing_duplicates(
-        [Values(2, 3, 128)] int maxFanIn, [Values(2, 64)] int preMergeThreshold, [Values(1, 4)] int writerCount)
+        [Values(2, 3, 128)] int maxFanIn, [Values(2, 64)] int preMergeThreshold, [Values(1, 4)] int writerCount,
+        [Values(1, 2)] int maxConcurrentPreMerges)
     {
         string directory = Directory.CreateTempSubdirectory("pbt-spool-").FullName;
         try
         {
             // A buffer of a few records per run, so a few hundred records spill into many runs.
             using PbtSortedSpool spool = new(directory, 512, writerCount, LimboLogs.Instance, CancellationToken.None)
-            { MaxFanIn = maxFanIn, PreMergeThreshold = preMergeThreshold };
+            { MaxFanIn = maxFanIn, PreMergeThreshold = preMergeThreshold, MaxConcurrentPreMerges = maxConcurrentPreMerges };
             SortedDictionary<ValueHash256, byte[]> expected = [];
             for (int index = 0; index < 400; index++)
             {

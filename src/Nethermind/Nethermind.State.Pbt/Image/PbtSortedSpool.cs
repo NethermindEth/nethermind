@@ -18,8 +18,10 @@ namespace Nethermind.State.Pbt.Image;
 /// concurrently without contending on a shared buffer. A filled segment is handed to a background task that
 /// sorts it and streams it into one run table, whose front-coded blocks shrink a record to its key suffix plus
 /// its value, while the producer fills the next segment — the sort never blocks the walk that feeds it. Once
-/// <see cref="PreMergeThreshold"/> runs exist they are folded into one intermediate run in the background too,
-/// so the run count stays bounded during ingest rather than being folded in a pass of its own at the end.
+/// <see cref="PreMergeThreshold"/> runs of one merge level exist they are folded into one run of the next level
+/// in the background too, at most <see cref="MaxConcurrentPreMerges"/> rounds at a time and lowest level first, so
+/// the run count stays bounded during ingest rather than being folded in a pass of its own at the end, and a large
+/// intermediate run is never rewritten alongside small fresh ones.
 /// <para><see cref="Read"/> merges the remaining runs k-way with a loser tree, collapsing equal keys; runs beyond
 /// <see cref="MaxFanIn"/> are folded first, so the record count bounds the fan-in rather than the open file count.
 /// The merged output is never materialized, and the runs outlive it, so <see cref="Read"/> may be called
@@ -36,8 +38,11 @@ internal sealed class PbtSortedSpool : IDisposable
     /// <summary>Runs merged at once. Bounds the simultaneously mapped runs, not the record count.</summary>
     internal int MaxFanIn { get; init; } = 128;
 
-    /// <summary>Runs that accrue before one background round folds them into a single intermediate run.</summary>
+    /// <summary>Runs of one merge level that accrue before one background round folds them into a single run of the next level.</summary>
     internal int PreMergeThreshold { get; init; } = 64;
+
+    /// <summary>Background pre-merge rounds allowed to run at once; full levels wait for a free slot.</summary>
+    internal int MaxConcurrentPreMerges { get; init; } = 1;
 
     private readonly string _directory;
     private readonly int _segmentBytes;
@@ -52,10 +57,13 @@ internal sealed class PbtSortedSpool : IDisposable
     // Sort and pre-merge tasks not yet observed to have finished; a pre-merge may enqueue another.
     private readonly List<Task> _pending = [];
     private readonly List<string> _runs = [];
+    // Runs not yet folded during ingest, by merge level: a sorted segment is level 0, a fold of level-L runs is L+1.
+    private readonly List<List<string>> _levels = [];
     // Every run file ever created, including those already folded away, so cleanup misses none.
     private readonly List<string> _scratch = [];
     private ExceptionDispatchInfo? _fault;
     private int _openWriters;
+    private int _activePreMerges;
     private bool _completed;
 
     /// <param name="bufferBytes">Bytes buffered per writer before a segment is sorted and spilled to a run.</param>
@@ -186,7 +194,7 @@ internal sealed class PbtSortedSpool : IDisposable
         }
         Enqueue(() =>
         {
-            try { Publish(WriteRun(segment)); }
+            try { Publish(WriteRun(segment), level: 0); }
             finally { Return(segment); }
         });
     }
@@ -215,23 +223,42 @@ internal sealed class PbtSortedSpool : IDisposable
         }
     }
 
-    /// <summary>Record a finished run, folding a full round of them in the background once enough accrue.</summary>
-    private void Publish(string run)
+    /// <summary>Record a finished run, folding its level in the background once a full round of it accrues.</summary>
+    private void Publish(string run, int level)
     {
-        List<string> round;
         lock (_lock)
         {
-            _runs.Add(run);
-            if (_completed || _runs.Count < PreMergeThreshold) return;
-            round = _runs.GetRange(0, PreMergeThreshold);
-            _runs.RemoveRange(0, PreMergeThreshold);
+            if (level == _levels.Count) _levels.Add([]);
+            _levels[level].Add(run);
         }
-        Enqueue(() =>
+        StartPreMerges();
+    }
+
+    /// <summary>Fold full levels, lowest first, while a pre-merge slot is free.</summary>
+    private void StartPreMerges()
+    {
+        while (true)
         {
-            Publish(MergeRuns(round));
-            // The round was detached under the lock, so no cursor and no other fold can be holding its files.
-            foreach (string folded in round) File.Delete(folded);
-        });
+            List<string> round;
+            int level;
+            lock (_lock)
+            {
+                if (_completed || _activePreMerges >= MaxConcurrentPreMerges) return;
+                level = _levels.FindIndex(tier => tier.Count >= PreMergeThreshold);
+                if (level < 0) return;
+                round = _levels[level].GetRange(0, PreMergeThreshold);
+                _levels[level].RemoveRange(0, PreMergeThreshold);
+                _activePreMerges++;
+            }
+            Enqueue(() =>
+            {
+                string merged = MergeRuns(round);
+                lock (_lock) _activePreMerges--;
+                Publish(merged, level + 1);
+                // The round was detached under the lock, so no cursor and no other fold can be holding its files.
+                foreach (string folded in round) File.Delete(folded);
+            });
+        }
     }
 
     /// <remarks>Freezing precedes the drain: a pre-merge that detaches runs after the fold below has started
@@ -246,6 +273,7 @@ internal sealed class PbtSortedSpool : IDisposable
         }
         WaitForPending();
         ThrowIfFaulted();
+        foreach (List<string> tier in _levels) _runs.AddRange(tier);
         // Folding is the one phase no reader loop observes, so each round reports itself.
         while (_runs.Count > MaxFanIn)
         {
@@ -372,6 +400,7 @@ internal sealed class PbtSortedSpool : IDisposable
         foreach (string run in _scratch) File.Delete(run);
         _scratch.Clear();
         _runs.Clear();
+        _levels.Clear();
         _segments.Dispose();
         _abort.Dispose();
     }
