@@ -479,6 +479,12 @@ public abstract class BlockchainTestBase
 
                 if (expectWitness)
                 {
+                    // The witness result has no PayloadStatusV2, and engine_newPayloadWithWitnessV6 retains no
+                    // compliance for the fork-choice update either, so the expectation cannot be checked here
+                    // and must not be silently dropped.
+                    Assert.That(enginePayload.InclusionListSatisfied, Is.Null,
+                        $"engine_newPayloadWithWitnessV{newPayloadVersion} cannot report inclusionListSatisfied, which this fixture states");
+
                     using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
                     PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
                     AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
@@ -513,7 +519,8 @@ public abstract class BlockchainTestBase
                     if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                     {
                         Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
-                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
+                        JsonRpcResponse fcuResponse = await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
+                        AssertFcuInclusionListSatisfied(fcuResponse, enginePayload, fcuVersion);
                     }
                 }
             }
@@ -610,6 +617,35 @@ public abstract class BlockchainTestBase
         if (expectedValidationError is not null)
             AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
     }
+
+    /// <summary>
+    /// Describes why the inclusion-list compliance reported by the fork-choice update that follows a payload
+    /// contradicts the fixture (EIP-7805), or null when it matches or the fixture states no expectation.
+    /// </summary>
+    /// <remarks>
+    /// execution-apis <c>bogota.md</c> pins the fork-choice answer for a head just deemed VALID by
+    /// <c>engine_newPayloadV6</c>: it repeats the compliance answer determined there, so the expectation is
+    /// the fixture's <c>inclusionListSatisfied</c>. A fork-choice version that cannot carry the field is a
+    /// mismatch in its own right rather than an absent field. The reported payload status is named too: an
+    /// FCU answering SYNCING also reports no compliance, and that is a different failure from the head being
+    /// VALID and disagreeing.
+    /// </remarks>
+    internal static string? DescribeFcuInclusionListMismatch(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion)
+    {
+        if (enginePayload.InclusionListSatisfied is not bool expected) return null;
+
+        if ((response as IResultWrapper)?.Data is not ForkchoiceUpdatedV2Result result)
+            return $"engine_forkchoiceUpdatedV{fcuVersion} answered with {((response as IResultWrapper)?.Data ?? response).GetType().Name}, which cannot report inclusionListSatisfied, expected {expected}";
+
+        bool? actual = result.PayloadStatus.InclusionListSatisfied;
+
+        return actual == expected
+            ? null
+            : $"engine_forkchoiceUpdatedV{fcuVersion} returned {result.PayloadStatus.Status} and reported inclusionListSatisfied={actual?.ToString() ?? "null"}, expected {expected}";
+    }
+
+    private static void AssertFcuInclusionListSatisfied(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion) =>
+        Assert.That(DescribeFcuInclusionListMismatch(response, enginePayload, fcuVersion), Is.Null);
 
     private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
     {
@@ -762,7 +798,7 @@ public abstract class BlockchainTestBase
     /// answering SYNCING; a slow commit on a loaded runner must not leave the head on the parent, so the head moves
     /// once the block has left the queue and anything but VALID fails here rather than as a post-state diff.
     /// </summary>
-    private static async Task MoveHeadToCommitted(IJsonRpcService rpcService, JsonRpcContext context, IBlockProcessingQueue processingQueue, int fcuVersion, Hash256 blockHash)
+    private static async Task<JsonRpcResponse> MoveHeadToCommitted(IJsonRpcService rpcService, JsonRpcContext context, IBlockProcessingQueue processingQueue, int fcuVersion, Hash256 blockHash)
     {
         await processingQueue.WaitUntilRemovedAsync(blockHash).AsTask().WaitAsync(EngineProcessingTimeout);
         JsonRpcResponse response = await SendFcu(rpcService, context, fcuVersion, blockHash.ToString());
@@ -777,6 +813,7 @@ public abstract class BlockchainTestBase
             _ => null
         };
         Assert.That(status, Is.EqualTo(PayloadStatus.Valid), $"engine_forkchoiceUpdatedV{fcuVersion} to {blockHash} answered {response.GetType().Name}");
+        return response;
     }
 
     private static void AssertRpcSuccess(JsonRpcResponse response)
