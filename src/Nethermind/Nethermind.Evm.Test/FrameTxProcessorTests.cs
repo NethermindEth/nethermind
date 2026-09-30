@@ -3560,12 +3560,12 @@ public partial class FrameTxProcessorTests
         return (ulong)StorageAt(new StorageCell(Observer, 0));
     }
 
-    [TestCase(0x0F, ExpectedResult = 1UL, TestName = "Execute_TxParam_NonceKeysHashIndex_ReadsWithRecentRootsActive")]
-    [TestCase(0x10, ExpectedResult = 1UL, TestName = "Execute_TxParam_LastKeyedNonceIndex_Reads")]
-    [TestCase(0x11, ExpectedResult = 0UL, TestName = "Execute_TxParam_PastTheKeyedNonceIndices_Halts")]
-    public ulong Execute_TxParam_IndicesEndAtTheFirstNonceKey(int param)
+    [TestCase(0x0F, true, ExpectedResult = 1UL, TestName = "Execute_TxParam_NonceKeysHashIndex_ReadsWithRecentRootsActive")]
+    [TestCase(0x0F, false, ExpectedResult = 0UL, TestName = "Execute_TxParam_NonceKeysHashIndex_HaltsWithOnlyRecentRootsActive")]
+    [TestCase(0x11, true, ExpectedResult = 0UL, TestName = "Execute_TxParam_PastTheKeyedNonceIndices_Halts")]
+    public ulong Execute_TxParam_IndicesEndAtTheFirstNonceKey(int param, bool eip8250)
     {
-        _spec.IsEip8272Enabled = true;
+        _spec.IsEip8250Enabled = eip8250;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
             .PushData((UInt256)param).Op(Instruction.TXPARAM).Op(Instruction.POP)
