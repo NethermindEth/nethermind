@@ -48,9 +48,13 @@ namespace Nethermind.JsonRpc.Data
                 Payer = receipt.Payer;
                 TxFrameReceipt[] frameReceipts = receipt.FrameReceipts ?? [];
                 FrameReceiptForRpc[] frameReceiptsForRpc = new FrameReceiptForRpc[frameReceipts.Length];
+                ReadOnlySpan<LogEntryForRpc> rpcLogs = _pooledLogs is null ? default : _pooledLogs.AsSpan();
+                int frameLogStart = 0;
                 for (int i = 0; i < frameReceipts.Length; i++)
                 {
-                    frameReceiptsForRpc[i] = new FrameReceiptForRpc(frameReceipts[i]);
+                    int frameLogCount = frameReceipts[i].Logs.Length;
+                    frameReceiptsForRpc[i] = new FrameReceiptForRpc(frameReceipts[i], rpcLogs.Slice(frameLogStart, frameLogCount).ToArray());
+                    frameLogStart += frameLogCount;
                 }
 
                 FrameReceipts = frameReceiptsForRpc;

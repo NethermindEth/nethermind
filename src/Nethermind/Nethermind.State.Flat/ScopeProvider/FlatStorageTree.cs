@@ -286,8 +286,14 @@ public sealed class FlatStorageTree(
         GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
     }
 
+    // Matches PatriciaTree.Commit, which splits the commit, hashing included, across threads above 4 writes.
+    private const int MinWritesToHashInParallel = 4;
+
     // No trees means nothing was written, so there is nothing to commit.
     public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
+
+    /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
+    internal bool HasUncommittedNodes => Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
@@ -297,7 +303,10 @@ public sealed class FlatStorageTree(
 
         StorageTree tree = GetTrees().Tree;
         Dictionary<UInt256, UInt256>? earlyApplied = AdoptEarlyTree(tree);
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, tree, onRootUpdated, _address, commit: true);
+        // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported
+        // valid. The hash then goes parallel from the size at which a commit would split the tree across threads.
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, tree, onRootUpdated, _address,
+            commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel);
         return earlyApplied is null
             ? new StorageTreeBulkWriteBatch(trieBatch, this)
             : new EarlyAppliedStorageWriteBatch(trieBatch, this, earlyApplied);
