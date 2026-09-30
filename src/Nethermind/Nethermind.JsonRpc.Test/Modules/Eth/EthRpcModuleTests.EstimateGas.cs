@@ -330,19 +330,44 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task FrameGas_EstimateGas_RunsFramesAtTheRequestedGasPrice([Values] bool explicitLimits)
+    public async Task FrameGas_EstimateGas_RunsFramesAtTheRequestedGasPrice([Values] bool explicitLimits, [Values("0xf4240", OneEther)] string balance, [Values] bool executionHeavy)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
         request.MaxFeePerGas = 2;
         request.MaxPriorityFeePerGas = 1;
+        if (executionHeavy) request.Frames![1].Value = 0;
         if (explicitLimits)
         {
             (request.Frames![0].ExecutionGas, request.Frames[0].StateGas) = (50_000, 0);
-            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (50_000, 200_000);
+            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = executionHeavy ? (400_000UL, 0UL) : (50_000UL, 200_000UL);
         }
-        // The second frame reverts unless GASPRICE is positive.
-        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"0xde0b6b3a7640000"},"{{{request.Frames![1].Target}}}":{"code":"0x3a15600657005b5f5ffd"}}""")!;
+        // The loop consumes a substantial share of the payer's affordable execution budget.
+        string code = executionHeavy ? "0x3a60011415601557612ee05b6001900380600b57005b5f5ffd" : "0x3a60011415600957005b5f5ffd";
+        // The second frame requires the requested effective GASPRICE of one.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"{{{balance}}}"},"{{{request.Frames![1].Target}}}":{"code":"{{{code}}}"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0"}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_FillsAnExpensiveVerifierAtAnAffordableBudget([Values] bool explicitLimits)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 2;
+        request.MaxPriorityFeePerGas = 1;
+        request.Frames![1].Value = 0;
+        if (explicitLimits)
+        {
+            (request.Frames[0].ExecutionGas, request.Frames[0].StateGas) = (400_000, 0);
+            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (5_000, 0);
+        }
+        // The verifier needs more gas than an affordable even split gives it before APPROVE can be reached.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"0xf4240","code":"0x612ee05b60019003806003575060035f5faa"}}""")!;
         object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0"}""")!;
 
         string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides, blockOverride);
