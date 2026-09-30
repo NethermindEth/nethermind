@@ -27,7 +27,8 @@ public partial class GasEstimator
     /// <c>FrameTransactionForRpc.ToTransaction</c> enforces on explicit limits. Frames are minimised in order: the
     /// frame being searched takes what the others leave, while each later frame holds a reservation measured by a
     /// first probe that splits the rooms evenly. Probes retain the requested fees while deferring the payer's gas
-    /// reservation; a final probe checks affordability with normal approval and settlement.</remarks>
+    /// reservation, so balance-dependent frame code observes the pre-escrow balance during the search. A final probe
+    /// checks the filled limits with normal approval and settlement.</remarks>
     /// <param name="context">The block the estimate runs in; each probe runs in a copy of its header.</param>
     /// <param name="executionReverted">Whether the failure is a frame of an otherwise valid transaction reverting.</param>
     public Result<TxFrame[]> EstimateFrameGas(Transaction transaction, BlockExecutionContext context,
@@ -91,7 +92,6 @@ public partial class GasEstimator
         private readonly bool[] _fillState;
         private readonly Span<FrameReservation> _reservations;
         private readonly IReleaseSpec _spec;
-        private readonly UInt256 _baseFee;
         private readonly BlockHeader _probeHeader;
         private readonly BlockExecutionContext _probeContext;
         private readonly FrameEstimateTracer _tracer = new();
@@ -124,7 +124,6 @@ public partial class GasEstimator
             _fillState = fillState;
             _reservations = reservations;
             _spec = context.Spec;
-            _baseFee = context.Header.BaseFeePerGas;
             _probeHeader = context.Header.Clone();
             _probeContext = new BlockExecutionContext(_probeHeader, _spec, new UInt256(context.BlobBaseFee.Bytes, isBigEndian: true));
             _probeTracer = _tracer.WithCancellation(token);
@@ -426,7 +425,6 @@ public partial class GasEstimator
             _tx.CopyTo(probe, copyHash: false);
             probe.GasLimit = FrameTxValidation.TotalGasLimit(_frames);
             _probeHeader.GasUsed = 0;
-            _probeHeader.BaseFeePerGas = _baseFee;
             _tracer.Clear();
             _processor.SetBlockExecutionContext(in _probeContext);
             ExecutionOptions options = ExecutionOptions.CommitAndRestore;
