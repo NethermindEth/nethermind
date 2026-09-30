@@ -365,8 +365,15 @@ public class BlockchainBridgeTests
         Assert.That(_blockchainBridge.GetTxReceiptInfo(txHash), Is.EqualTo(result));
     }
 
+    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
+    [
+        (bridge, header, tx) => bridge.Call(header, tx),
+        (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
+        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
+    ];
+
     [Test]
-    public void Call_sets_maxFeePerBlobGas()
+    public void CreateAccessList_sets_maxFeePerBlobGas()
     {
         _timestamper.UtcNow = DateTime.MaxValue;
         BlockHeader header = Build.A.BlockHeader
@@ -378,20 +385,70 @@ public class BlockchainBridgeTests
             .TestObject;
         Transaction tx = new() { Type = TxType.Blob, MaxFeePerBlobGas = null, BlobVersionedHashes = [] };
 
-        _blockchainBridge.Call(header, tx);
-        _transactionProcessor.Received().SetBlockExecutionContext(
-            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB));
+        _blockchainBridge.CreateAccessList(header, tx, null, false);
         _transactionProcessor.Received().CallAndRestore(
             Arg.Is<Transaction>(static tx => tx.MaxFeePerBlobGas == 1),
             Arg.Any<ITxTracer>());
     }
 
-    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
+    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] CallSources() =>
     [
         (bridge, header, tx) => bridge.Call(header, tx),
         (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
-        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
     ];
+
+    [Test, Combinatorial]
+    public void Blob_call_without_a_positive_blob_fee_cap_runs_at_a_zero_blob_base_fee(
+        [ValueSource(nameof(CallSources))] Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, [Values] bool capOmitted)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(10_000_000)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new()
+        {
+            Type = TxType.Blob,
+            GasLimit = Transaction.BaseTxGasCost,
+            MaxFeePerBlobGas = capOmitted ? null : UInt256.Zero,
+            BlobVersionedHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]]
+        };
+
+        bridgeCall(_blockchainBridge, header, tx);
+
+        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(UInt256.Zero));
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.BlobBaseFee == UInt256.Zero.ToValueHash()));
+    }
+
+    [Test]
+    public void Blob_carrying_frame_call_without_a_positive_blob_fee_cap_runs_at_a_zero_blob_base_fee([Values] bool capOmitted)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(10_000_000)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            GasLimit = Transaction.BaseTxGasCost,
+            MaxFeePerBlobGas = capOmitted ? null : UInt256.Zero,
+            BlobVersionedHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]]
+        };
+
+        _blockchainBridge.Call(header, tx);
+
+        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(UInt256.Zero));
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.BlobBaseFee == UInt256.Zero.ToValueHash()));
+    }
 
     [Test, Combinatorial]
     public void BlobBaseFee_is_set_for_non_blob_transaction([ValueSource(nameof(BridgeCallSources))] Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, [Values(0ul, 100ul)] ulong excessBlobGas)
