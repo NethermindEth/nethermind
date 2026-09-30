@@ -187,7 +187,7 @@ public class HistoryRowScannerTests
             Assert.That(reader.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo(commit ? new UInt256(123) : (UInt256?)null));
             Assert.That(slot, Is.EqualTo(commit ? new UInt256(99) : UInt256.Zero));
             Assert.That(code.GetAllKeys(), Is.Empty, "scratch code must not leak into the live code database");
-            if (commit) Assert.That(reopened.GetCode(codeHash), Is.EqualTo(bytecode));
+            if (commit) Assert.That(reopened.GetCode(codeHash).ToArray(), Is.EqualTo(bytecode));
             else Assert.Throws<InvalidDataException>(() => reopened.GetCode(codeHash));
         }
     }
