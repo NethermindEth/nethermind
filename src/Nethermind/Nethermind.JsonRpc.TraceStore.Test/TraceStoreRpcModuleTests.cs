@@ -134,7 +134,6 @@ public class TraceStoreRpcModuleTests
         }
     }
 
-    // A receipt can still point at a block a reorg replaced; like live replay, the store serves it only for traceNonCanonical.
     [Test]
     public void Stored_trace_of_non_canonical_block_requires_trace_non_canonical([Values] bool traceNonCanonical, [Values] bool replay)
     {
