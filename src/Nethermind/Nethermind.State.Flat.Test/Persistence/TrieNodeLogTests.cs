@@ -265,6 +265,40 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public void Merge_lag_skips_keys_rewritten_in_newer_generations()
+    {
+        // 3000-byte values: two per 4 KiB generation, so every second batch seals one.
+        static byte[] Value(byte fill)
+        {
+            byte[] value = new byte[3000];
+            Array.Fill(value, fill);
+            return value;
+        }
+
+        using (IPersistence.IWriteBatch batch = Batch(0, 1))
+        {
+            batch.SetStateTrieNode(TopPath, Value(1));
+            batch.SetStateTrieNode(MediumPath, Rlp1);
+        }
+        WriteTop(1, 2, Value(2)); // seals generation 1
+        WriteTop(2, 3, Value(3)); // generation 2
+
+        Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "a lag of one keeps generation 1 unmerged until generation 2 is sealed");
+
+        WriteTop(3, 4, Value(4)); // seals generation 2, so generation 1 is merged
+        Assert.That(() => Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in generation 2, so not merged from generation 1");
+            Assert.That(ReadTop(), Is.EqualTo(Value(4)));
+        }
+        Assert.That(LogFiles, Has.Length.EqualTo(1).After(5000, 20), "generation 1 deleted, generation 2 sealed and waiting for a newer one");
+
+        _log.Drain();
+        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)));
+    }
+
+    [Test]
     public void Only_one_log_backed_batch_may_be_open()
     {
         using IPersistence.IWriteBatch open = Batch(0, 1);

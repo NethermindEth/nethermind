@@ -38,6 +38,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private readonly ILogger _logger;
     private readonly TrieNodeLogScope _scope;
     private readonly long _generationBytes;
+    private readonly int _mergeLag;
 
     private readonly Lock _lock = new();
     private readonly List<TrieNodeLogGeneration> _generations = []; // oldest first; every generation still in memory
@@ -58,6 +59,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _logger = logManager.GetClassLogger<TrieNodeLog>();
         _scope = config.TrieNodeLogScope;
         _generationBytes = config.TrieNodeLogGenerationBytes;
+        _mergeLag = config.TrieNodeLogMergeLag;
 
         Directory.CreateDirectory(basePath);
         foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
@@ -104,7 +106,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     {
         ThrowIfBatchOpen();
         SealActive();
-        FlushSealedGenerations();
+        FlushSealedGenerations(mergeLag: 0);
     }
 
     public void Clear()
@@ -225,7 +227,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             await _flushSignal.WaitAsync(_cancellation.Token);
             try
             {
-                FlushSealedGenerations();
+                FlushSealedGenerations(_mergeLag);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
@@ -234,29 +236,38 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
     }
 
-    private void FlushSealedGenerations()
+    /// <summary>
+    /// Merges sealed generations oldest-first, each only once <paramref name="mergeLag"/> newer sealed generations
+    /// exist, so keys rewritten within that window are merged from the newest generation only.
+    /// </summary>
+    private void FlushSealedGenerations(int mergeLag)
     {
         using SemaphoreSlimExtensions.Scope _ = _flushLock.EnterScope();
         while (true)
         {
             TrieNodeLogGeneration? generation = null;
+            List<TrieNodeLogGeneration> newer = []; // every later generation, the active one included
+            int newerSealed = 0;
             using (_lock.EnterScope())
             {
                 foreach (TrieNodeLogGeneration candidate in _generations)
                 {
-                    if (candidate.IsSealed && !candidate.IsFlushed)
+                    if (generation is null)
                     {
-                        generation = candidate;
-                        break;
+                        if (candidate.IsSealed && !candidate.IsFlushed) generation = candidate;
+                        continue;
                     }
+
+                    newer.Add(candidate);
+                    if (candidate.IsSealed) newerSealed++;
                 }
             }
 
-            if (generation is null) return;
+            if (generation is null || newerSealed < mergeLag) return;
             if (!generation.TryAcquire()) throw new InvalidOperationException($"Trie node log generation {generation.Number} was released before being merged");
             try
             {
-                FlushGeneration(generation);
+                FlushGeneration(generation, newer);
             }
             finally
             {
@@ -265,13 +276,19 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
     }
 
-    private void FlushGeneration(TrieNodeLogGeneration generation)
+    private void FlushGeneration(TrieNodeLogGeneration generation, List<TrieNodeLogGeneration> newer)
     {
         long sw = System.Diagnostics.Stopwatch.GetTimestamp();
         long written = 0;
         int records = 0;
-        if (!BasePersistence.ReadWipedForSync(_db.GetColumnDb(FlatDbColumns.Metadata)))
+        IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
+        if (!BasePersistence.ReadWipedForSync(metadata))
         {
+            // A key with a newer record in a later generation is skipped, but only if that record's batch has reached
+            // RocksDB: the index is published before the RocksDB commit, and a crash in between drops the record.
+            ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
+            Span<byte> probeBuffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
+
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
                 Scanner scanner = new(generation, generation.Frontier);
@@ -280,7 +297,9 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                     while (scanner.MoveNext())
                     {
                         TrieNodeLogRecord header = scanner.Header;
-                        if (header.IsCommit || !generation.IsLatest(TrieNodeLogRecord.Hash(header.Column, scanner.Key), scanner.Offset)) continue;
+                        if (header.IsCommit) continue;
+                        ulong hash = TrieNodeLogRecord.Hash(header.Column, scanner.Key);
+                        if (!generation.IsLatest(hash, scanner.Offset) || HasCommittedNewerRecord(newer, hash, header.Column, scanner.Key, probeBuffer, committedVersion)) continue;
 
                         Core.IWriteBatch column = batch.GetColumnBatch((FlatDbColumns)header.Column);
                         if (header.Type == TrieNodeLogRecord.Delete) column.Remove(scanner.Key);
@@ -312,6 +331,16 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         generation.Dispose(); // the log's own lease
 
         if (_logger.IsDebug) _logger.Debug($"Merged trie node log generation {generation.Number}: {records} records, {written / (double)MemorySizes.MiB:F1} MiB of {generation.Frontier / (double)MemorySizes.MiB:F1} MiB in {System.Diagnostics.Stopwatch.GetElapsedTime(sw).TotalMilliseconds:F0} ms");
+    }
+
+    private static bool HasCommittedNewerRecord(List<TrieNodeLogGeneration> newer, ulong hash, byte column, ReadOnlySpan<byte> key, Span<byte> probeBuffer, ulong committedVersion)
+    {
+        foreach (TrieNodeLogGeneration generation in newer)
+        {
+            if (generation.TryLocate(hash, column, key, probeBuffer, out TrieNodeLogRecord header, out _, out _, out _))
+                return header.Version <= committedVersion;
+        }
+        return false;
     }
 
     private void Recover()

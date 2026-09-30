@@ -177,4 +177,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Size in bytes of one trie node log generation, i.e. the deduplication window before the generation is merged into RocksDB. Each live generation also keeps an in-memory index of about 1/8 of this size.", DefaultValue = "1073741824")]
     long TrieNodeLogGenerationBytes { get; set; }
+
+    [ConfigItem(Description = "Number of sealed trie node log generations kept unmerged behind the newest one. A generation is merged into RocksDB only once this many newer generations are sealed, and keys rewritten in those are skipped, so the effective deduplication window is (1 + this) generations at the cost of that many extra generation files and in-memory indexes.", DefaultValue = "1")]
+    int TrieNodeLogMergeLag { get; set; }
 }

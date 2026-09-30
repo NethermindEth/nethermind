@@ -64,4 +64,5 @@ public class FlatDbConfig : IFlatDbConfig
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
     public TrieNodeLogScope TrieNodeLogScope { get; set; } = TrieNodeLogScope.None;
     public long TrieNodeLogGenerationBytes { get; set; } = 1.GiB;
+    public int TrieNodeLogMergeLag { get; set; } = 1;
 }
