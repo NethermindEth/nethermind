@@ -94,6 +94,7 @@ public partial class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooHigh));
+            Assert.That(result.ErrorDescription, Does.Contain("nonce too high"));
         }
     }
 
@@ -111,6 +112,7 @@ public partial class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooLow));
+            Assert.That(result.ErrorDescription, Does.Contain("nonce too low"));
         }
     }
 
@@ -3060,9 +3062,9 @@ public partial class FrameTxProcessorTests
         Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
     }
 
-    [TestCase(4UL, TransactionResult.ErrorType.TransactionNonceTooLow, TestName = "a later key ahead of the sequence reports too low")]
-    [TestCase(0UL, TransactionResult.ErrorType.TransactionNonceTooHigh, TestName = "a later key behind the sequence reports too high")]
-    public void Execute_KeyedNonce_ReportsTheFirstMismatchedKey(ulong laterKeySeq, TransactionResult.ErrorType expectedError)
+    [TestCase(4UL, TransactionResult.ErrorType.TransactionNonceTooLow, "nonce too low", TestName = "a later key ahead of the sequence reports too low")]
+    [TestCase(0UL, TransactionResult.ErrorType.TransactionNonceTooHigh, "nonce too high", TestName = "a later key behind the sequence reports too high")]
+    public void Execute_KeyedNonce_ReportsTheFirstMismatchedKey(ulong laterKeySeq, TransactionResult.ErrorType expectedError, string expectedDetail)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, [(UInt256)1], nonceSeq: 2);
@@ -3076,7 +3078,13 @@ public partial class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: 3, SelfVerifyFrame());
         tx.NonceKeys = [1, 7];
 
-        Assert.That(Process(tx).Error, Is.EqualTo(expectedError));
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(expectedError));
+            Assert.That(result.ErrorDescription, Does.Contain(expectedDetail));
+        }
     }
 
     [Test]

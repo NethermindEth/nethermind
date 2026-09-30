@@ -36,16 +36,17 @@ public class FrameExceptionFragmentsTests
     }
 
     /// <summary>Encodes a frame transaction payload, varying only the fields the caller supplies.</summary>
-    private static byte[] EncodePayload(Rlp frames, Rlp maxPriorityFeePerGas)
+    private static byte[] EncodePayload(Rlp frames, Rlp maxPriorityFeePerGas, Rlp[] nonceKeys = null)
     {
-        Rlp payloadSequence = Rlp.Encode(
+        Rlp payloadSequence = Rlp.Encode([
             Rlp.Encode(1L),                      // chain_id
+            .. nonceKeys is null ? [] : new[] { Rlp.Encode(nonceKeys) },
             Rlp.Encode(0L),                      // nonce
             Rlp.Encode(TestItem.AddressA.Bytes), // sender
             frames,
             Rlp.Encode(Array.Empty<Rlp>()),      // signatures
             Rlp.Encode(maxPriorityFeePerGas, Rlp.Encode(0L), Rlp.Encode(0L)),
-            Rlp.Encode(Array.Empty<Rlp>()));     // blob_versioned_hashes
+            Rlp.Encode(Array.Empty<Rlp>())]);    // blob_versioned_hashes
 
         byte[] payload = new byte[1 + payloadSequence.Length];
         payload[0] = (byte)TxType.FrameTx;
@@ -125,8 +126,21 @@ public class FrameExceptionFragmentsTests
         Assert.That(Covers(FrameExceptionFragments.Execution, message), Is.True);
 
     [Test]
-    public void Decode_CoversTooManyNonceKeys() =>
-        Assert.That(Covers(FrameExceptionFragments.Decode, "Exceeded Transaction.NonceKeys"), Is.True);
+    public void Decode_CoversTooManyNonceKeys()
+    {
+        Rlp[] nonceKeys = new Rlp[Eip8250Constants.MaxNonceKeys + 1];
+        for (int i = 0; i < nonceKeys.Length; i++)
+        {
+            nonceKeys[i] = Rlp.Encode(i + 1L);
+        }
+
+        string message = DecodeFailureMessage(EncodePayload(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxPriorityFeePerGas: Rlp.Encode(0L),
+            nonceKeys));
+
+        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+    }
 
     [Test]
     public void DecodeCarriesEveryFeeOverflowWording()
