@@ -87,7 +87,7 @@ public sealed class AssociativeKeyCache<TKey>
 
             if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
 
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            // The header read is an acquire (ldar on ARM64), so the Key load cannot move before it.
             TKey storedKey = e.Key;
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
@@ -105,7 +105,9 @@ public sealed class AssociativeKeyCache<TKey>
                 // Ticker store without the set gate is safe: 8-byte aligned long is atomic on
                 // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
                 // not key/value correctness — the "losing" ticker value is simply slightly stale.
-                if (TRefreshTicker.IsActive)
+                // An entry already strictly newest in its set keeps its rank if refreshed, so a hot entry is
+                // read, not written: no clock read and no line taken from other readers of it.
+                if (TRefreshTicker.IsActive && !IsNewestInSet(ref entries, baseIdx, i, e.Ticker))
                     e.Ticker = Stopwatch.GetTimestamp();
                 return true;
             }
@@ -194,7 +196,8 @@ public sealed class AssociativeKeyCache<TKey>
             bool evictingLive = (existing & EpochOccMask) == epochOccTag;
 
             WriteEntry(ref te, existing, in key, tagToStore, timestamp);
-            AdjustCountIfEpoch(ref _epochAndCount, epochTag, evictingLive ? 0 : 1);
+            // Replacing a live entry leaves the count as it is; a CAS here would still take the line every lookup reads.
+            if (!evictingLive) AdjustCountIfEpoch(ref _epochAndCount, epochTag, 1);
 
             // Final check: if Clear() raced after the write, the entry has a stale epoch
             // tag and is invisible to readers. AdjustCountIfEpoch already skipped the
@@ -334,6 +337,23 @@ public sealed class AssociativeKeyCache<TKey>
     // sample per call without reintroducing a shared write. It seeds only the choice of ways; the
     // stamp written into the entry is still the raw timestamp.
     [ThreadStatic] private static int _evictProbe;
+
+    /// <summary>Whether <paramref name="ticker"/> is newer than every other ticker in the set; a tie is not newest.</summary>
+    /// <remarks>
+    /// Reads all eight tickers, which sit beside the headers, so a hot set is usually already in cache. A skipped hit keeps
+    /// its older stamp, so a later stamp in the same clock tick ranks after it, as in access order, where stamping every
+    /// hit would have tied them.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsNewestInSet(ref Entry entries, int baseIdx, int way, long ticker)
+    {
+        for (int j = 0; j < Ways; j++)
+        {
+            if (j != way && Unsafe.Add(ref entries, baseIdx + j).Ticker >= ticker) return false;
+        }
+
+        return true;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Pick3RandomEvictEntry(ref Entry entries, int baseIdx, long now, int probe)
