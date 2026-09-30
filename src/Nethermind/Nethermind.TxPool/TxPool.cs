@@ -11,6 +11,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -317,6 +318,7 @@ namespace Nethermind.TxPool
             [
                 new MalformedTxFilter(validator, _specChangeTxValidator, ecdsa, _logger),
                 new FrameTxMisplacedExpiryFrameFilter(_logger), // before ExpiredFrameTxFilter: leaves the deadline readable from the leading frame alone
+                new FrameTxMisplacedRecentRootFrameFilter(_logger),
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
                 new FrameTxPayerlessFilter(_logger), // before FrameTxSignatureFilter: a structural payerless verdict needs no signature work
@@ -838,6 +840,7 @@ namespace Nethermind.TxPool
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
+                            RemoveUnreferenceableRecentRootTransactions(args.Block);
                             RevalidateFrameTransactions(args.Block);
 
                             if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
@@ -1116,6 +1119,38 @@ namespace Nethermind.TxPool
                         if (_logger.IsTrace) _logger.Trace($"Evicted expired frame transaction {tx.Hash} (deadline {deadline} < head timestamp {timestamp}).");
                     }
                 }
+            }
+        }
+
+        /// <summary>EIP-8272: evicts the pending transactions whose <c>recent_root_verify</c> tuples no longer verify at
+        /// the new head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
+        /// <remarks>Checked against every head rather than through the dependency index: the predeploy's storage moves
+        /// every slot and a reorg can rewrite an entry. A tuple aged out of the ring buffer never verifies again, so
+        /// its hash stays cached; any other failure can reverse with a reorg. Blob-pool records carry no frames and are
+        /// left to the dependency sweep.</remarks>
+        private void RemoveUnreferenceableRecentRootTransactions(Block block)
+        {
+            if (block.Header.SlotNumber is not ulong headSlot || !_specProvider.GetSpec(block.Header).IsEip8272Enabled)
+            {
+                return;
+            }
+
+            ulong currentSlot = headSlot + 1;
+            IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
+            foreach (Transaction tx in _transactions.GetSnapshot())
+            {
+                if (!tx.SupportsFrames
+                    || !FrameTxValidation.TryGetRecentRootTuples(tx, out ReadOnlyMemory<byte> tuples)
+                    || RecentRootStore.AreReferencesValid(state, tuples.Span, currentSlot)
+                    || !RemoveTransaction(tx.Hash, out Transaction? pooled))
+                {
+                    continue;
+                }
+
+                EvictedPending?.Invoke(this, new TxEventArgs(pooled));
+                if (!RecentRootStore.HasAgedOutReference(tuples.Span, currentSlot)) _hashCache.DeleteFromLongTerm(tx.Hash!);
+                Metrics.PendingTransactionsEvicted++;
+                if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {tx.Hash}, its recent roots do not verify at slot {currentSlot}.");
             }
         }
 

@@ -171,6 +171,9 @@ namespace Nethermind.TxPool
         /// <summary>An EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list. A propagation bound, not a validity rule.</summary>
         public static readonly AcceptTxResult FrameTxMisplacedExpiryFrame = new(TxPoolErrorMessages.FrameTxMisplacedExpiryFrame);
 
+        /// <summary>An EIP-8141 frame transaction with a malformed, repeated or misplaced EIP-8272 <c>recent_root_verify</c> frame. A propagation bound, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxMisplacedRecentRootFrame = new(TxPoolErrorMessages.FrameTxMisplacedRecentRootFrame);
+
         /// <summary>An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.</summary>
         public static readonly AcceptTxResult FrameSimulationFailed = new(TxPoolErrorMessages.FrameSimulationFailed);
 

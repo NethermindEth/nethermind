@@ -28,6 +28,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -3498,6 +3499,45 @@ namespace Nethermind.TxPool.Test
             // The placement verdict, not the one the trailing VERIFY frame would otherwise earn.
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast),
                 Is.EqualTo(AcceptTxResult.FrameTxMisplacedExpiryFrame));
+        }
+
+        [Test]
+        public void SubmitTx_FrameTransactionWithAMisplacedRecentRootFrame_IsRejectedOnItsPlacement()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
+            Transaction frameTx = SelfVerifyFrameTx(FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple));
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.FrameTxMisplacedRecentRootFrame));
+        }
+
+        private const ulong RecentRootSlot = 1_000;
+
+        private static readonly (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) RecentRootTuple =
+            (TestItem.KeccakA.ValueHash256, RecentRootSlot, TestItem.KeccakB.ValueHash256);
+
+        [TestCase(RecentRootSlot, true, 1, false, TestName = "recent_root_frame_is_retained_while_its_entry_verifies")]
+        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 2, true, 1, false, TestName = "recent_root_frame_is_retained_at_the_window_edge")]
+        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 1, true, 0, false, TestName = "recent_root_frame_is_evicted_for_good_once_its_slot_ages_out")]
+        [TestCase(RecentRootSlot, false, 0, true, TestName = "recent_root_frame_is_evicted_resubmittably_when_its_entry_is_missing")]
+        public async Task Recent_root_frame_transaction_is_rechecked_on_new_head(ulong headSlot, bool committed, int expectedPending, bool resubmittable)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            if (committed)
+            {
+                _stateProvider.Set(RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot),
+                    RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            }
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(headSlot).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
+                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast) == AcceptTxResult.Accepted, Is.EqualTo(resubmittable));
+            }
         }
 
         // The decoder bounds the frame count off the wire; a locally submitted transaction never meets it,

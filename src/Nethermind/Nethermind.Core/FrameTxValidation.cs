@@ -438,15 +438,62 @@ public static class FrameTxValidation
     }
 
     /// <summary>Where a search for a validation prefix's approving frame starts: past the optional leading
-    /// expiry-verify and deploy frames, neither of which may carry approval scope.</summary>
+    /// protocol verifier and deploy frames, none of which may carry approval scope.</summary>
     /// <remarks>A lower bound only — the frame at this index need not approve either. Shared by the three walks
     /// that scan for the approving frame; the prefix simulation asks the same rule positionally and keeps its form.</remarks>
     public static int ApprovalSearchStart(TxFrame[] frames)
     {
-        int next = 0;
-        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
+        int next = ProtocolVerifierFrameCount(frames);
         if (next < frames.Length && IsDeployFrame(frames[next])) next++;
         return next;
+    }
+
+    /// <summary>The number of optional leading protocol verifier frames, an <c>expiry_verify</c> frame and then an
+    /// EIP-8272 <c>recent_root_verify</c> frame, which EIP-8141 prefix-shape matching skips.</summary>
+    public static int ProtocolVerifierFrameCount(TxFrame[] frames)
+    {
+        int next = RecentRootVerifyFrameIndex(frames);
+        if (next < frames.Length && IsRecentRootVerifyFrame(frames[next])) next++;
+        return next;
+    }
+
+    /// <summary>The only index the public mempool admits a <c>recent_root_verify</c> frame at: directly behind the
+    /// optional leading <c>expiry_verify</c> frame.</summary>
+    private static int RecentRootVerifyFrameIndex(TxFrame[] frames) =>
+        frames.Length > 0 && IsExpiryVerifyFrame(frames[0]) ? 1 : 0;
+
+    /// <summary>
+    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame targeting <c>RECENT_ROOT_ADDRESS</c> that
+    /// is not a well-formed <c>recent_root_verify</c> frame, or one anywhere but directly behind the optional leading
+    /// <c>expiry_verify</c> frame, which also bars a second one.
+    /// </summary>
+    /// <remarks>An EIP-8272 public-mempool rule, decided on the frame list alone before any sender state is read.</remarks>
+    public static bool HasMisplacedRecentRootVerifyFrame(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int permitted = RecentRootVerifyFrameIndex(frames);
+        for (int i = 0; i < frames.Length; i++)
+        {
+            if (frames[i].Mode == FrameMode.Verify
+                && frames[i].Target == Eip8272Constants.RecentRootAddress
+                && (i != permitted || !IsRecentRootVerifyFrame(frames[i])))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The tuples of the <c>recent_root_verify</c> frame of <paramref name="transaction"/>, if it carries one where
+    /// the public mempool admits it.</summary>
+    public static bool TryGetRecentRootTuples(Transaction transaction, out ReadOnlyMemory<byte> tuples)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int index = RecentRootVerifyFrameIndex(frames);
+        bool found = index < frames.Length && IsRecentRootVerifyFrame(frames[index]);
+        tuples = found ? frames[index].Data : default;
+        return found;
     }
 
     /// <summary>
@@ -480,6 +527,18 @@ public static class FrameTxValidation
         && frame.Target == Eip8141Constants.ExpiryVerifierAddress
         && frame.Value.IsZero
         && frame.Data.Length == Eip8141Constants.ExpiryDataLength;
+
+    /// <summary>True if <paramref name="frame"/> is an EIP-8272 <c>recent_root_verify</c> frame: 1 to
+    /// <c>MAX_RECENT_ROOT_REFERENCES</c> 72-byte tuples verified by <c>RECENT_ROOT_ADDRESS</c>.</summary>
+    /// <remarks>Position is not checked.</remarks>
+    public static bool IsRecentRootVerifyFrame(TxFrame frame) =>
+        frame.Mode == FrameMode.Verify
+        && frame.Flags == FrameFlags.None
+        && frame.Target == Eip8272Constants.RecentRootAddress
+        && frame.Value.IsZero
+        && frame.StateGasLimit == 0
+        && frame.Data.Length is > 0 and <= Eip8272Constants.MaxRecentRootReferences * Eip8272Constants.RecentRootTupleLength
+        && frame.Data.Length % Eip8272Constants.RecentRootTupleLength == 0;
 
     /// <summary>True if <paramref name="frame"/> is a deploy frame: any default-mode frame carrying no
     /// approval scope, so it can never approve a payer.</summary>

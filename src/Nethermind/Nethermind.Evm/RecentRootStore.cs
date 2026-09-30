@@ -52,11 +52,11 @@ public static class RecentRootStore
         return ValueKeccak.Compute(input);
     }
 
-    public static bool IsReferenceValid(IWorldState state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
+    public static bool IsReferenceValid(IReadOnlyStateProvider state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
         IsReferenceValid(state, ReferenceCell(sourceId, slot), sourceId, slot, root, currentSlot);
 
     /// <summary>Checks a reference against the commitment in <paramref name="cell"/>, which the caller has already derived.</summary>
-    public static bool IsReferenceValid(IWorldState state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
+    public static bool IsReferenceValid(IReadOnlyStateProvider state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
     {
         ulong age = currentSlot - slot; // unsigned: a future or same slot underflows and is rejected below
         if (age is 0 || age > Eip8272Constants.RecentRootUsableWindow)
@@ -67,6 +67,37 @@ public static class RecentRootStore
         state.Get(cell, out UInt256 stored);
         return stored.ToValueHash() == EntryHash(sourceId, slot, root);
     }
+
+    /// <summary>True if every 72-byte <c>(source_id, slot, root)</c> tuple of <paramref name="tuples"/> is valid at <paramref name="currentSlot"/>.</summary>
+    public static bool AreReferencesValid(IReadOnlyStateProvider state, ReadOnlySpan<byte> tuples, ulong currentSlot)
+    {
+        for (int offset = 0; offset < tuples.Length; offset += Eip8272Constants.RecentRootTupleLength)
+        {
+            (ValueHash256 sourceId, ulong slot, ValueHash256 root) = ReadTuple(tuples.Slice(offset));
+            if (!IsReferenceValid(state, sourceId, slot, root, currentSlot)) return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>True if a tuple of <paramref name="tuples"/> names a slot aged out of the ring buffer at <paramref name="currentSlot"/>,
+    /// <c>current_slot - slot &gt;= RECENT_ROOT_LENGTH</c>, which no later slot can make valid again.</summary>
+    public static bool HasAgedOutReference(ReadOnlySpan<byte> tuples, ulong currentSlot)
+    {
+        for (int offset = 0; offset < tuples.Length; offset += Eip8272Constants.RecentRootTupleLength)
+        {
+            ulong slot = ReadTuple(tuples.Slice(offset)).Slot;
+            if (slot < currentSlot && currentSlot - slot >= Eip8272Constants.RecentRootLength) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Reads the <c>source_id(32) || slot(8, big-endian) || root(32)</c> tuple at the start of <paramref name="tuple"/>.</summary>
+    public static (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) ReadTuple(ReadOnlySpan<byte> tuple) =>
+        (new ValueHash256(tuple.Slice(0, HashLength)),
+         BinaryPrimitives.ReadUInt64BigEndian(tuple.Slice(HashLength, SlotLength)),
+         new ValueHash256(tuple.Slice(HashLength + SlotLength, HashLength)));
 
     /// <summary>The predeploy storage cell a reference to <paramref name="slot"/> reads.</summary>
     public static StorageCell ReferenceCell(in ValueHash256 sourceId, ulong slot) =>

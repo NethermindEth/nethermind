@@ -109,7 +109,7 @@ public static class FrameTxTestFrames
 
     public static byte[] RecentRootTuples(params (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples)
     {
-        const int tupleBytes = 72;
+        const int tupleBytes = Eip8272Constants.RecentRootTupleLength;
         byte[] data = new byte[tuples.Length * tupleBytes];
         for (int i = 0; i < tuples.Length; i++)
         {

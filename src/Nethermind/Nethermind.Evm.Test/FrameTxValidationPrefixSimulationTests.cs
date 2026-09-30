@@ -476,6 +476,50 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    [TestCase(false, false, TestName = "Simulate_RecentRootVerifyFrameOverRecentRootCode_ReadsItsSlotAndEntries")]
+    [TestCase(true, true, TestName = "Simulate_RecentRootVerifyFrameOverOtherCode_RecordsViolation")]
+    public void Simulate_RecentRootVerifyFrame_IsPermittedOnlyOverRecentRootCode(bool otherCode, bool violates)
+    {
+        byte[] code = Eip8272Constants.RecentRootCode.ToArray();
+        DeployContract(Eip8272Constants.RecentRootAddress, otherCode ? [.. code, 0x00] : code);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot()), SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx, RecentRootCurrentSlot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.EqualTo(violates));
+            Assert.That(tracer.Payer, violates ? Is.Null : Is.EqualTo(Sender));
+        }
+    }
+
+    [Test]
+    public void Simulate_SlotnumOutsideTheRecentRootVerifyFrame_RecordsViolation()
+    {
+        DeployContract(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray());
+        byte[] code = Prepare.EvmCode.Op(Instruction.SLOTNUM).Op(Instruction.POP).Done;
+        DeployContract(Sender, [.. code, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot()), SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx, RecentRootCurrentSlot);
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    private const ulong RecentRootCurrentSlot = 1_001;
+
+    private (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) CommitRecentRoot()
+    {
+        ValueHash256 sourceId = RecentRootStore.SourceId(TestItem.AddressC, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        ulong slot = RecentRootCurrentSlot - 1;
+        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot), RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        return (sourceId, slot, root);
+    }
+
     [Test]
     public void Simulate_ExceedingWallClockBound_AbortsTheInterpreter()
     {
@@ -840,12 +884,12 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     /// <summary>Runs a prefix the tracer may abort mid-execution, returning the tracer either way.</summary>
-    private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx)
+    private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx, ulong? slotNumber = null)
     {
         FrameTxValidationTracer tracer = Tracer(tx);
         try
         {
-            return (Run(tx, tracer), tracer);
+            return (Run(tx, tracer, slotNumber), tracer);
         }
         catch (OperationCanceledException)
         {

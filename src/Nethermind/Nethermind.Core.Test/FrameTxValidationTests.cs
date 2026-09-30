@@ -423,6 +423,70 @@ public class FrameTxValidationTests
 
         yield return Work("NoApprovingFrameAtAll_ChargesTheWholeList",
             [Frame(gasLimit: 10_000), Frame(gasLimit: 20_000)], [], 30_000);
+
+        yield return Work("RecentRootThenSelfVerify_CountsBoth",
+            [RecentRootFrame(), SelfVerifyFrame()], [], 120_000);
+
+        yield return Work("ExpiryThenRecentRootThenOnlyVerifyThenPay_CountsAllFour",
+            [ExpiryFrame(), RecentRootFrame(), OnlyVerifyFrame(), PayFrame(), Frame(FrameMode.Sender, gasLimit: 900_000)], [], 120_000);
+
+        yield return Work("RecentRootThenDeployThenSelfVerify_CountsAllThree",
+            [RecentRootFrame(), DefaultModeFrame(), SelfVerifyFrame()], [], 170_000);
+
+        yield return Work("RecentRootAheadOfTheExpiryFrame_ChargesTheWholeList",
+            [RecentRootFrame(), ExpiryFrame(), SelfVerifyFrame(), Frame(gasLimit: 900_000)], [], 1_050_000);
+    }
+
+    private static TxFrame RecentRootFrame(int tuples = 1, UInt256 value = default, ulong stateGasLimit = 0, FrameFlags flags = FrameFlags.None) =>
+        new(FrameMode.Verify, flags, Eip8272Constants.RecentRootAddress, executionGasLimit: 20_000, stateGasLimit, value,
+            new byte[tuples * Eip8272Constants.RecentRootTupleLength]);
+
+    private static IEnumerable<TestCaseData> RecentRootPlacementCases()
+    {
+        static TestCaseData Placement(string name, bool misplaced, params TxFrame[] frames) =>
+            new TestCaseData(frames, misplaced).SetName($"HasMisplacedRecentRootVerifyFrame_{name}");
+
+        yield return Placement("NoRecentRootFrame_IsFalse", false, SelfVerifyFrame());
+        yield return Placement("Leading_IsFalse", false, RecentRootFrame(), SelfVerifyFrame());
+        yield return Placement("BehindTheExpiryFrame_IsFalse", false, ExpiryFrame(), RecentRootFrame(), SelfVerifyFrame());
+        yield return Placement("MaxTuples_IsFalse", false, RecentRootFrame(Eip8272Constants.MaxRecentRootReferences), SelfVerifyFrame());
+        yield return Placement("BehindTheSelfVerifyFrame_IsTrue", true, SelfVerifyFrame(), RecentRootFrame());
+        yield return Placement("AheadOfTheExpiryFrame_IsLeftToTheExpiryPlacementRule", false, RecentRootFrame(), ExpiryFrame(), SelfVerifyFrame());
+        yield return Placement("Repeated_IsTrue", true, RecentRootFrame(), RecentRootFrame(), SelfVerifyFrame());
+        yield return Placement("NoTuples_IsTrue", true, RecentRootFrame(tuples: 0), SelfVerifyFrame());
+        yield return Placement("TooManyTuples_IsTrue", true, RecentRootFrame(Eip8272Constants.MaxRecentRootReferences + 1), SelfVerifyFrame());
+        yield return Placement("PartialTuple_IsTrue", true,
+            new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8272Constants.RecentRootAddress, gasLimit: 20_000, UInt256.Zero, new byte[Eip8272Constants.RecentRootTupleLength + 1]),
+            SelfVerifyFrame());
+        yield return Placement("CarryingValue_IsTrue", true, RecentRootFrame(value: 1), SelfVerifyFrame());
+        yield return Placement("BudgetingStateGas_IsTrue", true, RecentRootFrame(stateGasLimit: 1), SelfVerifyFrame());
+        yield return Placement("CarryingFlags_IsTrue", true, RecentRootFrame(flags: FrameFlags.ApprovePayment), SelfVerifyFrame());
+    }
+
+    [TestCaseSource(nameof(RecentRootPlacementCases))]
+    public void HasMisplacedRecentRootVerifyFrame_AdmitsOneWellFormedFrameBehindTheOptionalExpiryFrame(TxFrame[] frames, bool expected)
+    {
+        Transaction tx = CreateValidFrameTx(t => t.Frames = frames);
+
+        Assert.That(FrameTxValidation.HasMisplacedRecentRootVerifyFrame(tx), Is.EqualTo(expected));
+    }
+
+    [TestCase(false, true, TestName = "TryGetRecentRootTuples_BehindTheExpiryFrame_ReadsTheTuples")]
+    [TestCase(true, false, TestName = "TryGetRecentRootTuples_BehindTheSelfVerifyFrame_FindsNone")]
+    public void TryGetRecentRootTuples_ReadsOnlyTheAdmittedPosition(bool behindSelfVerify, bool expected)
+    {
+        TxFrame recentRoot = RecentRootFrame(tuples: 2);
+        Transaction tx = CreateValidFrameTx(t => t.Frames = behindSelfVerify
+            ? [ExpiryFrame(), SelfVerifyFrame(), recentRoot]
+            : [ExpiryFrame(), recentRoot, SelfVerifyFrame()]);
+
+        bool found = FrameTxValidation.TryGetRecentRootTuples(tx, out ReadOnlyMemory<byte> tuples);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(expected));
+            Assert.That(tuples.Length, Is.EqualTo(expected ? recentRoot.Data.Length : 0));
+        }
     }
 
     [TestCaseSource(nameof(ValidationWorkCases))]
