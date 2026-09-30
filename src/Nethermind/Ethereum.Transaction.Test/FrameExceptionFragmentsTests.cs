@@ -125,6 +125,10 @@ public class FrameExceptionFragmentsTests
         Assert.That(Covers(FrameExceptionFragments.Execution, message), Is.True);
 
     [Test]
+    public void Decode_CoversTooManyNonceKeys() =>
+        Assert.That(Covers(FrameExceptionFragments.Decode, "Exceeded Transaction.NonceKeys"), Is.True);
+
+    [Test]
     public void DecodeCarriesEveryFeeOverflowWording()
     {
         // Decode inlines these rather than spreading FeeOverflow, which would make it read null if
