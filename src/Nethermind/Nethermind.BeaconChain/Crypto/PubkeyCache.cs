@@ -38,6 +38,12 @@ public class PubkeyCache
 
     public int Count { get; private set; }
 
+    /// <summary>Called by <see cref="Extend"/> once the new keys are decoded, before it publishes them; lets a test place a warm-up there.</summary>
+    internal Action? ExtensionDecoded { get; set; }
+
+    /// <summary>Called by <see cref="WarmSubgroupChecks"/> at the start of each pass over the verdicts it has read; lets a test extend the cache mid-pass.</summary>
+    internal Action? WarmUpPassStarted { get; set; }
+
     /// <summary><c>blst_p1s_add(ret, points[], npoints)</c>, which the managed wrapper does not bind; resolved from the library it loads.</summary>
     private static readonly unsafe delegate* unmanaged<long*, long**, nuint, void> BatchAdd =
         (delegate* unmanaged<long*, long**, nuint, void>)NativeLibrary.GetExport(NativeLibrary.Load("blst", typeof(Bls).Assembly, null), "blst_p1s_add");
@@ -76,6 +82,7 @@ public class PubkeyCache
             // Extend stores the points before the checks, so reading them in the opposite order never pairs new checks with old points.
             checks = Volatile.Read(ref _subgroupChecks);
             long[] points = Volatile.Read(ref _points);
+            WarmUpPassStarted?.Invoke();
             Parallel.For(0, Math.Min(checks.Length, points.Length / G1Affine.Sz), options, i =>
             {
                 if (checks[i] == 0)
@@ -204,6 +211,7 @@ public class PubkeyCache
             throw new InvalidOperationException($"Validator {firstInvalid} has an invalid BLS public key.");
         }
 
+        ExtensionDecoded?.Invoke();
         lock (_subgroupChecksSwap)
         {
             _subgroupChecks.AsSpan(0, fromIndex).CopyTo(subgroupChecks);
