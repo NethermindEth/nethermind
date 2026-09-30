@@ -210,6 +210,10 @@ public sealed class BeaconSyncOrchestrator(
     private CancellationTokenSource _rangeSyncRestart = new();
     private ulong? _rangeSyncResumedAtSlot;
 
+    /// <summary>Cancelled and replaced to end the feed's wait between rounds without ending a round in flight; see <see cref="WakeRangeSyncForAncestors"/>.</summary>
+    private CancellationTokenSource _rangeSyncWake = new();
+    private ulong? _ancestorWakeSlot;
+
     /// <summary>The newest range-synced block that waits in <see cref="_pendingRetry"/> or is held under it, so a round starts past it; written by the worker, read by the feed.</summary>
     private volatile HeldRange? _rangeHeld;
 
@@ -1621,6 +1625,7 @@ public sealed class BeaconSyncOrchestrator(
 
         if (!importer.IsKnown(block.ParentRoot))
         {
+            SignalChainAhead(block.Slot, $"gossip block at slot {block.Slot} has an unknown parent {block.ParentRoot}");
             // While far behind, range sync will deliver the parent chain anyway - just hold the
             // block; in steady state fetch the missing ancestors by root.
             if (_syncTip.Slot + MaxBackfillDepth < slotClock.CurrentSlot)
@@ -1794,7 +1799,10 @@ public sealed class BeaconSyncOrchestrator(
             ForkedSignedBeaconBlock? fetched = await FetchBlockByRootAsync(parent, token);
             if (fetched is null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Giving up on gossip block at slot {block.Slot}: no peer returned ancestor {parent}");
+                // phase0/p2p-interface.md beacon_block: a block whose parent is unseen MAY be queued until the parent is retrieved.
+                if (_logger.IsDebug) _logger.Debug($"No peer returned ancestor {parent} of gossip block at slot {block.Slot}; holding the block for range sync");
+                HoldRefusedBackfill(block);
+                WakeRangeSyncForAncestors();
                 return;
             }
 
@@ -1816,6 +1824,32 @@ public sealed class BeaconSyncOrchestrator(
                 return;
             }
         }
+    }
+
+    /// <summary>Tells the peer pool the chain reached <paramref name="slot"/>, capped at the wall slot, when that is past the head.</summary>
+    /// <remarks>An unknown-parent gossip block is not signature-checked yet, so the cap keeps a forged slot from claiming more than the clock allows.</remarks>
+    private void SignalChainAhead(ulong slot, string reason)
+    {
+        ulong reached = Math.Min(slot, slotClock.CurrentSlot);
+        if (reached > (_lastHead?.HeadSlot ?? _syncTip.Slot))
+        {
+            peerPool.RefreshStatusesBehind(reached, reason);
+        }
+    }
+
+    /// <summary>Starts the next range-sync round now instead of after the feed's wait, at most once per wall slot, so range sync fetches the ancestors no peer returned by root.</summary>
+    /// <remarks>A round in flight is left running: an unverified gossip block must not be able to throw away a download in progress.</remarks>
+    private void WakeRangeSyncForAncestors()
+    {
+        ulong slot = slotClock.CurrentSlot;
+        if (_ancestorWakeSlot == slot)
+        {
+            return;
+        }
+
+        _ancestorWakeSlot = slot;
+        // Cancelled asynchronously, so the feed's continuation does not run on the worker.
+        _ = Interlocked.Exchange(ref _rangeSyncWake, new CancellationTokenSource()).CancelAsync();
     }
 
     private async Task<ForkedSignedBeaconBlock?> FetchBlockByRootAsync(Hash256 root, CancellationToken token)
@@ -1984,6 +2018,12 @@ public sealed class BeaconSyncOrchestrator(
         if (_lastHead is { } stalled && HasHeadStalled(stalled.HeadSlot, slot) && GossipStarted && stalled.HeadSlot + GossipStartDistanceSlots < slot)
         {
             ResumeRangeSyncFromHead(slot);
+        }
+
+        // A peer offered on a stale status does not count, or the signalled slot would stop following the clock.
+        if (_lastHead is { } lagging && lagging.HeadSlot + FollowingHeadSlackSlots < slot && !peerPool.GetBestPeers(lagging.HeadSlot + 1).Any(peer => peer.HeadSlot > lagging.HeadSlot))
+        {
+            SignalChainAhead(slot, $"head at slot {lagging.HeadSlot} is {slot - lagging.HeadSlot} slots behind the wall clock and no peer's status is past it");
         }
 
         await DrainPendingRetriesAsync(token);
@@ -2166,6 +2206,8 @@ public sealed class BeaconSyncOrchestrator(
         while (!token.IsCancellationRequested)
         {
             CancellationToken restart = Volatile.Read(ref _rangeSyncRestart).Token;
+            // Read before the round, so a wake during it also skips the wait after it.
+            CancellationToken wake = Volatile.Read(ref _rangeSyncWake).Token;
             try
             {
                 await FeedRangeSyncRoundAsync(token);
@@ -2181,7 +2223,7 @@ public sealed class BeaconSyncOrchestrator(
 
             // Caught up (or briefly stalled): in steady state gossip keeps the tip moving and this
             // loop only re-checks for gaps once per slot.
-            using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(token, restart);
+            using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(token, restart, wake);
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(spec.SecondsPerSlot), wait.Token);

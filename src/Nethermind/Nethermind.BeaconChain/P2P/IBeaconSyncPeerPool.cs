@@ -79,6 +79,11 @@ public interface IBeaconSyncPeerPool
         add { }
         remove { }
     }
+
+    /// <summary>Tells the pool the chain has reached at least <paramref name="slot"/>, so peers whose last <c>status</c> head is behind it are asked again; ignored by a pool that does not implement it.</summary>
+    /// <remarks>A pool may then return from <see cref="GetBestPeers"/> a peer whose last status is behind the slot asked for, when that status could not be refreshed.</remarks>
+    /// <param name="reason">Why the node believes the chain is past its peers, for the log.</param>
+    void RefreshStatusesBehind(ulong slot, string reason) { }
 }
 
 /// <summary>Connection direction of a tracked beacon chain peer.</summary>

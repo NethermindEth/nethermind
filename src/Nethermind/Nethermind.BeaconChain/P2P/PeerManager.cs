@@ -48,6 +48,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // Peers that never answer each hold a check for a request timeout, so a round checks this many at once.
     private const int MaxConcurrentHealthChecks = 8;
 
+    // Status requests sent outside the health checks at once; each silent peer holds one for two request timeouts (v2, then v1).
+    private const int MaxConcurrentStatusRefreshes = 4;
+
     // A peer that answers status and ping but fails sync requests must stay out of selection for longer than a maintenance round.
     internal static readonly TimeSpan RequestFailureDecayInterval = TimeSpan.FromMinutes(1);
 
@@ -86,6 +89,17 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     // Replaced and completed whenever a sampled column is left without a connected custodian, to wake the admission wait.
     private TaskCompletionSource _custodyShortfall = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private readonly SemaphoreSlim _statusRefreshGate = new(MaxConcurrentStatusRefreshes);
+
+    // The highest slot the node reported the chain has reached past its peers, and when; see RefreshStatusesBehind.
+    private ChainAhead? _chainAhead;
+
+    // Ends the status refreshes with Run; none when Run was never started.
+    private CancellationToken _runToken;
+
+    /// <summary>The chain reached at least <paramref name="Slot"/> as of <paramref name="SinceTicks"/> (UTC ticks).</summary>
+    private sealed record ChainAhead(ulong Slot, long SinceTicks);
 
     // Keyed by peer id (not dial address), so a ban and the message/failure history behind it
     // survive both a disconnect and a later reconnection attempt from a different address.
@@ -144,6 +158,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     public async Task Run(CancellationToken token)
     {
+        _runToken = token;
+        _ = Task.Run(() => RefreshStatusesOnCadenceAsync(token));
         while (!token.IsCancellationRequested)
         {
             try
@@ -165,6 +181,92 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <summary>Internal so a test can assert the cadence choice without waiting out a real interval.</summary>
     internal TimeSpan NextMaintenanceIntervalForTest => NextMaintenanceInterval;
+
+    /// <summary>How old a peer's <c>status</c> may get before it is asked again, whatever the health checks do; settable so a test need not wait it out.</summary>
+    internal TimeSpan StatusRefreshInterval { get; set; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>The least time between two <c>status</c> requests to one peer outside the health checks; settable so a test need not wait it out.</summary>
+    internal TimeSpan MinStatusRefreshInterval { get; set; } = TimeSpan.FromSeconds(12);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// phase0/p2p-interface.md Status: a client may send Status again to learn whether a peer has a higher head. Until a peer whose
+    /// last status is older than <paramref name="slot"/> answers, <see cref="GetBestPeers"/> may still offer it for slots up to <paramref name="slot"/>.
+    /// </remarks>
+    public void RefreshStatusesBehind(ulong slot, string reason)
+    {
+        long now = _timestamper.UtcNowOffset.UtcTicks;
+        ChainAhead? current = Volatile.Read(ref _chainAhead);
+        while ((current is null || current.Slot < slot) && Interlocked.CompareExchange(ref _chainAhead, new ChainAhead(slot, now), current) != current)
+        {
+            current = Volatile.Read(ref _chainAhead);
+        }
+
+        RefreshStatuses(peer => peer.HeadSlot < slot, reason);
+    }
+
+    /// <summary>Asks every connected peer that is <paramref name="due"/>, has no <c>status</c> request outstanding and was not asked within <see cref="MinStatusRefreshInterval"/>; logs once when any is asked.</summary>
+    /// <remarks>Runs off the caller's thread, at most <see cref="MaxConcurrentStatusRefreshes"/> requests at once; a failure only marks the peer's status stale.</remarks>
+    private void RefreshStatuses(Func<ManagedPeer, bool> due, string reason)
+    {
+        long now = _timestamper.UtcNowOffset.UtcTicks;
+        List<ManagedPeer> asked = [];
+        foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
+        {
+            if (due(peer.Value) && peer.Value.TryClaimStatusRefresh(now, MinStatusRefreshInterval.Ticks))
+            {
+                asked.Add(peer.Value);
+            }
+        }
+
+        if (asked.Count == 0)
+        {
+            return;
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Refreshing the status of {asked.Count} beacon chain peer{(asked.Count == 1 ? "" : "s")}: {reason}");
+        CancellationToken token = _runToken;
+        foreach (ManagedPeer peer in asked)
+        {
+            _ = Task.Run(() => RefreshStatusAsync(peer, token));
+        }
+    }
+
+    private async Task RefreshStatusAsync(ManagedPeer peer, CancellationToken token)
+    {
+        try
+        {
+            await _statusRefreshGate.WaitAsync(token);
+            try
+            {
+                await UpdateStatusAsync(peer, token);
+            }
+            finally
+            {
+                _statusRefreshGate.Release();
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Status refresh of beacon chain peer {peer.Id} failed: {DescribeFailure(e)}");
+        }
+        finally
+        {
+            peer.ReleaseStatusRefresh();
+        }
+    }
+
+    /// <summary>Refreshes, every <see cref="StatusRefreshInterval"/>, the <c>status</c> of each peer not heard from within it, so a health check that keeps failing does not leave it stale.</summary>
+    private async Task RefreshStatusesOnCadenceAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            TimeSpan interval = StatusRefreshInterval;
+            await Task.Delay(interval, token);
+            long receivedBefore = _timestamper.UtcNowOffset.UtcTicks - interval.Ticks;
+            RefreshStatuses(peer => peer.StatusReceivedTicks < receivedBefore, $"no status for {interval.TotalSeconds:F0} s");
+        }
+    }
 
     /// <summary>
     /// Backpressure for the discovery dial loop: the loop should ask whether there is room rather
@@ -392,11 +494,15 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// A passing health check does not readmit it: it returns once it serves a request or its failures decay (<see cref="RequestFailureDecayInterval"/> each).
     /// A peer that failed a request within <see cref="RequestFailureCooldown"/> is listed after every peer that did not, whatever its head slot, so a batch that
     /// chose it once does not choose it again while others exist; it is still listed, and serves when it is the only peer that can.
+    /// When no peer qualifies and <see cref="RefreshStatusesBehind"/> reported the chain at or past <paramref name="minHeadSlot"/>, the peers whose status
+    /// predates that report and could not be refreshed since are listed instead, whatever their head slot.
     /// </remarks>
     public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
     {
         List<ManagedPeer> best = [];
+        List<ManagedPeer> stale = [];
         int noStatus = 0, behind = 0, failing = 0;
+        ChainAhead? ahead = Volatile.Read(ref _chainAhead);
         foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
         {
             if (peer.Value.Status is null)
@@ -405,7 +511,14 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
             else if (peer.Value.HeadSlot < minHeadSlot)
             {
-                behind++;
+                if (ahead is not null && ahead.Slot >= minHeadSlot && peer.Value.IsStatusStaleSince(ahead.SinceTicks) && !peer.Value.IsAtFailureLimit)
+                {
+                    stale.Add(peer.Value);
+                }
+                else
+                {
+                    behind++;
+                }
             }
             else if (peer.Value.IsAtFailureLimit)
             {
@@ -417,9 +530,20 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
         }
 
-        if (noStatus + behind + failing > 0 && _logger.IsDebug) _logger.Debug($"Sync peers for head slot {minHeadSlot}: {best.Count} usable; left out {noStatus} without status, {behind} behind, {failing} at the request-failure limit");
-
         long now = _timestamper.UtcNowOffset.UtcTicks;
+        // A status older than the chain's known slot that could not be refreshed does not show the peer behind (phase0/p2p-interface.md Status).
+        bool offerStale = best.Count == 0 && stale.Count > 0;
+        if (!offerStale)
+        {
+            behind += stale.Count;
+        }
+
+        if (noStatus + behind + failing + (offerStale ? stale.Count : 0) > 0 && _logger.IsDebug) _logger.Debug($"Sync peers for head slot {minHeadSlot}: {best.Count} usable; left out {noStatus} without status, {behind} behind, {failing} at the request-failure limit{(offerStale ? $"; offering {stale.Count} whose status predates slot {ahead!.Slot}" : "")}");
+        if (offerStale)
+        {
+            return OrderForSelection(stale, peer => peer.IsCoolingDown(now), static peer => peer.HeadSlot);
+        }
+
         return OrderForSelection(best, peer => peer.IsCoolingDown(now), static peer => peer.HeadSlot);
     }
 
@@ -1212,7 +1336,22 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <returns><c>false</c> when the peer was dropped for being on a different fork.</returns>
     private async Task<bool> UpdateStatusAsync(ManagedPeer peer, CancellationToken token)
     {
-        StatusMessageV2 status = await _p2p.RequestStatusAsync(peer.Session, token);
+        StatusMessageV2 status;
+        peer.StatusRequestStarted(_timestamper.UtcNowOffset.UtcTicks);
+        try
+        {
+            status = await _p2p.RequestStatusAsync(peer.Session, token);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+        {
+            peer.StatusRequestFailed(_timestamper.UtcNowOffset.UtcTicks);
+            throw;
+        }
+        finally
+        {
+            peer.StatusRequestEnded();
+        }
+
         peer.RecordMessageSent();
         if (!status.ForkDigest.AsSpan().SequenceEqual(_statusSource.CurrentStatus.ForkDigest))
         {
@@ -1220,7 +1359,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
-        peer.Status = status;
+        peer.SetStatus(status, _timestamper.UtcNowOffset.UtcTicks);
         return true;
     }
 
@@ -1335,6 +1474,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     internal static long FailuresReportedForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).FailuresReported;
 
+    internal static int ConsecutiveFailuresForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).ConsecutiveFailures;
+
     /// <summary>Internal so a test can put an address straight into the "dialing" reservation set,
     /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.
     /// <paramref name="enr"/> lets a test also exercise the Beacon API's <c>enr</c> field without a live dial.</summary>
@@ -1370,9 +1511,55 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private long _messagesSent;
         private long _failuresReported;
         private volatile PeerColumnCustody _custody = CustodyOf(session, PeerColumnCustody.CustodyGroupCountOf(enr));
+        private volatile StatusMessageV2? _status;
+        private long _statusReceivedTicks;
+        private long _statusFailedTicks;
+        private long _statusRequestedTicks;
+        private int _statusRequestsInFlight;
+        private int _statusRefreshClaimed;
 
         public ISession Session { get; } = session;
-        public StatusMessageV2? Status { get; set; }
+        public StatusMessageV2? Status => _status;
+
+        /// <summary>UTC ticks at which the current <see cref="Status"/> was received.</summary>
+        public long StatusReceivedTicks => Interlocked.Read(ref _statusReceivedTicks);
+
+        public void SetStatus(StatusMessageV2 status, long nowTicks)
+        {
+            _status = status;
+            Interlocked.Exchange(ref _statusReceivedTicks, nowTicks);
+        }
+
+        public void StatusRequestStarted(long nowTicks)
+        {
+            Interlocked.Increment(ref _statusRequestsInFlight);
+            Interlocked.Exchange(ref _statusRequestedTicks, nowTicks);
+        }
+
+        public void StatusRequestEnded() => Interlocked.Decrement(ref _statusRequestsInFlight);
+
+        public void StatusRequestFailed(long nowTicks) => Interlocked.Exchange(ref _statusFailedTicks, nowTicks);
+
+        /// <summary>Whether the current status was received before <paramref name="sinceTicks"/> and a request for a newer one failed since.</summary>
+        public bool IsStatusStaleSince(long sinceTicks) =>
+            StatusReceivedTicks < sinceTicks && Interlocked.Read(ref _statusFailedTicks) >= sinceTicks;
+
+        /// <summary>Claims a <c>status</c> refresh unless one is claimed or outstanding, or one was started within <paramref name="minIntervalTicks"/>; one caller wins a race.</summary>
+        public bool TryClaimStatusRefresh(long nowTicks, long minIntervalTicks)
+        {
+            if (Volatile.Read(ref _statusRequestsInFlight) != 0
+                || nowTicks - Interlocked.Read(ref _statusRequestedTicks) < minIntervalTicks
+                || Interlocked.CompareExchange(ref _statusRefreshClaimed, 1, 0) != 0)
+            {
+                return false;
+            }
+
+            Interlocked.Exchange(ref _statusRequestedTicks, nowTicks);
+            return true;
+        }
+
+        /// <summary>Ends a refresh <see cref="TryClaimStatusRefresh"/> claimed, whether it ran, failed or was cancelled while queued.</summary>
+        public void ReleaseStatusRefresh() => Volatile.Write(ref _statusRefreshClaimed, 0);
 
         /// <summary>The libp2p peer id this session was dialed as (see <see cref="PeerManager.ExtractPeerId"/>).</summary>
         public string PeerId { get; } = peerId;

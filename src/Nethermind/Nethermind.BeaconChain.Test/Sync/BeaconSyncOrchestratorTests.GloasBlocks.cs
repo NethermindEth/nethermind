@@ -173,11 +173,17 @@ public partial class BeaconSyncOrchestratorTests
         ForkedSignedBeaconBlock lateSibling = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(scenario.Grandchild.Slot + 1, scenario.Child.ComputeMessageRoot()));
         await harness.Orchestrator.ProcessGossipBlockAsync(lateSibling, CancellationToken.None);
 
+        // A late child is fetched for like any unknown-parent block and, when no peer returns its parent, kept only in that bounded hold.
+        bool lateChildKept = fate != ParkedBlockFate.FinalizedAway;
+        int childFetches = scenario.Peer.ReceivedCalls().Count(c =>
+            c.GetMethodInfo().Name == nameof(IBeaconSyncPeer.RequestBlocksByRootAsync) && ((Hash256[])c.GetArguments()[0]!).Contains(scenario.Child.ComputeMessageRoot()));
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(heldBefore, Is.EqualTo(2));
             Assert.That(heldAfterRelease, Is.Zero);
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero, "a released block no longer holds children of its own");
+            Assert.That(childFetches, Is.EqualTo(lateChildKept ? 1 : 0), "a released block no longer holds children of its own: the late child asks peers for it");
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(lateChildKept ? 1 : 0));
         }
     }
 
