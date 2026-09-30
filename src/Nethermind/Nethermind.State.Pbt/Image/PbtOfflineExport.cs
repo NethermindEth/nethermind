@@ -25,16 +25,13 @@ internal static class PbtOfflineExport
         ILogger logger = logManager.GetClassLogger(typeof(PbtOfflineExport));
         Stopwatch exporting = Stopwatch.StartNew();
         string output = Path.GetFullPath(outputPath);
-        string parent = Path.GetDirectoryName(output) ?? throw new InvalidDataException("Export requires a parent directory.");
         if (Directory.Exists(output) || File.Exists(output)) throw new IOException("Export destination already exists.");
-        Directory.CreateDirectory(parent);
-        string temporary = Path.Combine(parent, $".pbt-export-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(temporary);
+        Directory.CreateDirectory(output);
         if (logger.IsInfo) logger.Info($"Exporting the EIP-8347 anchor {anchor.Header.ToString(BlockHeader.Format.Short)} to {output}.");
         try
         {
-            using (FileStream snapshot = new(Path.Combine(temporary, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
-            using (FileStream preimages = new(Path.Combine(temporary, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+            using (FileStream snapshot = new(Path.Combine(output, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+            using (FileStream preimages = new(Path.Combine(output, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
             {
                 if (!isAnchorCurrent()) throw new InvalidOperationException("Export anchor is no longer current.");
                 PbtArtifactWriter.PbtArtifactDigests digests = PbtOfflineSource.WriteArtifacts(source, code, anchor,
@@ -46,13 +43,12 @@ internal static class PbtOfflineExport
                 if (logger.IsInfo)
                     logger.Info($"EIP-8347 anchor {anchor.Header.Number} digests: snapshot {digests.Snapshot}, preimages {digests.Preimages}.");
             }
-            // Same-parent rename publishes both files together and refuses an existing destination.
-            Directory.Move(temporary, output);
             if (logger.IsInfo) logger.Info($"Exported the EIP-8347 artifacts to {output} in {exporting.Elapsed:hh\\:mm\\:ss}.");
         }
-        finally
+        catch
         {
-            if (Directory.Exists(temporary)) Directory.Delete(temporary, recursive: true);
+            Directory.Delete(output, recursive: true);
+            throw;
         }
     }
 }
