@@ -20,30 +20,63 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
         writer.WriteEndObject();
     }
 
-    public override ParityVmTrace? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override ParityVmTrace Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        ReadTrace(ref reader, options);
+
+    /// <summary>
+    /// Reads a frame and its nested frames through direct calls rather than the serializer, keeping each call depth to a
+    /// couple of small stack frames; the reader's max depth bounds the recursion.
+    /// </summary>
+    internal static ParityVmTrace ReadTrace(ref Utf8JsonReader reader, JsonSerializerOptions options)
     {
-        using JsonDocument document = JsonDocument.ParseValue(ref reader);
-        return ReadTrace(document.RootElement, options);
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException($"Cannot deserialize {nameof(ParityVmTrace)}.");
+        }
+
+        ParityVmTrace value = new();
+
+        reader.Read();
+        while (reader.TokenType != JsonTokenType.EndObject)
+        {
+            if (reader.ValueTextEquals("code"u8))
+            {
+                reader.Read();
+                value.Code = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+            }
+            else if (reader.ValueTextEquals("ops"u8))
+            {
+                reader.Read();
+                // Null until the tracer leaves the frame.
+                value.Operations = reader.TokenType == JsonTokenType.Null ? null : ReadOperations(ref reader, options);
+            }
+            else
+            {
+                throw new JsonException($"Cannot deserialize {nameof(ParityVmTrace)}.");
+            }
+
+            reader.Read();
+        }
+
+        return value;
     }
 
-    internal static ParityVmTrace? ReadTrace(JsonElement value, JsonSerializerOptions options)
+    private static List<ParityVmOperationTrace> ReadOperations(ref Utf8JsonReader reader, JsonSerializerOptions options)
     {
-        if (value.ValueKind == JsonValueKind.Null) return null;
-        if (value.ValueKind != JsonValueKind.Object) throw new JsonException();
-        JsonElement operations = value.GetProperty("ops");
-        List<ParityVmOperationTrace>? traces = null;
-        if (operations.ValueKind != JsonValueKind.Null)
+        if (reader.TokenType != JsonTokenType.StartArray)
         {
-            traces = new(operations.GetArrayLength());
-            foreach (JsonElement operation in operations.EnumerateArray())
-            {
-                traces.Add(ParityVmOperationTraceConverter.ReadOperation(operation, options)!);
-            }
+            throw new JsonException($"Cannot deserialize {nameof(ParityVmTrace)}.");
         }
-        return new ParityVmTrace
+
+        List<ParityVmOperationTrace> operations = [];
+
+        reader.Read();
+        while (reader.TokenType != JsonTokenType.EndArray)
         {
-            Code = value.GetProperty("code").Deserialize<byte[]>(options)!,
-            Operations = traces!,
-        };
+            operations.Add(reader.TokenType == JsonTokenType.Null ? null : ParityVmOperationTraceConverter.ReadOperation(ref reader, options));
+            reader.Read();
+        }
+
+        return operations;
     }
 }
