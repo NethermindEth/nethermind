@@ -147,7 +147,8 @@ internal sealed class PbtAnchorPublication(
         if (preimages is not null)
         {
             using (IPbtPersistence.IReader reader = target.CreateReader())
-                if (PbtImageVerifier.Verify(preimages, reader, anchor, logManager, cancellationToken) != staged)
+                if (PbtImageVerifier.Verify(preimages, reader, anchor, scratchDirectory, config.MigrationVerifyBucketBytes, config.ExportSortBufferBytes,
+                        config.ExportConcurrency, logManager, cancellationToken) != staged)
                     throw new InvalidDataException("Snapshot holds state its preimages do not list.");
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
         }

@@ -48,7 +48,7 @@ internal sealed class MptRightmostNodeStore : IScopedTrieStore
         static void Fold(PatriciaTree tree, in ArrayPoolListRef<PatriciaTree.BulkSetEntry> window)
         {
             if (window.Count == 0) return;
-            tree.BulkSet(window, PatriciaTree.Flags.WasSorted);
+            tree.BulkSet(window, PatriciaTree.Flags.WasSorted | PatriciaTree.Flags.DoNotParallelize);
             // The commit resets the root to an unresolved node, so the next window reads the right edge from the store.
             tree.Commit();
         }
