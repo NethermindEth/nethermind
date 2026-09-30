@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
@@ -157,11 +158,22 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"data":null,"input":"0x602a"}""", ExpectedResult = "0x602a")]
     [TestCase("""{"input":null}""", ExpectedResult = "0x")]
     [TestCase("""{"data":null,"input":null}""", ExpectedResult = "0x")]
-    [TestCase("""{"data":"0x602a","input":"0x"}""", ExpectedResult = "0x")]
-    [TestCase("""{"data":"0x602a","input":""}""", ExpectedResult = "0x")]
-    [TestCase("""{"input":"","data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a","input":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":"0x602a","data":"0x602a","gasPrice":"0x1"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x","input":""}""", ExpectedResult = "0x")]
     public string Test_InputDataAliasResolution(string txJson) =>
         _serializer.Deserialize<TransactionForRpc>(txJson)!.ToTransaction().Data!.Data.ToArray().ToHexString(true);
+
+    [TestCase("""{"data":"0x602a","input":"0x6001"}""")]
+    [TestCase("""{"input":"0x6001","data":"0x602a","gasPrice":"0x1"}""")]
+    [TestCase("""{"data":"0x602a","input":"0x"}""")]
+    [TestCase("""{"data":"0x602a","input":""}""")]
+    [TestCase("""{"input":"","data":"0x602a"}""")]
+    [TestCase("""{"type":"0x4","data":"0x602a","input":"0x6001","authorizationList":[]}""")]
+    public void Test_DifferingInputAndData_Throws(string txJson) =>
+        Assert.That(() => _serializer.Deserialize<TransactionForRpc>(txJson),
+            Throws.TypeOf<SafePublicMessageFormatException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
 
     [TestCaseSource(nameof(DefaultedTypeResolutionCases))]
     public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)

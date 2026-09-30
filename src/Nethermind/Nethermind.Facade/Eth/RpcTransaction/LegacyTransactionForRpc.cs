@@ -5,6 +5,7 @@ using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -14,7 +15,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>
+public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>, IJsonOnDeserialized
 {
     public static TxType TxType => TxType.Legacy;
 
@@ -36,19 +37,30 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     public UInt256? Value { get; set; }
 
     // Required for compatibility with some CLs like Prysm
-    // Accept during deserialization, ignore during serialization
+    // Accept during deserialization, ignore during serialization; it is merged into Input once the object is read
     // See: https://github.com/NethermindEth/nethermind/pull/6067
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Data { set { Input = value; } private get { return null; } }
+    public byte[]? Data { set => _data = value ?? _data; private get => null; }
+
+    private byte[]? _data;
 
     /// <remarks>
-    /// <see cref="Data"/> is an alias when deserializing. An explicit JSON null for either is the same as omitting it,
-    /// so it never clears calldata set by the other.
+    /// <see cref="Data"/> is an alias when deserializing: a request may set either or both, but both must be equal.
+    /// An explicit JSON null for either is the same as omitting it.
     /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Input { get; set => field = value ?? field; }
+
+    void IJsonOnDeserialized.OnDeserialized()
+    {
+        if (_data is null) return;
+        if (Input is not null && !Input.AsSpan().SequenceEqual(_data))
+            throw new SafePublicMessageFormatException(RpcTransactionErrors.DataAndInputDiffer);
+
+        Input = _data;
+    }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? GasPrice { get; set; }

@@ -1013,7 +1013,7 @@ public partial class EthRpcModuleTests
             .TestObject;
         LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.To = null;
-        transaction.Data = data;
+        transaction.Input = data;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
@@ -1408,6 +1408,40 @@ public partial class EthRpcModuleTests
         {
             Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
             Assert.That(serialized, Is.EqualTo(await ctx.Test.TestEthRpc("eth_call", omitted.RootElement, "latest")));
+        }
+    }
+
+    // Shaped like trace-interop's field-data-input-equal and field-data-input-differ probes.
+    [TestCase("\"data\":\"0x602a60005260206000f3\"")]
+    [TestCase("\"input\":\"0x602a60005260206000f3\"")]
+    [TestCase("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x602a60005260206000f3\"")]
+    [TestCase("\"data\":null,\"input\":\"0x602a60005260206000f3\"")]
+    [TestCase("\"input\":null,\"data\":\"0x602a60005260206000f3\"")]
+    public async Task Eth_call_accepts_data_or_input_when_they_agree(string calldata)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
+    }
+
+    [TestCase("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x600160005260206000f3\"")]
+    [TestCase("\"input\":\"0x600160005260206000f3\",\"data\":\"0x602a60005260206000f3\"")]
+    [TestCase("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"")]
+    public async Task Eth_call_rejects_differing_data_and_input(string calldata)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
+
+        JToken? error = JToken.Parse(serialized)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams), serialized);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer), serialized);
         }
     }
 

@@ -1904,6 +1904,50 @@ public class TraceRpcModuleTests
         }
     }
 
+    // Shaped like trace-interop's field-data-input-equal and field-data-input-differ probes.
+    [TestCase("\"data\":\"0x602a60005260206000f3\"")]
+    [TestCase("\"input\":\"0x602a60005260206000f3\"")]
+    [TestCase("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x602a60005260206000f3\"")]
+    [TestCase("\"data\":null,\"input\":\"0x602a60005260206000f3\"")]
+    [TestCase("\"input\":null,\"data\":\"0x602a60005260206000f3\"")]
+    public async Task Trace_call_accepts_data_or_input_when_they_agree(string calldata)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"gas\":\"0x493e0\",{calldata}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call.RootElement, new[] { "trace" }, "latest");
+
+        Assert.That(JToken.Parse(response)["result"]?["output"]?.Value<string>(), Is.EqualTo($"0x{new UInt256(42).ToBigEndian().ToHexString()}"), response);
+    }
+
+    [Test]
+    public async Task Trace_call_rejects_differing_data_and_input(
+        [Values("\"data\":\"0x602a60005260206000f3\",\"input\":\"0x600160005260206000f3\"",
+            "\"input\":\"0x600160005260206000f3\",\"data\":\"0x602a60005260206000f3\"",
+            "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"")] string calldata,
+        [Values("trace_call", "trace_callMany")] string method)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"gas\":\"0x493e0\",{calldata}}}");
+        string[] traceTypes = ["trace"];
+        object[] parameters = method == "trace_call"
+            ? [call.RootElement, traceTypes, "latest"]
+            : [new[] { new object[] { call.RootElement, traceTypes } }, "latest"];
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+
+        JToken? error = JToken.Parse(response)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer), response);
+        }
+    }
+
     // Shaped like trace-interop's field-null-blobVersionedHashes-unpriced and field-null-authorizationList-unpriced probes.
     [TestCase("blobVersionedHashes", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
     [TestCase("authorizationList", TxErrorMessages.NotAllowedCreateTransaction)]
