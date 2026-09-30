@@ -26,11 +26,11 @@ public class CheckpointSyncRetryTests
 {
     private static readonly TimeSpan NoDelay = TimeSpan.FromMilliseconds(1);
 
-    /// <summary>Short enough that a stalled read ends quickly, long enough that a served local body never trips it.</summary>
-    internal static readonly TimeSpan ReadStall = TimeSpan.FromSeconds(3);
+    /// <summary>Short enough that a stalled read ends quickly, long enough that a served local body on a loaded host never trips it and adds a retry.</summary>
+    internal static readonly TimeSpan ReadStall = TimeSpan.FromSeconds(10);
 
     /// <summary>Bounds a run that must end on its own, so a read that waits forever fails the test instead of hanging the run.</summary>
-    private static readonly TimeSpan RunBound = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RunBound = TimeSpan.FromSeconds(60);
 
     /// <param name="stalls">The provider stops sending but keeps the connection open, as when its reset never arrives.</param>
     [Test]
@@ -55,8 +55,46 @@ public class CheckpointSyncRetryTests
             Assert.That(retries[0].Text, Does.Not.Contain("Exception").And.Not.Contain("\n").And.Not.Contain(" at "), "one line with the cause, no stack");
             if (stalls)
             {
-                Assert.That(retries[0].Text, Does.Contain("No data arrived for 3 s"), "a stall names its cause, not a bare cancellation");
+                Assert.That(retries[0].Text, Does.Contain("No data arrived for 10 s"), "a stall names its cause, not a bare cancellation");
             }
+        }
+    }
+
+    [Test]
+    public async Task A_state_arriving_for_longer_than_the_stall_timeout_but_never_pausing_that_long_is_not_cut()
+    {
+        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.Trickle);
+        TimeSpan bound = FlakyCheckpointProvider.TrickleDuration / 2;
+        LevelCapturingLogManager logs = new();
+        // The headers bound is below the transfer time too, so it must not cover the body either.
+        using CheckpointSync sync = NewSync(provider, NewStore(), logs, readStallTimeout: bound, responseHeadersTimeout: bound);
+
+        CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None).WaitAsync(RunBound);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
+            Assert.That(provider.StateRequests, Is.EqualTo(1), "a slow but steady state is read in one request");
+            Assert.That(logs.Lines.Where(static l => l.Text.Contains("failed on attempt")), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task A_provider_that_accepts_the_request_and_never_answers_is_asked_again_after_the_headers_timeout()
+    {
+        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static n => n == 1 ? StateResponse.NoHeaders : StateResponse.Serve);
+        LevelCapturingLogManager logs = new();
+        using CheckpointSync sync = NewSync(provider, NewStore(), logs, responseHeadersTimeout: TimeSpan.FromSeconds(2));
+
+        CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None).WaitAsync(RunBound);
+
+        (string Level, string Text)[] retries = [.. logs.Lines.Where(static l => l.Text.Contains("failed on attempt"))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
+            Assert.That(provider.StateRequests, Is.EqualTo(2));
+            Assert.That(retries, Has.Length.EqualTo(1));
+            Assert.That(retries[0].Text, Is.EqualTo("Checkpoint state download failed on attempt 1 of 5: No response headers arrived for 2 s; retrying in 0 s."), "the cause names the headers bound");
         }
     }
 
@@ -139,15 +177,24 @@ public class CheckpointSyncRetryTests
         using CheckpointSync sync = NewSync(provider, NewStore(), logs, bufferPool: pool, readStallTimeout: TimeSpan.FromHours(1));
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task run = sync.RunAsync(stop.Token);
-        while (pool.Rented == 0)
+        byte[] sent = await provider.StallEntered.WaitAsync(token);
+        // Once all the sent bytes are in the buffer, the next read has nothing to return; the settle lets the loop issue and park it.
+        while (pool.LastRented is not { } buffer || !buffer.AsSpan(0, sent.Length).SequenceEqual(sent))
         {
             await Task.Delay(10, token);
         }
 
+        await Task.Delay(200, token);
+
         await stop.CancelAsync();
 
-        await Assert.ThatAsync(() => run, Throws.InstanceOf<OperationCanceledException>());
-        Assert.That(logs.Lines.Where(static l => l.Text.Contains("failed on attempt")), Is.Empty, "a stop is not retried");
+        await Assert.ThatAsync(() => run.WaitAsync(TimeSpan.FromSeconds(10), token), Throws.InstanceOf<OperationCanceledException>(), "the waiting read ends on the stop");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs.Lines.Where(static l => l.Text.Contains("failed on attempt")), Is.Empty, "a stop is not retried");
+            Assert.That(pool.Rented, Is.Positive);
+            Assert.That(pool.Outstanding, Is.Zero, "a stopped read returns its buffer");
+        }
     }
 
     [TestCase(typeof(IOException), null, true)]
@@ -257,23 +304,27 @@ public class CheckpointSyncRetryTests
 
     private static BeaconChainStore NewStore() => new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
 
-    private static CheckpointSync NewSync(FlakyCheckpointProvider provider, BeaconChainStore store, LevelCapturingLogManager logs, int maxDownloadAttempts = 5, TimeSpan? retryBaseDelay = null, ArrayPool<byte>? bufferPool = null, TimeSpan? readStallTimeout = null) =>
+    private static CheckpointSync NewSync(FlakyCheckpointProvider provider, BeaconChainStore store, LevelCapturingLogManager logs, int maxDownloadAttempts = 5, TimeSpan? retryBaseDelay = null, ArrayPool<byte>? bufferPool = null, TimeSpan? readStallTimeout = null, TimeSpan? responseHeadersTimeout = null) =>
         new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, store, logs)
         {
             MaxDownloadAttempts = maxDownloadAttempts,
             RetryBaseDelay = retryBaseDelay ?? NoDelay,
             BufferPool = bufferPool ?? ArrayPool<byte>.Shared,
             ReadStallTimeout = readStallTimeout ?? ReadStall,
+            ResponseHeadersTimeout = responseHeadersTimeout ?? ReadStall,
         };
 
-    /// <summary>The shared pool, counting the arrays rented from it and not yet returned.</summary>
+    /// <summary>The shared pool, counting the arrays rented from it and not yet returned, each rented cleared so its filled part is observable.</summary>
     private sealed class OutstandingArrayPool : ArrayPool<byte>
     {
         private readonly HashSet<byte[]> _outstanding = [];
         private readonly Lock _lock = new();
         private int _rented;
+        private byte[]? _lastRented;
 
         public int Rented => Volatile.Read(ref _rented);
+
+        public byte[]? LastRented => Volatile.Read(ref _lastRented);
 
         public int Outstanding
         {
@@ -289,7 +340,9 @@ public class CheckpointSyncRetryTests
         public override byte[] Rent(int minimumLength)
         {
             byte[] array = Shared.Rent(minimumLength);
+            Array.Clear(array);
             Interlocked.Increment(ref _rented);
+            Volatile.Write(ref _lastRented, array);
             lock (_lock)
             {
                 _outstanding.Add(array);
