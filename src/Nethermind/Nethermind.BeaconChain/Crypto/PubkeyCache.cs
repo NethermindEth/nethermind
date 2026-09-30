@@ -41,6 +41,9 @@ public class PubkeyCache
     /// <summary>Called by <see cref="Extend"/> once the new keys are decoded, before it publishes them; lets a test place a warm-up there.</summary>
     internal Action? ExtensionDecoded { get; set; }
 
+    /// <summary>Called by <see cref="Extend"/> inside the swap lock after copying the verdicts, before it publishes them; lets a test place a warm-up there.</summary>
+    internal Action? ExtensionChecksCopied { get; set; }
+
     /// <summary>Called by <see cref="WarmSubgroupChecks"/> at the start of each pass over the verdicts it has read; lets a test extend the cache mid-pass.</summary>
     internal Action? WarmUpPassStarted { get; set; }
 
@@ -215,6 +218,7 @@ public class PubkeyCache
         lock (_subgroupChecksSwap)
         {
             _subgroupChecks.AsSpan(0, fromIndex).CopyTo(subgroupChecks);
+            ExtensionChecksCopied?.Invoke();
             Volatile.Write(ref _points, points);
             Volatile.Write(ref _subgroupChecks, subgroupChecks);
         }

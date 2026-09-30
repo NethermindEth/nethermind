@@ -256,6 +256,37 @@ public class PubkeyCacheTests
         AssertEveryVerdictRemembered(cache, original);
     }
 
+    [Test]
+    public async Task A_warm_up_after_the_verdict_copy_waits_for_publication_and_keeps_every_original_verdict()
+    {
+        const int original = DistinctKeys;
+        Validator[] validators = CycledRegistry(original + 1);
+        PubkeyCache cache = new();
+        cache.Build(validators[..original]);
+        TimeSpan timeout = TimeSpan.FromSeconds(30);
+        Task? warm = null;
+        cache.ExtensionChecksCopied = () =>
+        {
+            warm = Task.Factory.StartNew(() => cache.WarmSubgroupChecks(CancellationToken.None), TaskCreationOptions.LongRunning);
+            Assert.That(SpinWait.SpinUntil(() => Enumerable.Range(0, original).All(cache.HasSubgroupCheck), timeout), Is.True,
+                "the warm-up must record every original verdict while the extension holds the copied array");
+            Assert.That(warm.Wait(TimeSpan.FromSeconds(1)), Is.False,
+                "the warm-up's publish check must wait for the extension's swap lock");
+        };
+
+        try
+        {
+            cache.Extend(validators, original);
+        }
+        finally
+        {
+            if (warm is not null)
+                await warm.WaitAsync(timeout);
+        }
+
+        AssertEveryVerdictRemembered(cache, original);
+    }
+
     private const int DistinctKeys = 64;
 
     /// <summary>A registry that repeats <see cref="MixedRegistry"/> keys, so a large one costs no key generation.</summary>
