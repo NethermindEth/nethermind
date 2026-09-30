@@ -177,11 +177,12 @@ public class SnapshotCompactor(
         return new Snapshot(from, to, content, _resourcePool, usage);
     }
 
-    /// <summary>
-    /// Starts a merge on the pool, or runs it inline on a single processor, which gains nothing from the hop (as
-    /// <c>StateProvider</c> does for its code batch). Inline also keeps the whole merge on the compacting thread, where
-    /// <c>Task.WaitAll</c> would otherwise run whichever merges the pool had not picked up yet.
-    /// </summary>
+    /// <summary>Starts a merge on the thread pool, or runs it inline on a single processor.</summary>
+    /// <remarks>
+    /// On one processor the pool hop gains nothing (<c>StateProvider</c> does the same for its code batch). Running
+    /// inline also keeps the whole merge on the compacting thread; otherwise <c>Task.WaitAll</c> would inline whichever
+    /// merges the pool had not started.
+    /// </remarks>
     private static Task StartMerge(Action merge)
     {
         if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
