@@ -796,9 +796,10 @@ public class EthereumRunnerTests
         }
     }
 
-    [TestCase("gnosis")]
-    [TestCase("xdc")]
-    public async Task Chain_specific_pool_retains_the_registered_frame_prefix_simulator(string network)
+    [TestCase("gnosis", true)]
+    [TestCase("xdc", true)]
+    [TestCase("mainnet", false)]
+    public async Task Pool_initializer_retains_the_registered_frame_prefix_simulator(string network, bool chainSpecific)
     {
         ConfigProvider configProvider = new();
         configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
@@ -806,7 +807,6 @@ public class EthereumRunnerTests
         PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
         pluginLoader.Load();
         ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
-        builder.ChainSpec.Parameters.Eip8141TransitionTimestamp = 0;
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
         plugins.Add(new RunnerTestPlugin(true));
         EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
@@ -819,6 +819,7 @@ public class EthereumRunnerTests
             foreach (StepInfo step in loader.ResolveStepsImplementations())
             {
                 if (!typeof(InitializeBlockchain).IsAssignableFrom(step.StepType)) continue;
+                Assert.That(step.StepType != typeof(InitializeBlockchain), Is.EqualTo(chainSpecific));
                 object initializer = runner.LifetimeScope.Resolve(step.StepType);
                 MethodInfo createPool = step.StepType.GetMethod("CreateTxPool", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 await using TxPool.TxPool pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
