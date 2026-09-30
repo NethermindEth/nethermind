@@ -62,8 +62,9 @@ public sealed class FlatStorageTree(
     private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
     // Background building (ParallelStorageRoot): committed writes coalesce here (last value per slot) until a job
-    // applies them into the tree. _pendingLock guards the map and _job; at most one job runs per contract.
-    private readonly Lock _pendingLock = new();
+    // applies them into the tree. _pendingLock guards the map and _job; at most one job runs per contract. The lock
+    // is created with the first write handed to the builder, so a tree the builder never sees allocates nothing.
+    private Lock? _pendingLock;
     private Dictionary<UInt256, UInt256>? _pendingWrites;
     private Task? _job;
     private volatile bool _builtByBuilder;
@@ -122,7 +123,7 @@ public sealed class FlatStorageTree(
         StorageRootBuilder? builder = _scope.StorageRootBuilder;
         if (builder is not null)
         {
-            lock (_pendingLock)
+            lock (PendingLock)
             {
                 (_pendingWrites ??= [])[index] = value;
                 if (_job is null && _pendingWrites.Count >= builder.BatchSize && builder.TryAcquireJobSlot())
@@ -234,6 +235,14 @@ public sealed class FlatStorageTree(
         return applied;
     }
 
+    private Lock PendingLock => Volatile.Read(ref _pendingLock) ?? CreatePendingLock();
+
+    private Lock CreatePendingLock()
+    {
+        Lock created = new();
+        return Interlocked.CompareExchange(ref _pendingLock, created, null) ?? created;
+    }
+
     private void RunBuilderJob(StorageRootBuilder builder)
     {
         bool slotHeld = true;
@@ -243,7 +252,7 @@ public sealed class FlatStorageTree(
             while (true)
             {
                 ArrayPoolList<PatriciaTree.BulkSetEntry>? entries;
-                lock (_pendingLock)
+                lock (PendingLock)
                 {
                     if (_pendingWrites!.Count == 0)
                     {
@@ -284,7 +293,7 @@ public sealed class FlatStorageTree(
         catch (Exception e)
         {
             builder.Fault(e);
-            lock (_pendingLock) _job = null;
+            lock (PendingLock) _job = null;
         }
         finally
         {
@@ -357,7 +366,7 @@ public sealed class FlatStorageTree(
         if (!_builtByBuilder) return false;
 
         ArrayPoolList<PatriciaTree.BulkSetEntry>? tail = null;
-        lock (_pendingLock)
+        lock (PendingLock)
         {
             if (_pendingWrites is { Count: > 0 }) tail = TakePendingEntries();
         }
@@ -374,8 +383,11 @@ public sealed class FlatStorageTree(
 
     internal void WaitForJob()
     {
+        // No lock means no write ever reached the builder, so no job ran.
+        if (Volatile.Read(ref _pendingLock) is not { } pendingLock) return;
+
         Task? job;
-        lock (_pendingLock) job = _job;
+        lock (pendingLock) job = _job;
         // Faults are recorded on the builder by the job itself; nothing propagates through the task.
         job?.Wait();
     }
