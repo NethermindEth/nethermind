@@ -26,7 +26,8 @@ internal static class SnapMessageLimits
     public const int MaxProofs = 256;
 
     // A response holds one node per requested path. State sync requests at most
-    // TreeSync.MaxRequestSize of them, so the cap has ample headroom.
+    // TreeSync.MaxRequestSize of them, so the cap has ample headroom. Kept equal to
+    // ISnapStateServer.MaxTrieNodeLookups so a served response always fits.
     public const int MaxResponseTrieNodes = 4_096;
 
     public static readonly RlpLimit GetByteCodesHashesRlpLimit = RlpLimit.For<GetByteCodesMessage>(MaxRequestHashes, nameof(GetByteCodesMessage.Hashes));

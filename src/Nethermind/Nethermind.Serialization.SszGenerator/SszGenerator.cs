@@ -156,6 +156,7 @@ public class SszGenerator : IIncrementalGenerator
 
     const string Whitespace = "/**/";
     private const int UnboundedBitlistLimit = 0;
+    private const int ProgressiveContainerStackAllocationLimit = 32;
     static readonly Regex OpeningWhiteSpaceRegex = new("{/(\\n\\s+)+\\n/");
     static readonly Regex ClosingWhiteSpaceRegex = new("/(\\s+\\n)+    }/");
     public static string FixWhitespace(string data) => OpeningWhiteSpaceRegex.Replace(
@@ -601,7 +602,8 @@ internal static class SszCodecHelpers
         }
 
         MerkleizeDefaultWithConverter(itemSize, decode, feed, out UInt256 itemRoot);
-        Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(length));
+        Span<UInt256> chunks = stackalloc UInt256[Merkle.NextPowerOfTwoExponent(length) + 1];
+        Merkleizer merkleizer = new(chunks);
         for (ulong i = 0; i < length; i++)
         {
             merkleizer.Feed(itemRoot);
@@ -1046,7 +1048,7 @@ internal static class SszCodecHelpers
 
         return string.Join("\n",
         [
-            $"UInt256[] subRoots = new UInt256[{decl.Members!.Length}];",
+            $"Span<UInt256> subRoots = {(decl.Members!.Length <= ProgressiveContainerStackAllocationLimit ? "stackalloc" : "new")} UInt256[{decl.Members.Length}];",
             ..memberRoots,
             "Merkle.MerkleizeProgressive(out root, subRoots);",
             $"Merkle.MixInActiveFields(ref root, {activeFields});",
@@ -1202,14 +1204,28 @@ internal static class SszCodecHelpers
                 }
             }
 
-            string containerMerkleizeBody = decl.Kind == Kind.ProgressiveContainer
-                ? ProgressiveContainerMerkleizeBody(decl)
-                : string.Join("\n",
+            string containerMerkleizeBody;
+            if (decl.Kind == Kind.ProgressiveContainer)
+            {
+                containerMerkleizeBody = ProgressiveContainerMerkleizeBody(decl);
+            }
+            else
+            {
+                // The scratch size is logarithmic in the field count, so this stack allocation needs no count-based cap.
+                // Mirrors Merkle.NextPowerOfTwoExponent(n) + 1; BitOperations is unavailable on netstandard2.0.
+                int chunkCount = 1;
+                for (int remaining = decl.Members!.Length - 1; remaining > 0; remaining >>= 1) chunkCount++;
+                containerMerkleizeBody = string.Join("\n",
                 [
-                    $"Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));",
+                    $"Span<UInt256> chunks = stackalloc UInt256[{chunkCount}];",
+                    ..(decl.Members.Length == 0
+                        ? new[] { "// With no fields fed, CalculateRoot reads the unwritten top chunk.", "chunks.Clear();" }
+                        : []),
+                    "Merkleizer merkleizer = new(chunks);",
                     ..decl.Members.Select(m => MerkleizeFeedStatement(m, $"container.{m.Name}")),
                     "merkleizer.CalculateRoot(out root);",
                 ]);
+            }
             bool isByteListItself = decl.IsSszListItself && decl.IsStruct && IsByteList(variables[0]);
             string byteListVariableName = isByteListItself ? VarName(variables[0].Name) : string.Empty;
             string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], byteListVariableName, sourceIsArray: true) : string.Empty;
@@ -1834,11 +1850,6 @@ using static Nethermind.Serialization.SszCodecHelpers;
     }}
 }}
 ");
-#if DEBUG
-#pragma warning disable RS1035 // Allow console for debugging
-            Console.WriteLine(WithLineNumbers(result, false));
-#pragma warning restore RS1035
-#endif
             return GeneratedSourceHeader + result;
         }
         catch (Exception e)
@@ -1847,23 +1858,4 @@ using static Nethermind.Serialization.SszCodecHelpers;
             return null;
         }
     }
-
-#if DEBUG
-    static string WithLineNumbers(string input, bool bypass = false)
-    {
-        if (bypass) return input;
-
-        string[] lines = input.Split('\n');
-        int lineNumberWidth = lines.Length.ToString().Length;
-
-        StringBuilder sb = new();
-        for (int i = 0; i < lines.Length; i++)
-        {
-            string lineNumber = (i + 1).ToString().PadLeft(lineNumberWidth);
-            sb.AppendLine($"{lineNumber}: {lines[i]}");
-        }
-
-        return sb.ToString();
-    }
-#endif
 }

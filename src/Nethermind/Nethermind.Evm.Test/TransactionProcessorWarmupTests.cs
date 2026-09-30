@@ -77,8 +77,10 @@ public class TransactionProcessorWarmupTests
             Assert.That(_virtualMachine.TxExecutionContext.SuppressLogs, Is.True);
             Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(expectedBalance));
             Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
-            Assert.That(new UInt256(_stateProvider.Get(new StorageCell(TestItem.AddressB, 0)), isBigEndian: true), Is.EqualTo(new UInt256(logSize == 0 ? 0UL : 1152UL)));
-            Assert.That(new UInt256(_stateProvider.Get(new StorageCell(TestItem.AddressB, 1)), isBigEndian: true), Is.EqualTo(new UInt256(0x42)));
+            _stateProvider.Get(new StorageCell(TestItem.AddressB, 0), out UInt256 storageValue1);
+            Assert.That(storageValue1, Is.EqualTo(new UInt256(logSize == 0 ? 0UL : 1152UL)));
+            _stateProvider.Get(new StorageCell(TestItem.AddressB, 1), out UInt256 storageValue2);
+            Assert.That(storageValue2, Is.EqualTo(new UInt256(0x42)));
             Assert.That(tracer.Logs[0].Topics, Is.EqualTo(topics));
             Assert.That(tracer.Logs[0].Data, Is.EqualTo(new byte[logSize]));
         }
@@ -124,7 +126,8 @@ public class TransactionProcessorWarmupTests
 
         _transactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
-        Assert.That(new UInt256(_stateProvider.Get(new StorageCell(TestItem.AddressB, 0)), isBigEndian: true), Is.EqualTo(UInt256.One));
+        _stateProvider.Get(new StorageCell(TestItem.AddressB, 0), out UInt256 storageValue3);
+        Assert.That(storageValue3, Is.EqualTo(UInt256.One));
     }
 
     private (Transaction, Snapshot) PrepareLogTransaction(byte[] code, ulong gasLimit)

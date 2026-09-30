@@ -12,6 +12,23 @@ namespace Nethermind.Core.Test.Encoding;
 public class OwnedBlockBodiesTests
 {
     [Test]
+    public void Transaction_ownership_is_independent_of_memory_ownership(
+        [Values] bool hasMemoryOwner, [Values] bool ownsPooledTransactions, [Values] bool disown)
+    {
+        IMemoryOwner<byte>? memoryOwner = hasMemoryOwner ? Substitute.For<IMemoryOwner<byte>>() : null;
+        Transaction transaction = Build.A.Transaction.Signed().TestObject;
+        using OwnedBlockBodies bodies = new([new BlockBody([transaction], [])], memoryOwner, ownsPooledTransactions);
+
+        if (disown) bodies.Disown();
+        bodies.Dispose();
+        bool returned = ownsPooledTransactions && !disown;
+        Assert.That(transaction.Signature is null, Is.EqualTo(returned));
+
+        bodies.Dispose();
+        memoryOwner?.Received(1).Dispose();
+    }
+
+    [Test]
     public void Should_dispose_memory_owner()
     {
         IMemoryOwner<byte> memoryOwner = Substitute.For<IMemoryOwner<byte>>();

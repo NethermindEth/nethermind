@@ -11,6 +11,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.History.Changesets;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -430,7 +431,8 @@ public class HistoryWindowPrunerTests
             _writer, _historyColumns, config,
             scopeGate ?? new HistoryScopeGate(),
             availability, rowFormat,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new TransactionChangesetIndex(_historyColumns, config));
     }
 
     private sealed class CountdownBudget(int rowsBeforeExhaustion) : IPruneBudget

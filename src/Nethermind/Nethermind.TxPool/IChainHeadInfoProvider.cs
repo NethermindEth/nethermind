@@ -9,13 +9,29 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
+    /// <remarks>
+    /// Extension contract: derive from <c>ChainHeadInfoProvider</c>, which is public and non-sealed, and added
+    /// head facts arrive tracked. Implementing this interface directly opts into a compile error per addition —
+    /// no member here carries a default body, because a stale or zero head fact is a silent wrong answer.
+    /// </remarks>
     public interface IChainHeadInfoProvider
     {
         IChainHeadSpecProvider SpecProvider { get; }
 
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
+        /// <summary>
+        /// Number of the last block moved onto the canonical chain.
+        /// </summary>
+        /// <remarks>
+        /// Seeded from the processed head, then tracks every block moved onto the main chain. The downloader moves
+        /// blocks across without processing them and that raises the same event, so in that mode this follows the
+        /// downloaded chain rather than the processed head.
+        /// </remarks>
         ulong HeadNumber { get; }
+
+        /// <summary>Timestamp (Unix seconds) of the current chain head.</summary>
+        ulong HeadTimestamp { get; }
 
         ulong? BlockGasLimit { get; }
 

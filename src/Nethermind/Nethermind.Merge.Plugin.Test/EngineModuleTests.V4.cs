@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -20,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -226,6 +228,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(chain.BlockTree.Head!.ParentBeaconBlockRoot)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .TestObject;
 
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(invalidBlock);
@@ -269,15 +272,15 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list([Values] bool blockAccessListsEnabled)
+    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(
-            blockAccessListsEnabled ? Amsterdam.Instance : Prague.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
         Block block = Build.A.Block
             .WithNumber(chain.BlockTree.Head!.Number + 1)
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .TestObject;
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
         executionPayload.BlockAccessList = Bytes.FromHexString("0xc0");
@@ -292,6 +295,7 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Result.Error, Does.StartWith("Block access list"));
         }
     }
 
@@ -304,6 +308,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .TestObject;
         block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
         block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests([]);
@@ -359,6 +364,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .TestObject;
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
         executionPayload.BlockAccessList = Bytes.FromHexString("0xc0");
@@ -372,6 +378,65 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Result.Error, Does.StartWith("Block access list"));
+        }
+    }
+
+    [TestCaseSource(nameof(NewPayloadForkWindowCases))]
+    public async Task<int> NewPayload_returns_unsupported_fork_outside_its_fork_window(IReleaseSpec releaseSpec, int version)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithWithdrawals(releaseSpec.IsShanghaiEnabled ? [] : null)
+            .WithParentBeaconBlockRoot(releaseSpec.IsCancunEnabled ? Keccak.Zero : null)
+            .WithBlobGasUsed(releaseSpec.IsCancunEnabled ? 0UL : null)
+            .WithExcessBlobGas(releaseSpec.IsCancunEnabled ? 0UL : null)
+            .WithEncodedBlockAccessList(releaseSpec.IsAmsterdamEnabled ? Rlp.OfEmptyList.Bytes : null)
+            .WithSlotNumber(releaseSpec.IsAmsterdamEnabled ? 0UL : null)
+            .TestObject;
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        return version switch
+        {
+            EngineApiVersions.NewPayload.V1 => (await rpc.engine_newPayloadV1(ExecutionPayload.Create(block))).ErrorCode,
+            EngineApiVersions.NewPayload.V2 => (await rpc.engine_newPayloadV2(ExecutionPayload.Create(block))).ErrorCode,
+            EngineApiVersions.NewPayload.V3 => (await rpc.engine_newPayloadV3(ExecutionPayloadV3.Create(block), [], Keccak.Zero)).ErrorCode,
+            EngineApiVersions.NewPayload.V4 => (await rpc.engine_newPayloadV4(ExecutionPayloadV3.Create(block), [], Keccak.Zero, [])).ErrorCode,
+            EngineApiVersions.NewPayload.V5 => (await rpc.engine_newPayloadV5(ExecutionPayloadV4.Create(block), [], Keccak.Zero, [])).ErrorCode,
+            EngineApiVersions.NewPayload.V6 => (await rpc.engine_newPayloadV6(ExecutionPayloadV4.Create(block), [], Keccak.Zero, [], [])).ErrorCode,
+            _ => throw new ArgumentOutOfRangeException(nameof(version))
+        };
+    }
+
+    private static IEnumerable<TestCaseData> NewPayloadForkWindowCases()
+    {
+        (IReleaseSpec Spec, int Version, int ExpectedErrorCode)[] cases =
+        [
+            (Paris.Instance, EngineApiVersions.NewPayload.V1, ErrorCodes.None),
+            // V1 predates -38005, so its fork check answers with invalid params.
+            (Cancun.Instance, EngineApiVersions.NewPayload.V1, ErrorCodes.InvalidParams),
+            (Paris.Instance, EngineApiVersions.NewPayload.V2, ErrorCodes.None),
+            (Shanghai.Instance, EngineApiVersions.NewPayload.V2, ErrorCodes.None),
+            (Cancun.Instance, EngineApiVersions.NewPayload.V2, MergeErrorCodes.UnsupportedFork),
+            (Shanghai.Instance, EngineApiVersions.NewPayload.V3, MergeErrorCodes.UnsupportedFork),
+            (Cancun.Instance, EngineApiVersions.NewPayload.V3, ErrorCodes.None),
+            (Prague.Instance, EngineApiVersions.NewPayload.V3, MergeErrorCodes.UnsupportedFork),
+            (Cancun.Instance, EngineApiVersions.NewPayload.V4, MergeErrorCodes.UnsupportedFork),
+            (Prague.Instance, EngineApiVersions.NewPayload.V4, ErrorCodes.None),
+            (Osaka.Instance, EngineApiVersions.NewPayload.V4, ErrorCodes.None),
+            (Amsterdam.Instance, EngineApiVersions.NewPayload.V4, MergeErrorCodes.UnsupportedFork),
+            (Osaka.Instance, EngineApiVersions.NewPayload.V5, MergeErrorCodes.UnsupportedFork),
+            (Amsterdam.Instance, EngineApiVersions.NewPayload.V5, ErrorCodes.None),
+            (Bogota.Instance, EngineApiVersions.NewPayload.V5, MergeErrorCodes.UnsupportedFork),
+            (Amsterdam.Instance, EngineApiVersions.NewPayload.V6, MergeErrorCodes.UnsupportedFork),
+            (Bogota.Instance, EngineApiVersions.NewPayload.V6, ErrorCodes.None),
+        ];
+
+        foreach ((IReleaseSpec spec, int version, int expectedErrorCode) in cases)
+        {
+            yield return new TestCaseData(spec, version) { ExpectedResult = expectedErrorCode }
+                .SetArgDisplayNames($"V{version}", spec.Name);
         }
     }
 
@@ -405,6 +470,23 @@ public partial class EngineModuleTests
         // ExecutionRequests is a transient property (not in RLP), so it may not survive
         // cache round-trips. Verify via RequestsHash on the header instead, which IS persisted.
         Assert.That(head!.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests)));
+    }
+
+    // EIP-7843: in SimulateBlockProduction mode the attributes are synthesised from the head itself,
+    // so their slot must be strictly greater than the head's or the handler rejects its own attributes.
+    [Test]
+    public async Task ForkchoiceUpdatedV4_without_attributes_simulates_block_production_after_Eip7843()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            Amsterdam.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", SimulateBlockProduction = true });
+        Hash256 head = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await chain.EngineRpcModule
+            .engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(head, head, head), null);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,

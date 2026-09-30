@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Snap;
@@ -64,7 +65,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
                 {
                     if (_enableDoubleWriteCheck)
                     {
-                        SlotValue existing = default;
+                        UInt256 existing = default;
                         if (_reader.TryGetStorageRaw(_addressHash, slot.Path, ref existing))
                             throw new Exception($"Double storage flat write. address:{_addressHash} slot:{slot.Path} firstEntry:{_pendingEntries[0].Path} lastEntry:{_pendingEntries[_pendingEntries.Count - 1].Path} upperBound:{upperBound}");
                     }

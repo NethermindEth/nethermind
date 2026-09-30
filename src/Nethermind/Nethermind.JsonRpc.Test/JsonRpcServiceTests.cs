@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -16,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -33,9 +37,11 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using Nethermind.Trie;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using NSubstitute.Extensions;
 using NUnit.Framework;
 using Testably.Abstractions;
 
@@ -45,19 +51,55 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class JsonRpcServiceTests
 {
+    [TestCase("engine_newPayloadV1", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV99", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadWithWitnessV5", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", false, false, RpcEndpoint.Http)]
+    [TestCase("engine_forkchoiceUpdatedV4", true, false, RpcEndpoint.Http)]
+    [TestCase("eth_call", true, false, RpcEndpoint.Http)]
+    [TestCase("Engine_newPayloadV5", true, false, RpcEndpoint.Http)]
+    [TestCase(null, true, false, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", false, true, RpcEndpoint.IPC)]
+    [TestCase("eth_call", false, false, RpcEndpoint.IPC)]
+    public async Task New_payload_cancels_pending_collection_before_dispatch(string? method, bool authenticated, bool cancels, RpcEndpoint endpoint)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.PostBlockDelayMs.Returns(60_000);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.Yes));
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance);
+        Task pending = keeper.ScheduleGCInternal(throttle: false);
+        IRpcModuleProvider provider = Substitute.For<IRpcModuleProvider>();
+        provider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
+            .Returns(ModuleResolution.Unknown);
+        JsonRpcService service = new(provider, NullLogManager.Instance, new JsonRpcConfig(), keeper);
+        using JsonRpcContext context = new(endpoint, url: new JsonRpcUrl("http", "localhost", 8551, RpcEndpoint.Http, authenticated, ["engine"]));
+        using JsonRpcResponse response = await service.SendRequestAsync(new JsonRpcRequest { Method = method! }, context);
+        if (cancels) await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        else Assert.That(pending.IsCompleted, Is.False);
+        keeper.Dispose();
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     [SetUp]
     public void Initialize()
     {
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
+        _gcKeeper = new GCKeeper(NoGCStrategy.Instance, _logManager);
         _context = new JsonRpcContext(RpcEndpoint.Http);
         // StrictHexFormat is pinned for the whole assembly by StrictHexFormatAssemblySetup; no fixture may touch
         // that static, because it is process-global and every concurrent block-parameter parse reads it (#13204).
     }
 
     [TearDown]
-    public void TearDown() => _context?.Dispose();
+    public void TearDown()
+    {
+        _context?.Dispose();
+        _gcKeeper.Dispose();
+    }
 
+    private GCKeeper _gcKeeper = null!;
     private IJsonRpcService _jsonRpcService = null!;
     private IConfigProvider _configurationProvider = null!;
     private ILogManager _logManager = null!;
@@ -226,7 +268,7 @@ public class JsonRpcServiceTests
     {
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(pool);
-        _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
         Assert.That(response.Id, Is.EqualTo(request.Id));
         return response;
@@ -443,6 +485,210 @@ public class JsonRpcServiceTests
         pool.Received(1).ReturnModule(rpcModule);
     }
 
+    private static IEnumerable<(Exception Exception, int Code, bool CancelTimeout)> ReplayFailures()
+    {
+        yield return (new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA), ErrorCodes.ResourceNotFound, false);
+        yield return (new TargetInvocationException(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA)), ErrorCodes.ResourceNotFound, false);
+        yield return (new ResourceNotFoundException("History pruned"), ErrorCodes.PrunedHistoryUnavailable, false);
+        yield return (new InsufficientBalanceException(TestItem.AddressA), ErrorCodes.InvalidInput, false);
+        yield return (new InvalidOperationException("Replay failed"), ErrorCodes.InternalError, false);
+        yield return (new IOException("History read failed"), ErrorCodes.InternalError, false);
+        yield return (new ArgumentException("Invalid replay argument"), ErrorCodes.InvalidParams, false);
+        yield return (new LimitExceededException("limit"), ErrorCodes.LimitExceeded, false);
+        yield return (new OperationCanceledException("Replay timeout"), ErrorCodes.Timeout, false);
+        yield return (new OperationCanceledException("Replay timeout"), ErrorCodes.Timeout, true);
+    }
+
+    [Test]
+    public async Task Streamed_serialization_failure_is_an_internal_error([Values] bool wrapped)
+    {
+        IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
+        ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        using CancellationTokenSource timeout = new();
+        Exception failure = new JsonException("Cannot serialize trace");
+        if (wrapped) failure = new TargetInvocationException(failure);
+        rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
+            .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
+                (_, _, _) => throw failure, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
+        using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
+        using MemoryStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        await writer.CompleteAsync();
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [Test]
+    public async Task Only_deferred_execution_results_get_streaming_recovery([Values] bool deferred)
+    {
+        IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
+        ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        InvalidOperationException failure = new("Result write failed");
+        FailingReplayResult result = deferred ? new DeferredFailingReplayResult(failure) : new FailingReplayResult(failure);
+        rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
+            .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(result));
+        using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
+        Pipe pipe = new();
+        try
+        {
+            if (deferred)
+            {
+                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+                await pipe.Writer.CompleteAsync();
+                ReadResult read = await pipe.Reader.ReadAsync();
+                using JsonDocument document = JsonDocument.Parse(read.Buffer.ToArray());
+                pipe.Reader.AdvanceTo(read.Buffer.End);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(response.Streaming, Is.Not.Null);
+                    Assert.That(result.Writer, Is.Not.SameAs(pipe.Writer), "deferred execution is staged for recovery");
+                    Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+                }
+            }
+            else
+            {
+                Exception? thrown = Assert.CatchAsync(async () =>
+                    await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(response.Streaming, Is.Null, "an already computed result must not pay for deferred recovery");
+                    Assert.That(result.Writer, Is.SameAs(pipe.Writer), "an already computed result must be written directly");
+                    Assert.That(thrown, Is.SameAs(failure));
+                }
+            }
+        }
+        finally
+        {
+            await pipe.Writer.CompleteAsync();
+            await pipe.Reader.CompleteAsync();
+        }
+    }
+
+    /// <summary>An already computed result, like an Engine API direct response, whose serialization fails.</summary>
+    private class FailingReplayResult(Exception failure) : ParityTxTraceFromReplay, IStreamableResult
+    {
+        public PipeWriter? Writer { get; private set; }
+
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            Writer = writer;
+            writer.Write("{"u8);
+            throw failure;
+        }
+    }
+
+    private sealed class DeferredFailingReplayResult(Exception failure) : FailingReplayResult(failure), IDeferredExecutionResult;
+
+    private static IEnumerable<TestCaseData> JsonFailuresWithMappedCause()
+    {
+        yield return new TestCaseData(new ModuleRentalTimeoutException("rental"), ErrorCodes.ModuleTimeout).SetName("Module rental timeout");
+        yield return new TestCaseData(new OperationCanceledException("timeout"), ErrorCodes.Timeout).SetName("Timeout");
+    }
+
+    /// <summary>Only the invalid-params reading of <see cref="JsonException"/> is invocation-specific; a cause the mapping recognizes still applies.</summary>
+    [TestCaseSource(nameof(JsonFailuresWithMappedCause))]
+    public async Task Streamed_json_failure_maps_its_recognized_cause(Exception cause, int expectedCode)
+    {
+        IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
+        ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        using CancellationTokenSource timeout = new();
+        rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
+            .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
+                (_, _, _) => throw new JsonException("Cannot serialize trace", cause), timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
+        using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
+        using MemoryStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        await writer.CompleteAsync();
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(expectedCode));
+    }
+
+    [Test]
+    public async Task Streamed_replay_errors_use_invocation_mapping_before_commit(
+        [ValueSource(nameof(ReplayFailures))] (Exception Exception, int Code, bool CancelTimeout) failure,
+        [Values] bool blockReplay,
+        [Values(0, 1, 2)] int commitMode)
+    {
+        IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
+        ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        string method = blockReplay ? "trace_replayBlockTransactions" : "trace_replayTransaction";
+        object[] parameters = [blockReplay ? "latest" : TestItem.KeccakA.ToString(), new[] { "trace" }];
+        rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>()).Throws(failure.Exception);
+        rpcModule.trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>()).Throws(failure.Exception);
+        using JsonRpcErrorResponse expected = AssertJsonRpcError(TestRequestWithPool(pool, method, parameters), failure.Code);
+        string expectedEnvelope = RpcTest.SerializeResponse(expected);
+        pool.ClearReceivedCalls();
+
+        using CancellationTokenSource timeout = new();
+        if (blockReplay)
+        {
+            rpcModule.Configure().trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>())
+                .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(
+                    new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(EmitThenThrow, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
+        }
+        else
+        {
+            rpcModule.Configure().trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
+                .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(
+                    new ParityTxTraceFromReplayStreamingResult(EmitThenThrow, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
+        }
+        using JsonRpcResponse response = TestRequestWithPool(pool, method, parameters);
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        try
+        {
+            if (commitMode == 2)
+            {
+                Exception? thrown = Assert.CatchAsync(async () =>
+                    await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
+                Assert.That(thrown, Is.SameAs(failure.Exception));
+            }
+            else
+            {
+                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+            }
+            await pipe.Writer.CompleteAsync();
+            ReadResult read = await pipe.Reader.ReadAsync();
+            string envelope = Encoding.UTF8.GetString(read.Buffer.ToArray());
+            if (commitMode == 2)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(envelope, Does.StartWith("{\"jsonrpc\":\"2.0\",\"result\":"));
+                    Assert.That(envelope, Does.Not.Contain("\"error\""));
+                }
+            }
+            else
+            {
+                Assert.That(envelope, Is.EqualTo(expectedEnvelope));
+            }
+            pool.DidNotReceive().ReturnModule(rpcModule);
+            response.Dispose();
+            pool.Received(1).ReturnModule(rpcModule);
+        }
+        finally
+        {
+            await pipe.Writer.CompleteAsync();
+            await pipe.Reader.CompleteAsync();
+        }
+
+        void EmitThenThrow(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken ct)
+        {
+            writer.WriteStartObject();
+            if (commitMode == 2) writer.WriteString("padding", new string('x', 20_000));
+            writer.WriteEndObject();
+            writer.Flush();
+            if (commitMode == 1) Assert.That(pipeWriter!.FlushAsync(ct).IsCompletedSuccessfully, Is.True);
+            if (failure.CancelTimeout) timeout.Cancel();
+            throw failure.Exception;
+        }
+    }
+
     [Test]
     public void Success_response_dispose_disposes_disposable_result()
     {
@@ -521,6 +767,80 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Raw_utf8_params_read_null_input_as_omitted()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule
+            .eth_call(
+                Arg.Any<SignableTransactionForRpc>(),
+                Arg.Any<BlockParameter?>(),
+                Arg.Any<Dictionary<Address, AccountOverride>?>(),
+                Arg.Any<BlockOverride?>())
+            .ReturnsForAnyArgs(static _ => ResultWrapper<HexBytes>.Success(default));
+
+        RpcTest.AssertSuccess(TestRawRequest(ethRpcModule, "eth_call", """[{"data":"0x602a","input":null},"latest"]"""));
+
+        ethRpcModule.Received(1).eth_call(
+            Arg.Is<SignableTransactionForRpc>(static tx => tx is LegacyTransactionForRpc && ((LegacyTransactionForRpc)tx).Input!.SequenceEqual(new byte[] { 0x60, 0x2a })),
+            Arg.Any<BlockParameter?>(),
+            Arg.Any<Dictionary<Address, AccountOverride>?>(),
+            Arg.Any<BlockOverride?>());
+    }
+
+    [TestCase("", null)]
+    [TestCase(",\"after\":null", null)]
+    [TestCase(",\"after\":1", 1UL)]
+    [TestCase(",\"after\":\"0x1\"", 1UL)]
+    [TestCase(",\"after\":\"0xffffffff\"", 0xffffffffUL)]
+    public void Raw_utf8_params_read_trace_filter_after(string after, ulong? expected)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        RpcTest.AssertSuccess(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\"{after}}}]"));
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(filter => filter.After == expected));
+    }
+
+    [Test]
+    public void Raw_utf8_params_reject_invalid_trace_filter_after_or_count(
+        [Values("after", "count")] string member,
+        [Values("true", "[]", "\"0xg\"", "-1", "\"-1\"", "18446744073709551616")] string value)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"{member}\":{value}}}]"), ErrorCodes.InvalidParams);
+
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void Trace_filter_rejects_unknown_member_in_utf8_params(
+        [Values("\"unknownDiagnosticFlag\":true", "\"limit\":1", "\"fromAddresses\":null")] string member)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",{member}}}]"), ErrorCodes.InvalidParams);
+
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void Trace_filter_reads_every_known_member_in_utf8_params()
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        RpcTest.AssertSuccess(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter),
+            $"[{{\"fromBlock\":\"0x1\",\"toBlock\":\"latest\",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[],\"mode\":\"union\",\"after\":1,\"count\":\"0xffffffff\"}}]"));
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(static filter =>
+            filter.FromBlock!.BlockNumber == 1 && filter.ToBlock!.Type == BlockParameterType.Latest
+            && filter.FromAddress!.Single() == TestItem.AddressA && filter.ToAddress!.Length == 0
+            && filter.Mode == TraceFilterMode.Union && filter.After == 1 && filter.Count == 0xffffffff));
+    }
+
+    [Test]
     public void Missing_marker_on_an_optional_argument_binds_its_default([Values(false, true)] bool rawUtf8)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -564,6 +884,35 @@ public class JsonRpcServiceTests
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
         ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+    }
+
+    // Real requests carry UTF-8 params, so the trace_filter mode converter is also checked on that path.
+    [TestCase("\"garbage\"")]
+    [TestCase("\"Union\"")]
+    public void Trace_filter_rejects_unknown_mode_in_utf8_params(string mode)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        JsonRpcResponse response = TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"mode\":{mode}}}]");
+
+        AssertInvalidParamsWithoutData(response, "invalid trace filter mode, expected \"intersection\" or \"union\"");
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    // An explicit null mode is the same as omitting it.
+    [TestCase("", TraceFilterMode.Intersection)]
+    [TestCase(",\"mode\":null", TraceFilterMode.Intersection)]
+    [TestCase(",\"mode\":\"union\"", TraceFilterMode.Union)]
+    public void Trace_filter_reads_mode_in_utf8_params(string mode, TraceFilterMode expected)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        using JsonRpcResponse response = TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\"{mode}}}]");
+
+        RpcTest.AssertSuccess(response);
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(filter => filter.Mode == expected));
     }
 
     // #13156: a parameter the caller got wrong is answered with -32602; it must not also cost the operator a WARN line
@@ -739,7 +1088,7 @@ public class JsonRpcServiceTests
         IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
         moduleProvider.Resolve(Arg.Any<string>()).Throws(new Exception("test"));
 
-        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
@@ -833,7 +1182,7 @@ public class JsonRpcServiceTests
                 return resolution;
             });
 
-        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("debug_traceCall");
         using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, _context);
 
@@ -929,6 +1278,40 @@ public class JsonRpcServiceTests
             .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
+    }
+
+    [TestCaseSource(nameof(StateUnavailableShapes))]
+    public void State_unavailable_exception_is_resource_unavailable_only_for_state_not_retained(Exception thrown, int expectedCode, string expectedMessage, bool warns)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(thrown);
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode, expectedMessage);
+
+        logger.Received(warns ? 1 : 0).Warn(Arg.Is<string>(static text => text.StartsWith("Missing trie node during eth_getLogs")));
+    }
+
+    private static IEnumerable<TestCaseData> StateUnavailableShapes()
+    {
+        StateNotRetainedException notRetained = new("State for block 1 is unavailable");
+        yield return new TestCaseData(notRetained, ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, bare)");
+        yield return new TestCaseData(new TargetInvocationException(notRetained), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, wrapped)");
+        yield return new TestCaseData(MissingTrieNode(notRetained), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, missing-trie wrap)");
+        yield return new TestCaseData(new TargetInvocationException(MissingTrieNode(notRetained)), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, wrapped missing-trie wrap)");
+
+        // A history row that cannot be trusted keeps the pre-existing mapping: -32000 with the WARN that is the
+        // operator's only sign of corruption at the default log level, or an internal error when nothing wrapped it.
+        StateUnavailableException untrusted = new("The flat history rows below that path do not reproduce the proven state root");
+        yield return new TestCaseData(MissingTrieNode(untrusted), ErrorCodes.ResourceNotFound, "State proof at historical block 1 is unavailable", true).SetName("{m}(untrusted, missing-trie wrap)");
+        yield return new TestCaseData(untrusted, ErrorCodes.InternalError, "Internal error", false).SetName("{m}(untrusted, bare)");
+        yield return new TestCaseData(new TargetInvocationException(untrusted), ErrorCodes.InternalError, "Internal error", false).SetName("{m}(untrusted, wrapped)");
+
+        static MissingTrieNodeException MissingTrieNode(StateUnavailableException inner) =>
+            new("State proof at historical block 1 is unavailable", null, TreePath.Empty, TestItem.KeccakA, inner);
     }
 
     [RpcModule(ModuleType.Eth)]

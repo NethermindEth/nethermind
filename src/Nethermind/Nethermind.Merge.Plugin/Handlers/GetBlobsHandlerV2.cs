@@ -28,6 +28,12 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
 
         int n = request.BlobVersionedHashes.Length;
+        if (n == 0)
+        {
+            Metrics.GetBlobsRequestsSuccessTotal++;
+            return ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(Array.Empty<BlobAndProofV2?>());
+        }
+
         ArrayPoolList<byte[]?> blobs = new(n, n);
         ArrayPoolList<ReadOnlyMemory<byte[]>> proofs = new(n, n);
         try

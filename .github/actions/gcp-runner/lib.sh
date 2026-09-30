@@ -22,3 +22,45 @@ resolve_zone() {
   fi
   printf '%s' "$out"
 }
+
+# Only a quota GCE reports against a region is worth retrying elsewhere; a project- or
+# global-scope one (CPUS_ALL_REGIONS) is worded without it and stays fatal, so it fails fast.
+RETRYABLE_CREATE_ERR='ZONE_RESOURCE_POOL_EXHAUSTED|RESOURCE_POOL_EXHAUSTED|does not have enough resources|resource availability|currently unavailable|No available zone'
+QUOTA_CREATE_ERR='Quota .* exceeded.* in region '
+FATAL_CREATE_ERR='PERMISSION_DENIED|Required .* permission|QUOTA_EXCEEDED|Quota .* exceeded'
+
+# Rotates a comma-separated zone list by a hash of the seed, keeping each region's zones
+# together, so concurrent creates spread out. Deterministic: a re-run repeats the order.
+order_zones() {
+  local seed="$1" zones="$2"
+  local -a regions=() zone_list=()
+  local zone region
+
+  IFS=',' read -ra zone_list <<<"$zones"
+  local -A by_region=()
+  for zone in "${zone_list[@]}"; do
+    zone="${zone//[[:space:]]/}"
+    [ -n "$zone" ] || continue
+    region="${zone%-*}"
+    if [ -z "${by_region[$region]+x}" ]; then
+      regions+=("$region")
+      by_region[$region]="$zone"
+    else
+      by_region[$region]+=" $zone"
+    fi
+  done
+  [ "${#regions[@]}" -gt 0 ] || return 0
+
+  local offset=$((0x$(printf '%s' "$seed" | sha1sum | cut -c1-4)))
+  local -a out=()
+  local i j region_zones
+  for ((i = 0; i < ${#regions[@]}; i++)); do
+    region="${regions[$(((i + offset) % ${#regions[@]}))]}"
+    IFS=' ' read -ra region_zones <<<"${by_region[$region]}"
+    for ((j = 0; j < ${#region_zones[@]}; j++)); do
+      out+=("${region_zones[$(((j + offset) % ${#region_zones[@]}))]}")
+    done
+  done
+  local IFS=,
+  printf '%s' "${out[*]}"
+}

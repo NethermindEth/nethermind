@@ -245,6 +245,14 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void GuardLimit_without_a_limit_applies_the_default_limit()
+        {
+            int limit = RlpLimit.DefaultLimit.Limit;
+            Assert.That(() => Rlp.GuardLimit(limit, int.MaxValue), Throws.Nothing);
+            Assert.That(() => Rlp.GuardLimit(limit + 1, int.MaxValue), Throws.TypeOf<RlpLimitException>());
+        }
+
+        [Test]
         public void Serializing_sequences()
         {
             Rlp output = Rlp.Encode(
@@ -312,6 +320,10 @@ namespace Nethermind.Core.Test
             expected = Rlp.Encode(value, expected);
             AssertValueWriterMatchesExpected(writer, buffer, expected);
         }
+
+        [Test]
+        public void EncodeToCappedArray_encodes_int_like_Rlp([Values(0, 1, 127, 128, 1023, 1024, 65536, int.MaxValue)] int value) =>
+            Assert.That(Rlp.EncodeToCappedArray(value).ToArray(), Is.EqualTo(Rlp.Encode(value).Bytes));
 
         [TestCaseSource(nameof(ValueWriterUInt256Cases))]
         public void RlpWriter_encodes_uint256_like_Rlp(UInt256 value)
@@ -494,7 +506,8 @@ namespace Nethermind.Core.Test
                 new byte[] { 0x81, 0x00 }, new byte[] { 0x81, 0x01 }, new byte[] { 0x81, 0x0F },
                 new byte[] { 0x81, 0x10 }, new byte[] { 0x81, 0x1F }, new byte[] { 0x81, 0x7F },
                 new byte[] { 0x82, 0x00, 0x81 }, new byte[] { 0x82, 0x00, 0xFF },
-                new byte[] { 0x83, 0x00, 0x01, 0x00 }, new byte[] { 0x84, 0x00, 0x00, 0x00, 0x01 }
+                new byte[] { 0x83, 0x00, 0x01, 0x00 }, new byte[] { 0x84, 0x00, 0x00, 0x00, 0x01 },
+                new byte[] { 0x82, 0x01 }
             )] byte[] bytes) =>
             Assert.That(
                 () => decoder.Invoke(new RlpReader(bytes)),
@@ -550,6 +563,24 @@ namespace Nethermind.Core.Test
             }
 
             return 1 + byteCount;
+        }
+
+        [Test]
+        public void Single_byte_array_decoding_preserves_array_ownership([Range(0, 255)] int value)
+        {
+            byte[] encoded = value < 128 ? [(byte)value] : [0x81, (byte)value];
+            RlpReader reader = new(encoded);
+            byte[] decoded = reader.DecodeByteArray();
+            RlpReader secondReader = new(encoded);
+            byte[] expected = secondReader.DecodeByteArray();
+            encoded[^1] ^= 0xff;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded, Is.EqualTo(new byte[] { (byte)value }));
+                Assert.That(decoded, value < 128 ? Is.SameAs(expected) : Is.Not.SameAs(expected));
+                Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+            }
         }
 
         [Test]

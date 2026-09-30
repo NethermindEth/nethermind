@@ -29,6 +29,11 @@ public class VmState<TGasPolicy> : IDisposable
     // State-gas refund already made spendable in this frame while its accounting correction
     // still has to reach the ancestor frame that originally paid the state gas.
     public long StateGasRefundAdvanced;
+    /// <summary>
+    /// EIP-8141 approval/outstanding-charge/receipt journal position at this call frame's entry; the
+    /// same boundary that restores world state on revert/halt restores the journal to here.
+    /// </summary>
+    public int FrameJournalCheckpoint;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -65,7 +70,8 @@ public class VmState<TGasPolicy> : IDisposable
         ExecutionType executionType,
         ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
-        in Snapshot snapshot)
+        in Snapshot snapshot,
+        bool isStatic = false)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -74,7 +80,7 @@ public class VmState<TGasPolicy> : IDisposable
             outputLength: 0L,
             executionType: executionType,
             isTopLevel: true,
-            isStatic: false,
+            isStatic: isStatic,
             isCreateOnPreExistingAccount: false,
             isCreateStateGasCharged: false,
             newAccountCharged: false,
@@ -99,7 +105,8 @@ public class VmState<TGasPolicy> : IDisposable
         in Snapshot snapshot,
         bool isTopLevel = false,
         bool newAccountCharged = false,
-        bool isCreateStateGasCharged = false)
+        bool isCreateStateGasCharged = false,
+        int frameJournalCheckpoint = 0)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -114,7 +121,8 @@ public class VmState<TGasPolicy> : IDisposable
             newAccountCharged: newAccountCharged,
             env: env,
             stateForAccessLists: stateForAccessLists,
-            snapshot: snapshot);
+            snapshot: snapshot,
+            frameJournalCheckpoint: frameJournalCheckpoint);
         return state;
     }
 
@@ -137,7 +145,8 @@ public class VmState<TGasPolicy> : IDisposable
         bool newAccountCharged,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
-        in Snapshot snapshot)
+        in Snapshot snapshot,
+        int frameJournalCheckpoint = 0)
     {
         _env = env;
         _snapshot = snapshot;
@@ -157,6 +166,7 @@ public class VmState<TGasPolicy> : IDisposable
         Gas = gas;
         InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
         StateGasRefundAdvanced = 0;
+        FrameJournalCheckpoint = frameJournalCheckpoint;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
@@ -177,9 +187,7 @@ public class VmState<TGasPolicy> : IDisposable
         }
         _isDisposed = false;
 
-#if DEBUG
-        _creationStackTrace = new StackTrace();
-#endif
+        PooledObjectLeakDetector.OnRent(this, nameof(VmState<>));
         [DoesNotReturn, StackTraceHidden]
         static void ThrowIsInUse() => throw new InvalidOperationException("Already in use");
     }
@@ -207,6 +215,7 @@ public class VmState<TGasPolicy> : IDisposable
             return;
         }
         _isDisposed = true;
+        PooledObjectLeakDetector.OnReturn(this);
 
         if (DataStack is not null)
         {
@@ -228,25 +237,14 @@ public class VmState<TGasPolicy> : IDisposable
         StateGasRefundAdvanced = 0;
 
         _statePool.Enqueue(this);
-
-#if DEBUG
-        GC.SuppressFinalize(this);
-#endif
     }
 
-#if DEBUG
-
-    private StackTrace? _creationStackTrace;
-
-    ~VmState()
-    {
-        if (!_isDisposed)
-        {
-            Console.Error.WriteLine($"Warning: {nameof(VmState<>)} was not disposed. Created at: {_creationStackTrace}");
-        }
-    }
-#endif
-
+    /// <summary>Builds the frame's EVM stack over <paramref name="codeSpan"/>, renting the data stack on first use.</summary>
+    /// <param name="codeSpan">
+    /// Must be <c>Env.CodeInfo.ExecutionCodeSpan</c>: untraced dispatch reads past the end of the code into the
+    /// padding that follows it, which a span of any other buffer does not carry.
+    /// </param>
+    /// <param name="stack">The stack of this frame.</param>
     public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
@@ -257,8 +255,11 @@ public class VmState<TGasPolicy> : IDisposable
         }
 
         stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
+        stack.HoistInputData(Env.InputData.Span);
     }
 
+    /// <inheritdoc cref="InitializeStacks(ReadOnlySpan{byte}, out EvmStack)"/>
+    /// <param name="txTracer">The tracer the stack reports to.</param>
     public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
@@ -269,8 +270,11 @@ public class VmState<TGasPolicy> : IDisposable
         }
 
         stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
+        stack.HoistInputData(Env.InputData.Span);
     }
 
+    /// <summary>Rebuilds a resumed frame's EVM stack over <paramref name="codeSpan"/>.</summary>
+    /// <inheritdoc cref="InitializeStacks(ITxTracer, ReadOnlySpan{byte}, out EvmStack)" path="/param"/>
     internal void RestoreStack<TTracingInst>(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
         where TTracingInst : struct, IFlag
     {
@@ -280,6 +284,7 @@ public class VmState<TGasPolicy> : IDisposable
         stack = TTracingInst.IsActive
             ? new(DataStackHead, txTracer, ref dataStack, codeSpan, Env.CodeInfo)
             : new(DataStackHead, ref dataStack, codeSpan, Env.CodeInfo);
+        stack.HoistInputData(Env.InputData.Span);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

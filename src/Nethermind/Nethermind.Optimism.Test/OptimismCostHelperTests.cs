@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
@@ -22,6 +25,64 @@ public class OptimismCostHelperTests
         TransactionForRpc.RegisterTransactionType<DepositTransactionForRpc>();
         TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
         TxDecoder.Instance.RegisterDecoder(new OptimismLegacyTxDecoder());
+    }
+
+    [Test]
+    public void L1_cost_decodes_packed_scalars([Values] bool fjord, [Values] bool blobFee)
+    {
+        const uint baseFeeScalar = 0x89abcdef;
+        const uint blobFeeScalar = 0xfedcba98;
+        byte[] packed = new byte[32];
+        Array.Fill(packed, (byte)0x57);
+        BinaryPrimitives.WriteUInt32BigEndian(packed.AsSpan(16, 4), baseFeeScalar);
+        BinaryPrimitives.WriteUInt32BigEndian(packed.AsSpan(20, 4), blobFeeScalar);
+        UInt256 l1BaseFee = blobFee ? UInt256.Zero : 1_000_000;
+        UInt256 blobBaseFee = blobFee ? 16_000_000 : UInt256.Zero;
+        IWorldState state = StubStorage((1, l1BaseFee), (7, blobBaseFee), (3, new UInt256(packed, isBigEndian: true)));
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        IOptimismSpecHelper spec = Substitute.For<IOptimismSpecHelper>();
+        spec.IsEcotone(header).Returns(true);
+        spec.IsFjord(header).Returns(fjord);
+        spec.IsRegolith(header).Returns(true);
+        Transaction tx = Build.A.Transaction.TestObject;
+        OptimismCostHelper helper = new(spec, TestItem.AddressA);
+        UInt256 expected = fjord
+            ? OptimismCostHelper.ComputeL1CostFjord(OptimismCostHelper.ComputeFlzCompressLen(tx), l1BaseFee, blobBaseFee, baseFeeScalar, blobFeeScalar, out _)
+            : OptimismCostHelper.ComputeDataGas(tx, true) * (blobFee ? blobFeeScalar : baseFeeScalar);
+
+        Assert.That(helper.ComputeL1Cost(tx, header, state), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Operator_cost_decodes_packed_parameters([Values] bool jovian)
+    {
+        const uint scalar = 0x89abcdef;
+        const ulong constant = 0xfedcba9876543210;
+        byte[] packed = new byte[32];
+        Array.Fill(packed, (byte)0x57);
+        BinaryPrimitives.WriteUInt32BigEndian(packed.AsSpan(20, 4), scalar);
+        BinaryPrimitives.WriteUInt64BigEndian(packed.AsSpan(24, 8), constant);
+        IWorldState state = StubStorage((8, new UInt256(packed, isBigEndian: true)));
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        IOptimismSpecHelper spec = Substitute.For<IOptimismSpecHelper>();
+        spec.IsIsthmus(header).Returns(true);
+        spec.IsJovian(header).Returns(jovian);
+        OptimismCostHelper helper = new(spec, TestItem.AddressA);
+        const ulong gas = 1_000_000;
+        UInt256 expected = jovian ? (UInt256)scalar * 100_000_000 + constant : (UInt256)scalar + constant;
+
+        Assert.That(helper.ComputeOperatorCost(gas, header, state), Is.EqualTo(expected));
+    }
+
+    private static IWorldState StubStorage(params (UInt256 Index, UInt256 Value)[] slots)
+    {
+        IWorldState state = Substitute.For<IWorldState>();
+        foreach ((UInt256 index, UInt256 value) in slots)
+        {
+            StorageCell cell = new(TestItem.AddressA, index);
+            state.When(s => s.Get(cell, out Arg.Any<UInt256>())).Do(call => call[1] = value);
+        }
+        return state;
     }
 
     // Taken from Jovian alpha devnet

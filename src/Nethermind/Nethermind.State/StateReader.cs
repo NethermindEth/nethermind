@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -22,20 +21,25 @@ namespace Nethermind.State
 
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) => TryGetState(baseBlock, address, out account);
 
-        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
         {
-            if (!TryGetAccount(baseBlock, address, out AccountStruct account)) return [];
+            if (!TryGetAccount(baseBlock, address, out AccountStruct account))
+            {
+                value = default;
+                return;
+            }
 
             ValueHash256 storageRoot = account.StorageRoot;
             if (storageRoot == Keccak.EmptyTreeHash.ValueHash256)
             {
-                return Bytes.ZeroByteSpan;
+                value = default;
+                return;
             }
 
             Metrics.IncrementStorageReaderReads();
 
             StorageTree storage = new(_trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, _logManager);
-            return storage.Get(index, new Hash256(storageRoot));
+            storage.Get(in index, out value, new Hash256(storageRoot));
         }
 
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : _codeDb[codeHash.Bytes];

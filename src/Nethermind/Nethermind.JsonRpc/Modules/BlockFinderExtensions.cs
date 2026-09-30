@@ -11,6 +11,20 @@ namespace Nethermind.JsonRpc.Modules
     public static class BlockFinderExtensions
     {
         public const string HeaderNotFound = "header not found";
+        public const string BlockRangeInFuture = "requested block range is in the future";
+
+        /// <summary>
+        /// Whether either bound of a range is a block number past the head, which eth_getLogs and trace_filter reject as invalid params.
+        /// </summary>
+        /// <remarks>
+        /// Compares against the local processed head even while syncing, as geth, erigon and reth do: blocks beyond it
+        /// have no state to serve, and a peer-reported head is untrusted.
+        /// </remarks>
+        public static bool IsRangeInFuture(this IBlockFinder blockFinder, BlockParameter? fromBlock, BlockParameter? toBlock)
+        {
+            ulong? headNumber = blockFinder.Head?.Number;
+            return headNumber < fromBlock?.BlockNumber || headNumber < toBlock?.BlockNumber;
+        }
 
         public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {
@@ -98,8 +112,11 @@ namespace Nethermind.JsonRpc.Modules
             {
                 SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
                 if (finalBlockHeader.IsError || finalBlockHeader.Object is null)
+                {
                     yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
-                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object!);
+                    yield break;
+                }
+                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object);
                 bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
@@ -115,7 +132,7 @@ namespace Nethermind.JsonRpc.Modules
                     ulong finalBlockNumber = finalBlockHeader.Object.Number;
                     if (startingBlockNumber > finalBlockNumber)
                     {
-                        yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
+                        yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidParams);
                     }
 
                     for (ulong i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)

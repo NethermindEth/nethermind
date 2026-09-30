@@ -58,8 +58,27 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
 
+        // Probe before the read so the cached case cannot be satisfied by an entry Get itself populated.
+        Assert.That(store.HasBlock(block.Number, block.Hash!), Is.True);
+
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
         Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
+    }
+
+    [Test]
+    public void Test_cached_block_that_was_never_written_is_not_reported_as_stored()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Cache(block);
+
+        // The cache is a bounded read accelerator, so a hit there says the block can be read right now, not that
+        // it is stored. Callers deciding whether they still have to download a body key off HasBlock, and an
+        // eviction after a true answer loses the body for good.
+        Assert.That(store.Get(block.Number, block.Hash!), Is.Not.Null);
+        Assert.That(store.HasBlock(block.Number, block.Hash!), Is.False);
     }
 
     [Test]

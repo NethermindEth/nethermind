@@ -16,7 +16,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -212,19 +211,19 @@ namespace Nethermind.AuRa.Test
 
         private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false)
         {
-            AutoResetEvent processedEvent = new(false);
+            TaskCompletionSource processedEvent = new(TaskCreationOptions.RunContinuationsAsynchronously);
             context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
                 .Returns(AddBlockResult.Added)
                 .AndDoes(c =>
                 {
-                    processedEvent.Set();
+                    Volatile.Read(ref processedEvent).TrySetResult();
                 });
 
             context.BlockProducerRunner.Start();
-            await processedEvent.WaitOneAsync(context.StepDelay * 20, CancellationToken.None);
+            await Task.WhenAny(processedEvent.Task, Task.Delay(context.StepDelay * 20));
             context.BlockTree.ClearReceivedCalls();
             await Task.Delay(context.StepDelay * 2);
-            processedEvent.Reset();
+            Interlocked.Exchange(ref processedEvent, new(TaskCreationOptions.RunContinuationsAsynchronously));
 
             try
             {
@@ -238,10 +237,10 @@ namespace Nethermind.AuRa.Test
                     context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
                     await Task.Delay(context.StepDelay * 5);
                     context.BlockTree.ClearReceivedCalls();
-                    processedEvent.Reset();
+                    Interlocked.Exchange(ref processedEvent, new(TaskCreationOptions.RunContinuationsAsynchronously));
                 }
 
-                await processedEvent.WaitOneAsync(context.StepDelay * 20, CancellationToken.None);
+                await Task.WhenAny(processedEvent.Task, Task.Delay(context.StepDelay * 20));
 
             }
             finally

@@ -453,6 +453,46 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
+        // TxFloodController's legacy-downgrade threshold is _notAcceptedSinceLastCheck > 600 (60s check interval,
+        // downgrade once unaccepted-per-second exceeds 10) - one report per skip, so this pair pins the boundary
+        // exactly rather than just "eventually downgrades", which a double-report bug would still satisfy.
+        [TestCase(600, false, TestName = "Skips_oversized_broadcast_transactions_and_reports_them_to_the_flood_controller_at_threshold")]
+        [TestCase(601, true, TestName = "Skips_oversized_broadcast_transactions_and_reports_them_to_the_flood_controller_past_threshold")]
+        public void Skips_oversized_broadcast_transactions_and_reports_them_to_the_flood_controller(int skipCount, bool expectDowngraded)
+        {
+            // >= 256 so EncodeOversizedTypedItem's hardcoded 2-byte length prefix is the canonical (non-leading-
+            // zero) encoding for maxTxSize + 1.
+            const int maxTxSize = 300;
+
+            _svc = new SerializationBuilder().WithEth()
+                .With(new TransactionsMessageSerializer(new TxPoolConfig { MaxTxSize = maxTxSize }))
+                .TestObject;
+            _handler = new Eth62ProtocolHandler(
+                _session,
+                _svc,
+                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager,
+                RunImmediatelyScheduler.Instance,
+                _transactionPool,
+                _gossipPolicy,
+                LimboLogs.Instance,
+                _txGossipPolicy);
+            _handler.Init();
+
+            byte[][] oversizedItems = new byte[skipCount][];
+            for (int i = 0; i < oversizedItems.Length; i++)
+            {
+                oversizedItems[i] = TransactionsMessageSerializerTests.EncodeOversizedTypedItem(maxTxSize + 1, (byte)TxType.EIP1559);
+            }
+            IByteBuffer packet = Unpooled.WrappedBuffer(TransactionsMessageSerializerTests.EncodeAsSequence(oversizedItems));
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(packet, Eth62MessageCode.Transactions);
+
+            Assert.That(_handler.IsFloodDowngraded, Is.EqualTo(expectDowngraded), $"{skipCount} skips should {(expectDowngraded ? "have" : "not have")} crossed the downgrade threshold");
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+
         [Test]
         public void Should_schedule_transactions_without_value_tuple_request()
         {
@@ -500,16 +540,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Arg.Is<string>(details => details.Contains("RlpException") && details.Contains("Transaction decoding returned null")));
         }
 
-        private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
+        private class AlwaysTimeoutBackgroundTaskScheduler(bool reject = false) : IBackgroundTaskScheduler
         {
             internal int ScheduledTasks = 0;
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
                 where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
-                CancellationTokenSource cts = new();
+                ScheduledTasks++;
+                if (reject) return false;
+                using CancellationTokenSource cts = new();
                 cts.Cancel();
                 fulfillFunc(request, cts.Token);
-                ScheduledTasks++;
                 return true;
             }
         }
@@ -546,13 +587,41 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             return false;
         }
 
-        [Test]
-        public void Will_Not_Reschedule_SubmitTx_When_Queue_Is_Full()
+        /// <summary>Decodes transaction messages as usual, attaching a witness to every transaction it decodes.</summary>
+        private sealed class WitnessingTransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
+        {
+            private readonly TransactionsMessageSerializer _serializer = new();
+
+            public List<RecycledTransactionWitness> Witnesses { get; } = [];
+
+            public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => _serializer.Serialize(byteBuffer, message);
+
+            public int GetLength(TransactionsMessage message, out int contentLength) => _serializer.GetLength(message, out contentLength);
+
+            public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
+            {
+                TransactionsMessage message = _serializer.Deserialize(byteBuffer);
+                IOwnedReadOnlyList<Transaction> transactions = message.Transactions;
+                for (int i = 0; i < transactions.Count; i++)
+                {
+                    // Releases the decoder's pre-hash buffer, which the witness then replaces.
+                    transactions[i].ClearPreHash();
+                    Witnesses.Add(new RecycledTransactionWitness(transactions[i], (byte)(i + 1)));
+                }
+
+                return message;
+            }
+        }
+
+        [Test, NonParallelizable]
+        public void Dropped_transaction_batch_is_returned_without_rescheduling([Values] bool reject)
         {
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+            WitnessingTransactionsMessageSerializer serializer = new();
+            _svc = Build.A.SerializationService().WithEth().With(serializer).TestObject;
 
-            AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new();
+            AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new(reject);
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
@@ -568,18 +637,26 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
-            Assert.That(taskScheduler.ScheduledTasks, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(taskScheduler.ScheduledTasks, Is.EqualTo(1));
+                Assert.That(serializer.Witnesses, Has.Count.EqualTo(3));
+                Assert.That(serializer.Witnesses, Has.All.Property(nameof(RecycledTransactionWitness.WasRecycled)).True);
+            }
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         }
 
-        [Test]
+        [Test, NonParallelizable]
         public void Cancelled_mid_processing_releases_transactions_unless_rescheduled([Values] bool rescheduleSucceeds)
         {
             Transaction[] txs = new Transaction[2];
             for (int i = 0; i < txs.Length; i++)
             {
                 txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
-                txs[i].SetPreHashNoLock([(byte)(i + 1)]);
             }
+
+            txs[0].SetPreHashNoLock([1]);
+            RecycledTransactionWitness tailWitness = new(txs[1], 2);
 
             ArrayPoolList<Transaction> list = new(txs.Length, txs);
 
@@ -600,8 +677,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 triedToReschedule = true;
                 if (rescheduleSucceeds)
                 {
-                    // The new task now owns the remaining txs: process tx[1] and release the list.
-                    list[1].ClearPreHash();
+                    // The new task now owns the remaining txs and releases the list.
                     list.Dispose();
                 }
                 return rescheduleSucceeds;
@@ -625,8 +701,67 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 Assert.That(triedToReschedule, Is.True);
                 Assert.That(txs[0].Hash, Is.Not.Null);
-                Assert.That(txs[1].Hash, Is.Null);
+                Assert.That(txs[0].Signature, Is.Not.Null);
+                Assert.That(tailWitness.WasRecycled, Is.EqualTo(!rescheduleSucceeds));
                 Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
+            }
+        }
+
+        [Test, NonParallelizable]
+        public void Submission_failure_preserves_escaped_transaction_and_returns_unsubmitted_tail()
+        {
+            Transaction first = Build.A.Transaction.WithNonce(17).SignedAndResolved().TestObject;
+            Transaction second = Build.A.Transaction.WithNonce(18).SignedAndResolved().TestObject;
+            Hash256 firstHash = first.Hash!;
+            RecycledTransactionWitness tailWitness = new(second, 2);
+            ArrayPoolList<Transaction> list = new(2) { first, second };
+            Transaction? published = null;
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+            {
+                published = call.Arg<Transaction>();
+                throw new InvalidOperationException("Subscriber failed after retaining the transaction");
+            });
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+
+            Assert.Throws<InvalidOperationException>(() => handler.HandleSlowPublic(list, CancellationToken.None));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(published, Is.SameAs(first));
+                Assert.That(first.Hash, Is.EqualTo(firstHash));
+                Assert.That(first.Nonce, Is.EqualTo(17));
+                Assert.That(first.Signature, Is.Not.Null);
+                Assert.That(tailWitness.WasRecycled, Is.True);
+                Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
+            }
+            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+        }
+
+        [Test]
+        public void Rejection_by_custom_pool_does_not_reset_retained_transaction()
+        {
+            Transaction tx = Build.A.Transaction.WithNonce(17).SignedAndResolved().TestObject;
+            Hash256 hash = tx.Hash!;
+            Transaction? retained = null;
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+            {
+                retained = call.Arg<Transaction>();
+                return AcceptTxResult.AlreadyKnown;
+            });
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retained, Is.SameAs(tx));
+                Assert.That(tx.Hash, Is.EqualTo(hash));
+                Assert.That(tx.Nonce, Is.EqualTo(17));
+                Assert.That(tx.Signature, Is.Not.Null);
             }
         }
 

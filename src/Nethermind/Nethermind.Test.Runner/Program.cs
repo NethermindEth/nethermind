@@ -85,6 +85,9 @@ internal class Program
 
         public static Option<bool?> BatchRead { get; } =
             new("--batchRead") { Description = "Force BAL batch-read prewarming on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
+
+        public static Option<string[]> ForkAlias { get; } =
+            new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeatable; needed where separate fixture releases give one fork name incompatible meanings.", AllowMultipleArgumentsPerToken = true };
     }
 
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -114,6 +117,7 @@ internal class Program
             Options.TrieDb,
             Options.ParallelExecution,
             Options.BatchRead,
+            Options.ForkAlias,
         ];
         rootCommand.SetAction(Run);
 
@@ -122,6 +126,10 @@ internal class Program
 
     private static async Task<int> Run(ParseResult parseResult, CancellationToken cancellationToken)
     {
+        // stdout carries only the results document, so every other writer goes to stderr.
+        TextWriter resultsOut = Console.Out;
+        Console.SetOut(Console.Error);
+
         bool isStateTest = parseResult.GetValue(Options.StateTest);
         bool isBlockTest = parseResult.GetValue(Options.BlockTest);
         bool isEngineTest = parseResult.GetValue(Options.EngineTest);
@@ -153,6 +161,9 @@ internal class Program
         bool enableWarmup = parseResult.GetValue(Options.EnableWarmup);
         bool? parallelExecution = parseResult.GetValue(Options.ParallelExecution);
         bool? batchRead = parseResult.GetValue(Options.BatchRead);
+
+        // Set before any fixture is loaded: the parse workers only ever read the table.
+        ForkAliases.Set(parseResult.GetValue(Options.ForkAlias) ?? []);
 
         if (parseResult.GetValue(Options.TrieDb))
         {
@@ -189,22 +200,22 @@ internal class Program
                     ParallelExecution: parallelExecution,
                     ParallelExecutionBatchRead: batchRead);
                 List<EthereumTestResult> results = await RunBlockTestFiles(files, runnerOptions, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isStateTest)
             {
                 List<EthereumTestResult> results = RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isTxTest)
             {
                 List<EthereumTestResult> results = RunTransactionTestFiles(files, filter, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isZkEvmTest)
             {
                 List<EthereumTestResult> results = RunZkEvmTestFiles(files, filter, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
 
             if (!parseResult.GetValue(Options.Stdin)) break;

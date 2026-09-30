@@ -264,7 +264,7 @@ public class MerkleTests
     [TestCase(64, 6)]
     public void Feed_test(int leafs, int depth)
     {
-        Merkleizer merkleizer = new(depth);
+        Merkleizer merkleizer = new(new UInt256[depth + 1]);
         for (int i = 0; i < leafs; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -286,7 +286,7 @@ public class MerkleTests
         UInt256 result = UInt256.Zero;
         for (int j = 0; j < leafs; j++)
         {
-            Merkleizer merkleizer = new(depth);
+            Merkleizer merkleizer = new(new UInt256[depth + 1]);
             for (int i = j; i < leafs; i++)
             {
                 merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -301,7 +301,7 @@ public class MerkleTests
     [Test]
     public void Fill()
     {
-        Merkleizer merkleizer = new(6);
+        Merkleizer merkleizer = new(new UInt256[7]);
         for (int i = 0; i < 7; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -316,7 +316,7 @@ public class MerkleTests
 
     private static UInt256 MerkleizeWithConverter<T>(T value, FeedItem<T> feed)
     {
-        Merkleizer merkleizer = new(0);
+        Merkleizer merkleizer = new(new UInt256[1]);
         feed(ref merkleizer, value);
         merkleizer.CalculateRoot(out UInt256 root);
         return root;

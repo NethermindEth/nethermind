@@ -16,6 +16,7 @@ namespace Nethermind.Facade.Eth
         ISyncConfig syncConfig,
         ISyncModeSelector syncModeSelector,
         ISyncProgressResolver syncProgressResolver,
+        IBeaconSyncStrategy beaconSyncStrategy,
         ILogManager logManager) : IEthSyncingInfo
     {
         public const int MaxDistanceForSynced = 8;
@@ -26,10 +27,22 @@ namespace Nethermind.Facade.Eth
         private readonly ISyncPointers _syncPointers = syncPointers;
         private readonly ISyncModeSelector _syncModeSelector = syncModeSelector;
         private readonly ISyncProgressResolver _syncProgressResolver = syncProgressResolver;
+        private readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy;
 
+        /// <remarks>
+        /// CL-driven catch-up keeps <c>Head</c> close to <c>BestSuggestedHeader</c> while the beacon sync target is far ahead,
+        /// so the highest block is widened with <see cref="IBeaconSyncStrategy.GetTargetBlockHeight"/>.
+        /// <c>BestSuggestedBeaconHeader</c> is not used: it is a high-water mark that an abandoned fork can leave above the head.
+        /// </remarks>
         public SyncingResult GetFullInfo()
         {
             (bool isSyncing, ulong headNumberOrZero, ulong bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
+            ulong beaconSyncTarget = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
+            if (beaconSyncTarget > bestSuggestedNumber)
+            {
+                bestSuggestedNumber = beaconSyncTarget;
+                isSyncing |= bestSuggestedNumber > headNumberOrZero + (ulong)MaxDistanceForSynced;
+            }
             SyncMode syncMode = _syncModeSelector.Current;
 
             if (_logger.IsTrace) _logger.Trace($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_syncPointers.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_syncPointers.LowestInsertedReceiptBlockNumber}");

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -42,13 +43,24 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"type":null}""");
             yield return Make(TxType.EIP1559, """{"additionalField":""}""");
             yield return Make(TxType.EIP1559, """{"MaxFeePerBlobGas":"0x0"}""");
-            yield return Make(TxType.Legacy,
+            yield return Make(TxType.EIP1559,
                 """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x1","gas":"0x0","input":null,"maxPriorityFeePerGas":"0x1"}""");
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""");
+            yield return Make(TxType.Blob, """{"gasPrice":"0x1","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blobVersionedHashes":["0x01f1872d656b7a820d763e6001728b9b883f829b922089ec6ad7f5f1665470dc"]}""");
+            yield return Make(TxType.SetCode, """{"gasPrice":"0x1","authorizationList":[]}""");
+            yield return Make(TxType.Legacy, """{"gasPrice":"0x1","accessList":null}""");
+            yield return Make(TxType.Legacy, """{"accessList":null,"gasPrice":"0x1","blobVersionedHashes":null,"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"gasPrice":"0x1","accessList":null,"maxFeePerGas":"0x1"}""");
 
             yield return Make(TxType.AccessList, """{"type":null,"accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[]}""");
-            yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null}""");
-            yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","AccessList":null}""");
+            yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","AccessList":[]}""");
+            // An explicit null discriminator is the same as omitting it.
+            yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null}""");
+            yield return Make(TxType.EIP1559, """{"accessList":null,"blobVersionedHashes":null,"authorizationList":null}""");
+            yield return Make(TxType.AccessList, """{"accessList":[],"blobVersionedHashes":null,"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"gasPrice":null}""");
+            yield return Make(TxType.EIP1559, """{"gasPrice":null,"accessList":null}""");
 
             yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"maxPriorityFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null,"maxPriorityFeePerGas":"0x0"}""");
@@ -64,12 +76,14 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"maxFeePerBlobGas":"0x0", "blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"blobVersionedHashes":[]}""");
-            yield return Make(TxType.Blob, """{"BlobVersionedHashes":null}""");
+            yield return Make(TxType.Blob, """{"BlobVersionedHashes":[]}""");
+            yield return Make(TxType.EIP1559, """{"blobVersionedHashes":null}""");
             yield return Make(TxType.Blob, """{"blobVersionedHashes":["0x01f1872d656b7a820d763e6001728b9b883f829b922089ec6ad7f5f1665470dc"]}""");
 
             yield return Make(TxType.SetCode, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"authorizationList":[]}""");
             yield return Make(TxType.SetCode, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","authorizationList":[]}""");
-            yield return Make(TxType.SetCode, """{"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"frames":null}""");
             yield return Make(TxType.SetCode, """{"AuthorizationList":[]}""");
 
             yield return Make(TxType.Legacy, """{"type":"0x0"}""");
@@ -105,6 +119,9 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Legacy, """{}""", Istanbul.Instance);
             yield return Make(TxType.Legacy, """{"nonce":"0x0","input":null}""", Istanbul.Instance);
             yield return Make(TxType.Legacy, """{"type":null}""", Istanbul.Instance);
+            // A null discriminator is the same as omitting it, so the type stays defaulted.
+            yield return Make(TxType.Legacy, """{"accessList":null}""", Istanbul.Instance);
+            yield return Make(TxType.Legacy, """{"maxFeePerGas":null,"maxPriorityFeePerGas":null}""", Istanbul.Instance);
 
             // Defaulted type on post-Berlin → keeps EIP1559
             yield return Make(TxType.EIP1559, """{}""", Berlin.Instance);
@@ -116,6 +133,8 @@ public class TransactionForRpcDeserializationTests
 
             // Discriminator-matched type is not defaulted → preserved
             yield return Make(TxType.AccessList, """{"accessList":[]}""", Istanbul.Instance);
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", Istanbul.Instance);
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", London.Instance);
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""", Istanbul.Instance);
 
             // gasPrice → Legacy: defaulted, but downgrade is a no-op so result is Legacy on any spec
@@ -131,6 +150,18 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"data":"0xABC","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length data")]
     [TestCase("""{"input":"0x1ab"}""", TestName = "EIP1559 tx odd-length input")]
     public void Test_OddLengthInputOrData_ThrowsJsonException(string txJson) => Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>(txJson));
+
+    [TestCase("""{"data":"0x602a","input":null}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":null,"data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":"0x602a","data":null}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":null,"input":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":null}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":null,"input":null}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":"0x602a","input":"0x"}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":"0x602a","input":""}""", ExpectedResult = "0x")]
+    [TestCase("""{"input":"","data":"0x602a"}""", ExpectedResult = "0x602a")]
+    public string Test_InputDataAliasResolution(string txJson) =>
+        _serializer.Deserialize<TransactionForRpc>(txJson)!.ToTransaction().Data!.Data.ToArray().ToHexString(true);
 
     [TestCaseSource(nameof(DefaultedTypeResolutionCases))]
     public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)

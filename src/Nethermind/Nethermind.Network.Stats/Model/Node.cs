@@ -746,15 +746,20 @@ namespace Nethermind.Stats.Model
                 return false;
             }
 
+            node = FromDiscoveryEnr(enr, key, discoveryEndpoint);
+            return true;
+        }
+
+        internal static Node FromDiscoveryEnr(NodeRecord enr, PublicKey key, IPEndPoint discoveryEndpoint)
+        {
             IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(discoveryEndpoint.Address.AddressFamily, out IPEndPoint? foundTcpEndpoint)
                 ? foundTcpEndpoint
                 : new IPEndPoint(discoveryEndpoint.Address, 0);
 
-            node = new Node(key, tcpEndpoint, discoveryEndpoint.Port)
+            return new Node(key, tcpEndpoint, discoveryEndpoint.Port)
             {
                 Enr = enr
             };
-            return true;
         }
 
         private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr, AddressFamily addressFamily)

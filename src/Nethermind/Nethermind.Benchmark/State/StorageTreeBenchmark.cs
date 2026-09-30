@@ -24,6 +24,10 @@ namespace Nethermind.Benchmarks.State
         public void Set_index() => _tree.Set(_index, _value);
 
         [Benchmark]
-        public byte[] Get_index() => _tree.Get(_index);
+        public UInt256 Get_index()
+        {
+            _tree.Get(in _index, out UInt256 value);
+            return value;
+        }
     }
 }

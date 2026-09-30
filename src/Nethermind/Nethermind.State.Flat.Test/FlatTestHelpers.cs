@@ -56,7 +56,7 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
 {
     public List<Address> SelfDestructCalls { get; } = [];
     public List<(Address Addr, Account? Account)> SetAccountCalls { get; } = [];
-    public List<(Address Addr, UInt256 Slot, SlotValue? Value)> SetStorageCalls { get; } = [];
+    public List<(Address Addr, UInt256 Slot, UInt256? Value)> SetStorageCalls { get; } = [];
     public List<(TreePath Path, byte[] Rlp)> SetStateTrieNodeCalls { get; } = [];
     public List<(Hash256 Address, TreePath Path, byte[] Rlp)> SetStorageTrieNodeCalls { get; } = [];
     public List<(ValueHash256 AddrHash, ValueHash256 SlotHash, byte[] RlpValue)> SetStorageRawEncodedCalls { get; } = [];
@@ -69,7 +69,7 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
 
     public void SelfDestruct(Address addr) => SelfDestructCalls.Add(addr);
     public void SetAccount(Address addr, Account? account) => SetAccountCalls.Add((addr, account));
-    public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) => SetStorageCalls.Add((addr, slot, value));
+    public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => SetStorageCalls.Add((addr, slot, value));
 
     public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
         SetStateTrieNodeCalls.Add((path, rlp.ToArray()));

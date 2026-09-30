@@ -46,8 +46,16 @@ namespace Nethermind.Facade.Find
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
+            (BlockHeader fromBlock, BlockHeader toBlock) = ResolveRange(_blockFinder, filter, cancellationToken);
+            return FindLogs(filter, fromBlock, toBlock, cancellationToken);
+        }
+
+        /// <summary> Resolves a filter's block parameters into the headers bounding the scan. </summary>
+        /// <exception cref="ResourceNotFoundException"> Either parameter does not resolve to a known block. </exception>
+        internal static (BlockHeader FromBlock, BlockHeader ToBlock) ResolveRange(IBlockFinder blockFinder, LogFilter filter, CancellationToken cancellationToken)
+        {
             BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
-                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
+                blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
 
             cancellationToken.ThrowIfCancellationRequested();
             BlockHeader toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), false);
@@ -56,14 +64,14 @@ namespace Nethermind.Facade.Find
                 toBlock :
                 FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
 
-            return FindLogs(filter, fromBlock, toBlock, cancellationToken);
+            return (fromBlock, toBlock);
         }
 
         public virtual IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
+            if (fromBlock.Number > toBlock.Number)
             {
                 throw new ArgumentException($"From block {fromBlock.Number} is later than to block {toBlock.Number}.");
             }
@@ -179,11 +187,6 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            if (toBlock.Number < fromBlock.Number)
-            {
-                return [];
-            }
-
             static IEnumerable<ulong> BlockNumbers(ulong from, ulong count)
             {
                 for (ulong i = 0; i < count; i++) yield return from + i;
@@ -231,7 +234,7 @@ namespace Nethermind.Facade.Find
                             if (filter.Accepts(ref log))
                             {
                                 // On CL workload, recovery happens about 70% of the time.
-                                iterator.RecoverIfNeeded(ref receipt);
+                                iterator.RecoverLogFieldsIfNeeded(ref receipt);
 
                                 logList ??= [];
                                 Hash256[] topics = log.Topics;

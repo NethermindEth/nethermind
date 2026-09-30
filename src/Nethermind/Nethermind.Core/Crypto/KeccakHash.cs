@@ -14,6 +14,15 @@ namespace Nethermind.Core.Crypto;
 
 public sealed partial class KeccakHash
 {
+    internal const int Hash532InputLength = 532;
+    internal const int Hash532PaddedLength = (Hash532InputLength / HASH_DATA_AREA + 1) * HASH_DATA_AREA;
+
+    /// <summary>Keccak-256's rate in bytes: the block the batch kernels consume per lane.</summary>
+    internal const int RateBlockLength = HASH_DATA_AREA;
+
+    /// <summary>Largest padded length the batch kernels are used with, four rate blocks.</summary>
+    internal const int MaxBatchablePaddedLength = 4 * RateBlockLength;
+
     private const int HASH_SIZE = 32;
     private const int STATE_SIZE = 200;
     private const int STATE_LANES = STATE_SIZE / sizeof(ulong);
@@ -580,10 +589,26 @@ public sealed partial class KeccakHash
             stateRef = ref Unsafe.Add(ref stateRef, ulongLength);
         }
 
-        // Handle remaining bytes
-        for (int i = 0; i < input.Length; i++)
+        ref byte tail = ref MemoryMarshal.GetReference(input);
+        nuint remaining = (nuint)input.Length;
+        // Fewer than eight bytes remain; use 4/2/1-byte chunks without reading beyond the input.
+        if (remaining >= sizeof(uint))
         {
-            Unsafe.Add(ref stateRef, i) ^= input[i];
+            Unsafe.WriteUnaligned(ref stateRef, Unsafe.ReadUnaligned<uint>(ref stateRef) ^ Unsafe.ReadUnaligned<uint>(ref tail));
+            stateRef = ref Unsafe.Add(ref stateRef, sizeof(uint));
+            tail = ref Unsafe.Add(ref tail, sizeof(uint));
+            remaining -= sizeof(uint);
+        }
+        if (remaining >= sizeof(ushort))
+        {
+            Unsafe.WriteUnaligned(ref stateRef, (ushort)(Unsafe.ReadUnaligned<ushort>(ref stateRef) ^ Unsafe.ReadUnaligned<ushort>(ref tail)));
+            stateRef = ref Unsafe.Add(ref stateRef, sizeof(ushort));
+            tail = ref Unsafe.Add(ref tail, sizeof(ushort));
+            remaining -= sizeof(ushort);
+        }
+        if (remaining != 0)
+        {
+            stateRef ^= tail;
         }
     }
 

@@ -104,6 +104,7 @@ public class ForkScheduleSpecProviderTests
                 (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.OsakaTimestamp),
                 (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.BPO1Timestamp),
                 (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.BPO2Timestamp),
+                (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.AmsterdamTimestamp),
             ])
             { TestName = "Sepolia" };
 

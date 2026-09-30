@@ -19,6 +19,11 @@ internal sealed class RecentNodeFilter<TKey>(int maxCount)
     private Queue<(TKey NodeId, long Generation)> _recentNodes = new(maxCount);
     private long _generation;
 
+    public bool Contains(TKey nodeId)
+    {
+        lock (_lock) return _nodes.ContainsKey(nodeId);
+    }
+
     public bool TryReserve(TKey nodeId)
     {
         lock (_lock)

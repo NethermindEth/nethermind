@@ -27,7 +27,7 @@ namespace Nethermind.Init.Steps
             if (!initConfig.ProcessingEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await (mainProcessingContext!.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+                await (mainProcessingContext!.BlockProcessingQueue?.StopAsync() ?? Task.CompletedTask);
             }
         }
     }

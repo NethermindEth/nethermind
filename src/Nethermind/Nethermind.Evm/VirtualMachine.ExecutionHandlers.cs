@@ -44,7 +44,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip158 : struct, IFlag
     {
         ExecutionEnvironment env = state.Env;
-        vm._worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, state.ExecutionType, in env.Value, vm.Spec);
+        vm._worldState.AddToBalanceAndCreateIfNotEmpty(env.ExecutingAccount, state.ExecutionType, in env.Value, vm.Spec);
         if (Eip158.IsActive && state.ExecutionType.IsAnyCreate())
             vm._worldState.IncrementNonce(env.ExecutingAccount);
     }

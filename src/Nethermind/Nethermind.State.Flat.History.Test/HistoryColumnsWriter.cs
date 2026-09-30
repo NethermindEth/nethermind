@@ -48,7 +48,7 @@ internal static class HistoryColumnsWriter
         Span<byte> value = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         int written = rawValue.IsEmpty
             ? 0
-            : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
+            : BaseFlatPersistence.EncodeSlotValue(BaseFlatPersistence.DecodeSlotValue(rawValue), rlpWrapSlots: true, value);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         store.RecordChange(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
@@ -136,7 +136,7 @@ internal static class HistoryColumnsWriter
         Span<byte> value = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         int written = rawValueBeforeChange.IsEmpty
             ? 0
-            : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValueBeforeChange), rlpWrapSlots: true, value);
+            : BaseFlatPersistence.EncodeSlotValue(BaseFlatPersistence.DecodeSlotValue(rawValueBeforeChange), rlpWrapSlots: true, value);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         store.RecordPreValue(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
