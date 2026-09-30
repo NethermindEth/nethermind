@@ -270,6 +270,175 @@ public class CallFrameCacheReviewTests(bool amsterdam) : VirtualMachineTestsBase
         Assert.That(after.Error, Is.Null);
     }
 
+    /// <summary>
+    /// The EIP-8037 per-frame bookkeeping (create state charge, pre-existing target, the state-gas floor) belongs to
+    /// the frame's own entry: creates on fresh and on pre-funded (alive, codeless) targets that succeed, revert or fail
+    /// their code deposit, interleaved with slot toggles that charge and refund state gas, on the same reused frames.
+    /// </summary>
+    [Test]
+    public void Create_and_state_gas_bookkeeping_does_not_stick_to_the_reused_frame([Values] bool traced)
+    {
+        byte[] ok = Prepare.EvmCode.RETURN(0, 1).Done;
+        byte[] reverting = Prepare.EvmCode.REVERT(0, 0).Done;
+        byte[] badCode = Prepare.EvmCode.PushData(0xEF).PushData(0).Op(Instruction.MSTORE8).RETURN(0, 1).Done;
+        byte[] toggler = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).Op(Instruction.ISZERO).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        Address toggle = new("0x00000000000000000000000000000000000c1e20");
+        Address toggleThenRevert = new("0x00000000000000000000000000000000000c1e21");
+        Address callToggleThenRevert = new("0x00000000000000000000000000000000000c1e22");
+        Address creator = new("0x00000000000000000000000000000000000c1e23");
+        Deploy(toggle, toggler);
+        Deploy(toggleThenRevert, [.. toggler[..^1], .. Prepare.EvmCode.REVERT(0, 0).Done]);
+        Deploy(callToggleThenRevert, Prepare.EvmCode.CALL(CallGas, toggle, 0, 0, 0, 0, 0).Op(Instruction.POP).REVERT(0, 0).Done);
+        // A failed code deposit burns all the gas the create frame got, so the creates run in a gas-limited creator.
+        Deploy(creator, CreatorCode());
+
+        List<(Instruction Kind, byte[] Init, int Salt)> creates =
+        [
+            (Instruction.CREATE, ok, 0),
+            (Instruction.CREATE2, reverting, 1), // pre-funded target: not charged, pre-existing
+            (Instruction.CREATE, badCode, 0), // fresh target, failed deposit
+            (Instruction.CREATE2, badCode, 2), // pre-funded target, failed deposit
+            (Instruction.CREATE, reverting, 0),
+            (Instruction.CREATE2, ok, 3), // pre-funded target, succeeds
+            (Instruction.CREATE, ok, 0),
+            (Instruction.CREATE2, reverting, 4), // fresh target
+        ];
+        foreach ((Instruction kind, byte[] init, int salt) in creates)
+        {
+            if (kind == Instruction.CREATE2 && salt != 4) TestState.CreateAccount(ContractAddress.From(creator, ((UInt256)salt).ToBigEndian(), init), (UInt256)1);
+        }
+
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        Prepare code = Prepare.EvmCode.SSTORE(9, [1]); // the driver has used state gas before its first child
+        int slot = 0x1000;
+        void Record()
+        {
+            code.PushData(slot).Op(Instruction.MSTORE)
+                .Op(Instruction.RETURNDATASIZE).Op(Instruction.PUSH0).PushData(slot + 32).Op(Instruction.RETURNDATACOPY)
+                .Op(Instruction.GAS).PushData(slot + 64).Op(Instruction.MSTORE);
+            slot += 96;
+        }
+
+        foreach ((Instruction kind, byte[] init, int salt) in creates)
+        {
+            code.MSTORE(0, ((UInt256)(kind == Instruction.CREATE2 ? 1 : 0)).ToBigEndian()).MSTORE(32, ((UInt256)salt).ToBigEndian())
+                .StoreDataInMemory(64, init)
+                .CALL(CallGas, creator, 0, 0, (UInt256)(64 + init.Length), 0, 0);
+            Record();
+            code.CALL(CallGas, toggle, 0, 0, 0, 0, 0);
+            Record();
+            code.CALL(CallGas, kind == Instruction.CREATE ? toggleThenRevert : callToggleThenRevert, 0, 0, 0, 0, 0);
+            Record();
+        }
+
+        // What exists at every CREATE2 target after the transaction.
+        foreach ((Instruction kind, byte[] init, int salt) in creates)
+        {
+            if (kind == Instruction.CREATE2)
+            {
+                code.PushData(ContractAddress.From(creator, ((UInt256)salt).ToBigEndian(), init)).Op(Instruction.EXTCODEHASH);
+                Record();
+            }
+        }
+
+        byte[] program = code.RETURN(0x1000, (UInt256)(slot - 0x1000)).Done;
+        (Transaction transaction, BlockExecutionContext context) = PrepareOnce(program);
+        string cached = Observe(transaction, context, traced);
+        string warm = Observe(transaction, context, traced);
+        string uncached = Uncached(() => Observe(transaction, context, traced));
+        UInt256[] words = Words(RunAndRestore(program, traced: false));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cached, Does.StartWith("status=1"));
+            Assert.That(cached, Is.EqualTo(uncached));
+            Assert.That(warm, Is.EqualTo(uncached));
+            // The sixth create (CREATE2, salt 3) landed on its pre-funded target.
+            Assert.That(words[5 * 9 + 1], Is.EqualTo(new UInt256(ContractAddress.From(creator, ((UInt256)3).ToBigEndian(), ok).Bytes.PadLeft(32), isBigEndian: true)));
+        }
+    }
+
+    /// <summary>
+    /// EIP-8037: a child that clears a slot a sibling created is refunded more state gas than it used itself, so the
+    /// refund is advanced against its entry floor. The floor must be the reused frame's own entry, whether the child
+    /// stops, reverts or halts, and whether it clears the slot itself (DELEGATECALL) or through a grandchild.
+    /// </summary>
+    [Test]
+    public void State_gas_floor_of_a_reused_frame_is_its_own_entry([Values("stop", "revert", "invalid")] string ending, [Values] bool viaGrandchild)
+    {
+        byte[] toggler = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).Op(Instruction.ISZERO).PushData(0).Op(Instruction.SSTORE).Done;
+        byte[] end = ending switch
+        {
+            "stop" => [(byte)Instruction.STOP],
+            "revert" => Prepare.EvmCode.REVERT(0, 0).Done,
+            _ => Prepare.EvmCode.INVALID().Done,
+        };
+        Address toggle = new("0x00000000000000000000000000000000000c1e30");
+        Address clearer = new("0x00000000000000000000000000000000000c1e31");
+        Deploy(toggle, [.. toggler, (byte)Instruction.STOP]);
+        Deploy(clearer, viaGrandchild
+            ? [.. Prepare.EvmCode.CALL(CallGas, toggle, 0, 0, 0, 0, 0).Op(Instruction.POP).Done, .. end]
+            : [.. toggler, .. end]);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        Prepare code = Prepare.EvmCode.SSTORE(9, [1]);
+        // The sibling creates the slot the clearer then clears: toggle's own slot through a grandchild, or the driver's.
+        code = viaGrandchild ? code.CALL(CallGas, toggle, 0, 0, 0, 0, 0) : code.DELEGATECODE(CallGas, toggle, 0, 0, 0, 0);
+        code.PushData(0x100).Op(Instruction.MSTORE).Op(Instruction.GAS).PushData(0x120).Op(Instruction.MSTORE);
+        code = viaGrandchild ? code.CALL(CallGas, clearer, 0, 0, 0, 0, 0) : code.DELEGATECODE(CallGas, clearer, 0, 0, 0, 0);
+        code.PushData(0x140).Op(Instruction.MSTORE).Op(Instruction.GAS).PushData(0x160).Op(Instruction.MSTORE)
+            .CALL(CallGas, Stopper, 0, 0, 0, 0, 0).PushData(0x180).Op(Instruction.MSTORE).Op(Instruction.GAS).PushData(0x1a0).Op(Instruction.MSTORE)
+            .RETURN(0x100, 0xc0);
+
+        (Transaction transaction, BlockExecutionContext context) = PrepareOnce(code.Done);
+        string cached = Observe(transaction, context, traced: false);
+        string warm = Observe(transaction, context, traced: false);
+        string uncached = Uncached(() => Observe(transaction, context, traced: false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cached, Does.StartWith("status=1"));
+            Assert.That(cached, Is.EqualTo(uncached));
+            Assert.That(warm, Is.EqualTo(uncached));
+        }
+    }
+
+    /// <summary>
+    /// A frame holding an advanced state-gas refund when a cancellation unwinds it must not hand that refund to the
+    /// next transaction's child reusing the frame.
+    /// </summary>
+    [Test]
+    public void Advanced_refund_of_a_frame_unwound_by_a_cancellation_does_not_reach_its_next_user()
+    {
+        Address toggle = new("0x00000000000000000000000000000000000c1e32");
+        Deploy(toggle, Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).Op(Instruction.ISZERO).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        // The second toggle clears the slot the first created and is cancelled on its STOP, refund still advanced.
+        byte[] cancelled = Prepare.EvmCode.SSTORE(9, [1])
+            .CALL(CallGas, toggle, 0, 0, 0, 0, 0).Op(Instruction.POP)
+            .CALL(CallGas, toggle, 0, 0, 0, 0, 0).Op(Instruction.POP)
+            .Op(Instruction.STOP).Done;
+        byte[] next = Prepare.EvmCode.SSTORE(9, [1])
+            .CALL(CallGas, Stopper, 0, 0, 0, 0, 0).PushData(0).Op(Instruction.MSTORE)
+            .Op(Instruction.GAS).PushData(32).Op(Instruction.MSTORE)
+            .RETURN(0, 64).Done;
+
+        ThrowingTracer cancelling = new(Machine) { ThrowAtOpcodeDepth = 1, ThrowAtOpcode = Instruction.STOP, ThrowAtOpcodeOccurrence = 2 };
+        Assert.Throws<OperationCanceledException>(() => RunAndRestore(cancelled, cancelling));
+        Assert.That(Machine.FrameCache[1]!.StateGasRefundAdvanced, Is.Zero, "the unwound frame keeps no advanced refund");
+        // A throwing call is not restored: drop what the cancelled transaction left in the world state.
+        TestState.Reset();
+
+        (Transaction nextTransaction, BlockExecutionContext nextContext) = PrepareOnce(next);
+        string expected = Uncached(() => Observe(nextTransaction, nextContext, traced: false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Observe(nextTransaction, nextContext, traced: false), Is.EqualTo(expected));
+            Assert.That(IsDisposed(Machine.FrameCache[1]!), Is.True);
+        }
+    }
+
     private static IEnumerable<TestCaseData> Seeds()
     {
         for (int seed = 1; seed <= 48; seed++)
@@ -474,6 +643,21 @@ public class CallFrameCacheReviewTests(bool amsterdam) : VirtualMachineTestsBase
         return a.Done();
     }
 
+    /// <summary>Input (kind, salt, init code): CREATE (kind 0) or CREATE2 of the init code; returns the result.</summary>
+    private static byte[] CreatorCode()
+    {
+        Asm a = new();
+        a.Push1(64); a.Op(Instruction.CALLDATASIZE, Instruction.SUB); // [len]
+        a.Op(Instruction.DUP1); a.Push1(64); a.Op(Instruction.PUSH0, Instruction.CALLDATACOPY); // mem[0..len) = init
+        a.Op(Instruction.PUSH0, Instruction.CALLDATALOAD); int toCreate2 = a.Jump(Instruction.JUMPI);
+        a.Op(Instruction.PUSH0, Instruction.PUSH0, Instruction.CREATE, Instruction.PUSH0, Instruction.MSTORE);
+        a.Push1(32); a.Op(Instruction.PUSH0, Instruction.RETURN);
+        a.Label(toCreate2);
+        a.Push1(32); a.Op(Instruction.CALLDATALOAD, Instruction.SWAP1, Instruction.PUSH0, Instruction.PUSH0, Instruction.CREATE2, Instruction.PUSH0, Instruction.MSTORE);
+        a.Push1(32); a.Op(Instruction.PUSH0, Instruction.RETURN);
+        return a.Done();
+    }
+
     /// <summary>Calls itself with n - 1 while n > 0, then stops.</summary>
     private static byte[] ChainCode()
     {
@@ -590,6 +774,9 @@ public class CallFrameCacheReviewTests(bool amsterdam) : VirtualMachineTestsBase
         public bool Traced { get; init; }
         public int ThrowAtActionDepth { get; init; } = -1;
         public int ThrowAtOpcodeDepth { get; init; } = -1;
+        public Instruction ThrowAtOpcode { get; init; } = Instruction.CALL;
+        public int ThrowAtOpcodeOccurrence { get; init; } = 1;
+        private int _opcodeHits;
         public int ThrowEvmExceptionWhenStagedAtDepth { get; set; } = -1;
         public int ThrowEvmExceptionAtStagedCount { get; init; } = -1;
         private int _staged;
@@ -613,7 +800,10 @@ public class CallFrameCacheReviewTests(bool amsterdam) : VirtualMachineTestsBase
 
         public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
         {
-            if (env.CallDepth == ThrowAtOpcodeDepth && opcode == Instruction.CALL) throw new OperationCanceledException("cancelled mid-frame");
+            if (env.CallDepth == ThrowAtOpcodeDepth && opcode == ThrowAtOpcode && ++_opcodeHits == ThrowAtOpcodeOccurrence)
+            {
+                throw new OperationCanceledException("cancelled mid-frame");
+            }
         }
 
         public override void ReportActionRemainingGas(ulong gas)
