@@ -426,6 +426,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     }
 
     /// <inheritdoc/>
+    /// <remarks>Judges appendability against the header's total block gas, which under EIP-8037 is the
+    /// non-invertible maximum of the execution and state dimensions, so it overstates both and can report
+    /// an entry the block had room for — that is, censorship — as absent.</remarks>
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
     {
         Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
