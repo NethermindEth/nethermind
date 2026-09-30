@@ -448,6 +448,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
+    /// <remarks>Only cold-cache resends use these passes; each pass may reread a sender's account.</remarks>
     private bool? EvaluateWithUnknownGasDimensions(Block block, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.

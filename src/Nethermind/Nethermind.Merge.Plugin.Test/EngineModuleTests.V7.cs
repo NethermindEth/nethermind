@@ -757,10 +757,8 @@ public partial class EngineModuleTests
     // state) the header reduces them to. The two differ only above the EIP-7825 execution cap: past it a
     // transaction reserves the cap on the execution dimension but its whole gas on the state one, so an entry
     // that fits both dimensions reads as unappendable against the max, and real censorship goes unreported.
-    // Nothing persists the dimensions, so a restart leaves the re-check with the max alone. bogota.md
-    // newPayloadV6 (2.1) requires a VALID response to carry the real compliance answer, and the max would
-    // have this one report the censorship as absent, so the payload is answered SYNCING — (2.2) leaves
-    // `inclusionListSatisfied` null there — and only a safe re-execution can give the answer instead.
+    // After cache loss, bounds still prove some verdicts. Only ambiguous cases answer SYNCING with null
+    // compliance (bogota.md newPayloadV6 (2.2)); recovering their exact answer needs safe re-execution.
     [TestCase(50, false, InclusionListEntry.Boundary, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions")]
     [TestCase(1, false, InclusionListEntry.Boundary, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions_after_the_payload_cache_evicts_it")]
     [TestCase(1, true, InclusionListEntry.Boundary, false, TestName = "NewPayloadV6_declines_to_judge_a_resent_block_once_both_caches_lose_the_gas_dimensions")]
