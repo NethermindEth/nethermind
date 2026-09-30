@@ -158,7 +158,8 @@ public partial class FrameTxFloodMeasurement
         double MaxLagUs,
         int PendingPoolGrowth,
         int Shed,
-        List<double> ProcessMicros);
+        List<double> ProcessMicros,
+        GcDelta Gc = default);
 
     /// <summary>Single source of truth for shed percentage, so every suite's rows agree.</summary>
     private static double ShedPct(FloodOutcome outcome) =>
@@ -385,9 +386,11 @@ public partial class FrameTxFloodMeasurement
             generator.ResetMaxLag();
             onWindowStart?.Invoke();
             long windowStart = Stopwatch.GetTimestamp();
+            GcDelta.Snapshot gcAtStart = GcDelta.Take();
 
             List<double> sampleMicros = measure(window ?? MeasureWindow);
 
+            GcDelta gcInWindow = GcDelta.Since(gcAtStart);
             long windowEnd = Stopwatch.GetTimestamp();
 
             // Every counter is read after the join. Reading them while the generator still submits lets a
@@ -408,7 +411,7 @@ public partial class FrameTxFloodMeasurement
             double achieved = windowSeconds > 0 ? submittedInWindow / windowSeconds : 0;
 
             return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs,
-                pendingPoolGrowth, shedInWindow, sampleMicros);
+                pendingPoolGrowth, shedInWindow, sampleMicros, gcInWindow);
         });
     }
 
@@ -665,6 +668,11 @@ public partial class FrameTxFloodMeasurement
             },
         ];
     }
+
+    /// <summary>The per-head simulation budget the pool ran with. Only the shedding arms run the node's stock budget;
+    /// the others lift it so the flood reaches the simulator, which makes their EVM-shape rows a counterfactual node.</summary>
+    private string SimBudgetField =>
+        $"sim_budget_per_head_ms={(_shedding ? new TxPoolConfig().FrameTxSimulationBudgetPerHeadMs.ToString(CultureInfo.InvariantCulture) : "unlimited")}";
 
     private static void Emit(string line)
     {

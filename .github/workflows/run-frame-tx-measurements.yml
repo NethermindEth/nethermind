@@ -27,8 +27,14 @@ on:
         required: false
         type: string
         default: ''
+      runner:
+        description: Runner the job must land on, e.g. benchmark-3. The job stops at once on any other. Empty accepts any and records it.
+        required: false
+        type: string
+        default: ''
 
 # Deliberate: no github.ref in the group, so dispatches never overlap; don't "fix" to the repo default.
+# A third dispatch replaces the pending second one, so dispatch one at a time and wait for it to finish.
 # The runner pool is shared with other benchmarks: keep each suite short, and never re-dispatch after a cancel.
 concurrency:
   group: ${{ github.workflow }}
@@ -44,6 +50,18 @@ jobs:
     # Suite budget plus build and setup; see the campaign SPEC.
     timeout-minutes: ${{ fromJSON('{"cost":20,"producer":35,"import":40,"import-tails":120,"honest":20}')[inputs.suite] }}
     steps:
+      # Numbers belong to the machine that measured them, and the pool holds several: a run on another one would
+      # not compare with the runs it is meant to repeat.
+      - name: Check the runner
+        env:
+          EXPECTED_RUNNER: ${{ inputs.runner }}
+        run: |
+          if [[ -n "${EXPECTED_RUNNER}" && "${RUNNER_NAME}" != "${EXPECTED_RUNNER}" ]]; then
+            echo "::error::this job landed on ${RUNNER_NAME}, not ${EXPECTED_RUNNER}. Stopping before any work; dispatch again for that runner."
+            exit 1
+          fi
+          echo "runner=${RUNNER_NAME} cpu=$(lscpu | sed -n 's/^Model name: *//p')"
+
       # Must run before checkout, or a checkout/setup failure skips the wipe while the always() steps below still fire.
       - name: Resolve the output directory
         run: |
@@ -156,6 +174,9 @@ jobs:
             echo "sha=${GITHUB_SHA}"
             echo "suite=${SUITE}"
             echo "runner=${RUNNER_NAME}"
+            echo "cpu_model=$(lscpu | sed -n 's/^Model name: *//p')"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
           } > "${OUTPUT_DIR}/PROVENANCE.txt"
           if [[ -n "${GROTH16_ARTIFACTS_VERSION:-}" ]]; then
             {
@@ -267,20 +288,32 @@ jobs:
               row_case="${SUITE//-/_}_level"
               run_harness Nethermind.Blockchain.Test "FrameTx-${SUITE}" "TestCategory=frame-tx-${SUITE}" pin "case=${row_case}" || status=1
               results="${OUTPUT_DIR}/FrameTx-${SUITE}-results.txt"
-              # Every ceiling the build can reach must have produced its rows. EVM shapes self-ignore above the
-              # compiled constant; signature stuffing is refused before the cap and runs on every build.
+              # Every cell the build can reach must have produced one row per level. EVM shapes self-ignore above
+              # the compiled constant; signature stuffing is refused before the cap and runs on every build.
+              paths=('')
               case "${SUITE}" in
-                producer)            ceilings=(100000 235800 250000 300000 400000 500000) ;;
-                import|import-tails) ceilings=(235800 250000 300000 400000) ;;
-                honest)              ceilings=(235800 300000) ;;
+                producer)            ceilings=(100000 235800 250000 300000 400000 500000); shapes=(keccak-wide signature-stuffed); levels=8 ;;
+                import|import-tails) ceilings=(235800 250000 300000 400000); shapes=(keccak-wide signature-stuffed); paths=(direct protected); levels=4 ;;
+                honest)              ceilings=(235800 300000); shapes=(keccak-wide); levels=5 ;;
               esac
-              for ceiling in "${ceilings[@]}"; do
-                if ! grep -Eq "^RESULT case=${row_case} .*ceiling=${ceiling} " "${results}" 2>/dev/null; then
-                  echo "::error::the ${SUITE} suite has no rows at ceiling ${ceiling}; inspect its log."
-                  status=1
-                elif grep -Eq "^RESULT case=${row_case} .*ceiling=${ceiling} .*[[:space:]]valid=no([[:space:]]|$)" "${results}" 2>/dev/null; then
-                  echo "::warning::the ${SUITE} suite at ceiling ${ceiling} has valid=no rows: its bracketing baselines' medians drifted."
-                fi
+              for shape in "${shapes[@]}"; do
+                for ceiling in "${ceilings[@]}"; do
+                  if [[ "${shape}" != signature-stuffed ]] && (( ceiling > compiled_max_verify_gas )); then
+                    continue
+                  fi
+                  for path in "${paths[@]}"; do
+                    cell="shape=${shape} ceiling=${ceiling}${path:+ gossip_path=${path}}"
+                    cell_rows=$(grep -E "^RESULT case=${row_case} shape=${shape} ceiling=${ceiling} " "${results}" 2>/dev/null \
+                      | grep -F -- "${path:+ gossip_path=${path} }" || true)
+                    n=$(grep -c '^RESULT' <<< "${cell_rows}" || true)
+                    if [[ "${n}" != "${levels}" ]]; then
+                      echo "::error::the ${SUITE} suite has ${n} of ${levels} level rows for ${cell}; inspect its log."
+                      status=1
+                    elif grep -Eq "[[:space:]]valid=no([[:space:]]|$)" <<< "${cell_rows}"; then
+                      echo "::warning::${cell} has valid=no rows: its bracketing baselines' medians drifted."
+                    fi
+                  done
+                done
               done
               ;;
           esac
