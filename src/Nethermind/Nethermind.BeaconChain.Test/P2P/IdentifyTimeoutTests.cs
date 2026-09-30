@@ -40,13 +40,13 @@ public class IdentifyTimeoutTests
 
         Task<ISession> dial = node.DialPeerAsync(peer.Address, token);
         await WaitUntilAsync(() => node.SessionCountForTest == 1, "fixture: the dial never opened a session", token);
-        // The library removes a closed session under this lock, so holding it keeps the failed session listed until the dial
-        // has ended: the window in which the dial could hand that session back as one the peer opened.
+        // The library removes a closed session under this lock, so holding it keeps the failed session listed while the dial fails:
+        // the window in which the dial could hand that session back. The dial's own lookup takes the lock too, so it waits here.
         Task heldListing = Task.Run(() =>
         {
             lock (node.LocalPeerForTest!.Sessions)
             {
-                ((IAsyncResult)dial).AsyncWaitHandle.WaitOne(Within);
+                ((IAsyncResult)dial).AsyncWaitHandle.WaitOne(IdentifyAgentVersionProbe.ReadTimeout + TimeSpan.FromSeconds(1));
             }
         }, token);
         Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended within the identify bound");
