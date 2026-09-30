@@ -727,9 +727,11 @@ public class PersistenceManagerTests
         // ConvertCompactedRange persists the gathered snapshot into the real persisted tier.
         // The converted/boundary snapshots are disposed by it (via RemoveAndRelease + the
         // pre-leased candidate), so they are NOT wrapped in `using`. Only the survivor is.
+        PersistBase(Block0, compactedFrom);
         CreateSnapshot(compactedFrom, compactedTo, compacted: true);
         CreateSnapshot(compactedFrom, baseA, compacted: false);
         CreateSnapshot(baseA, baseB, compacted: false);
+        CreateSnapshot(baseB, compactedTo, compacted: false);
         using Snapshot outsiderSnap = CreateSnapshot(Block0, outsider, compacted: false);
 
         Assert.That(_snapshotRepository.HasState(outsider), Is.True);
@@ -746,6 +748,31 @@ public class PersistenceManagerTests
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseB, SnapshotTier.InMemoryBase, out _), Is.False, "baseB removed from the in-memory tier");
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out _), Is.False, "boundary compacted removed");
         });
+    }
+
+    [Test]
+    public void ConvertCompactedRange_ForkWithInMemoryParent_StaysAssemblable()
+    {
+        // The fork's parent sits below the range and is still in memory, so converting the fork would put
+        // a persisted snapshot on top of an in-memory one, which no assembly walk can follow back to disk.
+        StateId forkPoint = CreateStateId(15);
+        StateId compactedFrom = CreateStateId(16);
+        StateId compactedTo = CreateStateId(16 + _config.CompactSize);
+        StateId forkParent = CreateStateId(16, rootByte: 1);
+        StateId forkTip = CreateStateId(17, rootByte: 1);
+
+        PersistBase(Block0, forkPoint);
+        PersistBase(forkPoint, compactedFrom);
+        CreateSnapshot(compactedFrom, compactedTo, compacted: true);
+        CreateSnapshot(compactedFrom, CreateStateId(17));
+        CreateSnapshot(forkPoint, forkParent);
+        CreateSnapshot(forkParent, forkTip);
+
+        _snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out Snapshot? compactedForConvert);
+        InvokeConvertCompactedRange(compactedForConvert!);
+
+        using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(forkTip, Block0, estimatedSize: 4);
+        Assert.That(assembled.SnapshotCount, Is.GreaterThan(0), "the fork tip must still assemble down to the persisted state");
     }
 
     [TestCase(1)]

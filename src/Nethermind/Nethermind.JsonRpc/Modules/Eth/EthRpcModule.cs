@@ -477,7 +477,7 @@ public partial class EthRpcModule(
             return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
 
         if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
-            return ResultWrapper<FillTransactionResult>.Fail($"invalid chain id (have={chainId}, want={requestedChainId})", ErrorCodes.InvalidInput);
+            return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.InvalidChainId(chainId, requestedChainId), ErrorCodes.InvalidInput);
 
         legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
@@ -964,10 +964,9 @@ public partial class EthRpcModule(
         {
             CancellationToken cancellationToken = timeout.Token;
 
-            ulong? headNumber = _blockFinder.Head?.Number;
-            if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
+            if (_blockFinder.IsRangeInFuture(fromBlock, toBlock))
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
             }
             if (fromBlock.BlockNumber > toBlock.BlockNumber)
             {

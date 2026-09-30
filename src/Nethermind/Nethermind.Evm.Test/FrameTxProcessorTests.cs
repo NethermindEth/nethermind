@@ -40,6 +40,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -148,6 +149,26 @@ public partial class FrameTxProcessorTests
                 Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
             }
         }
+    }
+
+    [Test]
+    public void Simulate_SkipSignatureValidation_StillRunsCustomVerifier(
+        [Values(TxFrameSignature.SchemeSecp256k1, TxFrameSignature.SchemeP256)] byte scheme,
+        [Values] bool placeholder, [Values] bool reverts, [Values] bool simulation)
+    {
+        DeploySmartSender(reverts ? RevertWithWord(1) : ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        int length = scheme == TxFrameSignature.SchemeSecp256k1 ? TxFrameSignature.Secp256k1SignatureLength : TxFrameSignature.P256SignatureLength;
+        tx.FrameSignatures = [new TxFrameSignature(scheme, null, default, placeholder ? default : new byte[length])];
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
+        EthereumTransactionProcessor processor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
+        processor.SkipSenderChecks = simulation;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        TransactionResult result = processor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(simulation && !reverts));
+        if (simulation && reverts) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
     }
 
     [Test]
@@ -1156,18 +1177,7 @@ public partial class FrameTxProcessorTests
     [Test]
     public void Execute_AtomicBatch_FrameFails_RollsBackBatchAndSkipsRemaining()
     {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        // Frame 1 writes and succeeds, frame 2 reverts, terminal frame 3 must be skipped and the batch
-        // rolled back.
-        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
-        DeployContract(TestItem.AddressD, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-
-        Transaction tx = FrameTx(nonce: 0,
-            SelfVerifyFrame(),
-            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Observer),
-            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
-            Frame(FrameMode.Sender, target: TestItem.AddressD));
+        Transaction tx = FailingAtomicBatchTx();
 
         TransactionResult result = Process(tx);
 
@@ -1179,6 +1189,37 @@ public partial class FrameTxProcessorTests
             AssertStorage(Observer, 0, UInt256.Zero, "batch frame 1 write rolled back");
             AssertStorage(TestItem.AddressD, 0, UInt256.Zero, "terminal frame skipped, never wrote");
         }
+    }
+
+    [TestCase(false, 0, 0, TestName = "Execute_AtomicBatch_FrameFails_NonTracingTracerGetsNoFrameReports")]
+    [TestCase(true, 3, 1, TestName = "Execute_AtomicBatch_FrameFails_TracingTracerGetsFrameReports")]
+    public void Execute_AtomicBatch_FrameFails_FrameReportsFollowIsTracing(bool isTracing, int frameEnds, int rollbacks)
+    {
+        Transaction tx = FailingAtomicBatchTx();
+        ITxTracer tracer = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+        tracer.IsTracing.Returns(isTracing);
+        IFrameTxReceiptTracer frameTracer = (IFrameTxReceiptTracer)tracer;
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        frameTracer.Received(frameEnds).ReportFrameEnd(Arg.Any<int>(), Arg.Any<EvmExceptionType?>());
+        frameTracer.Received(rollbacks).ReportFramesRolledBack(1, 2);
+        frameTracer.DidNotReceive().ReportFrameTxReceipt(Arg.Any<Address>(), Arg.Any<TxFrameReceipt[]>());
+    }
+
+    /// <summary>Frame 1 writes and succeeds, frame 2 reverts, so the batch rolls back and terminal frame 3 is skipped.</summary>
+    private Transaction FailingAtomicBatchTx()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(TestItem.AddressD, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        return FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Observer),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+            Frame(FrameMode.Sender, target: TestItem.AddressD));
     }
 
     [Test]
@@ -5033,6 +5074,7 @@ public partial class FrameTxProcessorTests
         SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
         TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
         SimulateCallResult result = blockTracer.BuildResult().Single();
+        blockTracer.ReapplyBlockHash(TestItem.KeccakH);
 
         LogEntry[] expected = batchFails
             ? [TransferLog.CreateSimulateTransfer(Sender, afterBatch, 2)]
@@ -5041,6 +5083,15 @@ public partial class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(batchFails ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(result.FrameResults, Has.Length.EqualTo(4));
+            Assert.That(result.FrameResults!.Select(static frame => frame.Logs.Count),
+                Is.EqualTo(batchFails ? new[] { 0, 0, 0, 1 } : new[] { 0, 2, 0, 1 }));
+            Assert.That(result.FrameResults.SelectMany(static frame => frame.Logs).Select(static log => log.LogIndex),
+                Is.EqualTo(result.Logs.Select(static log => log.LogIndex)));
+            Assert.That(result.Logs.Select(static log => log.LogIndex), Is.EqualTo(Enumerable.Range(0, expected.Length).Select(static i => (ulong)i)),
+                "an unrolled frame's logs give their indices back, as in the receipt");
+            Assert.That(result.FrameResults.SelectMany(static frame => frame.Logs).Select(static log => log.BlockHash),
+                Has.All.EqualTo(TestItem.KeccakH), "the processed block's hash must reach the per-frame logs");
             Assert.That(result.Logs.Select(static log => $"{log.Address}:{log.Topics[^1]}"),
                 Is.EqualTo(expected.Select(static log => $"{log.Address}:{log.Topics[^1]}")),
                 "the committed frames' transfers and logs, in emission order");
@@ -5058,7 +5109,7 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
         DeployContract(Observer, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done);
-        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(reverter, RevertWithWord(0xbb));
         DeployContract(afterBatch, Prepare.EvmCode.Call(reverter, 50_000).Op(Instruction.STOP).Done);
 
         Transaction tx = revertFirst
@@ -5084,6 +5135,9 @@ public partial class FrameTxProcessorTests
             Assert.That(result.Error.Message, Is.EqualTo(expected == EvmExceptionType.Revert
                 ? "execution reverted: frame failed"
                 : expected.GetEvmExceptionDescription()));
+            Assert.That(result.Error.Data, Is.EqualTo(revertFirst ? new UInt256(0xbb).ToBigEndian() : []),
+                "the first failed frame's own output, not a later frame's inner revert data");
+            Assert.That(result.ReturnData, Is.EqualTo(result.Error.Data));
         }
     }
 
@@ -5176,8 +5230,52 @@ public partial class FrameTxProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(result.ReturnData, Is.EqualTo(new UInt256(0xaa).ToBigEndian()));
+            Assert.That(result.FrameResults!.Select(static frame => frame.Status), Is.EqualTo(new ulong[] { 1, 0, 0 }));
+            Assert.That(result.FrameResults[1].ReturnData, Is.EqualTo(new UInt256(0xaa).ToBigEndian()));
+            Assert.That(result.FrameResults[2].ReturnData, Is.EqualTo(new UInt256(0xbb).ToBigEndian()));
             Assert.That(result.Error!.EvmException, Is.EqualTo(EvmExceptionType.Revert));
             Assert.That(result.Error.Data, Is.EqualTo(new UInt256(0xaa).ToBigEndian()));
+        }
+    }
+
+    [Test]
+    public void Simulate_FrameOutputs_IncludeSuccessRevertAndSkippedFrames([Values] bool fails)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode
+            .PushData(0xaa).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(0).Op(Instruction.RETURN).Done);
+        DeployContract(Observer, fails ? RevertWithWord(0xbb) : Prepare.EvmCode
+            .PushData(0xbb).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(0).Op(Instruction.RETURN).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(FrameMode.Sender, target: Recipient),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Observer),
+            Frame(FrameMode.Sender, target: Recipient));
+        tx.Hash = tx.CalculateHash();
+        SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ReturnData, Is.EqualTo(new UInt256(fails ? 0xbbUL : 0xaaUL).ToBigEndian()));
+            Assert.That(result.FrameResults, Has.Length.EqualTo(4));
+            Assert.That(result.FrameResults![0].ReturnData, Is.Empty);
+            Assert.That(result.FrameResults[1].ReturnData, Is.EqualTo(new UInt256(0xaa).ToBigEndian()));
+            Assert.That(result.FrameResults[2].ReturnData, Is.EqualTo(new UInt256(0xbb).ToBigEndian()));
+            Assert.That(result.FrameResults[3].ReturnData, Is.EqualTo(fails ? [] : new UInt256(0xaa).ToBigEndian()));
+            for (int i = 0; i < result.FrameResults.Length; i++)
+            {
+                Facade.Proxy.Models.Simulate.FrameResult frame = result.FrameResults[i];
+                TxFrameReceipt frameReceipt = receipt.FrameReceipts![i];
+                Assert.That(frame.Status, Is.EqualTo(frameReceipt.Status));
+                Assert.That(frame.GasUsed, Is.EqualTo(frameReceipt.GasUsed));
+                Assert.That(frame.ExecutionGasUsed, Is.EqualTo(frameReceipt.ExecutionGasUsed));
+                Assert.That(frame.StateGasUsed, Is.EqualTo(frameReceipt.StateGasUsed));
+            }
         }
     }
 

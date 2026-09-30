@@ -46,7 +46,7 @@ public partial class EthRpcModule
     private static bool NeedsFrameGas(FrameTransactionForRpc transaction)
     {
         foreach (FrameForRpc? frame in transaction.Frames ?? [])
-            if (frame is not null && (frame.ExecutionGasLimit is null || frame.StateGasLimit is null)) return true;
+            if (frame is not null && (frame.ExecutionGas is null || frame.StateGas is null)) return true;
         return false;
     }
 
@@ -67,8 +67,8 @@ public partial class EthRpcModule
         bool[] fillState = new bool[input.Length];
         for (int i = 0; i < input.Length; i++)
         {
-            fillExecution[i] = input[i].ExecutionGasLimit is null;
-            fillState[i] = input[i].StateGasLimit is null;
+            fillExecution[i] = input[i].ExecutionGas is null;
+            fillState[i] = input[i].StateGas is null;
         }
         BlockHeader executionHeader = header.Clone();
         if (!request.ShouldSetBaseFee())

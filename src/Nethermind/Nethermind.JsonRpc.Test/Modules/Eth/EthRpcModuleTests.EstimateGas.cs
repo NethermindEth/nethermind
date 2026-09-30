@@ -56,8 +56,8 @@ public partial class EthRpcModuleTests
         MaxPriorityFeePerGas = 0,
         Frames =
         [
-            new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = 50_000 },
-            new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGasLimit = 50_000 },
+            new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 50_000 },
+            new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGas = 50_000 },
         ],
         Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
     };
@@ -72,8 +72,8 @@ public partial class EthRpcModuleTests
         if (method == "eth_createAccessList") request.MaxFeePerGas = 1_000_000_000;
         foreach (FrameForRpc frame in request.Frames!)
         {
-            if (explicitDimension == 1) frame.ExecutionGasLimit = 50_000;
-            if (explicitDimension == 2) frame.StateGasLimit = 200_000;
+            if (explicitDimension == 1) frame.ExecutionGas = 50_000;
+            if (explicitDimension == 2) frame.StateGas = 200_000;
         }
 
         string response = await ctx.Test.TestEthRpc(method, request, "latest");
@@ -89,7 +89,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
-        if (explicitExecution) request.Frames![1].ExecutionGasLimit = 50_000;
+        if (explicitExecution) request.Frames![1].ExecutionGas = 50_000;
 
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request);
 
@@ -98,18 +98,18 @@ public partial class EthRpcModuleTests
         JToken frames = parsed["result"]!["tx"]!["frames"]!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(frames[0]!["executionGasLimit"]!.Value<string>(), Is.EqualTo("0x64"));
-            Assert.That(frames[0]!["stateGasLimit"]!.Value<string>(), Is.EqualTo("0x0"));
-            Assert.That(frames[1]!["executionGasLimit"]!.Value<string>(), Is.EqualTo(explicitExecution ? "0xc350" : "0xbb8"));
-            Assert.That(frames[1]!["stateGasLimit"]!.Value<string>(), Is.EqualTo("0x2cd30"));
-            Assert.That(request.Frames![0].ExecutionGasLimit, Is.Null, "RPC serialization must not mutate the caller's request");
+            Assert.That(frames[0]!["executionGas"]!.Value<string>(), Is.EqualTo("0x64"));
+            Assert.That(frames[0]!["stateGas"]!.Value<string>(), Is.EqualTo("0x0"));
+            Assert.That(frames[1]!["executionGas"]!.Value<string>(), Is.EqualTo(explicitExecution ? "0xc350" : "0xbb8"));
+            Assert.That(frames[1]!["stateGas"]!.Value<string>(), Is.EqualTo("0x2cd30"));
+            Assert.That(request.Frames![0].ExecutionGas, Is.Null, "RPC serialization must not mutate the caller's request");
         }
 
         FrameTransactionForRpc filled = FrameGasRequest();
         for (int i = 0; i < filled.Frames!.Length; i++)
         {
-            filled.Frames[i].ExecutionGasLimit = Convert.ToUInt64(frames[i]!["executionGasLimit"]!.Value<string>(), 16);
-            filled.Frames[i].StateGasLimit = Convert.ToUInt64(frames[i]!["stateGasLimit"]!.Value<string>(), 16);
+            filled.Frames[i].ExecutionGas = Convert.ToUInt64(frames[i]!["executionGas"]!.Value<string>(), 16);
+            filled.Frames[i].StateGas = Convert.ToUInt64(frames[i]!["stateGas"]!.Value<string>(), 16);
         }
         string estimated = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest");
         string explicitEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", filled, "latest");
@@ -122,8 +122,8 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
         if (method == "eth_createAccessList") request.MaxFeePerGas = 1_000_000_000;
-        request.Frames![1].ExecutionGasLimit = stateGas ? 50_000UL : 0;
-        request.Frames[1].StateGasLimit = stateGas ? 0 : 200_000UL;
+        request.Frames![1].ExecutionGas = stateGas ? 50_000UL : 0;
+        request.Frames[1].StateGas = stateGas ? 0 : 200_000UL;
 
         string response = await ctx.Test.TestEthRpc(method, request);
 
@@ -147,7 +147,7 @@ public partial class EthRpcModuleTests
         else blockOverride = JsonSerializer.Deserialize<object>($$"""{"gasLimit":"0x{{ctx.Test.RpcConfig.GasCap!.Value + 1:x}}"}""");
         FrameTransactionForRpc omitted = FrameGasRequest();
         FrameTransactionForRpc explicitLimits = FrameGasRequest();
-        foreach (FrameForRpc frame in explicitLimits.Frames!) (frame.ExecutionGasLimit, frame.StateGasLimit) = (50_000UL, 200_000UL);
+        foreach (FrameForRpc frame in explicitLimits.Frames!) (frame.ExecutionGas, frame.StateGas) = (50_000UL, 200_000UL);
         if (method == "eth_createAccessList") omitted.MaxFeePerGas = explicitLimits.MaxFeePerGas = 1_000_000_000;
 
         string expected = await ctx.Test.TestEthRpc(method, missingState ? [explicitLimits, "latest"] : [explicitLimits, "latest", null, blockOverride]);
@@ -338,8 +338,8 @@ public partial class EthRpcModuleTests
         request.MaxPriorityFeePerGas = 1;
         if (explicitLimits)
         {
-            (request.Frames![0].ExecutionGasLimit, request.Frames[0].StateGasLimit) = (50_000, 0);
-            (request.Frames[1].ExecutionGasLimit, request.Frames[1].StateGasLimit) = (50_000, 200_000);
+            (request.Frames![0].ExecutionGas, request.Frames[0].StateGas) = (50_000, 0);
+            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (50_000, 200_000);
         }
         // The second frame reverts unless GASPRICE is positive.
         object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"0xde0b6b3a7640000"},"{{{request.Frames![1].Target}}}":{"code":"0x3a15600657005b5f5ffd"}}""")!;
@@ -368,7 +368,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
-        request.Frames![1].ExecutionGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 1;
+        request.Frames![1].ExecutionGas = Eip7825Constants.DefaultTxGasLimitCap + 1;
 
         string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest");
 
@@ -389,6 +389,62 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameRpc_SimulateValidation_SkipsProtocolSignatureChecks([Values] bool placeholder, [Values] bool validation)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+        transaction.Gas = 200_000;
+        transaction.MaxFeePerGas = 1_000_000_000;
+        if (!placeholder) transaction.Signatures![0].Signature = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        object payload = new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation };
+
+        string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+    }
+
+    [Test]
+    public async Task FrameRpc_SimulateValidation_RetainsOtherChecks(
+        [Values("nonce", "signatureLength", "recoveryId", "verify")] string invalid, [Values] bool validation)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+        transaction.Gas = 200_000;
+        transaction.MaxFeePerGas = 1_000_000_000;
+        if (invalid == "nonce") transaction.Nonce = 100;
+        if (invalid == "signatureLength") transaction.Signatures![0].Signature = new byte[64];
+        if (invalid == "recoveryId")
+        {
+            byte[] signature = new byte[65];
+            signature[0] = 27;
+            transaction.Signatures![0].Signature = signature;
+        }
+        if (invalid == "verify") transaction.Signatures![0].Signer = TestItem.AddressB;
+        object payload = new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation };
+
+        string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
+
+        JToken parsed = JToken.Parse(response);
+        if (invalid == "nonce" && !validation)
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"), response);
+            return;
+        }
+
+        string error = invalid switch
+        {
+            "nonce" => "nonce",
+            "signatureLength" => "signature has the wrong length",
+            "recoveryId" => "recovery id",
+            _ => "VERIFY frame reverted"
+        };
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(error), response);
+    }
+
+    [Test]
     public async Task FrameRpc_UnsignedTransaction_Succeeds(
         [Values("eth_call", "eth_estimateGas", "eth_fillTransaction", "eth_simulateV1")] string method)
     {
@@ -404,7 +460,25 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"], Is.Null, response);
         Assert.That(parsed["result"], Is.Not.Null);
         if (method == "eth_call") Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"));
-        if (method == "eth_simulateV1") Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"));
+        if (method == "eth_simulateV1")
+        {
+            JToken call = parsed["result"]![0]!["calls"]![0]!;
+            JArray frames = (JArray)call["frameResults"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(call["status"]!.Value<string>(), Is.EqualTo("0x1"));
+                Assert.That(frames, Has.Count.EqualTo(2));
+                foreach (JToken frame in frames)
+                {
+                    Assert.That(frame["status"]!.Value<string>(), Is.EqualTo("0x1"));
+                    Assert.That(frame["returnData"]!.Value<string>(), Is.EqualTo("0x"));
+                    Assert.That(frame["gasUsed"]!.Value<string>(), Does.StartWith("0x"));
+                    Assert.That(frame["executionGasUsed"]!.Value<string>(), Does.StartWith("0x"));
+                    Assert.That(frame["stateGasUsed"]!.Value<string>(), Is.EqualTo("0x0"));
+                    Assert.That((JArray)frame["logs"]!, Is.Empty);
+                }
+            }
+        }
         if (method == "eth_fillTransaction")
         {
             using (Assert.EnterMultipleScope())
@@ -422,8 +496,8 @@ public partial class EthRpcModuleTests
         FrameTransactionForRpc placeholder = UnsignedFrameRequest();
         FrameTransactionForRpc signed = UnsignedFrameRequest();
         // Explicit limits: filling would change the frames the signature commits to.
-        foreach (FrameForRpc frame in placeholder.Frames!) frame.StateGasLimit = 0;
-        foreach (FrameForRpc frame in signed.Frames!) frame.StateGasLimit = 0;
+        foreach (FrameForRpc frame in placeholder.Frames!) frame.StateGas = 0;
+        foreach (FrameForRpc frame in signed.Frames!) frame.StateGas = 0;
         signed.Nonce = ctx.Test.ReadOnlyState.GetNonce(TestItem.AddressC);
         Transaction tx = signed.ToTransaction().Data!;
         tx.ChainId = ctx.Test.Bridge.GetChainId();

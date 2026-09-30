@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Tracing
     public interface ITracer
     {
         /// <summary>
-        /// Allows to trace an arbitrarily constructed block. Do NOT subtract gas from sender account
+        /// Allows to trace an arbitrarily constructed block. A transaction with both fee caps zero pays no gas fee; any other is validated and charged for gas.
         /// </summary>
         /// <param name="block">Block to trace.</param>
         /// <param name="tracer">Trace to act on block processing events.</param>

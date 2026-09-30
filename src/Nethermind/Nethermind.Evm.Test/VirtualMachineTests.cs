@@ -48,10 +48,38 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("6003565b00", 21012UL, 4).SetName("Jump_to_next_instruction"),
         new TestCaseData("600456fe5b5b00", 21013UL, 5).SetName("Jump_to_consecutive_markers"),
         new TestCaseData("6003565b", 21012UL, 3).SetName("Jump_to_final_byte"),
+        new TestCaseData("610004565b", 21012UL, 3).SetName("Push2_jump_to_final_byte"),
+        new TestCaseData("60016005575b", 21017UL, 4).SetName("JumpI_taken_to_final_byte"),
+        new TestCaseData("6000600057", 21016UL, 3).SetName("JumpI_not_taken_at_end"),
         // PUSH2 fuses with the following jump.
         new TestCaseData("61000556005b00", 21012UL, 4).SetName("Push2_Jump_taken"),
         new TestCaseData("60006100005700", 21016UL, 4).SetName("Push2_JumpI_not_taken_to_invalid_destination"),
     ];
+
+    // Untraced dispatch runs off the end into the zero padding that follows the code.
+    private static readonly TestCaseData[] EndOfCodeCases =
+    [
+        new TestCaseData("7f", 21003UL, 1).SetName("Push32_without_immediate"),
+        new TestCaseData("7f01", 21003UL, 1).SetName("Push32_truncated"),
+        new TestCaseData("61ff", 21003UL, 1).SetName("Push2_truncated"),
+        new TestCaseData("6000600001", 21009UL, 3).SetName("Add_at_end"),
+        new TestCaseData("600060000100", 21009UL, 4).SetName("Explicit_stop_at_end"),
+        new TestCaseData("60003b", 21703UL, 2).SetName("ExtCodeSize_at_end"),
+        new TestCaseData("60003b15", 21706UL, 3).SetName("ExtCodeSize_IsZero_at_end"),
+    ];
+
+    // Each case runs under both untraced drivers, which adjust a halt in the padding separately.
+    private static IEnumerable<TestCaseData> UntracedCompletionCases()
+    {
+        foreach (TestCaseData data in JumpCompletionCases.Concat(EndOfCodeCases))
+        {
+            foreach (bool cancelable in (bool[])[false, true])
+            {
+                yield return new TestCaseData([.. data.Arguments, cancelable])
+                    .SetName($"{data.TestName}{(cancelable ? "_cancelable" : string.Empty)}");
+            }
+        }
+    }
 
     private static readonly TestCaseData[] JumpFailureCases =
     [
@@ -95,19 +123,21 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
     }
 
-    /// <summary>Asserts that the per-test <see cref="VirtualMachineTestsBase.Setup"/> resets the fork activation that a previous test leaked into it.</summary>
-    /// <remarks>The fixture lifecycle is driven by hand because NUnit gives no ordering contract between tests, so the leak can only be observed deterministically within a single test.</remarks>
     [Test]
-    public void Setup_restores_default_activation_between_tests()
+    public void Explicit_fork_activation_does_not_leak_into_later_PrepareTx_calls()
     {
-        Execute(MainnetSpecProvider.CancunActivation, (byte)Instruction.STOP);
-        Assert.That(Activation, Is.EqualTo(MainnetSpecProvider.CancunActivation));
+        ForkActivation explicitActivation = MainnetSpecProvider.CancunActivation;
+        (Block explicitBlock, _) = PrepareTx(explicitActivation, 100000UL);
 
-        TearDown();
-        Setup();
+        (Block block, _) = PrepareTx(Activation, 100000UL);
 
-        Assert.That(Activation, Is.EqualTo(new ForkActivation(DefaultBlockNumber, DefaultTimestamp)));
-        AssertExpZeroTo160();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(explicitBlock.Header.Number, Is.EqualTo(explicitActivation.BlockNumber));
+            Assert.That(explicitBlock.Header.Timestamp, Is.EqualTo(explicitActivation.Timestamp));
+            Assert.That(block.Header.Number, Is.EqualTo(DefaultBlockNumber));
+            Assert.That(block.Header.Timestamp, Is.EqualTo(DefaultTimestamp));
+        }
     }
 
     [Test]
@@ -777,10 +807,10 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCaseSource(nameof(JumpCompletionCases))]
-    public void Untraced_jump_completion_preserves_semantics(string bytecode, ulong expectedGas, int expectedOpCodeCount)
+    [TestCaseSource(nameof(UntracedCompletionCases))]
+    public void Untraced_completion_preserves_semantics(string bytecode, ulong expectedGas, int expectedOpCodeCount, bool cancelable)
     {
-        TestAllTracerWithOutput receipt = ExecuteUntraced(100000UL, Bytes.FromHexString(bytecode));
+        TestAllTracerWithOutput receipt = ExecuteUntraced(100000UL, Bytes.FromHexString(bytecode), cancelable: cancelable);
 
         using (Assert.EnterMultipleScope())
         {
@@ -817,10 +847,10 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code, ulong blockGasLimit = DefaultBlockGasLimit)
+    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code, ulong blockGasLimit = DefaultBlockGasLimit, bool cancelable = false)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code, blockGasLimit: blockGasLimit);
-        NoInstructionTracer tracer = new();
+        TestAllTracerWithOutput tracer = cancelable ? new CountingCancellationTracer() : new NoInstructionTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
@@ -1131,6 +1161,20 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             978_997, 978_994, 978_991, 978_988, 978_985, 978_982, 978_979, 731_079, 966_979
         }));
+    }
+
+    [Test]
+    public void Call_at_max_depth_reports_depth_error()
+    {
+        // Calls itself with all but 512 gas, then, once the call fails, calls the identity precompile with no value and
+        // with 1 wei, and creates. Before EIP-150 a call forwards what it asks for, so 2M gas reaches the depth limit.
+        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1603c576000600060006000600060046000f1506000600060006000600160046000f150600060006000f0505b00");
+        (Block block, Transaction transaction) = PrepareTx((ForkActivation)MainnetSpecProvider.HomesteadBlockNumber, 2_000_000, code);
+        InstructionCallbackTracer tracer = new();
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.GetErrors(), Is.EqualTo(Enumerable.Repeat((Instruction.CALL, VirtualMachineStatics.MaxCallDepth, EvmExceptionType.CallDepthExceeded), 3)));
     }
 
     [Test]
@@ -1691,9 +1735,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Exp_0_160() => AssertExpZeroTo160();
-
-    private void AssertExpZeroTo160()
+    public void Exp_0_160()
     {
         TestAllTracerWithOutput receipt = Execute(
             (byte)Instruction.PUSH1,

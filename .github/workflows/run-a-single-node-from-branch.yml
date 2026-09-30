@@ -322,7 +322,7 @@ jobs:
           echo "timeout=$(echo '${{ inputs.additional_options }}' | jq -r .timeout)" >> $GITHUB_OUTPUT
           echo "ssh_keys=$(echo '${{ inputs.additional_options }}' | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
           echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
-          echo "custom_machine_type=$(echo '${{ inputs.additional_options }}' | jq -r .custom_machine_type)" >> $GITHUB_OUTPUT
+          echo "custom_machine_type=$(echo '${{ inputs.additional_options }}' | jq -r '.custom_machine_type // ""')" >> $GITHUB_OUTPUT
           # Both default to empty rather than jq's "null" so the smoke-tests side falls back to
           # NethermindEth/sedge@core. Set them to build sedge from a fork/PR branch instead.
           echo "sedge_repo=$(echo '${{ inputs.additional_options }}' | jq -r '.sedge_repo // ""')" >> $GITHUB_OUTPUT
