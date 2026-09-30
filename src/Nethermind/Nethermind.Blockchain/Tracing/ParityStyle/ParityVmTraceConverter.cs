@@ -23,10 +23,11 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
     public override ParityVmTrace Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         ReadTrace(ref reader, options);
 
-    /// <summary>
-    /// Reads a frame and its nested frames through direct calls rather than the serializer, keeping each call depth to a
-    /// couple of small stack frames; the reader's max depth bounds the recursion.
-    /// </summary>
+    /// <summary>Reads a frame and its nested frames.</summary>
+    /// <remarks>
+    /// Nested frames go through direct calls rather than the serializer, keeping each call depth to a couple of small
+    /// stack frames; the reader's max depth bounds the recursion.
+    /// </remarks>
     internal static ParityVmTrace ReadTrace(ref Utf8JsonReader reader, JsonSerializerOptions options)
     {
         if (reader.TokenType != JsonTokenType.StartObject)
@@ -52,7 +53,8 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
             }
             else
             {
-                throw new JsonException($"Cannot deserialize {nameof(ParityVmTrace)}.");
+                // A member from a newer format; skipping it keeps the block readable after a downgrade.
+                reader.Skip();
             }
 
             reader.Read();
