@@ -18,7 +18,11 @@ namespace Nethermind.Evm.Test.Tracing
         public void Nested_receipts_tracers_retain_frame_data([Values] bool failedFrame)
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithType(TxType.FrameTx).TestObject).TestObject;
+            ITxTracer leaf = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+            IBlockTracer leafBlock = Substitute.For<IBlockTracer>();
+            leafBlock.StartNewTxTrace(Arg.Any<Transaction>()).Returns(leaf);
             BlockReceiptsTracer inner = new();
+            inner.SetOtherTracer(leafBlock);
             BlockReceiptsTracer middle = new();
             BlockReceiptsTracer outer = new();
             middle.SetOtherTracer(inner);
@@ -30,9 +34,11 @@ namespace Nethermind.Evm.Test.Tracing
             outer.ReportFrameTxReceipt(TestItem.AddressA, frames);
             outer.MarkAsSuccess(TestItem.AddressB, 100, [], []);
 
+            ((IFrameTxReceiptTracer)leaf).Received(1).ReportFrameTxReceipt(TestItem.AddressA, frames);
+            BlockReceiptsTracer[] tracers = [outer, middle, inner];
             using (Assert.EnterMultipleScope())
             {
-                foreach (BlockReceiptsTracer tracer in new[] { outer, middle, inner })
+                foreach (BlockReceiptsTracer tracer in tracers)
                 {
                     Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(failedFrame ? StatusCode.Failure : StatusCode.Success));
                     Assert.That(tracer.TxReceipts[0].Payer, Is.EqualTo(TestItem.AddressA));
