@@ -6,10 +6,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
+using Multiformats.Address.Net;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -214,6 +216,14 @@ public sealed class BeaconP2P : IAsyncDisposable
         _localPeer.OnConnected += OnSessionConnected;
         _localPeer.Sessions.CollectionChanged += OnSessionsChanged;
         await _localPeer.StartListenAsync([$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"], token);
+        token.ThrowIfCancellationRequested();
+        IPEndPoint? listenEndpoint = _localPeer.ListenAddresses.Count == 1 ? _localPeer.ListenAddresses[0].ToEndPoint() : null;
+        // The library swallows a failed bind and reports no listen address instead.
+        if (listenEndpoint is null || listenEndpoint.Port == 0)
+        {
+            throw new InvalidOperationException($"Beacon chain P2P failed to bind TCP port {_config.P2PPort}; check whether the port is already in use");
+        }
+
         _router = _serviceProvider.GetRequiredService<PubsubRouter>();
         if (_messageValidator is not null)
         {
@@ -221,7 +231,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
 
         await _router.StartAsync(_localPeer, token);
-        if (_logger.IsInfo) _logger.Info($"Beacon chain P2P listening on port {_config.P2PPort} as {LocalPeerId}");
+        if (_logger.IsInfo) _logger.Info($"Beacon chain P2P listening on port {listenEndpoint.Port} as {LocalPeerId}");
     }
 
     /// <summary>Gets (and subscribes) the pubsub topic; available after <see cref="StartAsync"/>.</summary>
@@ -255,8 +265,11 @@ public sealed class BeaconP2P : IAsyncDisposable
     public bool TryGetEstablishedSession(PeerId peerId, [NotNullWhen(true)] out ISession? session)
     {
         LocalPeer localPeer = _localPeer ?? throw new InvalidOperationException($"{nameof(BeaconP2P)} is not started");
-        // Snapshot: the collection can change concurrently as connections come and go.
-        LocalPeer.Session[] sessions = [.. localPeer.Sessions];
+        LocalPeer.Session[] sessions;
+        lock (localPeer.Sessions)
+        {
+            sessions = [.. localPeer.Sessions];
+        }
         foreach (LocalPeer.Session candidate in sessions)
         {
             if (candidate.State.RemotePublicKey is not null && peerId.Equals(candidate.State.RemotePeerId))

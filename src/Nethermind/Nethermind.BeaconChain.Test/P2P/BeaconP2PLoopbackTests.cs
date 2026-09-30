@@ -5,6 +5,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
@@ -32,6 +34,80 @@ public class BeaconP2PLoopbackTests
     private const ulong AnchorSlot = 13_410_304;
 
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Start_rejects_an_occupied_TCP_port(CancellationToken token)
+    {
+        using TcpListener occupied = new(IPAddress.Any, 0) { ExclusiveAddressUse = true };
+        occupied.Start();
+        PeerSessionNodes.Node node = PeerSessionNodes.Create();
+        node.Config.P2PPort = ((IPEndPoint)occupied.LocalEndpoint).Port;
+        using CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await using BeaconP2P host = node.P2P;
+        try
+        {
+            Assert.That(async () => await host.StartAsync(lifetime.Token),
+                Throws.TypeOf<InvalidOperationException>().With.Message.Contains($"failed to bind TCP port {node.Config.P2PPort}"));
+            Assert.That(() => host.GetTopic("test"), Throws.TypeOf<InvalidOperationException>(), "pubsub must not start after a failed bind");
+        }
+        finally
+        {
+            await lifetime.CancelAsync();
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Established_session_lookup_waits_for_concurrent_removal(CancellationToken token)
+    {
+        using CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await using BeaconP2P host = PeerSessionNodes.Create().P2P;
+        try
+        {
+            await host.StartAsync(lifetime.Token);
+            LocalPeer peer = host.LocalPeerForTest!;
+            PeerId peerId = peer.Identity.PeerId;
+            LocalPeer.Session candidate = new(peer);
+            candidate.State.RemotePublicKey = peer.Identity.PublicKey;
+            candidate.State.RemoteAddress = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{peerId}");
+            TaskCompletionSource<ISession?> lookup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Thread reader = new(() =>
+            {
+                try
+                {
+                    host.TryGetEstablishedSession(peerId, out ISession? session);
+                    lookup.SetResult(session);
+                }
+                catch (Exception error)
+                {
+                    lookup.SetException(error);
+                }
+            }) { IsBackground = true };
+            try
+            {
+                lock (peer.Sessions)
+                {
+                    peer.Sessions.Add(candidate);
+                    reader.Start();
+                    Assert.That(SpinWait.SpinUntil(() => lookup.Task.IsCompleted || (reader.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                        TimeSpan.FromSeconds(5)), Is.True, "the lookup thread did not run");
+                    Assert.That(lookup.Task.IsCompleted, Is.False, "lookup must wait for the library's session lock");
+                    peer.Sessions.Remove(candidate);
+                }
+
+                Assert.That(await lookup.Task.WaitAsync(token), Is.Null, "the removed session must not appear in the snapshot");
+            }
+            finally
+            {
+                await lookup.Task.WaitAsync(token);
+            }
+        }
+        finally
+        {
+            await lifetime.CancelAsync();
+        }
+    }
 
     [Test]
     [CancelAfter(120_000)]
