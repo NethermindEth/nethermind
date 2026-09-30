@@ -1477,6 +1477,9 @@ jobs:
               echo "idle driver=$(cat /sys/devices/system/cpu/cpuidle/current_driver 2>/dev/null) governor=$(cat /sys/devices/system/cpu/cpuidle/current_governor_ro 2>/dev/null)"
               echo "msr events: $(ls /sys/bus/event_source/devices/msr/events 2>/dev/null | tr '\n' ' ')"
               echo "irqbalance: $(systemctl is-active irqbalance 2>/dev/null || true)"
+              echo "cache QoS flags: $(grep -m1 -owE 'cat_l3|cdp_l3|mba|cqm_llc|cqm_occup_llc|rdt_a|pqe|pqm' /proc/cpuinfo 2>/dev/null | sort -u | tr '\n' ' ') resctrl: $(grep -q resctrl /proc/filesystems && echo supported || echo none)"
+              echo "shmem thp=$(cat /sys/kernel/mm/transparent_hugepage/shmem_enabled 2>/dev/null) khugepaged defrag=$(cat /sys/kernel/mm/transparent_hugepage/khugepaged/defrag 2>/dev/null)"
+              echo "hugepages: $(grep -E 'HugePages_Total|HugePages_Free|Hugepagesize|AnonHugePages' /proc/meminfo | tr -s ' ' | tr '\n' ' ')"
             } >> "${host_report}"
             # NETHERMIND_COUNT_NO_WATCHDOG=1 frees the hardware counter the NMI watchdog holds on every CPU.
             if counting_env 'NETHERMIND_COUNT_NO_WATCHDOG=1'; then set_host /proc/sys/kernel/nmi_watchdog 0; fi
@@ -1485,6 +1488,10 @@ jobs:
             # NETHERMIND_COUNT_THP=always|madvise|never: transparent huge pages for the run.
             thp_mode="$(printf '%s' "${CLIENT_ENV:-}" | grep -oE 'NETHERMIND_COUNT_THP=[a-z]+' | cut -d= -f2 || true)"
             if [[ -n "${thp_mode}" ]]; then set_host /sys/kernel/mm/transparent_hugepage/enabled "${thp_mode}"; fi
+            # NETHERMIND_COUNT_THP_DEFRAG=always|defer|madvise|never: whether a fault compacts memory for a huge page
+            # instead of falling back to small pages that khugepaged may collapse later, at a timing of its own.
+            thp_defrag="$(printf '%s' "${CLIENT_ENV:-}" | grep -oE 'NETHERMIND_COUNT_THP_DEFRAG=[a-z+]+' | cut -d= -f2 || true)"
+            if [[ -n "${thp_defrag}" ]]; then set_host /sys/kernel/mm/transparent_hugepage/defrag "${thp_defrag}"; fi
             # NETHERMIND_COUNT_SHALLOW_IDLE=1: idle client cores stop at C1, so a core never powers down (and drops
             # its L2) between two blocks.
             if counting_env 'NETHERMIND_COUNT_SHALLOW_IDLE=1'; then
