@@ -635,22 +635,45 @@ namespace Nethermind.Db.Test
         }
 
         // Shutdown cannot wait forever for a slow reader, but closing under its slice frees memory the reader still uses.
+        // A release between the timeout and the hand-off must still close the database, as neither side would otherwise.
         [Test]
-        public void A_slice_held_past_the_dispose_timeout_keeps_the_db_open_until_it_is_released()
+        public void A_slice_held_past_the_dispose_timeout_keeps_the_db_open_until_it_is_released([Values] bool releasedAsDisposeTimesOut)
         {
             byte[] key = [1, 2, 3];
-            NativeCloseTrackingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance)
+            nint handle = 0;
+            NativeCloseTrackingDbOnTheRocks? db = null;
+            // The timeout warning is logged just before dispose hands the close to the last release.
+            WarnHookLogger logger = new(() => { if (releasedAsDisposeTimesOut) db!.DangerousReleaseHandle(handle); });
+            db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, new OneLoggerLogManager(new ILogger(logger)))
             {
                 PinnedSliceDrainTimeout = TimeSpan.FromMilliseconds(50)
             };
             db.PutSpan(key, new byte[64], WriteFlags.None);
-            _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
+            _ = db.GetNativeSlice(key, out handle, ReadFlags.HintCacheMiss);
 
             Assert.That(Task.Run(db.Dispose).Wait(TimeSpan.FromSeconds(10)), "dispose waited past its timeout");
-            Assert.That(db.NativeCloses, Is.Zero, "the database closed under a pinned slice");
+            if (!releasedAsDisposeTimesOut)
+            {
+                Assert.That(db.NativeCloses, Is.Zero, "the database closed under a pinned slice");
+                db.DangerousReleaseHandle(handle);
+            }
 
-            db.DangerousReleaseHandle(handle);
             Assert.That(db.NativeCloses, Is.EqualTo(1), "the last release must close the database once");
+        }
+
+        /// <summary>Runs an action on every warning.</summary>
+        private sealed class WarnHookLogger(Action onWarn) : InterfaceLogger
+        {
+            public void Info(string text) { }
+            public void Warn(string text) => onWarn();
+            public void Debug(string text) { }
+            public void Trace(string text) { }
+            public void Error(string text, Exception? ex = null) { }
+            public bool IsInfo => false;
+            public bool IsWarn => true;
+            public bool IsDebug => false;
+            public bool IsTrace => false;
+            public bool IsError => false;
         }
 
         private static void ReadBy(DbOnTheRocks db, GetPath path, byte[] key, int length)
