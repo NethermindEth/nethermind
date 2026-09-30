@@ -1502,6 +1502,39 @@ jobs:
                 done
               done
             fi
+            # NETHERMIND_COUNT_L3_WAYS=n (with NETHERMIND_COUNT_PIN_CPU): n L3 ways for the pinned CPU alone through
+            # resctrl cache allocation, the other ways for every other CPU, so neither the node's other threads nor
+            # the harness can evict the processing thread's lines.
+            l3_ways="$(printf '%s' "${CLIENT_ENV:-}" | grep -oE 'NETHERMIND_COUNT_L3_WAYS=[0-9]+' | cut -d= -f2 || true)"
+            pin_cpu="$(printf '%s' "${CLIENT_ENV:-}" | grep -oE 'NETHERMIND_COUNT_PIN_CPU=[0-9]+' | cut -d= -f2 || true)"
+            if [[ -n "${l3_ways}" && -n "${pin_cpu}" ]]; then
+              resctrl=/sys/fs/resctrl
+              if ! grep -q " ${resctrl} " /proc/mounts; then
+                if mount -t resctrl resctrl "${resctrl}" 2>> "${host_report}"; then echo "umount '${resctrl}'" >> "${host_restore}"; fi
+              fi
+              if [[ -r "${resctrl}/info/L3/cbm_mask" && ! -e "${resctrl}/expb-processing" ]]; then
+                full=$(( 16#$(cat "${resctrl}/info/L3/cbm_mask") ))
+                ways=0; for (( m=full; m; m>>=1 )); do (( ways += m & 1 )); done
+                if (( l3_ways > 0 && l3_ways < ways )); then
+                  own=$(( ((1 << l3_ways) - 1) << (ways - l3_ways) )); rest=$(( full & ~own ))
+                  default_l3="$(grep -E '^ *L3:' "${resctrl}/schemata" | tr -d ' ')"
+                  domains="$(sed -E 's/^L3://; s/=[0-9a-fA-F]+//g' <<< "${default_l3}" | tr ';' ' ')"
+                  line() { local mask="$1" d out=""; for d in ${domains}; do out+="${out:+;}${d}=$(printf '%x' "${mask}")"; done; echo "L3:${out}"; }
+                  if mkdir "${resctrl}/expb-processing"; then
+                    echo "rmdir '${resctrl}/expb-processing'" >> "${host_restore}"
+                    line "${own}" > "${resctrl}/expb-processing/schemata"
+                    echo "${pin_cpu}" > "${resctrl}/expb-processing/cpus_list"
+                    line "${rest}" > "${resctrl}/schemata"
+                    echo "echo '${default_l3}' > '${resctrl}/schemata'" >> "${host_restore}"
+                    echo "L3 ways: ${l3_ways} of ${ways} for CPU ${pin_cpu} ($(line "${own}")), the rest for the others ($(line "${rest}")); was ${default_l3}" >> "${host_report}"
+                  fi
+                else
+                  echo "NETHERMIND_COUNT_L3_WAYS=${l3_ways} is outside 1..$(( ways - 1 ))" >> "${host_report}"
+                fi
+              else
+                echo "L3 cache allocation unavailable (resctrl not mounted or already in use)" >> "${host_report}"
+              fi
+            fi
             { echo "idle states before:"; idle_snapshot; } >> "${host_report}"
           fi
 
