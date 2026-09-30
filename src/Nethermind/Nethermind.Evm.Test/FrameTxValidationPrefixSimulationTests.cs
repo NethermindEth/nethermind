@@ -586,8 +586,6 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_DeployFrameCreatesOverAnExistingAccount_IsRejected()
     {
-        // A create that opens no frame returned zero on a collision the prefix must not turn on —
-        // here a front-run of the very deployment the frame intends.
         byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         Address deployed = InstallFactory(initCode);
         DeployContract(deployed, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
@@ -601,6 +599,21 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.ErrorDescription, Does.Contain("deploy frame targets an already-deployed tx.sender"));
             Assert.That(tracer.Payer, Is.Null);
         }
+    }
+
+    [Test]
+    public void Simulate_DeployFrameWithExhaustedFactoryNonce_RecordsViolation()
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode, epilogue: [(byte)Instruction.POP]);
+        FundAccount(deployed, 1.Ether);
+        _stateProvider.IncrementNonce(Factory, ulong.MaxValue - _stateProvider.GetNonce(Factory));
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(DeployTx(deployed));
+
+        Assert.That(tracer.ViolationReason, Is.EqualTo("CREATE opened no creation frame"));
     }
 
     [Test]
@@ -1077,9 +1090,9 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     /// <summary>Installs a CREATE2 factory for <paramref name="initCode"/> and returns the address it deploys to.</summary>
-    private Address InstallFactory(byte[] initCode, byte[]? prologue = null)
+    private Address InstallFactory(byte[] initCode, byte[]? prologue = null, byte[]? epilogue = null)
     {
-        DeployContract(Factory, [.. prologue ?? [], .. Prepare.EvmCode.Create2(initCode, Salt, 0).Done]);
+        DeployContract(Factory, [.. prologue ?? [], .. Prepare.EvmCode.Create2(initCode, Salt, 0).Done, .. epilogue ?? []]);
         return ContractAddress.From(Factory, Salt, initCode);
     }
 
