@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -38,11 +37,11 @@ public static class SequenceNUnitConstraintExtensions
 }
 
 /// <summary>Element-wise equality for arrays, <see cref="Memory{T}"/>, <see cref="ReadOnlyMemory{T}"/>, spans and any <see cref="IEnumerable{T}"/>.</summary>
-/// <remarks>Compares an array, memory or span of elements without references in place; a mismatch, or any other element type, goes to <see cref="EqualConstraint"/>, which reports the differing index.</remarks>
+/// <remarks>Compares an array, memory or span of primitives or enums in place; a mismatch, or any other element type, goes to <see cref="EqualConstraint"/>, which reports the differing index.</remarks>
 public sealed class SequenceEqualConstraint<T> : Constraint
 {
-    // NUnit compares nested sequences by contents, which an element's own Equals may not; plain values cannot hold one.
-    private static readonly bool ElementsCompareByEquals = !RuntimeHelpers.IsReferenceOrContainsReferences<T>() && !typeof(IEnumerable).IsAssignableFrom(typeof(T));
+    // NUnit may compare other types structurally rather than by Equals, e.g. nested sequences or IStructuralEquatable.
+    private static readonly bool ElementsCompareByEquals = typeof(T).IsPrimitive || typeof(T).IsEnum;
 
     private readonly T[] _expected;
 
