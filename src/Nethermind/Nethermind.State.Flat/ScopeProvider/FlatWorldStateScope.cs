@@ -552,6 +552,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        // A block that never started a write batch still has the builder running on its trees.
+        _storageRootBuilder?.CompleteAndJoin();
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the

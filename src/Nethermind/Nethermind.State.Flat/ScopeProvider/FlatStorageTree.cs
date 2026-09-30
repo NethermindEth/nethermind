@@ -82,7 +82,8 @@ public sealed class FlatStorageTree(
         return Interlocked.CompareExchange(ref _trees, created, null) ?? created;
     }
 
-    public Hash256 RootHash => Volatile.Read(ref _trees)?.Tree.RootHash ?? _storageRoot;
+    // A trie the builder filled reports the parent's root until a write batch takes it, as on the serial path.
+    public Hash256 RootHash => _builtByBuilder ? _storageRoot : Volatile.Read(ref _trees)?.Tree.RootHash ?? _storageRoot;
 
     internal bool IsDisposed => _scope.IsDisposed;
 
@@ -310,7 +311,8 @@ public sealed class FlatStorageTree(
     public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
 
     /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
-    internal bool HasUncommittedNodes => Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
+    /// <remarks>A trie no write batch took holds only builder writes the block never reported, so it has none.</remarks>
+    internal bool HasUncommittedNodes => !_builtByBuilder && Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
