@@ -53,6 +53,10 @@ public partial class FrameTxFloodMeasurement
     private static readonly int[] ProducerLevelsMillions = [5, 10, 15, 20, 25, 30, 35, 40];
     private static readonly int[] ImportLevelsMillions = [5, 10, 30, 50];
 
+    /// <summary>The producer model's check (SPEC §4a): sig-stuffed decides on the stock node, 100k is today's value.</summary>
+    private static readonly ulong[] ProducerValidationCeilings = [100_000, 300_000];
+    private static readonly int[] ProducerValidationLevelsMillions = [10, 25, 40];
+
     /// <summary>0 is the control: honest traffic alone must be admitted.</summary>
     private static readonly int[] HonestLevelsMillions = [0, 5, 10, 30, 50];
 
@@ -122,6 +126,9 @@ public partial class FrameTxFloodMeasurement
     private static IEnumerable<TestCaseData> ProducerCases() =>
         from ceiling in ProducerCeilings from shape in BoundShapes select new TestCaseData(ceiling, shape);
 
+    private static IEnumerable<TestCaseData> ProducerValidationCases() =>
+        ProducerValidationCeilings.Select(static c => new TestCaseData(c, "signature-stuffed"));
+
     private static IEnumerable<TestCaseData> ImportCases() =>
         from ceiling in ImportCeilings
         from shape in BoundShapes
@@ -156,6 +163,50 @@ public partial class FrameTxFloodMeasurement
             "the producer never re-executed the failing transaction, so this measures an ordinary block");
     }
 
+    /// <summary>A long, build-sized pass: the ~10M gas compute block, then the producer's failing transaction, back to
+    /// back under the producer arm's floods. Its measured delay is set against the one the short pass's CPU share
+    /// predicts, <c>T0·f/(1−f)</c>, which decides whether that share can stand for a real build (SPEC §4a).</summary>
+    [TestCaseSource(nameof(ProducerValidationCases))]
+    [Category(ProducerSuite)]
+    public async Task Producer_long_pass_delay_at_fixed_declared_gas_rate(ulong ceiling, string shape)
+    {
+        SkipUnlessSingleCore();
+        await BuildChain(shape, ceiling, computeVictim: true);
+        AssertComputeBlockDoesRealWork();
+        WarmComputePath();
+
+        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, [FrameTx(0, ceiling, shape)], BlockGasLimit);
+        rig.RunFor(WarmupWindow);
+        Func<long>? rejectionCounter = RejectionCounterFor(shape);
+        await using GossipSubmitter submitter = new(_chain, scheduled: false, static () => false);
+
+        // The compute block runs on a fresh branch from the parent each time, so passes never accumulate state.
+        List<double> LongPasses(TimeSpan window)
+        {
+            List<double> micros = [];
+            long end = Stopwatch.GetTimestamp() + (long)(window.TotalSeconds * Stopwatch.Frequency);
+            while (Stopwatch.GetTimestamp() < end)
+            {
+                long start = Stopwatch.GetTimestamp();
+                ProcessImport(_computeBlock);
+                rig.ProduceOnce();
+                micros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
+            }
+            return micros;
+        }
+
+        RunLevels(ceiling, shape, "producer_long_level",
+            $"victim=long_producer_pass gossip_path=direct victim_gas={ComputeVictimCalls * ComputeVictimCallGas} ",
+            ProducerValidationLevelsMillions, () => LongPasses(MeasureWindow),
+            rate => DirectPoint(MeasureAccounted(submitter, RefusalCounterFor(shape), () => MeasureUnderFloodGeneric(rate,
+                warmup: () => { Thread.Sleep(FloodSettle); LongPasses(PeriodicWarmup); },
+                measure: LongPasses, rejectionCounter, onWindowStart: rig.MarkWindowStart, submit: submitter.Submit,
+                poolSize: PoolSizeFor(rate, FloodSettle + PeriodicWarmup + MeasureWindow)))));
+
+        Assert.That(rig.FailingExecutions, Is.GreaterThan(0),
+            "the long pass never re-executed the failing transaction, so it measures an ordinary block");
+    }
+
     /// <summary>Block import on a ~10M gas compute block processed every 250 ms. <c>direct</c>: the flood goes
     /// straight to the pool and no processing flag is raised, a counterfactual node without any gossip protection (not
     /// the node before #13994, whose scheduler already paused for block processing); <c>protected</c>: the flag is
@@ -179,12 +230,7 @@ public partial class FrameTxFloodMeasurement
         if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling, computeVictim: true);
         AssertComputeBlockDoesRealWork();
-        if (!_computeWarmed)
-        {
-            long warmEnd = Stopwatch.GetTimestamp() + (long)(ComputeFixtureWarmup.TotalSeconds * Stopwatch.Frequency);
-            while (Stopwatch.GetTimestamp() < warmEnd) ProcessImport(_computeBlock);
-            _computeWarmed = true;
-        }
+        WarmComputePath();
 
         bool isProtected = path == "protected";
         s_blockProcessingSignal = isProtected;
@@ -656,6 +702,15 @@ public partial class FrameTxFloodMeasurement
             }
         }
         return micros;
+    }
+
+    /// <summary>Processes the compute block back to back once per process, so its path is tiered before any window.</summary>
+    private void WarmComputePath()
+    {
+        if (_computeWarmed) return;
+        long warmEnd = Stopwatch.GetTimestamp() + (long)(ComputeFixtureWarmup.TotalSeconds * Stopwatch.Frequency);
+        while (Stopwatch.GetTimestamp() < warmEnd) ProcessImport(_computeBlock);
+        _computeWarmed = true;
     }
 
     private void AssertComputeBlockDoesRealWork()

@@ -315,6 +315,16 @@ jobs:
                   done
                 done
               done
+              # The producer model's validation cell: sig-stuffed only, so it runs on every build.
+              if [[ "${SUITE}" == producer ]]; then
+                for ceiling in 100000 300000; do
+                  n=$(grep -cE "^RESULT case=producer_long_level shape=signature-stuffed ceiling=${ceiling} " "${results}" 2>/dev/null || true)
+                  if [[ "${n}" != "3" ]]; then
+                    echo "::error::the producer validation cell at ceiling ${ceiling} has ${n} of 3 level rows; inspect its log."
+                    status=1
+                  fi
+                done
+              fi
               ;;
           esac
 
