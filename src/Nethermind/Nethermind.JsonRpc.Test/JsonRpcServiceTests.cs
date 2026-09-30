@@ -787,6 +787,20 @@ public class JsonRpcServiceTests
             Arg.Any<BlockOverride?>());
     }
 
+    [Test]
+    public void Disagreeing_data_and_input_are_rejected_as_invalid_params([Values(false, true)] bool rawUtf8)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        const string call = """{"data":"0x602a","input":"0x602b"}""";
+
+        AssertInvalidParamsWithoutData(rawUtf8
+            ? TestRawRequest(ethRpcModule, "eth_call", $"[{call},\"latest\"]")
+            : TestRequest(ethRpcModule, "eth_call", JsonSerializer.Deserialize<JsonElement>(call), "latest"),
+            RpcTransactionErrors.DataAndInputNotEqual);
+
+        ethRpcModule.DidNotReceiveWithAnyArgs().eth_call(default!, default, default, default);
+    }
+
     [TestCase("", null)]
     [TestCase(",\"after\":null", null)]
     [TestCase(",\"after\":1", 1UL)]

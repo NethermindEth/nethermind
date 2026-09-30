@@ -5,6 +5,7 @@ using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -40,15 +41,42 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     // See: https://github.com/NethermindEth/nethermind/pull/6067
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Data { set { Input = value; } private get { return null; } }
+    public byte[]? Data
+    {
+        set
+        {
+            if (value is null) return;
+            ThrowIfConflicting(Input, value);
+            _dataSet = true;
+            Input = value;
+        }
+        private get { return null; }
+    }
+
+    private bool _dataSet;
 
     /// <remarks>
     /// <see cref="Data"/> is an alias when deserializing. An explicit JSON null for either is the same as omitting it,
-    /// so it never clears calldata set by the other.
+    /// so it never clears calldata set by the other. Both set to different calldata is rejected, as in Geth.
     /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Input { get; set => field = value ?? field; }
+    public byte[]? Input
+    {
+        get;
+        set
+        {
+            if (value is null) return;
+            if (_dataSet) ThrowIfConflicting(field, value);
+            field = value;
+        }
+    }
+
+    private static void ThrowIfConflicting(byte[]? current, byte[] value)
+    {
+        if (current is not null && !current.AsSpan().SequenceEqual(value))
+            throw new SafePublicMessageFormatException(RpcTransactionErrors.DataAndInputNotEqual);
+    }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? GasPrice { get; set; }
