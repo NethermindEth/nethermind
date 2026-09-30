@@ -148,9 +148,6 @@ namespace Nethermind.Trie
 
         public CappedArray<byte> FullRlp => ReadRlp();
 
-        // Acquire pairs with the release publication of _nodeData in DecodeRlp: a concurrent resolver may publish a
-        // decode while another thread tests whether the node is resolved, and the decoded fields must be visible with it.
-        public NodeType NodeType => ReadNodeData()?.NodeType ?? NodeType.Unknown;
         public INodeData? NodeData => ReadNodeData();
 
         // BranchData is sealed and the only branch data, so one type test answers this without the NodeType dispatch.
@@ -158,7 +155,7 @@ namespace Nethermind.Trie
 
         public byte[]? Key
         {
-            get { return _nodeData is INodeWithKey node ? node?.Key : null; }
+            get => ReadKey();
             internal set
             {
                 if (_nodeData is not INodeWithKey node)
@@ -688,7 +685,7 @@ namespace Nethermind.Trie
                 ThrowNotABranch();
             }
 
-            ref object? data = ref _nodeData![i];
+            ref object? data = ref DataItem(i);
             if (data is null)
             {
                 CappedArray<byte> rlp = ReadRlp();
@@ -713,7 +710,7 @@ namespace Nethermind.Trie
                 i++;
             }
 
-            ref object? data = ref _nodeData![i];
+            ref object? data = ref DataItem(i);
             if (data is null)
             {
                 dirtyChild = null;
@@ -849,54 +846,7 @@ namespace Nethermind.Trie
         /// when setting to object[] array
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetItem(int i, TrieNode? node) => _nodeData![i] = node ?? _nullNode;
-
-        public long GetMemorySize(bool recursive)
-        {
-            int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;
-            CappedArray<byte> rlp = ReadRlp();
-            long rlpSize = MemorySizes.RefSize + (rlp.IsNotNull ? MemorySizes.ArrayOverhead + rlp.UnderlyingLength : 0);
-            long dataSize = MemorySizes.RefSize + (_nodeData?.MemorySize ?? 0);
-            int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
-            int blockAndFlagsSize = sizeof(long);
-
-            if (_nodeData is BranchData data)
-            {
-                for (int i = 0; i < data.Length; i++)
-                {
-                    object? child = data[i];
-                    dataSize += child switch
-                    {
-                        null => 0,
-                        Hash256 => Hash256.MemorySize,
-                        byte[] array => MemorySizes.ArrayOverhead + array.Length,
-                        CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength +
-                                                         MemorySizes.SmallObjectOverhead,
-                        _ => recursive && child is TrieNode node ? node.GetMemorySize(true) : 0
-                    };
-                }
-            }
-            else if (_nodeData is ExtensionData extensionData)
-            {
-                dataSize += extensionData.Value switch
-                {
-                    null => 0,
-                    Hash256 => Hash256.MemorySize,
-                    byte[] array => MemorySizes.ArrayOverhead + array.Length,
-                    CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength +
-                                                     MemorySizes.SmallObjectOverhead,
-                    _ => recursive && extensionData.Value is TrieNode node ? node.GetMemorySize(true) : 0
-                };
-            }
-
-            long unaligned = keccakSize +
-                             rlpSize +
-                             dataSize +
-                             blockAndFlagsSize +
-                             objectOverhead;
-
-            return MemorySizes.Align(unaligned);
-        }
+        private void SetItem(int i, TrieNode? node) => DataItem(i) = node ?? _nullNode;
 
         public TrieNode CloneWithChangedKey(byte[] key)
         {
@@ -1277,7 +1227,7 @@ namespace Nethermind.Trie
         {
             // A resolved child needs no RLP, so the seqlock read stays behind that check. A branch's
             // slot is read from its inline array directly rather than through the interface indexer.
-            ref object? data = ref _nodeData is BranchData branch ? ref branch[i] : ref _nodeData![i];
+            ref object? data = ref _nodeData is BranchData branch ? ref branch[i] : ref DataItem(i);
             return data ?? ResolveChildFromRlp(tree, ref childPath, ref data, i);
         }
 
@@ -1397,7 +1347,7 @@ namespace Nethermind.Trie
 
         internal void UnresolveChild(int i)
         {
-            ref object? data = ref _nodeData![i];
+            ref object? data = ref DataItem(i);
             if (IsPersisted)
             {
                 data = null;
@@ -1438,7 +1388,7 @@ namespace Nethermind.Trie
             private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
             {
                 // A resolved child needs no RLP, so the seqlock read stays behind that check.
-                ref object? data = ref node._nodeData![i];
+                ref object? data = ref node.DataItem(i);
                 object? childOrRef = data;
                 if (childOrRef is null)
                 {
