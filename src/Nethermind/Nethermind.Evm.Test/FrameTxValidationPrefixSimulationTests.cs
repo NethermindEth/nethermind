@@ -539,9 +539,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_DeployFrameInstallsCodeAwayFromTheSender_RecordsViolation()
     {
-        // The carve-out covers code installed at tx.sender only; the sender already carrying code
-        // leaves the created address as the sole thing under test.
-        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        FundAccount(Sender, 1.Ether);
         InstallFactory(Prepare.EvmCode.ForInitOf(Prepare.EvmCode.Op(Instruction.STOP).Done).Done);
         Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
 
@@ -600,7 +598,7 @@ public class FrameTxValidationPrefixSimulationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.ErrorDescription, Does.Contain("deploy frame installed no code"));
+            Assert.That(result.ErrorDescription, Does.Contain("deploy frame targets an already-deployed tx.sender"));
             Assert.That(tracer.Payer, Is.Null);
         }
     }
@@ -810,6 +808,7 @@ public class FrameTxValidationPrefixSimulationTests
         {
             Assert.That(tracer.ViolationReason, Is.Null);
             Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("deploy frame targets an already-deployed tx.sender"));
             Assert.That(tracer.Payer, Is.Null);
         }
     }

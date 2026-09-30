@@ -118,7 +118,7 @@ public sealed class FrameTxValidationTracer(
                 break;
             case Instruction.TIMESTAMP:
                 // EIP-8141 permits TIMESTAMP only in the leading canonical expiry frame.
-                if (!_inExpiryFrame || env.CallDepth != 0 || env.ExecutingAccount != expiryVerifier
+                if (!_inExpiryFrame || env.CallDepth != 0
                     || state.GetCodeHash(expiryVerifier) != Eip8141Constants.ExpiryVerifierCodeHash)
                 {
                     Violate("banned opcode TIMESTAMP in validation prefix");
