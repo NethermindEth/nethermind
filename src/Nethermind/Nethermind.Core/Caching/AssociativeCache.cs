@@ -178,10 +178,12 @@ public sealed partial class AssociativeCache<TKey, TValue>
                 // Ticker store without the set gate is safe: 8-byte aligned long is atomic on
                 // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
                 // not key/value correctness — the "losing" ticker value is simply slightly stale.
-                // An entry already strictly newest in its set keeps its rank if refreshed, so a hot entry is
-                // read, not written: no clock read and no line taken from other readers of it.
-                if (TRefreshTicker.IsActive && !IsNewestInSet(ref entries, baseIdx, i, e.Ticker))
-                    e.Ticker = Stopwatch.GetTimestamp();
+                if (TRefreshTicker.IsActive)
+                {
+                    bool newest = false;
+                    CheckNewestInSet(ref entries, baseIdx, i, e.Ticker, ref newest);
+                    if (!newest) e.Ticker = Stopwatch.GetTimestamp();
+                }
                 value = storedValue;
                 return true;
             }
@@ -433,22 +435,16 @@ public sealed partial class AssociativeCache<TKey, TValue>
     // stamp written into the entry is still the raw timestamp.
     [ThreadStatic] private static int _evictProbe;
 
-    /// <summary>Whether <paramref name="ticker"/> is newer than every other ticker in the set; a tie is not newest.</summary>
+    /// <summary>
+    /// Sets <paramref name="newest"/> when <paramref name="ticker"/> is newer than every other ticker in the set, so
+    /// refreshing the entry at <paramref name="way"/> cannot change its rank; a tie is not newest.
+    /// </summary>
     /// <remarks>
-    /// Stops at the first ticker at least as new, but proving an entry newest reads all eight, up to seven lines past the
-    /// matched way; that trades loads for the clock read and the shared ticker write. A skipped hit keeps its older stamp,
-    /// so a later stamp in the same clock tick ranks after it, as in access order, where stamping every hit would tie them.
+    /// Implemented only for the host, where a refresh's clock read and ticker write are what threads hitting one entry
+    /// contend on. The zkEVM guest runs single-threaded, where the scan only adds work, so without an implementation the
+    /// compiler drops the call and every hit refreshes.
     /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsNewestInSet(ref Entry entries, int baseIdx, int way, long ticker)
-    {
-        for (int j = 0; j < Ways; j++)
-        {
-            if (j != way && Unsafe.Add(ref entries, baseIdx + j).Ticker >= ticker) return false;
-        }
-
-        return true;
-    }
+    static partial void CheckNewestInSet(ref Entry entries, int baseIdx, int way, long ticker, ref bool newest);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Pick3RandomEvictEntry(ref Entry entries, int baseIdx, long now, int probe)
