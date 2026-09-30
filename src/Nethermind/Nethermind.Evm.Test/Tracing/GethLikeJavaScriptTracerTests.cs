@@ -1856,17 +1856,17 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
     private static IEnumerable<TestCaseData> CallCases()
     {
         foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL })
-        for (ulong fork = 0; fork <= 3; fork++)
-        foreach (bool warm in new[] { false, true })
-        foreach (bool newAccount in new[] { false, true })
-        foreach (int value in opcode == Instruction.DELEGATECALL ? new[] { 0 } : new[] { 0, 1 })
-        foreach (int memory in new[] { 0, 32 })
-        foreach (bool maximum in fork == 0 ? new[] { false } : new[] { false, true })
-            yield return new TestCaseData(opcode, fork, warm, newAccount, value, memory, maximum, 250000UL, false);
+            for (ulong fork = 0; fork <= 3; fork++)
+                foreach (bool warm in new[] { false, true })
+                    foreach (bool newAccount in new[] { false, true })
+                        foreach (int value in opcode == Instruction.DELEGATECALL ? new[] { 0 } : new[] { 0, 1 })
+                            foreach (int memory in new[] { 0, 32 })
+                                foreach (bool maximum in fork == 0 ? new[] { false } : new[] { false, true })
+                                    yield return new TestCaseData(opcode, fork, warm, newAccount, value, memory, maximum, 250000UL, false);
 
         foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL })
-        foreach (ulong fork in new[] { 0UL, 2UL, 3UL })
-            yield return new TestCaseData(opcode, fork, false, false, 0, 32, false, 250000UL, true);
+            foreach (ulong fork in new[] { 0UL, 2UL, 3UL })
+                yield return new TestCaseData(opcode, fork, false, false, 0, 32, false, 250000UL, true);
         yield return new TestCaseData(Instruction.CALL, 3UL, false, true, 1, 32, true, 20000000UL, false);
         yield return new TestCaseData(Instruction.CALL, 3UL, false, true, 1, 32, false, 20000000UL, false);
     }
