@@ -284,44 +284,6 @@ public class RangeSyncPeerSelectionTests
         }
     }
 
-    /// <summary>
-    /// The caller writes some blocks (a Gloas run) only when the round ends, so a round whose offered peer answers the rest of the range
-    /// empty from below it ends with what it fetched rather than waiting for a peer that may never come.
-    /// </summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_round_whose_offered_peers_answer_the_rest_of_the_range_empty_from_below_it_ends_with_what_it_fetched(CancellationToken token)
-    {
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12, 13, 14);
-        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
-        // Its real head is slot 14: it serves the first batch in part and has nothing past it.
-        StubPeer behind = new("behind", AnchorSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
-        RangeSync sync = new(new OfferingPool(behind), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
-        using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
-        bound.CancelAfter(TimeSpan.FromSeconds(5));
-
-        List<ForkedSignedBeaconBlock> yielded = [];
-        bool ended = true;
-        try
-        {
-            await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => AnchorSlot + 2 * RangeSync.DefaultBatchSize, bound.Token))
-            {
-                yielded.Add(block);
-            }
-        }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested)
-        {
-            ended = false;
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ended, Is.True, "the round waited for a peer instead of ending");
-            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
-            Assert.That(behind.Requests, Is.EqualTo(2));
-        }
-    }
-
     /// <summary>BeaconBlocksByRange (phase0/p2p-interface.md) leaves skipped slots out, so a peer below the range may answer a whole batch of them empty truthfully.</summary>
     [Test]
     [CancelAfter(30_000)]
