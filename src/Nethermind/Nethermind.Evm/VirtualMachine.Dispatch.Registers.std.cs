@@ -116,7 +116,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TContinuable : struct, IFlag
         {
             EvmExceptionType exceptionType;
-            if (TOpcode.CarriesRegisters && TOpcode.HasCheckedBody)
+            // Variant: every checked body that stays inline runs on the carried values, not only the ported set.
+            if ((TOpcode.CarriesRegisters || !TOpcode.CallsOutOfLine) && TOpcode.HasCheckedBody)
             {
                 pc++;
                 opCodeCount++;
@@ -150,7 +151,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 else
                 {
                     EvmStack local = new(in stack, head);
-                    EvmExceptionType checkedResult = TOpcode.Execute(ref local, ref fixedGas, null!, ref pc);
+                    EvmExceptionType checkedResult = TOpcode.Execute(ref local, ref fixedGas, TOpcode.UsesVm ? state.Vm : null!, ref pc);
                     Debug.Assert(checkedResult == EvmExceptionType.None, "HasCheckedBody must not fail after dispatch validates its preconditions.");
                     head += TOpcode.StackGrowth;
                     Debug.Assert(local.Head == head, "StackGrowth must be the net change the checked body makes.");
