@@ -1838,11 +1838,12 @@ public class TraceRpcModuleTests
     // a CREATE would also change the created address.
     [Test]
     public async Task Trace_rawTransaction_rejects_a_nonce_other_than_the_senders(
-        [Values(-1, 0, 1)] int nonceOffset, [Values] bool create)
+        [Values(-1, 0, 1)] int nonceOffset, [Values] bool create, [Values] bool streaming)
     {
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
         ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Assert.That(nonce, Is.GreaterThan(0UL), "precondition: the sender has sent transactions");
         TransactionBuilder<Transaction> builder = Build.A.Transaction

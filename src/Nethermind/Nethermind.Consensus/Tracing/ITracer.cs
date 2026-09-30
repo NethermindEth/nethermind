@@ -27,10 +27,12 @@ namespace Nethermind.Consensus.Tracing
         void Execute(Block block, IBlockTracer tracer);
 
         /// <summary>
-        /// Allows to trace an arbitrarily constructed block of signed transactions, each run with its own nonce, which the
-        /// processor validates with its other state checks, such as the sender's code and funds; fees are charged. Unlike
-        /// <see cref="Execute"/>, the nonce isn't replaced with the sender's. The caller validates that each is well formed.
+        /// Traces a block of signed transactions with their original nonces, state validation and gas charges.
         /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="Execute"/>, the nonce isn't replaced with the sender's.
+        /// The caller must validate that each transaction is well formed.
+        /// </remarks>
         /// <param name="block">Block to trace.</param>
         /// <param name="tracer">Trace to act on block processing events.</param>
         void ExecuteSigned(Block block, IBlockTracer tracer);
