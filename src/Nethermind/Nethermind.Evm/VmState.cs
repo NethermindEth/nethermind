@@ -55,6 +55,12 @@ public class VmState<TGasPolicy> : IDisposable
 
     private bool _isDisposed = true;
 
+    /// <summary>
+    /// Owned by a <see cref="VirtualMachine{TGasPolicy}"/> call-frame cache slot: disposal keeps the data stack
+    /// attached and never hands the frame to the pool.
+    /// </summary>
+    private bool _isCached;
+
     private EvmPooledMemory _memory;
     private readonly EvmFrameMemory _inlineMemory = new();
     private ExecutionEnvironment? _env;
@@ -123,6 +129,65 @@ public class VmState<TGasPolicy> : IDisposable
             stateForAccessLists: stateForAccessLists,
             snapshot: snapshot,
             frameJournalCheckpoint: frameJournalCheckpoint);
+        return state;
+    }
+
+    /// <summary>
+    /// Rents a child frame from <paramref name="frameCache"/>, indexed by the call depth of <paramref name="env"/>,
+    /// falling back to the pool beyond its length. A cached frame keeps its data stack across uses.
+    /// </summary>
+    /// <remarks>
+    /// Child frames nest strictly, so the frame at a given depth has been disposed by the time its parent opens
+    /// the next one. A slot is still reused only once its frame is disposed: a frame still in use - one staged by
+    /// CALL or CREATE and then orphaned by an exception before it was entered - is abandoned to the GC and
+    /// replaced, so a live frame is never shared.
+    /// </remarks>
+    internal static VmState<TGasPolicy> RentFrame(
+        VmState<TGasPolicy>?[] frameCache,
+        TGasPolicy gas,
+        long outputDestination,
+        long outputLength,
+        ExecutionType executionType,
+        bool isStatic,
+        bool isCreateOnPreExistingAccount,
+        ExecutionEnvironment env,
+        in StackAccessTracker stateForAccessLists,
+        in Snapshot snapshot,
+        bool newAccountCharged = false,
+        bool isCreateStateGasCharged = false,
+        int frameJournalCheckpoint = 0)
+    {
+        int depth = env.CallDepth;
+        VmState<TGasPolicy> state = (uint)depth < (uint)frameCache.Length && frameCache[depth] is { _isDisposed: true } cached
+            ? cached
+            : RentUncached(frameCache, depth);
+        state.Initialize(
+            gas,
+            outputDestination,
+            outputLength,
+            executionType,
+            isTopLevel: false,
+            isStatic: isStatic,
+            isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            isCreateStateGasCharged: isCreateStateGasCharged,
+            newAccountCharged: newAccountCharged,
+            env: env,
+            stateForAccessLists: stateForAccessLists,
+            snapshot: snapshot,
+            frameJournalCheckpoint: frameJournalCheckpoint);
+        return state;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static VmState<TGasPolicy> RentUncached(VmState<TGasPolicy>?[] frameCache, int depth)
+    {
+        if ((uint)depth >= (uint)frameCache.Length)
+        {
+            return Rent();
+        }
+
+        VmState<TGasPolicy> state = new() { _isCached = true };
+        frameCache[depth] = state;
         return state;
     }
 
@@ -217,7 +282,7 @@ public class VmState<TGasPolicy> : IDisposable
         _isDisposed = true;
         PooledObjectLeakDetector.OnReturn(this);
 
-        if (DataStack is not null)
+        if (DataStack is not null && !_isCached)
         {
             // Only return if initialized
             StackPool.ReturnStacks(DataStack);
@@ -236,7 +301,7 @@ public class VmState<TGasPolicy> : IDisposable
         _snapshot = default;
         StateGasRefundAdvanced = 0;
 
-        _statePool.Enqueue(this);
+        if (!_isCached) _statePool.Enqueue(this);
     }
 
     /// <summary>Builds the frame's EVM stack over <paramref name="codeSpan"/>, renting the data stack on first use.</summary>

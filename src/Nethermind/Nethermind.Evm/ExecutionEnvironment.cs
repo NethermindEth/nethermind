@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -16,6 +18,9 @@ namespace Nethermind.Evm
     {
         private static readonly Queue _pool = new();
         private UInt256 _value;
+
+        /// <summary>Owned by a call-frame cache slot, so disposal clears it but never hands it to the pool.</summary>
+        private bool _isCached;
 
         /// <summary>
         /// Parsed bytecode for the current call.
@@ -67,15 +72,71 @@ namespace Nethermind.Evm
             in ReadOnlyMemory<byte> inputData)
         {
             ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment? pooled) ? pooled : new();
-            PooledObjectLeakDetector.OnRent(env, nameof(ExecutionEnvironment));
-            env.CodeInfo = codeInfo;
-            env.ExecutingAccount = executingAccount;
-            env.Caller = caller;
-            env.CodeSource = codeSource;
-            env.CallDepth = callDepth;
-            env._value = value;
-            env.InputData = inputData;
+            env.Initialize(codeInfo, executingAccount, caller, codeSource, callDepth, in value, in inputData);
             return env;
+        }
+
+        /// <summary>
+        /// Takes the environment for a child frame at <paramref name="callDepth"/> from <paramref name="cache"/>,
+        /// indexed by call depth, falling back to the pool beyond its length.
+        /// </summary>
+        /// <remarks>
+        /// A slot is reused only once its previous environment has been disposed. One still in use - left behind
+        /// when an exception unwound past a frame that was staged but never entered - is abandoned to the GC and
+        /// replaced, so a live environment is never shared.
+        /// </remarks>
+        internal static ExecutionEnvironment Rent(
+            ExecutionEnvironment?[] cache,
+            CodeInfo codeInfo,
+            Address executingAccount,
+            Address caller,
+            Address? codeSource,
+            int callDepth,
+            in UInt256 value,
+            in ReadOnlyMemory<byte> inputData)
+        {
+            Debug.Assert(executingAccount is not null, "A free cached environment is recognised by its cleared account.");
+            ExecutionEnvironment env = (uint)callDepth < (uint)cache.Length && cache[callDepth] is { IsInUse: false } cached
+                ? cached
+                : RentUncached(cache, callDepth);
+            env.Initialize(codeInfo, executingAccount, caller, codeSource, callDepth, in value, in inputData);
+            return env;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static ExecutionEnvironment RentUncached(ExecutionEnvironment?[] cache, int callDepth)
+        {
+            if ((uint)callDepth >= (uint)cache.Length)
+            {
+                return _pool.TryDequeue(out ExecutionEnvironment? pooled) ? pooled : new();
+            }
+
+            ExecutionEnvironment env = new() { _isCached = true };
+            cache[callDepth] = env;
+            return env;
+        }
+
+        /// <summary>Rented and not yet disposed; <see cref="Dispose"/> clears the account.</summary>
+        private bool IsInUse => ExecutingAccount is not null;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void Initialize(
+            CodeInfo codeInfo,
+            Address executingAccount,
+            Address caller,
+            Address? codeSource,
+            int callDepth,
+            in UInt256 value,
+            in ReadOnlyMemory<byte> inputData)
+        {
+            PooledObjectLeakDetector.OnRent(this, nameof(ExecutionEnvironment));
+            CodeInfo = codeInfo;
+            ExecutingAccount = executingAccount;
+            Caller = caller;
+            CodeSource = codeSource;
+            CallDepth = callDepth;
+            _value = value;
+            InputData = inputData;
         }
 
         /// <summary>
@@ -84,7 +145,7 @@ namespace Nethermind.Evm
         public void Dispose()
         {
             PooledObjectLeakDetector.OnReturn(this);
-            if (ExecutingAccount is not null)
+            if (IsInUse)
             {
                 CodeInfo = null!;
                 ExecutingAccount = null!;
@@ -93,7 +154,7 @@ namespace Nethermind.Evm
                 CallDepth = 0;
                 _value = default;
                 InputData = default;
-                _pool.Enqueue(this);
+                if (!_isCached) _pool.Enqueue(this);
             }
         }
     }

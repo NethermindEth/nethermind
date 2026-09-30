@@ -52,6 +52,12 @@ public static class VirtualMachineStatics
     /// worth a pool round-trip and too large to hold that many times over.</remarks>
     public const int MaxRetainedPrecompileScratch = 64 * 1024;
 
+    /// <summary>Deepest child call frame a VM keeps for reuse; deeper frames and the top-level frame use the pools.</summary>
+    /// <remarks>A kept frame holds its data stack (32 KiB, pinned), its 1 KiB inline memory and its environment, about
+    /// 34 KiB in all, so a VM that has reached this depth retains about 270 KiB until it is collected. Like the ID
+    /// scratch above, that is multiplied by the pooled VMs, so the depth is kept to where most calls end.</remarks>
+    public const int MaxCachedFrameDepth = 8;
+
     public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
     public static ref readonly UInt256 P255 => ref P255Int;
     public static readonly UInt256 BigInt256 = 256;
@@ -162,6 +168,12 @@ public partial class VirtualMachine<TGasPolicy>(
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly VmStateStack<TGasPolicy> _stateStack = new(MaxCallDepth + 1);
+
+    // Child frames and their environments by call depth (slot 0, the top level, stays empty). A VM runs one
+    // transaction at a time and child frames nest strictly, so each slot is free again before its depth is
+    // re-entered; this replaces the thread-static pool round-trip (VmState, environment and data stack) per frame.
+    internal readonly VmState<TGasPolicy>?[] FrameCache = new VmState<TGasPolicy>?[MaxCachedFrameDepth + 1];
+    internal readonly ExecutionEnvironment?[] EnvironmentCache = new ExecutionEnvironment?[MaxCachedFrameDepth + 1];
 
     // These execution-scoped fields are initialized before opcode dispatch; current state is cleared between executions.
     protected IWorldState _worldState = null!;
