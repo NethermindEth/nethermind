@@ -130,8 +130,12 @@ public class PbtOfflineSourceTests
         try
         {
             // A buffer of a few records per run, so a few hundred records spill into many runs.
+            int finalMerges = 0;
             using PbtSortedSpool spool = new(directory, 512, writerCount, LimboLogs.Instance, CancellationToken.None)
-            { MaxFanIn = maxFanIn, PreMergeThreshold = preMergeThreshold, MaxConcurrentPreMerges = maxConcurrentPreMerges };
+            {
+                MaxFanIn = maxFanIn, PreMergeThreshold = preMergeThreshold, MaxConcurrentPreMerges = maxConcurrentPreMerges,
+                FinalMerge = () => finalMerges++
+            };
             SortedDictionary<ValueHash256, byte[]> expected = [];
             for (int index = 0; index < 400; index++)
             {
@@ -166,6 +170,7 @@ public class PbtOfflineSourceTests
                 }
                 Assert.That(reference.MoveNext(), Is.False, "fewer merged records than distinct keys");
             }
+            Assert.That(finalMerges, Is.EqualTo(1), "final merge hook");
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

@@ -61,8 +61,10 @@ internal static class PbtOfflineSource
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtSortedSpool leaves = new(directory, sortBufferBytes / 2, workers, logManager, cancellationToken);
-            using PbtSortedSpool rawKeys = new(directory, sortBufferBytes / 2, workers, logManager, cancellationToken);
+            using PbtSortedSpool leaves = new(directory, sortBufferBytes / 2, workers, logManager, cancellationToken)
+            { FinalMerge = () => LogFinalMerge("leaves") };
+            using PbtSortedSpool rawKeys = new(directory, sortBufferBytes / 2, workers, logManager, cancellationToken)
+            { FinalMerge = () => LogFinalMerge("preimages") };
             ScanTotals totals = new();
             Scan();
 
@@ -75,6 +77,11 @@ internal static class PbtOfflineSource
             if (logger.IsInfo)
                 logger.Info($"PBT export wrote {leafCount:N0} leaves for {accountCount:N0} accounts and {totals.Slots:N0} slots in {exporting.Elapsed:hh\\:mm\\:ss}.");
             return digests;
+
+            void LogFinalMerge(string spool)
+            {
+                if (logger.IsInfo) logger.Info($"PBT export: merging the sorted {spool}.");
+            }
 
             // Workers claim address ranges on demand; the spools restore the total order the walk does not have.
             void Scan()
