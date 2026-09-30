@@ -336,8 +336,8 @@ jobs:
             run_count="${DISPATCH_RUN_COUNT:-1}"
             payload_sets="[\"${payload_set}\"]"
             # The cell values are interpolated into JSON and the rendered config, so they must be plain tokens.
-            if ! [[ "${delay_seconds}" =~ ^[0-9]+$ ]]; then
-              echo "::error::delay_seconds must be a whole number of seconds (got '${delay_seconds}')."
+            if ! [[ "${delay_seconds}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+              echo "::error::delay_seconds must be a non-negative number of seconds, e.g. 1 or 0.25 (got '${delay_seconds}')."
               exit 1
             fi
             if ! [[ "${amount}" =~ ^[A-Za-z0-9]+$ ]]; then
@@ -2420,8 +2420,7 @@ jobs:
           } > "${summary_file}"
 
           for cell_json in "${cells[@]}"; do
-            # ps holds the cell id, which names the metrics artifacts.
-            ps="$(jq -r '.id' <<< "${cell_json}")"
+            cell_id="$(jq -r '.id' <<< "${cell_json}")"
             cell_payload_set="$(jq -r '.payload_set' <<< "${cell_json}")"
             cell_amount="$(jq -r '.amount' <<< "${cell_json}")"
             cell_delay="$(jq -r '.delay_seconds' <<< "${cell_json}")"
@@ -2429,7 +2428,7 @@ jobs:
 
             {
               echo ""
-              echo "### ${ps}"
+              echo "### ${cell_id}"
               echo ""
               echo "Payloads: \`${cell_amount}\` | Delay: \`${cell_delay}s\`"
               echo ""
@@ -2440,7 +2439,7 @@ jobs:
             # Detect metrics source from first available run
             source_label=""
             for (( r=1; r<=run_count; r++ )); do
-              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+              mf="${METRICS_DIR}/expb-single-metrics-${cell_id}-run${r}/expb-metrics.env"
               if [[ -f "${mf}" ]]; then
                 if [[ "$(metrics_source "${mf}")" == "sse" ]]; then
                   source_label="SSE"
@@ -2468,7 +2467,7 @@ jobs:
               valid_runs=0
 
               for (( r=1; r<=run_count; r++ )); do
-                mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+                mf="${METRICS_DIR}/expb-single-metrics-${cell_id}-run${r}/expb-metrics.env"
                 if [[ ! -f "${mf}" ]]; then
                   echo "| ${r} | - | - | - | - | - | - | - | - |" >> "${summary_file}"
                   continue
@@ -2524,7 +2523,7 @@ jobs:
               fi
             else
               # Single run — simple table
-              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
+              mf="${METRICS_DIR}/expb-single-metrics-${cell_id}-run1/expb-metrics.env"
               if [[ ! -f "${mf}" ]]; then
                 echo "No metrics were produced." >> "${summary_file}"
               else

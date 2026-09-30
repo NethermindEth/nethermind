@@ -413,6 +413,11 @@ fi
             json.loads(output["cells"]),
         )
 
+        # A fractional delay stays accepted, as the shared delay validator allows.
+        code, log, output = self.run_resolver(DISPATCH_AMOUNT="25", DISPATCH_DELAY_SECONDS="0.25")
+        self.assertEqual(0, code, log)
+        self.assertEqual("0.25", json.loads(output["cells"])[0]["delay_seconds"])
+
         # Without an amount the payload set's default applies, as before cells existed.
         code, log, output = self.run_resolver(
             DISPATCH_PAYLOAD_SET="superblocks", DISPATCH_AMOUNT="", DISPATCH_DOCKER_IMAGES=""
@@ -425,7 +430,9 @@ fi
 
     def test_dispatch_rejects_a_delay_or_amount_that_is_not_a_plain_number(self):
         for overrides, expected in (
-            ({"DISPATCH_DELAY_SECONDS": "1.5"}, "delay_seconds must be a whole number of seconds"),
+            ({"DISPATCH_DELAY_SECONDS": "1s"}, "delay_seconds must be a non-negative number of seconds"),
+            ({"DISPATCH_DELAY_SECONDS": "-1"}, "delay_seconds must be a non-negative number of seconds"),
+            ({"DISPATCH_DELAY_SECONDS": "1x5"}, "delay_seconds must be a non-negative number of seconds"),
             ({"DISPATCH_AMOUNT": '10"0'}, "amount must be a payload count"),
         ):
             with self.subTest(**overrides):
