@@ -677,7 +677,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private static void ValidateTotalReceiptsSizeAgainstBlockGasLimit(ulong receiptsContentSize, ulong? blockGasLimit)
     {
-        // No local header means no allowance to check; no receipts fit any allowance, even a zero gas limit's.
+        // No local header means no allowance to check; an empty list fits any allowance, even a zero gas limit's.
         if (blockGasLimit is not { } gasLimit || receiptsContentSize == 0)
         {
             return;
