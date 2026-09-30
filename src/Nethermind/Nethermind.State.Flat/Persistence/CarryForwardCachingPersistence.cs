@@ -206,9 +206,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void ClearAllNoLock()
     {
-        _accounts = NewCache<Address, Account?>();
+        // An empty cache keeps its tables: raw and range writes clear everything on every batch, and snap sync and
+        // healing write such a batch for every account while nothing is cached. The counts are exact under _lock.
+        if (_accountCount != 0) _accounts = NewCache<Address, Account?>();
         _accountCount = 0;
-        _slots = NewCache<(Address, UInt256), CachedSlot>();
+        if (_slotCount != 0) _slots = NewCache<(Address, UInt256), CachedSlot>();
         _slotCount = 0;
         Metrics.PublishCarryForwardAccountCount(0);
         Metrics.PublishCarryForwardSlotCount(0);
