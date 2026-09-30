@@ -106,6 +106,40 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Javascript_callback_helper_interruption_does_not_poison_next_engine()
+    {
+        using (Engine engine = new(Shanghai.Instance))
+        using (GethLikeJavaScriptTxTracer tracer = new(engine,
+            new Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Db(TestState), new Context(), new GethTraceOptions
+            {
+                Tracer = "{fault:function(){},result:function(){try {slice(new Uint8Array([1]),-1,0);} catch(e) {return 'swallowed';}}}"
+            }))
+        {
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<System.IO.InvalidDataException>()
+                .With.Message.StartsWith("Tracer accessed out of bound memory"));
+        }
+        using Engine fresh = new(Shanghai.Instance);
+        dynamic healthy = fresh.CreateTracer("{result:function(){return 7;}}");
+        Assert.That((int)healthy.result(), Is.EqualTo(7));
+    }
+
+    [Test]
+    public void Javascript_callback_host_failure_is_not_a_user_error()
+    {
+        IWorldState state = NSubstitute.Substitute.For<IWorldState>();
+        NSubstitute.SubstituteExtensions.Returns<ulong>(state.GetNonce(NSubstitute.Arg.Any<Address>()),
+            _ => throw new InvalidOperationException("host state failure"));
+        using Engine engine = new(Shanghai.Instance);
+        using GethLikeJavaScriptTxTracer tracer = new(engine,
+            new Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Db(state),
+            new Context(), new GethTraceOptions
+            {
+                Tracer = "{fault:function(){},result:function(ctx,db){return db.getNonce(toAddress('1'));}}"
+            });
+        Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptEngineException>().With.Message.Contains("host state failure"));
+    }
+
+    [Test]
     public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
     {
         const int concurrency = 16;
@@ -1104,7 +1138,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         const string failingTracer = "{ fault: function() { }, result: function() { throw new Error('result failed'); } }";
         using (GethLikeBlockJavaScriptTracer tracer = GetTracer(failingTracer))
         {
-            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.InstanceOf(typeof(IScriptEngineException)));
+            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.TypeOf<System.IO.InvalidDataException>()
+                .With.Message.EqualTo("Error: result failed    in server-side tracer function 'result'"));
         }
 
         const string recoveringTracer = "{ fault: function() { }, result: function() { return toHex(toWord('1')); } }";

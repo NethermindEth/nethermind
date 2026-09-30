@@ -22,6 +22,7 @@ public class Engine : IDisposable
 {
     private const bool IsDebugging = false;
     private V8ScriptEngine V8Engine { get; }
+    internal string? PendingInputError { get; private set; }
 
     private readonly IReleaseSpec _spec;
     private readonly TracerRuntime _runtime;
@@ -148,7 +149,9 @@ public class Engine : IDisposable
     /// <summary>
     /// Converts input to hex string
     /// </summary>
-    private string ToHex(object? bytes) => bytes is null ? "0x" : bytes.ToBytes().ToHexString(withZeroX: true);
+    private string ToHex(object? bytes) => bytes is null
+        ? throw new JavaScriptInputException("TypeError: Cannot convert undefined or null to object at github.com/ethereum/go-ethereum/eth/tracers/js.(*jsTracer).setBuiltinFunctions.func1 (native)")
+        : bytes.ToBytes().ToHexString(withZeroX: true);
 
     /// <summary>
     /// Converts input to 20 byte Address byte representation
@@ -168,9 +171,13 @@ public class Engine : IDisposable
         ArgumentNullException.ThrowIfNull(input);
         byte[] bytes = input.ToBytes();
 
-        return start < 0 || end < start || end > bytes.Length
-            ? throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: available {bytes.Length}, offset {start}, size {end - start}")
-            : bytes.Slice((int)start, (int)(end - start)).ToTypedScriptArray();
+        if (start < 0 || end < start || end > bytes.Length)
+        {
+            PendingInputError ??= $"Tracer accessed out of bound memory: available {bytes.Length}, offset {start}, size {end - start}";
+            V8Engine.Interrupt();
+            throw new JavaScriptInputException(PendingInputError);
+        }
+        return bytes.Slice((int)start, (int)(end - start)).ToTypedScriptArray();
     }
 
     /// <summary>
@@ -268,3 +275,5 @@ public class Engine : IDisposable
         }
     }
 }
+
+internal sealed class JavaScriptInputException(string message) : Exception(message);
