@@ -56,12 +56,12 @@ public class CheckpointSync(
     private static readonly TimeSpan DefaultRetryBaseDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DefaultReadStallTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DefaultResponseHeadersTimeout = TimeSpan.FromSeconds(60);
 
     private readonly ILogger _logger = logManager.GetClassLogger<CheckpointSync>();
     private readonly HttpClient _httpClient = new(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All })
     {
-        // The finalized state is ~300 MB; allow for slow providers.
-        Timeout = TimeSpan.FromMinutes(10),
+        Timeout = DefaultResponseHeadersTimeout,
     };
 
     /// <summary>Attempts a checkpoint download gets before its last failure is thrown.</summary>
@@ -79,6 +79,17 @@ public class CheckpointSync(
     /// so a provider that vanishes mid-body without its FIN or RST reaching this host would otherwise leave the read waiting forever.
     /// </remarks>
     internal TimeSpan ReadStallTimeout { get; init; } = DefaultReadStallTimeout;
+
+    /// <summary>Longest wait for a request to connect and receive its response headers before the attempt counts as dropped and is retried.</summary>
+    /// <remarks>
+    /// It is <see cref="HttpClient.Timeout"/>, which under <see cref="HttpCompletionOption.ResponseHeadersRead"/> covers the connect and the
+    /// headers only; the body, however large, is bounded per read by <see cref="ReadStallTimeout"/> instead.
+    /// </remarks>
+    internal TimeSpan ResponseHeadersTimeout
+    {
+        get => _httpClient.Timeout;
+        init => _httpClient.Timeout = value;
+    }
 
     /// <summary>
     /// The operator-configured URL if set, otherwise the selected network's default provider.
@@ -418,7 +429,17 @@ public class CheckpointSync(
     {
         using HttpRequestMessage request = new(HttpMethod.Get, $"{EffectiveCheckpointSyncUrl.TrimEnd('/')}{path}");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(OctetStreamMediaType));
-        HttpResponseMessage response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (TaskCanceledException e) when (e.InnerException is TimeoutException && !cancellationToken.IsCancellationRequested)
+        {
+            // Without an inner exception: the logged cause is the innermost one, and here that is the aborted socket read.
+            throw new IOException($"No response headers arrived for {ResponseHeadersTimeout.TotalSeconds:F0} s");
+        }
+
         response.EnsureSuccessStatusCode();
         return response;
     }
