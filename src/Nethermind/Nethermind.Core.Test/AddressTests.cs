@@ -287,8 +287,8 @@ public class AddressTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new ValueAddress(source).AsSpan.ToArray(), Is.EqualTo(source.ToArray()));
-            Assert.That(new Address(source).Bytes.ToArray(), Is.EqualTo(source.ToArray()));
+            Assert.That(new ValueAddress(source).AsSpan, Is.SequenceEqualTo(source));
+            Assert.That(new Address(source).Bytes, Is.SequenceEqualTo(source));
         }
     }
 

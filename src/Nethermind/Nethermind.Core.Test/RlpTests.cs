@@ -55,11 +55,11 @@ namespace Nethermind.Core.Test
                 Assert.That(contentLength, Is.EqualTo(7));
                 Assert.That(first, Is.EqualTo(1));
                 Assert.That(second, Is.EqualTo((UInt256)128));
-                Assert.That(third.ToArray(), Is.EqualTo(new byte[] { 0x61, 0x62, 0x63 }));
+                Assert.That(third, Is.SequenceEqualTo(new byte[] { 0x61, 0x62, 0x63 }));
                 Assert.That(position, Is.EqualTo(start + encoded.Length));
                 Assert.That(rereadPosition, Is.EqualTo(start + 2));
                 Assert.That(reread, Is.EqualTo(first));
-                Assert.That(buffer.AsSpan(start).ToArray(), Is.EqualTo(encoded));
+                Assert.That(buffer.AsSpan(start), Is.SequenceEqualTo(encoded));
             }
         }
 
@@ -134,7 +134,7 @@ namespace Nethermind.Core.Test
             reader = new(bloomRlp);
             position = 0;
             reader.DecodeBloomSpan(ref position, out ReadOnlySpan<byte> bloomBytes);
-            Assert.That(bloomBytes.ToArray(), Is.EqualTo(Bloom.Empty.Bytes.ToArray()));
+            Assert.That(bloomBytes, Is.SequenceEqualTo(Bloom.Empty.Bytes));
             Assert.That(position, Is.EqualTo(bloomRlp.Length));
 
             byte[] stringRlp = [0x83, 0x61, 0x62, 0x63];
@@ -292,7 +292,7 @@ namespace Nethermind.Core.Test
             int written = Rlp.Encode(input, output);
 
             Assert.That(written, Is.EqualTo(expected.Length));
-            Assert.That(output[..written].ToArray(), Is.EqualTo(expected));
+            Assert.That(output[..written], Is.SequenceEqualTo(expected));
         }
 
         [TestCaseSource(nameof(ValueWriterByteArrayCases))]
@@ -800,7 +800,7 @@ namespace Nethermind.Core.Test
             Span<byte> buffer = stackalloc byte[9];
             Span<byte> result = Rlp.Encode(value, buffer);
 
-            Assert.That(result.ToArray(), Is.EqualTo(Rlp.Encode(value).Bytes));
+            Assert.That(result, Is.SequenceEqualTo(Rlp.Encode(value).Bytes));
         }
 
         [Test]
@@ -811,7 +811,7 @@ namespace Nethermind.Core.Test
             Span<byte> buffer = stackalloc byte[9];
             Span<byte> result = Rlp.Encode(value, buffer);
 
-            Assert.That(result.ToArray(), Is.EqualTo(Rlp.Encode(value).Bytes));
+            Assert.That(result, Is.SequenceEqualTo(Rlp.Encode(value).Bytes));
         }
 
         [Test]
@@ -1163,7 +1163,7 @@ namespace Nethermind.Core.Test
         private static void AssertValueWriterMatchesExpected(RlpWriter writer, ReadOnlySpan<byte> buffer, ReadOnlySpan<byte> expected)
         {
             Assert.That(writer.Position, Is.EqualTo(expected.Length));
-            Assert.That(buffer[..writer.Position].ToArray(), Is.EqualTo(expected.ToArray()));
+            Assert.That(buffer[..writer.Position], Is.SequenceEqualTo(expected));
         }
 
         private static IEnumerable<byte[]> ValueWriterByteArrayCases()

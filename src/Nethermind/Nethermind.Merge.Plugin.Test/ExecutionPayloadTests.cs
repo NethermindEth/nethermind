@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
@@ -172,7 +173,7 @@ public class ExecutionPayloadTests
             {
                 Assert.That(segment.Array, Is.SameAs(encoded[i]));
                 Assert.That(tx.Nonce, Is.EqualTo((ulong)i));
-                Assert.That(tx.Data.ToArray(), Is.EqualTo(data));
+                Assert.That(tx.Data, Is.SequenceEqualTo(data));
                 Assert.That(tx.Hash, Is.EqualTo(expectedHashes[i]));
                 Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(encoded[i]));
             }
@@ -194,7 +195,7 @@ public class ExecutionPayloadTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(tx.Data.ToArray(), Is.EqualTo(data));
+                Assert.That(tx.Data, Is.SequenceEqualTo(data));
                 Assert.That(tx.Hash, Is.EqualTo(expectedHash));
             }
         }

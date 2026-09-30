@@ -23,6 +23,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -238,7 +239,7 @@ public class StatelessInputGeneratorTests
                 Assert.That(rawBlock.ExecutionRequests, Is.EqualTo(expectedRequests));
                 Assert.That(restored.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
                 Assert.That(restored.Header.CalculateHash(), Is.EqualTo(block.Hash));
-                Assert.That(publicKeys[0].AsSpan().ToArray(), Is.EqualTo(TestItem.PrivateKeyA.PublicKey.PrefixedBytes));
+                Assert.That(publicKeys[0].AsSpan(), Is.SequenceEqualTo(TestItem.PrivateKeyA.PublicKey.PrefixedBytes));
             }
         }
     }

@@ -5,6 +5,7 @@ using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -105,7 +106,7 @@ public class FrameTransactionSigningTests
 
         Transaction transaction = Fill(BuildInput(key, key.Address, [Entry(signature: signature)]));
 
-        Assert.That(transaction.FrameSignatures![0].Signature.ToArray(), Is.EqualTo(signature));
+        Assert.That(transaction.FrameSignatures![0].Signature, Is.SequenceEqualTo(signature));
     }
 
     [Test]
@@ -118,7 +119,7 @@ public class FrameTransactionSigningTests
 
         Transaction transaction = Fill(BuildInput(key, key.Address, [explicitEntry, Entry()]));
 
-        Assert.That(transaction.FrameSignatures![0].Signature.ToArray(), Is.EqualTo(explicitSignature));
+        Assert.That(transaction.FrameSignatures![0].Signature, Is.SequenceEqualTo(explicitSignature));
         AssertSignatureRecoversSigner(transaction, 1, key.Address);
     }
 

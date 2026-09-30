@@ -18,7 +18,7 @@ public class ArrayPoolListRefTests
         using ArrayPoolListRef<int> list = new(1024);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.AsSpan(), Is.SequenceEqualTo(Array.Empty<int>()));
             Assert.That(list.Count, Is.EqualTo(0));
             Assert.That(list.Capacity, Is.EqualTo(1024));
         }
@@ -28,7 +28,7 @@ public class ArrayPoolListRefTests
     public void Should_not_hang_when_capacity_is_zero()
     {
         using ArrayPoolListRef<int> list = new(0);
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Array.Empty<int>()));
+        Assert.That(list.AsSpan(), Is.SequenceEqualTo(Array.Empty<int>()));
         list.Add(1);
         Assert.That(list.Count, Is.EqualTo(1));
         list.Remove(1);
@@ -42,7 +42,7 @@ public class ArrayPoolListRefTests
     {
         using ArrayPoolListRef<int> list = new(1024);
         list.AddRange(Enumerable.Range(0, 4));
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Enumerable.Range(0, 4)));
+        Assert.That(list.AsSpan(), Is.SequenceEqualTo(Enumerable.Range(0, 4)));
     }
 
     [Test]
@@ -52,7 +52,7 @@ public class ArrayPoolListRefTests
         list.AddRange(Enumerable.Range(0, 50));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Enumerable.Range(0, 50)));
+            Assert.That(list.AsSpan(), Is.SequenceEqualTo(Enumerable.Range(0, 50)));
             Assert.That(list.Count, Is.EqualTo(50));
             Assert.That(list.Capacity, Is.EqualTo(64));
         }
@@ -66,7 +66,7 @@ public class ArrayPoolListRefTests
         list.Clear();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.AsSpan(), Is.SequenceEqualTo(Array.Empty<int>()));
             Assert.That(list.Count, Is.EqualTo(0));
             Assert.That(list.Capacity, Is.EqualTo(64));
         }
@@ -99,7 +99,7 @@ public class ArrayPoolListRefTests
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 16));
         list.Insert(index, -1);
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(expected));
+        Assert.That(list.AsSpan(), Is.SequenceEqualTo(expected));
     }
 
     [Test]
@@ -143,7 +143,7 @@ public class ArrayPoolListRefTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(list.Remove(item), Is.EqualTo(removed));
-            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(expected));
+            Assert.That(list.AsSpan(), Is.SequenceEqualTo(expected));
         }
     }
 
@@ -154,7 +154,7 @@ public class ArrayPoolListRefTests
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
         list.RemoveAt(item);
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(expected));
+        Assert.That(list.AsSpan(), Is.SequenceEqualTo(expected));
     }
 
     [TestCase(8, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
@@ -263,7 +263,7 @@ public class ArrayPoolListRefTests
         list.AddRange(Enumerable.Range(2, items));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Enumerable.Range(0, items + 2)));
+            Assert.That(list.AsSpan(), Is.SequenceEqualTo(Enumerable.Range(0, items + 2)));
             Assert.That(list.Capacity, Is.EqualTo(expectedCapacity));
         }
     }
