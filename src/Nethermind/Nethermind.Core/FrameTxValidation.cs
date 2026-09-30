@@ -457,6 +457,11 @@ public static class FrameTxValidation
         return next;
     }
 
+    /// <summary>Whether a frame transaction starts with a public-mempool validation prefix recognized by EIP-8141.</summary>
+    public static bool HasRecognizedValidationPrefix(Transaction transaction) =>
+        transaction.Frames is { Length: > 0 } frames
+        && RecognizedPrefixLength(frames, transaction.SenderAddress) is not null;
+
     /// <summary>
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.

@@ -3560,11 +3560,10 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // Simulation admits this layout and stops at the payer, so it never reaches the trailing VERIFY frame
-        // that can invalidate the transaction later. FrameTxValidationPrefixSimulationTests runs the real one.
-        [TestCase(false, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingSenderFrame_IsAccepted")]
+        // A successful simulation does not make an unrecognized prefix eligible for the public pool.
+        [TestCase(false, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingSenderFrame_IsRejected")]
         [TestCase(true, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingVerifyFrame_IsRejected")]
-        public void SubmitTx_FrameTransactionBehindAnUnrecognizedPrefix_IsJudgedOnItsTrailingFrame(bool trailingVerify)
+        public void SubmitTx_FrameTransactionWithAnUnrecognizedPrefix_IsRejected(bool trailingVerify)
         {
             CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
@@ -3577,8 +3576,8 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.EqualTo(trailingVerify ? AcceptTxResult.FrameTxVerifyAfterPrefix : AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(trailingVerify ? 0 : 1));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
             }
         }
 

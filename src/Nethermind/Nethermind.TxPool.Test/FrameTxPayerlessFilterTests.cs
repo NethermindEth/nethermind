@@ -58,6 +58,31 @@ public class FrameTxPayerlessFilterTests
     }
 
     [Test]
+    public void Accept_ExtraLeadingVerifyFrame_IsRejected([Values] bool trailingVerify)
+    {
+        Transaction tx = FrameTx(ExtraVerify(), SelfVerify(), trailingVerify ? OnlyVerify() : Execution());
+
+        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Invalid));
+    }
+
+    [Test]
+    public void Accept_RecognizedPrefixes_AreAccepted([Values] bool expiry, [Values] bool deploy, [Values] bool paymaster)
+    {
+        System.Collections.Generic.List<TxFrame> frames = [];
+        if (expiry) frames.Add(Expiry());
+        if (deploy) frames.Add(Deploy());
+        if (paymaster)
+        {
+            frames.Add(OnlyVerify());
+            frames.Add(Pay());
+        }
+        else frames.Add(SelfVerify());
+        frames.Add(Execution());
+
+        Assert.That(Accept(FrameTx(frames.ToArray())), Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
+    [Test]
     public void Accept_NonFrameTx_Accepted()
     {
         Transaction tx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
