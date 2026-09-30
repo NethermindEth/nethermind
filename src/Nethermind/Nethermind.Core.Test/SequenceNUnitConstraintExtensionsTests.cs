@@ -69,28 +69,16 @@ public class SequenceNUnitConstraintExtensionsTests
     }
 
     [Test]
-    public void Expected_sequence_is_read_once_so_a_mismatch_cannot_turn_into_a_pass()
-    {
-        int enumerations = 0;
-        IEnumerable<byte> ChangesAfterFirstRead()
-        {
-            yield return enumerations++ == 0 ? (byte)2 : (byte)1;
-        }
-
-        AssertFails((ReadOnlyMemory<byte>)new byte[] { 1 }, Is.SequenceEqualTo(ChangesAfterFirstRead()));
-    }
+    public void Expected_sequence_is_read_once_so_a_mismatch_cannot_turn_into_a_pass() =>
+        AssertFails((ReadOnlyMemory<byte>)new byte[] { 1 }, Is.SequenceEqualTo(TwoOnFirstReadThenOne()));
 
     [Test]
-    public void Actual_sequence_is_read_once_so_a_mismatch_cannot_turn_into_a_pass()
-    {
-        int enumerations = 0;
-        IEnumerable<byte> ChangesAfterFirstRead()
-        {
-            yield return enumerations++ == 0 ? (byte)2 : (byte)1;
-        }
+    public void Actual_sequence_is_read_once_so_a_mismatch_cannot_turn_into_a_pass() =>
+        AssertFails(TwoOnFirstReadThenOne(), Is.SequenceEqualTo(new byte[] { 1 }));
 
-        AssertFails(ChangesAfterFirstRead(), Is.SequenceEqualTo(new byte[] { 1 }));
-    }
+    [Test]
+    public void Nested_sequences_compare_by_contents_even_when_their_Equals_says_otherwise() =>
+        AssertFails(new[] { new IdEqualList(1, 1) }, Is.SequenceEqualTo(new[] { new IdEqualList(1, 2) }));
 
     [Test]
     public void Default_array_segment_does_not_match_an_empty_expected() =>
@@ -100,9 +88,25 @@ public class SequenceNUnitConstraintExtensionsTests
     public void Memory_of_another_element_type_does_not_match() =>
         AssertFails((ReadOnlyMemory<byte>)new byte[] { 1, 2, 3 }, Is.SequenceEqualTo(new int[] { 1, 2, 3 }));
 
-    private static string AssertFails<TActual>(TActual actual, SequenceEqualConstraint<byte> constraint) =>
+    private static string AssertFails<TActual, T>(TActual actual, SequenceEqualConstraint<T> constraint) =>
         Assert.Throws<AssertionException>(() => Assert.That(actual, constraint))!.Message;
 
-    private static void AssertFails<TActual>(TActual actual, SequenceEqualConstraint<int> constraint) =>
-        Assert.Throws<AssertionException>(() => Assert.That(actual, constraint));
+    private static IEnumerable<byte> TwoOnFirstReadThenOne()
+    {
+        int reads = 0;
+        return Read();
+
+        IEnumerable<byte> Read()
+        {
+            yield return reads++ == 0 ? (byte)2 : (byte)1;
+        }
+    }
+
+    private sealed class IdEqualList(int id, params int[] items) : List<int>(items)
+    {
+        public override bool Equals(object? obj) => obj is IdEqualList other && other._id == _id;
+        public override int GetHashCode() => _id;
+
+        private readonly int _id = id;
+    }
 }
