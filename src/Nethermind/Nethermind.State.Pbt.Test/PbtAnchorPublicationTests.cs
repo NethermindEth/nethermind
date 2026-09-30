@@ -370,7 +370,7 @@ public class PbtAnchorPublicationTests
             typeof(InitializePbtMigration), typeof(RunnerStepDependenciesAttribute))!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(dependencies.Dependencies, Does.Contain(typeof(LoadGenesisBlock)));
+            Assert.That(dependencies.Dependencies, Is.SupersetOf(new[] { typeof(LoadGenesisBlock), typeof(StartMonitoring) }));
             Assert.That(dependencies.Dependents, Does.Contain(typeof(InitializeNetwork)));
         }
     }
@@ -414,7 +414,7 @@ public class PbtAnchorPublicationTests
             Assert.That(container.Resolve<IWorldStateManager>().GlobalStateReader.HasStateForBlock(genesis.Header), Is.True);
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(genesis.Header)));
             Assert.That(reader.CurrentRoot, Is.EqualTo(new Hash256(Metadata("anchor").GetProperty("pbtRoot").GetString()!).ValueHash256));
-            Assert.That(dependencies.Dependencies, Does.Contain(typeof(LoadGenesisBlock)));
+            Assert.That(dependencies.Dependencies, Is.SupersetOf(new[] { typeof(LoadGenesisBlock), typeof(StartMonitoring) }));
             Assert.That(dependencies.Dependents, Is.SupersetOf(new[] { typeof(ReviewBlockTree), typeof(InitializeNetwork) }));
         }
     }

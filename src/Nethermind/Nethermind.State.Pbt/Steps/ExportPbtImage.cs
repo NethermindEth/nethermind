@@ -26,7 +26,7 @@ namespace Nethermind.State.Pbt.Steps;
 /// exact block instead of the next compaction boundary and goes no further; block processing is then paused so
 /// nothing accumulates underneath the export.
 /// </remarks>
-[RunnerStepDependencies(dependencies: [typeof(InitializeNetwork)])]
+[RunnerStepDependencies(dependencies: [typeof(InitializeNetwork), typeof(StartMonitoring)])]
 public class ExportPbtImage(
     IPersistenceManager persistenceManager,
     IPersistence flatPersistence,
