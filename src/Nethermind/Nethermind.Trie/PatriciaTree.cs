@@ -307,10 +307,19 @@ namespace Nethermind.Trie
             }
         }
 
+        // Experiment (#13673): hash the changed subtries two nibbles below the root in one parallel pass first.
+        private static readonly bool s_twoNibbleHashing =
+            Environment.GetEnvironmentVariable("NETHERMIND_EXP_TWO_NIBBLE_HASHING") == "1";
+
         public void UpdateRootHash(bool canBeParallel = true)
         {
             TreePath path = TreePath.Empty;
-            if (RootRef is not null && DirtyNodeHasher.HashBelowRoot(RootRef, TrieStore, _bufferPool, canBeParallel))
+            if (s_twoNibbleHashing && canBeParallel && RootRef?.ResolveSubtrieKeys(TrieStore, _bufferPool) == true)
+            {
+                // Every changed subtrie two nibbles down is hashed; only the top two levels are left.
+                canBeParallel = false;
+            }
+            else if (RootRef is not null && DirtyNodeHasher.HashBelowRoot(RootRef, TrieStore, _bufferPool, canBeParallel))
             {
                 // Everything below the root is hashed, so the walk has only the root left and
                 // nothing to spread over cores.
