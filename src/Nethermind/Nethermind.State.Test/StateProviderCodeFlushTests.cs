@@ -39,11 +39,26 @@ public class StateProviderCodeFlushTests
 
             provider.Commit(Prague.Instance, tracer, commitRoots, false);
 
-            // Both byte[] arguments take a matcher: NSubstitute refuses a mix of literal and matcher across arguments of one type.
+            // Both code arguments take a matcher: NSubstitute refuses a mix of literal and matcher across arguments of one type.
             tracer.Received(1).ReportCodeChange(address, Arg.Is<ReadOnlyMemory<byte>>(previous => previous.IsNull()), Arg.Is<ReadOnlyMemory<byte>>(bytes => bytes.ToArray().SequenceEqual(code)));
             Assert.That(provider.GetCode(hash).ToArray(), Is.EqualTo(code), "committed and staged code must remain readable");
         }
         Assert.That(codeDb.Writes, Is.EqualTo(commitRoots ? 2 : 0), "tracing must not force a staged-only commit to flush");
+    }
+
+    // Code handed in as the start of a larger buffer is only that prefix; staging the whole buffer would change the code.
+    [Test]
+    public void InsertCode_WhenCodeIsThePrefixOfALargerBuffer_StagesOnlyTheCode()
+    {
+        StateProvider provider = CreateProvider(new RecordingCodeDb());
+        byte[] buffer = [0x60, 0x01, 0x00, 0xFF, 0xFF];
+        ReadOnlyMemory<byte> code = buffer.AsMemory(0, 3);
+        ValueHash256 hash = ValueKeccak.Compute(code.Span);
+        provider.CreateAccount(TestItem.AddressA, 1);
+
+        provider.InsertCode(TestItem.AddressA, hash, code, Prague.Instance);
+
+        Assert.That(provider.GetCode(hash).ToArray(), Is.EqualTo(code.ToArray()));
     }
 
     [Test]

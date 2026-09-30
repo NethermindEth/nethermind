@@ -158,17 +158,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             // transaction must stay in the batch even if a later frame re-inserts and reverts.
             bool journalCode = !_codeBatchAlternate.ContainsKey(codeHash);
 
-            if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
-                && codeArray.Offset == 0
-                && codeArray.Count == code.Length
-                && codeArray.Array is { } array)
-            {
-                _codeBatchAlternate[codeHash] = array;
-            }
-            else
-            {
-                _codeBatchAlternate[codeHash] = code.ToArray();
-            }
+            _codeBatchAlternate[codeHash] = code.AsArray();
 
             _blockCodeInsertFilter.Set(codeHash);
             inserted = true;
