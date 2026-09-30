@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
@@ -351,8 +352,58 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public async Task Should_accept_empty_receipts_block_when_requesting_from_peer()
+    public async Task Should_not_page_receipts_of_block_with_unknown_header(
+        [Values(0, 1)] int knownLeadingBlocks,
+        [Values] bool unknownBlockIncomplete)
     {
+        Hash256[] hashes = [Keccak.Zero, TestItem.KeccakA];
+        _syncManager.FindHeader(hashes[knownLeadingBlocks]).Returns((BlockHeader?)null);
+        StrongBox<int> requestCount = RespondWithSingleReceiptPages(knownLeadingBlocks > 0, unknownBlockIncomplete);
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes.Take(knownLeadingBlocks + 1).ToArray(), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestCount.Value, Is.EqualTo(1));
+            Assert.That(result, Has.Count.EqualTo(unknownBlockIncomplete ? knownLeadingBlocks : knownLeadingBlocks + 1));
+        }
+    }
+
+    [TestCase(true, "Receipt count exceeds block transactions count")]
+    [TestCase(false, "Block receipts size exceeds block gas limit allowance")]
+    public void Should_validate_partial_receipts_of_known_block_with_zero_gas_limit(bool bodyKnown, string expectedError)
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(Keccak.Zero)
+            .WithGasLimit(0)
+            .WithGasUsed(0)
+            .WithTransactionsRoot(bodyKnown ? Keccak.EmptyTreeHash : TestItem.KeccakB)
+            .TestObject;
+        _syncManager.FindHeader(Keccak.Zero).Returns(header);
+        _syncManager.Find(Keccak.Zero).Returns(bodyKnown ? new Block(header, [], []) : new Block(header));
+
+        StrongBox<int> requestCount = RespondWithSingleReceiptPages(prependCompleteBlock: false, lastBlockIncomplete: true);
+
+        HandleIncomingStatusMessage();
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () =>
+            await _handler.GetReceipts([Keccak.Zero], CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception?.Message, Is.EqualTo(expectedError));
+            Assert.That(requestCount.Value, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Should_accept_empty_receipts_block_when_requesting_from_peer([Values] bool emptyBlockHasZeroGasLimit)
+    {
+        if (emptyBlockHasZeroGasLimit)
+        {
+            SetupBlockMetadata(Keccak.Zero, gasLimit: 0, gasUsed: 0);
+        }
+
         TxReceipt[] block2Receipts =
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
@@ -1136,6 +1187,29 @@ public class Eth70ProtocolHandlerTests
             GasUsedTotal = gasUsedTotal,
             Logs = [new LogEntry(TestItem.AddressA, new byte[logDataSize], [])]
         };
+
+    /// <summary>
+    /// Answers every receipts request with one receipt for the requested block, optionally preceded by a
+    /// complete single-receipt block, stopping partial responses after <paramref name="maxPeerResponses"/>.
+    /// </summary>
+    private StrongBox<int> RespondWithSingleReceiptPages(bool prependCompleteBlock, bool lastBlockIncomplete, int maxPeerResponses = 32)
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
+        StrongBox<int> requestCount = new();
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            requestCount.Value++;
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            ulong offset = (ulong)sent.FirstBlockReceiptIndex;
+            TxReceipt[] page = [new() { GasUsedTotal = GasCostOf.Transaction / 2 * (offset + 1), Logs = [] }];
+            TxReceipt[][] payload = offset == 0 && prependCompleteBlock ? [BuildSequentialReceipts(1), page] : [page];
+
+            using ReceiptsMessage70 response = new(sent.RequestId, payload.ToPooledList(), lastBlockIncomplete && requestCount.Value < maxPeerResponses);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        return requestCount;
+    }
 
     private void SetupBlockMetadata(Hash256 blockHash, ulong gasLimit, ulong gasUsed, params ulong[] txGasLimits)
     {
