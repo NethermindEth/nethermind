@@ -411,6 +411,25 @@ split into `ceil(ops/cap)` physical commits with correct data in every chunk
 (`MaxOperationsPerWave_splits_a_single_callers_oversized_write_batch_into_sequential_chunks`), while a batch
 under the cap still commits as exactly one (`MaxOperationsPerWave_does_not_split_a_single_callers_write_batch_under_the_cap`).
 
+**Confirmed working, then confirmed unrelated to the `newPayload` timeouts after all.** A further live check-in
+showed the chunking fix doing exactly what it was built to do: Account's `avg ops/wave` dropped from 42,206 to
+3,767 (right under the 4096 cap) and average commit latency dropped from ~157ms to ~18ms - an ~8.7x reduction,
+in line with B+tree mutation cost scaling with batch size. But the consensus-client `newPayload` timeouts kept
+recurring regardless, and at ~18ms a single commit cannot plausibly account for an ~8-second timeout even under
+back-to-back queuing. Decisive test: **the same run reproduced identically on stock `master` (RocksDB, no LMDB
+plugin at all)** - definitively ruling out this plugin, and the DB backend generally, as the cause. Root cause
+is elsewhere (networking, the specific consensus-client version in use, or something else entirely) and is out
+of scope for this experiment.
+
+Net effect on this experiment: the two write-path fixes above (`MaxOperationsPerWave` coalescing cap and
+`CommitLargeWriteInChunks`'s chunking) remain worth keeping - they are real, measured, correct improvements to
+a genuine design gap (an unbounded physical commit really can block every concurrent reader for its whole
+duration, and that duration really was unbounded before these changes) - they simply turned out not to be the
+explanation for the specific symptom that prompted looking for them. This is a useful, if slightly deflating,
+reminder for validation runs going forward: a plausible-sounding, testable hypothesis that the data appears to
+support is still worth checking against a same-symptom-without-the-change control (here, `master`) before
+concluding the fix addressed the reported problem, not just improved a real number.
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,
