@@ -48,11 +48,12 @@ public partial class FrameTxFloodMeasurement
     private static readonly ulong[] HonestCeilings = [235_800, 300_000];
     private static readonly string[] BoundShapes = ["keccak-wide", "signature-stuffed"];
 
-    private static readonly int[] ProducerLevelsMillions = [10, 20, 30, 40];
-    private static readonly int[] ImportLevelsMillions = [10, 30, 50];
+    /// <summary>5M steps, so a delay budget reads off at the resolution the ramps had; 5M keeps a slower runner off the floor.</summary>
+    private static readonly int[] ProducerLevelsMillions = [5, 10, 15, 20, 25, 30, 35, 40];
+    private static readonly int[] ImportLevelsMillions = [5, 10, 30, 50];
 
     /// <summary>0 is the control: honest traffic alone must be admitted.</summary>
-    private static readonly int[] HonestLevelsMillions = [0, 10, 30, 50];
+    private static readonly int[] HonestLevelsMillions = [0, 5, 10, 30, 50];
 
     private static readonly Address ComputeVictimContract = TestItem.AddressD;
 

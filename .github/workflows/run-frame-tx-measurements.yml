@@ -6,8 +6,8 @@ on:
       suite:
         description: >-
           Suite to run, one per dispatch. cost: idle reject cost, retry law, shape guard (~5 min).
-          producer / import: block-building / block-import delay at fixed gas/s (~15 / ~20 min).
-          import-tails: import with 60 s windows (~80 min, agree a slot first). honest: honest txs lost to the budget (~5 min).
+          producer / import: block-building / block-import delay at fixed gas/s (~16 / ~23 min).
+          import-tails: import with 60 s windows (~100 min, agree a slot first). honest: honest txs lost to the budget (~6 min).
         required: true
         type: choice
         options:
@@ -42,7 +42,7 @@ jobs:
     name: Measure the frame-transaction validation prefix
     runs-on: [self-hosted, benchmark]
     # Suite budget plus build and setup; see the campaign SPEC.
-    timeout-minutes: ${{ fromJSON('{"cost":20,"producer":30,"import":35,"import-tails":100,"honest":20}')[inputs.suite] }}
+    timeout-minutes: ${{ fromJSON('{"cost":20,"producer":35,"import":40,"import-tails":120,"honest":20}')[inputs.suite] }}
     steps:
       # Must run before checkout, or a checkout/setup failure skips the wipe while the always() steps below still fire.
       - name: Resolve the output directory
