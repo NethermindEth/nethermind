@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Test;
 /// that succeeds also runs with every smaller amount of gas. The chain is entered the way the dispatch loop enters it.
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
-public class HostMemoryFastPathTests
+public partial class HostMemoryFastPathTests
 {
     private const byte STOP = (byte)Instruction.STOP;
     private const byte ADD = (byte)Instruction.ADD;
@@ -424,20 +424,21 @@ public class HostMemoryFastPathTests
 
     private static byte[] Repeated(int times, params byte[] ops) => Enumerable.Repeat(ops, times).SelectMany(static o => o).ToArray();
 
+    // The untraced tables carry gas and head in registers, so their fallbacks take the register signature.
     private static unsafe EvmExceptionType CountingLoadFallback(
-        ref EvmStack stack, ref EthereumGasPolicy gas, ref DispatchState state, nint pc, nint opCodeCount)
+        ref EvmStack stack, ulong gas, ref DispatchState state, nint pc, nint head, nint opCodeCount)
     {
         _fallbacks++;
-        return ((delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)_plainLoad)(
-            ref stack, ref gas, ref state, pc, opCodeCount);
+        return ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint, EvmExceptionType>)_plainLoad)(
+            ref stack, gas, ref state, pc, head, opCodeCount);
     }
 
     private static unsafe EvmExceptionType CountingStoreFallback(
-        ref EvmStack stack, ref EthereumGasPolicy gas, ref DispatchState state, nint pc, nint opCodeCount)
+        ref EvmStack stack, ulong gas, ref DispatchState state, nint pc, nint head, nint opCodeCount)
     {
         _fallbacks++;
-        return ((delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)_plainStore)(
-            ref stack, ref gas, ref state, pc, opCodeCount);
+        return ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint, EvmExceptionType>)_plainStore)(
+            ref stack, gas, ref state, pc, head, opCodeCount);
     }
 
     /// <summary>Runs code through the dispatch tables of one virtual machine and one aligned stack.</summary>
@@ -510,8 +511,10 @@ public class HostMemoryFastPathTests
                 handlers = (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])handlers.Clone();
                 _plainLoad = (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD];
                 _plainStore = (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE];
-                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD] = &CountingLoadFallback;
-                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE] = &CountingStoreFallback;
+                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD] =
+                    (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint, EvmExceptionType>)&CountingLoadFallback;
+                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE] =
+                    (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint, EvmExceptionType>)&CountingStoreFallback;
                 _fallbacks = 0;
             }
 
@@ -528,12 +531,16 @@ public class HostMemoryFastPathTests
 
                 EvmStack evmStack = new(head, _vm.Tracer, ref _stackBytes[_stackStart], codeInfo.ExecutionCodeSpan, codeInfo);
                 evmStack.HoistInputData(input);
-                DispatchState state = new() { OpcodeHandlers = dispatch, Vm = _vm, CancellationPollAt = CancellationPollInterval };
+                DispatchState state = new() { Gas = ref Unsafe.AsRef(in gasPolicy), OpcodeHandlers = dispatch, Vm = _vm, CancellationPollAt = CancellationPollInterval };
+                bool carried = table != Table.Traced;
                 pc = 0;
                 opCodeCount = 0;
                 while (true)
                 {
-                    exception = dispatch[code[pc]](ref evmStack, ref gasPolicy, ref state, pc, opCodeCount);
+                    exception = carried
+                        ? ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint, EvmExceptionType>)dispatch[code[pc]])(
+                            ref evmStack, gasPolicy.Value, ref state, pc, evmStack.Head, opCodeCount)
+                        : dispatch[code[pc]](ref evmStack, ref gasPolicy, ref state, pc, opCodeCount);
                     // The cancelable loop's re-entry after a poll, as RunDispatchLoop makes it.
                     if (!cancelable || exception != EvmExceptionType.None || state.OpCodeCount < state.CancellationPollAt ||
                         (nuint)state.FinalProgramCounter >= (nuint)code.Length)

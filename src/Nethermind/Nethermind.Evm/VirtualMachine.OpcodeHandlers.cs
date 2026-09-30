@@ -48,6 +48,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         static virtual bool MayJump => false;
         /// <summary>Whether untraced dispatch tries <see cref="TryExecuteFast"/> before it hands the opcode to the plain handler.</summary>
         static virtual bool HasUntracedFastPath => false;
+        /// <summary>
+        /// Whether host register dispatch runs this body on the remaining gas and the stack head it carries, rather than
+        /// writing them back around it. Only a checked body, or one that <see cref="ChargesFixedGas"/> and <see cref="StaysInline"/>, may.
+        /// </summary>
+        static virtual bool CarriesRegisters => false;
 
         /// <summary>Runs the opcode's common case without an out-of-line call.</summary>
         /// <returns>
@@ -630,6 +635,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => typeof(TOpMath) == typeof(EvmInstructions.OpDiv) || typeof(TOpMath) == typeof(EvmInstructions.OpSDiv) ||
                 typeof(TOpMath) == typeof(EvmInstructions.OpMod) || typeof(TOpMath) == typeof(EvmInstructions.OpSMod);
+        }
+
+        public static bool CarriesRegisters
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => typeof(TOpMath) == typeof(EvmInstructions.OpAdd);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1240,6 +1251,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static int StackInputs => 1;
         public static int StackGrowth => -1;
         public static bool MovesHeadOnly => true;
+        public static bool CarriesRegisters => true;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
@@ -1492,6 +1504,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
         public static int StackGrowth => 1;
+        public static bool CarriesRegisters => true;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody
@@ -1512,6 +1525,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
         // Untraced PUSH2 runs a following JUMP or JUMPI itself.
         public static bool MayJump => !TTracingInst.IsActive;
+        public static bool CarriesRegisters => true;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, ref programCounter);
@@ -1531,6 +1545,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static int StackGrowth => 1;
+        public static bool CarriesRegisters => true;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
@@ -1558,6 +1573,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static int StackInputs => TOpCount.Count;
         public static int StackGrowth => 1;
+        public static bool CarriesRegisters => true;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody
@@ -1579,6 +1595,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static int StackInputs => TOpCount.Count + 1;
+        public static bool CarriesRegisters => true;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody

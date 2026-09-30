@@ -14,8 +14,14 @@ using static Nethermind.Evm.VirtualMachineStatics;
 
 public unsafe partial class VirtualMachine<TGasPolicy>
 {
-    internal struct DispatchState
+    internal ref struct DispatchState
     {
+        /// <summary>The frame's gas, for tables that carry the remaining gas in registers (<see cref="CarriesRegisters{TTracingInst}"/>).</summary>
+        /// <remarks>
+        /// Its remaining execution gas is stale while such a chain runs: the chain carries that value in the dispatch
+        /// signature and writes it back before any body that takes the policy, and as it leaves. Unset for other tables.
+        /// </remarks>
+        public ref TGasPolicy Gas;
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>* OpcodeHandlers;
         public VirtualMachine<TGasPolicy> Vm;
 
@@ -90,6 +96,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // from FallbackHandlersOffset; a 256-entry table must hold none.
         fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>* opcodeHandlers = &handlers[0])
         {
+            if (CarriesRegisters<TTracingInst>())
+                return RunCarriedChain<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter, opcodeHandlers);
+
             if (!TCancelable.IsActive)
             {
                 DispatchState state = new()
@@ -159,7 +168,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// through <c>Policy&lt;__Canon&gt;</c>. Table generation therefore rejects fat entries up front
     /// (<see cref="EnsureThinHandler"/>).
     /// </remarks>
-    private static class RawCalliHelper
+    private static partial class RawCalliHelper
     {
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]

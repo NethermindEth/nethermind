@@ -9,6 +9,18 @@ namespace Nethermind.Evm;
 
 public ref partial struct EvmStack
 {
+    /// <summary>A copy of <paramref name="frame"/> with the head that register dispatch carries.</summary>
+    /// <remarks>
+    /// Untraced dispatch runs a checked body on this copy so the head it moves stays in a register; see
+    /// <c>VirtualMachine.Dispatch.Registers.std.cs</c>.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmStack(in EvmStack frame, nint head)
+    {
+        this = frame;
+        Head = head;
+    }
+
     /// <summary>Reports whether <paramref name="destination"/> is a valid jump destination in <see cref="Code"/>.</summary>
     /// <remarks>
     /// The bitmap is resolved when the stack is built (<see cref="InitializeJumpDestinations"/>), so a jump
