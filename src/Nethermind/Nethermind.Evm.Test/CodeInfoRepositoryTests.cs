@@ -18,6 +18,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using System;
 using Nethermind.State;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Logging;
+using Nethermind.Specs.Forks;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.Test;
 
@@ -361,11 +366,55 @@ public class CodeInfoRepositoryTests
     {
         public int CodeReads { get; private set; }
 
-        public override byte[]? GetCode(in ValueHash256 codeHash)
+        public override ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         {
             CodeReads++;
             return base.GetCode(in codeHash);
         }
+    }
+
+    [Test]
+    public void Code_miss_in_parallel_execution_runs_from_the_buffer_read_out_of_the_store()
+    {
+        // A cache-busting block misses on every call: the one copy out of the store must be the buffer execution
+        // runs from, through the traced block-access-list state, and the account read must still be recorded.
+        NativeTestMemDb codeDb = new();
+        byte[] code = [0x60, 0x01, 0x00];
+        IWorldState parent = TestWorldStateFactory.CreateForTest(codeDb: codeDb);
+        Hash256 stateRoot;
+        using (parent.BeginScope(IWorldState.PreGenesis))
+        {
+            parent.CreateAccount(TestItem.AddressA, 0);
+            parent.InsertCode(TestItem.AddressA, code, Amsterdam.Instance);
+            parent.Commit(Amsterdam.Instance, isGenesis: true);
+            parent.CommitTree(0);
+            stateRoot = parent.StateRoot;
+        }
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+        BlockAccessListBasedWorldState blockState = new(parent, LimboLogs.Instance);
+        blockState.SetBlockAccessIndex(1);
+        blockState.Setup(Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(bal).TestObject);
+        using IDisposable scope = parent.BeginScope(baseBlock);
+        blockState.SetParentReader(parent);
+        TracedAccessWorldState traced = new(blockState, parallel: true);
+        BlockAccessListAtIndex generated = new() { Index = 1 };
+        traced.SetGeneratingBlockAccessList(generated);
+
+        CodeInfo codeInfo = new CodeInfoRepository(traced, NoPrecompiles())
+            .GetCachedCodeInfo(TestItem.AddressA, followDelegation: false, Amsterdam.Instance, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeInfo.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.CodeSpan), ref MemoryMarshal.GetReference(codeInfo.ExecutionCodeSpan)), Is.True,
+                "execution must run from the buffer read out of the store, not a second copy");
+            Assert.That(generated.HasAccount(TestItem.AddressA), Is.True);
+        }
+        codeDb.KeyWasReadWithFlags(ValueKeccak.Compute(code).ToByteArray(), ReadFlags.HintCacheMiss);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
