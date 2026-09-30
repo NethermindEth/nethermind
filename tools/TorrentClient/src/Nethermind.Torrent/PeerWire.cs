@@ -16,7 +16,8 @@ internal sealed class PeerWireClient(
     Action<string> log,
     TimeSpan peerTimeout,
     Action<int, PeerEndpoint, string>? pieceCompleted = null,
-    Action<int>? blockAccepted = null)
+    Action<int>? blockAccepted = null,
+    Action<PeerBitfield, bool>? peerInventoryChanged = null)
 {
     private const int HandshakeLength = 68;
     private const string ProtocolName = "BitTorrent protocol";
@@ -30,6 +31,7 @@ internal sealed class PeerWireClient(
     private readonly TimeSpan _peerTimeout = peerTimeout;
     private readonly Action<int, PeerEndpoint, string>? _pieceCompleted = pieceCompleted;
     private readonly Action<int>? _blockAccepted = blockAccepted;
+    private readonly Action<PeerBitfield, bool>? _peerInventoryChanged = peerInventoryChanged;
 
     public async Task RunPeerAsync(PeerEndpoint peer, CancellationToken token)
     {
@@ -45,52 +47,60 @@ internal sealed class PeerWireClient(
         await SendInterestedAsync(stream, token);
 
         PeerBitfield peerPieces = new(_torrent.PieceCount);
-        bool choked = true;
-        DateTimeOffset lastProgress = DateTimeOffset.UtcNow;
-
-        while (!_piecePicker.IsComplete && !token.IsCancellationRequested)
+        _peerInventoryChanged?.Invoke(peerPieces, true);
+        try
         {
-            if (choked || peerPieces.IsEmpty)
-            {
-                PeerMessage message = await ReadMessageAsync(stream, token);
-                ProcessControlMessage(message, peerPieces, ref choked);
-                ThrowIfIdle(peer, choked, peerPieces.IsEmpty, lastProgress);
-                continue;
-            }
+            bool choked = true;
+            DateTimeOffset lastProgress = DateTimeOffset.UtcNow;
 
-            if (!_piecePicker.TryReserve(peerPieces, out int pieceIndex))
+            while (!_piecePicker.IsComplete && !token.IsCancellationRequested)
             {
-                PeerMessage message = await ReadMessageAsync(stream, token);
-                ProcessControlMessage(message, peerPieces, ref choked);
-                if (!_piecePicker.HasReservablePiece(peerPieces))
+                if (choked || peerPieces.IsEmpty)
                 {
+                    PeerMessage message = await ReadMessageAsync(stream, token);
+                    ProcessControlMessage(message, peerPieces, ref choked);
                     ThrowIfIdle(peer, choked, peerPieces.IsEmpty, lastProgress);
+                    continue;
                 }
 
-                continue;
-            }
-
-            try
-            {
-                byte[] piece = await DownloadPieceAsync(stream, peer, peerPieces, pieceIndex, token);
-                byte[] hash = new byte[TorrentMetadata.Sha1Length];
-                SHA1.HashData(piece, hash);
-                if (!hash.SequenceEqual(_torrent.GetPieceHash(pieceIndex)))
+                if (!_piecePicker.TryReserve(peerPieces, out int pieceIndex))
                 {
-                    throw new InvalidDataException($"Piece {pieceIndex} failed SHA-1 validation from {peer}.");
+                    PeerMessage message = await ReadMessageAsync(stream, token);
+                    ProcessControlMessage(message, peerPieces, ref choked);
+                    if (!_piecePicker.HasReservablePiece(peerPieces))
+                    {
+                        ThrowIfIdle(peer, choked, peerPieces.IsEmpty, lastProgress);
+                    }
+
+                    continue;
                 }
 
-                await _storage.WritePieceAsync(pieceIndex, piece, token);
-                _piecePicker.MarkComplete(pieceIndex);
-                _pieceCompleted?.Invoke(pieceIndex, peer, remotePeerId);
-                lastProgress = DateTimeOffset.UtcNow;
-                _log($"piece {pieceIndex + 1}/{_torrent.PieceCount} from {peer}; {FormatPercent(_piecePicker.DownloadedBytes, _torrent.TotalLength)}");
+                try
+                {
+                    byte[] piece = await DownloadPieceAsync(stream, peer, peerPieces, pieceIndex, token);
+                    byte[] hash = new byte[TorrentMetadata.Sha1Length];
+                    SHA1.HashData(piece, hash);
+                    if (!hash.SequenceEqual(_torrent.GetPieceHash(pieceIndex)))
+                    {
+                        throw new InvalidDataException($"Piece {pieceIndex} failed SHA-1 validation from {peer}.");
+                    }
+
+                    await _storage.WritePieceAsync(pieceIndex, piece, token);
+                    _piecePicker.MarkComplete(pieceIndex);
+                    _pieceCompleted?.Invoke(pieceIndex, peer, remotePeerId);
+                    lastProgress = DateTimeOffset.UtcNow;
+                    _log($"piece {pieceIndex + 1}/{_torrent.PieceCount} from {peer}; {FormatPercent(_piecePicker.DownloadedBytes, _torrent.TotalLength)}");
+                }
+                catch
+                {
+                    _piecePicker.Release(pieceIndex);
+                    throw;
+                }
             }
-            catch
-            {
-                _piecePicker.Release(pieceIndex);
-                throw;
-            }
+        }
+        finally
+        {
+            _peerInventoryChanged?.Invoke(peerPieces, false);
         }
     }
 

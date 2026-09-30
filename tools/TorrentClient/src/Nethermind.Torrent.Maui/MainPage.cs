@@ -63,6 +63,7 @@ public sealed class MainPage : ContentPage
     private readonly Dictionary<TorrentJob, (CancellationTokenSource Cancellation, Task Task)> _verifications = [];
     private readonly SemaphoreSlim _verificationGate = new(1, 1);
     private readonly TorrentUiSettings _settings = TorrentUiSettingsStore.Load();
+    internal bool MinimizeToTrayEnabled => _settings.MinimizeToTray;
     private readonly CollectionView _queueView;
     private readonly ContentView _queueEmptyContent = new() { IsVisible = false };
     private readonly ContentView _detailContent = new();
@@ -702,7 +703,8 @@ public sealed class MainPage : ContentPage
                     {
                         if (job.IsRunning)
                         {
-                            job.RefreshTransfer();
+                            job.RefreshTransfer(ReferenceEquals(job, _selectedJob) && _activeTab == "Files" &&
+                                !_showSettings && _detailsPane.IsVisible && IsAppWindowVisible());
                             hasRunningJob = true;
                         }
                     }
@@ -726,6 +728,13 @@ public sealed class MainPage : ContentPage
 
         _activityTimer.Start();
     }
+
+#if WINDOWS
+    private bool IsAppWindowVisible() => Window?.Handler?.PlatformView is not MauiWinUIWindow nativeWindow ||
+            nativeWindow.AppWindow.IsVisible;
+#else
+    private bool IsAppWindowVisible() => true;
+#endif
 
     private void RefreshActionState()
     {
@@ -900,6 +909,8 @@ public sealed class MainPage : ContentPage
             return EmptyState("No torrent selected.");
         }
 
+        _ = job.RefreshAvailabilityAsync();
+
         Grid grid = new()
         {
             RowDefinitions =
@@ -946,6 +957,27 @@ public sealed class MainPage : ContentPage
         searchRow.Add(count, 1, 0);
         grid.Add(searchRow, 0, 0);
 
+        Grid fileHeader = new()
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(new GridLength(88)),
+                new ColumnDefinition(new GridLength(92)),
+            },
+            ColumnSpacing = 10,
+        };
+        Label fileNameHeader = SmallLabel("FILE");
+        fileNameHeader.Padding = new Thickness(8, 0);
+        fileHeader.Add(fileNameHeader, 0, 0);
+        Label sizeHeader = SmallLabel("SIZE");
+        sizeHeader.HorizontalTextAlignment = TextAlignment.End;
+        fileHeader.Add(sizeHeader, 1, 0);
+        Label availabilityHeader = SmallLabel("AVAILABLE");
+        availabilityHeader.HorizontalTextAlignment = TextAlignment.End;
+        ToolTipProperties.SetText(availabilityHeader, "Verified locally or advertised by connected download peers. A snapshot, not a guarantee.");
+        fileHeader.Add(availabilityHeader, 2, 0);
+
         CollectionView files = new()
         {
             ItemsSource = job.Files,
@@ -953,7 +985,14 @@ public sealed class MainPage : ContentPage
             ItemTemplate = new DataTemplate(() => CreateFileRow(job)),
         };
         ContentView empty = new();
-        Grid list = new() { Children = { files, empty } };
+        Grid list = new()
+        {
+            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Star) },
+            RowSpacing = 4,
+        };
+        list.Add(fileHeader, 0, 0);
+        list.Add(files, 0, 1);
+        list.Add(empty, 0, 1);
         grid.Add(list, 0, 1);
 
         void UpdateFilter()
@@ -978,7 +1017,8 @@ public sealed class MainPage : ContentPage
             ColumnDefinitions =
             {
                 new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(new GridLength(110)),
+                new ColumnDefinition(new GridLength(88)),
+                new ColumnDefinition(new GridLength(92)),
             },
             ColumnSpacing = 10,
         };
@@ -1024,9 +1064,15 @@ public sealed class MainPage : ContentPage
         length.HorizontalTextAlignment = TextAlignment.End;
         length.InputTransparent = true;
         row.Add(reveal, 0, 0);
-        Grid.SetColumnSpan(reveal, 2);
+        Grid.SetColumnSpan(reveal, 3);
         row.Add(path, 0, 0);
         row.Add(length, 1, 0);
+        Label availability = SmallLabel(string.Empty);
+        availability.SetBinding(Label.TextProperty, nameof(TorrentFileItem.AvailabilityText));
+        availability.HorizontalTextAlignment = TextAlignment.End;
+        availability.InputTransparent = true;
+        ToolTipProperties.SetText(availability, "Verified locally or advertised by connected download peers. -- means unknown.");
+        row.Add(availability, 2, 0);
         return row;
     }
 
@@ -1291,6 +1337,13 @@ public sealed class MainPage : ContentPage
             ReadOnlySetting("Ratio limit", "Not available"),
             ReadOnlySetting("Seed time minutes", "Not available"),
         ]));
+
+        if (OperatingSystem.IsWindows())
+        {
+            stack.Add(SettingsSection("Window", [
+                SwitchSetting("Minimize to tray", _settings.MinimizeToTray, value => _settings.MinimizeToTray = value),
+            ]));
+        }
 
         stack.Add(SettingsSection("Proxy and Advanced", [
             ReadOnlySetting("Proxy host", "Not available"),

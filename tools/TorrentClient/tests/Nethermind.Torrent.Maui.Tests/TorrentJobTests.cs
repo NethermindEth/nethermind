@@ -10,6 +10,49 @@ namespace Nethermind.Torrent.Maui.Tests;
 [TestFixture]
 public sealed class TorrentJobTests
 {
+    [TestCase(0b0000_0000, false, "--", "--")]
+    [TestCase(0b0000_0000, true, "0%", "0%")]
+    [TestCase(0b1000_0000, false, "100%", "20%")]
+    [TestCase(0b0100_0000, true, "0%", "80%")]
+    [TestCase(0b1100_0000, false, "100%", "100%")]
+    public void File_availability_weights_piece_overlap_and_distinguishes_unknown(
+        byte pieces, bool hasCoverage, string firstExpected, string secondExpected)
+    {
+        TorrentFileItem first = new(new TorrentFileEntry("a.bin", 3, 0));
+        TorrentFileItem second = new(new TorrentFileEntry("b.bin", 5, 3));
+        byte[] bitfield = [pieces];
+
+        first.UpdateAvailability(bitfield, 4, hasCoverage || pieces != 0);
+        second.UpdateAvailability(bitfield, 4, hasCoverage || pieces != 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.AvailabilityText, Is.EqualTo(firstExpected));
+            Assert.That(second.AvailabilityText, Is.EqualTo(secondExpected));
+        }
+    }
+
+    [Test]
+    public void File_availability_notifies_when_peer_inventory_changes()
+    {
+        TorrentFileItem file = new(new TorrentFileEntry("file.bin", 4, 0));
+        int changes = 0;
+        file.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(TorrentFileItem.AvailabilityText)) changes++;
+        };
+
+        file.UpdateAvailability([0b1000_0000], 4, hasCoverage: true);
+        file.UpdateAvailability([0b0000_0000], 4, hasCoverage: false);
+        file.UpdateAvailability([0b0000_0000], 4, hasCoverage: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(file.AvailabilityText, Is.EqualTo("--"));
+            Assert.That(changes, Is.EqualTo(2));
+        }
+    }
+
     [Test]
     public void Queued_activity_is_bounded_and_drained_in_batches()
     {

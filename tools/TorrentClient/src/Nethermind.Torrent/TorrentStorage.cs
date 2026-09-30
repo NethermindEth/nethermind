@@ -380,44 +380,82 @@ internal sealed class PiecePicker(TorrentMetadata metadata)
 
 internal sealed class PeerBitfield(int pieceCount)
 {
-    private readonly bool[] _pieces = new bool[pieceCount];
+    private readonly byte[] _pieces = new byte[(pieceCount + 7) / 8];
+    private readonly int _pieceCount = pieceCount;
+    private readonly Lock _lock = new();
+    private bool _isEmpty = true;
+    private bool _hasInventory;
 
-    public bool IsEmpty { get; private set; } = true;
+    public bool IsEmpty
+    {
+        get => Volatile.Read(ref _isEmpty);
+    }
 
     public void SetAll()
     {
-        for (int i = 0; i < _pieces.Length; i++)
+        lock (_lock)
         {
-            _pieces[i] = true;
+            Array.Fill(_pieces, byte.MaxValue);
+            MaskUnusedBits();
+            Volatile.Write(ref _isEmpty, _pieceCount == 0);
+            _hasInventory = true;
         }
-
-        IsEmpty = false;
     }
 
     public void SetPiece(int index)
     {
-        if ((uint)index < (uint)_pieces.Length)
+        lock (_lock)
         {
-            _pieces[index] = true;
-            IsEmpty = false;
+            if ((uint)index < (uint)_pieceCount)
+            {
+                int byteIndex = index / 8;
+                _pieces[byteIndex] |= (byte)(1 << (7 - index % 8));
+                Volatile.Write(ref _isEmpty, false);
+                _hasInventory = true;
+            }
         }
     }
 
     public void ReadBitfield(ReadOnlySpan<byte> bytes)
     {
-        for (int i = 0; i < _pieces.Length; i++)
+        lock (_lock)
         {
-            int byteIndex = i / 8;
-            if (byteIndex >= bytes.Length)
+            _hasInventory = true;
+            Array.Clear(_pieces);
+            bytes[..Math.Min(bytes.Length, _pieces.Length)].CopyTo(_pieces);
+            MaskUnusedBits();
+            bool isEmpty = true;
+            for (int i = 0; i < _pieces.Length; i++)
             {
-                break;
+                isEmpty &= _pieces[i] == 0;
             }
 
-            int bit = 7 - i % 8;
-            _pieces[i] = (bytes[byteIndex] & (1 << bit)) != 0;
-            IsEmpty = false;
+            Volatile.Write(ref _isEmpty, isEmpty);
         }
     }
 
-    public bool HasPiece(int index) => (uint)index < (uint)_pieces.Length && _pieces[index];
+    public bool HasPiece(int index) => (uint)index < (uint)_pieceCount &&
+        (_pieces[index / 8] & (1 << (7 - index % 8))) != 0;
+
+    public bool AddTo(byte[] bitfield)
+    {
+        lock (_lock)
+        {
+            for (int i = 0; i < _pieces.Length; i++)
+            {
+                bitfield[i] |= _pieces[i];
+            }
+
+            return _hasInventory;
+        }
+    }
+
+    private void MaskUnusedBits()
+    {
+        int remainder = _pieceCount % 8;
+        if (remainder != 0)
+        {
+            _pieces[^1] &= (byte)(0xff << (8 - remainder));
+        }
+    }
 }

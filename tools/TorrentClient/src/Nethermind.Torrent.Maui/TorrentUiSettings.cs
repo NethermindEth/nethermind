@@ -26,6 +26,7 @@ internal sealed class TorrentUiSettings
     public int DhtLookupTimeoutSeconds { get; set; } = 15;
     public int PeerTimeoutSeconds { get; set; } = 45;
     public bool ConfirmRemove { get; set; } = true;
+    public bool MinimizeToTray { get; set; } = true;
 
     private static string GetDefaultDownloadDirectory()
     {

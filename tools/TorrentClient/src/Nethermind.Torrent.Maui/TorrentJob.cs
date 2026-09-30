@@ -19,6 +19,8 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     private long _totalBytes;
     private long _downloadedBytes;
     private int _pieceCount;
+    private int _pieceLength;
+    private int _availabilityRefreshPending;
     private int _completedPieces;
     private int _activePeers;
     private int _activeUploadPeers;
@@ -471,6 +473,7 @@ internal sealed class TorrentJob : INotifyPropertyChanged
 
     public void ApplyMetadata(TorrentMetadata metadata)
     {
+        _pieceLength = metadata.PieceLength;
         _hasDataToResume = false;
         _isPrivate = metadata.IsPrivate;
         InfoHashHex = metadata.InfoHashHex;
@@ -520,6 +523,10 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     public void CompleteVerification(TorrentVerificationProgress verification)
     {
         ApplyVerificationProgress(verification);
+        if (verification.VerifiedBitfield is not null)
+        {
+            UpdateFileAvailability(verification.VerifiedBitfield, hasPeerInventory: false);
+        }
         bool complete = verification.VerifiedPieces == verification.TotalPieces;
         IsComplete = complete;
         IsChecking = false;
@@ -620,6 +627,11 @@ internal sealed class TorrentJob : INotifyPropertyChanged
 
     public void DetachRun(bool completed)
     {
+        if (_session?.GetAvailabilitySnapshot() is TorrentAvailabilitySnapshot availability)
+        {
+            UpdateFileAvailability(availability.AvailablePieces, availability.HasPeerInventory);
+        }
+
         _cancellation?.Dispose();
         _cancellation = null;
         _runTask = null;
@@ -725,7 +737,7 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         Status = progress.Phase == TorrentSessionPhase.Completed ? "Complete" : progress.Phase.ToString();
     }
 
-    public void RefreshTransfer()
+    public void RefreshTransfer(bool refreshAvailability = false)
     {
         if (_session is not null)
         {
@@ -743,6 +755,72 @@ internal sealed class TorrentJob : INotifyPropertyChanged
             }
 
             ApplyTransferSnapshot(_session.GetTransferSnapshot());
+            if (refreshAvailability)
+            {
+                _ = RefreshAvailabilityAsync();
+            }
+        }
+    }
+
+    public async Task RefreshAvailabilityAsync()
+    {
+        TorrentSession? session = _session;
+        if (session is null || Interlocked.Exchange(ref _availabilityRefreshPending, 1) != 0) return;
+
+        int pieceLength = _pieceLength;
+        TorrentFileItem[] files = Files.ToArray();
+        try
+        {
+            string[]? values = await Task.Run(() =>
+            {
+                if (session.GetAvailabilitySnapshot() is not TorrentAvailabilitySnapshot availability) return null;
+
+                byte[] pieces = availability.AvailablePieces;
+                bool hasCoverage = availability.HasPeerInventory || pieces.Any(value => value != 0);
+                string[] result = new string[files.Length];
+                for (int i = 0; i < files.Length; i++)
+                {
+                    result[i] = files[i].CalculateAvailabilityText(pieces, pieceLength, hasCoverage);
+                }
+
+                return result;
+            });
+
+            if (values is null) return;
+
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (!ReferenceEquals(_session, session) || _pieceLength != pieceLength || Files.Count != files.Length) return;
+
+                for (int i = 0; i < files.Length; i++)
+                {
+                    if (!ReferenceEquals(Files[i], files[i])) return;
+                }
+
+                for (int i = 0; i < files.Length; i++)
+                {
+                    files[i].SetAvailabilityText(values[i]);
+                }
+            });
+        }
+        catch (Exception exception)
+        {
+            QueueLog("availability refresh failed: " + exception.Message);
+        }
+        finally
+        {
+            Volatile.Write(ref _availabilityRefreshPending, 0);
+        }
+    }
+
+    private void UpdateFileAvailability(byte[] pieces, bool hasPeerInventory)
+    {
+        if (_pieceLength <= 0) return;
+
+        bool hasCoverage = hasPeerInventory || pieces.Any(value => value != 0);
+        foreach (TorrentFileItem file in Files)
+        {
+            file.UpdateAvailability(pieces, _pieceLength, hasCoverage);
         }
     }
 
@@ -815,11 +893,45 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         };
 }
 
-internal sealed class TorrentFileItem(TorrentFileEntry entry)
+internal sealed class TorrentFileItem(TorrentFileEntry entry) : INotifyPropertyChanged
 {
     public string Path { get; } = entry.Path;
 
     public long Length { get; } = entry.Length;
 
     public string LengthText { get; } = TorrentJob.FormatBytes(entry.Length);
+
+    public string AvailabilityText { get; private set; } = "--";
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public void UpdateAvailability(ReadOnlySpan<byte> pieces, int pieceLength, bool hasCoverage)
+        => SetAvailabilityText(CalculateAvailabilityText(pieces, pieceLength, hasCoverage));
+
+    public string CalculateAvailabilityText(ReadOnlySpan<byte> pieces, int pieceLength, bool hasCoverage)
+    {
+        if (entry.Length == 0) return "100%";
+        if (!hasCoverage) return "--";
+
+        long covered = 0;
+        long end = entry.Offset + entry.Length;
+        for (long index = entry.Offset / pieceLength; index * pieceLength < end; index++)
+        {
+            if (index / 8 >= pieces.Length || (pieces[(int)(index / 8)] & (1 << (7 - (int)(index % 8)))) == 0) continue;
+            long pieceStart = index * pieceLength;
+            covered += Math.Min(end, pieceStart + pieceLength) - Math.Max(entry.Offset, pieceStart);
+        }
+
+        double progress = (double)covered / entry.Length;
+        return progress >= 1 ? "100%" : progress == 0 ? "0%" : progress < 0.0001 ? "<0.01%" :
+            Math.Min(progress * 100, 99.99).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
+    }
+
+    public void SetAvailabilityText(string text)
+    {
+        if (AvailabilityText == text) return;
+
+        AvailabilityText = text;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AvailabilityText)));
+    }
 }

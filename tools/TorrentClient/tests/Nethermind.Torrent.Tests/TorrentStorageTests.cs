@@ -11,6 +11,46 @@ namespace Nethermind.Torrent.Tests;
 public sealed class TorrentStorageTests
 {
     [Test]
+    public void Peer_bitfield_snapshot_tracks_have_and_replaced_bitfield()
+    {
+        PeerBitfield peer = new(10);
+        byte[] snapshot = new byte[2];
+        Assert.That(peer.AddTo(snapshot), Is.False);
+
+        peer.SetPiece(0);
+        Assert.That(peer.AddTo(snapshot), Is.True);
+        Assert.That(snapshot, Is.EqualTo(new byte[] { 0b1000_0000, 0 }));
+
+        peer.ReadBitfield([0b0100_0000]);
+        snapshot.AsSpan().Clear();
+        Assert.That(peer.AddTo(snapshot), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot, Is.EqualTo(new byte[] { 0b0100_0000, 0 }));
+            Assert.That(peer.IsEmpty, Is.False);
+        }
+
+        peer.ReadBitfield([0]);
+        snapshot.AsSpan().Clear();
+        Assert.That(peer.AddTo(snapshot), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot, Is.EqualTo(new byte[] { 0, 0 }));
+            Assert.That(peer.IsEmpty, Is.True);
+        }
+
+        peer.SetPiece(9);
+        snapshot.AsSpan().Clear();
+        peer.AddTo(snapshot);
+        Assert.That(snapshot, Is.EqualTo(new byte[] { 0, 0b0100_0000 }));
+
+        peer.SetAll();
+        snapshot.AsSpan().Clear();
+        peer.AddTo(snapshot);
+        Assert.That(snapshot, Is.EqualTo(new byte[] { 0xff, 0b1100_0000 }));
+    }
+
+    [Test]
     public async Task WritePieceAsync_handles_piece_spanning_multiple_files()
     {
         byte[] pieces = new byte[40];
@@ -71,6 +111,7 @@ public sealed class TorrentStorageTests
         {
             TorrentVerificationProgress missing = await TorrentDataVerifier.VerifyAsync(metadata, directory, token: TestContext.CurrentContext.CancellationToken);
             Assert.That(missing.VerifiedPieces, Is.Zero);
+            Assert.That(missing.VerifiedBitfield, Is.EqualTo(new byte[] { 0 }));
             Assert.That(Directory.Exists(directory), Is.False);
 
             Directory.CreateDirectory(directory);
@@ -80,12 +121,14 @@ public sealed class TorrentStorageTests
             {
                 Assert.That(partial.VerifiedPieces, Is.EqualTo(1));
                 Assert.That(partial.VerifiedBytes, Is.EqualTo(4));
+                Assert.That(partial.VerifiedBitfield, Is.EqualTo(new byte[] { 0b1000_0000 }));
                 Assert.That(new FileInfo(payloadPath).Length, Is.EqualTo(4));
             }
 
             await File.WriteAllBytesAsync(payloadPath, "abcdEFGH"u8.ToArray(), TestContext.CurrentContext.CancellationToken);
             TorrentVerificationProgress corrupt = await TorrentDataVerifier.VerifyAsync(metadata, directory, token: TestContext.CurrentContext.CancellationToken);
             Assert.That(corrupt.VerifiedPieces, Is.EqualTo(1));
+            Assert.That(corrupt.VerifiedBitfield, Is.EqualTo(new byte[] { 0b1000_0000 }));
 
             await File.WriteAllBytesAsync(payloadPath, "abcdefgh"u8.ToArray(), TestContext.CurrentContext.CancellationToken);
             TorrentVerificationProgress complete = await TorrentDataVerifier.VerifyAsync(metadata, directory, token: TestContext.CurrentContext.CancellationToken);
@@ -93,6 +136,7 @@ public sealed class TorrentStorageTests
             {
                 Assert.That(complete.VerifiedPieces, Is.EqualTo(2));
                 Assert.That(complete.VerifiedBytes, Is.EqualTo(8));
+                Assert.That(complete.VerifiedBitfield, Is.EqualTo(new byte[] { 0b1100_0000 }));
             }
         }
         finally

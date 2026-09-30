@@ -35,7 +35,18 @@ public sealed class TorrentUiSettingsTests
             Assert.That(settings.StartOnAdd, Is.False);
             Assert.That(settings.SeedAfterCompletion, Is.True);
             Assert.That(settings.MaxUploadPeers, Is.EqualTo(8));
+            Assert.That(settings.MinimizeToTray, Is.True);
         }
+    }
+
+    [Test]
+    public void Minimize_to_tray_setting_survives_json_round_trip()
+    {
+        TorrentUiSettings settings = new() { MinimizeToTray = false };
+        string json = JsonSerializer.Serialize(settings);
+        TorrentUiSettings restored = JsonSerializer.Deserialize<TorrentUiSettings>(json)!;
+
+        Assert.That(restored.MinimizeToTray, Is.False);
     }
 
     [Test]

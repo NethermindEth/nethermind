@@ -80,3 +80,8 @@ public sealed record TorrentSessionProgress(
 /// <param name="ActiveUploadPeers">Current inbound peer connections serving this torrent.</param>
 public readonly record struct TorrentTransferSnapshot(long PayloadBytesReceived, long VerifiedBytesFromPeers,
     TimeSpan ActiveTime, int ContributingPeers, long UploadedBytes = 0, int ActiveUploadPeers = 0);
+
+/// <summary>Snapshot of pieces verified locally or advertised by connected download peers.</summary>
+/// <param name="AvailablePieces">Bitfield containing the union of local and connected-peer pieces.</param>
+/// <param name="HasPeerInventory">Whether any connected peer has sent a bitfield or have message.</param>
+public readonly record struct TorrentAvailabilitySnapshot(byte[] AvailablePieces, bool HasPeerInventory);

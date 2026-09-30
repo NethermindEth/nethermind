@@ -99,6 +99,9 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
     private long _activeEndTimestamp;
     private readonly Lock _contributorsLock = new();
     private readonly HashSet<string> _contributors = [];
+    private readonly Lock _peerInventoryLock = new();
+    private readonly HashSet<PeerBitfield> _peerInventories = [];
+    private PiecePicker? _piecePicker;
     private PeerSeedServer? _seedServer;
     private TorrentSessionProgress? _latestProgress;
 
@@ -107,6 +110,25 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
 
     /// <summary>Gets the latest engine progress, including updates not yet dispatched to a UI callback.</summary>
     public TorrentSessionProgress? GetLatestProgress() => Volatile.Read(ref _latestProgress);
+
+    /// <summary>Gets pieces verified locally or advertised by currently connected download peers.</summary>
+    public TorrentAvailabilitySnapshot? GetAvailabilitySnapshot()
+    {
+        PiecePicker? picker = Volatile.Read(ref _piecePicker);
+        if (picker is null) return null;
+
+        byte[] pieces = picker.GetCompletedBitfield();
+        bool hasInventory = false;
+        lock (_peerInventoryLock)
+        {
+            foreach (PeerBitfield peer in _peerInventories)
+            {
+                hasInventory |= peer.AddTo(pieces);
+            }
+        }
+
+        return new TorrentAvailabilitySnapshot(pieces, hasInventory);
+    }
 
     /// <summary>Gets network transfer activity measured during this session.</summary>
     public TorrentTransferSnapshot GetTransferSnapshot()
@@ -164,6 +186,8 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
         {
             await VerifyExistingPiecesAsync(torrent, storage, picker, token);
         }
+
+        Volatile.Write(ref _piecePicker, picker);
 
         bool wasCompleteAtStartup = picker.IsComplete;
         if (!wasCompleteAtStartup && (!_options.EnableTrackers || torrent.Trackers.Count == 0) && !useDht &&
@@ -326,7 +350,15 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
                 ReportProgress(TorrentSessionPhase.Downloading, torrent, picker,
                     $"Piece {pieceIndex + 1}/{torrent.PieceCount} from {peer}");
             },
-            blockLength => Interlocked.Add(ref _payloadBytesReceived, blockLength));
+            blockLength => Interlocked.Add(ref _payloadBytesReceived, blockLength),
+            (inventory, connected) =>
+            {
+                lock (_peerInventoryLock)
+                {
+                    if (connected) _peerInventories.Add(inventory);
+                    else _peerInventories.Remove(inventory);
+                }
+            });
         using CancellationTokenSource peerCts = CancellationTokenSource.CreateLinkedTokenSource(token);
 
         try

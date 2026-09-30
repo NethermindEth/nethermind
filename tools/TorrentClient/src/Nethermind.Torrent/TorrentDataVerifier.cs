@@ -10,7 +10,8 @@ namespace Nethermind.Torrent;
 /// <param name="TotalPieces">Total number of pieces in the torrent.</param>
 /// <param name="VerifiedPieces">Number of pieces whose hashes match.</param>
 /// <param name="VerifiedBytes">Payload bytes covered by matching pieces.</param>
-public readonly record struct TorrentVerificationProgress(int ScannedPieces, int TotalPieces, int VerifiedPieces, long VerifiedBytes);
+/// <param name="VerifiedBitfield">Verified piece mask on the final result; null for intermediate progress.</param>
+public readonly record struct TorrentVerificationProgress(int ScannedPieces, int TotalPieces, int VerifiedPieces, long VerifiedBytes, byte[]? VerifiedBitfield = null);
 
 /// <summary>
 /// Recovers torrent progress from existing files without modifying them or contacting peers.
@@ -39,6 +40,7 @@ public static class TorrentDataVerifier
         byte[] buffer = GC.AllocateUninitializedArray<byte>(metadata.PieceLength);
         int verifiedPieces = 0;
         long verifiedBytes = 0;
+        byte[] verifiedBitfield = new byte[(metadata.PieceCount + 7) / 8];
         for (int i = 0; i < metadata.PieceCount; i++)
         {
             token.ThrowIfCancellationRequested();
@@ -46,6 +48,7 @@ public static class TorrentDataVerifier
             {
                 verifiedPieces++;
                 verifiedBytes += metadata.GetPieceSize(i);
+                verifiedBitfield[i / 8] |= (byte)(1 << (7 - i % 8));
             }
 
             if (i % 32 == 31 || i == metadata.PieceCount - 1)
@@ -54,6 +57,6 @@ public static class TorrentDataVerifier
             }
         }
 
-        return new TorrentVerificationProgress(metadata.PieceCount, metadata.PieceCount, verifiedPieces, verifiedBytes);
+        return new TorrentVerificationProgress(metadata.PieceCount, metadata.PieceCount, verifiedPieces, verifiedBytes, verifiedBitfield);
     }
 }

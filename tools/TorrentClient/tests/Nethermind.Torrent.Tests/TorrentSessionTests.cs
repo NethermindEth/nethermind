@@ -167,7 +167,8 @@ public sealed class TorrentSessionTests
             await File.WriteAllBytesAsync(torrentPath, torrent);
             int port = ((IPEndPoint)listener.LocalEndpoint).Port;
             using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
-            Task peer = ServePayloadAsync(listener, infoHash, payload, timeout.Token);
+            TaskCompletionSource resumePayload = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task peer = ServePayloadAsync(listener, infoHash, payload, timeout.Token, resumePayload.Task);
             TorrentClientOptions options = new()
             {
                 TorrentPath = torrentPath,
@@ -182,8 +183,19 @@ public sealed class TorrentSessionTests
             };
 
             TorrentSession session = new(options, _ => { });
-            await session.RunAsync(timeout.Token);
+            Task<TorrentMetadata> download = session.RunAsync(timeout.Token);
+            while (session.GetAvailabilitySnapshot()?.HasPeerInventory != true)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+
+            TorrentAvailabilitySnapshot connectedAvailability = session.GetAvailabilitySnapshot()!.Value;
+            Assert.That(connectedAvailability.AvailablePieces, Is.EqualTo(new byte[] { 0b1000_0000 }));
+            resumePayload.SetResult();
+            await download;
             await peer;
+
+            TorrentAvailabilitySnapshot finalAvailability = session.GetAvailabilitySnapshot()!.Value;
 
             TorrentTransferSnapshot transfer = session.GetTransferSnapshot();
             TorrentClientOptions verifiedOptions = new()
@@ -208,6 +220,8 @@ public sealed class TorrentSessionTests
                 Assert.That(verificationOnly.GetTransferSnapshot().PayloadBytesReceived, Is.Zero);
                 Assert.That(verificationOnly.GetTransferSnapshot().VerifiedBytesFromPeers, Is.Zero);
                 Assert.That(verificationOnly.GetTransferSnapshot().ContributingPeers, Is.Zero);
+                Assert.That(finalAvailability.HasPeerInventory, Is.False);
+                Assert.That(finalAvailability.AvailablePieces, Is.EqualTo(new byte[] { 0b1000_0000 }));
             }
         }
         finally
@@ -274,7 +288,8 @@ public sealed class TorrentSessionTests
         }
     }
 
-    private static async Task ServePayloadAsync(TcpListener listener, byte[] infoHash, byte[] payload, CancellationToken token)
+    private static async Task ServePayloadAsync(TcpListener listener, byte[] infoHash, byte[] payload, CancellationToken token,
+        Task? resumePayload = null)
     {
         using TcpClient client = await listener.AcceptTcpClientAsync(token);
         await using NetworkStream stream = client.GetStream();
@@ -289,6 +304,7 @@ public sealed class TorrentSessionTests
         byte[] unchoke = [0, 0, 0, 1, (byte)PeerMessageId.Unchoke];
         await stream.WriteAsync(bitfield, token);
         await stream.WriteAsync(unchoke, token);
+        if (resumePayload is not null) await resumePayload.WaitAsync(token);
         byte[] request = new byte[17];
         await stream.ReadExactlyAsync(request, token);
         Assert.That(request[4], Is.EqualTo((byte)PeerMessageId.Request));
