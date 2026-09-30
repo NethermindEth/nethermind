@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -469,6 +470,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
         EndOriginalsRound();
         _storages.ResetAndClear();
+        InvalidateStorageMemo();
+    }
+
+    /// <summary>Drops the block's storage changes of every account <paramref name="bal"/> changed, whose slots are now the scope's.</summary>
+    internal void ForgetBlockChanges(ReadOnlyBlockAccessList bal)
+    {
+        if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (accountChanges.HasStateChanges && _storages.Remove(accountChanges.Address, out PerContractState? state)) state.Return();
+        }
+
         InvalidateStorageMemo();
     }
 

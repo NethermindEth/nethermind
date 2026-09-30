@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -1049,6 +1050,16 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 addresses.Add(address);
             }
             return addresses;
+        }
+    }
+
+    /// <summary>Drops the block's record of every account <paramref name="bal"/> changed, whose value is now the scope's.</summary>
+    /// <remarks>Removals with storage stay recorded: a removed account's cached slots must go whether or not the BAL recreated it.</remarks>
+    internal void ForgetBlockChanges(ReadOnlyBlockAccessList bal)
+    {
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (accountChanges.HasStateChanges) _blockChanges.Remove(accountChanges.Address);
         }
     }
 

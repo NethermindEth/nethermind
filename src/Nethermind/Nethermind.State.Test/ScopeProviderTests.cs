@@ -760,6 +760,57 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_ApplyBal_WritesBack_TheChangesCommittedBeforeIt_UnderTheBalsValues()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressC)
+                .WithBalanceChanges(new BalanceChange(1, 900))
+                .WithStorageChanges(SlotC5.Index, new StorageChange(1, 11))
+                .TestObject)
+            .TestObject;
+
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            // Writes the BAL never recorded, like AuRa's contract rewrites: A keeps them, C's are superseded by the BAL.
+            ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _);
+            ws.Set(in SlotA1, (UInt256)7);
+            ws.AddToBalance(TestItem.AddressC, 1, Cancun.Instance, out _);
+            ws.Set(in SlotC5, (UInt256)9);
+            ws.Commit(Cancun.Instance);
+            ws.ApplyBal(bal);
+            ws.RecalculateStateRoot();
+        });
+
+        bool carried = caches.PrepareFor(newRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(carried, Is.True, "the caches describe the committed state");
+            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)400));
+            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(CachedAccount(caches, TestItem.AddressC).Balance, Is.EqualTo((UInt256)900));
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 11 }));
+        }
+
+        using (consumer.BeginScope(HeaderAt(newRoot, 2)))
+        {
+            consumer.Get(in SlotA1, out UInt256 slotA1);
+            consumer.Get(in SlotC5, out UInt256 slotC5);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(consumer.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)400));
+                Assert.That(slotA1, Is.EqualTo((UInt256)7));
+                Assert.That(consumer.GetBalance(TestItem.AddressC), Is.EqualTo((UInt256)900));
+                Assert.That(slotC5, Is.EqualTo((UInt256)11));
+            }
+        }
+    }
+
+    [Test]
     public void Test_StorageOnlyChange_CachesTheAccountWithItsNewStorageRoot()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
