@@ -151,6 +151,7 @@ namespace Nethermind.TxPool
         // Lets the per-head expiry pass skip the pool walk entirely when nothing can expire. Maintained by the
         // Inserted/Removed handlers under Interlocked, so readers need only Volatile.Read for visibility.
         private int _expiringFrameTxCount;
+        private int _recentRootFrameTxCount;
 
 #if DEBUG
         // Bumped before the bookkeeping either side of a mutation moves, so a half-applied mutation cannot read as drift.
@@ -318,7 +319,7 @@ namespace Nethermind.TxPool
             [
                 new MalformedTxFilter(validator, _specChangeTxValidator, ecdsa, _logger),
                 new FrameTxMisplacedExpiryFrameFilter(_logger), // before ExpiredFrameTxFilter: leaves the deadline readable from the leading frame alone
-                new FrameTxMisplacedRecentRootFrameFilter(_logger),
+                new FrameTxMisplacedRecentRootFrameFilter(_logger, txPoolConfig.BlobsSupport.IsPersistentStorage()),
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
                 new FrameTxPayerlessFilter(_logger), // before FrameTxSignatureFilter: a structural payerless verdict needs no signature work
@@ -540,6 +541,7 @@ namespace Nethermind.TxPool
             TrackPoolMutation();
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            if (HasRecentRootTuples(args.Value)) Interlocked.Increment(ref _recentRootFrameTxCount);
             IndexFrameTxDependencies(args.Value);
             StageFrameEvictionRetries(args.Value);
         }
@@ -573,6 +575,7 @@ namespace Nethermind.TxPool
                 AssertExpiringFrameTxCountNotNegative(remaining);
             }
 
+            if (HasRecentRootTuples(args.Value)) Interlocked.Decrement(ref _recentRootFrameTxCount);
             ReleaseFrameTxReservations(args.Value);
             if (args.Value.SupportsFrames)
             {
@@ -627,6 +630,8 @@ namespace Nethermind.TxPool
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
+
+        private static bool HasRecentRootTuples(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetRecentRootTuples(tx, out _);
 
         [Conditional("DEBUG")]
         private void TrackPoolMutation()
@@ -1126,18 +1131,28 @@ namespace Nethermind.TxPool
         /// the new head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
         /// <remarks>Checked against every head rather than through the dependency index: the predeploy's storage moves
         /// every slot and a reorg can rewrite an entry. A tuple aged out of the ring buffer never verifies again, so
-        /// its hash stays cached; any other failure can reverse with a reorg. Blob-pool records carry no frames and are
-        /// left to the dependency sweep.</remarks>
+        /// its hash stays cached; any other failure can reverse with a reorg. The in-memory blob pool keeps full frames
+        /// and is swept too; a persistent blob pool never admits a tuple-carrying record, see
+        /// <see cref="Filters.FrameTxMisplacedRecentRootFrameFilter"/>. Each tuple costs one storage read per head, so a
+        /// pool full of 16-tuple transactions reads that many cells on every head.</remarks>
         private void RemoveUnreferenceableRecentRootTransactions(Block block)
         {
-            if (block.Header.SlotNumber is not ulong headSlot || !_specProvider.GetSpec(block.Header).IsEip8272Enabled)
+            if (Volatile.Read(ref _recentRootFrameTxCount) == 0
+                || block.Header.SlotNumber is not ulong headSlot
+                || !_specProvider.GetSpec(block.Header).IsEip8272Enabled)
             {
                 return;
             }
 
             ulong currentSlot = headSlot + 1;
             IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
-            foreach (Transaction tx in _transactions.GetSnapshot())
+            EvictUnreferenceableRecentRootTransactions(_transactions.GetSnapshot(), state, currentSlot);
+            EvictUnreferenceableRecentRootTransactions(_blobTransactions.GetSnapshot(), state, currentSlot);
+        }
+
+        private void EvictUnreferenceableRecentRootTransactions(Transaction[] snapshot, IReadOnlyStateProvider state, ulong currentSlot)
+        {
+            foreach (Transaction tx in snapshot)
             {
                 if (!tx.SupportsFrames
                     || !FrameTxValidation.TryGetRecentRootTuples(tx, out ReadOnlyMemory<byte> tuples)

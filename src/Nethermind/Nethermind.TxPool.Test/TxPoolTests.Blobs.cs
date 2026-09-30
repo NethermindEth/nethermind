@@ -5956,7 +5956,7 @@ namespace Nethermind.TxPool.Test
             .WithMaxPriorityFeePerGas(1.GWei)
             .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null)
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null, bool withRecentRoot = false)
         {
             ShardBlobNetworkWrapper wrapper = null;
             byte[][] versionedHashes = null;
@@ -5998,6 +5998,11 @@ namespace Nethermind.TxPool.Test
             if (deadline is not null)
             {
                 frames.Add(FrameTxTestFrames.ExpiryAt(deadline.Value, gasLimit: 40_000));
+            }
+
+            if (withRecentRoot)
+            {
+                frames.Add(FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple));
             }
 
             // Sized to leave the prefix headroom under the verify-gas ceiling once an expiry frame and

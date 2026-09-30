@@ -3540,6 +3540,37 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [TestCase(true, 1, TestName = "blob_carrying_recent_root_frame_is_retained_while_its_entry_verifies")]
+        [TestCase(false, 0, TestName = "blob_carrying_recent_root_frame_is_evicted_when_its_entry_is_missing")]
+        public async Task Blob_carrying_recent_root_frame_transaction_is_rechecked_on_new_head(bool committed, int expectedPending)
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory },
+                new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, withRecentRoot: true);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            if (committed)
+            {
+                _stateProvider.Set(RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot),
+                    RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            }
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedPending));
+        }
+
+        [Test]
+        public void SubmitTx_BlobCarryingRecentRootFrameTransaction_IsRejectedByAPersistentBlobPool()
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage },
+                new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, withRecentRoot: true);
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameTxRecentRootWithPersistentBlobs));
+        }
+
         // The decoder bounds the frame count off the wire; a locally submitted transaction never meets it,
         // so the transaction validator is the pool's only gate on the count.
         [TestCase(Eip8141Constants.MaxFrames - 1, true, TestName = "SubmitTx_FrameTransactionAtTheMaximumFrameCount_IsAccepted")]

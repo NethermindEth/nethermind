@@ -82,6 +82,8 @@ public static class RecentRootStore
 
     /// <summary>True if a tuple of <paramref name="tuples"/> names a slot aged out of the ring buffer at <paramref name="currentSlot"/>,
     /// <c>current_slot - slot &gt;= RECENT_ROOT_LENGTH</c>, which no later slot can make valid again.</summary>
+    /// <remarks>Treats aging out as final, which holds while <paramref name="currentSlot"/> only grows. A reorg onto a
+    /// sibling head at a lower slot can bring a tuple back inside the window; the pool accepts that rare loss.</remarks>
     public static bool HasAgedOutReference(ReadOnlySpan<byte> tuples, ulong currentSlot)
     {
         for (int offset = 0; offset < tuples.Length; offset += Eip8272Constants.RecentRootTupleLength)
