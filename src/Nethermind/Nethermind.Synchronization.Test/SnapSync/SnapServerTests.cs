@@ -10,7 +10,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
