@@ -20,6 +20,7 @@ internal static unsafe partial class ThreadInstructionCounter
     private const uint PerfTypeHardware = 0;
     private const ulong PerfCountHwCpuCycles = 0;
     private const ulong PerfCountHwInstructions = 1;
+    private const ulong PerfFlagPinned = 1UL << 2;
     private const ulong PerfFlagExcludeKernel = 1UL << 5;
     private const ulong PerfFlagExcludeHv = 1UL << 6;
     private const ulong PerfFormatTotalTimeEnabled = 1;
@@ -101,7 +102,8 @@ internal static unsafe partial class ThreadInstructionCounter
             Size = (uint)sizeof(PerfEventAttr),
             Config = config,
             ReadFormat = PerfFormatTotalTimeEnabled | PerfFormatTotalTimeRunning,
-            Flags = PerfFlagExcludeKernel | PerfFlagExcludeHv,
+            // Pinned while the diagnostic events share the counters, so the kernel rotates only those.
+            Flags = PerfFlagExcludeKernel | PerfFlagExcludeHv | (DiagnosticCounters.Enabled ? PerfFlagPinned : 0),
         };
         // pid 0 and cpu -1: the calling thread, on whichever CPU it runs.
         return (int)syscall(syscallNumber, &attr, 0, -1, -1, PerfFlagFdCloexec);

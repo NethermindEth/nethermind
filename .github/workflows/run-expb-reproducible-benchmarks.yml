@@ -1422,10 +1422,81 @@ jobs:
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
           MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
           MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
+          CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          RENDERED_CONFIG_FILE: ${{ steps.render-config.outputs.rendered_config_file }}
         run: |
           set -euo pipefail
           expb_pid=""
           : > "${RAW_RUN_LOG}"
+
+          # Host settings that move cycles but not instructions, for NETHERMIND_COUNT_INSTRUCTIONS=1 runs. Each is
+          # opt-in through client_env and put back when this step exits; the restore script is also run by the
+          # "Restore host settings" step in case this shell dies first. The report is staged next to the counts.
+          host_report="${RUNNER_TEMP}/expb-host-report.txt"
+          host_restore="${RUNNER_TEMP}/expb-host-restore.sh"
+          : > "${host_report}"
+          counting_env() { printf '%s' "${CLIENT_ENV:-}" | grep -q -- "$1"; }
+          restore_host() {
+            [[ -f "${host_restore}" ]] || return 0
+            tac "${host_restore}" | bash || true
+            rm -f "${host_restore}"
+          }
+          set_host() {
+            local path="$1" value="$2" old
+            old="$(cat "${path}" 2>/dev/null)" || { echo "cannot read ${path}" >> "${host_report}"; return 0; }
+            # THP files list the choices with the current one in brackets.
+            if [[ "${old}" == *"["* ]]; then old="$(sed -E 's/.*\[([^]]+)\].*/\1/' <<< "${old}")"; fi
+            if { echo "${value}" > "${path}"; } 2>/dev/null; then
+              echo "echo '${old}' > '${path}'" >> "${host_restore}"
+              echo "set ${path}: ${old} -> ${value}" >> "${host_report}"
+            else
+              echo "could not set ${path} to ${value}" >> "${host_report}"
+            fi
+          }
+          idle_snapshot() {
+            local cpu state
+            for cpu in ${count_cpus}; do
+              for state in /sys/devices/system/cpu/cpu${cpu}/cpuidle/state*; do
+                [[ -d "${state}" ]] || continue
+                echo "cpu${cpu} $(basename "${state}") $(cat "${state}/name") usage=$(cat "${state}/usage") time_us=$(cat "${state}/time") latency_us=$(cat "${state}/latency") disable=$(cat "${state}/disable")"
+              done
+            done
+          }
+          count_cpus=""
+          if counting_env 'NETHERMIND_COUNT_INSTRUCTIONS=1'; then
+            trap restore_host EXIT
+            if [[ -n "${RENDERED_CONFIG_FILE:-}" && -x "${RUNNER_TEMP}/yq" ]]; then
+              for range in $("${RUNNER_TEMP}/yq" -r '.resources.cpuset // ""' "${RENDERED_CONFIG_FILE}" | tr ',' ' '); do
+                if [[ "${range}" == *-* ]]; then count_cpus+=" $(seq -s ' ' "${range%-*}" "${range#*-}")"; else count_cpus+=" ${range}"; fi
+              done
+            fi
+            {
+              echo "client cpus:${count_cpus}"
+              echo "thp=$(cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null) defrag=$(cat /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null)"
+              echo "aslr=$(cat /proc/sys/kernel/randomize_va_space 2>/dev/null) nmi_watchdog=$(cat /proc/sys/kernel/nmi_watchdog 2>/dev/null) mux_ms=$(cat /sys/bus/event_source/devices/cpu/perf_event_mux_interval_ms 2>/dev/null)"
+              echo "idle driver=$(cat /sys/devices/system/cpu/cpuidle/current_driver 2>/dev/null) governor=$(cat /sys/devices/system/cpu/cpuidle/current_governor_ro 2>/dev/null)"
+              echo "msr events: $(ls /sys/bus/event_source/devices/msr/events 2>/dev/null | tr '\n' ' ')"
+              echo "irqbalance: $(systemctl is-active irqbalance 2>/dev/null || true)"
+            } >> "${host_report}"
+            # NETHERMIND_COUNT_NO_WATCHDOG=1 frees the hardware counter the NMI watchdog holds on every CPU.
+            if counting_env 'NETHERMIND_COUNT_NO_WATCHDOG=1'; then set_host /proc/sys/kernel/nmi_watchdog 0; fi
+            # NETHERMIND_COUNT_NO_ASLR=1: the same virtual layout every run, for processes started from now on.
+            if counting_env 'NETHERMIND_COUNT_NO_ASLR=1'; then set_host /proc/sys/kernel/randomize_va_space 0; fi
+            # NETHERMIND_COUNT_THP=always|madvise|never: transparent huge pages for the run.
+            thp_mode="$(printf '%s' "${CLIENT_ENV:-}" | grep -oE 'NETHERMIND_COUNT_THP=[a-z]+' | cut -d= -f2 || true)"
+            if [[ -n "${thp_mode}" ]]; then set_host /sys/kernel/mm/transparent_hugepage/enabled "${thp_mode}"; fi
+            # NETHERMIND_COUNT_SHALLOW_IDLE=1: idle client cores stop at C1, so a core never powers down (and drops
+            # its L2) between two blocks.
+            if counting_env 'NETHERMIND_COUNT_SHALLOW_IDLE=1'; then
+              for cpu in ${count_cpus}; do
+                for state in /sys/devices/system/cpu/cpu${cpu}/cpuidle/state*; do
+                  [[ -r "${state}/latency" ]] || continue
+                  if (( $(cat "${state}/latency") > 2 )); then set_host "${state}/disable" 1; fi
+                done
+              done
+            fi
+            { echo "idle states before:"; idle_snapshot; } >> "${host_report}"
+          fi
 
           # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
           # values containing commas must use the newline-separated form).
@@ -1565,7 +1636,26 @@ jobs:
             cat "${cgroup_report}" 2>/dev/null || echo "(no readout captured)"
           fi
 
+          if [[ -n "${count_cpus}" ]]; then
+            { echo "idle states after:"; idle_snapshot; } >> "${host_report}"
+            restore_host
+            echo "Host report for the counted run:"
+            cat "${host_report}"
+          fi
+
           exit "${expb_exit_code}"
+
+      - name: Restore host settings
+        if: always()
+        shell: bash
+        run: |
+          restore="${RUNNER_TEMP}/expb-host-restore.sh"
+          if [[ -f "${restore}" ]]; then
+            echo "Restoring host settings the counted run left behind:"
+            cat "${restore}"
+            tac "${restore}" | bash || true
+            rm -f "${restore}"
+          fi
 
       - name: Analyze benchmark output
         id: analyze
@@ -2021,6 +2111,7 @@ jobs:
             grep -a 'EXPB-COUNT' "${RAW_RUN_LOG}" > "${LOG_ARTIFACT_DIR}/expb-counts.log" || true
             echo "Instruction counts: $(grep -c 'EXPB-COUNT block=' "${LOG_ARTIFACT_DIR}/expb-counts.log" || true) blocks"
           fi
+          [[ -s "${RUNNER_TEMP}/expb-host-report.txt" ]] && cp "${RUNNER_TEMP}/expb-host-report.txt" "${LOG_ARTIFACT_DIR}/host-report.txt" || true
           if [[ -n "${RENDERED_CONFIG_FILE}" && -f "${RENDERED_CONFIG_FILE}" ]]; then
             [[ -x "${YQ_BIN}" ]] || { echo "::error::yq is required to sanitize the rendered config before artifact staging."; exit 1; }
             sanitized_config="$(mktemp "${LOG_ARTIFACT_DIR}/.rendered-config.XXXXXX")"

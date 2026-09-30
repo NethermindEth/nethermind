@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime;
+using System.Text;
 using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -67,6 +69,12 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     private EventHandler<BlockExecutedEventArgs>? _deferredBlockExecuted;
     private BlockExecutedEventArgs? _pendingVerdict;
 
+    // NETHERMIND_COUNT_DIAG=1: the diagnostic readings at each window's start, and one buffer for the ends.
+    private readonly ulong[]? _branchDiag = DiagnosticCounters.Enabled ? new ulong[3 * DiagnosticCounters.Count] : null;
+    private readonly ulong[]? _blockDiag = DiagnosticCounters.Enabled ? new ulong[3 * DiagnosticCounters.Count] : null;
+    private readonly ulong[]? _diagScratch = DiagnosticCounters.Enabled ? new ulong[3 * DiagnosticCounters.Count] : null;
+    private static int s_hostLogged;
+
     public CountingBranchProcessor(IBranchProcessor inner, ILogManager logManager, IBlockProcessor? blockProcessor = null)
     {
         _inner = inner;
@@ -109,7 +117,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         }
         // The region's own collection runs here, before the window opens.
         NoGcRegion.TryEnter(_logger);
-        _branch = Window.Start();
+        _branch = Window.Start(_branchDiag);
     }
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
@@ -118,7 +126,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _judgedRead = false;
         t_commitPhasesSeen = 0;
         Nethermind.State.Flat.SnapshotCompactor.LastCompaction = (0, 0, -2);
-        _block = Window.Start();
+        _block = Window.Start(_blockDiag);
     }
 
     // Splits the block window: transaction execution before this point, receipts, roots and commit after it.
@@ -127,7 +135,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
     {
-        if (!_block.TryStop(out string counts, out ulong instructions)) return;
+        if (!_block.TryStop(out string counts, out ulong instructions, _diagScratch)) return;
         ulong executed = _executedRead ? _executed.Instructions - _block.StartInstructions : 0;
         // roots: receipts, blooms and the state root up to the verdict; commit: the tree commit after it.
         ulong roots = _judgedRead && _executedRead ? _judged.Instructions - _executed.Instructions : 0;
@@ -148,7 +156,14 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         // nothing assembled (-1), not attempted (-2).
         (int inputs, int compactedInputs, int added) = Nethermind.State.Flat.SnapshotCompactor.LastCompaction;
         Block block = e.Block;
-        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit} cmp={inputs}/{compactedInputs}/{added}");
+        // host: busy jiffies since the previous block on the pinned CPU / the process's other CPUs / every other CPU;
+        // mem: resident / huge-page-backed anonymous kB, every 100th block.
+        string host = DiagnosticCounters.Enabled
+            ? $" host={HostActivity.Delta(s_pinCpu)}" + (block.Number % 100 == 0 ? $" mem={HostActivity.Memory()}" : string.Empty)
+            : string.Empty;
+        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit} cmp={inputs}/{compactedInputs}/{added}{host}");
+        if (DiagnosticCounters.Enabled && Interlocked.Exchange(ref s_hostLogged, 1) == 0 && _logger.IsInfo)
+            _logger.Info($"EXPB-COUNT host{HostActivity.Facts(s_pinCpu)}");
     }
 
     private static void OnCommitPhase(int phase)
@@ -166,7 +181,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
     {
-        bool stopped = _branch.TryStop(out string counts, out _);
+        bool stopped = _branch.TryStop(out string counts, out _, _diagScratch);
         bool regionHeld = NoGcRegion.Exit();
         if (_savedAffinity is not null)
         {
@@ -203,9 +218,14 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         private readonly long _slotHits;
         private readonly long _slotMisses;
         private readonly long _leaseSpins;
+        // NETHERMIND_COUNT_DIAG=1: the diagnostic events and the wall clock at the start, read before the counters.
+        private readonly ulong[]? _diag;
+        private readonly long _startTimestamp;
 
-        private Window(ThreadInstructionCounter.Sample counters)
+        private Window(ThreadInstructionCounter.Sample counters, ulong[]? diag, long startTimestamp)
         {
+            _diag = diag;
+            _startTimestamp = startTimestamp;
             _counters = counters;
             _allocated = GC.GetAllocatedBytesForCurrentThread();
             _gen0 = GC.CollectionCount(0);
@@ -221,23 +241,41 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
             _leaseSpins = FlatMetrics.TransientLeaseSpins;
         }
 
-        public static Window Start() => ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample counters) ? new Window(counters) : default;
+        public static Window Start(ulong[]? diag = null)
+        {
+            // The diagnostic reads come first here and last in TryStop, so their syscalls stay outside the window.
+            bool diagRead = diag is not null && DiagnosticCounters.TryRead(diag);
+            long startTimestamp = Stopwatch.GetTimestamp();
+            return ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample counters)
+                ? new Window(counters, diagRead ? diag : null, startTimestamp)
+                : default;
+        }
 
         public bool IsOnCurrentThread => _threadId != 0 && _threadId == Environment.CurrentManagedThreadId;
 
         public ulong StartInstructions => _counters.Instructions;
 
         /// <summary>Formats the window's deltas; false when it never started or ended on another thread.</summary>
-        public bool TryStop(out string counts, out ulong instructions)
+        public bool TryStop(out string counts, out ulong instructions, ulong[]? diagScratch = null)
         {
             counts = string.Empty;
             instructions = 0;
             if (!IsOnCurrentThread) return false;
             if (!ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample end)) return false;
+            long endTimestamp = Stopwatch.GetTimestamp();
+            bool diagRead = _diag is not null && diagScratch is not null && DiagnosticCounters.TryRead(diagScratch);
 
             ThreadInstructionCounter.Sample delta = end - _counters;
             instructions = delta.Instructions;
             long allocated = GC.GetAllocatedBytesForCurrentThread() - _allocated;
+            string diag = string.Empty;
+            if (diagRead)
+            {
+                StringBuilder text = new();
+                text.Append(" us=").Append((long)Stopwatch.GetElapsedTime(_startTimestamp, endTimestamp).TotalMicroseconds);
+                DiagnosticCounters.AppendDeltas(text, _diag, diagScratch);
+                diag = text.ToString();
+            }
             // jit: methods compiled on this thread; lockc: lock contentions anywhere; cfa/cfs: carry-forward cache
             // hits/misses for accounts and slots; bundle/snaps: the flat DB's layering when the window closed.
             counts = $"instr={delta.Instructions} cycles={delta.Cycles} alloc={allocated} " +
@@ -247,7 +285,8 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
                 $"lockc={Monitor.LockContentionCount - _lockContentions} " +
                 $"cfa={FlatMetrics.CarryForwardAccountHits - _accountHits}/{FlatMetrics.CarryForwardAccountMisses - _accountMisses} " +
                 $"cfs={FlatMetrics.CarryForwardSlotHits - _slotHits}/{FlatMetrics.CarryForwardSlotMisses - _slotMisses} " +
-                $"bundle={FlatMetrics.SnapshotBundleSize} snaps={FlatMetrics.SnapshotCount} spins={FlatMetrics.TransientLeaseSpins - _leaseSpins}";
+                $"bundle={FlatMetrics.SnapshotBundleSize} snaps={FlatMetrics.SnapshotCount} spins={FlatMetrics.TransientLeaseSpins - _leaseSpins}" +
+                diag;
             return true;
         }
     }
