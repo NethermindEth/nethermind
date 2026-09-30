@@ -49,7 +49,8 @@ STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summ
                     "timings.csv", "parity-diffs.json", "timings.meta.json", "resources.json")
 RESOURCE_FIELDS = {
     "wall_seconds", "samples", "cpu_seconds", "cpu_avg_cores", "cpu_peak_cores", "cpu_throttled_usec",
-    "memory_avg_bytes", "memory_peak_bytes", "io_read_bytes", "io_write_bytes", "stall_cpu_usec",
+    "memory_avg_bytes", "memory_peak_bytes", "memory_anon_avg_bytes", "memory_anon_peak_bytes",
+    "memory_file_avg_bytes", "io_read_bytes", "io_write_bytes", "stall_cpu_usec",
     "stall_io_usec", "stall_memory_usec", "requests", "cpu_ms_per_request", "io_read_bytes_per_request",
 }
 _LABEL = r"[A-Za-z0-9._-]+"
