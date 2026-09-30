@@ -31,8 +31,6 @@ public static partial class TxsDecoder
                 }
                 catch
                 {
-                    // Defer to the serial fallback, which reproduces the exact single-threaded error
-                    // behavior (first invalid index, exception surface) and applies skipErrors.
                     Volatile.Write(ref state.failed[0], true);
                 }
 
