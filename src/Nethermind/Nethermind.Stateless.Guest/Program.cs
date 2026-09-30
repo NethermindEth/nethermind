@@ -23,8 +23,6 @@ partial class Program
 {
     static int Main()
     {
-        InstallAccelerators();
-
         ReadOnlySpan<byte> input = IO.ReadInput();
         ReadOnlySpan<byte> output = StatelessExecutor.Execute(input);
 
@@ -36,13 +34,6 @@ partial class Program
     /// <summary>Publishes the validation result as this guest's proven output.</summary>
     /// <remarks>Implemented per target; see the guest's own Program.cs.</remarks>
     private static partial void WriteOutput(ReadOnlySpan<byte> output);
-
-    /// <summary>Hands the managed code any native routines this guest's zkVM offers beyond the shared accelerators.</summary>
-    /// <remarks>
-    /// Optional per target: a guest that implements nothing compiles the call away, so a zkVM without
-    /// the routines never references their symbols. See the guest's own Program.cs.
-    /// </remarks>
-    static partial void InstallAccelerators();
 
     static bool _handlingException;
 

@@ -12,26 +12,14 @@ using NUnit.Framework;
 namespace Nethermind.Evm.ZkEvm.Test;
 
 /// <summary>
-/// ADDMOD, MULMOD, DIV and MOD through <see cref="Arith256Accelerators"/>, with managed stand-ins for the
-/// ZisK routines. The stand-ins count their calls and compute through <see cref="UInt256"/>, so each test
-/// checks the plumbing - operand order, the zero-modulus and zero-divisor branches, the uninstalled
-/// fallback - against a <see cref="BigInteger"/> oracle rather than the routines' own arithmetic.
+/// ADDMOD, MULMOD, DIV and MOD in the zkEVM build, against a <see cref="BigInteger"/> oracle. On the host
+/// <see cref="ZiskArith256Flag"/> is off, so these pin the software path every guest but ZisK runs; the
+/// ZisK routines themselves run only in the guest, whose stateless-tests blocks check them.
 /// </summary>
-[NonParallelizable]
-public unsafe class GuestArith256Tests
+public class GuestArith256Tests
 {
     private static readonly UInt256 Max = UInt256.MaxValue;
     private static readonly UInt256 High = UInt256.One << 255;
-
-    private static int _addModCalls, _mulModCalls, _reduceModCalls, _divRemCalls;
-
-    [SetUp]
-    public void ResetCounters() => _addModCalls = _mulModCalls = _reduceModCalls = _divRemCalls = 0;
-
-    [TearDown]
-    public void Uninstall() => Arith256Accelerators.Install(null, null, null, null);
-
-    private static void InstallStandIns() => Arith256Accelerators.Install(&AddMod, &MulMod, &ReduceMod, &DivRem);
 
     private static IEnumerable<TestCaseData> ThreeOperandCases()
     {
@@ -61,76 +49,25 @@ public unsafe class GuestArith256Tests
     }
 
     [TestCaseSource(nameof(ThreeOperandCases))]
-    public void Installed_routines_compute_the_three_operand_opcodes(Instruction op, UInt256 a, UInt256 b, UInt256 m)
-    {
-        InstallStandIns();
-
-        UInt256 result = Run3(op, a, b, m);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(Expected3(op, a, b, m)));
-            Assert.That(op == Instruction.ADDMOD ? _addModCalls : _mulModCalls, Is.EqualTo(1), "the installed routine did not run");
-        }
-    }
+    public void Three_operand_opcodes_match_the_oracle(Instruction op, UInt256 a, UInt256 b, UInt256 m) =>
+        Assert.That(Run3(op, a, b, m), Is.EqualTo(Expected3(op, a, b, m)));
 
     [TestCaseSource(nameof(TwoOperandCases))]
-    public void Installed_routines_compute_the_two_operand_opcodes(Instruction op, UInt256 a, UInt256 b)
-    {
-        InstallStandIns();
-
-        UInt256 result = Run2(op, a, b);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(Expected2(op, a, b)));
-            Assert.That(op == Instruction.DIV ? _divRemCalls : _reduceModCalls, Is.EqualTo(1), "the installed routine did not run");
-        }
-    }
+    public void Two_operand_opcodes_match_the_oracle(Instruction op, UInt256 a, UInt256 b) =>
+        Assert.That(Run2(op, a, b), Is.EqualTo(Expected2(op, a, b)));
 
     [TestCase(Instruction.ADDMOD, 0ul)]
     [TestCase(Instruction.MULMOD, 0ul)]
     [TestCase(Instruction.DIV, 0ul)]
     [TestCase(Instruction.MOD, 0ul)]
     [TestCase(Instruction.MOD, 1ul)]
-    public void A_zero_modulus_or_divisor_never_reaches_a_routine(Instruction op, ulong divisor)
+    public void The_opcode_answers_a_zero_modulus_or_divisor_itself(Instruction op, ulong divisor)
     {
-        InstallStandIns();
-
         UInt256 result = op is Instruction.ADDMOD or Instruction.MULMOD
             ? Run3(op, Max, Max, divisor)
             : Run2(op, Max, divisor);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(UInt256.Zero));
-            Assert.That(_addModCalls + _mulModCalls + _reduceModCalls + _divRemCalls, Is.Zero,
-                "the routines' contract excludes a zero modulus or divisor; the opcode must answer those itself");
-        }
-    }
-
-    [TestCaseSource(nameof(ThreeOperandCases))]
-    public void Without_routines_the_three_operand_opcodes_keep_the_software_path(Instruction op, UInt256 a, UInt256 b, UInt256 m)
-    {
-        UInt256 result = Run3(op, a, b, m);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(Expected3(op, a, b, m)));
-            Assert.That(_addModCalls + _mulModCalls, Is.Zero);
-        }
-    }
-
-    [TestCaseSource(nameof(TwoOperandCases))]
-    public void Without_routines_the_two_operand_opcodes_keep_the_software_path(Instruction op, UInt256 a, UInt256 b)
-    {
-        UInt256 result = Run2(op, a, b);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(Expected2(op, a, b)));
-            Assert.That(_reduceModCalls + _divRemCalls, Is.Zero);
-        }
+        Assert.That(result, Is.EqualTo(UInt256.Zero));
     }
 
     /// <summary>Runs ADDMOD or MULMOD on <c>a</c> (top), <c>b</c> and <c>m</c>, the way the interpreter pops them.</summary>
@@ -181,30 +118,5 @@ public unsafe class GuestArith256Tests
     {
         if (b.IsZero) return UInt256.Zero;
         return (UInt256)(op == Instruction.DIV ? (BigInteger)a / (BigInteger)b : (BigInteger)a % (BigInteger)b);
-    }
-
-    private static void AddMod(ulong* a, ulong* b, ulong* m, ulong* result)
-    {
-        _addModCalls++;
-        UInt256.AddMod(in *(UInt256*)a, in *(UInt256*)b, in *(UInt256*)m, out *(UInt256*)result);
-    }
-
-    private static void MulMod(ulong* a, ulong* b, ulong* m, ulong* result)
-    {
-        _mulModCalls++;
-        UInt256.MultiplyMod(in *(UInt256*)a, in *(UInt256*)b, in *(UInt256*)m, out *(UInt256*)result);
-    }
-
-    private static void ReduceMod(ulong* a, ulong* m, ulong* result)
-    {
-        _reduceModCalls++;
-        UInt256.Mod(in *(UInt256*)a, in *(UInt256*)m, out *(UInt256*)result);
-    }
-
-    private static void DivRem(ulong* a, ulong* b, ulong* quotient, ulong* remainder)
-    {
-        _divRemCalls++;
-        UInt256.Divide(in *(UInt256*)a, in *(UInt256*)b, out *(UInt256*)quotient);
-        UInt256.Mod(in *(UInt256*)a, in *(UInt256*)b, out *(UInt256*)remainder);
     }
 }

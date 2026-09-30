@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm;
 
@@ -9,15 +10,14 @@ using Int256;
 
 public static unsafe partial class EvmInstructions
 {
-    // Each routine falls back to the software UInt256 path when no accelerator is installed, which is
-    // every guest except ZisK and every zkEVM test on the host. The operands are pinned rather than
+    // Each routine keeps the software UInt256 path unless the ZisK guest switched ZiskArith256Flag on, so
+    // every other guest and every zkEVM test on the host runs it. The operands are pinned rather than
     // copied: DIV and MOD read them in place from stack slots, and a pinned local is free on NativeAOT.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void AddMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
     {
-        delegate*<ulong*, ulong*, ulong*, ulong*, void> addMod = Arith256Accelerators.AddModRoutine;
-        if (addMod is null)
+        if (!ZiskArith256Flag.IsActive)
         {
             UInt256.AddMod(in a, in b, in m, out result);
             return;
@@ -25,14 +25,13 @@ public static unsafe partial class EvmInstructions
 
         Unsafe.SkipInit(out result);
         fixed (UInt256* pa = &a, pb = &b, pm = &m, pr = &result)
-            addMod((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
+            Accelerators.AddMod256((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void MulMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
     {
-        delegate*<ulong*, ulong*, ulong*, ulong*, void> mulMod = Arith256Accelerators.MulModRoutine;
-        if (mulMod is null)
+        if (!ZiskArith256Flag.IsActive)
         {
             UInt256.MultiplyMod(in a, in b, in m, out result);
             return;
@@ -40,14 +39,13 @@ public static unsafe partial class EvmInstructions
 
         Unsafe.SkipInit(out result);
         fixed (UInt256* pa = &a, pb = &b, pm = &m, pr = &result)
-            mulMod((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
+            Accelerators.MulMod256((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
-        delegate*<ulong*, ulong*, ulong*, ulong*, void> divRem = Arith256Accelerators.DivRemRoutine;
-        if (divRem is null)
+        if (!ZiskArith256Flag.IsActive)
         {
             UInt256.Divide(in a, in b, out result);
             return;
@@ -56,14 +54,13 @@ public static unsafe partial class EvmInstructions
         Unsafe.SkipInit(out result);
         Unsafe.SkipInit(out UInt256 remainder);
         fixed (UInt256* pa = &a, pb = &b, pq = &result)
-            divRem((ulong*)pa, (ulong*)pb, (ulong*)pq, (ulong*)&remainder);
+            Accelerators.DivRem256((ulong*)pa, (ulong*)pb, (ulong*)pq, (ulong*)&remainder);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
-        delegate*<ulong*, ulong*, ulong*, void> reduce = Arith256Accelerators.ReduceModRoutine;
-        if (reduce is null)
+        if (!ZiskArith256Flag.IsActive)
         {
             UInt256.Mod(in a, in b, out result);
             return;
@@ -71,6 +68,6 @@ public static unsafe partial class EvmInstructions
 
         Unsafe.SkipInit(out result);
         fixed (UInt256* pa = &a, pb = &b, pr = &result)
-            reduce((ulong*)pa, (ulong*)pb, (ulong*)pr);
+            Accelerators.ReduceMod256((ulong*)pa, (ulong*)pb, (ulong*)pr);
     }
 }
