@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -34,11 +35,14 @@ public class CarryForwardCachingPersistenceTests
         Slot
     }
 
-    [TestCaseSource(nameof(SlotReadCases))]
-    public void TryGetSlot_SecondReadAfterScenario_ReadsInnerExpectedTimes(Action<CarryForwardCachingPersistence, FakePersistence> scenario, int expectedSlotReads)
+    [TestCaseSource(nameof(SlotReadCasesWithAndWithoutDispose))]
+    public async Task TryGetSlot_SecondReadAfterScenario_ReadsInnerExpectedTimes(Action<CarryForwardCachingPersistence, FakePersistence> scenario, int expectedSlotReads, bool disposedWithAReaderOpen)
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using CarryForwardCachingPersistence cache = new(inner);
+        // The open reader keeps the slot table alive, so the cache must go on serving and invalidating it.
+        using IPersistence.IPersistenceReader? openReader = disposedWithAReaderOpen ? cache.CreateReader() : null;
+        if (disposedWithAReaderOpen) await cache.DisposeAsync();
 
         ReadSlot(cache, 1);
         scenario(cache, inner);
@@ -48,10 +52,10 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void GetAccount_SecondReadAtSameBasis_ServedFromCache()
+    public async Task GetAccount_SecondReadAtSameBasis_ServedFromCache()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using CarryForwardCachingPersistence cache = new(inner);
 
         using (IPersistence.IPersistenceReader reader = cache.CreateReader()) reader.GetAccount(Address);
         using (IPersistence.IPersistenceReader reader = cache.CreateReader()) reader.GetAccount(Address);
@@ -60,10 +64,10 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
+    public async Task GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+        await using CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
 
         ReadAccount(cache, TestItem.AddressA);
         ReadAccount(cache, TestItem.AddressA);
@@ -77,10 +81,10 @@ public class CarryForwardCachingPersistenceTests
     [TestCase(false, 2, 2, TestName = "GetAccount_WriteSetOverCap_DropsAllCachedAccounts")]
     [TestCase(true, 1, 1, TestName = "TryGetSlot_WriteSetWithinCap_UnwrittenSlotCarriedForward")]
     [TestCase(true, 2, 2, TestName = "TryGetSlot_WriteSetOverCap_DropsAllCachedSlots")]
-    public void Read_AfterCommit_WriteSetCapDecidesCarryForward(bool writeSlots, int writes, int expectedInnerReads)
+    public async Task Read_AfterCommit_WriteSetCapDecidesCarryForward(bool writeSlots, int writes, int expectedInnerReads)
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+        await using CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
         Address[] writtenAccounts = [TestItem.AddressB, TestItem.AddressC];
 
         ReadUnwritten();
@@ -105,10 +109,10 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void WriteBatch_CommittedWrittenSet_KeptForTheNextBatch([Values] bool accounts, [Values(1, 2)] int written)
+    public async Task WriteBatch_CommittedWrittenSet_KeptForTheNextBatch([Values] bool accounts, [Values(1, 2)] int written)
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+        await using CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
 
         using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
         {
@@ -270,7 +274,8 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
-    [TestCaseSource(nameof(CacheKinds))]
+    // Slots replace within a set instead; see SlotCapacity_ReplacesWithinASetInsteadOfWiping.
+    [TestCase(CacheKind.Account, TestName = "account")]
     public async Task CapacityWipe_PublishesPostRefillCount(CacheKind kind)
     {
         FakePersistence inner = new();
@@ -279,25 +284,114 @@ public class CarryForwardCachingPersistenceTests
         try
         {
             cache.Clear();
-            long wipesBefore = GetWipes(kind);
-            long otherWipesBefore = GetWipes(GetOtherKind(kind));
+            long wipesBefore = Metrics.CarryForwardAccountWipes;
+            long slotEvictionsBefore = Metrics.CarryForwardSlotEvictions;
 
             Read(kind, cache, 1);
             Read(kind, cache, 2);
 
-            long wipesDelta = GetWipes(kind) - wipesBefore;
-            long otherWipesDelta = GetWipes(GetOtherKind(kind)) - otherWipesBefore;
+            long wipesDelta = Metrics.CarryForwardAccountWipes - wipesBefore;
+            long slotEvictionsDelta = Metrics.CarryForwardSlotEvictions - slotEvictionsBefore;
             long countAfterRefill = GetCount(kind);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(wipesDelta, Is.EqualTo(1));
-                Assert.That(otherWipesDelta, Is.Zero);
+                Assert.That(slotEvictionsDelta, Is.Zero);
                 Assert.That(countAfterRefill, Is.EqualTo(1), "the gauge is published after the overflowing fill");
             }
         }
         finally
         {
             cache.Clear();
+        }
+    }
+
+    [Test]
+    public async Task SlotCapacity_ReplacesWithinASetInsteadOfWiping()
+    {
+        const int capacity = CarryForwardSlotTable.Ways;
+        FakePersistence inner = new();
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner, slotCapacity: capacity);
+        try
+        {
+            cache.Clear();
+            long evictionsBefore = Metrics.CarryForwardSlotEvictions;
+
+            for (int slot = 0; slot <= capacity; slot++) ReadSlot(cache, (ulong)slot);
+            int innerReadsAfterFill = inner.SlotReads;
+            ReadSlot(cache, (ulong)capacity);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.CarryForwardSlotEvictions - evictionsBefore, Is.EqualTo(1));
+                Assert.That(Metrics.CarryForwardSlotCount, Is.EqualTo(capacity), "a full table stays full");
+                Assert.That(inner.SlotReads, Is.EqualTo(innerReadsAfterFill), "the newest slot is served from the cache");
+            }
+        }
+        finally
+        {
+            cache.Clear();
+        }
+    }
+
+    [Test]
+    public async Task Reader_Dispose_WhenTheInnerReaderThrows_StillReleasesTheSlotTable()
+    {
+        FakePersistence inner = new();
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
+        IPersistence.IPersistenceReader reader = cache.CreateReader();
+        await cache.DisposeAsync();
+        inner.ThrowOnReaderDispose = true;
+
+        Assert.Throws<InvalidOperationException>(reader.Dispose);
+        Assert.That(cache.SlotTable.IsAllocated, Is.False);
+    }
+
+    [Test]
+    public async Task TryGetSlot_WorkingSetOfAQuarterOfTheCapacity_IsServedFromTheCache()
+    {
+        const int slots = 131072;
+        FakePersistence inner = new();
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        UInt256 value = default;
+
+        for (int pass = 0; pass < 2; pass++)
+        {
+            for (ulong slot = 0; slot < slots; slot++) reader.TryGetSlot(Address, slot, ref value);
+        }
+
+        // Full sets make about 0.8% of the second pass miss at the default capacity, and 6.5% at half of it.
+        Assert.That(inner.SlotReads - slots, Is.LessThan(slots / 50));
+    }
+
+    [Test]
+    public async Task TryGetSlot_WhileTheCacheLockIsHeld_ReadsWithoutWaitingOrCaching()
+    {
+        FakePersistence inner = new();
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        UInt256 value = default;
+        bool completed;
+
+        using (cache.CacheLock.EnterScope())
+        {
+            Thread read = new(() => reader.TryGetSlot(Address, 1, ref value));
+            read.Start();
+            completed = read.Join(TimeSpan.FromSeconds(10));
+        }
+
+        reader.TryGetSlot(Address, 1, ref value);
+        reader.TryGetSlot(Address, 1, ref value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "a read does not wait for the lock to cache what it read");
+            Assert.That(inner.SlotReads, Is.EqualTo(2), "the read under the held lock was not cached, the next one was");
         }
     }
 
@@ -319,13 +413,52 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public async Task RandomOperations_EveryReadMatchesThePersistenceAtTheReaderState([Values(4, 8, 262144)] int capacity)
+    public async Task DisposeAsync_FreesTheSlotTableOnceTheLastReaderIsDisposed()
+    {
+        FakePersistence inner = new();
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
+        IPersistence.IPersistenceReader reader = cache.CreateReader();
+        UInt256 value = default;
+        reader.TryGetSlot(Address, 1, ref value);
+
+        await cache.DisposeAsync();
+        await cache.DisposeAsync();
+        bool allocatedWhileReaderOpen = cache.SlotTable.IsAllocated;
+        bool readByOpenReader = reader.TryGetSlot(Address, 1, ref value);
+        reader.Dispose();
+        reader.Dispose();
+        bool allocatedAfterReaderDisposed = cache.SlotTable.IsAllocated;
+        bool readAfterDispose;
+        using (IPersistence.IPersistenceReader lateReader = cache.CreateReader())
+        {
+            readAfterDispose = lateReader.TryGetSlot(Address, 1, ref value);
+        }
+        Invalidate(CacheKind.Slot, cache, 1);
+        using (IPersistence.IWriteBatch clearingBatch = cache.CreateWriteBatch(Basis1, Basis1)) clearingBatch.SelfDestruct(Address);
+        cache.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocatedWhileReaderOpen, Is.True, "an open reader holds a lease");
+            Assert.That(readByOpenReader, Is.True);
+            Assert.That(allocatedAfterReaderDisposed, Is.False);
+            Assert.That(readAfterDispose, Is.True, "a reader created after dispose reads the inner persistence");
+            Assert.That(cache.SlotTable.IsAllocated, Is.False, "commits and clears after dispose leave the freed table alone");
+            Assert.That(inner.SlotReads, Is.EqualTo(2), "the open reader hit the cache, the late one bypassed it");
+        }
+    }
+
+    [Test]
+    public async Task RandomOperations_EveryReadMatchesThePersistenceAtTheReaderState([Values(4, 8, CarryForwardCachingPersistence.DefaultSlotCapacity)] int capacity)
     {
         const int operations = 1_000_000;
         const int maxOpenReaders = 8;
         bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
         Db.Metrics.DetailedMetricsEnabled = true;
         long hits;
+        int slotCount;
+        int slotCapacity;
         int reads = 0;
         List<string> mismatches = [];
         try
@@ -334,7 +467,7 @@ public class CarryForwardCachingPersistenceTests
             Random random = new(capacity);
             ModelPersistence model = new(addresses: 4, slotsPerAddress: 8);
             await using IContainer container = CreateCacheContainer();
-            CarryForwardCachingPersistence cache = ResolveCache(container, model, capacity);
+            CarryForwardCachingPersistence cache = ResolveCache(container, model, capacity, capacity);
             List<(IPersistence.IPersistenceReader Reader, ModelPersistence.State State)> readers = [];
 
             for (int i = 0; i < operations && mismatches.Count < 10; i++)
@@ -383,6 +516,8 @@ public class CarryForwardCachingPersistenceTests
 
             foreach ((IPersistence.IPersistenceReader reader, _) in readers) reader.Dispose();
             hits = Metrics.CarryForwardSlotHits - hitsBefore;
+            slotCount = cache.SlotTable.Count;
+            slotCapacity = cache.SlotTable.Capacity;
         }
         finally
         {
@@ -394,15 +529,16 @@ public class CarryForwardCachingPersistenceTests
             Assert.That(mismatches, Is.Empty);
             Assert.That(reads, Is.GreaterThan(operations / 2));
             Assert.That(hits, Is.GreaterThan(reads / 100), "the cache served a share of the reads");
+            Assert.That(slotCount, Is.LessThanOrEqualTo(slotCapacity));
         }
     }
 
-    // A cache smaller than the model's key set keeps wiping and refilling, and every fill takes the lock each commit
-    // needs, so that case commits less.
+    // A slot table smaller than the model's key set keeps replacing entries in full sets, so that case commits less to
+    // keep its run time close to the default-capacity case.
     [TestCase(64, 500, 0)]
-    [TestCase(262144, 30_000, 0)]
+    [TestCase(CarryForwardCachingPersistence.DefaultSlotCapacity, 30_000, 0)]
     [TestCase(64, 0, 30, Explicit = true, Reason = "Time-based stress run")]
-    [TestCase(262144, 0, 30, Explicit = true, Reason = "Time-based stress run")]
+    [TestCase(CarryForwardCachingPersistence.DefaultSlotCapacity, 0, 30, Explicit = true, Reason = "Time-based stress run")]
     public async Task ConcurrentReadersAndCommitter_ReadEachReaderState(int capacity, int commits, int stressSeconds)
     {
         const int readerThreads = 16;
@@ -411,7 +547,7 @@ public class CarryForwardCachingPersistenceTests
         MismatchLog mismatches = new();
         ModelPersistence model = new(addresses: 8, slotsPerAddress: 16);
         await using IContainer container = CreateCacheContainer();
-        CarryForwardCachingPersistence cache = ResolveCache(container, model, capacity);
+        CarryForwardCachingPersistence cache = ResolveCache(container, model, capacity, capacity);
         using Barrier startLine = new(readerThreads + 1);
         using CancellationTokenSource stopReaders = new();
 
@@ -464,10 +600,10 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(mismatches.Count, Is.Zero, mismatches.ToString());
     }
 
-    private const int PatternVersionBits = 40;
+    internal const int PatternVersionBits = 40;
 
-    /// <summary>A slot value, unique per <paramref name="key"/> and <paramref name="version"/>, that fills all four limbs.</summary>
-    private static UInt256 Pattern(int key, ulong version)
+    /// <summary>A slot value for <paramref name="key"/> written at <paramref name="version"/> whose limbs check each other.</summary>
+    internal static UInt256 Pattern(int key, ulong version)
     {
         ulong u0 = ((ulong)key << PatternVersionBits) | version;
         ulong u1 = u0 * 0x9E3779B97F4A7C15UL;
@@ -510,6 +646,15 @@ public class CarryForwardCachingPersistenceTests
         { TestName = "reader_behind_basis_bypasses" };
     }
 
+    private static IEnumerable<TestCaseData> SlotReadCasesWithAndWithoutDispose()
+    {
+        foreach (TestCaseData data in SlotReadCases())
+        {
+            yield return new TestCaseData(data.Arguments[0], data.Arguments[1], false) { TestName = data.TestName };
+            yield return new TestCaseData(data.Arguments[0], data.Arguments[1], true) { TestName = $"{data.TestName}_after_dispose" };
+        }
+    }
+
     private static IEnumerable<TestCaseData> CacheKinds()
     {
         yield return new TestCaseData(CacheKind.Account) { TestName = "account" };
@@ -520,16 +665,12 @@ public class CarryForwardCachingPersistenceTests
         .AddModule(new FlatWorldStateModule(new FlatDbConfig()))
         .Build();
 
-    private static CarryForwardCachingPersistence ResolveCache(IContainer container, IPersistence inner, int? maxEntriesPerKind = null)
+    private static CarryForwardCachingPersistence ResolveCache(IContainer container, IPersistence inner, int? maxEntriesPerKind = null, int? slotCapacity = null)
     {
-        if (maxEntriesPerKind is int capacity)
-        {
-            return container.Resolve<CarryForwardCachingPersistence>(
-                TypedParameter.From<IPersistence>(inner),
-                new NamedParameter("maxEntriesPerKind", capacity));
-        }
-
-        return container.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(inner));
+        List<Parameter> parameters = [TypedParameter.From<IPersistence>(inner)];
+        if (maxEntriesPerKind is int capacity) parameters.Add(new NamedParameter("maxEntriesPerKind", capacity));
+        if (slotCapacity is int slots) parameters.Add(new NamedParameter("slotCapacity", slots));
+        return container.Resolve<CarryForwardCachingPersistence>(parameters);
     }
 
     private static IEnumerable<TestCaseData> CacheReadCases()
@@ -606,14 +747,6 @@ public class CarryForwardCachingPersistenceTests
     private static long GetCount(CacheKind kind) => kind == CacheKind.Account
         ? Metrics.CarryForwardAccountCount
         : Metrics.CarryForwardSlotCount;
-
-    private static long GetWipes(CacheKind kind) => kind == CacheKind.Account
-        ? Metrics.CarryForwardAccountWipes
-        : Metrics.CarryForwardSlotWipes;
-
-    private static CacheKind GetOtherKind(CacheKind kind) => kind == CacheKind.Account
-        ? CacheKind.Slot
-        : CacheKind.Account;
 
     private static int GetInnerReads(CacheKind kind, FakePersistence inner) => kind == CacheKind.Account
         ? inner.AccountReads
@@ -860,6 +993,7 @@ public class CarryForwardCachingPersistenceTests
         public int SlotReads;
         public bool AccountExists = true;
         public bool SlotExists = true;
+        public bool ThrowOnReaderDispose;
 
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => new Reader(this);
         public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new FakeWriteBatch();
@@ -890,7 +1024,11 @@ public class CarryForwardCachingPersistenceTests
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
             public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
             public bool IsPreimageMode => false;
-            public void Dispose() { }
+
+            public void Dispose()
+            {
+                if (parent.ThrowOnReaderDispose) throw new InvalidOperationException("The inner reader failed to dispose");
+            }
         }
     }
 }

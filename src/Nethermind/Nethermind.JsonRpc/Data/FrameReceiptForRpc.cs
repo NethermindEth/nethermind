@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Serialization.Json;
@@ -16,7 +17,7 @@ public class FrameReceiptForRpc
 
     /// <param name="frameReceipt">The frame's receipt entry.</param>
     /// <param name="logs">The frame's slice of the transaction receipt's own RPC logs.</param>
-    public FrameReceiptForRpc(TxFrameReceipt frameReceipt, LogEntryForRpc[] logs)
+    public FrameReceiptForRpc(TxFrameReceipt frameReceipt, IReadOnlyList<LogEntryForRpc> logs)
     {
         Status = frameReceipt.Status;
         ExecutionGasUsed = frameReceipt.ExecutionGasUsed;
@@ -35,13 +36,14 @@ public class FrameReceiptForRpc
 
     /// <summary>The frame's log entries.</summary>
     /// <remarks>Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.</remarks>
-    public LogEntryForRpc[]? Logs { get; set; } = [];
+    [JsonConverter(typeof(LogsForRpcConverter))]
+    public IReadOnlyList<LogEntryForRpc>? Logs { get; set; } = [];
 
     public TxFrameReceipt ToFrameReceipt()
     {
-        LogEntryForRpc[] logs = Logs ?? [];
-        LogEntry[] logEntries = new LogEntry[logs.Length];
-        for (int i = 0; i < logs.Length; i++)
+        IReadOnlyList<LogEntryForRpc> logs = Logs ?? [];
+        LogEntry[] logEntries = new LogEntry[logs.Count];
+        for (int i = 0; i < logEntries.Length; i++)
         {
             logEntries[i] = logs[i]?.ToLogEntry()!;
         }
