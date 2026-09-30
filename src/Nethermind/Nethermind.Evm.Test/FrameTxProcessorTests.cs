@@ -122,7 +122,7 @@ public partial class FrameTxProcessorTests
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 5));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(Eip8141Constants.MaxVerifyGas), Frame(FrameMode.Sender, target: Recipient, value: 5));
         tx.FrameSignatures = placeholder
             ? [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)]
             : [];
@@ -140,7 +140,7 @@ public partial class FrameTxProcessorTests
                 Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
                 Assert.That(result.ErrorDescription, Does.Contain(placeholder
                     ? FrameTxSignatureValidator.InvalidSignatureLength
-                    : options == ExecutionOptions.FrameValidationPrefixOnly ? "validation prefix exceeds MAX_VERIFY_GAS" : "VERIFY frame reverted"));
+                    : options == ExecutionOptions.FrameValidationPrefixOnly ? "validation prefix frame reverted" : "VERIFY frame reverted"));
             }
             if (!succeeds || options.HasFlag(ExecutionOptions.Restore))
             {
@@ -1581,7 +1581,7 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveWhenReentered(Observer));
         DeployContract(Observer, ApprovesThroughSenderThenReverts());
 
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 5));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(Eip8141Constants.MaxVerifyGas), Frame(FrameMode.Sender, target: Recipient, value: 5));
 
         TransactionResult result = Process(tx);
 
@@ -3980,8 +3980,8 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    private static TxFrame SelfVerifyFrame() =>
-        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
+    private static TxFrame SelfVerifyFrame(ulong gasLimit = 200_000) =>
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
 
     /// <summary>A self-verify frame whose state budget funds the <c>NONCE_MANAGER</c> slots
     /// <paramref name="freshKeyCount"/> first-use keys create at payment approval.</summary>

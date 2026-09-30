@@ -23,43 +23,33 @@ internal class FrameTxVerifyGasFilterTest
     // all depends on sender-controlled code, so the frames behind it may still run before any gas is paid.
     private static IEnumerable<TestCaseData> PrefixCases()
     {
-        yield return new TestCaseData(new[] { SelfVerify(1_000), Execution(3_000_000) }, AcceptTxResult.Accepted)
+        yield return new TestCaseData(new[] { SelfVerify(1_000), Execution(3_000_000) }, AcceptTxResult.Accepted, (ulong?)ConfiguredMaxVerifyGas)
             .SetName("execution behind a recognized prefix is outside the ceiling");
-        yield return new TestCaseData(new[] { ApprovingDefault(1_000), Execution(3_000_000) }, AcceptTxResult.FrameTxVerifyGasTooHigh)
+        yield return new TestCaseData(new[] { ApprovingDefault(1_000), Execution(3_000_000) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)ConfiguredMaxVerifyGas)
             .SetName("an unrecognized layout is charged its whole frame list");
-        yield return new TestCaseData(new[] { ApprovingDefault(1_000), Execution(20_000) }, AcceptTxResult.Accepted)
+        yield return new TestCaseData(new[] { ApprovingDefault(1_000), Execution(20_000) }, AcceptTxResult.Accepted, (ulong?)ConfiguredMaxVerifyGas)
             .SetName("an unrecognized layout under the ceiling is still accepted");
         // The bound is inclusive, as the fixed and state-gas ceilings below are.
-        yield return new TestCaseData(new[] { ApprovingDefault(ConfiguredMaxVerifyGas) }, AcceptTxResult.Accepted)
+        yield return new TestCaseData(new[] { ApprovingDefault(ConfiguredMaxVerifyGas) }, AcceptTxResult.Accepted, (ulong?)ConfiguredMaxVerifyGas)
             .SetName("a prefix exactly at the configured ceiling is accepted");
-        yield return new TestCaseData(new[] { ApprovingDefault(ConfiguredMaxVerifyGas + 1) }, AcceptTxResult.FrameTxVerifyGasTooHigh)
+        yield return new TestCaseData(new[] { ApprovingDefault(ConfiguredMaxVerifyGas + 1) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)ConfiguredMaxVerifyGas)
             .SetName("a prefix one gas over the configured ceiling is rejected");
+        yield return new TestCaseData(new[] { SelfVerify(100_000) }, AcceptTxResult.Accepted, null)
+            .SetName("the default ceiling accepts 100000 gas");
+        yield return new TestCaseData(new[] { SelfVerify(100_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, null)
+            .SetName("the default ceiling rejects 100001 gas");
     }
 
     [TestCaseSource(nameof(PrefixCases))]
-    public void Accept_ChargesEveryFrameThatMayRunBeforePayment(TxFrame[] frames, AcceptTxResult expected)
+    public void Accept_ChargesEveryFrameThatMayRunBeforePayment(TxFrame[] frames, AcceptTxResult expected, ulong? maxVerifyGas)
     {
         Transaction tx = FrameTx(frames);
-        FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = ConfiguredMaxVerifyGas }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
+        TxPoolConfig config = new();
+        if (maxVerifyGas.HasValue) config.FrameTxMaxVerifyGas = maxVerifyGas.Value;
+        FrameTxVerifyGasFilter filter = new(config, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
-    }
-
-    [TestCase(100_000ul, true)]
-    [TestCase(100_001ul, false)]
-    public void Accept_DefaultConfigUsesThePublicVerifyGasLimit(ulong gas, bool accepted)
-    {
-        Transaction tx = FrameTx(SelfVerify(gas));
-        FrameTxVerifyGasFilter filter = new(new TxPoolConfig(), LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
-        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Eip8141Constants.MaxVerifyGas, Is.EqualTo(100_000ul));
-            Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None),
-                Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxVerifyGasTooHigh));
-        }
     }
 
     private static TxFrame SelfVerifyWithState(ulong executionGasLimit, ulong stateGasLimit) =>

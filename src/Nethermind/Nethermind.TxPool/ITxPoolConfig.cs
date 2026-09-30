@@ -37,7 +37,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "The max number of pending transactions per single sender. `0` to lift the limit.")]
     int MaxPendingTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "100000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` to lift the limit, though a simulated prefix and per-signature recovery stay capped frame by frame at the fixed `Eip8141Constants.MaxVerifyGas` either way. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "100000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` lifts the static admission limit. Raising this setting does not raise the fixed 100,000 gas simulation budget or signature verification ceiling.")]
     ulong FrameTxMaxVerifyGas { get; set; }
 
     [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for it to be accepted into the public mempool. EIP-8250 charges a first use of each keyed nonce key 97,920 state gas, so at the default value a first-use set of more than five keys does not propagate. `0` to lift the limit. Raise it only on a test network.")]
