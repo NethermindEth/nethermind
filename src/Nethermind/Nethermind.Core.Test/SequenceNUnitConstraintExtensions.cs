@@ -14,13 +14,13 @@ public static class SequenceNUnitConstraintExtensions
 {
     extension(Is)
     {
-        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(T[] expected) => new((ReadOnlyMemory<T>)expected);
-        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(ReadOnlyMemory<T> expected) => new(expected);
-        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(Memory<T> expected) => new((ReadOnlyMemory<T>)expected);
+        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(T[] expected) => new(expected);
+        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(ReadOnlyMemory<T> expected) => new(expected.ToArray());
+        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(Memory<T> expected) => new(expected.ToArray());
         public static SequenceEqualConstraint<T> SequenceEqualTo<T>(IEnumerable<T> expected) => new(expected);
 
         /// <remarks>Copies <paramref name="expected"/> once, as a constraint cannot hold a span.</remarks>
-        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(ReadOnlySpan<T> expected) => new((ReadOnlyMemory<T>)expected.ToArray());
+        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(ReadOnlySpan<T> expected) => new(expected.ToArray());
     }
 
     extension(Assert)
@@ -37,26 +37,21 @@ public static class SequenceNUnitConstraintExtensions
 }
 
 /// <summary>Element-wise equality for arrays, <see cref="Memory{T}"/>, <see cref="ReadOnlyMemory{T}"/>, spans and any <see cref="IEnumerable{T}"/>.</summary>
-/// <remarks>Compares without copying the actual value; only a mismatch materializes arrays so <see cref="EqualConstraint"/> can report the differing index.</remarks>
+/// <remarks>Compares without copying the actual value; only a mismatch materializes it so <see cref="EqualConstraint"/> can report the differing index.</remarks>
 public sealed class SequenceEqualConstraint<T> : Constraint
 {
-    private readonly ReadOnlyMemory<T> _expectedMemory;
-    private readonly IEnumerable<T>? _expectedEnumerable;
+    private readonly T[] _expected;
 
-    internal SequenceEqualConstraint(ReadOnlyMemory<T> expected) => _expectedMemory = expected;
+    /// <remarks>Snapshots <paramref name="expected"/>, so a lazy sequence is enumerated once; null throws rather than matching an empty actual.</remarks>
+    internal SequenceEqualConstraint(IEnumerable<T> expected) => _expected = expected as T[] ?? expected.ToArray();
 
-    internal SequenceEqualConstraint(IEnumerable<T> expected)
-    {
-        if (expected is T[] array) _expectedMemory = array;
-        else _expectedEnumerable = expected;
-    }
-
-    private T[] ExpectedArray => _expectedEnumerable?.ToArray() ?? _expectedMemory.ToArray();
-
-    public override string Description => new EqualConstraint(ExpectedArray).Description;
+    public override string Description => new EqualConstraint(_expected).Description;
 
     public override ConstraintResult ApplyTo<TActual>(TActual actual)
     {
+        // NUnit's equality treats a default segment as empty, though reading it throws.
+        if (actual is ArraySegment<T> { Array: null }) return new ConstraintResult(this, actual, false);
+
         bool matches = actual switch
         {
             T[] array => Matches(array),
@@ -69,7 +64,7 @@ public sealed class SequenceEqualConstraint<T> : Constraint
 
         return matches
             ? new ConstraintResult(this, actual, true)
-            : new EqualConstraint(ExpectedArray).ApplyTo(actual switch
+            : new EqualConstraint(_expected).ApplyTo(actual switch
             {
                 ReadOnlyMemory<T> memory => memory.ToArray(),
                 Memory<T> memory => memory.ToArray(),
@@ -77,30 +72,16 @@ public sealed class SequenceEqualConstraint<T> : Constraint
             });
     }
 
-    internal bool Matches(ReadOnlySpan<T> actual)
-    {
-        if (_expectedEnumerable is null) return actual.SequenceEqual(_expectedMemory.Span, EqualityComparer<T>.Default);
-
-        int i = 0;
-        foreach (T item in _expectedEnumerable)
-        {
-            if (i >= actual.Length || !EqualityComparer<T>.Default.Equals(actual[i++], item)) return false;
-        }
-
-        return i == actual.Length;
-    }
+    internal bool Matches(ReadOnlySpan<T> actual) => actual.SequenceEqual(_expected, EqualityComparer<T>.Default);
 
     private bool MatchesEnumerable(IEnumerable<T> actual)
     {
-        if (_expectedEnumerable is not null) return actual.SequenceEqual(_expectedEnumerable);
-
-        ReadOnlySpan<T> expected = _expectedMemory.Span;
         int i = 0;
         foreach (T item in actual)
         {
-            if (i >= expected.Length || !EqualityComparer<T>.Default.Equals(item, expected[i++])) return false;
+            if (i >= _expected.Length || !EqualityComparer<T>.Default.Equals(item, _expected[i++])) return false;
         }
 
-        return i == expected.Length;
+        return i == _expected.Length;
     }
 }

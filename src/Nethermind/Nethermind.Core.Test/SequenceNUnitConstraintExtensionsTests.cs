@@ -62,6 +62,29 @@ public class SequenceNUnitConstraintExtensionsTests
     }
 
     [Test]
+    public void Null_expected_is_rejected_rather_than_matching_an_empty_actual()
+    {
+        Assert.Throws<ArgumentNullException>(() => Is.SequenceEqualTo((byte[])null!));
+        Assert.Throws<ArgumentNullException>(() => Is.SequenceEqualTo((IEnumerable<byte>)null!));
+    }
+
+    [Test]
+    public void Expected_sequence_is_read_once_so_a_mismatch_cannot_turn_into_a_pass()
+    {
+        int enumerations = 0;
+        IEnumerable<byte> ChangesAfterFirstRead()
+        {
+            yield return enumerations++ == 0 ? (byte)2 : (byte)1;
+        }
+
+        AssertFails((ReadOnlyMemory<byte>)new byte[] { 1 }, Is.SequenceEqualTo(ChangesAfterFirstRead()));
+    }
+
+    [Test]
+    public void Default_array_segment_does_not_match_an_empty_expected() =>
+        Assert.That(() => Assert.That(default(ArraySegment<byte>), Is.SequenceEqualTo(Array.Empty<byte>())), Throws.Exception);
+
+    [Test]
     public void Memory_of_another_element_type_does_not_match() =>
         AssertFails((ReadOnlyMemory<byte>)new byte[] { 1, 2, 3 }, Is.SequenceEqualTo(new int[] { 1, 2, 3 }));
 
