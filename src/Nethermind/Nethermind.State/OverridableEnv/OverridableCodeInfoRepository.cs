@@ -43,8 +43,13 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         : _codeOverrides.TryGetValue(codeSource, out CodeInfo? result) ? result.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+    /// <inheritdoc/>
+    /// <remarks>Drops any override for <paramref name="codeOwner"/> so that the deployed code, not the overridden code, runs afterwards.</remarks>
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        _codeOverrides.Remove(codeOwner);
         codeInfoRepository.InsertCode(code, codeOwner, spec);
+    }
 
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
@@ -57,8 +62,13 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverrides[precompileAddr] = new CodeInfo(worldState.GetCode(precompileAddr));
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
+    /// <inheritdoc/>
+    /// <remarks>Drops any override for <paramref name="authority"/> so that the EIP-7702 delegation, not the overridden code, is followed afterwards.</remarks>
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    {
+        _codeOverrides.Remove(authority);
         codeInfoRepository.SetDelegation(codeSource, authority, spec);
+    }
 
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>

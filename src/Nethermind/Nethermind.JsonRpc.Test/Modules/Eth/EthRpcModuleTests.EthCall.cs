@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -1630,6 +1631,25 @@ public partial class EthRpcModuleTests
 
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
+    }
+
+    [Test]
+    public async Task Eth_call_setCode_authorization_replaces_overridden_authority_code()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        PrivateKey authority = TestItem.PrivateKeyD;
+        Address delegateAddress = TestItem.AddressC;
+        Signature signature = new EthereumEcdsa(0).Sign(authority, 0, delegateAddress, 0).AuthoritySignature;
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            $$$"""{"from":"{{{TestItem.AddressA}}}","to":"{{{authority.Address}}}","type":"0x4","gas":"0x30d40","authorizationList":[{"chainId":"0x0","address":"{{{delegateAddress}}}","nonce":"0x0","yParity":"0x{{{signature.RecoveryId:x}}}","r":"{{{signature.R.Span.ToHexString(true)}}}","s":"{{{signature.S.Span.ToHexString(true)}}}"}]}""")!;
+        // The delegate returns ADDRESS, so the output shows whether the authority ran it or its overridden empty code.
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{authority.Address}}}":{"code":"0x"},"{{{delegateAddress}}}":{"code":"0x3060005260206000f3"}}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        Assert.That(JToken.Parse(serialized)["result"]!.Value<string>(), Is.EqualTo(authority.Address.Bytes.PadLeft(32).ToHexString(true)));
     }
 
     [TestCaseSource(nameof(ZeroBalanceWantCases))]

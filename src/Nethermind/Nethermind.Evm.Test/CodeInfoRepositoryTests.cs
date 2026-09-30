@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using System;
 using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Evm.Test;
 
@@ -355,6 +356,38 @@ public class CodeInfoRepositoryTests
             Assert.That(secondAddress, Is.Not.SameAs(firstAddress));
             Assert.That(secondAddress, Is.EqualTo(TestItem.AddressB));
         }
+    }
+
+    private static IEnumerable<TestCaseData> CodeWritesAfterOverrideCases()
+    {
+        byte[] deployed = [(byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.RETURN];
+        yield return new TestCaseData(
+                (Action<OverridableCodeInfoRepository>)(r => r.SetDelegation(TestItem.AddressB, TestItem.AddressA, _releaseSpec)),
+                (byte[])[.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes])
+            .SetName("Delegation set on an overridden authority");
+        yield return new TestCaseData(
+                (Action<OverridableCodeInfoRepository>)(r => r.SetDelegation(Address.Zero, TestItem.AddressA, _releaseSpec)),
+                Array.Empty<byte>())
+            .SetName("Delegation cleared on an overridden authority");
+        yield return new TestCaseData(
+                (Action<OverridableCodeInfoRepository>)(r => r.InsertCode(deployed, TestItem.AddressA, _releaseSpec)),
+                deployed)
+            .SetName("Code deployed to an overridden address");
+    }
+
+    [TestCaseSource(nameof(CodeWritesAfterOverrideCases))]
+    public void Code_written_after_a_code_override_replaces_the_override(Action<OverridableCodeInfoRepository> write, byte[] expectedCode)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        OverridableCodeInfoRepository sut = new(new EthereumCodeInfoRepository(stateProvider), stateProvider);
+        sut.SetCodeOverride(_releaseSpec, TestItem.AddressA, new CodeInfo((byte[])[.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes]));
+
+        write(sut);
+
+        CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _);
+        Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(expectedCode));
     }
 
     private sealed class CountingWorldState(IWorldState state) : WorldStateDecorator(state)
