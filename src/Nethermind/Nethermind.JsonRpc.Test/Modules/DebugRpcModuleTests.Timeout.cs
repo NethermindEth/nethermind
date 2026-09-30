@@ -140,6 +140,24 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_repeated_deadlines_do_not_poison_next_call(
+        [Values(null, "callTracer", TimeoutJs)] string? tracer)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
+            JToken expired = await TraceTimeout(ctx, new { tracer, timeout = "0", stateOverrides = FlatOverrides("5b600056") });
+            Assert.That(expired["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000), expired.ToString());
+            JToken recovered = await TraceTimeout(ctx, new { tracer, timeout = "1s", stateOverrides = FlatOverrides("00") });
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recovered["error"], Is.Null, recovered.ToString());
+                Assert.That(recovered["result"], Is.Not.Null);
+            }
+        }
+    }
+
+    [Test]
     public async Task Debug_traceCall_timeout_without_commitment_context_propagates()
     {
         CancellationTokenSource server = new();
