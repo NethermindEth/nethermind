@@ -1986,7 +1986,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
     /// <summary>
     /// Regression test: as in geth, precompile moves and overrides last for their own block only. The next block
-    /// starts from the spec's precompiles, even when it has no overrides.
+    /// starts from the spec's precompiles, even when it has no overrides, while a delegation to an overridden
+    /// precompile address still runs the code left there in the state.
     /// </summary>
     [Test]
     public async Task eth_simulateV1_precompile_overrides_do_not_carry_into_next_block([Values] bool balPath)
@@ -1994,6 +1995,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Address ecrecover = Address.FromNumber(1);
         Address identity = Address.FromNumber(4);
         Address movedTo = Address.FromNumber(0x123456);
+        Address delegator = new("0xc400000000000000000000000000000000000000");
         byte[] signer = Bytes.FromHexString("0x000000000000000000000000b11cad98ad3f8114e0b3a1f6e7228bc8424df48a");
 
         using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
@@ -2007,7 +2009,8 @@ public class EthSimulateTestsBlocksAndTransactions
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         { ecrecover, new AccountOverride { MovePrecompileToAddress = movedTo } },
-                        { identity, new AccountOverride { Code = Return42Code } }
+                        { identity, new AccountOverride { Code = Return42Code } },
+                        { delegator, new AccountOverride { Code = Bytes.Concat(Eip7702Constants.DelegationHeader, identity.Bytes) } }
                     }
                 },
                 new()
@@ -2016,7 +2019,8 @@ public class EthSimulateTestsBlocksAndTransactions
                     [
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = movedTo, Input = EcrecoverInput, GasPrice = UInt256.Zero },
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = ecrecover, Input = EcrecoverInput, GasPrice = UInt256.Zero },
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = identity, Input = EcrecoverInput, GasPrice = UInt256.Zero }
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = identity, Input = EcrecoverInput, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = delegator, Input = EcrecoverInput, GasPrice = UInt256.Zero }
                     ]
                 }
             ]
@@ -2033,6 +2037,7 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(calls[0].ReturnData, Is.Empty);
             Assert.That(calls[1].ReturnData, Is.EqualTo(signer));
             Assert.That(calls[2].ReturnData, Is.EqualTo(EcrecoverInput));
+            Assert.That(calls[3].ReturnData, Is.EqualTo(new UInt256(42).ToBigEndian()));
         }
     }
 

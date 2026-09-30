@@ -50,12 +50,12 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
 
     /// <inheritdoc/>
     /// <remarks>
-    /// An overridden precompile address runs its code, as in <see cref="OverridableCodeInfoRepository"/>. Any other
-    /// target, a move destination included, resolves to its code in the world state.
+    /// Every target, a precompile's address and a move destination included, resolves to its code in the world state,
+    /// as in geth, so code an override left at a precompile's address runs, in its own block and in later ones.
     /// </remarks>
     public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
-        TryGetOverriddenPrecompileAddress(target, vmSpec, out CodeInfo? codeInfo)
-            ? codeInfo
+        vmSpec.IsPrecompile(target)
+            ? new CodeInfo(worldState.GetCode(target))
             : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>

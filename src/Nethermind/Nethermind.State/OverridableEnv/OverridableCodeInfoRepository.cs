@@ -40,11 +40,14 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A code override, including one at a precompile's address, runs as code. A move destination resolves to its
-    /// own code, not to the precompile moved there.
+    /// A code override, including one at a precompile's address, runs as code. A precompile's address otherwise
+    /// resolves to its code in the world state, as in geth, so code an earlier block's override left there still runs.
+    /// A move destination resolves to its own code, not to the precompile moved there.
     /// </remarks>
     public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
-        _codeOverrides.TryGetValue(target, out CodeInfo? result) ? result : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
+        _codeOverrides.TryGetValue(target, out CodeInfo? result) ? result
+        : vmSpec.IsPrecompile(target) ? new CodeInfo(worldState.GetCode(target))
+        : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         _precompileOverrides.TryGetValue(codeSource, out CodeInfo? precompile) ? precompile.Precompile
