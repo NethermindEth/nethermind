@@ -5894,6 +5894,34 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        [Repeat(20)]
+        public void SubmitTx_ConcurrentKeyedSubmissionsFromOneSender_TakeTheFreeBaselineOnce()
+        {
+            const int submissions = 16;
+            _txPool = CreatePool(new TxPoolConfig { FrameTxWidthEnabled = true }, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+
+            Transaction[] txs = Enumerable.Range(1, submissions)
+                .Select(key => BuildKeyedFrameTx(sender, nonceKey: (UInt256)key, seq: 0, value: UInt256.Zero, maxFee: 1.GWei))
+                .ToArray();
+            using Barrier start = new(submissions);
+            AcceptTxResult[] results = new AcceptTxResult[submissions];
+            Parallel.For(0, submissions, new ParallelOptions { MaxDegreeOfParallelism = submissions }, i =>
+            {
+                start.SignalAndWait();
+                results[i] = _txPool.SubmitTx(txs[i], TxHandlingOptions.PersistentBroadcast);
+            });
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count(static r => r == AcceptTxResult.Accepted), Is.EqualTo(1));
+                Assert.That(results.Count(static r => r == AcceptTxResult.WidthUnmet), Is.EqualTo(submissions - 1));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
+        }
+
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
         {
             yield return (new byte[16], AcceptTxResult.SenderIsContract);

@@ -22,8 +22,8 @@ namespace Nethermind.TxPool.Filters;
 /// accepts, so a transaction that a later pool check rejects, such as a disallowed replacement or a fee too low to
 /// compete, still spends it. Only the sender's pending
 /// keyed-nonce frame transactions count toward the baseline, since other pending types add no revalidation work.
-/// Filters run under the head read lock, so two concurrent admissions from one sender can both see the baseline
-/// free; the bound moves by that one transaction, not per head. Inert unless
+/// Runs inside the sender's admission gate, held through insertion, so concurrent admissions from one sender see
+/// each other and only one takes the free baseline. Inert unless
 /// <see cref="ITxPoolConfig.FrameTxWidthEnabled"/>.
 /// </remarks>
 internal sealed class FrameTxWidthFilter(

@@ -22,6 +22,9 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// outcome is known rather than leaving the sponsor permanently short.</remarks>
     public bool PaymasterReserved;
 
+    /// <summary>The sender admission gate a filter entered for this submission, which the pool exits once it settles.</summary>
+    internal System.Threading.Lock? SenderAdmissionGate;
+
     /// <summary>
     /// The chain head specification the whole submission is judged against.
     /// </summary>

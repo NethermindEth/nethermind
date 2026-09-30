@@ -75,6 +75,7 @@ namespace Nethermind.TxPool
         private readonly PayerExposureCache _payerExposure = new();
         private readonly PendingPaymasterCache _pendingPaymasters = new();
         private readonly SenderWidthCache _senderWidth = new();
+        private readonly SenderAdmissionGates _senderAdmissionGates = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         // Consecutive heads each deferred transaction has been carried across. Written only under the head write
@@ -362,6 +363,7 @@ namespace Nethermind.TxPool
 
             if (txPoolConfig.FrameTxWidthEnabled)
             {
+                postHashFilters.Add(new SenderAdmissionGateFilter(_senderAdmissionGates));
                 postHashFilters.Add(new KeyedNonceDisjointnessFilter(_transactions, _blobTransactions));
                 postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _transactions, _blobTransactions, _senderWidth, _logger));
             }
@@ -1647,6 +1649,7 @@ namespace Nethermind.TxPool
                     _pendingPaymasters.Decrement(paymaster);
                 }
 
+                state.SenderAdmissionGate?.Exit();
                 _newHeadLock.ExitReadLock();
             }
 
@@ -1678,15 +1681,17 @@ namespace Nethermind.TxPool
                 return AcceptTxResult.Invalid;
             }
 
+            TxFilteringState state = default;
             _newHeadLock.EnterReadLock();
             try
             {
-                TxFilteringState state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
+                state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
                 bool canRecycle = false;
                 return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipSamplingDeferredFilters: true);
             }
             finally
             {
+                state.SenderAdmissionGate?.Exit();
                 _newHeadLock.ExitReadLock();
             }
         }
