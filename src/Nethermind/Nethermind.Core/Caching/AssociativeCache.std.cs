@@ -42,7 +42,6 @@ public sealed partial class AssociativeCache<TKey, TValue>
 
             if ((h1 & LockMarker) == 0)
             {
-                // The header read is an acquire (ldar on ARM64), so Key/Value loads cannot move before it.
                 key = entry.Key;
                 value = entry.Value;
                 // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.

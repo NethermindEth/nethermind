@@ -87,7 +87,6 @@ public sealed partial class AssociativeKeyCache<TKey>
 
             if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
 
-            // The header read is an acquire (ldar on ARM64), so the Key load cannot move before it.
             TKey storedKey = e.Key;
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
@@ -198,7 +197,6 @@ public sealed partial class AssociativeKeyCache<TKey>
             bool evictingLive = (existing & EpochOccMask) == epochOccTag;
 
             WriteEntry(ref te, existing, in key, tagToStore, timestamp);
-            // Replacing a live entry leaves the count as it is; a CAS here would still take the line every lookup reads.
             if (!evictingLive) AdjustCountIfEpoch(ref _epochAndCount, epochTag, 1);
 
             // Final check: if Clear() raced after the write, the entry has a stale epoch

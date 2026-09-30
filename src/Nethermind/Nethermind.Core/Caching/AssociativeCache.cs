@@ -154,7 +154,6 @@ public sealed partial class AssociativeCache<TKey, TValue>
 
             if ((h1 & TagMask) != expectedTag) continue;
 
-            // The header read is an acquire (ldar on ARM64), so Key/Value loads cannot move before it.
             TKey storedKey = e.Key;
             TValue? storedValue = e.Value;
             // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
@@ -281,7 +280,6 @@ public sealed partial class AssociativeCache<TKey, TValue>
             bool evictingLive = (existing & EpochOccMask) == epochOccTag;
 
             WriteEntry(ref te, existing, in key, val, tagToStore, timestamp);
-            // Replacing a live entry leaves the count as it is; a CAS here would still take the line every lookup reads.
             if (!evictingLive) AdjustCountIfEpoch(ref _epochAndCount, epochTag, 1);
 
             // Final check: if Clear() raced after the write, the entry has a stale epoch
