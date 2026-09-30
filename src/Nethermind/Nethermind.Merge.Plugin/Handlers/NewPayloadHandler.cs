@@ -494,14 +494,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         /// <inheritdoc/>
-        public byte[]? GetCode(Address address)
+        public ReadOnlyMemory<byte> GetCode(Address address)
         {
             TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? [] : state.GetCode(account.CodeHash);
+            return !account.HasCode ? ReadOnlyMemory<byte>.Empty : state.GetCode(account.CodeHash);
         }
 
         /// <inheritdoc/>
-        public byte[]? GetCode(in ValueHash256 codeHash) => state.GetCode(in codeHash);
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => state.GetCode(in codeHash);
 
         /// <inheritdoc/>
         public bool IsContract(Address address) => state.IsContract(address);
