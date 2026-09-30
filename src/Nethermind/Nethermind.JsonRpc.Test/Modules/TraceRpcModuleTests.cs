@@ -547,19 +547,17 @@ public class TraceRpcModuleTests
             _ => (ErrorCodes.PrunedHistoryUnavailable, Does.StartWith(ErrorMessages.PrunedHistoryUnavailable)),
         };
 
-        foreach ((string response, bool requireCanonical) in new[]
+        foreach (string response in new[]
         {
-            (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!), true),
-            (await RpcTest.TestSerializedRequest(module, "trace_get", transaction.Hash!, Array.Empty<string>()), true),
-            (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!, true), false),
-            (await RpcTest.TestSerializedRequest(module, "trace_replayTransaction", transaction.Hash!, new[] { "trace" }), true),
-            (await RpcTest.TestSerializedRequest(module, "trace_replayTransaction", transaction.Hash!, new[] { "trace" }, true), false),
+            await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!),
+            await RpcTest.TestSerializedRequest(module, "trace_get", transaction.Hash!, Array.Empty<string>()),
+            await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!, true),
+            await RpcTest.TestSerializedRequest(module, "trace_replayTransaction", transaction.Hash!, new[] { "trace" }),
+            await RpcTest.TestSerializedRequest(module, "trace_replayTransaction", transaction.Hash!, new[] { "trace" }, true),
         })
         {
             using JsonDocument document = JsonDocument.Parse(response);
             Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error), Is.True, response);
-            // The canonical lookup reports a pruned body as a non-canonical block, so only the error itself is pinned there.
-            if (unavailable is UnavailableHistory.PrunedBody && requireCanonical) continue;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(expected.Code), response);
@@ -773,6 +771,201 @@ public class TraceRpcModuleTests
             Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result) && result.GetArrayLength() > 0, Is.True, response);
             Assert.That(response, Is.EqualTo(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", omitted.RootElement)));
         }
+    }
+
+    // As blockHash does in eth_getLogs: exactly that block, filtered and paged as its single-block range is.
+    [Test]
+    public async Task Trace_filter_block_hash_selects_exactly_that_block(
+        [Values("", ",\"after\":2,\"count\":3", ",\"toAddress\":[\"0x0000000000000000000000000000000000000000\"]",
+            ",\"toAddress\":[\"beneficiary\"]", ",\"fromAddress\":[\"beneficiary\"],\"toAddress\":[\"beneficiary\"],\"mode\":\"union\"",
+            ",\"fromAddress\":[\"0x0000000000000000000000000000000000000001\"]")] string fields,
+        [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        // Below the head, so an answer for latest would differ.
+        Block block = blockchain.BlockTree.FindBlock(blockchain.BlockTree.Head!.Number - 2)!;
+        fields = fields.Replace("beneficiary", block.Beneficiary!.ToString());
+
+        string byHash = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", $"{{\"blockHash\":\"{block.Hash}\"{fields}}}");
+        string byNumber = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", $"{{\"fromBlock\":\"0x{block.Number:x}\",\"toBlock\":\"0x{block.Number:x}\"{fields}}}");
+        string withNullBounds = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", $"{{\"blockHash\":\"{block.Hash}\",\"fromBlock\":null,\"toBlock\":null{fields}}}");
+
+        using JsonDocument document = JsonDocument.Parse(byHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result), Is.True, byHash);
+            if (fields == "") Assert.That(result.GetArrayLength(), Is.GreaterThan(1), byHash);
+            Assert.That(result.EnumerateArray().Select(static trace => trace.GetProperty("blockHash").GetString()), Is.All.EqualTo(block.Hash!.ToString()));
+            Assert.That(byHash, Is.EqualTo(byNumber));
+            Assert.That(withNullBounds, Is.EqualTo(byHash));
+        }
+    }
+
+    public enum UnservedBlock { Unknown, SideChain, Unprocessed, MissingState, PrunedBody }
+
+    // Neither [] nor another block's records: the hash names a block this node cannot trace as canonical.
+    [Test]
+    public async Task Trace_filter_block_hash_returns_an_error_for_a_block_it_cannot_serve(
+        [Values] UnservedBlock unserved, [Values("", ",\"count\":0")] string count)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Block block = blockchain.BlockTree.FindBlock(blockchain.BlockTree.Head!.Number - 2)!;
+        Hash256 hash = block.Hash!;
+        if (unserved == UnservedBlock.Unknown) hash = TestItem.KeccakH;
+        if (unserved == UnservedBlock.SideChain)
+        {
+            // A known sibling of the block, never executed.
+            Block sibling = Build.A.Block.WithParent(blockchain.BlockTree.FindHeader(block.ParentHash!)!).WithExtraData([1]).TestObject;
+            blockchain.BlockTree.SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain);
+            hash = sibling.Hash!;
+        }
+
+        Block next = Build.A.Block.WithParent(blockchain.BlockTree.Head!.Header).TestObject;
+        if (unserved == UnservedBlock.Unprocessed) hash = next.Hash!;
+
+        using ILifetimeScope scope = unserved switch
+        {
+            UnservedBlock.MissingState => WithStateAvailability(blockchain, header => header.Hash != hash),
+            UnservedBlock.PrunedBody => WithStateAvailability(blockchain, _ => true, new PrunedBodyBlockTree(blockchain.BlockTree, block)),
+            UnservedBlock.Unprocessed => WithStateAvailability(blockchain, _ => true, new UnprocessedCanonicalBlockTree(blockchain.BlockTree, next)),
+            _ => WithStateAvailability(blockchain, _ => true),
+        };
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_filter", $"{{\"blockHash\":\"{hash}\"{count}}}");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error), Is.True, response);
+        (int Code, IResolveConstraint Message) expected = unserved switch
+        {
+            UnservedBlock.Unknown => (ErrorCodes.ResourceNotFound, Is.EqualTo(BlockFinderExtensions.HeaderNotFound)),
+            UnservedBlock.SideChain => (ErrorCodes.InvalidInput, Is.EqualTo($"{hash} block is not canonical")),
+            UnservedBlock.Unprocessed => (ErrorCodes.ResourceUnavailable, Is.EqualTo($"{hash} block is not processed")),
+            UnservedBlock.MissingState => (ErrorCodes.ResourceUnavailable, Does.Contain($"No state available for block {block.Number} ")),
+            _ => (ErrorCodes.PrunedHistoryUnavailable, Does.StartWith(ErrorMessages.PrunedHistoryUnavailable)),
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(expected.Code), response);
+            Assert.That(error.GetProperty("message").GetString(), expected.Message, response);
+        }
+    }
+
+    // Canonical, as a block can be during sync, but past the processed head.
+    private sealed class UnprocessedCanonicalBlockTree(IBlockTree inner, Block unprocessed) : BlockTreeTestDouble(inner)
+    {
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == unprocessed.Hash ? unprocessed : base.FindBlock(blockHash, options, blockNumber);
+
+        public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == unprocessed.Hash ? unprocessed.Header : base.FindHeader(blockHash, options, blockNumber);
+
+        public override bool IsMainChain(BlockHeader blockHeader) => blockHeader.Hash == unprocessed.Hash || base.IsMainChain(blockHeader);
+    }
+
+    // The head's hash was read before the head moved on, as when a block is added mid-request.
+    private sealed class MovedHeadBlockTree(IBlockTree inner, Hash256 previousHeadHash) : BlockTreeTestDouble(inner)
+    {
+        public override Hash256 HeadHash => previousHeadHash;
+    }
+
+    [Test]
+    public async Task Trace_filter_block_hash_is_not_answered_by_a_moved_head([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Block block = blockchain.BlockTree.FindBlock(blockchain.BlockTree.Head!.Number - 1)!;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true, new MovedHeadBlockTree(blockchain.BlockTree, block.Hash!));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string byHash = await RpcTest.TestSerializedRequest(module, "trace_filter", $"{{\"blockHash\":\"{block.Hash}\"}}");
+
+        Assert.That(byHash, Is.EqualTo(await RpcTest.TestSerializedRequest(module, "trace_filter", $"{{\"fromBlock\":\"0x{block.Number:x}\",\"toBlock\":\"0x{block.Number:x}\"}}")));
+    }
+
+    [Test]
+    public async Task Trace_filter_rejects_a_malformed_block_hash([Values("\"\"", "\"0x\"", "\"0x1234\"", "\"latest\"", "1")] string blockHash)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", $"{{\"blockHash\":{blockHash}}}");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error) ? error.GetProperty("code").GetInt32() : 0, Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    // As in eth_getLogs, blockHash excludes a range; a null bound is omitted.
+    [Test]
+    public async Task Trace_filter_rejects_block_hash_with_a_bound(
+        [Values("\"fromBlock\":\"0x1\"", "\"toBlock\":\"latest\"", "\"fromBlock\":\"0x1\",\"toBlock\":null", "\"fromBlock\":\"earliest\",\"toBlock\":\"latest\"")] string bounds)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter",
+            $"{{\"blockHash\":\"{blockchain.BlockTree.Head!.Hash}\",{bounds}}}");
+
+        Assert.That(response, Is.EqualTo(
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidParams},\"message\":\"cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other\"}},\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Trace_filter_reads_null_block_hash_as_omitted([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        string withNull = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", "{\"blockHash\":null,\"fromBlock\":\"0x1\",\"toBlock\":\"latest\"}");
+
+        using JsonDocument document = JsonDocument.Parse(withNull);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result) && result.GetArrayLength() > 0, Is.True, withNull);
+            Assert.That(withNull, Is.EqualTo(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", "{\"fromBlock\":\"0x1\",\"toBlock\":\"latest\"}")));
+        }
+    }
+
+    // A hash bound names only a height, so it is rejected; blockHash selects a block.
+    [Test]
+    public async Task Trace_filter_rejects_a_block_hash_as_a_bound(
+        [Values("fromBlock", "toBlock")] string bound,
+        [Values("\"hash\"", "{\"blockHash\":\"hash\"}", "{\"blockHash\":\"hash\",\"requireCanonical\":true}")] string value)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        value = value.Replace("hash", blockchain.BlockTree.FindHeader(1)!.Hash!.ToString());
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", $"{{\"{bound}\":{value}}}");
+
+        Assert.That(response, Is.EqualTo(
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidParams},\"message\":\"block hash is not a block number or tag\"}},\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Trace_filter_reads_numbers_and_tags_as_bounds(
+        [Values("\"0x1\"", "{\"blockNumber\":\"0x1\"}", "\"earliest\"", "\"latest\"")] string fromBlock)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", $"{{\"fromBlock\":{fromBlock},\"toBlock\":\"latest\"}}");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result) && result.GetArrayLength() > 0, Is.True, response);
     }
 
     [Test]

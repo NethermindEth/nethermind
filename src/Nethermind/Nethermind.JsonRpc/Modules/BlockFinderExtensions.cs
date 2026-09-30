@@ -73,8 +73,9 @@ namespace Nethermind.JsonRpc.Modules
             Block block = blockFinder.FindBlock(blockParameter);
             if (blockParameter.RequireCanonical && block is null && !allowNulls && blockParameter.BlockHash is not null)
             {
+                // A canonical header without a body is pruned or missing history, not a side-chain block.
                 BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
-                if (header is not null)
+                if (header is not null && !blockFinder.IsMainChain(header))
                 {
                     return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
@@ -124,6 +125,11 @@ namespace Nethermind.JsonRpc.Modules
                         ? startingBlock.Object.Hash
                         : finalBlockHeader.Object.Hash;
                     yield return new SearchResult<Block>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);
+                }
+                // During sync a block past the processed head can be canonical without having been executed or validated.
+                else if (finalBlockHeader.Object.Number > blockFinder.Head!.Number)
+                {
+                    yield return new SearchResult<Block>($"{finalBlockHeader.Object.Hash} block is not processed", ErrorCodes.ResourceUnavailable);
                 }
                 else
                 {
