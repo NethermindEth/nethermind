@@ -316,7 +316,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
             // hits/misses for accounts and slots; bundle/snaps: the flat DB's layering when the window closed.
             counts = $"instr={delta.Instructions} cycles={delta.Cycles} alloc={allocated} " +
                 $"gc={GC.CollectionCount(0) - _gen0}/{GC.CollectionCount(1) - _gen1}/{GC.CollectionCount(2) - _gen2} " +
-                $"tid={_threadId} mux={(delta.Multiplexed ? 1 : 0)} " +
+                $"tid={_threadId} mux={(delta.Multiplexed ? 1 : 0)} gcs={_gen0}/{_gen1}/{_gen2} " +
                 $"jit={System.Runtime.JitInfo.GetCompiledMethodCount(currentThread: true) - _jitMethods} " +
                 $"lockc={Monitor.LockContentionCount - _lockContentions} " +
                 $"cfa={FlatMetrics.CarryForwardAccountHits - _accountHits}/{FlatMetrics.CarryForwardAccountMisses - _accountMisses} " +
