@@ -25,7 +25,7 @@ public class FrameTxWidthFinalizerTests
     {
         Block finalized = FrameBlock(number: 5);
         (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPool txPool) = Wire(finalized);
-        FrameTxWidthFinalizer finalizer = new(blockTree, receiptFinder, txPool, Enabled(), LimboLogs.Instance);
+        using IContainer container = Start(blockTree, receiptFinder, txPool, Enabled());
 
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(finalized.Header));
 
@@ -34,7 +34,6 @@ public class FrameTxWidthFinalizerTests
             ledger.Received(1).EarnWidthOnFinalization(finalized, Arg.Any<TxReceipt[]>());
             receiptFinder.Received(1).Get(finalized, Arg.Any<bool>(), false);
         }
-        finalizer.Dispose();
     }
 
     [Test]
@@ -47,7 +46,7 @@ public class FrameTxWidthFinalizerTests
         int lastAttempts = 0;
         ledger.When(l => l.EarnWidthOnFinalization(last, Arg.Any<TxReceipt[]>()))
             .Do(_ => { if (++lastAttempts == 1) throw new InvalidOperationException(); });
-        FrameTxWidthFinalizer finalizer = new(blockTree, receiptFinder, txPool, Enabled(), LimboLogs.Instance);
+        using IContainer container = Start(blockTree, receiptFinder, txPool, Enabled());
 
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(first.Header));
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(last.Header));
@@ -60,7 +59,6 @@ public class FrameTxWidthFinalizerTests
             ledger.Received(1).EarnWidthOnFinalization(gap, Arg.Any<TxReceipt[]>());
             ledger.Received(2).EarnWidthOnFinalization(last, Arg.Any<TxReceipt[]>());
         }
-        finalizer.Dispose();
     }
 
     [Test]
@@ -73,7 +71,7 @@ public class FrameTxWidthFinalizerTests
         Block oldestCredited = FrameBlock(number: skipped.Number + 1);
         Block last = FrameBlock(number: lastNumber);
         (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPool txPool) = Wire(first, skipped, oldestCredited, last);
-        FrameTxWidthFinalizer finalizer = new(blockTree, receiptFinder, txPool, Enabled(), LimboLogs.Instance);
+        using IContainer container = Start(blockTree, receiptFinder, txPool, Enabled());
 
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(first.Header));
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(last.Header));
@@ -84,7 +82,6 @@ public class FrameTxWidthFinalizerTests
             ledger.Received(1).EarnWidthOnFinalization(oldestCredited, Arg.Any<TxReceipt[]>());
             ledger.Received(1).EarnWidthOnFinalization(last, Arg.Any<TxReceipt[]>());
         }
-        finalizer.Dispose();
     }
 
     [Test]
@@ -93,13 +90,12 @@ public class FrameTxWidthFinalizerTests
         Block canonical = FrameBlock(number: 5);
         Block reorgedOut = FrameBlock(number: 5);
         (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPool txPool) = Wire(canonical);
-        FrameTxWidthFinalizer finalizer = new(blockTree, receiptFinder, txPool, Enabled(), LimboLogs.Instance);
+        using IContainer container = Start(blockTree, receiptFinder, txPool, Enabled());
 
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(canonical.Header));
 
         ledger.Received(1).EarnWidthOnFinalization(canonical, Arg.Any<TxReceipt[]>());
         ledger.DidNotReceive().EarnWidthOnFinalization(reorgedOut, Arg.Any<TxReceipt[]>());
-        finalizer.Dispose();
     }
 
     [Test]
@@ -107,12 +103,11 @@ public class FrameTxWidthFinalizerTests
     {
         Block finalized = FrameBlock(number: 5);
         (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPool txPool) = Wire(finalized);
-        FrameTxWidthFinalizer finalizer = new(blockTree, receiptFinder, txPool, new TxPoolConfig { FrameTxWidthEnabled = false }, LimboLogs.Instance);
+        using IContainer container = Start(blockTree, receiptFinder, txPool, new TxPoolConfig { FrameTxWidthEnabled = false });
 
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(finalized.Header));
 
         ledger.DidNotReceiveWithAnyArgs().EarnWidthOnFinalization(default!, default!);
-        finalizer.Dispose();
     }
 
     [Test]
@@ -120,19 +115,25 @@ public class FrameTxWidthFinalizerTests
     {
         Block finalized = FrameBlock(number: 5);
         (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPool txPool) = Wire(finalized);
-        using IContainer container = new ContainerBuilder()
+        using IContainer container = Start(blockTree, receiptFinder, txPool, Enabled());
+
+        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(finalized.Header));
+
+        ledger.Received(1).EarnWidthOnFinalization(finalized, Arg.Any<TxReceipt[]>());
+    }
+
+    private static IContainer Start(IBlockTree blockTree, IReceiptFinder receiptFinder, ITxPool txPool, ITxPoolConfig txPoolConfig)
+    {
+        IContainer container = new ContainerBuilder()
             .AddModule(new BaseMergePluginModule())
             .AddSingleton(blockTree)
             .AddSingleton(receiptFinder)
             .AddSingleton<ITxPool>(_ => txPool)
-            .AddSingleton(Enabled())
+            .AddSingleton(txPoolConfig)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
-
         container.Resolve<ITxPool>();
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(finalized.Header));
-
-        ledger.Received(1).EarnWidthOnFinalization(finalized, Arg.Any<TxReceipt[]>());
+        return container;
     }
 
     private static (IBlockTree, IReceiptFinder, IFrameTxWidthLedger, ITxPool) Wire(params Block[] canonical)

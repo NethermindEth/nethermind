@@ -14,8 +14,9 @@ namespace Nethermind.TxPool;
 /// <remarks>
 /// EIP-8141 MATCHA <c>charge(tx) = ceil(safety_factor * admission_gas(tx))</c>. The safety factor is carried in
 /// permille so no floating point enters admission; the MATCHA post leaves its calibrated value to clients, so a
-/// deployment sets it and the default leaves the charge at the measured admission gas. A factor below one is raised to
-/// one, so no setting admits beyond the baseline for less than the measured work. The single admission and
+/// deployment sets it and the default leaves the charge at the declared admission gas: the validation prefix's execution
+/// gas limits plus signature verification gas, not the gas the prefix burns. A factor below one is raised to one, so no
+/// setting admits beyond the baseline for less than the declared work. The single admission and
 /// revalidation charge live here so both spend the same amount.
 /// </remarks>
 internal static class FrameTxWidthCharge
