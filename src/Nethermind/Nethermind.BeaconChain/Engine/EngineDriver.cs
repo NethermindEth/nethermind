@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,14 +22,15 @@ namespace Nethermind.BeaconChain.Engine;
 /// Drives the execution layer through in-process engine API calls — <c>engine_newPayloadV4</c> and
 /// <c>engine_forkchoiceUpdatedV3</c>, the methods an external consensus client uses on Fulu-era
 /// mainnet, and <c>engine_newPayloadV5</c> for the execution payload envelopes Gloas delivers
-/// separately from the block.
+/// separately from the block. From the Gloas fork on, <c>forkchoiceUpdated</c> goes through
+/// <c>engine_forkchoiceUpdatedV4</c> so it can carry the node's custody columns.
 /// </summary>
 /// <remarks>
 /// Calls go through <see cref="ExternalClDetector.InnerEngine"/> so the driver's own traffic never
 /// trips external-CL detection. The orchestrator serializes all calls (they run on the slot
 /// worker); only the last-status properties are meant to be read concurrently.
 /// </remarks>
-public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager) : IEngineDriver
+public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager, SlotClock clock, BeaconChainSpec spec, INodeColumnCustodySource custody) : IEngineDriver
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EngineDriver>();
 
@@ -72,17 +77,45 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     }
 
     /// <summary>
-    /// Applies the fork-choice state via <c>engine_forkchoiceUpdatedV3</c> (no payload attributes)
-    /// and returns the head status, including SYNCING while the execution layer catches up.
+    /// Applies the fork-choice state and returns the head status, including SYNCING while the
+    /// execution layer catches up. Sends <c>engine_forkchoiceUpdatedV3</c> before the Gloas fork and
+    /// <c>engine_forkchoiceUpdatedV4</c> with the node's custody columns from it.
     /// </summary>
+    /// <remarks>
+    /// No payload attributes are sent. The fork is that of the wall-clock slot: the head's own slot is not
+    /// part of this call, and the execution layer accepts V4 for a head of either fork when no attributes
+    /// are present. While the node identity is unknown the custody columns are <c>null</c>, which
+    /// execution-apis amsterdam.md defines as a CL that provides no custody services.
+    /// </remarks>
     /// <exception cref="EngineUnavailableException">The call produced no status; a failure is not SYNCING.</exception>
     public async Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
     {
         Metrics.BeaconChainForkchoiceUpdatedCalls++;
+        ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
         // V3 stays valid after Amsterdam only without payload attributes: execution-apis amsterdam.md "Osaka API" bounds only the payload timestamp.
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await detector.InnerEngine.engine_forkchoiceUpdatedV3(
-            new ForkchoiceStateV1(headExecHash, finalizedExecHash, safeExecHash));
-        return LastForkchoiceStatus = Unwrap(result.Result, result.Data?.PayloadStatus, "forkchoiceUpdatedV3");
+        if (clock.CurrentEpoch < spec.GloasForkEpoch)
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> v3 = await detector.InnerEngine.engine_forkchoiceUpdatedV3(state);
+            return LastForkchoiceStatus = Unwrap(v3.Result, v3.Data?.PayloadStatus, "forkchoiceUpdatedV3");
+        }
+
+        // specs/gloas/fork-choice.md notify_forkchoice_updated: custody_columns is the node's custody set.
+        ResultWrapper<ForkchoiceUpdatedV1Result> v4 = await detector.InnerEngine.engine_forkchoiceUpdatedV4(state, null, ToCustodyColumnBits(custody.Current));
+        return LastForkchoiceStatus = Unwrap(v4.Result, v4.Data?.PayloadStatus, "forkchoiceUpdatedV4");
+    }
+
+    /// <summary>The <c>CustodyColumnBits</c> wire form: bit <c>i</c> set when column <c>i</c> is custodied.</summary>
+    private static BitArray? ToCustodyColumnBits(NodeColumnCustody? custody)
+    {
+        if (custody is null) return null;
+
+        BitArray bits = new(Eip7594DasConstants.NumberOfColumns);
+        foreach (ulong column in custody.CustodyColumns)
+        {
+            bits[(int)column] = true;
+        }
+
+        return bits;
     }
 
     /// <inheritdoc/>

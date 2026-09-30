@@ -128,7 +128,7 @@ public class EngineTests
             .ReturnsForAnyArgs(Task.FromResult(ForkchoiceUpdatedV1Result.Valid(null, TestHash)));
 
         ExternalClDetector detector = CreateDetector(engine, out _);
-        EngineDriver driver = new(detector, LimboLogs.Instance);
+        EngineDriver driver = TestEngineDriver.Create(detector);
         SignedBeaconBlock block = CreateBlock();
 
         driver.CurrentBlock = block;
@@ -267,7 +267,7 @@ public class EngineTests
         engine.engine_newPayloadV5(default!, default!, default, default)
             .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = status })));
         ExternalClDetector detector = CreateDetector(engine, out _);
-        EngineDriver driver = new(detector, LimboLogs.Instance);
+        EngineDriver driver = TestEngineDriver.Create(detector);
         Hash256 parentBeaconBlockRoot = new("0x2222222222222222222222222222222222222222222222222222222222222222");
         Hash256?[] versionedHashes = [new Hash256("0x0133333333333333333333333333333333333333333333333333333333333333")];
         ExecutionRequestsGloas requests = new() { BuilderExits = [new BuilderExitRequest { SourceAddress = Address.SystemUser, Pubkey = new BlsPublicKey(new byte[48]) }] };
@@ -296,7 +296,7 @@ public class EngineTests
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         engine.engine_newPayloadV5(default!, default!, default, default)
             .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Fail("engine unavailable")));
-        EngineDriver driver = new(CreateDetector(engine, out _), LimboLogs.Instance);
+        EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _));
 
         Assert.Multiple(() =>
         {
@@ -324,7 +324,7 @@ public class EngineTests
         };
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         engine.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(Task.FromResult(answer));
-        EngineDriver driver = new(CreateDetector(engine, out _), LimboLogs.Instance);
+        EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _));
 
         Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash));
 
@@ -343,7 +343,7 @@ public class EngineTests
     [Test]
     public void RequireEnvelopeSupport_accepts_the_engine_driver_and_refuses_a_notifier_that_only_handles_block_bodies()
     {
-        EngineDriver driver = new(CreateDetector(Substitute.For<IEngineRpcModule>(), out _), LimboLogs.Instance);
+        EngineDriver driver = TestEngineDriver.Create(CreateDetector(Substitute.For<IEngineRpcModule>(), out _));
 
         Assert.That(() => INewPayloadNotifier.RequireEnvelopeSupport(driver), Throws.Nothing);
         Assert.That(() => INewPayloadNotifier.RequireEnvelopeSupport(new BodyOnlyNotifier()),
