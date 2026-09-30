@@ -117,16 +117,28 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         Transaction[] transactions = _txDecoder.DecodeNonNullArray(
             ref ctx, usePooledTransactions ? RlpBehaviors.None : RlpBehaviors.SkipPooledTransactions,
             limit: TransactionsCountLimit);
-        BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
-        Withdrawal[]? withdrawals = null;
-
-        if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
+        try
         {
-            withdrawals = ctx.DecodeNonNullArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
-        }
+            BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
+            Withdrawal[]? withdrawals = null;
 
-        ctx.Check(lastPosition);
-        return new BlockBody(transactions, uncles, withdrawals);
+            if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
+            {
+                withdrawals = ctx.DecodeNonNullArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
+            }
+
+            ctx.Check(lastPosition);
+            return new BlockBody(transactions, uncles, withdrawals);
+        }
+        catch
+        {
+            if (usePooledTransactions)
+            {
+                foreach (Transaction transaction in transactions)
+                    TxDecoder.TxObjectPool.Return(transaction);
+            }
+            throw;
+        }
     }
 
     public override void Encode<TWriter>(ref TWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -43,6 +43,46 @@ public class BlockBodyDecoderTests
         }
     }
 
+    [Test, NonParallelizable]
+    public void Decode_failure_returns_owned_transactions(
+        [Values("uncles", "withdrawals", "trailing")] string malformedField,
+        [Values] bool usePooledTransactions)
+    {
+        Rlp transactions = Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject)]);
+        byte[] bytes = malformedField switch
+        {
+            "uncles" => Rlp.Encode(transactions, Rlp.OfEmptyByteArray).Bytes,
+            "withdrawals" => Rlp.Encode(transactions, Rlp.OfEmptyList, Rlp.OfEmptyByteArray).Bytes,
+            _ => Rlp.Encode(transactions, Rlp.OfEmptyList, Rlp.OfEmptyList, Rlp.OfEmptyByteArray).Bytes
+        };
+        HashSet<Transaction> pooled = new(ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
+        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+
+        Assert.Throws<RlpException>(() => DecodeMalformed(bytes, usePooledTransactions));
+
+        List<Transaction> rented = [];
+        try
+        {
+            for (int i = 0; i < 2_048; i++) rented.Add(TxDecoder.TxObjectPool.Get());
+            int replacements = 0;
+            foreach (Transaction transaction in rented)
+                if (!pooled.Contains(transaction)) replacements++;
+            Assert.That(replacements, Is.Zero);
+        }
+        finally
+        {
+            foreach (Transaction transaction in rented) TxDecoder.TxObjectPool.Return(transaction);
+        }
+    }
+
+    private static void DecodeMalformed(byte[] bytes, bool usePooledTransactions)
+    {
+        RlpReader reader = new(bytes);
+        reader.ReadSequenceLength();
+        BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions);
+    }
+
     [TestCaseSource(nameof(ValidBodies))]
     public void Roundtrip(BlockBody body)
     {
