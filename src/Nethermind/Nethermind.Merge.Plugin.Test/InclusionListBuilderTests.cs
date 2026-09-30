@@ -52,11 +52,16 @@ public class InclusionListBuilderTests
     }
 
     /// <summary>A pool whose ready buckets are the given transactions, grouped by sender and nonce-ordered.</summary>
-    private static ITxPool PoolOf(params Transaction[] readyTxs)
+    private static ITxPool PoolOf(params Transaction[] readyTxs) => PoolOf(null, readyTxs);
+
+    /// <inheritdoc cref="PoolOf(Transaction[])"/>
+    /// <param name="emptyBucketSenders">Senders the snapshot holds an empty bucket for.</param>
+    private static ITxPool PoolOf(Address[]? emptyBucketSenders, params Transaction[] readyTxs)
     {
         Dictionary<AddressAsKey, Transaction[]> bySender = readyTxs
             .GroupBy(tx => new AddressAsKey(tx.SenderAddress!))
             .ToDictionary(g => g.Key, g => g.OrderBy(tx => tx.Nonce).ToArray());
+        foreach (Address sender in emptyBucketSenders ?? []) bySender[new AddressAsKey(sender)] = [];
         ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactionsBySenderWithReadyNonFrameTx(Arg.Any<UInt256>()).Returns(bySender);
         return pool;
@@ -72,6 +77,17 @@ public class InclusionListBuilderTests
     public void Empty_pool_yields_empty_inclusion_list() =>
         Assert.That(BuildBuilder(PoolOf()).GetInclusionList(), Is.Empty);
 
+    // ITxPool's contract does not guarantee that its snapshot omits empty buckets.
+    [Test]
+    public void Tolerates_an_empty_bucket_from_the_pool()
+    {
+        ITxPool pool = PoolOf([TestItem.AddressA], TxOfSize(50, 0, TestItem.PrivateKeyB));
+
+        using InclusionListBytes il = BuildBuilder(pool).GetInclusionList();
+
+        Assert.That(il.Count, Is.EqualTo(1));
+    }
+
     [Test]
     public void Caps_at_max_bytes_per_inclusion_list()
     {
@@ -84,12 +100,30 @@ public class InclusionListBuilderTests
         Assert.That(il, Is.Not.Empty);
     }
 
+    // An entry too big for the remaining budget is skipped rather than ending the encoding, so another
+    // sender's smaller transaction can still take the space. The skipped sender's own later nonces are
+    // excused whenever it is absent, so listing them spends the scarce byte budget for no extra coverage.
     [Test]
-    public void Skips_txs_that_would_overflow_but_keeps_smaller_ones_that_fit()
+    public void Sender_run_ends_at_a_tx_skipped_for_the_remaining_budget()
     {
-        using InclusionListBytes il = BuildBuilder(PoolOf(TxOfSize(8000), TxOfSize(50, 1))).GetInclusionList();
+        Transaction head = TxOfSize(5 * 1024, 0, TestItem.PrivateKeyA);
+        Transaction skipped = TxOfSize(4 * 1024, 1, TestItem.PrivateKeyA);
+        Transaction afterSkipped = TxOfSize(50, 2, TestItem.PrivateKeyA);
+        // B's run outlives A's, so the rounds after the skip hold only B and no draw order can hide a
+        // premature stop: the space freed by the skip must still reach another sender.
+        Transaction[] otherSender = [.. Enumerable.Range(0, 4).Select(n => TxOfSize(50, n, TestItem.PrivateKeyB))];
+        Hash256?[] expected = [head.Hash, .. otherSender.Select(tx => tx.Hash)];
 
-        Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        using InclusionListBytes il = BuildBuilder(PoolOf([head, skipped, afterSkipped, .. otherSender])).GetInclusionList();
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The scenario is a short remaining budget, not a transaction too big for any list.
+            Assert.That(TxDecoder.Instance.GetLength(skipped, RlpBehaviors.SkipTypedWrapping),
+                Is.LessThan(Eip7805Constants.MaxBytesPerInclusionList));
+            Assert.That(il.Select(b => Decode(b).Hash), Is.EquivalentTo(expected));
+            Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        }
     }
 
     // Only what the next block could append belongs in the list, so the pool must do the readiness and

@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Autofac;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -17,15 +16,15 @@ using Nethermind.State;
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 public class TraceModuleFactory(
-    IOverridableEnvFactory overridableEnvFactory,
+    ITraceEnvFactory overridableEnvFactory,
     ILifetimeScope rootLifetimeScope,
     IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules,
     IPrefixStateSeedSource prefixSeeds,
-    ParallelTraceBudget parallelBudget,
+    ParallelTraceBudgets parallelBudgets,
     ILogManager logManager
 ) : ModuleFactoryBase<ITraceRpcModule>
 {
-    private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, parallelBudget, logManager,
+    private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
         builder => ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules));
 
     private static ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory, IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules) =>
@@ -34,18 +33,16 @@ public class TraceModuleFactory(
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
-            .AddScoped<IBlockValidator>(Always.Valid) // Why?
-
-            .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>(); // TODO: Check, what if this is pre merge?
+            .AddScoped<IBlockValidator>(Always.Valid); // Why?
 
     public override ITraceRpcModule Create()
     {
-        IOverridableEnv env = overridableEnvFactory.Create();
+        IOverridableEnv env = overridableEnvFactory.CreateForTracing();
 
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, static p => new TraceTransactionProcessorAdapter(p), validationBlockProcessingModules)
+            ConfigureCommonBlockProcessing(builder, static p => new UnpricedCallTraceAdapter(p), validationBlockProcessingModules)
                 .AddModule(env));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules)

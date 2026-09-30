@@ -12,7 +12,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
 
-public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
+public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     static abstract TSelf FromULong(ulong value);
 

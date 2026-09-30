@@ -24,7 +24,7 @@ namespace Nethermind.TxPool
         InvalidCells,
     }
 
-    public interface ITxPool
+    public interface ITxPool : IPendingTxsBySender
     {
         int GetPendingTransactionsCount();
         int GetPendingBlobTransactionsCount();
@@ -64,20 +64,10 @@ namespace Nethermind.TxPool
             bool filterToReadyTx,
             UInt256 baseFee = default) => GetPendingLightBlobTransactionsBySender();
 
-        /// <summary>
-        /// from a specific sender, sorted by nonce and later tx pool sorting
-        /// </summary>
-        /// <returns></returns>
-        Transaction[] GetPendingTransactionsBySender(Address address);
-
-        /// <summary>
-        /// Blob txs light equivalences from a specific sender, sorted by nonce.
-        /// </summary>
-        Transaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
+        Transaction[] IPendingTxsBySender.GetPendingLightBlobTransactionsBySender(Address address) =>
             GetPendingLightBlobTransactionsBySender().TryGetValue(address, out Transaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
-        bool ContainsTx(Hash256 hash, TxType txType);
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         /// <summary>

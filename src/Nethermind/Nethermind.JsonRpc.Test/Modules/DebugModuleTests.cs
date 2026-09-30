@@ -563,6 +563,17 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task DebugSetHead_PassesParameterAndReportsRewindResult([Values] bool updated)
+    {
+        _debugBridge.UpdateHeadBlock(new BlockParameter(2UL)).Returns(updated);
+
+        string response = await SerializedRequest("debug_setHead", "0x2");
+
+        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{(updated ? "true" : "false")},\"id\":67}}"));
+        _debugBridge.Received().UpdateHeadBlock(new BlockParameter(2UL));
+    }
+
+    [Test]
     public void DebugTraceTransactionInBlockByIndex_WithCustomTracer_DisposesDiscardedTracesAndPipelineDisposesSelectedTrace()
     {
         (IDisposable[] engines, GethLikeTxTrace[] traces) = CreateSentinelTraces(3);

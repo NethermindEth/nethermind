@@ -66,9 +66,9 @@ public class DebugRpcModule(
     }
 
     public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) =>
-        startNumber < 0
-            ? ResultWrapper<int>.Fail($"startNumber must be non-negative (got {startNumber})", ErrorCodes.InvalidParams)
-            : ResultWrapper<int>.Success(debugBridge.DeleteChainSlice((ulong)startNumber, force));
+        startNumber <= 0
+            ? ResultWrapper<int>.Fail($"startNumber must be positive (got {startNumber})", ErrorCodes.InvalidParams)
+            : debugBridge.DeleteChainSlice((ulong)startNumber, force);
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
@@ -107,6 +107,10 @@ public class DebugRpcModule(
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         blockParameter ??= BlockParameter.Latest;
+        if (blockParameter.Type == BlockParameterType.Pending)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail("tracing on top of pending is not supported", ErrorCodes.InvalidInput);
+        }
 
         BlockHeader? header = TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
@@ -114,7 +118,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
+        Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -530,7 +534,8 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) => throw new NotImplementedException();
+    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) =>
+        ResultWrapper<bool>.Success(debugBridge.UpdateHeadBlock(blockParameter));
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {
