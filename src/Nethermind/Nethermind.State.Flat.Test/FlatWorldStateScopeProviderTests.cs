@@ -902,6 +902,26 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
     }
 
+    [Test]
+    public void ParallelStorageRoot_CommitsNoNodesOfATrieTheFlushSkipped([Values] bool deferStorageTrieCommit)
+    {
+        using TestContext ctx = new(config: new FlatDbConfig { ParallelStorageRoot = true, ParallelStorageRootBatchSize = 1, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        // The builder applies the write, but no write batch ever takes the contract, as for one the flush prunes.
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+        long builderWrites = Db.Metrics.ParallelStorageRootWrites;
+        storageTree.HintSet(1, 1);
+        storageTree.WaitForJob();
+        Assert.That(Db.Metrics.ParallelStorageRootWrites, Is.GreaterThan(builderWrites), "the builder must have applied the write");
+
+        scope.Commit(1);
+
+        Assert.That(ctx.LastCommittedSnapshot!.StorageNodes, Is.Empty);
+    }
+
     // Process-wide, so restore the previous value.
     private static IDisposable SetMinIdleGap(TimeSpan gap)
     {

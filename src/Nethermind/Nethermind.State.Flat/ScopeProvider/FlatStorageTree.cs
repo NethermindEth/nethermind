@@ -464,7 +464,8 @@ public sealed class FlatStorageTree(
     public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
 
     /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
-    internal bool HasUncommittedNodes => Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
+    /// <remarks>A trie no write batch finalized holds only builder writes the block never reported, so it has none.</remarks>
+    internal bool HasUncommittedNodes => _finalized && Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
