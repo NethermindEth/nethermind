@@ -216,6 +216,9 @@ public interface IWorldStateScopeProvider
         /// trie warm-up for the slot path.
         /// </summary>
         void HintSet(in UInt256 index);
+
+        /// <summary>Hint that a transaction committed <paramref name="value"/> to a slot.</summary>
+        void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
     }
 
     /// <summary>
