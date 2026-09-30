@@ -258,6 +258,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
         using ArrayPoolList<ulong> expectedGasUsed = new(blockHashes.Count);
         using ArrayPoolList<ulong> blockGasLimits = new(blockHashes.Count);
+        using ArrayPoolList<bool> blockHeaderKnown = new(blockHashes.Count);
         using ArrayPoolList<Transaction[]?> blockTransactions = new(blockHashes.Count);
         using ArrayPoolList<RlpBehaviors> receiptRlpBehaviors = new(blockHashes.Count);
         using ArrayPoolList<bool> validateReceiptGasUpperBoundAgainstHeader = new(blockHashes.Count);
@@ -273,6 +274,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 {
                     expectedGasUsed.Add(0);
                     blockGasLimits.Add(0);
+                    blockHeaderKnown.Add(false);
                     blockTransactions.Add(null);
                     receiptRlpBehaviors.Add(RlpBehaviors.None);
                     validateReceiptGasUpperBoundAgainstHeader.Add(false);
@@ -284,6 +286,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 Block? block = SyncServer.Find(blockHash);
                 expectedGasUsed.Add(header.GasUsed);
                 blockGasLimits.Add(header.GasLimit);
+                blockHeaderKnown.Add(true);
                 blockTransactions.Add(GetTransactionsForReceiptValidation(block));
                 receiptRlpBehaviors.Add(spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 validateReceiptGasUpperBoundAgainstHeader.Add(!spec.IsEip8037Enabled);
@@ -389,9 +392,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                                 throw new SubprotocolException("Peer returned no progress for partial receipts");
                             }
 
-                            // Without a local header gas limit nothing bounds EIP-7975 paging of this block,
+                            // Without a local header nothing bounds EIP-7975 paging of this block,
                             // so stop at the complete prefix; callers treat the short tail as pending.
-                            if (blockGasLimit == 0)
+                            if (!blockHeaderKnown[blockIndex])
                             {
                                 return (aggregated, (long)totalResponseSize);
                             }
