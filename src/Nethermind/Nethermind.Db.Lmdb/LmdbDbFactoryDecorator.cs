@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Threading;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 
@@ -15,6 +16,35 @@ namespace Nethermind.Db.Lmdb;
 /// </summary>
 public sealed class LmdbDbFactoryDecorator(IDbFactory innerFactory, ILmdbConfig config, ILogManager logManager) : IDbFactory
 {
+    /// <summary>
+    /// Raised once (a static constructor runs at most once per process, the first time this decorator type is
+    /// used - i.e. only when the LMDB plugin is actually enabled) since <see cref="ThreadPool.SetMinThreads"/>
+    /// is a genuinely process-wide .NET runtime setting, not something tied to any one instance.
+    /// </summary>
+    private const int MinThreadPoolThreads = 512;
+
+    /// <summary>
+    /// Works around .NET ThreadPool starvation caused by this plugin's own write-coordination design - see
+    /// PLAN-LMDB.md "Known issues". <see cref="LmdbDb.SubmitWrite"/> blocks synchronously
+    /// (<c>ManualResetEventSlim.Wait()</c>, deliberately - see that method's own remarks on why not a
+    /// <c>TaskCompletionSource</c>) for every caller that doesn't win the group-commit leader race. If snap
+    /// sync's dispatcher fans out many concurrent write-submitting tasks at once, most of them occupy a real
+    /// ThreadPool thread while doing nothing (no CPU, no I/O) - and the ThreadPool only grows by roughly one
+    /// thread per 500ms-1s under sustained demand by design (to avoid oversubscription), which can turn a burst
+    /// of concurrent writers into a multi-second stall for everyone, regardless of how little work any
+    /// individual one has to do. Observed in practice: writes with wildly different operation counts (2 through
+    /// 50,000+) reporting near-identical multi-second durations, with ~0% disk activity and negligible GC pause
+    /// during the stall - not explainable by real storage-engine or GC cost, but exactly the signature of
+    /// ThreadPool starvation from synchronous blocking. Only raises the minimum if it is currently lower than
+    /// <see cref="MinThreadPoolThreads"/> - never lowers whatever Nethermind's own startup configuration already
+    /// set.
+    /// </summary>
+    static LmdbDbFactoryDecorator()
+    {
+        ThreadPool.GetMinThreads(out int currentWorkerMin, out int currentIoMin);
+        ThreadPool.SetMinThreads(Math.Max(currentWorkerMin, MinThreadPoolThreads), Math.Max(currentIoMin, MinThreadPoolThreads));
+    }
+
     public IDb CreateDb(DbSettings dbSettings) => innerFactory.CreateDb(dbSettings);
 
     public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum

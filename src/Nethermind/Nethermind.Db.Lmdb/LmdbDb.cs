@@ -264,7 +264,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         if (elapsedMs >= SlowOperationThresholdMs && _logger.IsWarn)
         {
             double gcPauseDuringMs = (GC.GetTotalPauseDuration() - gcPauseBefore).TotalMilliseconds;
-            _logger.Warn($"Lmdb '{Name}' CreateSnapshot took {elapsedMs:F1}ms (pool size {pool.Length}, GC pause during: {gcPauseDuringMs:F1}ms) - every concurrent reader on this column was blocked for this duration.");
+            _logger.Warn($"Lmdb '{Name}' CreateSnapshot took {elapsedMs:F1}ms (pool size {pool.Length}, GC pause during: {gcPauseDuringMs:F1}ms, {FormatThreadPoolState()}) - every concurrent reader on this column was blocked for this duration.");
         }
 
         return new LmdbDbSnapshot(pool, _database);
@@ -395,10 +395,29 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         }
         else if (elapsedMs >= SlowOperationThresholdMs && _logger.IsWarn)
         {
-            _logger.Warn($"Lmdb '{Name}' write request took {elapsedMs:F1}ms ({operations.Count} ops, durable={wantsDurability}, GC pause during: {gcPauseDuringMs:F1}ms) - unusually slow.");
+            _logger.Warn($"Lmdb '{Name}' write request took {elapsedMs:F1}ms ({operations.Count} ops, durable={wantsDurability}, GC pause during: {gcPauseDuringMs:F1}ms, {FormatThreadPoolState()}) - unusually slow.");
         }
 
         write.Error?.Throw();
+    }
+
+    /// <summary>
+    /// Snapshot of process-wide .NET ThreadPool state, logged alongside slow-event warnings - see PLAN-LMDB.md
+    /// "Known issues". <see cref="SubmitWrite"/> blocks synchronously (<c>ManualResetEventSlim.Wait()</c>) for
+    /// every caller that doesn't win the group-commit leader race; if many concurrent callers do this at once
+    /// (e.g. snap sync's dispatcher fanning out many write-submitting tasks), most of them occupy a real
+    /// ThreadPool thread while doing nothing (no CPU, no I/O) - and the ThreadPool only grows by roughly one
+    /// thread per 500ms-1s under sustained demand by design, which can turn a burst of concurrent writers into a
+    /// multi-second stall for everyone regardless of how little work any individual one has to do. A low
+    /// <c>avail</c> relative to <c>max</c>, together with a nonzero <c>queued</c>, at the moment of a slow event
+    /// is direct evidence of exactly this - a real storage-engine or GC cost would not show ThreadPool
+    /// exhaustion at all.
+    /// </summary>
+    private static string FormatThreadPoolState()
+    {
+        ThreadPool.GetAvailableThreads(out int availWorker, out int availIo);
+        ThreadPool.GetMaxThreads(out int maxWorker, out int maxIo);
+        return $"ThreadPool: {ThreadPool.ThreadCount} threads, {availWorker}/{maxWorker} worker avail, {availIo}/{maxIo} IO avail, {ThreadPool.PendingWorkItemCount} queued";
     }
 
     /// <summary>

@@ -500,6 +500,38 @@ above). What it does explain is why *other writes* - and anything synchronously 
 whatever in `newPayload`'s own path submits a write through this same coordinator - could stall for the
 duration of an entire unrelated oversized batch rather than just one bounded chunk of it.
 
+**The stalls persisted even after the chunking-fairness fix - and the pattern, plus one decisive piece of
+external evidence, points at .NET ThreadPool starvation from this plugin's own coordinator design, not LMDB
+itself.** A further live run showed the same signature (a 10-op and a 36,233-op write both measuring
+~9453.6ms, with an *identical* 134.1ms GC pause during both) - strong confirmation the two measurement windows
+genuinely overlapped with the same real stall, not a logging artifact (each `SubmitWrite` call measures its own
+local start-time and GC-pause baseline; there is no shared mutable state that could cross-contaminate one
+call's log line with another's data - two independent calls reporting an identical GC-pause delta down to
+0.1ms is only possible if their windows truly overlapped). Decisive: **SSD activity was confirmed at ~0% during
+a stall**, ruling out the disk-I/O/sparse-file-growth theory raised earlier.
+
+`LmdbDb.SubmitWrite` blocks synchronously (`ManualResetEventSlim.Wait()`, deliberately - profiling showed this
+faster than a `TaskCompletionSource` for this exact case) for every caller that does not win the group-commit
+leader race. If snap sync's dispatcher fans out many concurrent write-submitting tasks at once, most of them
+occupy a real ThreadPool thread while doing nothing (no CPU, no I/O, matching the ~0% SSD activity observation)
+- and .NET's ThreadPool only grows by roughly one thread per 500ms-1s under sustained demand, by design,
+specifically to avoid oversubscription. A burst of concurrent writers exceeding currently-available threads can
+turn into a multi-second stall for everyone, regardless of how little work any individual one has to do - which
+fits every piece of evidence gathered so far: no disk I/O, minimal GC, and wildly different operation counts
+reporting identical stall durations (all just waiting on the same scarce resource, released together). It would
+also explain the ~2x overall slowdown against `master`: if RocksDB's write path never makes a snap-sync task
+block on an internal coordinator the way this plugin's does, `master` simply never hits this starvation pattern
+at all, independent of anything about the two storage engines' own I/O performance.
+
+**Two changes**, both narrowly scoped to confirm-or-refute this before trusting it: (1) `FormatThreadPoolState`
+adds ThreadPool thread counts (current/available/max, both worker and I/O) and the pending-work-item count to
+every slow-event `Warn` line, so the next occurrence shows this directly instead of requiring inference; (2)
+`LmdbDbFactoryDecorator`'s static constructor raises the process-wide ThreadPool minimum to at least 512 (only
+if currently lower - never lowers whatever the host process already configured), the standard, low-risk
+mitigation for exactly this class of problem. Both are gated behind the LMDB plugin actually being enabled
+(the static constructor only runs once the decorator type is first used, i.e. only when `Lmdb.Enabled` causes
+Autofac to construct it), so neither affects a `master`/RocksDB run at all.
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,

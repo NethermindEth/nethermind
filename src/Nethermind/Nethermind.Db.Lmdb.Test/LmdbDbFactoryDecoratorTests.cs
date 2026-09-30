@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using System.Threading;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -90,5 +91,18 @@ public class LmdbDbFactoryDecoratorTests
     {
         DbSettings settings = new(DbNames.Code, DbNames.Code);
         Assert.That(_decorator.GetFullDbPath(settings), Is.EqualTo(_rocksDbFactory.GetFullDbPath(settings)));
+    }
+
+    [Test]
+    public void Constructing_the_decorator_raises_the_process_wide_ThreadPool_minimum()
+    {
+        // Regression for the ThreadPool-starvation workaround - see PLAN-LMDB.md "Known issues". This is a
+        // genuinely process-wide, one-time .NET runtime setting (a static constructor, not per-instance logic),
+        // so this only checks that it was raised to AT LEAST the target by the time any test in this fixture
+        // runs (guaranteed, since [SetUp] already constructs a decorator) - never that it equals exactly the
+        // target, since it must never lower whatever an earlier test or the real host process already set.
+        ThreadPool.GetMinThreads(out int workerMin, out int ioMin);
+        Assert.That(workerMin, Is.GreaterThanOrEqualTo(512));
+        Assert.That(ioMin, Is.GreaterThanOrEqualTo(512));
     }
 }
