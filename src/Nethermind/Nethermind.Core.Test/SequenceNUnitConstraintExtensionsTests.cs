@@ -81,6 +81,18 @@ public class SequenceNUnitConstraintExtensionsTests
     }
 
     [Test]
+    public void Actual_sequence_is_read_once_so_a_mismatch_cannot_turn_into_a_pass()
+    {
+        int enumerations = 0;
+        IEnumerable<byte> ChangesAfterFirstRead()
+        {
+            yield return enumerations++ == 0 ? (byte)2 : (byte)1;
+        }
+
+        AssertFails(ChangesAfterFirstRead(), Is.SequenceEqualTo(new byte[] { 1 }));
+    }
+
+    [Test]
     public void Default_array_segment_does_not_match_an_empty_expected() =>
         Assert.That(() => Assert.That(default(ArraySegment<byte>), Is.SequenceEqualTo(Array.Empty<byte>())), Throws.Exception);
 
