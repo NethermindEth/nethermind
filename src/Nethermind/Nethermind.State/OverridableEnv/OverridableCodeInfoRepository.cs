@@ -44,13 +44,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         : TryGetCodeOverride(codeSource, out CodeInfo? result) ? result.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
-    {
-        // Code written while the call runs replaces an override there. The override's code is in the world state
-        // as well, so a revert of this write brings it back through the inner repository.
-        _codeOverrides.Remove(codeOwner);
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(code, codeOwner, spec);
-    }
 
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
@@ -63,12 +58,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverrides[precompileAddr] = (new CodeInfo(worldState.GetCode(precompileAddr)), worldState.GetCodeHash(precompileAddr));
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
-    {
-        // As in InsertCode: an authorization replaces an overridden delegation.
-        _codeOverrides.Remove(authority);
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         codeInfoRepository.SetDelegation(codeSource, authority, spec);
-    }
 
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>
@@ -78,9 +69,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     /// <summary>Finds the code this repository answers <paramref name="address"/> with, ahead of the inner repository.</summary>
     /// <remarks>
-    /// An override answers while the account still has the code hash it had when the override was set. Destroying
-    /// the account (a SELFDESTRUCT before Cancun) changes its code in the world state without passing through this
-    /// repository, so an entry is checked against the state rather than removed. The world state journals the code
+    /// An override answers while the account still has the code hash it had when the override was set, so any change
+    /// of the account's code ends it: code written while the call runs, an authorization, and destroying the account
+    /// (a SELFDESTRUCT before Cancun), which does not pass through this repository. The world state journals the code
     /// hash, so a reverted change brings the override back. Where a precompile was moved away from, an ended
     /// override leaves the world state's code, not the precompile the inner repository would answer with.
     /// </remarks>

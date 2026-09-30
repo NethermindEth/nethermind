@@ -81,7 +81,7 @@ public partial class EthRpcModuleTests
         byte[] deployer = Prepare.EvmCode
             .Create2(init, salt, 0).PushData(0).Op(Instruction.MSTORE)
             .Revert(32, 0).Done;
-        // The write drops the override entry without journaling it, so the revert must bring the empty code back through the state.
+        // The write changes the code hash and so ends the override; the revert restores the hash, and with it the empty code.
         byte[] factory = Prepare.EvmCode
             .PushData(32).PushData(0x200).PushData(0).PushData(0).PushData(0).PushData(OverrideDeployer).PushData(200_000).Op(Instruction.CALL).Op(Instruction.POP)
             .PushData(deployed).Op(Instruction.EXTCODESIZE).PushData(0x220).Op(Instruction.MSTORE)
