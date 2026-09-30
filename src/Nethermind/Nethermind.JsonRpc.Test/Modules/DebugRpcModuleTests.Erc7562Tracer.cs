@@ -212,7 +212,8 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { from = FlatSender, gas = "0x186a0", data = "0x" + init }, "latest", new
             {
-                tracer = "erc7562Tracer", stateOverrides = ErcOverrides("00")
+                tracer = "erc7562Tracer",
+                stateOverrides = ErcOverrides("00")
             });
         JToken envelope = JToken.Parse(response);
         Assert.That(envelope["error"], Is.Null, response);
