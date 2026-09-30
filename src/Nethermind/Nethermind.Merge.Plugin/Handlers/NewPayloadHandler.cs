@@ -448,9 +448,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
-    /// <remarks>Only cold-cache resends use these passes; each pass may reread a sender's account.</remarks>
+    /// <remarks>Only cold-cache resends use these passes; account reads are shared across their gas bounds.</remarks>
     private bool? EvaluateWithUnknownGasDimensions(Block block, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
+        state = new CachedAccountStateProvider(state);
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
@@ -468,6 +469,51 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // Bounds must never escape as recorded execution totals, including through the payload cache.
             block.Header.GasUsedPerDimension = null;
         }
+    }
+
+    /// <summary>Shares account reads across one request's inclusion-list checks.</summary>
+    private sealed class CachedAccountStateProvider(IReadOnlyStateProvider state) : IReadOnlyStateProvider
+    {
+        private Dictionary<AddressAsKey, (bool Exists, AccountStruct Account)>? _accounts;
+
+        /// <inheritdoc/>
+        public Hash256 StateRoot => state.StateRoot;
+
+        /// <inheritdoc/>
+        public bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            _accounts ??= [];
+            if (!_accounts.TryGetValue(address, out (bool Exists, AccountStruct Account) cached))
+            {
+                bool exists = state.TryGetAccount(address, out account);
+                cached = (exists, account);
+                _accounts.Add(address, cached);
+            }
+            account = cached.Account;
+            return cached.Exists;
+        }
+
+        /// <inheritdoc/>
+        public byte[]? GetCode(Address address)
+        {
+            TryGetAccount(address, out AccountStruct account);
+            return !account.HasCode ? [] : state.GetCode(account.CodeHash);
+        }
+
+        /// <inheritdoc/>
+        public byte[]? GetCode(in ValueHash256 codeHash) => state.GetCode(in codeHash);
+
+        /// <inheritdoc/>
+        public bool IsContract(Address address) => state.IsContract(address);
+
+        /// <inheritdoc/>
+        public bool AccountExists(Address address) => state.AccountExists(address);
+
+        /// <inheritdoc/>
+        public bool IsDeadAccount(Address address) => state.IsDeadAccount(address);
+
+        /// <inheritdoc/>
+        public void Get(in StorageCell storageCell, out UInt256 value) => state.Get(in storageCell, out value);
     }
 
     /// <summary>The EIP-8037 gas dimensions execution recorded for the block <paramref name="hash"/> names.</summary>
