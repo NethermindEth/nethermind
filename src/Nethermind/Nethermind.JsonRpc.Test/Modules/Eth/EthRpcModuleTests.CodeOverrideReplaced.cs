@@ -147,7 +147,8 @@ public partial class EthRpcModuleTests
             .PushData(OverrideSelfDestructor).Op(Instruction.EXTCODESIZE).PushData(0).Op(Instruction.MSTORE)
             .PushData(32).PushData(32).PushData(0).PushData(0).PushData(OverrideSelfDestructor).PushData(100_000).Op(Instruction.STATICCALL).Op(Instruction.POP)
             .Return(64, 0).Done;
-        byte[] reverter = Prepare.EvmCode.CallWithInput(OverrideSelfDestructor, 100_000, [1]).Revert(0, 0).Done;
+        // Reverts with the success flag of its call to the self-destructor.
+        byte[] reverter = Prepare.EvmCode.CallWithInput(OverrideSelfDestructor, 100_000, [1]).PushData(0).Op(Instruction.MSTORE).Revert(32, 0).Done;
         Dictionary<Address, AccountOverride> stateOverride = new()
         {
             [OverrideSelfDestructor] = new() { Code = selfDestructor },
@@ -165,10 +166,18 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
 
+        JToken? result = JToken.Parse(serialized)["result"];
+        JToken? destroyed = result?[0]?["calls"]?[0];
         byte[] expected = !eip6780 && !reverted
             ? new byte[64]
             : Bytes.Concat(((UInt256)selfDestructor.Length).ToBigEndian(), ((UInt256)42).ToBigEndian());
-        Assert.That(JToken.Parse(serialized)["result"]?.Last?["calls"]?.Last?["returnData"]?.Value<string>(), Is.EqualTo(expected.ToHexString(true)), serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            // Call 1 reached SELFDESTRUCT: it succeeded, or its call to the self-destructor did before the revert.
+            Assert.That(destroyed?["status"]?.Value<string>(), Is.EqualTo(reverted ? "0x0" : "0x1"), serialized);
+            if (reverted) Assert.That(destroyed?["error"]?["data"]?.Value<string>(), Is.EqualTo(((UInt256)1).ToBigEndian().ToHexString(true)), serialized);
+            Assert.That(result?.Last?["calls"]?.Last?["returnData"]?.Value<string>(), Is.EqualTo(expected.ToHexString(true)), serialized);
+        }
     }
 
     // The address a precompile was moved away from is an ordinary account, so once the code overriding it
