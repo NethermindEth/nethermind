@@ -109,14 +109,26 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         ulong batchSize = DefaultBatchSize;
         int peerCursor = 0;
         int consecutiveFailures = 0;
+        // Peers offered below the range whose empty answer the next batch showed was wrong, left out for the rest of the round.
+        HashSet<string> behindTheirWord = [];
+        // The peer below the range whose empty answer the slots since the last verified block were skipped on, until a batch links past them.
+        IBeaconSyncPeer? skippedOnWordOf = null;
 
         while (!token.IsCancellationRequested && nextSlot <= targetHeadSlot())
         {
             ulong target = targetHeadSlot();
             // The fallback window is the default batch, not the shrunk one, so failures cannot exclude a peer that serves from inside the range.
-            IReadOnlyList<IBeaconSyncPeer> peers = ServingFrom(peerPool.GetBestPeers(nextSlot), nextSlot, Math.Min(nextSlot + DefaultBatchSize - 1, target));
+            IReadOnlyList<IBeaconSyncPeer> offered = ServingFrom(peerPool.GetBestPeers(nextSlot), nextSlot, Math.Min(nextSlot + DefaultBatchSize - 1, target));
+            IReadOnlyList<IBeaconSyncPeer> peers = behindTheirWord.Count > 0 ? [.. offered.Where(peer => !behindTheirWord.Contains(peer.Id))] : offered;
             if (peers.Count == 0)
             {
+                // Only peers left out for answering empty are offered: the round ends with what it fetched, and the next round asks them again.
+                if (offered.Count > 0)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Every beacon chain peer offered for slot {nextSlot} answered empty slots that held blocks; ending the range sync round");
+                    yield break;
+                }
+
                 if (_logger.IsDebug) _logger.Debug($"No beacon chain peers with head at or past slot {nextSlot} and earliest available slot within the next {DefaultBatchSize} slots; waiting");
                 await Task.Delay(RetryDelay, token);
                 continue;
@@ -126,7 +138,18 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // A peer may answer ResourceUnavailable below its earliest slot (phase0/p2p-interface.md); slots under it are taken as empty and block linkage still checks that.
             ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
             ulong count = Math.Min(batchSize, target - from + 1);
-            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null, token);
+            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null, token);
+            // An unverified anchor is resolved first: it is the older doubt, and a first block that does not link may be off it rather than past the skipped slots.
+            if (batch is { Linked: false } && fallback is null && skippedOnWordOf is { } behind)
+            {
+                // The skipped slots held blocks: the peer that answered them empty was behind, and the peer asked next is not at fault.
+                if (_logger.IsDebug) _logger.Debug($"Blocks from slot {lastSlot + 1} exist although {behind.Id} answered them empty; asking another peer");
+                behindTheirWord.Add(behind.Id);
+                skippedOnWordOf = null;
+                nextSlot = lastSlot + 1;
+                continue;
+            }
+
             if (batch is { Linked: false })
             {
                 // The first block names another parent: the unverified anchor is off the peers' chain, not the peer at fault.
@@ -135,6 +158,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 nextSlot = lastSlot + 1;
                 fallback.Rejected();
                 fallback = null;
+                skippedOnWordOf = null;
                 continue;
             }
 
@@ -150,6 +174,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 // Restart from the slot after the last verified block: a linkage failure may stem
                 // from an earlier batch that falsely came back empty.
                 nextSlot = lastSlot + 1;
+                skippedOnWordOf = null;
                 await Task.Delay(RetryDelay, token);
                 continue;
             }
@@ -158,6 +183,12 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             if (batch.Value.Blocks.Count > 0)
             {
                 fallback = null;
+                skippedOnWordOf = null;
+            }
+            else if (peer.HeadSlot < from)
+            {
+                // Offered on a status below the range, so its empty answer may mean it is behind rather than that the slots are empty (phase0/p2p-interface.md Status).
+                skippedOnWordOf ??= peer;
             }
 
             if (batchSize != DefaultBatchSize && _logger.IsDebug) _logger.Debug($"Restoring range sync batch size to {DefaultBatchSize} from {batchSize} after a served batch");

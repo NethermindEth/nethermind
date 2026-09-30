@@ -1006,12 +1006,43 @@ public partial class BeaconSyncOrchestratorTests
 
     private sealed class StubPool(IBeaconSyncPeer[] peers, bool filterByHead = false) : IBeaconSyncPeerPool
     {
+        private readonly Lock _lock = new();
+        private readonly List<ulong> _statusRefreshSlots = [];
+        private ulong? _refreshedUpTo;
+
         public int GetBestPeersCalls { get; private set; }
+
+        /// <summary>Offered first for any slot up to the latest status refresh, as <see cref="PeerManager"/> offers peers once a refresh shows them ahead or fails.</summary>
+        public IBeaconSyncPeer[] OfferedAfterRefresh { get; set; } = [];
+
+        public ulong[] StatusRefreshSlots
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return [.. _statusRefreshSlots];
+                }
+            }
+        }
 
         public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
         {
             GetBestPeersCalls++;
-            return filterByHead ? [.. peers.Where(p => p.HeadSlot >= minHeadSlot)] : peers;
+            IBeaconSyncPeer[] known = filterByHead ? [.. peers.Where(p => p.HeadSlot >= minHeadSlot)] : peers;
+            lock (_lock)
+            {
+                return _refreshedUpTo >= minHeadSlot ? [.. OfferedAfterRefresh, .. known] : known;
+            }
+        }
+
+        public void RefreshStatusesBehind(ulong slot, string reason)
+        {
+            lock (_lock)
+            {
+                _statusRefreshSlots.Add(slot);
+                _refreshedUpTo = Math.Max(_refreshedUpTo ?? 0, slot);
+            }
         }
     }
 
