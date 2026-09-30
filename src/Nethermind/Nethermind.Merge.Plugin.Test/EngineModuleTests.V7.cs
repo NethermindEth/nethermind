@@ -872,24 +872,53 @@ public partial class EngineModuleTests
         }
     }
 
-    // A VALID child frees the parent's retained list, but bogota.md forkchoiceUpdatedV5 (2.1) still owes an
-    // answer if the consensus client keeps the parent as head, e.g. because the child came back unsatisfied.
     [Test]
-    public async Task ForkchoiceUpdatedV5_answers_a_parent_head_whose_child_was_validated()
+    public async Task ForkchoiceUpdatedV5_answers_a_parent_head_whose_child_was_validated(
+        [Values] bool parentAnswered, [Values(PayloadStatus.Valid, PayloadStatus.Accepted, PayloadStatus.Syncing)] string childStatus)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0" });
+        HeadStateInterceptor headState = new();
+        StatusOverridingNewPayloadHandler newPayloadHandler = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState, configure: builder => builder
+            .AddDecorator<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>((_, inner) =>
+            {
+                newPayloadHandler.Inner = inner;
+                return newPayloadHandler;
+            }));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 genesis = chain.BlockTree.HeadHash;
 
         ExecutionPayloadV4 parent = await BuildAndInsertEmptyBlock(rpc, genesis, slot: 2, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 child = await BuildAndInsertEmptyBlock(rpc, parent.BlockHash, slot: 3, finalize: false, finalizedHash: genesis);
+        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
 
-        // Re-validate the parent against a list it censors, so the answer the child must not drop is false.
-        ResultWrapper<PayloadStatusV2> censored = await rpc.engine_newPayloadV6(
-            parent, [], Keccak.Zero, [], [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
-        Assert.That(censored.Data.InclusionListSatisfied, Is.False);
+        if (parentAnswered)
+        {
+            ResultWrapper<PayloadStatusV2> censored = await rpc.engine_newPayloadV6(parent, [], Keccak.Zero, [], inclusionList);
+            Assert.That(censored.Data.InclusionListSatisfied, Is.False);
+        }
+        else
+        {
+            await RetainInclusionListByPrunedResend(rpc, headState, parent, inclusionList);
+        }
 
-        await BuildAndInsertEmptyBlock(rpc, parent.BlockHash, slot: 3, finalize: false, finalizedHash: genesis);
+        if (childStatus == PayloadStatus.Syncing)
+        {
+            await RetainInclusionListByPrunedResend(rpc, headState, child, inclusionList);
+            ResultWrapper<ForkchoiceUpdatedV2Result> childFcu = await rpc.engine_forkchoiceUpdatedV5(
+                new ForkchoiceStateV1(child.BlockHash, genesis, genesis), payloadAttributes: null);
+            Assert.That(childFcu.Data.PayloadStatus.InclusionListSatisfied, Is.False);
+        }
+        else
+        {
+            newPayloadHandler.Status = childStatus == PayloadStatus.Accepted ? childStatus : null;
+            ResultWrapper<PayloadStatusV2> childResend = await rpc.engine_newPayloadV6(child, [], Keccak.Zero, [], inclusionList);
+            newPayloadHandler.Status = null;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(childResend.Data.Status, Is.EqualTo(childStatus));
+                Assert.That(childResend.Data.InclusionListSatisfied, Is.EqualTo(childStatus == PayloadStatus.Valid ? false : null));
+            }
+        }
 
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent.BlockHash, genesis, genesis), payloadAttributes: null);
@@ -952,7 +981,7 @@ public partial class EngineModuleTests
         for (int i = 0; i < 300; i++)
         {
             newest = Keccak.Compute(BitConverter.GetBytes(i));
-            rpc.SetRetainedInclusionList(newest, chain.BlockTree.HeadHash, (ulong)i + 1, [new byte[1]], accepted: true);
+            rpc.SetRetainedInclusionList(newest, (ulong)i + 1, [new byte[1]], accepted: true);
         }
 
         using (Assert.EnterMultipleScope())
@@ -969,16 +998,15 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
             new MergeConfig { TerminalTotalDifficulty = "0" });
         EngineRpcModule rpc = (EngineRpcModule)chain.EngineRpcModule;
-        Hash256 parentHash = chain.BlockTree.HeadHash;
         Hash256 accepted = Keccak.Compute("accepted-tip");
         Hash256 oldestSyncing = Keccak.Compute(BitConverter.GetBytes(0));
         Hash256 newestSyncing = oldestSyncing;
 
-        rpc.SetRetainedInclusionList(accepted, parentHash, 1, [new byte[1]], accepted: true);
+        rpc.SetRetainedInclusionList(accepted, 1, [new byte[1]], accepted: true);
         for (int i = 0; i < 65; i++)
         {
             newestSyncing = Keccak.Compute(BitConverter.GetBytes(i));
-            rpc.SetRetainedInclusionList(newestSyncing, parentHash, 1, [new byte[1]], accepted: false);
+            rpc.SetRetainedInclusionList(newestSyncing, 1, [new byte[1]], accepted: false);
         }
 
         using (Assert.EnterMultipleScope())
@@ -996,14 +1024,13 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
             new MergeConfig { TerminalTotalDifficulty = "0" });
         EngineRpcModule rpc = (EngineRpcModule)chain.EngineRpcModule;
-        Hash256 parentHash = chain.BlockTree.HeadHash;
         Hash256 oldest = Keccak.Compute(BitConverter.GetBytes(0));
         Hash256 newest = oldest;
 
         for (int i = 0; i < 257; i++)
         {
             newest = Keccak.Compute(BitConverter.GetBytes(i));
-            rpc.SetInclusionListAnswer(newest, parentHash, (ulong)i + 1, answer: true);
+            rpc.SetInclusionListAnswer(newest, (ulong)i + 1, answer: true);
         }
 
         using (Assert.EnterMultipleScope())

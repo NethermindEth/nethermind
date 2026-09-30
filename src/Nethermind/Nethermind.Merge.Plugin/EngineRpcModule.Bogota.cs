@@ -21,13 +21,12 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     /// <summary>An inclusion list retained for a payload that could not yet be validated.</summary>
-    private readonly record struct RetainedInclusionList(Hash256 ParentHash, ulong Number, byte[][] Transactions, bool Accepted);
+    private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted);
     private readonly record struct InclusionListAnswer(ulong Number, bool Satisfied);
 
-    // EIP-7805 requires retaining ACCEPTED branch tips until they cease to be tips.
+    // Keep a parent's unanswered list when a child arrives: bogota.md FCUv5 (2.1) may still require its answer.
     private readonly Dictionary<Hash256, InclusionListAnswer> _inclusionListAnswers = [];
     private readonly Dictionary<Hash256, RetainedInclusionList> _retainedInclusionLists = [];
-    private readonly Dictionary<Hash256, int> _inclusionListChildCounts = [];
     // bogota.md mandates retaining ACCEPTED tips; only best-effort SYNCING lists can be evicted.
     private readonly InclusionListInsertionOrder _syncingInclusionListOrder = new();
     // Answers outlive their list, so finality is their normal bound and this one only catches stalled finality.
@@ -83,13 +82,13 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         if (inclusionListSatisfied is { } satisfied && status.LatestValidHash is { } validHash)
         {
-            SetInclusionListAnswer(validHash, executionPayloadParams.ExecutionPayload.ParentHash,
+            SetInclusionListAnswer(validHash,
                 executionPayloadParams.ExecutionPayload.BlockNumber, satisfied);
         }
         else if (status.Status is PayloadStatus.Accepted or PayloadStatus.Syncing
             && executionPayloadParams is { InclusionListTransactions: { } retained, ExecutionPayload.BlockHash: { } blockHash })
         {
-            SetRetainedInclusionList(blockHash, executionPayloadParams.ExecutionPayload.ParentHash,
+            SetRetainedInclusionList(blockHash,
                 executionPayloadParams.ExecutionPayload.BlockNumber, retained,
                 status.Status == PayloadStatus.Accepted);
         }
@@ -197,32 +196,25 @@ public partial class EngineRpcModule : IEngineRpcModule
         return answer;
     }
 
-    internal void SetInclusionListAnswer(Hash256 blockHash, Hash256 parentHash, ulong number, bool answer)
+    internal void SetInclusionListAnswer(Hash256 blockHash, ulong number, bool answer)
     {
         lock (_inclusionListLock)
         {
             if (!IsAfterFinalization(blockHash, number)) return;
             RemoveRetainedInclusionList(blockHash);
-            // The parent's list may go once it is no longer a tip, but its answer is still owed to a
-            // forkchoice update that keeps the parent as head (bogota.md forkchoiceUpdatedV5 (2.1)).
-            RemoveRetainedInclusionList(parentHash);
             AddInclusionListAnswer(blockHash, number, answer);
         }
     }
 
-    internal void SetRetainedInclusionList(Hash256 blockHash, Hash256 parentHash, ulong number, byte[][] retained, bool accepted)
+    internal void SetRetainedInclusionList(Hash256 blockHash, ulong number, byte[][] retained, bool accepted)
     {
         lock (_inclusionListLock)
         {
             RemoveInclusionListAnswer(blockHash);
             if (!IsAfterFinalization(blockHash, number)) return;
-            if (accepted) RemoveRetainedInclusionList(parentHash);
-            // An out-of-order parent is not a branch tip if an unresolved child is already retained.
-            if (_inclusionListChildCounts.ContainsKey(blockHash)) return;
             RemoveRetainedInclusionList(blockHash);
-            _retainedInclusionLists[blockHash] = new RetainedInclusionList(parentHash, number, retained, accepted);
-            if (accepted) TrackInclusionListChild(parentHash);
-            else
+            _retainedInclusionLists[blockHash] = new RetainedInclusionList(number, retained, accepted);
+            if (!accepted)
             {
                 _syncingInclusionListOrder.Add(blockHash);
                 if (_syncingInclusionListOrder.Count > MaxRetainedSyncingInclusionLists)
@@ -250,7 +242,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// but only while that is still the list retained for it.</summary>
     /// <remarks>A concurrent <c>engine_newPayloadV6</c> may have retained a newer list, which outranks anything
     /// derived from the older one.</remarks>
-    private void PublishInclusionListAnswer(Hash256 blockHash, byte[][] retained, bool? answer)
+    private void PublishInclusionListAnswer(Hash256 blockHash, byte[][] retained, bool answer)
     {
         lock (_inclusionListLock)
         {
@@ -258,12 +250,8 @@ public partial class EngineRpcModule : IEngineRpcModule
                 && ReferenceEquals(current.Transactions, retained))
             {
                 RemoveRetainedInclusionList(blockHash);
-                if (answer is { } satisfied)
-                {
-                    RemoveRetainedInclusionList(current.ParentHash);
-                    if (IsAfterFinalization(blockHash, current.Number))
-                        AddInclusionListAnswer(blockHash, current.Number, satisfied);
-                }
+                if (IsAfterFinalization(blockHash, current.Number))
+                    AddInclusionListAnswer(blockHash, current.Number, answer);
             }
         }
     }
@@ -292,24 +280,10 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    private void TrackInclusionListChild(Hash256 parentHash)
-    {
-        _inclusionListChildCounts.TryGetValue(parentHash, out int count);
-        _inclusionListChildCounts[parentHash] = count + 1;
-    }
-
-    private void UntrackInclusionListChild(Hash256 parentHash)
-    {
-        int count = _inclusionListChildCounts[parentHash];
-        if (count == 1) _inclusionListChildCounts.Remove(parentHash);
-        else _inclusionListChildCounts[parentHash] = count - 1;
-    }
-
     private void RemoveRetainedInclusionList(Hash256 blockHash)
     {
         if (!_retainedInclusionLists.Remove(blockHash, out RetainedInclusionList entry)) return;
-        if (entry.Accepted) UntrackInclusionListChild(entry.ParentHash);
-        else _syncingInclusionListOrder.Remove(blockHash);
+        if (!entry.Accepted) _syncingInclusionListOrder.Remove(blockHash);
     }
 
     private void AddInclusionListAnswer(Hash256 blockHash, ulong number, bool satisfied)
