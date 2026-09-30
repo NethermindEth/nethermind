@@ -7,6 +7,7 @@ using System.Runtime;
 using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 
@@ -34,7 +35,13 @@ namespace Nethermind.BlockProfiler;
 /// </para>
 /// <para>
 /// <c>NETHERMIND_COUNT_PIN_CPU=n</c> keeps the processing thread on CPU n and the node's other threads off it, which
-/// steadies the cycle counts; the instruction counts don't need it.
+/// steadies the cycle counts; the instruction counts don't need it. It takes effect only with
+/// <see cref="DeterministicBenchmark"/> on, whose processing thread is dedicated, and needs <c>Blocks.ProcessingCores</c>
+/// unset, whose scope puts the thread's CPU set back after every iteration.
+/// </para>
+/// <para>
+/// Only branches on the block processing thread are counted; block building and the tracing and simulate calls run
+/// branches of their own on other threads, and their verdicts pass straight through.
 /// </para>
 /// </remarks>
 public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
@@ -54,6 +61,8 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     private GCScheduler.ForcedGCExclusionScope? _forcedGCExclusion;
     private EventHandler<BlockExecutedEventArgs>? _blockExecuted;
     private readonly List<BlockExecutedEventArgs> _pendingVerdicts = [];
+    // Whether the current branch runs on the block processing thread and is counted.
+    private bool _counting;
 
     public CountingBranchProcessor(IBranchProcessor inner, ILogManager logManager, IBlockProcessor? blockProcessor = null)
     {
@@ -87,8 +96,11 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
     {
+        _counting = ProcessingThread.IsBlockProcessingThread;
+        if (!_counting) return;
+
         _forcedGCExclusion = GCScheduler.Instance.ExcludeForcedGC();
-        if (s_pinCpu >= 0) PinProcessingThread();
+        if (s_pinCpu >= 0 && DeterministicBenchmark.Enabled) PinProcessingThread();
         // The region's own collection runs here, before any block window opens.
         NoGcRegion.TryEnter(_logger);
     }
@@ -108,23 +120,30 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
+        if (!_counting) return;
         _executedRead = false;
         _judgedRead = false;
         _block = Window.Open();
     }
 
     private void OnTransactionsExecuted() =>
-        _executedRead = _block.IsOnCurrentThread && ThreadInstructionCounter.TryRead(out _executed);
+        _executedRead = _counting && _block.IsOnCurrentThread && ThreadInstructionCounter.TryRead(out _executed);
 
     private void OnInnerBlockExecuted(object? sender, BlockExecutedEventArgs e)
     {
+        if (!_counting)
+        {
+            _blockExecuted?.Invoke(this, e);
+            return;
+        }
+
         _judgedRead = _block.IsOnCurrentThread && ThreadInstructionCounter.TryRead(out _judged);
         _pendingVerdicts.Add(e);
     }
 
     private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
     {
-        if (!_block.TryStop(out ThreadInstructionCounter.Sample total, out string counts)) return;
+        if (!_counting || !_block.TryStop(out ThreadInstructionCounter.Sample total, out string counts)) return;
         if (!_logger.IsInfo) return;
 
         ThreadInstructionCounter.Sample start = _block.Start;
@@ -140,6 +159,8 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
     {
+        if (!_counting) return;
+        _counting = false;
         NoGcRegion.Exit();
         _forcedGCExclusion?.Dispose();
         _forcedGCExclusion = null;

@@ -26,6 +26,8 @@ internal static unsafe partial class ThreadInstructionCounter
     private const ulong PerfFormatTotalTimeRunning = 2;
     private const ulong PerfFlagFdCloexec = 8;
 
+    // Opened on a thread's first read and kept for its life, which suits the dedicated processing thread of the
+    // deterministic mode; without it, each retired pool thread that counted leaves its two descriptors open.
     [ThreadStatic] private static Counters? t_counters;
     private static volatile string? s_error;
 
