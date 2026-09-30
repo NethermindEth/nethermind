@@ -22,14 +22,28 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
 
     public override ParityVmTrace? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Null) return null;
         using JsonDocument document = JsonDocument.ParseValue(ref reader);
-        JsonElement value = document.RootElement;
+        return ReadTrace(document.RootElement, options);
+    }
+
+    internal static ParityVmTrace? ReadTrace(JsonElement value, JsonSerializerOptions options)
+    {
+        if (value.ValueKind == JsonValueKind.Null) return null;
         if (value.ValueKind != JsonValueKind.Object) throw new JsonException();
+        JsonElement operations = value.GetProperty("ops");
+        List<ParityVmOperationTrace>? traces = null;
+        if (operations.ValueKind != JsonValueKind.Null)
+        {
+            traces = new(operations.GetArrayLength());
+            foreach (JsonElement operation in operations.EnumerateArray())
+            {
+                traces.Add(ParityVmOperationTraceConverter.ReadOperation(operation, options)!);
+            }
+        }
         return new ParityVmTrace
         {
             Code = value.GetProperty("code").Deserialize<byte[]>(options)!,
-            Operations = value.GetProperty("ops").Deserialize<List<ParityVmOperationTrace>>(options)!,
+            Operations = traces!,
         };
     }
 }

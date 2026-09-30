@@ -16,14 +16,19 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
         JsonSerializerOptions options)
     {
         using JsonDocument document = JsonDocument.ParseValue(ref reader);
-        JsonElement value = document.RootElement;
+        return ReadOperation(document.RootElement, options)!;
+    }
+
+    internal static ParityVmOperationTrace? ReadOperation(JsonElement value, JsonSerializerOptions options)
+    {
+        if (value.ValueKind == JsonValueKind.Null) return null;
         if (value.ValueKind != JsonValueKind.Object) throw new JsonException();
         JsonElement execution = value.GetProperty("ex");
         ParityVmOperationTrace operation = new()
         {
             Cost = value.GetProperty("cost").GetUInt64(),
             Pc = value.GetProperty("pc").GetInt32(),
-            Sub = value.GetProperty("sub").Deserialize<ParityVmTrace>(options),
+            Sub = ParityVmTraceConverter.ReadTrace(value.GetProperty("sub"), options),
             Halted = execution.ValueKind == JsonValueKind.Null,
         };
         if (!operation.Halted)
@@ -34,7 +39,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
                 operation.Memory = new ParityMemoryChangeTrace
                 {
                     Data = memory.GetProperty("data").Deserialize<byte[]>(options)!,
-                    Offset = memory.GetProperty("off").GetInt64(),
+                    Offset = memory.GetProperty("off").Deserialize<long>(options),
                 };
             }
             operation.Push = execution.GetProperty("push").Deserialize<byte[][]>(options);
