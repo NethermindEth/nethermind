@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -151,7 +152,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
             return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
         }
 
-        Parallel.For(0, ShardCount, (i) =>
+        // Bounded by the processor count like the rest of block processing, and a single worker runs on the
+        // committing thread. Parallel.For, even at one degree, hands the shards to the pool, so which thread ran them
+        // changed between runs.
+        ParallelUnbalancedWork.For(0, ShardCount, ParallelUnbalancedWork.DefaultOptions, (i) =>
         {
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
