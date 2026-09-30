@@ -2,15 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State.Pbt.Migration;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -24,7 +28,7 @@ public class MigrationTelemetryTests
         SelectHead(harness, "a3");
         await using PbtBalFollowerScheduler scheduler = new((_, _) => Task.FromResult(true), () => harness.Follower.Error, () => harness.Follower.Cursor);
         MerkleShadowStub merkle = new();
-        await using PbtMigrationImport import = new(_ => Task.CompletedTask, LimboLogs.Instance);
+        await using PbtMigrationImport import = new(_ => Task.CompletedTask, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, scheduler, merkle, harness.SpecProvider);
         Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("running", null, null)));
         Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.Null, "no state before the anchor import");
@@ -81,7 +85,7 @@ public class MigrationTelemetryTests
         TaskCompletionSource attempted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using PbtBalFollowerScheduler scheduler = new((_, _) => { attempted.TrySetResult(); return Task.FromResult(false); }, () => null,
             () => new PbtFollowerCursor(0, harness.Blocks["anchor"].Hash!, harness.TreeRoot(harness.Blocks["anchor"].Header)));
-        await using PbtMigrationImport import = new(_ => Task.CompletedTask, LimboLogs.Instance);
+        await using PbtMigrationImport import = new(_ => Task.CompletedTask, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, scheduler, new MerkleShadowStub(), harness.SpecProvider);
         Assert.That(telemetry.GetProgress().Binary!.Phase, Is.EqualTo("following"));
         scheduler.Schedule(harness.Blocks["a1"].Header);
@@ -99,18 +103,27 @@ public class MigrationTelemetryTests
         AssertFixture("stalled", stalled);
     }
 
-    [Test]
-    public async Task Background_import_reports_importing_then_its_outcome([Values] bool fails)
+    private static IEnumerable<TestCaseData> ImportOutcomes()
+    {
+        yield return new TestCaseData(null, null).SetName("Import_succeeds");
+        yield return new TestCaseData(new InvalidDataException("corrupt image"), ExitCodes.GeneralError).SetName("Invalid_image_exits");
+        yield return new TestCaseData(new InvalidConfigurationException("corrupt image", ExitCodes.ConflictingConfigurations), ExitCodes.ConflictingConfigurations).SetName("Invalid_configuration_exits_with_its_code");
+        yield return new TestCaseData(new IOException("corrupt image"), null).SetName("Other_failure_keeps_running");
+    }
+
+    [TestCaseSource(nameof(ImportOutcomes))]
+    public async Task Background_import_reports_importing_then_its_outcome(Exception? failure, int? exitCode)
     {
         using MigrationBalFollowerTests.Harness harness = new();
         SelectHead(harness, "a1");
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
         await using PbtBalFollowerScheduler scheduler = new((_, _) => Task.FromResult(true), () => null, () => null);
         await using PbtMigrationImport import = new(async _ =>
         {
             await release.Task;
-            if (fails) throw new InvalidDataException("corrupt image");
-        }, LimboLogs.Instance);
+            if (failure is not null) throw failure;
+        }, exitSource, LimboLogs.Instance);
         MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, scheduler, new MerkleShadowStub(), harness.SpecProvider);
 
         import.Start();
@@ -120,9 +133,11 @@ public class MigrationTelemetryTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(import.Error, fails ? Is.EqualTo("corrupt image") : Is.Null);
-            Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc(fails ? "importFailed" : "running", null, null)));
+            Assert.That(import.Error, failure is null ? Is.Null : Is.EqualTo("corrupt image"));
+            Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc(failure is null ? "running" : "importFailed", null, null)));
         }
+        if (exitCode is null) exitSource.DidNotReceiveWithAnyArgs().Exit(default);
+        else exitSource.Received(1).Exit(exitCode.Value);
     }
 
     // The harness selects a5 (post-activation); the phases under test depend on where the head sits.
