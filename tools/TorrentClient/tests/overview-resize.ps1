@@ -1,7 +1,8 @@
 # Requires the MAUI app to show a selected torrent's Overview tab.
 param(
     [int]$ProcessId = 0,
-    [int[]]$Widths = @(875, 870)
+    [int[]]$Widths = @(875, 870),
+    [switch]$ExpectComplete
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,9 +42,24 @@ try {
             [System.Windows.Automation.TreeScope]::Descendants,
             [System.Windows.Automation.Condition]::TrueCondition)
         $bounds = @{}
+        $completeStateVisible = $false
+        $transferActionVisible = $false
+        $filePreviewVisible = $false
         foreach ($element in $elements) {
             $name = $element.Current.Name
-            if ($name -in @('Integrity', 'Connections', 'Trackers')) {
+            if ($ExpectComplete -and ($name -eq 'Current speed' -or $name -match '^Down .*B/s')) {
+                throw "At $width px, a completed torrent displays a transfer-speed claim."
+            }
+            if ($name -in @('Content verified', 'Seeding') -and $element.Current.BoundingRectangle.Width -gt 0) {
+                $completeStateVisible = $true
+            }
+            if ($name -in @('Seed', 'Pause') -and $element.Current.BoundingRectangle.Width -gt 0) {
+                $transferActionVisible = $true
+            }
+            if ($name -like 'Reveal * in file manager' -and $element.Current.BoundingRectangle.Width -gt 0) {
+                $filePreviewVisible = $true
+            }
+            if ($name -in @('Integrity', 'Storage', 'Folder')) {
                 $rect = $element.Current.BoundingRectangle
                 if ($rect.Width -gt 0 -and $rect.Height -gt 0) {
                     $bounds[$name] = $rect
@@ -51,19 +67,23 @@ try {
             }
         }
 
-        if (-not $bounds.ContainsKey('Integrity') -or -not $bounds.ContainsKey('Connections')) {
-            throw "At $width px, show a selected torrent's Overview tab before running this check."
-        }
-        if ([Math]::Abs($bounds.Integrity.Top - $bounds.Connections.Top) -gt 2) {
-            throw "At $width px, Connections moved below Integrity."
-        }
-        if (-not $bounds.ContainsKey('Trackers') -or
-            $bounds.Trackers.Height -lt 16 -or
-            $bounds.Trackers.Right -gt $original.Left + $width - 20) {
-            throw "At $width px, the Connections rows are clipped."
+        if ($ExpectComplete -and (-not $completeStateVisible -or -not $transferActionVisible -or -not $filePreviewVisible)) {
+            throw "At $width px, completed state=$completeStateVisible, action=$transferActionVisible, file preview=$filePreviewVisible."
         }
 
-        Write-Output "$width px: Connections and Trackers are fully visible."
+        if (-not $bounds.ContainsKey('Integrity') -or -not $bounds.ContainsKey('Storage')) {
+            throw "At $width px, show a selected torrent's Overview tab before running this check."
+        }
+        if ([Math]::Abs($bounds.Integrity.Top - $bounds.Storage.Top) -gt 2) {
+            throw "At $width px, Storage moved below Integrity."
+        }
+        if (-not $bounds.ContainsKey('Folder') -or
+            $bounds.Folder.Height -lt 16 -or
+            $bounds.Folder.Right -gt $original.Left + $width - 20) {
+            throw "At $width px, the Storage rows are clipped."
+        }
+
+        Write-Output "$width px: Storage and Folder are fully visible."
     }
 }
 finally {

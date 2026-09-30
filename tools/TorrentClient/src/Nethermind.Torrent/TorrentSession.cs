@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -22,7 +23,7 @@ public sealed class TorrentClientOptions
     public required string OutputDirectory { get; init; }
 
     /// <summary>
-    /// Gets or sets the TCP port announced to trackers. The current CLI is download-only and does not listen yet.
+    /// Gets or sets the TCP listening port. Zero selects an available ephemeral port when seeding is enabled.
     /// </summary>
     public int ListenPort { get; init; } = 6881;
 
@@ -30,6 +31,12 @@ public sealed class TorrentClientOptions
     /// Gets or sets the maximum number of concurrent peer connections.
     /// </summary>
     public int MaxPeers { get; init; } = 32;
+
+    /// <summary>Gets or sets the maximum number of concurrent inbound and outbound upload connections.</summary>
+    public int MaxUploadPeers { get; init; } = 8;
+
+    /// <summary>Gets or sets whether verified pieces are shared while downloading and after completion.</summary>
+    public bool SeedAfterCompletion { get; init; } = true;
 
     /// <summary>
     /// Gets or sets whether the DHT fallback should run in addition to tracker announces.
@@ -76,6 +83,7 @@ public sealed class TorrentClientOptions
 public sealed class TorrentSession(TorrentClientOptions options, Action<string>? log = null, IProgress<TorrentSessionProgress>? progress = null)
 {
     private const int MaxPeerConnections = 512;
+    private const int MaxUploadConnections = 64;
 
     private readonly TorrentClientOptions _options = ValidateOptions(options);
     private readonly Action<string> _log = log ?? Console.WriteLine;
@@ -84,9 +92,47 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
     private readonly string _trackerKey = RandomNumberGenerator.GetHexString(8, lowercase: true);
     private int _activePeerCount;
     private int _knownPeerCount;
+    private long _payloadBytesReceived;
+    private long _verifiedBytesFromPeers;
+    private long _uploadedBytes;
+    private long _activeStartTimestamp;
+    private long _activeEndTimestamp;
+    private readonly Lock _contributorsLock = new();
+    private readonly HashSet<string> _contributors = [];
+    private PeerSeedServer? _seedServer;
+    private TorrentSessionProgress? _latestProgress;
+
+    /// <summary>Gets the active inbound peer-wire port, or zero when not listening.</summary>
+    public int ListeningPort => Volatile.Read(ref _seedServer)?.Port ?? 0;
+
+    /// <summary>Gets the latest engine progress, including updates not yet dispatched to a UI callback.</summary>
+    public TorrentSessionProgress? GetLatestProgress() => Volatile.Read(ref _latestProgress);
+
+    /// <summary>Gets network transfer activity measured during this session.</summary>
+    public TorrentTransferSnapshot GetTransferSnapshot()
+    {
+        long start = Volatile.Read(ref _activeStartTimestamp);
+        long end = Volatile.Read(ref _activeEndTimestamp);
+        TimeSpan activeTime = start == 0 ? TimeSpan.Zero : Stopwatch.GetElapsedTime(start, end == 0 ? Stopwatch.GetTimestamp() : end);
+        lock (_contributorsLock)
+        {
+            (long received, long verified) = ReadTransferCounters(
+                () => Interlocked.Read(ref _verifiedBytesFromPeers),
+                () => Interlocked.Read(ref _payloadBytesReceived));
+            return new TorrentTransferSnapshot(received, verified, activeTime, _contributors.Count,
+                Interlocked.Read(ref _uploadedBytes), Volatile.Read(ref _seedServer)?.ActivePeers ?? 0);
+        }
+    }
+
+    internal static (long Received, long Verified) ReadTransferCounters(Func<long> readVerified, Func<long> readReceived)
+    {
+        long verified = readVerified();
+        long received = readReceived();
+        return (received, verified);
+    }
 
     /// <summary>
-    /// Loads metadata, connects to the swarm, and downloads until all pieces are verified.
+    /// Loads metadata, downloads and verifies pieces, then shares them until cancellation when seeding is enabled.
     /// </summary>
     /// <param name="token">Token used to cancel the torrent session.</param>
     /// <returns>The loaded torrent metadata.</returns>
@@ -98,6 +144,12 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
         _log($"torrent: {torrent.Name}");
         _log($"info hash: {torrent.InfoHashHex}");
         _log($"payload: {FormatBytes(torrent.TotalLength)}, pieces: {torrent.PieceCount}, piece length: {FormatBytes(torrent.PieceLength)}");
+        bool useDht = _options.EnableDht && !torrent.IsPrivate;
+        if (_options.EnableDht && torrent.IsPrivate)
+        {
+            _log("private torrent: public DHT discovery and announcements disabled");
+        }
+
         ReportProgress(TorrentSessionPhase.LoadingMetadata, torrent, null, "Metadata loaded");
 
         await using TorrentStorage storage = new(torrent, _options.OutputDirectory);
@@ -113,6 +165,21 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
             await VerifyExistingPiecesAsync(torrent, storage, picker, token);
         }
 
+        bool wasCompleteAtStartup = picker.IsComplete;
+        if (!wasCompleteAtStartup && (!_options.EnableTrackers || torrent.Trackers.Count == 0) && !useDht &&
+            (_options.ExplicitPeers.Count == 0 || torrent.IsPrivate))
+        {
+            throw new InvalidOperationException("Incomplete payload requires a tracker, DHT, or explicit peer.");
+        }
+
+        await using PeerSeedServer? seedServer = _options.SeedAfterCompletion
+            ? new PeerSeedServer(torrent, _peerId, picker, storage, _options.ListenPort, _options.MaxUploadPeers,
+                _options.PeerTimeout, length => Interlocked.Add(ref _uploadedBytes, length), _log)
+            : null;
+        seedServer?.Start();
+        Volatile.Write(ref _seedServer, seedServer);
+        int announcePort = seedServer?.Port ?? _options.ListenPort;
+
         using HttpClient httpClient = new()
         {
             Timeout = _options.TrackerTimeout,
@@ -120,36 +187,72 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
 
         TrackerClient trackerClient = new(httpClient, message => _log(message), _options.TrackerTimeout);
         DhtClient? dhtClient = null;
-        if (_options.EnableDht)
+        if (useDht)
         {
             dhtClient = new DhtClient(_peerId, message => _log(message));
         }
 
         bool completed = false;
+        Volatile.Write(ref _activeStartTimestamp, Stopwatch.GetTimestamp());
         try
         {
-            completed = await DownloadAsync(torrent, storage, picker, trackerClient, dhtClient, token);
+            completed = await DownloadAsync(torrent, storage, picker, trackerClient, dhtClient, seedServer, announcePort, token);
+            Volatile.Write(ref _activeEndTimestamp, Stopwatch.GetTimestamp());
             if (completed)
             {
+                TimeSpan trackerInterval = TimeSpan.FromMinutes(15);
+                IReadOnlyList<PeerEndpoint> initialSeedPeers = [];
                 if (_options.EnableTrackers)
                 {
-                    await trackerClient.AnnounceEventAsync(
-                        torrent,
-                        _peerId,
-                        _trackerKey,
-                        _options.ListenPort,
-                        picker.DownloadedBytes,
-                        uploaded: 0,
-                        "completed",
-                        token);
+                    TrackerAnnounceResult announce = await trackerClient.AnnounceAsync(torrent, _peerId,
+                        _trackerKey, announcePort, picker.DownloadedBytes, Interlocked.Read(ref _uploadedBytes), token);
+                    trackerInterval = ClampTrackerInterval(announce.Interval);
+                    initialSeedPeers = announce.Peers;
+                    if (!wasCompleteAtStartup)
+                    {
+                        await trackerClient.AnnounceEventAsync(
+                            torrent,
+                            _peerId,
+                            _trackerKey,
+                            announcePort,
+                            picker.DownloadedBytes,
+                            uploaded: Interlocked.Read(ref _uploadedBytes),
+                            "completed",
+                            token);
+                    }
                 }
 
                 ReportProgress(TorrentSessionPhase.Completed, torrent, picker, "Torrent complete");
+                if (seedServer is not null)
+                {
+                    ReportProgress(TorrentSessionPhase.Seeding, torrent, picker, "Seeding verified content");
+                    try
+                    {
+                        await SeedAsync(torrent, picker, trackerClient, dhtClient, seedServer, initialSeedPeers,
+                            announcePort, trackerInterval, token);
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
+                    {
+                        _log("seeding stopped");
+                    }
+                }
             }
         }
         finally
         {
-            using CancellationTokenSource stoppedCts = new(_options.TrackerTimeout);
+            if (Volatile.Read(ref _activeEndTimestamp) == 0)
+            {
+                Volatile.Write(ref _activeEndTimestamp, Stopwatch.GetTimestamp());
+            }
+
+            if (seedServer is not null)
+            {
+                await seedServer.StopAsync();
+                Volatile.Write(ref _seedServer, null);
+            }
+
+            using CancellationTokenSource stoppedCts = new(
+                _options.TrackerTimeout < TimeSpan.FromSeconds(5) ? _options.TrackerTimeout : TimeSpan.FromSeconds(5));
             if (_options.EnableTrackers)
             {
                 try
@@ -158,9 +261,9 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
                         torrent,
                         _peerId,
                         _trackerKey,
-                        _options.ListenPort,
+                        announcePort,
                         picker.DownloadedBytes,
-                        uploaded: 0,
+                        uploaded: Interlocked.Read(ref _uploadedBytes),
                         "stopped",
                         stoppedCts.Token);
                 }
@@ -173,6 +276,7 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
             {
                 await dhtClient.DisposeAsync();
             }
+
         }
 
         _log($"complete: {Path.GetFullPath(Path.Combine(_options.OutputDirectory, torrent.Name))}");
@@ -185,12 +289,14 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
         PiecePicker picker,
         TrackerClient trackerClient,
         DhtClient? dhtClient,
+        PeerSeedServer? seedServer,
+        int announcePort,
         CancellationToken token)
     {
         Dictionary<Task, PeerEndpoint> activePeers = [];
         HashSet<PeerEndpoint> recentlyFailed = [];
         HashSet<PeerEndpoint> knownPeers = [];
-        for (int i = 0; i < _options.ExplicitPeers.Count; i++)
+        for (int i = 0; !torrent.IsPrivate && i < _options.ExplicitPeers.Count; i++)
         {
             _ = MagnetLink.TryParsePeer(_options.ExplicitPeers[i], out PeerEndpoint peer);
             knownPeers.Add(peer);
@@ -199,6 +305,7 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
         Volatile.Write(ref _knownPeerCount, knownPeers.Count);
         DateTimeOffset nextAnnounce = DateTimeOffset.MinValue;
         DateTimeOffset lastDht = DateTimeOffset.MinValue;
+        DateTimeOffset nextDhtAnnounce = DateTimeOffset.MinValue;
         PeerWireClient peerWire = new(
             torrent,
             _peerId,
@@ -206,11 +313,20 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
             storage,
             _log,
             _options.PeerTimeout,
-            (pieceIndex, peer) => ReportProgress(
-                TorrentSessionPhase.Downloading,
-                torrent,
-                picker,
-                $"Piece {pieceIndex + 1}/{torrent.PieceCount} from {peer}"));
+            (pieceIndex, peer, remotePeerId) =>
+            {
+                lock (_contributorsLock)
+                {
+                    _contributors.Add(remotePeerId);
+                    Interlocked.Add(ref _verifiedBytesFromPeers, torrent.GetPieceSize(pieceIndex));
+                }
+
+                seedServer?.PieceVerified(pieceIndex);
+
+                ReportProgress(TorrentSessionPhase.Downloading, torrent, picker,
+                    $"Piece {pieceIndex + 1}/{torrent.PieceCount} from {peer}");
+            },
+            blockLength => Interlocked.Add(ref _payloadBytesReceived, blockLength));
         using CancellationTokenSource peerCts = CancellationTokenSource.CreateLinkedTokenSource(token);
 
         try
@@ -231,15 +347,21 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
                         torrent,
                         _peerId,
                         _trackerKey,
-                        _options.ListenPort,
+                        announcePort,
                         picker.DownloadedBytes,
-                        uploaded: 0,
+                        uploaded: Interlocked.Read(ref _uploadedBytes),
                         token);
                     AddKnownPeers(knownPeers, trackerResult.Peers);
                     Volatile.Write(ref _knownPeerCount, knownPeers.Count);
                     nextAnnounce = DateTimeOffset.UtcNow + ClampTrackerInterval(trackerResult.Interval);
                     _log($"tracker peers: {knownPeers.Count}");
                     ReportProgress(TorrentSessionPhase.DiscoveringPeers, torrent, picker, $"Tracker peers: {knownPeers.Count}");
+                }
+
+                if (dhtClient is not null && seedServer is not null && DateTimeOffset.UtcNow >= nextDhtAnnounce)
+                {
+                    await AnnounceDhtAsync(dhtClient, torrent, announcePort, isSeed: false, token);
+                    nextDhtAnnounce = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(15);
                 }
 
                 StartPeerWorkers(torrent, peerWire, knownPeers, recentlyFailed, activePeers, peerCts.Token);
@@ -329,6 +451,139 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
         }
     }
 
+    private async Task SeedAsync(
+        TorrentMetadata torrent,
+        PiecePicker picker,
+        TrackerClient trackerClient,
+        DhtClient? dhtClient,
+        PeerSeedServer seedServer,
+        IReadOnlyList<PeerEndpoint> initialPeers,
+        int announcePort,
+        TimeSpan trackerInterval,
+        CancellationToken token)
+    {
+        HashSet<PeerEndpoint> knownPeers = [];
+        Queue<PeerEndpoint> peerOrder = [];
+        Dictionary<PeerEndpoint, DateTimeOffset> nextConnectAttempt = [];
+        List<PeerEndpoint> explicitPeers = [];
+        for (int i = 0; !torrent.IsPrivate && i < _options.ExplicitPeers.Count; i++)
+        {
+            _ = MagnetLink.TryParsePeer(_options.ExplicitPeers[i], out PeerEndpoint peer);
+            explicitPeers.Add(peer);
+        }
+
+        AddSeedPeers(knownPeers, peerOrder, nextConnectAttempt, explicitPeers);
+        AddSeedPeers(knownPeers, peerOrder, nextConnectAttempt, initialPeers);
+        DateTimeOffset nextTrackerAnnounce = DateTimeOffset.UtcNow + trackerInterval;
+        DateTimeOffset nextDhtAnnounce = DateTimeOffset.MinValue;
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            if (_options.EnableTrackers && now >= nextTrackerAnnounce)
+            {
+                TrackerAnnounceResult announce = await trackerClient.AnnounceAsync(
+                    torrent, _peerId, _trackerKey, announcePort, picker.DownloadedBytes,
+                    Interlocked.Read(ref _uploadedBytes), token);
+                AddSeedPeers(knownPeers, peerOrder, nextConnectAttempt, announce.Peers);
+                nextTrackerAnnounce = DateTimeOffset.UtcNow + ClampTrackerInterval(announce.Interval);
+            }
+
+            ConnectSeedPeers(seedServer, knownPeers, nextConnectAttempt);
+
+            if (dhtClient is not null && now >= nextDhtAnnounce)
+            {
+                try
+                {
+                    using CancellationTokenSource lookupCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    lookupCts.CancelAfter(_options.DhtLookupTimeout);
+                    IReadOnlyList<PeerEndpoint> dhtPeers = await dhtClient.FindPeersAsync(torrent.InfoHash, lookupCts.Token);
+                    AddSeedPeers(knownPeers, peerOrder, nextConnectAttempt, dhtPeers);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (OperationCanceledException)
+                {
+                    _log("dht seed peer lookup timed out");
+                }
+                catch (Exception exception)
+                {
+                    _log($"dht seed peer lookup failed: {exception.Message}");
+                }
+
+                ConnectSeedPeers(seedServer, knownPeers, nextConnectAttempt);
+                await AnnounceDhtAsync(dhtClient, torrent, announcePort, isSeed: true, token);
+                nextDhtAnnounce = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(15);
+            }
+
+            Volatile.Write(ref _knownPeerCount, knownPeers.Count);
+            ReportProgress(TorrentSessionPhase.Seeding, torrent, picker, "Seeding verified content");
+            await Task.Delay(TimeSpan.FromSeconds(5), token);
+        }
+    }
+
+    internal static void AddSeedPeers(HashSet<PeerEndpoint> knownPeers, Queue<PeerEndpoint> peerOrder,
+        Dictionary<PeerEndpoint, DateTimeOffset> nextConnectAttempt, IReadOnlyList<PeerEndpoint> candidates)
+    {
+        const int maxKnownSeedPeers = 512;
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            PeerEndpoint peer = candidates[i];
+            if (knownPeers.Contains(peer))
+            {
+                continue;
+            }
+
+            if (knownPeers.Count == maxKnownSeedPeers)
+            {
+                PeerEndpoint oldest = peerOrder.Dequeue();
+                knownPeers.Remove(oldest);
+                nextConnectAttempt.Remove(oldest);
+            }
+
+            knownPeers.Add(peer);
+            peerOrder.Enqueue(peer);
+        }
+    }
+
+    private static void ConnectSeedPeers(PeerSeedServer seedServer, HashSet<PeerEndpoint> knownPeers,
+        Dictionary<PeerEndpoint, DateTimeOffset> nextConnectAttempt)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        foreach (PeerEndpoint peer in knownPeers)
+        {
+            if (nextConnectAttempt.TryGetValue(peer, out DateTimeOffset due) && due > now)
+            {
+                continue;
+            }
+
+            if (seedServer.TryConnect(peer))
+            {
+                nextConnectAttempt[peer] = now + TimeSpan.FromMinutes(2);
+            }
+        }
+    }
+
+    private async Task AnnounceDhtAsync(DhtClient dhtClient, TorrentMetadata torrent, int announcePort,
+        bool isSeed, CancellationToken token)
+    {
+        try
+        {
+            int announced = await dhtClient.AnnounceAsync(torrent.InfoHash, announcePort, isSeed, token);
+            _log($"dht announced to {announced} nodes");
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _log($"dht announce failed: {exception.Message}");
+        }
+    }
+
     private static TimeSpan ClampTrackerInterval(TimeSpan interval)
     {
         if (interval < TimeSpan.FromSeconds(30))
@@ -402,14 +657,21 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
         ArgumentException.ThrowIfNullOrWhiteSpace(options.TorrentPath, nameof(TorrentClientOptions.TorrentPath));
         ArgumentException.ThrowIfNullOrWhiteSpace(options.OutputDirectory, nameof(TorrentClientOptions.OutputDirectory));
 
-        if (options.ListenPort <= 0 || options.ListenPort > ushort.MaxValue)
+        if (options.ListenPort < 0 || options.ListenPort > ushort.MaxValue ||
+            (options.ListenPort == 0 && !options.SeedAfterCompletion))
         {
-            throw new ArgumentOutOfRangeException(nameof(TorrentClientOptions.ListenPort), options.ListenPort, "Listen port must be in the range 1..65535.");
+            throw new ArgumentOutOfRangeException(nameof(TorrentClientOptions.ListenPort), options.ListenPort, "Listen port must be in the range 1..65535, or zero when seeding is enabled.");
         }
 
         if (options.MaxPeers <= 0 || options.MaxPeers > MaxPeerConnections)
         {
             throw new ArgumentOutOfRangeException(nameof(TorrentClientOptions.MaxPeers), options.MaxPeers, $"Max peers must be in the range 1..{MaxPeerConnections}.");
+        }
+
+        if (options.MaxUploadPeers <= 0 || options.MaxUploadPeers > MaxUploadConnections)
+        {
+            throw new ArgumentOutOfRangeException(nameof(TorrentClientOptions.MaxUploadPeers), options.MaxUploadPeers,
+                $"Max upload peers must be in the range 1..{MaxUploadConnections}.");
         }
 
         if (options.ExplicitPeers is null || options.ExplicitPeers.Count > 64)
@@ -425,9 +687,9 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
             }
         }
 
-        if (!options.EnableDht && !options.EnableTrackers && options.ExplicitPeers.Count == 0)
+        if (!options.EnableDht && !options.EnableTrackers && options.ExplicitPeers.Count == 0 && !options.SeedAfterCompletion)
         {
-            throw new ArgumentException("A tracker, DHT, or explicit peer is required.");
+            throw new ArgumentException("A tracker, DHT, explicit peer, or enabled seeding is required.");
         }
 
         ValidatePositiveTimeout(options.TrackerTimeout, nameof(TorrentClientOptions.TrackerTimeout));
@@ -469,8 +731,9 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
         }
     }
 
-    private void ReportProgress(TorrentSessionPhase phase, TorrentMetadata? torrent, PiecePicker? picker, string message) =>
-        _progress?.Report(new TorrentSessionProgress(
+    private void ReportProgress(TorrentSessionPhase phase, TorrentMetadata? torrent, PiecePicker? picker, string message)
+    {
+        TorrentSessionProgress snapshot = new(
             phase,
             torrent?.Name ?? string.Empty,
             torrent?.InfoHashHex ?? string.Empty,
@@ -481,7 +744,10 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
             Volatile.Read(ref _activePeerCount),
             Volatile.Read(ref _knownPeerCount),
             message,
-            DateTimeOffset.UtcNow));
+            DateTimeOffset.UtcNow);
+        Volatile.Write(ref _latestProgress, snapshot);
+        _progress?.Report(snapshot);
+    }
 
     private static byte[] CreatePeerId()
     {

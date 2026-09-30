@@ -19,6 +19,8 @@ internal sealed class TorrentUiSettings
     public int ListenPort { get; set; } = 6881;
     public bool RandomizePortOnStart { get; set; }
     public int MaxPeersPerTorrent { get; set; } = 32;
+    public int MaxUploadPeers { get; set; } = 8;
+    public bool SeedAfterCompletion { get; set; } = true;
     public int TrackerTimeoutSeconds { get; set; } = 20;
     public int DhtLookupIntervalSeconds { get; set; } = 90;
     public int DhtLookupTimeoutSeconds { get; set; } = 15;
@@ -56,22 +58,29 @@ internal sealed class TorrentUiSettings
     private static extern int SHGetKnownFolderPath(ref Guid folderId, uint flags, IntPtr token, out IntPtr path);
 
     public TorrentClientOptions ToClientOptions(string torrentPath, string outputDirectory, bool resumeExistingData = false,
-        IReadOnlyList<string>? explicitPeers = null)
+        IReadOnlyList<string>? explicitPeers = null, IReadOnlySet<int>? occupiedPorts = null, bool seedCompleted = false)
         => new()
         {
             TorrentPath = torrentPath,
             OutputDirectory = outputDirectory,
-            ListenPort = RandomizePortOnStart ? Random.Shared.Next(49152, ushort.MaxValue + 1) : ListenPort,
+            ListenPort = SeedAfterCompletion || seedCompleted
+                ? SelectListenPort(ListenPort, RandomizePortOnStart, occupiedPorts)
+                : RandomizePortOnStart ? Random.Shared.Next(49152, ushort.MaxValue + 1) : ListenPort,
             MaxPeers = Math.Clamp(MaxPeersPerTorrent, 1, 512),
+            MaxUploadPeers = Math.Clamp(MaxUploadPeers, 1, 64),
+            SeedAfterCompletion = SeedAfterCompletion || seedCompleted,
             EnableDht = EnableDht,
             EnableTrackers = EnableTrackers,
             ExplicitPeers = explicitPeers ?? [],
-            VerifyExistingData = VerifyExistingData || resumeExistingData,
+            VerifyExistingData = VerifyExistingData || resumeExistingData || seedCompleted,
             TrackerTimeout = TimeSpan.FromSeconds(Math.Clamp(TrackerTimeoutSeconds, 1, 3600)),
             DhtLookupInterval = TimeSpan.FromSeconds(Math.Clamp(DhtLookupIntervalSeconds, 1, 3600)),
             DhtLookupTimeout = TimeSpan.FromSeconds(Math.Clamp(DhtLookupTimeoutSeconds, 1, 3600)),
             PeerTimeout = TimeSpan.FromSeconds(Math.Clamp(PeerTimeoutSeconds, 1, 3600)),
         };
+
+    internal static int SelectListenPort(int preferredPort, bool randomize, IReadOnlySet<int>? occupiedPorts)
+        => randomize || occupiedPorts?.Contains(preferredPort) == true ? 0 : preferredPort;
 
     public MagnetResolveOptions ToMagnetResolveOptions()
         => new()

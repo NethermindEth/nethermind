@@ -44,10 +44,12 @@ internal static class Program
         string torrentPath = args[0];
         string output = Path.Combine(Environment.CurrentDirectory, "artifacts", "torrent-downloads");
         int maxPeers = 32;
+        int maxUploadPeers = 8;
         int port = 6881;
         bool dht = true;
         bool trackers = true;
         bool verify = true;
+        bool seed = true;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -61,6 +63,9 @@ internal static class Program
                 case "--max-peers":
                     maxPeers = int.Parse(RequireValue(args, ref i, arg), System.Globalization.CultureInfo.InvariantCulture);
                     break;
+                case "--upload-slots":
+                    maxUploadPeers = int.Parse(RequireValue(args, ref i, arg), System.Globalization.CultureInfo.InvariantCulture);
+                    break;
                 case "--port":
                     port = int.Parse(RequireValue(args, ref i, arg), System.Globalization.CultureInfo.InvariantCulture);
                     break;
@@ -73,6 +78,9 @@ internal static class Program
                 case "--skip-verify":
                     verify = false;
                     break;
+                case "--no-seed":
+                    seed = false;
+                    break;
                 default:
                     throw new ArgumentException($"Unknown argument '{arg}'.");
             }
@@ -83,9 +91,14 @@ internal static class Program
             throw new ArgumentOutOfRangeException(nameof(maxPeers), "Max peers must be positive.");
         }
 
-        if (port <= 0 || port > 65535)
+        if (maxUploadPeers is < 1 or > 64)
         {
-            throw new ArgumentOutOfRangeException(nameof(port), "Port must be in the range 1..65535.");
+            throw new ArgumentOutOfRangeException(nameof(maxUploadPeers), "Upload slots must be in the range 1..64.");
+        }
+
+        if (port < 0 || port > 65535 || (port == 0 && !seed))
+        {
+            throw new ArgumentOutOfRangeException(nameof(port), "Port must be in the range 1..65535, or zero when seeding.");
         }
 
         return new TorrentClientOptions
@@ -94,6 +107,8 @@ internal static class Program
             OutputDirectory = output,
             ListenPort = port,
             MaxPeers = maxPeers,
+            MaxUploadPeers = maxUploadPeers,
+            SeedAfterCompletion = seed,
             EnableDht = dht,
             EnableTrackers = trackers,
             VerifyExistingData = verify,
@@ -131,7 +146,9 @@ internal static class Program
         Console.WriteLine("Options:");
         Console.WriteLine("  -o, --output <dir>   Output directory. Default: ./artifacts/torrent-downloads");
         Console.WriteLine("  --max-peers <n>      Concurrent peer connections. Default: 32");
-        Console.WriteLine("  --port <n>           Port announced to trackers. Default: 6881");
+        Console.WriteLine("  --upload-slots <n>   Concurrent upload peers. Default: 8");
+        Console.WriteLine("  --port <n>           TCP listening port (0 selects a free port). Default: 6881");
+        Console.WriteLine("  --no-seed            Stop after download rather than share verified pieces");
         Console.WriteLine("  --no-dht             Disable DHT fallback");
         Console.WriteLine("  --no-trackers        Disable HTTP and UDP tracker announces");
         Console.WriteLine("  --skip-verify        Do not verify existing files before downloading");

@@ -37,6 +37,35 @@ public sealed class TorrentMetadataTests
     }
 
     [Test]
+    public void Decode_announce_list_overrides_announce_and_preserves_tiers()
+    {
+        BDictionary info = Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("length", Bencode.Integer(1)),
+            new KeyValuePair<string, BValue>("name", Bencode.String("data.bin")),
+            new KeyValuePair<string, BValue>("piece length", Bencode.Integer(1)),
+            new KeyValuePair<string, BValue>("pieces", Bencode.Bytes(new byte[20])));
+        BList announceList = new([
+            new BList([Bencode.String("https://first.example/announce"), Bencode.String("https://second.example/announce")]),
+            new BList([Bencode.String("https://backup.example/announce")]),
+        ]);
+        BDictionary root = Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("announce", Bencode.String("https://ignored.example/announce")),
+            new KeyValuePair<string, BValue>("announce-list", announceList),
+            new KeyValuePair<string, BValue>("info", info));
+
+        TorrentMetadata metadata = TorrentMetadata.Decode(Bencode.Encode(root));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.Trackers.Select(uri => uri.Host),
+                Is.EqualTo(new[] { "first.example", "second.example", "backup.example" }));
+            Assert.That(metadata.TrackerTiers, Has.Count.EqualTo(2));
+            Assert.That(metadata.TrackerTiers[0], Has.Count.EqualTo(2));
+            Assert.That(metadata.TrackerTiers[1], Has.Count.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Decode_supports_multifile_layout()
     {
         byte[] pieces = new byte[40];

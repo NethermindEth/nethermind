@@ -37,6 +37,11 @@ public enum TorrentSessionPhase
     /// Every piece has been verified.
     /// </summary>
     Completed,
+
+    /// <summary>
+    /// Verified pieces are available to other peers.
+    /// </summary>
+    Seeding,
 }
 
 /// <summary>
@@ -65,3 +70,13 @@ public sealed record TorrentSessionProgress(
     int KnownPeers,
     string Message,
     DateTimeOffset Timestamp);
+
+/// <summary>Network transfer observed during one active download run.</summary>
+/// <param name="PayloadBytesReceived">Accepted peer-wire piece payload bytes, including pieces that later fail verification.</param>
+/// <param name="VerifiedBytesFromPeers">Accepted peer payload bytes that passed piece SHA-1 verification.</param>
+/// <param name="ActiveTime">Elapsed discovery and download time, excluding verification and time between runs.</param>
+/// <param name="ContributingPeers">Distinct handshake peer IDs that supplied at least one verified piece in this run.</param>
+/// <param name="UploadedBytes">Piece payload bytes written to requesting peers during this run.</param>
+/// <param name="ActiveUploadPeers">Current inbound peer connections serving this torrent.</param>
+public readonly record struct TorrentTransferSnapshot(long PayloadBytesReceived, long VerifiedBytesFromPeers,
+    TimeSpan ActiveTime, int ContributingPeers, long UploadedBytes = 0, int ActiveUploadPeers = 0);

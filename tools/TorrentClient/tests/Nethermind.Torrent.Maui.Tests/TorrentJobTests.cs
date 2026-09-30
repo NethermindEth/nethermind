@@ -3,6 +3,7 @@
 
 using NUnit.Framework;
 using System.Diagnostics;
+using System.Security.Cryptography;
 
 namespace Nethermind.Torrent.Maui.Tests;
 
@@ -43,22 +44,30 @@ public sealed class TorrentJobTests
     }
 
     [Test]
-    public void Stopped_job_clears_live_transfer_indicators()
+    public void Stopped_job_clears_peer_counts_and_keeps_pause_state()
     {
         TorrentJob job = new("sample.torrent", "downloads")
         {
-            DownloadRateBytesPerSecond = 1024,
-            ActivePeers = 3,
+            PieceCount = 2,
+            TotalBytes = 8,
+            DownloadedBytes = 4,
+            KnownPeers = 7,
+            ActivePeers = 2,
+            Phase = "Downloading",
+            Status = "Paused",
         };
         job.AttachRun(Task.CompletedTask, new CancellationTokenSource());
-        job.DownloadRateBytesPerSecond = 2048;
 
         job.DetachRun(completed: false);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(job.DownloadRateBytesPerSecond, Is.Zero);
+            Assert.That(job.StageActionText, Is.EqualTo("Resume"));
+            Assert.That(job.RemainingSummaryText, Is.EqualTo("4 B to complete"));
+            Assert.That(job.Phase, Is.EqualTo("Paused"));
+            Assert.That(job.KnownPeers, Is.Zero);
             Assert.That(job.ActivePeers, Is.Zero);
+            Assert.That(job.ActiveUploadPeers, Is.Zero);
             Assert.That(job.IsRunning, Is.False);
         }
     }
@@ -89,8 +98,177 @@ public sealed class TorrentJobTests
         {
             Assert.That(job.Status, Is.EqualTo("Complete"));
             Assert.That(job.Progress, Is.EqualTo(1));
-            Assert.That(job.CanStart, Is.False);
+            Assert.That(job.CanStart, Is.True);
         }
+    }
+
+    [Test]
+    public void Completed_job_shows_verified_data_instead_of_network_download_claims()
+    {
+        TorrentJob job = new("sample.torrent", "downloads")
+        {
+            PieceCount = 2,
+            TotalBytes = 8,
+        };
+        job.Files.Add(new TorrentFileItem(new TorrentFileEntry("sample.iso", 8, 0)));
+        job.BeginVerification();
+        job.CompleteVerification(new TorrentVerificationProgress(2, 2, 2, 8));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(job.StageStateText, Is.EqualTo("Content verified"));
+            Assert.That(job.StageActionText, Is.EqualTo("Seed"));
+            Assert.That(job.VerifiedSummaryText, Is.EqualTo("8 B of 8 B verified locally"));
+            Assert.That(job.RemainingSummaryText, Is.Empty);
+            Assert.That(job.QueueDetailText, Is.EqualTo("8 B verified locally"));
+            Assert.That(job.ProgressText, Is.EqualTo("100%"));
+            Assert.That(job.OutputFolderText, Is.EqualTo("downloads"));
+            Assert.That(job.NetworkReceivedText, Is.EqualTo("Not recorded"));
+        }
+    }
+
+    [Test]
+    public void Transfer_history_adds_run_snapshots_once_and_survives_pause()
+    {
+        TorrentJob job = new("sample.torrent", "downloads");
+        job.RestoreTransferHistory(new TorrentTransferHistory(1000, 600, TimeSpan.FromSeconds(10).Ticks, 3, 400));
+        job.AttachRun(Task.CompletedTask, new CancellationTokenSource());
+        job.ApplyTransferSnapshot(new TorrentTransferSnapshot(500, 300, TimeSpan.FromSeconds(5), 2, 250, 1));
+        Assert.That(job.ActiveUploadPeers, Is.EqualTo(1));
+        job.ApplyTransferSnapshot(new TorrentTransferSnapshot(500, 300, TimeSpan.FromSeconds(5), 2, 250));
+        job.DetachRun(completed: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(job.TransferHistory, Is.EqualTo(new TorrentTransferHistory(1500, 900, TimeSpan.FromSeconds(15).Ticks, 2, 650)));
+            Assert.That(job.ActiveAverageText, Is.EqualTo("60 B/s"));
+            Assert.That(job.ActiveTimeText, Is.EqualTo("15s"));
+            Assert.That(job.ContributorText, Is.EqualTo("2 last run"));
+            Assert.That(job.NetworkReceivedText, Is.EqualTo("1.46 KiB"));
+            Assert.That(job.VerifiedFromPeersText, Is.EqualTo("900 B"));
+            Assert.That(job.UploadedText, Is.EqualTo("650 B"));
+            Assert.That(job.ActiveUploadPeers, Is.Zero);
+        }
+
+        job.AttachRun(Task.CompletedTask, new CancellationTokenSource());
+        job.ApplyTransferSnapshot(new TorrentTransferSnapshot(300, 200, TimeSpan.FromSeconds(5), 1, 50));
+        job.DetachRun(completed: true);
+
+        Assert.That(job.TransferHistory, Is.EqualTo(new TorrentTransferHistory(1800, 1100, TimeSpan.FromSeconds(20).Ticks, 1, 700)));
+    }
+
+    [Test]
+    public void Paused_seed_keeps_verified_progress_and_can_resume()
+    {
+        TorrentJob job = new("sample.torrent", "downloads") { TotalBytes = 8, PieceCount = 2 };
+        job.CompleteVerification(new TorrentVerificationProgress(2, 2, 2, 8));
+        job.AttachRun(Task.CompletedTask, new CancellationTokenSource());
+        job.ApplyProgress(new TorrentSessionProgress(TorrentSessionPhase.Seeding, "sample", new string('a', 40),
+            8, 8, 2, 2, 1, 1, "Seeding", DateTimeOffset.UtcNow));
+
+        Assert.That(job.Status, Is.EqualTo("Seeding"));
+        Assert.That(job.StageActionText, Is.EqualTo("Pause"));
+        Assert.That(job.ResumeSeeding, Is.True);
+
+        job.ResumeSeeding = false;
+        job.Status = "Paused";
+        job.DetachRun(completed: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(job.IsComplete, Is.True);
+            Assert.That(job.ProgressText, Is.EqualTo("100%"));
+            Assert.That(job.StageStateText, Is.EqualTo("Seeding paused"));
+            Assert.That(job.StageActionText, Is.EqualTo("Resume seeding"));
+            Assert.That(job.CanStart, Is.True);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Stop_captures_undispatched_seeding_progress_and_respects_pause_intent(bool preserveSeedingIntent)
+    {
+        byte[] payload = "data"u8.ToArray();
+        byte[] info = [.. "d6:lengthi4e4:name8:data.bin12:piece lengthi4e6:pieces20:"u8.ToArray(),
+            .. SHA1.HashData(payload), (byte)'e'];
+        byte[] torrent = [(byte)'d', .. "4:info"u8.ToArray(), .. info, (byte)'e'];
+        string root = Path.Combine(Path.GetTempPath(), "nethermind-ui-seed-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string torrentPath = Path.Combine(root, "source.torrent");
+        try
+        {
+            await File.WriteAllBytesAsync(torrentPath, torrent);
+            await File.WriteAllBytesAsync(Path.Combine(root, "data.bin"), payload);
+            TorrentJob job = new(torrentPath, root);
+            job.ApplyMetadata(TorrentMetadata.Load(torrentPath));
+            job.CompleteVerification(new TorrentVerificationProgress(1, 1, 1, payload.Length));
+            using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
+            TorrentSession session = new(new TorrentClientOptions
+            {
+                TorrentPath = torrentPath,
+                OutputDirectory = root,
+                ListenPort = 0,
+                EnableTrackers = false,
+                EnableDht = false,
+            }, _ => { });
+            Task<TorrentMetadata> running = session.RunAsync(cancellation.Token);
+            job.AttachRun(running, cancellation, session);
+            while (session.GetLatestProgress()?.Phase != TorrentSessionPhase.Seeding)
+            {
+                await Task.Delay(10, cancellation.Token);
+            }
+
+            Assert.That(job.ResumeSeeding, Is.False);
+            await job.StopAsync(preserveSeedingIntent);
+            job.DetachRun(completed: false);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(job.IsComplete, Is.True);
+                Assert.That(job.Progress, Is.EqualTo(1));
+                Assert.That(job.ResumeSeeding, Is.EqualTo(preserveSeedingIntent));
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public void Startup_resumes_only_previously_active_fully_verified_seeds(
+        [Values] bool wasSeeding, [Values] bool complete)
+    {
+        TorrentJob job = new("sample.torrent", "downloads") { TotalBytes = 8, PieceCount = 2, ResumeSeeding = wasSeeding };
+        job.BeginVerification();
+
+        Assert.That(job.ShouldResumeSeeding, Is.False);
+
+        job.CompleteVerification(new TorrentVerificationProgress(2, 2, complete ? 2 : 1, complete ? 8 : 4));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(job.ShouldResumeSeeding, Is.EqualTo(wasSeeding && complete));
+            Assert.That(job.ResumeSeeding, Is.EqualTo(wasSeeding && complete));
+        }
+    }
+
+    [TestCase("Queued", "Start")]
+    [TestCase("Ready", "Start")]
+    [TestCase("Paused", "Resume")]
+    [TestCase("Error", "Resume")]
+    public void Context_action_matches_the_job_state(string status, string action)
+    {
+        TorrentJob job = new("sample.torrent", "downloads") { PieceCount = 1, Status = status };
+
+        Assert.That(job.StageActionText, Is.EqualTo(action));
+    }
+
+    [Test]
+    public void Error_summary_shows_the_reason()
+    {
+        TorrentJob job = new("sample.torrent", "downloads") { Status = "Error", Message = "Storage is full" };
+
+        Assert.That(job.OverviewSummaryText, Is.EqualTo("Storage is full"));
     }
 
     [Test]

@@ -15,7 +15,8 @@ internal sealed class PeerWireClient(
     TorrentStorage storage,
     Action<string> log,
     TimeSpan peerTimeout,
-    Action<int, PeerEndpoint>? pieceCompleted = null)
+    Action<int, PeerEndpoint, string>? pieceCompleted = null,
+    Action<int>? blockAccepted = null)
 {
     private const int HandshakeLength = 68;
     private const string ProtocolName = "BitTorrent protocol";
@@ -27,7 +28,8 @@ internal sealed class PeerWireClient(
     private readonly TorrentStorage _storage = storage;
     private readonly Action<string> _log = log;
     private readonly TimeSpan _peerTimeout = peerTimeout;
-    private readonly Action<int, PeerEndpoint>? _pieceCompleted = pieceCompleted;
+    private readonly Action<int, PeerEndpoint, string>? _pieceCompleted = pieceCompleted;
+    private readonly Action<int>? _blockAccepted = blockAccepted;
 
     public async Task RunPeerAsync(PeerEndpoint peer, CancellationToken token)
     {
@@ -39,7 +41,7 @@ internal sealed class PeerWireClient(
         await using NetworkStream stream = client.GetStream();
 
         await SendHandshakeAsync(stream, token);
-        await ReceiveHandshakeAsync(stream, peer, token);
+        string remotePeerId = await ReceiveHandshakeAsync(stream, peer, token);
         await SendInterestedAsync(stream, token);
 
         PeerBitfield peerPieces = new(_torrent.PieceCount);
@@ -80,7 +82,7 @@ internal sealed class PeerWireClient(
 
                 await _storage.WritePieceAsync(pieceIndex, piece, token);
                 _piecePicker.MarkComplete(pieceIndex);
-                _pieceCompleted?.Invoke(pieceIndex, peer);
+                _pieceCompleted?.Invoke(pieceIndex, peer, remotePeerId);
                 lastProgress = DateTimeOffset.UtcNow;
                 _log($"piece {pieceIndex + 1}/{_torrent.PieceCount} from {peer}; {FormatPercent(_piecePicker.DownloadedBytes, _torrent.TotalLength)}");
             }
@@ -142,6 +144,7 @@ internal sealed class PeerWireClient(
                     outstandingRequests.Remove(begin);
                     block.CopyTo(piece.AsMemory(begin, block.Length));
                     completedBytes += block.Length;
+                    _blockAccepted?.Invoke(block.Length);
                     lastBlockProgress = DateTimeOffset.UtcNow;
 
                     inFlight--;
@@ -234,7 +237,7 @@ internal sealed class PeerWireClient(
         await stream.WriteAsync(handshake, token);
     }
 
-    private async Task ReceiveHandshakeAsync(NetworkStream stream, PeerEndpoint peer, CancellationToken token)
+    private async Task<string> ReceiveHandshakeAsync(NetworkStream stream, PeerEndpoint peer, CancellationToken token)
     {
         byte[] handshake = new byte[HandshakeLength];
         await ReadExactlyAsync(stream, handshake, token);
@@ -244,6 +247,8 @@ internal sealed class PeerWireClient(
         {
             throw new InvalidDataException($"Invalid BitTorrent handshake from {peer}.");
         }
+
+        return Convert.ToHexString(handshake.AsSpan(48, TorrentMetadata.Sha1Length));
     }
 
     private static async Task SendInterestedAsync(NetworkStream stream, CancellationToken token)

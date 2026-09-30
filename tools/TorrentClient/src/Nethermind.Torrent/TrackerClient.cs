@@ -20,8 +20,9 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
     private readonly Action<string> _log = log;
     private readonly TimeSpan _trackerTimeout = trackerTimeout;
     private readonly HashSet<Uri> _startedTrackers = [];
+    private Uri? _activeTorrentTracker;
 
-    public Task<TrackerAnnounceResult> AnnounceAsync(
+    public async Task<TrackerAnnounceResult> AnnounceAsync(
         TorrentMetadata torrent,
         byte[] peerId,
         string trackerKey,
@@ -29,8 +30,66 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         long downloaded,
         long uploaded,
         CancellationToken token)
-        => AnnounceAsync(torrent.Trackers, torrent.InfoHash, torrent.TotalLength, peerId, trackerKey,
-            listenPort, downloaded, uploaded, token, stopOnPeers: true);
+    {
+        Uri? failedTracker = null;
+        if (_activeTorrentTracker is Uri active)
+        {
+            try
+            {
+                return await AnnounceOneAsync(active, torrent.InfoHash, torrent.TotalLength, peerId,
+                    trackerKey, listenPort, downloaded, uploaded, announceEvent: null, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                _log($"tracker {active} failed: {exception.Message}");
+                if (torrent.IsPrivate)
+                {
+                    return new TrackerAnnounceResult([], TimeSpan.FromMinutes(1));
+                }
+
+                failedTracker = active;
+                _activeTorrentTracker = null;
+            }
+        }
+
+        for (int tierIndex = 0; tierIndex < torrent.TrackerTiers.Count; tierIndex++)
+        {
+            List<Uri> tier = [.. torrent.TrackerTiers[tierIndex]];
+            Random.Shared.Shuffle(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(tier));
+            for (int trackerIndex = 0; trackerIndex < tier.Count; trackerIndex++)
+            {
+                Uri tracker = tier[trackerIndex];
+                if (tracker == failedTracker)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    string? announceEvent = _startedTrackers.Contains(tracker) ? null : "started";
+                    TrackerAnnounceResult result = await AnnounceOneAsync(tracker, torrent.InfoHash,
+                        torrent.TotalLength, peerId, trackerKey, listenPort, downloaded, uploaded, announceEvent, token);
+                    _startedTrackers.Add(tracker);
+                    _activeTorrentTracker = tracker;
+                    return result;
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    _log($"tracker {tracker} failed: {exception.Message}");
+                }
+            }
+        }
+
+        return new TrackerAnnounceResult([], TimeSpan.FromMinutes(1));
+    }
 
     internal async Task<TrackerAnnounceResult> AnnounceAsync(
         IReadOnlyList<Uri> trackers,

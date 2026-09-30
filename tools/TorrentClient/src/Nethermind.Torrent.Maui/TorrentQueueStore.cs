@@ -7,7 +7,11 @@ using System.Text.Json;
 
 namespace Nethermind.Torrent.Maui;
 
-internal sealed record TorrentQueueEntry(string TorrentPath, string OutputDirectory, string Name, string InfoHashHex, List<string>? ExplicitPeers = null);
+internal sealed record TorrentTransferHistory(long PayloadBytesReceived, long VerifiedBytesFromPeers,
+    long ActiveTicks, int LastRunContributors, long UploadedBytes = 0);
+
+internal sealed record TorrentQueueEntry(string TorrentPath, string OutputDirectory, string Name, string InfoHashHex,
+    List<string>? ExplicitPeers = null, TorrentTransferHistory? Transfer = null, bool ResumeSeeding = false);
 
 internal static class TorrentQueueStore
 {
@@ -59,7 +63,10 @@ internal static class TorrentQueueStore
                     string.IsNullOrWhiteSpace(entry.Name) || entry.InfoHashHex?.Length != 40 ||
                     !entry.InfoHashHex.All(Uri.IsHexDigit) ||
                     entry.ExplicitPeers is { Count: > 64 } ||
-                    entry.ExplicitPeers?.Any(peer => string.IsNullOrWhiteSpace(peer) || peer.Length > 300) == true)
+                    entry.ExplicitPeers?.Any(peer => string.IsNullOrWhiteSpace(peer) || peer.Length > 300) == true ||
+                    entry.Transfer is { PayloadBytesReceived: < 0 } or { VerifiedBytesFromPeers: < 0 } or
+                    { ActiveTicks: < 0 } or { LastRunContributors: < 0 } or { UploadedBytes: < 0 } ||
+                    entry.Transfer is { } transfer && transfer.VerifiedBytesFromPeers > transfer.PayloadBytesReceived)
                 {
                     throw new FormatException("Torrent queue contains an invalid entry.");
                 }

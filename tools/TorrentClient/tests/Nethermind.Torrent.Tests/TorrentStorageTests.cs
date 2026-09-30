@@ -36,6 +36,9 @@ public sealed class TorrentStorageTests
             await storage.InitializeAsync(TestContext.CurrentContext.CancellationToken);
             await storage.WritePieceAsync(0, Encoding.ASCII.GetBytes("abcd"), TestContext.CurrentContext.CancellationToken);
             await storage.WritePieceAsync(1, Encoding.ASCII.GetBytes("efgh"), TestContext.CurrentContext.CancellationToken);
+            byte[] uploadedBlock = new byte[4];
+            Assert.That(await storage.ReadBlockAsync(0, 0, uploadedBlock, TestContext.CurrentContext.CancellationToken), Is.True);
+            Assert.That(Encoding.ASCII.GetString(uploadedBlock), Is.EqualTo("abcd"));
         }
 
         byte[] fileABytes = await File.ReadAllBytesAsync(Path.Combine(directory, "root", "a.bin"), TestContext.CurrentContext.CancellationToken);

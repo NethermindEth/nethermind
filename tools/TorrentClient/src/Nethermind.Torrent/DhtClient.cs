@@ -9,6 +9,9 @@ namespace Nethermind.Torrent;
 
 internal sealed class DhtClient : IAsyncDisposable
 {
+    private const int MaxAnnounceQueries = 32;
+    private const int MaxAnnounceNodes = 8;
+
     private static readonly (string Host, int Port)[] BootstrapRouters =
     [
         ("router.bittorrent.com", 6881),
@@ -20,6 +23,7 @@ internal sealed class DhtClient : IAsyncDisposable
     private readonly UdpClient _udpClient = new(0);
     private readonly TorrentKademlia _kademlia;
     private readonly Action<string> _log;
+    private readonly SemaphoreSlim _operationGate = new(1, 1);
     private int _transactionId;
 
     public DhtClient(byte[] peerId, Action<string> log)
@@ -40,6 +44,46 @@ internal sealed class DhtClient : IAsyncDisposable
             throw new ArgumentException("Info hash must be 20 bytes.", nameof(infoHash));
         }
 
+        await _operationGate.WaitAsync(token);
+        try
+        {
+            return await FindPeersCoreAsync(infoHash, token);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    /// <summary>Announces the listening peer to nearby DHT nodes and returns the number of acknowledged announcements.</summary>
+    /// <param name="infoHash">The 20-byte torrent info hash.</param>
+    /// <param name="listenPort">The active inbound peer-wire TCP port.</param>
+    /// <param name="isSeed">Whether the local peer has the complete torrent.</param>
+    /// <param name="token">Cancels discovery and outstanding queries.</param>
+    public async Task<int> AnnounceAsync(byte[] infoHash, int listenPort, bool isSeed, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(infoHash);
+        if (infoHash.Length != KadId.Length)
+        {
+            throw new ArgumentException("Info hash must be 20 bytes.", nameof(infoHash));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(listenPort, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(listenPort, ushort.MaxValue);
+
+        await _operationGate.WaitAsync(token);
+        try
+        {
+            return await AnnounceCoreAsync(infoHash, listenPort, isSeed, token);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<PeerEndpoint>> FindPeersCoreAsync(byte[] infoHash, CancellationToken token)
+    {
         List<PeerEndpoint> peers = [];
         await BootstrapAsync(token);
 
@@ -83,6 +127,105 @@ internal sealed class DhtClient : IAsyncDisposable
         }
 
         return peers;
+    }
+
+    private async Task<int> AnnounceCoreAsync(byte[] infoHash, int listenPort, bool isSeed, CancellationToken token)
+    {
+        KadId target = new(infoHash);
+        List<(DhtNode Node, byte[] Token)> eligible = [];
+        HashSet<KadId> queried = [];
+        using (CancellationTokenSource discoveryBudget = CancellationTokenSource.CreateLinkedTokenSource(token))
+        {
+            discoveryBudget.CancelAfter(TimeSpan.FromSeconds(20));
+            try
+            {
+                await BootstrapAsync(discoveryBudget.Token);
+                List<DhtNode> candidates = _kademlia.GetClosest(target, 16);
+                for (int queryCount = 0; queryCount < MaxAnnounceQueries; queryCount++)
+                {
+                    DhtNode? next = null;
+                    for (int i = 0; i < candidates.Count; i++)
+                    {
+                        if (!queried.Contains(candidates[i].Id))
+                        {
+                            next = candidates[i];
+                            break;
+                        }
+                    }
+
+                    if (next is null)
+                    {
+                        break;
+                    }
+
+                    DhtNode node = next.Value;
+                    queried.Add(node.Id);
+                    BDictionary? response = await QueryGetPeersResponseAsync(node, infoHash, discoveryBudget.Token);
+                    if (response is null)
+                    {
+                        continue;
+                    }
+
+                    if (response.TryGetValue("token", out BValue? tokenValue) && tokenValue is BString writeToken &&
+                        writeToken.Bytes.Length is > 0 and <= 256)
+                    {
+                        eligible.Add((node, writeToken.Bytes));
+                    }
+
+                    if (response.TryGetValue("nodes", out BValue? nodesValue) && nodesValue is BString compactNodes)
+                    {
+                        List<DhtNode> nodes = [];
+                        ParseCompactNodes(compactNodes.Bytes, nodes);
+                        for (int i = 0; i < nodes.Count; i++)
+                        {
+                            AddSeed(candidates, nodes[i], target);
+                            if (candidates.Count > MaxAnnounceQueries)
+                            {
+                                candidates.RemoveAt(candidates.Count - 1);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                _log("dht announce discovery timed out");
+            }
+        }
+
+        eligible.Sort((left, right) => DhtKeyOperator.CompareDistance(left.Node.Id, right.Node.Id, target));
+        int announced = 0;
+        using CancellationTokenSource announceBudget = CancellationTokenSource.CreateLinkedTokenSource(token);
+        announceBudget.CancelAfter(TimeSpan.FromSeconds(20));
+        for (int i = 0; i < eligible.Count && i < MaxAnnounceNodes; i++)
+        {
+            token.ThrowIfCancellationRequested();
+            (DhtNode node, byte[] writeToken) = eligible[i];
+            BDictionary args = Bencode.Dictionary(
+                new KeyValuePair<string, BValue>("id", Bencode.Bytes(_nodeId.Bytes)),
+                new KeyValuePair<string, BValue>("info_hash", Bencode.Bytes(infoHash)),
+                new KeyValuePair<string, BValue>("port", Bencode.Integer(listenPort)),
+                new KeyValuePair<string, BValue>("token", Bencode.Bytes(writeToken)));
+            if (isSeed)
+            {
+                args.Values.Add("seed", Bencode.Integer(1));
+            }
+
+            try
+            {
+                if (await QueryAsync(node.EndPoint, "announce_peer", args, announceBudget.Token, node.Id) is not null)
+                {
+                    announced++;
+                }
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+
+        token.ThrowIfCancellationRequested();
+        return announced;
     }
 
     private async Task BootstrapAsync(CancellationToken token)
@@ -195,11 +338,7 @@ internal sealed class DhtClient : IAsyncDisposable
         CancellationToken token,
         List<DhtNode>? nodes)
     {
-        BDictionary args = Bencode.Dictionary(
-            new KeyValuePair<string, BValue>("id", Bencode.Bytes(_nodeId.Bytes)),
-            new KeyValuePair<string, BValue>("info_hash", Bencode.Bytes(infoHash)));
-
-        BDictionary? response = await QueryAsync(node.EndPoint, "get_peers", args, token, node.Id);
+        BDictionary? response = await QueryGetPeersResponseAsync(node, infoHash, token);
         if (response is null)
         {
             return false;
@@ -230,6 +369,14 @@ internal sealed class DhtClient : IAsyncDisposable
         return hasValidPayload;
     }
 
+    private Task<BDictionary?> QueryGetPeersResponseAsync(DhtNode node, byte[] infoHash, CancellationToken token)
+    {
+        BDictionary args = Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("id", Bencode.Bytes(_nodeId.Bytes)),
+            new KeyValuePair<string, BValue>("info_hash", Bencode.Bytes(infoHash)));
+        return QueryAsync(node.EndPoint, "get_peers", args, token, node.Id);
+    }
+
     private async Task<BDictionary?> QueryAsync(
         IPEndPoint endpoint,
         string queryName,
@@ -247,10 +394,10 @@ internal sealed class DhtClient : IAsyncDisposable
 
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(5));
-        await _udpClient.SendAsync(payload, endpoint, timeout.Token);
-
+        bool validResponse = false;
         try
         {
+            await _udpClient.SendAsync(payload, endpoint, timeout.Token);
             while (!timeout.IsCancellationRequested)
             {
                 UdpReceiveResult result = await _udpClient.ReceiveAsync(timeout.Token);
@@ -290,6 +437,7 @@ internal sealed class DhtClient : IAsyncDisposable
                 }
 
                 _kademlia.AddOrRefresh(new DhtNode(responseNodeId.Value, result.RemoteEndPoint));
+                validResponse = true;
 
                 return response;
             }
@@ -306,6 +454,13 @@ internal sealed class DhtClient : IAsyncDisposable
         {
             _log($"dht {queryName} {endpoint} failed: {exception.Message}");
             return null;
+        }
+        finally
+        {
+            if (!validResponse && expectedNodeId.HasValue && !token.IsCancellationRequested)
+            {
+                _kademlia.Remove(new DhtNode(expectedNodeId.Value, endpoint));
+            }
         }
 
         return null;
@@ -399,6 +554,7 @@ internal sealed class DhtClient : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         _udpClient.Dispose();
+        _operationGate.Dispose();
         return ValueTask.CompletedTask;
     }
 }

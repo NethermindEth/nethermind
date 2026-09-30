@@ -21,18 +21,29 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     private int _pieceCount;
     private int _completedPieces;
     private int _activePeers;
+    private int _activeUploadPeers;
     private int _knownPeers;
+    private long _payloadBytesReceived;
+    private long _verifiedBytesFromPeers;
+    private long _uploadedBytes;
+    private long _activeTicks;
+    private int _lastRunContributors;
+    private bool _hasTransferHistory;
+    private long _runBaseBytes;
+    private long _runBaseVerifiedBytes;
+    private long _runBaseUploadedBytes;
+    private long _runBaseTicks;
+    private TorrentSession? _session;
     private bool _isRunning;
     private bool _isComplete;
     private bool _isChecking;
+    private bool _resumeSeeding;
+    private bool _isPrivate;
     private bool _hasDataToResume;
     private double _progress;
     private DateTimeOffset _lastProgressAt = DateTimeOffset.UtcNow;
     private CancellationTokenSource? _cancellation;
     private Task? _runTask;
-    private long _lastDownloadedBytes;
-    private DateTimeOffset _lastSpeedSampleAt = DateTimeOffset.UtcNow;
-    private double _downloadRateBytesPerSecond;
     private bool? _effectiveDht;
     private bool? _effectiveTrackers;
     private readonly Lock _pendingLogLock = new();
@@ -52,7 +63,13 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     public string OutputDirectory
     {
         get => _outputDirectory;
-        set => SetField(ref _outputDirectory, value);
+        set
+        {
+            if (SetField(ref _outputDirectory, value))
+            {
+                OnPropertyChanged(nameof(OutputFolderText));
+            }
+        }
     }
 
     public string Name
@@ -64,7 +81,17 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     public string Status
     {
         get => _status;
-        set => SetField(ref _status, value);
+        set
+        {
+            if (SetField(ref _status, value))
+            {
+                OnPropertyChanged(nameof(StageStateText));
+                OnPropertyChanged(nameof(StageActionText));
+                OnPropertyChanged(nameof(StageActionAvailable));
+                OnPropertyChanged(nameof(QueueDetailText));
+                OnPropertyChanged(nameof(OverviewSummaryText));
+            }
+        }
     }
 
     public string Phase
@@ -76,7 +103,14 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     public string Message
     {
         get => _message;
-        set => SetField(ref _message, value);
+        set
+        {
+            if (SetField(ref _message, value))
+            {
+                OnPropertyChanged(nameof(QueueDetailText));
+                OnPropertyChanged(nameof(OverviewSummaryText));
+            }
+        }
     }
 
     public long TotalBytes
@@ -88,6 +122,9 @@ internal sealed class TorrentJob : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(TotalText));
                 OnPropertyChanged(nameof(RemainingText));
+                OnPropertyChanged(nameof(VerifiedSummaryText));
+                OnPropertyChanged(nameof(QueueDetailText));
+                OnPropertyChanged(nameof(RemainingSummaryText));
             }
         }
     }
@@ -106,6 +143,9 @@ internal sealed class TorrentJob : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(DownloadedText));
                 OnPropertyChanged(nameof(RemainingText));
+                OnPropertyChanged(nameof(VerifiedSummaryText));
+                OnPropertyChanged(nameof(QueueDetailText));
+                OnPropertyChanged(nameof(RemainingSummaryText));
             }
         }
     }
@@ -140,6 +180,12 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         set => SetField(ref _activePeers, value);
     }
 
+    public int ActiveUploadPeers
+    {
+        get => _activeUploadPeers;
+        private set => SetField(ref _activeUploadPeers, value);
+    }
+
     public int KnownPeers
     {
         get => _knownPeers;
@@ -149,14 +195,43 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     public bool IsRunning
     {
         get => _isRunning;
-        set => SetField(ref _isRunning, value);
+        set
+        {
+            if (SetField(ref _isRunning, value))
+            {
+                OnPropertyChanged(nameof(ContributorText));
+                OnPropertyChanged(nameof(StageActionText));
+                OnPropertyChanged(nameof(StageActionAvailable));
+            }
+        }
     }
 
     public bool IsComplete
     {
         get => _isComplete;
-        set => SetField(ref _isComplete, value);
+        set
+        {
+            if (SetField(ref _isComplete, value))
+            {
+                OnPropertyChanged(nameof(StageStateText));
+                OnPropertyChanged(nameof(StageActionText));
+                OnPropertyChanged(nameof(StageActionAvailable));
+                OnPropertyChanged(nameof(RemainingSummaryText));
+                OnPropertyChanged(nameof(QueueDetailText));
+                OnPropertyChanged(nameof(OverviewSummaryText));
+            }
+        }
     }
+
+    public bool ResumeSeeding
+    {
+        get => _resumeSeeding;
+        set => SetField(ref _resumeSeeding, value);
+    }
+
+    public int? ActiveListenPort { get; private set; }
+
+    public string ListeningPortText => ActiveListenPort?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "Not listening";
 
     public bool IsChecking
     {
@@ -166,6 +241,8 @@ internal sealed class TorrentJob : INotifyPropertyChanged
             if (SetField(ref _isChecking, value))
             {
                 OnPropertyChanged(nameof(CanStart));
+                OnPropertyChanged(nameof(StageActionText));
+                OnPropertyChanged(nameof(StageActionAvailable));
             }
         }
     }
@@ -186,18 +263,6 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     {
         get => _lastProgressAt;
         set => SetField(ref _lastProgressAt, value);
-    }
-
-    public double DownloadRateBytesPerSecond
-    {
-        get => _downloadRateBytesPerSecond;
-        set
-        {
-            if (SetField(ref _downloadRateBytesPerSecond, value))
-            {
-                OnPropertyChanged(nameof(DownloadRateText));
-            }
-        }
     }
 
     public ObservableCollection<TorrentFileItem> Files { get; } = [];
@@ -253,7 +318,89 @@ internal sealed class TorrentJob : INotifyPropertyChanged
 
     public string PiecesText => $"{CompletedPieces}/{PieceCount}";
 
-    public string ProgressText => (Progress * 100.0).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + "%";
+    public string ProgressText => Progress >= 1 ? "100%" : (Progress * 100.0).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    public string VerifiedSummaryText => $"{DownloadedText} of {TotalText} verified locally";
+
+    public string NetworkReceivedText => _hasTransferHistory ? FormatBytes(_payloadBytesReceived) : "Not recorded";
+
+    public string VerifiedFromPeersText => _hasTransferHistory ? FormatBytes(_verifiedBytesFromPeers) : "Not recorded";
+
+    public string UploadedText => _hasTransferHistory ? FormatBytes(_uploadedBytes) : "Not recorded";
+
+    public string ActiveAverageText => !_hasTransferHistory ? "Not recorded" : _activeTicks == 0 ? "Not yet measured" :
+        FormatBytes((long)Math.Min(long.MaxValue, _verifiedBytesFromPeers / TimeSpan.FromTicks(_activeTicks).TotalSeconds)) + "/s";
+
+    public string ActiveTimeText
+    {
+        get
+        {
+            TimeSpan time = TimeSpan.FromTicks(_activeTicks);
+            return time.TotalHours >= 1 ? $"{(long)time.TotalHours}h {time.Minutes}m" :
+                time.TotalMinutes >= 1 ? $"{time.Minutes}m {time.Seconds}s" : $"{time.Seconds}s";
+        }
+    }
+
+    public string ContributorText => _hasTransferHistory
+        ? $"{_lastRunContributors} {(IsRunning ? "current" : "last")} run" : "Not recorded";
+
+    public TorrentTransferHistory? TransferHistory => _hasTransferHistory
+        ? new TorrentTransferHistory(_payloadBytesReceived, _verifiedBytesFromPeers, _activeTicks, _lastRunContributors, _uploadedBytes) : null;
+
+    public string RemainingSummaryText => IsComplete ? string.Empty : $"{RemainingText} to complete";
+
+    public string OutputFolderText
+    {
+        get
+        {
+            string folder = Path.GetFileName(Path.TrimEndingDirectorySeparator(OutputDirectory));
+            return folder.Length == 0 ? OutputDirectory : folder;
+        }
+    }
+
+    public string QueueDetailText => Status switch
+    {
+        "Seeding" => $"{DownloadedText} verified locally \u00b7 {UploadedText} uploaded",
+        "Complete" => $"{DownloadedText} verified locally",
+        "Paused" when IsComplete => $"{DownloadedText} verified locally \u00b7 seeding paused",
+        "Paused" => $"{DownloadedText} verified \u00b7 {RemainingText} left",
+        _ => Message,
+    };
+
+    public string StageStateText => Status switch
+    {
+        "Complete" => "Content verified",
+        "Paused" when IsComplete => "Seeding paused",
+        "Seeding" => "Seeding",
+        "Checking" => "Checking existing data",
+        "Paused" => "Paused",
+        "Error" => "Needs attention",
+        "DiscoveringPeers" => "Finding peers",
+        "InitializingStorage" => "Preparing files",
+        "LoadingMetadata" => "Loading metadata",
+        _ => Status,
+    };
+
+    public string StageActionText
+    {
+        get
+        {
+            if (IsRunning) return "Pause";
+            if (!CanStart) return string.Empty;
+            if (IsComplete) return Status == "Paused" ? "Resume seeding" : "Seed";
+            return Status is "Queued" or "Ready" ? "Start" : "Resume";
+        }
+    }
+
+    public bool StageActionAvailable => StageActionText.Length > 0;
+
+    public string OverviewSummaryText => Status switch
+    {
+        "Paused" when IsComplete => "Seeding paused. Verified content is available locally.",
+        "Paused" => "Resume when you are ready to find peers and finish the remaining data.",
+        "Error" => Message.Length == 0 ? "Check Activity for details." : Message,
+        _ => Message,
+    };
 
     public string? PayloadPath
     {
@@ -306,15 +453,17 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         return path;
     }
 
-    public string DownloadRateText => FormatBytes((long)DownloadRateBytesPerSecond) + "/s";
+    public string EffectiveDhtText => FormatEnabled(_isPrivate ? false : _effectiveDht);
 
-    public string EffectiveDhtText => FormatEnabled(_effectiveDht);
+    public bool IsPrivate => _isPrivate;
 
     public string EffectiveTrackersText => FormatEnabled(_effectiveTrackers);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public bool CanStart => PieceCount > 0 && !IsRunning && !IsComplete && !IsChecking;
+    public bool CanStart => PieceCount > 0 && !IsRunning && !IsChecking;
+
+    public bool ShouldResumeSeeding => ResumeSeeding && IsComplete && CanStart;
 
     public bool HasDataToResume => _hasDataToResume;
 
@@ -323,6 +472,7 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     public void ApplyMetadata(TorrentMetadata metadata)
     {
         _hasDataToResume = false;
+        _isPrivate = metadata.IsPrivate;
         InfoHashHex = metadata.InfoHashHex;
         Name = metadata.Name;
         TotalBytes = metadata.TotalLength;
@@ -342,6 +492,9 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         }
 
         OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(EffectiveDhtText));
+        OnPropertyChanged(nameof(StageActionText));
+        OnPropertyChanged(nameof(StageActionAvailable));
     }
 
     public void BeginVerification()
@@ -349,6 +502,7 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         DownloadedBytes = 0;
         CompletedPieces = 0;
         Progress = 0;
+        IsComplete = false;
         IsChecking = true;
         Status = "Checking";
         Phase = "Verifying";
@@ -372,6 +526,10 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         Status = complete ? "Complete" : "Paused";
         Phase = complete ? "Completed" : "Paused";
         Message = $"Verified {verification.VerifiedPieces}/{verification.TotalPieces} pieces";
+        if (!complete)
+        {
+            ResumeSeeding = false;
+        }
     }
 
     public void AbortVerification(string status, string message)
@@ -385,15 +543,37 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         Message = message;
     }
 
-    public void AttachRun(Task runTask, CancellationTokenSource cancellation)
+    public void RestoreTransferHistory(TorrentTransferHistory? history)
+    {
+        if (history is null)
+        {
+            return;
+        }
+
+        _hasTransferHistory = true;
+        _payloadBytesReceived = history.PayloadBytesReceived;
+        _verifiedBytesFromPeers = history.VerifiedBytesFromPeers;
+        _uploadedBytes = history.UploadedBytes;
+        _activeTicks = history.ActiveTicks;
+        _lastRunContributors = history.LastRunContributors;
+        NotifyTransferChanged();
+    }
+
+    public void AttachRun(Task runTask, CancellationTokenSource cancellation, TorrentSession? session = null, int? listenPort = null)
     {
         _runTask = runTask;
         _cancellation = cancellation;
-        _lastDownloadedBytes = DownloadedBytes;
-        _lastSpeedSampleAt = DateTimeOffset.UtcNow;
-        DownloadRateBytesPerSecond = 0;
+        _session = session;
+        _runBaseBytes = _payloadBytesReceived;
+        _runBaseVerifiedBytes = _verifiedBytesFromPeers;
+        _runBaseUploadedBytes = _uploadedBytes;
+        _runBaseTicks = _activeTicks;
+        _lastRunContributors = 0;
+        _hasTransferHistory = true;
+        ActiveListenPort = listenPort;
+        OnPropertyChanged(nameof(ListeningPortText));
+        NotifyTransferChanged();
         IsRunning = true;
-        IsComplete = false;
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(CanStop));
     }
@@ -406,13 +586,23 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         OnPropertyChanged(nameof(EffectiveTrackersText));
     }
 
-    public async Task StopAsync()
+    public async Task StopAsync(bool preserveSeedingIntent = true)
     {
         CancellationTokenSource? cancellation = _cancellation;
         Task? runTask = _runTask;
         if (cancellation is null)
         {
             return;
+        }
+
+        if (_session?.GetLatestProgress() is TorrentSessionProgress progress && progress.Timestamp > LastProgressAt)
+        {
+            ApplyProgress(progress);
+        }
+
+        if (!preserveSeedingIntent)
+        {
+            ResumeSeeding = false;
         }
 
         await cancellation.CancelAsync().ConfigureAwait(false);
@@ -433,13 +623,20 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         _cancellation?.Dispose();
         _cancellation = null;
         _runTask = null;
+        _session = null;
+        ActiveListenPort = null;
+        OnPropertyChanged(nameof(ListeningPortText));
         IsRunning = false;
-        IsComplete = completed;
-        DownloadRateBytesPerSecond = 0;
+        IsComplete = completed || IsComplete;
         ActivePeers = 0;
+        ActiveUploadPeers = 0;
+        KnownPeers = 0;
+        Phase = Status;
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(CanStop));
     }
+
+    public bool IsCurrentSession(TorrentSession session) => ReferenceEquals(_session, session);
 
     public void AppendLog(string line)
     {
@@ -500,6 +697,11 @@ internal sealed class TorrentJob : INotifyPropertyChanged
 
     public void ApplyProgress(TorrentSessionProgress progress)
     {
+        if (progress.Timestamp <= LastProgressAt)
+        {
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(progress.TorrentName))
         {
             Name = progress.TorrentName;
@@ -515,21 +717,65 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         KnownPeers = progress.KnownPeers;
         LastProgressAt = progress.Timestamp;
         Progress = TotalBytes == 0 ? 0 : Math.Clamp((double)DownloadedBytes / TotalBytes, 0, 1);
-        UpdateSpeed(progress.DownloadedBytes, progress.Timestamp);
+        IsComplete = PieceCount > 0 && CompletedPieces == PieceCount;
+        if (progress.Phase == TorrentSessionPhase.Seeding)
+        {
+            ResumeSeeding = true;
+        }
         Status = progress.Phase == TorrentSessionPhase.Completed ? "Complete" : progress.Phase.ToString();
     }
 
-    private void UpdateSpeed(long downloadedBytes, DateTimeOffset timestamp)
+    public void RefreshTransfer()
     {
-        double seconds = (timestamp - _lastSpeedSampleAt).TotalSeconds;
-        if (seconds < 0.5)
+        if (_session is not null)
+        {
+            if (_cancellation?.IsCancellationRequested != true &&
+                _session.GetLatestProgress() is TorrentSessionProgress progress && progress.Timestamp > LastProgressAt)
+            {
+                ApplyProgress(progress);
+            }
+
+            int boundPort = _session.ListeningPort;
+            if (boundPort != 0 && ActiveListenPort != boundPort)
+            {
+                ActiveListenPort = boundPort;
+                OnPropertyChanged(nameof(ListeningPortText));
+            }
+
+            ApplyTransferSnapshot(_session.GetTransferSnapshot());
+        }
+    }
+
+    public void ApplyTransferSnapshot(TorrentTransferSnapshot snapshot)
+    {
+        long received = Math.Min(long.MaxValue - _runBaseBytes, snapshot.PayloadBytesReceived) + _runBaseBytes;
+        long verified = Math.Min(long.MaxValue - _runBaseVerifiedBytes, snapshot.VerifiedBytesFromPeers) + _runBaseVerifiedBytes;
+        long uploaded = Math.Min(long.MaxValue - _runBaseUploadedBytes, snapshot.UploadedBytes) + _runBaseUploadedBytes;
+        long ticks = Math.Min(long.MaxValue - _runBaseTicks, snapshot.ActiveTime.Ticks) + _runBaseTicks;
+        ActiveUploadPeers = snapshot.ActiveUploadPeers;
+        if (_payloadBytesReceived == received && _verifiedBytesFromPeers == verified &&
+            _uploadedBytes == uploaded && _activeTicks == ticks && _lastRunContributors == snapshot.ContributingPeers)
         {
             return;
         }
 
-        DownloadRateBytesPerSecond = Math.Max(0, (downloadedBytes - _lastDownloadedBytes) / seconds);
-        _lastDownloadedBytes = downloadedBytes;
-        _lastSpeedSampleAt = timestamp;
+        _payloadBytesReceived = received;
+        _verifiedBytesFromPeers = verified;
+        _uploadedBytes = uploaded;
+        _activeTicks = ticks;
+        _lastRunContributors = snapshot.ContributingPeers;
+        NotifyTransferChanged();
+    }
+
+    private void NotifyTransferChanged()
+    {
+        OnPropertyChanged(nameof(NetworkReceivedText));
+        OnPropertyChanged(nameof(VerifiedFromPeersText));
+        OnPropertyChanged(nameof(UploadedText));
+        OnPropertyChanged(nameof(QueueDetailText));
+        OnPropertyChanged(nameof(ActiveAverageText));
+        OnPropertyChanged(nameof(ActiveTimeText));
+        OnPropertyChanged(nameof(ContributorText));
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

@@ -48,16 +48,22 @@ public sealed class TorrentMetadata
         int pieceLength,
         byte[] pieces,
         byte[] infoHash,
+        byte[] infoBytes,
         IReadOnlyList<Uri> trackers,
-        IReadOnlyList<TorrentFileEntry> files)
+        IReadOnlyList<IReadOnlyList<Uri>> trackerTiers,
+        IReadOnlyList<TorrentFileEntry> files,
+        bool isPrivate)
     {
         Name = name;
         TotalLength = totalLength;
         PieceLength = pieceLength;
         Pieces = pieces;
         InfoHash = infoHash;
+        InfoBytes = infoBytes;
         Trackers = trackers;
+        TrackerTiers = trackerTiers;
         Files = files;
+        IsPrivate = isPrivate;
     }
 
     /// <summary>
@@ -85,15 +91,22 @@ public sealed class TorrentMetadata
     /// </summary>
     public byte[] InfoHash { get; }
 
+    internal ReadOnlyMemory<byte> InfoBytes { get; }
+
     /// <summary>
     /// Gets tracker announce URLs from announce and announce-list.
     /// </summary>
     public IReadOnlyList<Uri> Trackers { get; }
 
+    internal IReadOnlyList<IReadOnlyList<Uri>> TrackerTiers { get; }
+
     /// <summary>
     /// Gets the file layout for the torrent payload.
     /// </summary>
     public IReadOnlyList<TorrentFileEntry> Files { get; }
+
+    /// <summary>Gets whether the info dictionary prohibits public DHT peer discovery.</summary>
+    public bool IsPrivate { get; }
 
     /// <summary>
     /// Gets the number of pieces in the torrent.
@@ -162,10 +175,7 @@ public sealed class TorrentMetadata
     {
         BencodeDocument document = BencodeDocument.Decode(bytes);
         BDictionary root = document.Root.AsDictionary("root");
-        if (document.InfoBytes is null)
-        {
-            throw new FormatException("Torrent is missing an info dictionary.");
-        }
+        byte[] infoBytes = document.InfoBytes ?? throw new FormatException("Torrent is missing an info dictionary.");
 
         BDictionary info = root["info"].AsDictionary("info");
         string name = CleanPathSegment(info["name"].AsText("info.name"));
@@ -186,8 +196,16 @@ public sealed class TorrentMetadata
             throw new FormatException("Torrent pieces field must be a non-empty multiple of 20 bytes.");
         }
 
-        byte[] infoHash = SHA1.HashData(document.InfoBytes);
-        List<Uri> trackers = ReadTrackers(root);
+        byte[] infoHash = SHA1.HashData(infoBytes);
+        bool isPrivate = info.TryGetValue("private", out BValue? privateValue) && privateValue is not null &&
+            privateValue.AsInteger("info.private") == 1;
+        List<IReadOnlyList<Uri>> trackerTiers = ReadTrackerTiers(root);
+        List<Uri> trackers = [];
+        for (int i = 0; i < trackerTiers.Count; i++)
+        {
+            trackers.AddRange(trackerTiers[i]);
+        }
+
         List<TorrentFileEntry> files = ReadFiles(info, name);
         RejectDuplicatePaths(files);
         long totalLength = 0;
@@ -205,16 +223,13 @@ public sealed class TorrentMetadata
             throw new FormatException("Torrent pieces count does not match payload length.");
         }
 
-        return new TorrentMetadata(name, totalLength, pieceLength, pieces, infoHash, trackers, files);
+        return new TorrentMetadata(name, totalLength, pieceLength, pieces, infoHash, infoBytes,
+            trackers, trackerTiers, files, isPrivate);
     }
 
-    private static List<Uri> ReadTrackers(BDictionary root)
+    private static List<IReadOnlyList<Uri>> ReadTrackerTiers(BDictionary root)
     {
-        List<Uri> trackers = [];
-        if (root.TryGetValue("announce", out BValue? announce) && announce is not null)
-        {
-            AddTracker(trackers, announce.AsText("announce"));
-        }
+        List<IReadOnlyList<Uri>> tiers = [];
 
         if (root.TryGetValue("announce-list", out BValue? announceListValue) && announceListValue is not null)
         {
@@ -222,6 +237,7 @@ public sealed class TorrentMetadata
             for (int i = 0; i < announceList.Values.Count; i++)
             {
                 BValue tierValue = announceList.Values[i];
+                List<Uri> trackers = [];
                 if (tierValue is BList tier)
                 {
                     for (int j = 0; j < tier.Values.Count; j++)
@@ -233,10 +249,25 @@ public sealed class TorrentMetadata
                 {
                     AddTracker(trackers, tierValue.AsText("announce-list tracker"));
                 }
+
+                if (trackers.Count > 0)
+                {
+                    tiers.Add(trackers);
+                }
             }
         }
 
-        return trackers;
+        if (tiers.Count == 0 && root.TryGetValue("announce", out BValue? announce) && announce is not null)
+        {
+            List<Uri> trackers = [];
+            AddTracker(trackers, announce.AsText("announce"));
+            if (trackers.Count > 0)
+            {
+                tiers.Add(trackers);
+            }
+        }
+
+        return tiers;
     }
 
     private static void AddTracker(List<Uri> trackers, string value)

@@ -4,6 +4,7 @@
 using Microsoft.Win32;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Torrent.Maui.Tests;
@@ -25,6 +26,19 @@ public sealed class TorrentUiSettingsTests
     }
 
     [Test]
+    public void Older_settings_default_to_seeding_after_completion()
+    {
+        TorrentUiSettings settings = JsonSerializer.Deserialize<TorrentUiSettings>("{\"StartOnAdd\":false}")!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(settings.StartOnAdd, Is.False);
+            Assert.That(settings.SeedAfterCompletion, Is.True);
+            Assert.That(settings.MaxUploadPeers, Is.EqualTo(8));
+        }
+    }
+
+    [Test]
     public void ToClientOptions_maps_timeout_settings()
     {
         TorrentUiSettings settings = new()
@@ -43,6 +57,49 @@ public sealed class TorrentUiSettingsTests
             Assert.That(options.DhtLookupInterval, Is.EqualTo(TimeSpan.FromSeconds(22)));
             Assert.That(options.DhtLookupTimeout, Is.EqualTo(TimeSpan.FromSeconds(33)));
             Assert.That(options.PeerTimeout, Is.EqualTo(TimeSpan.FromSeconds(44)));
+            Assert.That(options.SeedAfterCompletion, Is.True);
+            Assert.That(options.MaxUploadPeers, Is.EqualTo(8));
+        }
+    }
+
+    [Test]
+    public void Completed_job_can_seed_even_when_automatic_seeding_is_disabled()
+    {
+        TorrentUiSettings settings = new() { SeedAfterCompletion = false, MaxUploadPeers = 3, VerifyExistingData = false };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(settings.ToClientOptions("payload.torrent", "downloads").SeedAfterCompletion, Is.False);
+            TorrentClientOptions seed = settings.ToClientOptions("payload.torrent", "downloads", seedCompleted: true);
+            Assert.That(seed.SeedAfterCompletion, Is.True);
+            Assert.That(seed.MaxUploadPeers, Is.EqualTo(3));
+            Assert.That(seed.VerifyExistingData, Is.True);
+        }
+    }
+
+    [Test]
+    public void Upload_peer_limit_matches_core_bounds([Values(0, 8, 512)] int configured)
+    {
+        TorrentUiSettings settings = new() { MaxUploadPeers = configured };
+
+        Assert.That(settings.ToClientOptions("payload.torrent", "downloads").MaxUploadPeers,
+            Is.EqualTo(Math.Clamp(configured, 1, 64)));
+    }
+
+    [Test]
+    public void Additional_seed_jobs_let_the_os_assign_a_listen_port()
+    {
+        TorrentUiSettings settings = new() { ListenPort = 6881 };
+        TorrentClientOptions first = settings.ToClientOptions("first.torrent", "downloads");
+        TorrentClientOptions additional = settings.ToClientOptions("second.torrent", "downloads", occupiedPorts: new HashSet<int> { first.ListenPort });
+        settings.RandomizePortOnStart = true;
+        TorrentClientOptions randomized = settings.ToClientOptions("third.torrent", "downloads");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.ListenPort, Is.EqualTo(6881));
+            Assert.That(additional.ListenPort, Is.Zero);
+            Assert.That(randomized.ListenPort, Is.Zero);
         }
     }
 
@@ -98,6 +155,64 @@ public sealed class TorrentQueueStoreTests
 
             Assert.That(restored, Has.Count.EqualTo(1));
             Assert.That(restored[0].ExplicitPeers, Is.EqualTo(entry.ExplicitPeers));
+            Assert.That(restored[0].Transfer, Is.Null);
+            Assert.That(restored[0].ResumeSeeding, Is.False);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public void Queue_round_trips_transfer_history()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "nethermind-transfer-" + Guid.NewGuid().ToString("N") + ".json");
+        TorrentQueueEntry entry = new(Path.Combine(Path.GetTempPath(), "peer.torrent"), Path.GetTempPath(),
+            "Peer", new string('a', 40), Transfer: new TorrentTransferHistory(1234, 1000, 50, 2, 800), ResumeSeeding: true);
+        try
+        {
+            TorrentQueueStore.Save(path, [entry]);
+            IReadOnlyList<TorrentQueueEntry> restored = TorrentQueueStore.Load(path);
+
+            Assert.That(restored[0].Transfer, Is.EqualTo(entry.Transfer));
+            Assert.That(restored[0].ResumeSeeding, Is.True);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public void Legacy_queue_without_seeding_or_upload_fields_loads_paused()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "nethermind-legacy-" + Guid.NewGuid().ToString("N") + ".json");
+        string json = JsonSerializer.Serialize(new
+        {
+            Version = 1,
+            Jobs = new[]
+            {
+                new
+                {
+                    TorrentPath = Path.Combine(Path.GetTempPath(), "peer.torrent"),
+                    OutputDirectory = Path.GetTempPath(),
+                    Name = "Peer",
+                    InfoHashHex = new string('a', 40),
+                    Transfer = new { PayloadBytesReceived = 100L, VerifiedBytesFromPeers = 80L, ActiveTicks = 1L, LastRunContributors = 1 },
+                },
+            },
+        });
+        try
+        {
+            File.WriteAllText(path, json);
+            TorrentQueueEntry restored = TorrentQueueStore.Load(path)[0];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restored.ResumeSeeding, Is.False);
+                Assert.That(restored.Transfer?.UploadedBytes, Is.Zero);
+            }
         }
         finally
         {

@@ -67,9 +67,9 @@ public sealed class MainPage : ContentPage
     private readonly ContentView _queueEmptyContent = new() { IsVisible = false };
     private readonly ContentView _detailContent = new();
     private readonly Label _statusLabel = SmallLabel("Ready");
+    private readonly Grid _statusBar = [];
     private readonly Label _queueCountLabel = SmallLabel("0 torrents");
     private readonly Label _summaryLabel = SmallLabel("0 active");
-    private readonly Label _downloadRateLabel = SmallLabel("Down 0 B/s  \u00b7  0 peers");
     private readonly Label _detailTitle = new() { FontSize = 24, FontAttributes = FontAttributes.Bold, TextColor = TextColor, LineBreakMode = LineBreakMode.TailTruncation };
     private readonly Label _detailSubtitle = SmallLabel(string.Empty);
     private readonly Dictionary<string, Button> _tabButtons = [];
@@ -113,6 +113,8 @@ public sealed class MainPage : ContentPage
     private bool _filteringJobs;
     private bool _queueStorageAvailable = true;
     private IDispatcherTimer? _activityTimer;
+    private DateTimeOffset _nextTransferRefresh = DateTimeOffset.MinValue;
+    private DateTimeOffset _nextTransferSave = DateTimeOffset.MinValue;
     private CancellationTokenSource? _magnetImportCancellation;
     private Task<byte[]>? _magnetResolutionTask;
     private bool _importPending;
@@ -424,20 +426,18 @@ public sealed class MainPage : ContentPage
     private View BuildStatusBar()
     {
         _statusLabel.LineBreakMode = LineBreakMode.TailTruncation;
-        Grid bar = new()
+        _statusBar.Padding = new Thickness(18, 7);
+        _statusBar.BackgroundColor = MutedBackground;
+        _statusBar.IsVisible = false;
+        _statusBar.Add(_statusLabel, 0, 0);
+        _statusLabel.PropertyChanged += (_, e) =>
         {
-            Padding = new Thickness(18, 7),
-            ColumnDefinitions =
+            if (e.PropertyName == Label.TextProperty.PropertyName)
             {
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Auto),
-            },
-            BackgroundColor = MutedBackground,
+                _statusBar.IsVisible = _statusLabel.Text != "Ready";
+            }
         };
-
-        bar.Add(_statusLabel, 0, 0);
-        bar.Add(_downloadRateLabel, 1, 0);
-        return bar;
+        return _statusBar;
     }
 
     private CollectionView CreateQueueView()
@@ -503,20 +503,16 @@ public sealed class MainPage : ContentPage
             Label progressText = SmallLabel(string.Empty);
             progressText.TextColor = Colors.White;
             progressText.SetBinding(Label.TextProperty, nameof(TorrentJob.ProgressText));
-            Label speed = SmallLabel(string.Empty);
-            speed.TextColor = RailMutedText;
-            speed.SetBinding(Label.TextProperty, nameof(TorrentJob.DownloadRateText));
             Label message = SmallLabel(string.Empty);
             message.TextColor = RailMutedText;
             message.LineBreakMode = LineBreakMode.TailTruncation;
-            message.SetBinding(Label.TextProperty, nameof(TorrentJob.Message));
+            message.SetBinding(Label.TextProperty, nameof(TorrentJob.QueueDetailText));
 
             grid.Add(name, 0, 0);
             grid.Add(status, 1, 0);
             grid.Add(progress, 0, 1);
             Grid.SetColumnSpan(progress, 2);
             grid.Add(progressText, 0, 2);
-            grid.Add(speed, 1, 2);
             grid.Add(message, 0, 3);
             Grid.SetColumnSpan(message, 2);
 
@@ -674,21 +670,15 @@ public sealed class MainPage : ContentPage
     {
         int active = 0;
         int completed = 0;
-        int peers = 0;
-        double downloadRate = 0;
+        int seeding = 0;
         foreach (TorrentJob job in _jobs)
         {
             if (job.IsRunning) active++;
             if (job.IsComplete) completed++;
-            if (job.IsRunning)
-            {
-                peers += job.ActivePeers;
-                downloadRate += job.DownloadRateBytesPerSecond;
-            }
+            if (job.Status == "Seeding" && job.IsRunning) seeding++;
         }
 
-        _summaryLabel.Text = $"{active} active  \u00b7  {completed} complete  \u00b7  {_jobs.Count} total";
-        _downloadRateLabel.Text = $"Down {TorrentJob.FormatBytes((long)downloadRate)}/s  \u00b7  {peers} {(peers == 1 ? "peer" : "peers")}";
+        _summaryLabel.Text = $"{active} active  \u00b7  {seeding} seeding  \u00b7  {completed} complete  \u00b7  {_jobs.Count} total";
     }
 
     private void StartActivityTimer()
@@ -702,6 +692,27 @@ public sealed class MainPage : ContentPage
                 foreach (TorrentJob job in _jobs)
                 {
                     job.DrainLogs(24);
+                }
+
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                if (now >= _nextTransferRefresh)
+                {
+                    bool hasRunningJob = false;
+                    foreach (TorrentJob job in _jobs)
+                    {
+                        if (job.IsRunning)
+                        {
+                            job.RefreshTransfer();
+                            hasRunningJob = true;
+                        }
+                    }
+
+                    _nextTransferRefresh = now + TimeSpan.FromSeconds(1);
+                    if (hasRunningJob && now >= _nextTransferSave)
+                    {
+                        SaveQueue();
+                        _nextTransferSave = now + TimeSpan.FromSeconds(10);
+                    }
                 }
 
                 RefreshSummary();
@@ -719,6 +730,9 @@ public sealed class MainPage : ContentPage
     private void RefreshActionState()
     {
         _startButton.IsEnabled = _selectedJob?.CanStart == true;
+        string startAction = _selectedJob?.IsComplete == true ? "Seed" : "Start";
+        ToolTipProperties.SetText(_startButton, startAction);
+        SemanticProperties.SetDescription(_startButton, startAction);
         _pauseButton.IsEnabled = _selectedJob?.CanStop == true;
         _folderButton.IsEnabled = _selectedJob is not null;
         _copyMagnetButton.IsEnabled = _selectedJob is not null && _selectedJob.InfoHashHex.Length == 40;
@@ -835,23 +849,16 @@ public sealed class MainPage : ContentPage
         }
 
         VerticalStackLayout stack = new() { Spacing = 16, BindingContext = job };
-        stack.Add(new Label { Text = "At a glance", FontSize = 16, FontAttributes = FontAttributes.Bold, TextColor = TextColor });
-
-        Grid metrics = new()
+        if (!job.IsComplete)
         {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
-            },
-            ColumnSpacing = 18,
-        };
-        metrics.Add(MetricCell("ON DISK", nameof(TorrentJob.DownloadedText)), 0, 0);
-        metrics.Add(MetricCell("REMAINING", nameof(TorrentJob.RemainingText)), 1, 0);
-        metrics.Add(MetricCell("CURRENT SPEED", nameof(TorrentJob.DownloadRateText)), 2, 0);
-        stack.Add(metrics);
-        stack.Add(new BoxView { HeightRequest = 1, BackgroundColor = BorderColor });
+            stack.Add(new Label { Text = "Status", FontSize = 16, FontAttributes = FontAttributes.Bold, TextColor = TextColor });
+            Label summary = SmallLabel(string.Empty);
+            summary.TextColor = TextColor;
+            summary.LineBreakMode = LineBreakMode.WordWrap;
+            summary.SetBinding(Label.TextProperty, nameof(TorrentJob.OverviewSummaryText));
+            stack.Add(summary);
+            stack.Add(new BoxView { HeightRequest = 1, BackgroundColor = BorderColor });
+        }
 
         Grid details = new()
         {
@@ -863,17 +870,64 @@ public sealed class MainPage : ContentPage
             ColumnSpacing = 20,
         };
         details.Add(InfoPanel("Integrity", [
-            BoundInfo("Pieces", nameof(TorrentJob.PiecesText)),
-            BoundInfo("Phase", nameof(TorrentJob.Phase)),
-            BoundInfo("Message", nameof(TorrentJob.Message)),
+            BoundInfo("Verified pieces", nameof(TorrentJob.PiecesText)),
         ]), 0, 0);
-        details.Add(InfoPanel("Connections", [
-            BoundInfo("Active peers", nameof(TorrentJob.ActivePeers)),
-            BoundInfo("Known peers", nameof(TorrentJob.KnownPeers)),
-            BoundInfo("DHT", nameof(TorrentJob.EffectiveDhtText)),
-            BoundInfo("Trackers", nameof(TorrentJob.EffectiveTrackersText)),
+        details.Add(InfoPanel("Storage", [
+            BoundInfo("Folder", nameof(TorrentJob.OutputFolderText), tooltipPath: nameof(TorrentJob.OutputDirectory)),
         ]), 1, 0);
         stack.Add(details);
+
+        if (job.TransferHistory is not null)
+        {
+            stack.Add(new BoxView { HeightRequest = 1, BackgroundColor = BorderColor });
+            stack.Add(InfoPanel("Network transfer", [
+                BoundInfo("Payload received", nameof(TorrentJob.NetworkReceivedText)),
+                BoundInfo("Verified from peers", nameof(TorrentJob.VerifiedFromPeersText)),
+                BoundInfo("Uploaded", nameof(TorrentJob.UploadedText)),
+                BoundInfo("Verified average while active", nameof(TorrentJob.ActiveAverageText)),
+                BoundInfo("Active time", nameof(TorrentJob.ActiveTimeText)),
+                BoundInfo("Contributing peers", nameof(TorrentJob.ContributorText)),
+            ]));
+        }
+
+        if (job.IsComplete && job.Files.Count > 0)
+        {
+            stack.Add(new BoxView { HeightRequest = 1, BackgroundColor = BorderColor });
+            Grid filesHeading = new()
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(GridLength.Star),
+                    new ColumnDefinition(GridLength.Auto),
+                },
+            };
+            filesHeading.Add(new Label { Text = "Files", FontAttributes = FontAttributes.Bold, TextColor = TextColor, FontSize = 14 }, 0, 0);
+            if (job.Files.Count > 4)
+            {
+                Button allFiles = new()
+                {
+                    Text = "View all",
+                    FontSize = 12,
+                    TextColor = PrimaryColor,
+                    BackgroundColor = Colors.Transparent,
+                    Padding = new Thickness(8, 0),
+                };
+                allFiles.Clicked += (_, _) => SetActiveTab("Files");
+                ToolTipProperties.SetText(allFiles, "View all files");
+                AddHoverFeedback(allFiles, hovered => (hovered ? MutedBackground : Colors.Transparent,
+                    hovered ? PrimaryHover : PrimaryColor), track: false);
+                filesHeading.Add(allFiles, 1, 0);
+            }
+
+            stack.Add(filesHeading);
+            int count = Math.Min(job.Files.Count, 4);
+            for (int i = 0; i < count; i++)
+            {
+                View row = CreateFileRow(job);
+                row.BindingContext = job.Files[i];
+                stack.Add(row);
+            }
+        }
 
         return new ScrollView { Content = stack };
     }
@@ -935,64 +989,7 @@ public sealed class MainPage : ContentPage
         {
             ItemsSource = job.Files,
             HorizontalOptions = LayoutOptions.Fill,
-            ItemTemplate = new DataTemplate(() =>
-            {
-                Grid row = new()
-                {
-                    ColumnDefinitions =
-                    {
-                        new ColumnDefinition(GridLength.Star),
-                        new ColumnDefinition(new GridLength(110)),
-                    },
-                    ColumnSpacing = 10,
-                };
-                Button reveal = new()
-                {
-                    HeightRequest = 38,
-                    MinimumHeightRequest = 38,
-                    Padding = 0,
-                    CornerRadius = 4,
-                    BackgroundColor = Colors.Transparent,
-                };
-                reveal.SetBinding(SemanticProperties.DescriptionProperty,
-                    new Binding(nameof(TorrentFileItem.Path), stringFormat: "Reveal {0} in file manager"));
-                ToolTipProperties.SetText(reveal, "Show in file manager");
-                reveal.Clicked += (_, _) =>
-                {
-                    if (reveal.BindingContext is TorrentFileItem file)
-                    {
-                        _ = RunUiActionAsync(() => RevealTorrentFileAsync(job, file));
-                    }
-                };
-                AddHoverFeedback(reveal, hovered => (hovered ? MutedBackground : Colors.Transparent,
-                    hovered ? PrimaryColor : TextColor), track: false);
-                Label path = SmallLabel(string.Empty);
-                path.TextColor = TextColor;
-                path.Padding = new Thickness(8, 0);
-                path.LineBreakMode = OperatingSystem.IsLinux() ? LineBreakMode.NoWrap : LineBreakMode.TailTruncation;
-                path.MaxLines = 1;
-                path.InputTransparent = true;
-#if LINUX
-                path.HandlerChanged += (_, _) =>
-                {
-                    if (path.Handler?.PlatformView is Gtk.Label gtkLabel)
-                    {
-                        gtkLabel.Wrap = false;
-                        gtkLabel.Ellipsize = Pango.EllipsizeMode.End;
-                    }
-                };
-#endif
-                path.SetBinding(Label.TextProperty, nameof(TorrentFileItem.Path));
-                Label length = SmallLabel(string.Empty);
-                length.SetBinding(Label.TextProperty, nameof(TorrentFileItem.LengthText));
-                length.HorizontalTextAlignment = TextAlignment.End;
-                length.InputTransparent = true;
-                row.Add(reveal, 0, 0);
-                Grid.SetColumnSpan(reveal, 2);
-                row.Add(path, 0, 0);
-                row.Add(length, 1, 0);
-                return row;
-            }),
+            ItemTemplate = new DataTemplate(() => CreateFileRow(job)),
         };
         ContentView empty = new();
         Grid list = new() { Children = { files, empty } };
@@ -1011,6 +1008,65 @@ public sealed class MainPage : ContentPage
         search.TextChanged += (_, _) => UpdateFilter();
         UpdateFilter();
         return grid;
+    }
+
+    private View CreateFileRow(TorrentJob job)
+    {
+        Grid row = new()
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(new GridLength(110)),
+            },
+            ColumnSpacing = 10,
+        };
+        Button reveal = new()
+        {
+            HeightRequest = 38,
+            MinimumHeightRequest = 38,
+            Padding = 0,
+            CornerRadius = 4,
+            BackgroundColor = Colors.Transparent,
+        };
+        reveal.SetBinding(SemanticProperties.DescriptionProperty,
+            new Binding(nameof(TorrentFileItem.Path), stringFormat: "Reveal {0} in file manager"));
+        ToolTipProperties.SetText(reveal, "Show in file manager");
+        reveal.Clicked += (_, _) =>
+        {
+            if (reveal.BindingContext is TorrentFileItem file)
+            {
+                _ = RunUiActionAsync(() => RevealTorrentFileAsync(job, file));
+            }
+        };
+        AddHoverFeedback(reveal, hovered => (hovered ? MutedBackground : Colors.Transparent,
+            hovered ? PrimaryColor : TextColor), track: false);
+        Label path = SmallLabel(string.Empty);
+        path.TextColor = TextColor;
+        path.Padding = new Thickness(8, 0);
+        path.LineBreakMode = OperatingSystem.IsLinux() ? LineBreakMode.NoWrap : LineBreakMode.TailTruncation;
+        path.MaxLines = 1;
+        path.InputTransparent = true;
+#if LINUX
+        path.HandlerChanged += (_, _) =>
+        {
+            if (path.Handler?.PlatformView is Gtk.Label gtkLabel)
+            {
+                gtkLabel.Wrap = false;
+                gtkLabel.Ellipsize = Pango.EllipsizeMode.End;
+            }
+        };
+#endif
+        path.SetBinding(Label.TextProperty, nameof(TorrentFileItem.Path));
+        Label length = SmallLabel(string.Empty);
+        length.SetBinding(Label.TextProperty, nameof(TorrentFileItem.LengthText));
+        length.HorizontalTextAlignment = TextAlignment.End;
+        length.InputTransparent = true;
+        row.Add(reveal, 0, 0);
+        Grid.SetColumnSpan(reveal, 2);
+        row.Add(path, 0, 0);
+        row.Add(length, 1, 0);
+        return row;
     }
 
     private View BuildTrackersPanel(TorrentJob? job)
@@ -1055,12 +1111,16 @@ public sealed class MainPage : ContentPage
             },
             RowSpacing = 10,
         };
-        grid.Add(InfoPanel("Peer Summary", [
-            BoundInfo("Active peers", nameof(TorrentJob.ActivePeers)),
-            BoundInfo("Known peers", nameof(TorrentJob.KnownPeers)),
-            BoundInfo("DHT", nameof(TorrentJob.EffectiveDhtText)),
-            BoundInfo("Trackers", nameof(TorrentJob.EffectiveTrackersText)),
-        ], job), 0, 0);
+        grid.Add(job.IsRunning
+            ? InfoPanel("Discovery diagnostics", [
+                BoundInfo("Active peer tasks", nameof(TorrentJob.ActivePeers)),
+                BoundInfo("Active upload peers", nameof(TorrentJob.ActiveUploadPeers)),
+                BoundInfo("Listening TCP port", nameof(TorrentJob.ListeningPortText)),
+                BoundInfo("Known addresses this run", nameof(TorrentJob.KnownPeers)),
+                BoundInfo("DHT enabled", nameof(TorrentJob.EffectiveDhtText)),
+                BoundInfo("Trackers enabled", nameof(TorrentJob.EffectiveTrackersText)),
+            ], job)
+            : SmallLabel("No peer session is running."), 0, 0);
 
         CollectionView eventsView = new()
         {
@@ -1114,11 +1174,11 @@ public sealed class MainPage : ContentPage
         return grid;
     }
 
-    private static View BuildProgressHeader(TorrentJob job)
+    private View BuildProgressHeader(TorrentJob job)
     {
         Grid grid = new()
         {
-            Padding = new Thickness(26, 18, 26, 20),
+            Padding = new Thickness(26, 14, 26, 16),
             BackgroundColor = StageBackground,
             BindingContext = job,
             RowDefinitions =
@@ -1133,73 +1193,70 @@ public sealed class MainPage : ContentPage
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Auto),
             },
-            RowSpacing = 8,
+            RowSpacing = 7,
             ColumnSpacing = 12,
         };
 
         Label status = new() { FontAttributes = FontAttributes.Bold, FontSize = 12, TextColor = StageAccent };
-        status.SetBinding(Label.TextProperty, nameof(TorrentJob.Status));
-        Label rate = SmallLabel(string.Empty);
-        rate.TextColor = StageMutedText;
-        rate.HorizontalTextAlignment = TextAlignment.End;
-        rate.SetBinding(Label.TextProperty, nameof(TorrentJob.DownloadRateText));
+        status.SetBinding(Label.TextProperty, nameof(TorrentJob.StageStateText));
+        Button action = new()
+        {
+            FontSize = 12,
+            FontAttributes = FontAttributes.Bold,
+            CornerRadius = 6,
+            HeightRequest = 32,
+            MinimumHeightRequest = 32,
+            Padding = new Thickness(14, 4),
+        };
+        action.SetBinding(Button.TextProperty, nameof(TorrentJob.StageActionText));
+        action.SetBinding(VisualElement.IsVisibleProperty, nameof(TorrentJob.StageActionAvailable));
+        action.Clicked += (_, _) => _ = RunUiActionAsync(() => RunStageActionAsync(job));
+        AddHoverFeedback(action, hovered => (hovered ? StageAccentHover : StageAccent, RailBackground), track: false);
         Label percent = SmallLabel(string.Empty);
         percent.TextColor = Colors.White;
-        percent.FontSize = 42;
+        percent.FontSize = 34;
         percent.FontAttributes = FontAttributes.Bold;
         percent.SetBinding(Label.TextProperty, nameof(TorrentJob.ProgressText));
-        Label total = SmallLabel(string.Empty);
-        total.TextColor = StageMutedText;
-        total.HorizontalTextAlignment = TextAlignment.End;
-        total.VerticalTextAlignment = TextAlignment.End;
-        total.SetBinding(Label.TextProperty, nameof(TorrentJob.TotalText), stringFormat: "of {0}");
-
-        ProgressBar progress = BoundProgressBar(10, onDark: true, description: "Selected torrent progress");
-        Grid metrics = new()
+        ProgressBar progress = BoundProgressBar(8, onDark: true, description: "Selected torrent progress");
+        Grid summary = new()
         {
             ColumnDefinitions =
             {
                 new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
             },
-            ColumnSpacing = 14,
-            Margin = new Thickness(0, 3, 0, 0),
+            ColumnSpacing = 12,
         };
-        metrics.Add(StageMetric("Downloaded", nameof(TorrentJob.DownloadedText)), 0, 0);
-        metrics.Add(StageMetric("Remaining", nameof(TorrentJob.RemainingText)), 1, 0);
-        metrics.Add(StageMetric("Verified pieces", nameof(TorrentJob.PiecesText), highlight: true), 2, 0);
+        Label verified = SmallLabel(string.Empty);
+        verified.TextColor = StageMutedText;
+        verified.LineBreakMode = LineBreakMode.TailTruncation;
+        verified.SetBinding(Label.TextProperty, nameof(TorrentJob.VerifiedSummaryText));
+        Label remaining = SmallLabel(string.Empty);
+        remaining.TextColor = StageMutedText;
+        remaining.HorizontalTextAlignment = TextAlignment.End;
+        remaining.SetBinding(Label.TextProperty, nameof(TorrentJob.RemainingSummaryText));
+        summary.Add(verified, 0, 0);
+        summary.Add(remaining, 1, 0);
 
         grid.Add(status, 0, 0);
-        grid.Add(rate, 1, 0);
+        grid.Add(action, 1, 0);
         grid.Add(percent, 0, 1);
-        grid.Add(total, 1, 1);
         grid.Add(progress, 0, 2);
         Grid.SetColumnSpan(progress, 2);
-        grid.Add(metrics, 0, 3);
-        Grid.SetColumnSpan(metrics, 2);
+        grid.Add(summary, 0, 3);
+        Grid.SetColumnSpan(summary, 2);
 
         return grid;
     }
 
-    private static View StageMetric(string title, string bindingPath, bool highlight = false)
+    private Task RunStageActionAsync(TorrentJob job)
     {
-        VerticalStackLayout stack = new() { Spacing = 2 };
-        stack.Add(new Label { Text = title, FontSize = 11, TextColor = StageMutedText });
-        Label value = new() { FontSize = 14, FontAttributes = FontAttributes.Bold, TextColor = highlight ? WarmAccent : Colors.White, LineBreakMode = LineBreakMode.TailTruncation };
-        value.SetBinding(Label.TextProperty, bindingPath);
-        stack.Add(value);
-        return stack;
-    }
+        if (!ReferenceEquals(_selectedJob, job))
+        {
+            return Task.CompletedTask;
+        }
 
-    private static View MetricCell(string title, string bindingPath)
-    {
-        VerticalStackLayout stack = new() { Spacing = 5 };
-        stack.Add(new Label { Text = title, FontSize = 11, FontAttributes = FontAttributes.Bold, TextColor = MutedTextColor });
-        Label value = new() { FontSize = 22, FontAttributes = FontAttributes.Bold, TextColor = TextColor, LineBreakMode = LineBreakMode.TailTruncation };
-        value.SetBinding(Label.TextProperty, bindingPath);
-        stack.Add(value);
-        return stack;
+        return job.CanStop ? PauseSelectedAsync() : StartJobAsync(job);
     }
 
     private static ProgressBar BoundProgressBar(double height, bool onDark = false, string description = "Torrent progress")
@@ -1240,7 +1297,7 @@ public sealed class MainPage : ContentPage
             SwitchSetting("Randomize port on start", _settings.RandomizePortOnStart, value => _settings.RandomizePortOnStart = value),
             NumberSetting("Peers per torrent", _settings.MaxPeersPerTorrent, value => _settings.MaxPeersPerTorrent = value, 1, 512),
             ReadOnlySetting("Global peer limit", "Single-torrent queue"),
-            ReadOnlySetting("Upload slots per torrent", "Not available"),
+            NumberSetting("Upload peers per torrent", _settings.MaxUploadPeers, value => _settings.MaxUploadPeers = value, 1, 64),
             ReadOnlySetting("IPv6 peers", "Automatic"),
             ReadOnlySetting("UPnP port mapping", "Not available"),
             ReadOnlySetting("NAT-PMP port mapping", "Not available"),
@@ -1268,11 +1325,10 @@ public sealed class MainPage : ContentPage
 
         stack.Add(SettingsSection("Queue and Seeding", [
             ReadOnlySetting("Active downloads", "Manual"),
-            ReadOnlySetting("Active seeds", "Not available"),
+            SwitchSetting("Seed after download completes", _settings.SeedAfterCompletion, value => _settings.SeedAfterCompletion = value),
             ReadOnlySetting("Active torrents", "Manual"),
             ReadOnlySetting("Ratio limit", "Not available"),
             ReadOnlySetting("Seed time minutes", "Not available"),
-            ReadOnlySetting("Stop when complete", "Always"),
         ]));
 
         stack.Add(SettingsSection("Proxy and Advanced", [
@@ -1336,6 +1392,8 @@ public sealed class MainPage : ContentPage
                 job = new TorrentJob(durablePath, entry.OutputDirectory);
 
                 job.ApplyMetadata(metadata);
+                job.RestoreTransferHistory(entry.Transfer);
+                job.ResumeSeeding = entry.ResumeSeeding;
                 job.BeginVerification();
                 _pendingVerifications.Add((job, metadata));
             }
@@ -1348,6 +1406,8 @@ public sealed class MainPage : ContentPage
                 };
                 job.Status = "Unavailable";
                 job.Message = exception.Message;
+                job.RestoreTransferHistory(entry.Transfer);
+                job.ResumeSeeding = entry.ResumeSeeding;
             }
 
             if (entry.ExplicitPeers is not null)
@@ -1379,12 +1439,6 @@ public sealed class MainPage : ContentPage
     {
         job.PropertyChanged += (_, e) =>
         {
-            if (ReferenceEquals(job, _selectedJob) &&
-                e.PropertyName is nameof(TorrentJob.Status) or nameof(TorrentJob.Progress))
-            {
-                _statusLabel.Text = $"{job.Name}: {job.Status} - {job.ProgressText}";
-            }
-
             if (e.PropertyName is nameof(TorrentJob.IsRunning) or nameof(TorrentJob.IsComplete))
             {
                 FilterJobs();
@@ -1407,14 +1461,14 @@ public sealed class MainPage : ContentPage
             if (!ReferenceEquals(job, removed))
             {
                 entries.Add(new TorrentQueueEntry(job.TorrentPath, job.OutputDirectory, job.Name, job.InfoHashHex,
-                    job.ExplicitPeers.Count == 0 ? null : [.. job.ExplicitPeers]));
+                    job.ExplicitPeers.Count == 0 ? null : [.. job.ExplicitPeers], job.TransferHistory, job.ResumeSeeding));
             }
         }
 
         if (added is not null)
         {
             entries.Add(new TorrentQueueEntry(added.TorrentPath, added.OutputDirectory, added.Name, added.InfoHashHex,
-                added.ExplicitPeers.Count == 0 ? null : [.. added.ExplicitPeers]));
+                added.ExplicitPeers.Count == 0 ? null : [.. added.ExplicitPeers], added.TransferHistory, added.ResumeSeeding));
         }
 
         try
@@ -1491,6 +1545,14 @@ public sealed class MainPage : ContentPage
             if (!cancellation.IsCancellationRequested && _jobs.Contains(job))
             {
                 job.CompleteVerification(result);
+                if (job.ShouldResumeSeeding)
+                {
+                    await StartJobAsync(job);
+                }
+                else
+                {
+                    SaveQueue();
+                }
             }
         }
         catch (OperationCanceledException)
@@ -1505,6 +1567,7 @@ public sealed class MainPage : ContentPage
             if (_jobs.Contains(job))
             {
                 job.AbortVerification("Error", exception.Message);
+                job.AppendLog("verification error: " + exception.Message);
                 _statusLabel.Text = $"Data check failed for {job.Name}: {exception.Message}";
             }
         }
@@ -1737,7 +1800,7 @@ public sealed class MainPage : ContentPage
             job.ExplicitPeers.AddRange(explicitPeers);
         }
         job.Status = "Ready";
-        job.Message = $"{metadata.PieceCount} pieces, {metadata.Trackers.Count} trackers";
+        job.Message = "Ready to start";
         if (!SaveQueue(added: job))
         {
             return;
@@ -1791,62 +1854,100 @@ public sealed class MainPage : ContentPage
 
         try
         {
-            if (!_settings.EnableDht && !_settings.EnableTrackers && job.ExplicitPeers.Count == 0)
+            if (!job.IsComplete && (!_settings.EnableDht || job.IsPrivate) &&
+                (!_settings.EnableTrackers || job.Trackers.Count == 0) &&
+                (job.ExplicitPeers.Count == 0 || job.IsPrivate))
             {
-                await DisplayAlertAsync("Discovery disabled", "Enable trackers or DHT, or add a magnet with an explicit peer.", "OK");
+                await DisplayAlertAsync("Discovery disabled", job.IsPrivate
+                    ? "Private torrents require a tracker; public DHT and explicit peer hints are disabled."
+                    : "Enable trackers or DHT, or add a magnet with an explicit peer.", "OK");
                 return;
             }
 
+            HashSet<int> occupiedPorts = [];
+            foreach (TorrentJob activeJob in _jobs)
+            {
+                if (activeJob.ActiveListenPort is int port)
+                {
+                    occupiedPorts.Add(port);
+                }
+            }
+
             TorrentClientOptions options = _settings.ToClientOptions(job.TorrentPath, job.OutputDirectory,
-                job.HasDataToResume, job.ExplicitPeers);
+                job.HasDataToResume, job.ExplicitPeers, occupiedPorts, seedCompleted: job.IsComplete);
             job.ApplyEffectiveOptions(options);
             CancellationTokenSource cancellation = new();
+            TorrentSession? session = null;
             Progress<TorrentSessionProgress> progress = new(snapshot =>
             {
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
+                    if (session is null || !job.IsCurrentSession(session) || cancellation.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    bool wasSeeding = job.ResumeSeeding;
                     job.ApplyProgress(snapshot);
+                    if (!wasSeeding && job.ResumeSeeding)
+                    {
+                        SaveQueue();
+                    }
+
                     _statusLabel.Text = $"{job.Name}: {snapshot.Message}";
                 });
             });
-            TorrentSession session = new(options, job.QueueLog, progress);
+            session = new TorrentSession(options, job.QueueLog, progress);
+            TorrentSession activeSession = session;
             Task runTask = Task.Run(async () =>
             {
                 bool completed = false;
                 try
                 {
-                    _ = await session.RunAsync(cancellation.Token);
+                    _ = await activeSession.RunAsync(cancellation.Token);
                     completed = true;
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        job.Status = "Complete";
-                        job.Message = "Completed";
-                    });
                 }
                 catch (OperationCanceledException)
                 {
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        job.Status = "Paused";
-                        job.Message = "Paused";
-                    });
                 }
                 catch (Exception exception)
                 {
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
+                        if (!job.IsCurrentSession(activeSession)) return;
+                        job.ResumeSeeding = false;
                         job.Status = "Error";
                         job.Message = exception.Message;
                         job.AppendLog("error: " + exception.Message);
+                        _statusLabel.Text = $"{job.Name}: {exception.Message}";
                     });
                 }
                 finally
                 {
-                    MainThread.BeginInvokeOnMainThread(() => job.DetachRun(completed));
+                    TorrentTransferSnapshot transfer = activeSession.GetTransferSnapshot();
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        if (!job.IsCurrentSession(activeSession)) return;
+                        job.ApplyTransferSnapshot(transfer);
+                        job.DetachRun(completed);
+                        if (job.Status != "Error")
+                        {
+                            bool paused = cancellation.IsCancellationRequested || !completed;
+                            job.Status = paused ? "Paused" : "Complete";
+                            job.Message = paused ? job.IsComplete ? "Seeding paused" : "Paused" : "Completed";
+                        }
+
+                        SaveQueue();
+                    });
                 }
             });
 
-            job.AttachRun(runTask, cancellation);
+            job.AttachRun(runTask, cancellation, activeSession,
+                options.SeedAfterCompletion && options.ListenPort != 0 ? options.ListenPort : null);
+            if (ReferenceEquals(job, _selectedJob) && _activeTab == "Overview")
+            {
+                RefreshDetails();
+            }
             job.Status = "Starting";
             job.Message = "Starting session";
             _statusLabel.Text = $"Starting {job.Name}";
@@ -1865,7 +1966,9 @@ public sealed class MainPage : ContentPage
             return;
         }
 
-        await job.StopAsync();
+        job.ResumeSeeding = false;
+        SaveQueue();
+        await job.StopAsync(preserveSeedingIntent: false);
         _statusLabel.Text = $"Paused {job.Name}";
     }
 
@@ -1976,6 +2079,18 @@ public sealed class MainPage : ContentPage
         {
             _statusLabel.Text = "Shutdown stop failed: " + exception.GetBaseException().Message;
         }
+
+        CheckpointTransferHistory();
+    }
+
+    private void CheckpointTransferHistory()
+    {
+        foreach (TorrentJob job in _jobs)
+        {
+            job.RefreshTransfer();
+        }
+
+        SaveQueue();
     }
 
     private List<Task> CreateStopTasks()
@@ -2314,13 +2429,18 @@ public sealed class MainPage : ContentPage
         return stack;
     }
 
-    private static View BoundInfo(string label, string bindingPath)
+    private static View BoundInfo(string label, string bindingPath, string? tooltipPath = null)
     {
         Grid grid = InfoRowBase(label);
         Label value = SmallLabel(string.Empty);
         value.TextColor = TextColor;
         value.HorizontalTextAlignment = TextAlignment.End;
-        value.LineBreakMode = LineBreakMode.WordWrap;
+        value.LineBreakMode = tooltipPath is null ? LineBreakMode.WordWrap : LineBreakMode.TailTruncation;
+        if (tooltipPath is not null)
+        {
+            value.MaxLines = 1;
+            value.SetBinding(ToolTipProperties.TextProperty, tooltipPath);
+        }
         value.SetBinding(Label.TextProperty, bindingPath);
         grid.Add(value, 1, 0);
         return grid;

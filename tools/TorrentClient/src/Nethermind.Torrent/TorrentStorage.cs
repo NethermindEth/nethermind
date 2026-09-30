@@ -85,7 +85,7 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath, 
     public async Task<bool> VerifyPieceAsync(int pieceIndex, byte[] buffer, CancellationToken token)
     {
         int pieceSize = _metadata.GetPieceSize(pieceIndex);
-        if (!await ReadPieceAsync(pieceIndex, buffer.AsMemory(0, pieceSize), token))
+        if (!await ReadRangeAsync((long)pieceIndex * _metadata.PieceLength, buffer.AsMemory(0, pieceSize), token))
         {
             return false;
         }
@@ -93,6 +93,17 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath, 
         Span<byte> hash = stackalloc byte[TorrentMetadata.Sha1Length];
         SHA1.HashData(buffer.AsSpan(0, pieceSize), hash);
         return hash.SequenceEqual(_metadata.GetPieceHash(pieceIndex));
+    }
+
+    public Task<bool> ReadBlockAsync(int pieceIndex, int begin, Memory<byte> destination, CancellationToken token)
+    {
+        int pieceSize = _metadata.GetPieceSize(pieceIndex);
+        if (begin < 0 || destination.Length == 0 || begin > pieceSize - destination.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(begin), "Block is outside the requested piece.");
+        }
+
+        return ReadRangeAsync((long)pieceIndex * _metadata.PieceLength + begin, destination, token);
     }
 
     public async Task WritePieceAsync(int pieceIndex, ReadOnlyMemory<byte> data, CancellationToken token)
@@ -130,9 +141,8 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath, 
         }
     }
 
-    private async Task<bool> ReadPieceAsync(int pieceIndex, Memory<byte> destination, CancellationToken token)
+    private async Task<bool> ReadRangeAsync(long globalOffset, Memory<byte> destination, CancellationToken token)
     {
-        long globalOffset = (long)pieceIndex * _metadata.PieceLength;
         int remaining = destination.Length;
         int destinationOffset = 0;
         bool fullyRead = true;
@@ -274,6 +284,31 @@ internal sealed class PiecePicker(TorrentMetadata metadata)
             {
                 return _completedPieces == _states.Length;
             }
+        }
+    }
+
+    public bool IsPieceComplete(int pieceIndex)
+    {
+        lock (_lock)
+        {
+            return (uint)pieceIndex < (uint)_states.Length && _states[pieceIndex] == PieceState.Complete;
+        }
+    }
+
+    public byte[] GetCompletedBitfield()
+    {
+        lock (_lock)
+        {
+            byte[] bitfield = new byte[_states.Length / 8 + (_states.Length % 8 == 0 ? 0 : 1)];
+            for (int i = 0; i < _states.Length; i++)
+            {
+                if (_states[i] == PieceState.Complete)
+                {
+                    bitfield[i / 8] |= (byte)(1 << (7 - i % 8));
+                }
+            }
+
+            return bitfield;
         }
     }
 

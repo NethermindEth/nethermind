@@ -50,6 +50,38 @@ public sealed class TrackerClientTests
         }
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Torrent_announce_stays_on_the_successful_primary_tracker(bool isPrivate)
+    {
+        TorrentMetadata metadata = CreateTieredTorrent(isPrivate);
+        byte[] empty = Bencode.Encode(Bencode.Dictionary(new KeyValuePair<string, BValue>("peers", Bencode.Bytes([]))));
+        using RecordingHandler handler = new(empty, empty);
+        using HttpClient http = new(handler);
+        TrackerClient tracker = new(http, _ => { }, TimeSpan.FromSeconds(1));
+
+        await tracker.AnnounceAsync(metadata, new byte[20], "00000000", 6881, 0, 0, CancellationToken.None);
+        await tracker.AnnounceAsync(metadata, new byte[20], "00000000", 6881, 0, 0, CancellationToken.None);
+
+        Assert.That(handler.RequestUris.Select(uri => uri.Host),
+            Is.EqualTo(new[] { "primary.example", "primary.example" }));
+    }
+
+    [Test]
+    public async Task Private_torrent_does_not_switch_trackers_after_active_tracker_fails()
+    {
+        TorrentMetadata metadata = CreateTieredTorrent(isPrivate: true);
+        using StatusSequenceHandler handler = new(HttpStatusCode.OK, HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK);
+        using HttpClient http = new(handler);
+        TrackerClient tracker = new(http, _ => { }, TimeSpan.FromSeconds(1));
+
+        await tracker.AnnounceAsync(metadata, new byte[20], "00000000", 6881, 0, 0, CancellationToken.None);
+        await tracker.AnnounceAsync(metadata, new byte[20], "00000000", 6881, 0, 0, CancellationToken.None);
+
+        Assert.That(handler.RequestUris.Select(uri => uri.Host),
+            Is.EqualTo(new[] { "primary.example", "primary.example" }));
+    }
+
     [Test]
     public async Task AnnounceAsync_collects_peers_from_multiple_magnet_trackers()
     {
@@ -197,12 +229,27 @@ public sealed class TrackerClientTests
     {
         public Uri? RequestUri { get; private set; }
         public int RequestCount { get; private set; }
+        public List<Uri> RequestUris { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             RequestUri = request.RequestUri;
+            RequestUris.Add(request.RequestUri!);
             byte[] response = responses[RequestCount++];
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(response) });
+        }
+    }
+
+    private sealed class StatusSequenceHandler(params HttpStatusCode[] statuses) : HttpMessageHandler
+    {
+        public List<Uri> RequestUris { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestUris.Add(request.RequestUri!);
+            HttpStatusCode status = statuses[Math.Min(RequestUris.Count - 1, statuses.Length - 1)];
+            byte[] response = Bencode.Encode(Bencode.Dictionary(new KeyValuePair<string, BValue>("peers", Bencode.Bytes([]))));
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new ByteArrayContent(response) });
         }
     }
 
@@ -233,4 +280,22 @@ public sealed class TrackerClientTests
         => Bencode.Dictionary(
             new KeyValuePair<string, BValue>("ip", Bencode.String(host)),
             new KeyValuePair<string, BValue>("port", Bencode.Integer(port)));
+
+    private static TorrentMetadata CreateTieredTorrent(bool isPrivate)
+    {
+        BDictionary info = Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("length", Bencode.Integer(1)),
+            new KeyValuePair<string, BValue>("name", Bencode.String("data.bin")),
+            new KeyValuePair<string, BValue>("piece length", Bencode.Integer(1)),
+            new KeyValuePair<string, BValue>("pieces", Bencode.Bytes(new byte[20])),
+            new KeyValuePair<string, BValue>("private", Bencode.Integer(isPrivate ? 1 : 0)));
+        BDictionary root = Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("announce", Bencode.String("https://ignored.example/announce")),
+            new KeyValuePair<string, BValue>("announce-list", new BList([
+                new BList([Bencode.String("https://primary.example/announce")]),
+                new BList([Bencode.String("https://backup.example/announce")]),
+            ])),
+            new KeyValuePair<string, BValue>("info", info));
+        return TorrentMetadata.Decode(Bencode.Encode(root));
+    }
 }
