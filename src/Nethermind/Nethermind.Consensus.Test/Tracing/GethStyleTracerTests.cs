@@ -60,8 +60,15 @@ public class GethStyleTracerTests
     /// compile, used to reach the JavaScript block tracer, which built a V8 engine per traced transaction only to
     /// fail loading the script.
     /// </remarks>
-    [TestCase("flatCallTracer", "not found")]
-    [TestCase("_bigInteger", "not found")]
+    [TestCase("flatCallTracer", false)]
+    [TestCase("_bigInteger", true)]
+    public void Create_options_tracer_defers_valid_javascript_expression_evaluation(string tracer, bool javascript)
+    {
+        using IDisposable result = (IDisposable)GethStyleTracer.CreateOptionsTracer(Build.A.BlockHeader.TestObject,
+            GethTraceOptions.Default with { Tracer = tracer }, Substitute.For<IWorldState>(), Substitute.For<ISpecProvider>());
+        Assert.That(result is Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.GethLikeBlockJavaScriptTracer, Is.EqualTo(javascript));
+    }
+
     [TestCase("{ ) }", "could not be compiled")]
     public void Create_options_tracer_rejects_an_unusable_tracer(string tracer, string expectedMessage)
     {
