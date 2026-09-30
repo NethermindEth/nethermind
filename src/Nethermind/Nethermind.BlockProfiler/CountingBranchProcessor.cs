@@ -150,11 +150,15 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
     {
-        if (!_block.TryStop(out string counts, out ulong instructions, _diagScratch)) return;
+        if (!_block.TryStop(out string counts, out ulong instructions, out ulong cycles, _diagScratch)) return;
         ulong executed = _executedRead ? _executed.Instructions - _block.StartInstructions : 0;
         // roots: receipts, blooms and the state root up to the verdict; commit: the tree commit after it.
         ulong roots = _judgedRead && _executedRead ? _judged.Instructions - _executed.Instructions : 0;
         ulong commit = _judgedRead ? _block.StartInstructions + instructions - _judged.Instructions : 0;
+        // cyc: the same three splits in cycles.
+        string phaseCycles = _judgedRead && _executedRead
+            ? $" cyc={_executed.Cycles - _block.StartCycles}/{_judged.Cycles - _executed.Cycles}/{_block.StartCycles + cycles - _judged.Cycles}"
+            : string.Empty;
         // pop: trie node cache population; compact: snapshot compaction; persist: the inline persistence job.
         ulong[]? phases = t_commitPhases;
         const int popParts = (1 << 0) | (1 << 4) | (1 << 5) | (1 << 6) | (1 << 1);
@@ -176,7 +180,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         string host = DiagnosticCounters.Enabled
             ? $" host={HostActivity.Delta(s_pinCpu)}" + (block.Number % 100 == 0 ? $" mem={HostActivity.Memory()}" : string.Empty)
             : string.Empty;
-        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit} cmp={inputs}/{compactedInputs}/{added}{host}");
+        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit} cmp={inputs}/{compactedInputs}/{added}{phaseCycles}{host}");
         if (DiagnosticCounters.Enabled && Interlocked.Exchange(ref s_hostLogged, 1) == 0 && _logger.IsInfo)
             _logger.Info($"EXPB-COUNT host{HostActivity.Facts(s_pinCpu)}");
     }
@@ -270,11 +274,16 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
         public ulong StartInstructions => _counters.Instructions;
 
+        public ulong StartCycles => _counters.Cycles;
+
         /// <summary>Formats the window's deltas; false when it never started or ended on another thread.</summary>
-        public bool TryStop(out string counts, out ulong instructions, ulong[]? diagScratch = null)
+        public bool TryStop(out string counts, out ulong instructions, ulong[]? diagScratch = null) => TryStop(out counts, out instructions, out _, diagScratch);
+
+        public bool TryStop(out string counts, out ulong instructions, out ulong cycles, ulong[]? diagScratch = null)
         {
             counts = string.Empty;
             instructions = 0;
+            cycles = 0;
             if (!IsOnCurrentThread) return false;
             if (!ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample end)) return false;
             long endTimestamp = Stopwatch.GetTimestamp();
@@ -282,6 +291,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
             ThreadInstructionCounter.Sample delta = end - _counters;
             instructions = delta.Instructions;
+            cycles = delta.Cycles;
             long allocated = GC.GetAllocatedBytesForCurrentThread() - _allocated;
             string diag = string.Empty;
             if (diagRead)
