@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -40,7 +41,8 @@ internal sealed class PbtAnchorPublication(
     private static byte[] Provenance(PbtImageAnchor anchor) => System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
         new AnchorProvenance(anchor.ChainId, anchor.GenesisHash.ToString(), anchor.Header.Hash!.ToString(),
             (long)anchor.Header.Number, anchor.Header.StateRoot!.ToString()));
-    private const int BatchSize = 4096;
+    // Below DbOnTheRocks.RocksDbWriteBatch.MaxWritesOnNoWal, so a no-WAL batch is written by its flusher, not inline by the reader.
+    private const int BatchSize = 255;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorPublication>();
 
     /// <summary>Imports the native PBT state at the anchor from a snapshot, optionally verified by preimages.</summary>
@@ -130,7 +132,7 @@ internal sealed class PbtAnchorPublication(
         if (AdoptHeldAnchor(anchor, claimedRoot) is { } held) return held;
         PrepareStaging(anchor, cancellationToken);
         (ulong Accounts, ulong Slots) staged;
-        using (LogicalBatch batch = new(target))
+        using (LogicalBatch batch = new(target, cancellationToken))
         {
             staged = PbtLeafStaging.Stage(batch, leaves(cancellationToken), scratchDirectory, anchor.MaxBufferedCodeBytes, cancellationToken);
             batch.Commit();
@@ -214,7 +216,7 @@ internal sealed class PbtAnchorPublication(
         }, CancellationToken.None);
         try
         {
-            ValueHash256 root = await new PbtRebuilder(target, config, logManager).Rebuild(channel.Reader, anchorState, linked.Token, 16_384, WriteFlags.None, expectedRoot);
+            ValueHash256 root = await new PbtRebuilder(target, config, logManager).Rebuild(channel.Reader, anchorState, linked.Token, 16_384, expectedRoot);
             await producer;
             return root;
         }
@@ -295,26 +297,88 @@ internal sealed class PbtAnchorPublication(
         }
     }
 
-    internal sealed class LogicalBatch(PbtRocksDbPersistence target) : IDisposable
+    /// <summary>Compiles staged writes into no-WAL batches on the caller's thread and writes them on parallel flushers.</summary>
+    /// <remarks>Staged keys are unique, so the order the flushers write in does not matter. Nothing is durable until
+    /// <see cref="Commit"/> flushes the write buffers; an interrupted staging is wiped by <see cref="RecoverStaging"/>.</remarks>
+    internal sealed class LogicalBatch : IDisposable
     {
+        private readonly PbtRocksDbPersistence _target;
+        private readonly CancellationTokenSource _cancellation;
+        private readonly Channel<IPbtPersistence.IWriteBatch> _pending = Channel.CreateBounded<IPbtPersistence.IWriteBatch>(
+            new BoundedChannelOptions(2 * Environment.ProcessorCount) { SingleWriter = true });
+        private readonly Task[] _flushers = new Task[Environment.ProcessorCount];
+        private ExceptionDispatchInfo? _failure;
         private IPbtPersistence.IWriteBatch? _batch;
         private int _count;
+
+        public LogicalBatch(PbtRocksDbPersistence target, CancellationToken cancellationToken)
+        {
+            _target = target;
+            _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            for (int i = 0; i < _flushers.Length; i++)
+                _flushers[i] = Task.Run(Flush, CancellationToken.None);
+        }
+
         public IPbtPersistence.IWriteBatch Next()
         {
-            if (_count == BatchSize) Flush();
+            if (_count == BatchSize) Enqueue();
             _count++;
-            return _batch ??= target.CreateStagingWriteBatch(WriteFlags.None);
+            return _batch ??= _target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
         }
-        /// <summary>Commits the staged writes so a reader created afterwards sees them.</summary>
-        public void Flush()
+
+        /// <summary>Waits for every staged write, then flushes the write buffers so the no-WAL writes are durable.</summary>
+        public void Commit()
         {
-            if (_batch is null) return;
-            Commit();
-            _batch.Dispose();
+            if (_batch is not null) Enqueue();
+            _pending.Writer.Complete();
+            WaitFlushers();
+            _target.Flush();
+        }
+
+        public void Dispose()
+        {
+            _pending.Writer.TryComplete();
+            _cancellation.Cancel();
+            Task.WaitAll(_flushers);
+            _batch?.Dispose();
+            while (_pending.Reader.TryRead(out IPbtPersistence.IWriteBatch? batch)) batch.Dispose();
+            _cancellation.Dispose();
+        }
+
+        private void Enqueue()
+        {
+            try
+            {
+                if (!_pending.Writer.TryWrite(_batch!)) _pending.Writer.WriteAsync(_batch!, _cancellation.Token).AsTask().GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                WaitFlushers();
+                throw;
+            }
             _batch = null;
             _count = 0;
         }
-        public void Commit() => _batch?.Commit();
-        public void Dispose() => _batch?.Dispose();
+
+        private async Task Flush()
+        {
+            try
+            {
+                await foreach (IPbtPersistence.IWriteBatch batch in _pending.Reader.ReadAllAsync(_cancellation.Token))
+                    using (batch) batch.Commit();
+            }
+            catch (Exception exception)
+            {
+                Interlocked.CompareExchange(ref _failure, ExceptionDispatchInfo.Capture(exception), null);
+                _cancellation.Cancel();
+            }
+        }
+
+        /// <summary>Waits for the flushers to stop and rethrows the first failure among them.</summary>
+        private void WaitFlushers()
+        {
+            Task.WaitAll(_flushers);
+            _failure?.Throw();
+        }
     }
 }

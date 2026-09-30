@@ -324,6 +324,43 @@ public class PbtAnchorPublicationTests
         Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
     }
 
+    /// <remarks>Stages several times the staging batch size, so the writes span many batches written by parallel flushers.</remarks>
+    [Test]
+    public async Task Snapshot_staged_across_many_batches_publishes_every_account_and_slot()
+    {
+        using Harness harness = new("anchor");
+        Address[] addresses = new Address[1000];
+        List<RebuildEntry> leaves = [];
+        for (int index = 0; index < addresses.Length; index++)
+        {
+            Address address = addresses[index] = Address.FromNumber((UInt256)(index + 1));
+            ValueHash256 basicData = default;
+            PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, (UInt256)(index + 1), UInt256.Zero);
+            leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(address, 0), basicData));
+            leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(address, 1), Keccak.OfAnEmptyString.ValueHash256));
+            leaves.Add(new(PbtStateKey.Storage(address, 100), new ValueHash256(((UInt256)(index + 1)).ToBigEndian())));
+        }
+        leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
+        ValueHash256 expectedRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, CancellationToken.None);
+        using MemoryStream snapshot = new();
+        PbtSnapshotCodec.Write(snapshot, expectedRoot, (ulong)leaves.Count, leaves);
+        snapshot.Position = 0;
+
+        ValueHash256 root = await harness.Publication.PublishSnapshot(snapshot, null, harness.Anchor, harness.Scratch.Path, () => true);
+
+        using IPbtPersistence.IReader reader = new PbtRocksDbPersistence(harness.Target, new PbtConfig()).CreateReader();
+        Assert.That(root, Is.EqualTo(expectedRoot));
+        for (int index = 0; index < addresses.Length; index++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.GetAccount(PbtKeyDerivation.AddressKeyHash(addresses[index]))?.Nonce, Is.EqualTo((ulong)(index + 1)));
+                Assert.That(reader.GetSlot(PbtStateKey.Storage(addresses[index], 100)),
+                    Is.EqualTo(EvmWordSlot.FromStripped(((UInt256)(index + 1)).ToBigEndian())));
+            }
+        }
+    }
+
     [Test]
     public void Bootstrap_step_follows_genesis_and_precedes_network()
     {

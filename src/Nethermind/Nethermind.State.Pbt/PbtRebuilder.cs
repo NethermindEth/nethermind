@@ -35,7 +35,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         ChannelReader<ArrayPoolList<RebuildEntry>> source,
         StateId targetState,
         CancellationToken cancellationToken,
-        int windowSize = 0) => Rebuild(source, targetState, cancellationToken, windowSize, WriteFlags.DisableWAL, expectedRoot: null);
+        int windowSize = 0) => Rebuild(source, targetState, cancellationToken, windowSize, expectedRoot: null);
 
     /// <param name="expectedRoot">When set, a completed root that differs is refused before anything is published.</param>
     internal async Task<ValueHash256> Rebuild(
@@ -43,7 +43,6 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         StateId targetState,
         CancellationToken cancellationToken,
         int windowSize,
-        WriteFlags stagingWriteFlags,
         ValueHash256? expectedRoot)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(windowSize);
@@ -91,7 +90,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         {
             cancellationToken.ThrowIfCancellationRequested();
             using (IPbtPersistence.IReader reader = target.CreateReader())
-            using (IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch(stagingWriteFlags))
+            using (IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch(WriteFlags.DisableWAL))
             using (PbtPartitionBatches prepared = new())
             {
                 if (accountChanges.Count != 0) prepared.Account = accountChanges.Build();
