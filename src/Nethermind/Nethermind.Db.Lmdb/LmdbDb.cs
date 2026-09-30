@@ -11,6 +11,7 @@ using System.Threading;
 using LightningDB;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Db.Lmdb;
 
@@ -56,12 +57,21 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     public string Name { get; }
 
     private readonly int _maxOperationsPerWave;
+    private readonly ILogger _logger;
 
-    public LmdbDb(string name, string path, long initialMapSizeBytes, int maxReaders, int maxOperationsPerWave)
+    /// <summary>Above this, a single write request or CreateSnapshot call is logged individually (at Warn, so
+    /// it's visible without raising log verbosity) rather than only folded into the periodic diagnostics average
+    /// - see PLAN-LMDB.md "Known issues" for why per-event outlier visibility matters here: a slow individual
+    /// commit blocks every concurrent CreateSnapshot reader for its own duration, and averages can hide exactly
+    /// the outlier that explains a specific stall.</summary>
+    private const long SlowOperationThresholdMs = 100;
+
+    public LmdbDb(string name, string path, long initialMapSizeBytes, int maxReaders, int maxOperationsPerWave, ILogManager logManager)
     {
         Name = name;
         _path = path;
         _maxOperationsPerWave = maxOperationsPerWave;
+        _logger = logManager.GetClassLogger<LmdbDb>();
         Directory.CreateDirectory(path);
 
         // NoThreadLocalStorage: CreateSnapshot's reader pool hands pooled read transactions out via rent/return,
@@ -245,8 +255,16 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             throw;
         }
 
+        long elapsedTicks = Stopwatch.GetTimestamp() - start;
         Interlocked.Increment(ref _createSnapshotCount);
-        Interlocked.Add(ref _createSnapshotElapsedTicks, Stopwatch.GetTimestamp() - start);
+        Interlocked.Add(ref _createSnapshotElapsedTicks, elapsedTicks);
+
+        double elapsedMs = elapsedTicks * 1000.0 / Stopwatch.Frequency;
+        if (elapsedMs >= SlowOperationThresholdMs && _logger.IsWarn)
+        {
+            _logger.Warn($"Lmdb '{Name}' CreateSnapshot took {elapsedMs:F1}ms (pool size {pool.Length}) - every concurrent reader on this column was blocked for this duration.");
+        }
+
         return new LmdbDbSnapshot(pool, _database);
     }
 
@@ -351,11 +369,28 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     /// </remarks>
     private void SubmitWrite(List<(byte[] Key, byte[]? Value)> operations, bool wantsDurability)
     {
+        long start = Stopwatch.GetTimestamp();
         PendingWrite write = new(operations, wantsDurability);
         _pendingWrites.Enqueue(write);
         DrainIfLeader();
         write.Done.Wait();
         write.Done.Dispose();
+
+        // Per-request absolute timing for correlating a specific slow account-range/storage-range commit
+        // against an external symptom (e.g. a consensus client's own logged timestamp for a newPayload
+        // timeout) - see PLAN-LMDB.md "Known issues". Debug gives every request (opt-in verbosity, since this
+        // fires once per snap-sync write batch - potentially hundreds/sec); Warn gives only the outliers, so a
+        // real stall is visible without needing to raise log verbosity first.
+        double elapsedMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+        if (_logger.IsDebug)
+        {
+            _logger.Debug($"Lmdb '{Name}' write request committed: {operations.Count} ops, durable={wantsDurability}, took {elapsedMs:F1}ms.");
+        }
+        else if (elapsedMs >= SlowOperationThresholdMs && _logger.IsWarn)
+        {
+            _logger.Warn($"Lmdb '{Name}' write request took {elapsedMs:F1}ms ({operations.Count} ops, durable={wantsDurability}) - unusually slow.");
+        }
+
         write.Error?.Throw();
     }
 

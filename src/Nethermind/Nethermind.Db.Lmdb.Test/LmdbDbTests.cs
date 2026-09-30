@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Lmdb.Test;
@@ -27,7 +28,7 @@ public class LmdbDbTests
     public void Setup()
     {
         if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
-        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave);
+        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -164,7 +165,7 @@ public class LmdbDbTests
         _db.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
         _db.Dispose();
 
-        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave);
+        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance);
         Assert.That(_db.Get(TestItem.KeccakA.Bytes), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
     }
 
@@ -522,7 +523,7 @@ public class LmdbDbTests
         const long tinyMapSize = 128 * 1024; // small enough that a few KB of writes will exceed it at least once
         string path = Path.Combine("testdb-lmdb-mapgrowth", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("growth-test", path, tinyMapSize, TestMaxReaders, TestMaxOperationsPerWave);
+        using LmdbDb db = new("growth-test", path, tinyMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance);
         try
         {
             const int count = 200;
@@ -567,7 +568,7 @@ public class LmdbDbTests
         int snapshotsToHoldConcurrently = Math.Max(4, (126 / Math.Max(poolSize, 1)) + 2); // would exceed LMDB's own default of 126
         string path = Path.Combine("testdb-lmdb-manysnapshots", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("many-snapshots-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave);
+        using LmdbDb db = new("many-snapshots-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance);
         try
         {
             db.Set([1], [1]);
@@ -634,7 +635,7 @@ public class LmdbDbTests
         const int tinyWaveCap = 4;
         string path = Path.Combine("testdb-lmdb-wavecap", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("wave-cap-test", path, TestMapSize, TestMaxReaders, tinyWaveCap);
+        using LmdbDb db = new("wave-cap-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, LimboLogs.Instance);
         try
         {
             const int writerCount = 20;
@@ -669,7 +670,7 @@ public class LmdbDbTests
         const int opsInOneBatch = 50;
         string path = Path.Combine("testdb-lmdb-wavecap-split", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("wave-cap-split-test", path, TestMapSize, TestMaxReaders, tinyWaveCap);
+        using LmdbDb db = new("wave-cap-split-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, LimboLogs.Instance);
         try
         {
             using (IWriteBatch batch = db.StartWriteBatch())
@@ -703,7 +704,7 @@ public class LmdbDbTests
         const int opsInOneBatch = 3;
         string path = Path.Combine("testdb-lmdb-wavecap-nosplit", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("wave-cap-nosplit-test", path, TestMapSize, TestMaxReaders, tinyWaveCap);
+        using LmdbDb db = new("wave-cap-nosplit-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, LimboLogs.Instance);
         try
         {
             using (IWriteBatch batch = db.StartWriteBatch())

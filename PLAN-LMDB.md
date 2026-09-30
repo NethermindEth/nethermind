@@ -430,6 +430,41 @@ reminder for validation runs going forward: a plausible-sounding, testable hypot
 support is still worth checking against a same-symptom-without-the-change control (here, `master`) before
 concluding the fix addressed the reported problem, not just improved a real number.
 
+**Reopened: a later, more careful A/B comparison found sync itself running ~2x slower on the LMDB build than
+on `master`, with the *same* `newPayload` timeout signature just less frequent on `master`.** This is a
+different claim than the one just closed above (a single commit blocking long enough to cause one timeout) -
+it's about aggregate load: if LMDB's write path is genuinely and significantly slower overall for snap sync
+(plausible on architectural grounds - see "Architecture" above: a copy-on-write B+tree has to touch and
+rewrite whole pages for every write, including page splits, with no compaction to amortize it later, versus
+RocksDB's LSM-tree design which is built to absorb high-volume small-random-key writes cheaply; Ethereum
+account/storage keys are hashed paths, so snap-sync insertion order is close to LMDB's worst case), that adds
+real system-wide load and could make an already-marginal, DB-independent timing issue trip into an actual
+timeout more often, without LMDB being that issue's root cause. Both things can be true at once: `master`
+reproducing the *same* error rules out LMDB causing it, while a 2x slowdown could still be making it *more
+frequent* by leaving less scheduling headroom for everything else the node is doing at the same time.
+
+**Added finer-grained diagnostics to test this directly, rather than reasoning about it further from 30-second
+aggregates.** `LmdbDb` now takes an `ILogManager` and logs, per individual event rather than only as a rolling
+average:
+- Every `SubmitWrite` call (one account-range or storage-range commit request from the snap-sync caller's
+  perspective, however many physical commits it ends up chunked into) - at `Debug`, unconditionally, with
+  operation count, durability, and elapsed milliseconds; at `Warn` when it exceeds `SlowOperationThresholdMs`
+  (100ms) and `Debug` isn't already enabled, so a genuine outlier is visible without raising log verbosity
+  first.
+- Every `CreateSnapshot` call that exceeds the same threshold, at `Warn` - this is the read side every
+  concurrent caller (including whatever `newPayload`'s own state reads go through) shares the same
+  `_writeCommitGate` lock with, so a slow one here is direct evidence of the blocking theory, independent of
+  the write side's own reported duration.
+
+To see the per-request `Debug` line for every write (not just outliers), add a rule to `NLog.config`'s
+`<rules>` section (logger names strip the `Nethermind.` prefix - see `ILogManager.GetLoggerName`):
+```xml
+<logger name="Db.Lmdb.*" minlevel="Debug" writeTo="all" final="true" />
+```
+The `Warn`-level outlier lines for both writes and slow snapshots are visible at the default log level with no
+config change. Both are timestamped by the ambient logger, so they can be matched directly against a
+consensus client's own logged timestamp for a specific `newPayload` timeout.
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,

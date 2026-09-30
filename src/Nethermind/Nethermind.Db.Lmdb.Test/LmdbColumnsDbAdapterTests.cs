@@ -29,8 +29,8 @@ public class LmdbColumnsDbAdapterTests
         _inner = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _adapter = new LmdbColumnsDbAdapter(
             _inner,
-            new LmdbDb("account", Path.Combine(DbPath, "account.lmdb"), TestMapSize, TestMaxReaders, TestMaxOperationsPerWave),
-            new LmdbDb("storage", Path.Combine(DbPath, "storage.lmdb"), TestMapSize, TestMaxReaders, TestMaxOperationsPerWave),
+            new LmdbDb("account", Path.Combine(DbPath, "account.lmdb"), TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance),
+            new LmdbDb("storage", Path.Combine(DbPath, "storage.lmdb"), TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance),
             LimboLogs.Instance);
     }
 
