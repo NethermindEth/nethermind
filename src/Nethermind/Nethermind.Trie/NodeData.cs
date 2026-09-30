@@ -51,7 +51,7 @@ public sealed class BranchData : INodeData
     }
 }
 
-public sealed class ExtensionData : INodeWithKey
+public class ExtensionData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Extension;
 
@@ -112,7 +112,7 @@ public sealed class ExtensionData : INodeWithKey
     INodeData INodeData.Clone() => new ExtensionData(Key, Value);
 }
 
-public sealed class LeafData : INodeWithKey
+public class LeafData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Leaf;
     public int Length => 0;
