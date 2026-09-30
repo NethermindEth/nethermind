@@ -15,6 +15,33 @@ namespace Nethermind.Evm.Test.Tracing
     public class BlockReceiptsTracerTests
     {
         [Test]
+        public void Nested_receipts_tracers_retain_frame_data([Values] bool failedFrame)
+        {
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithType(TxType.FrameTx).TestObject).TestObject;
+            BlockReceiptsTracer inner = new();
+            BlockReceiptsTracer middle = new();
+            BlockReceiptsTracer outer = new();
+            middle.SetOtherTracer(inner);
+            outer.SetOtherTracer(middle);
+            outer.StartNewBlockTrace(block);
+            outer.StartNewTxTrace(block.Transactions[0]);
+            TxFrameReceipt[] frames = [new(StatusCode.Success, 10, 0, []), new(failedFrame ? StatusCode.Failure : StatusCode.Success, 20, 0, [])];
+
+            outer.ReportFrameTxReceipt(TestItem.AddressA, frames);
+            outer.MarkAsSuccess(TestItem.AddressB, 100, [], []);
+
+            using (Assert.EnterMultipleScope())
+            {
+                foreach (BlockReceiptsTracer tracer in new[] { outer, middle, inner })
+                {
+                    Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(failedFrame ? StatusCode.Failure : StatusCode.Success));
+                    Assert.That(tracer.TxReceipts[0].Payer, Is.EqualTo(TestItem.AddressA));
+                    Assert.That(tracer.TxReceipts[0].FrameReceipts, Is.SameAs(frames));
+                }
+            }
+        }
+
+        [Test]
         public void Sets_state_root_if_provided_on_success()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;

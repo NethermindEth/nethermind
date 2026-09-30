@@ -32,7 +32,10 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     {
         _frameTxPayer = payer;
         _frameTxReceipts = frameReceipts;
-        _currentFrameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
+        if (_otherTracer is BlockReceiptsTracer receiptsTracer)
+            receiptsTracer.ReportFrameTxReceipt(payer, frameReceipts);
+        else
+            _currentFrameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
     }
 
     public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) =>
