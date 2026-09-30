@@ -52,11 +52,16 @@ public class InclusionListBuilderTests
     }
 
     /// <summary>A pool whose ready buckets are the given transactions, grouped by sender and nonce-ordered.</summary>
-    private static ITxPool PoolOf(params Transaction[] readyTxs)
+    private static ITxPool PoolOf(params Transaction[] readyTxs) => PoolOf(null, readyTxs);
+
+    /// <inheritdoc cref="PoolOf(Transaction[])"/>
+    /// <param name="emptyBucketSenders">Senders the snapshot holds an empty bucket for.</param>
+    private static ITxPool PoolOf(Address[]? emptyBucketSenders, params Transaction[] readyTxs)
     {
         Dictionary<AddressAsKey, Transaction[]> bySender = readyTxs
             .GroupBy(tx => new AddressAsKey(tx.SenderAddress!))
             .ToDictionary(g => g.Key, g => g.OrderBy(tx => tx.Nonce).ToArray());
+        foreach (Address sender in emptyBucketSenders ?? []) bySender[new AddressAsKey(sender)] = [];
         ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>()).Returns(bySender);
         return pool;
@@ -76,13 +81,7 @@ public class InclusionListBuilderTests
     [Test]
     public void Tolerates_an_empty_bucket_from_the_pool()
     {
-        Dictionary<AddressAsKey, Transaction[]> bySender = new()
-        {
-            [new AddressAsKey(TestItem.AddressA)] = [],
-            [new AddressAsKey(TestItem.AddressB)] = [TxOfSize(50, 0, TestItem.PrivateKeyB)]
-        };
-        ITxPool pool = Substitute.For<ITxPool>();
-        pool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>()).Returns(bySender);
+        ITxPool pool = PoolOf([TestItem.AddressA], TxOfSize(50, 0, TestItem.PrivateKeyB));
 
         using InclusionListBytes il = BuildBuilder(pool).GetInclusionList();
 
