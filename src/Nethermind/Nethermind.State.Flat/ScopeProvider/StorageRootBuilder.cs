@@ -43,6 +43,9 @@ internal sealed class StorageRootBuilder
     /// <summary>True once every write has been applied and the thread has exited; the tries then belong to the caller.</summary>
     public bool IsDrained => _drained;
 
+    /// <summary>Test hook invoked on the builder thread before each write is applied.</summary>
+    internal static Action? OnBeforeApplyForTests;
+
     public bool TryEnqueue(FlatStorageTree tree, in UInt256 index, in UInt256 value)
     {
         if (_faulted || _drained) return false;
@@ -80,6 +83,7 @@ internal sealed class StorageRootBuilder
                     if (!_pending.TryTake(out delta, Timeout.Infinite)) return;
                 }
 
+                OnBeforeApplyForTests?.Invoke();
                 delta.Tree.ApplyCommitted(delta.Index, delta.Value);
                 if (_eagerHash) _touched.Add(delta.Tree);
             }
