@@ -72,6 +72,10 @@ Before creating a pull request:
 
 - When creating a PR or commenting on GitHub under a human account, state that you are an AI agent acting on behalf of the user and name the harness and model, e.g. `🤖 AI agent (Claude Code / Opus 5) on behalf of @user` — this makes it easy to trace which configuration produced which behavior. Put it in the `Remarks` section of the PR body, or at the end of a comment. This does not apply to commit messages, nor to comments posted under a bot account, whose identity already discloses the agent.
 
+## Agent reviews
+
+- When submitting a GitHub review, use `APPROVE` or `COMMENT`, never `REQUEST_CHANGES`. A requested-changes review blocks the merge until that reviewer re-reviews, even after other maintainers approve. Post blocking findings in a `COMMENT` review, and leave the decision to block to a human.
+
 ## Benchmark workflows
 
 - [expb-benchmark](./.agents/skills/expb-benchmark/SKILL.md) — reproducible payload benchmarks (`run-expb-reproducible-benchmarks.yml`), profiling, and run-log checks.
