@@ -97,15 +97,31 @@ public class TraceSerializerTests
     [Test]
     public void reads_stored_vm_memory_offset([Values("\"0x20\"", "32")] string offset)
     {
-        string storedJson = """[{"blockNumber":0,"vmTrace":{"code":"0x52","ops":[{"cost":3,"ex":{"mem":{"data":"0x01","off":OFFSET},"push":[],"store":null,"used":100},"pc":0,"sub":null}]}}]""".Replace("OFFSET", offset);
-        using MemoryStream bytes = new();
-        using (GZipStream gzip = new(bytes, CompressionMode.Compress, leaveOpen: true))
-        {
-            gzip.Write(Encoding.UTF8.GetBytes(storedJson));
-        }
+        string stored = """[{"blockNumber":0,"vmTrace":{"code":"0x52","ops":[{"cost":3,"ex":{"mem":{"data":"0x01","off":OFFSET},"push":[],"store":null,"used":100},"pc":0,"sub":null}]}}]""".Replace("OFFSET", offset);
 
-        ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
-        Assert.That(serializer.Deserialize(bytes.ToArray())![0].VmTrace!.Operations[0].Memory.Offset, Is.EqualTo(32));
+        Assert.That(DeserializeStored(stored)[0].VmTrace!.Operations[0].Memory.Offset, Is.EqualTo(32));
+    }
+
+    // Stores written before the deletion markers hold a deleted field as a change to null.
+    [Test]
+    public void reads_stored_state_deletions()
+    {
+        const string stored = """[{"blockNumber":0,"stateDiff":{"0x0000000000000000000000000000000000000000":{"balance":{"*":{"from":"0x1","to":null}},"code":{"*":{"from":"0x60","to":null}},"nonce":{"*":{"from":"0x1","to":null}},"storage":{}}}}]""";
+
+        ParityAccountStateChange change = DeserializeStored(stored)[0].StateChanges![Address.Zero];
+
+        Assert.That(Json.Serialize(change), Is.EqualTo("""{"balance":{"-":"0x1"},"code":{"-":"0x60"},"nonce":{"-":"0x1"},"storage":{}}"""));
+    }
+
+    [Test]
+    public void skips_unknown_stored_members()
+    {
+        const string stored = """[{"blockNumber":0,"vmTrace":{"code":"0x52"EXTRA,"ops":[{"cost":3EXTRA,"ex":{"mem":{"data":"0x01","off":32EXTRA},"push":[],"store":{"key":"0x1","val":"0x2"EXTRA},"used":100EXTRA},"pc":0,"sub":null}]},"stateDiff":{"0x0000000000000000000000000000000000000000":{"balance":{"*":{"from":"0x1","to":"0x2"EXTRA}},"code":"=","nonce":"=","storage":{}EXTRA}}}]""";
+
+        List<ParityLikeTxTrace> known = DeserializeStored(stored.Replace("EXTRA", ""));
+        List<ParityLikeTxTrace> extended = DeserializeStored(stored.Replace("EXTRA", ""","future":{"a":[1,null]}"""));
+
+        Assert.That(Json.Serialize(extended), Is.EqualTo(Json.Serialize(known)));
     }
 
     [Test]
@@ -184,30 +200,15 @@ public class TraceSerializerTests
             Balance = new ParityStateChange<UInt256?>(1, null),
             Nonce = new ParityStateChange<UInt256?>(1, null),
         };
-        yield return new() { Storage = [] };
-    }
-
-    [Test]
-    public void round_trips_state_markers([Values("=", "+", "-", "*")] string marker)
-    {
-        UInt256? before = marker is "+" ? null : UInt256.Zero;
-        UInt256? after = marker is "-" ? null : UInt256.MaxValue;
-        byte[]? beforeBytes = marker is "+" ? null : [];
-        byte[]? afterBytes = marker is "-" ? null : [0x00, 0x01, 0xff];
-        ParityAccountStateChange account = new()
+        // Boundary values and slots, and code and storage with leading zeros.
+        yield return new()
         {
-            Balance = marker == "=" ? null : new(before, after),
-            Nonce = marker == "=" ? null : new(before, after),
-            Code = marker == "=" ? null : new(beforeBytes, afterBytes),
-            Storage = [],
+            Balance = new ParityStateChange<UInt256?>(0, UInt256.MaxValue),
+            Nonce = new ParityStateChange<UInt256?>(0, UInt256.MaxValue),
+            Code = new ParityStateChange<byte[]>([], [0x00, 0x01, 0xff]),
+            Storage = new() { [0] = new([], [0x00, 0x01, 0xff]), [UInt256.One << 255] = new([0x00, 0x01, 0xff], []) },
         };
-        UInt256[] keys = [UInt256.MaxValue, UInt256.Zero, UInt256.One << 255];
-        foreach (UInt256 key in keys)
-        {
-            account.Storage[key] = marker == "=" ? null! : new(beforeBytes, afterBytes);
-        }
-
-        AssertRoundTrips(new ParityLikeTxTrace { StateChanges = new() { [Address.Zero] = account } });
+        yield return new() { Storage = [] };
     }
 
     [TestCase(typeof(ParityVmOperationTrace), """{"cost":0,"ex":{"mem":1,"push":null,"store":null,"used":0},"pc":0,"sub":null}""")]
@@ -248,6 +249,17 @@ public class TraceSerializerTests
         ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
         List<ParityLikeTxTrace>? restored = serializer.Deserialize(serializer.Serialize([trace]));
         Assert.That(Json.Serialize(restored), Is.EqualTo(Json.Serialize(new[] { trace })));
+    }
+
+    private static List<ParityLikeTxTrace> DeserializeStored(string json)
+    {
+        using MemoryStream bytes = new();
+        using (GZipStream gzip = new(bytes, CompressionMode.Compress, leaveOpen: true))
+        {
+            gzip.Write(Encoding.UTF8.GetBytes(json));
+        }
+
+        return new ParityLikeTraceSerializer(LimboLogs.Instance).Deserialize(bytes.ToArray())!;
     }
 
     private static T OnThread<T>(int maxStackSize, Func<T> func)

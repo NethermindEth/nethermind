@@ -56,7 +56,8 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
             }
             else
             {
-                throw new JsonException($"Cannot deserialize {nameof(ParityAccountStateChange)}.");
+                // A member from a newer format; skipping it keeps the block readable after a downgrade.
+                reader.Skip();
             }
 
             reader.Read();
@@ -140,7 +141,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 }
                 else
                 {
-                    throw new JsonException($"Cannot deserialize {nameof(ParityStateChange<T>)}.");
+                    reader.Skip();
                 }
 
                 reader.Read();

@@ -49,7 +49,8 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             }
             else
             {
-                throw new JsonException($"Cannot deserialize {nameof(ParityVmOperationTrace)}.");
+                // A member from a newer format; skipping it keeps the block readable after a downgrade.
+                reader.Skip();
             }
 
             reader.Read();
@@ -96,7 +97,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             }
             else
             {
-                throw new JsonException($"Cannot deserialize {nameof(ParityVmOperationTrace)}.");
+                reader.Skip();
             }
 
             reader.Read();
@@ -128,7 +129,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             }
             else
             {
-                throw new JsonException($"Cannot deserialize {nameof(ParityMemoryChangeTrace)}.");
+                reader.Skip();
             }
 
             reader.Read();
@@ -161,7 +162,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             }
             else
             {
-                throw new JsonException($"Cannot deserialize {nameof(ParityStorageChangeTrace)}.");
+                reader.Skip();
             }
 
             reader.Read();
