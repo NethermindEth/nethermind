@@ -22,8 +22,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
 
-    private readonly ConcurrentDictionary<Address, Account?> _accounts = new();
-    private readonly ConcurrentDictionary<(Address, UInt256), CachedSlot> _slots = new();
+    private ConcurrentDictionary<Address, Account?> _accounts;
+    private ConcurrentDictionary<(Address, UInt256), CachedSlot> _slots;
     private int _accountCount;
     private int _slotCount;
 
@@ -64,6 +64,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         _inner = inner;
         _maxEntriesPerKind = maxEntriesPerKind;
+        _accounts = NewCache<Address, Account?>();
+        _slots = NewCache<(Address, UInt256), CachedSlot>();
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
     }
@@ -101,6 +103,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         ? asyncDisposable.DisposeAsync()
         : ValueTask.CompletedTask;
 
+    // Sized for the cap up front: a ConcurrentDictionary grows by re-creating every entry, which from the default
+    // capacity takes a dozen rounds on the way to the cap, the last ones tens of megabytes on whichever reader adds
+    // the entry that crosses a threshold. Clear() would shrink it back to the default, so a wipe swaps in a new one.
+    private ConcurrentDictionary<TKey, TValue> NewCache<TKey, TValue>() where TKey : notnull =>
+        new(Environment.ProcessorCount, _maxEntriesPerKind);
+
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
 
     /// <summary>
@@ -133,7 +141,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (_accounts.ContainsKey(address)) return;
             if (_accountCount >= _maxEntriesPerKind)
             {
-                _accounts.Clear();
+                _accounts = NewCache<Address, Account?>();
                 _accountCount = 0;
                 Metrics.IncrementCarryForwardAccountWipes();
             }
@@ -152,7 +160,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (_slots.ContainsKey(key)) return;
             if (_slotCount >= _maxEntriesPerKind)
             {
-                _slots.Clear();
+                _slots = NewCache<(Address, UInt256), CachedSlot>();
                 _slotCount = 0;
                 Metrics.IncrementCarryForwardSlotWipes();
             }
@@ -196,9 +204,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void ClearAllNoLock()
     {
-        _accounts.Clear();
+        _accounts = NewCache<Address, Account?>();
         _accountCount = 0;
-        _slots.Clear();
+        _slots = NewCache<(Address, UInt256), CachedSlot>();
         _slotCount = 0;
         Metrics.PublishCarryForwardAccountCount(0);
         Metrics.PublishCarryForwardSlotCount(0);
