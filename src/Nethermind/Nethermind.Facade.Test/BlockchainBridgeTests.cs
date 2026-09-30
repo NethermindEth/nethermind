@@ -1010,8 +1010,8 @@ public class BlockchainBridgeTests
     [Test]
     public void Single_call_env_forgets_resolved_code_when_a_call_is_cancelled()
     {
-        CancelledOnce cancelledOnce = new();
-        using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource, cancelledOnce);
+        CancelFirstCall cancelFirstCall = new() { Pending = true };
+        using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource, cancelFirstCall);
         IBlockchainBridge blockchainBridge = container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
 
         // The first call resolves the code and is cancelled mid-execution; the second rents the same pooled env.
@@ -1020,7 +1020,7 @@ public class BlockchainBridgeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cancelledOnce.Cancelled, Is.True);
+            Assert.That(cancelFirstCall.Pending, Is.False);
             AssertCodeSourceLookups(codeSource, 2);
         }
     }
@@ -1065,7 +1065,7 @@ public class BlockchainBridgeTests
 
     private const int CodeLookupsPerCall = 3;
 
-    private static IContainer BuildCodeLookupContainer(out ICodeInfoRepository codeSource, CancelledOnce? cancelledOnce = null)
+    private static IContainer BuildCodeLookupContainer(out ICodeInfoRepository codeSource, CancelFirstCall? cancelFirstCall = null)
     {
         codeSource = Substitute.For<ICodeInfoRepository>();
         codeSource.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
@@ -1073,7 +1073,7 @@ public class BlockchainBridgeTests
         return new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .AddScoped(codeSource)
-            .AddSingleton(cancelledOnce ?? new CancelledOnce { Cancelled = true })
+            .AddSingleton(cancelFirstCall ?? new CancelFirstCall())
             .AddScoped<ITransactionProcessor, CodeLookupTransactionProcessor>()
             .Build();
     }
@@ -1081,21 +1081,21 @@ public class BlockchainBridgeTests
     private static void AssertCodeSourceLookups(ICodeInfoRepository codeSource, int expected) =>
         codeSource.Received(expected).GetCachedCodeInfo(TestItem.AddressC, Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>());
 
-    /// <summary>Cancels the first transaction after its code lookups, as a cancelled request's tracer would.</summary>
-    private sealed class CancelledOnce
+    /// <summary>While <see cref="Pending"/> is set, the next transaction is cancelled after its code lookups, as a cancelled request's tracer would, and the flag clears.</summary>
+    private sealed class CancelFirstCall
     {
-        public bool Cancelled { get; set; }
+        public bool Pending { get; set; }
     }
 
     // Stands in for the EVM: every call resolves the same contract's code a few times through the env's repository.
-    private sealed class CodeLookupTransactionProcessor(ICodeInfoRepository codeInfoRepository, CancelledOnce cancelledOnce) : ITransactionProcessor
+    private sealed class CodeLookupTransactionProcessor(ICodeInfoRepository codeInfoRepository, CancelFirstCall cancelFirstCall) : ITransactionProcessor
     {
         public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
         {
             for (int i = 0; i < CodeLookupsPerCall; i++) codeInfoRepository.GetCachedCodeInfo(TestItem.AddressC, Prague.Instance);
-            if (!cancelledOnce.Cancelled)
+            if (cancelFirstCall.Pending)
             {
-                cancelledOnce.Cancelled = true;
+                cancelFirstCall.Pending = false;
                 throw new OperationCanceledException();
             }
 
