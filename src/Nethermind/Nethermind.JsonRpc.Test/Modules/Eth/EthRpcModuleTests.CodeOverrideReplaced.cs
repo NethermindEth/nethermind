@@ -87,9 +87,8 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["result"]?.Value<string>(), Is.EqualTo(expected.ToHexString(true)), serialized);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Delegation_set_over_a_delegation_override_replaces_it(bool clear)
+    [Test]
+    public async Task Delegation_set_over_a_delegation_override_replaces_it([Values] bool clear)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
         TestRpcBlockchain test = ctx.Test;
