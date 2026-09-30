@@ -418,7 +418,7 @@ public class DataColumnSidecarsReqRespTests
         return stream.ToArray();
     }
 
-    private static async Task<IReadOnlyList<DataColumnSidecar>> RequestRangeAsync(DataColumnSidecarPool pool, BeaconChainStore store, ulong startSlot, ulong count, ulong[] columns, SlotClock? clock = null)
+    internal static async Task<IReadOnlyList<DataColumnSidecar>> RequestRangeAsync(DataColumnSidecarPool pool, BeaconChainStore store, ulong startSlot, ulong count, ulong[] columns, SlotClock? clock = null)
     {
         DataColumnSidecarsByRangeProtocol protocol = new(Spec, pool, store, clock);
         ISessionContext context = Substitute.For<ISessionContext>();

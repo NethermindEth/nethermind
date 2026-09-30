@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -274,8 +275,8 @@ public partial class BeaconSyncOrchestratorTests
             Column = [],
             KzgCommitments = [],
             KzgProofs = [],
-            SignedBlockHeader = new SignedBeaconBlockHeader { Message = new BeaconBlockHeader { Slot = slot } },
-            KzgCommitmentsInclusionProof = [],
+            SignedBlockHeader = new SignedBeaconBlockHeader { Message = new BeaconBlockHeader { Slot = slot, ParentRoot = Hash256.Zero, StateRoot = Hash256.Zero, BodyRoot = Hash256.Zero } },
+            KzgCommitmentsInclusionProof = [.. new Hash256[Eip7594DasConstants.KzgCommitmentsInclusionProofDepth].Select(static _ => Hash256.Zero)],
         });
 
     // The listen side closes the stream once it has answered, as the libp2p host does.
