@@ -131,6 +131,9 @@ public class DebugRpcModule(
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         blockParameter ??= BlockParameter.Latest;
+        // Geth's traceCall resolves hashes without enforcing requireCanonical.
+        if (blockParameter is { BlockHash: { } hash, RequireCanonical: true })
+            blockParameter = new BlockParameter(hash);
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail("tracing on top of pending is not supported", ErrorCodes.InvalidInput);
