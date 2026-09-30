@@ -51,7 +51,8 @@ internal class InitializeBlockchainXdc(
                     new BlackListedAddressFilter(chainHeadInfoProvider, XdcSpecProvider, _api.LogManager),
                     new MinGasPriceFilter(chainHeadInfoProvider, XdcSpecProvider, _api.LogManager)
                 ],
-                true
+                true,
+                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>()
             );
 
         _api.DisposeStack.Push(txPool);
