@@ -211,6 +211,12 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         set => throw new NotSupportedException();
     }
 
+    public bool IsBuildingBlock
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
     public void NewOldestBlock(ulong oldestBlock) => throw new NotImplementedException();
 
     public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => throw new NotImplementedException();

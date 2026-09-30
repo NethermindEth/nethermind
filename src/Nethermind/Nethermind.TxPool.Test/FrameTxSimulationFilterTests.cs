@@ -214,6 +214,25 @@ public class FrameTxSimulationFilterTests
         Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted));
     }
 
+    [TestCase(TxHandlingOptions.None, true)]
+    [TestCase(TxHandlingOptions.PersistentBroadcast, false)]
+    public void Accept_WhileBuildingABlock_PreemptsOnlyGossipedSimulation(TxHandlingOptions options, bool deferred)
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsBuildingBlock.Returns(true);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
+            .Returns(static call => call.ArgAt<Func<bool>?>(4)?.Invoke() == true
+                ? FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation preempted")
+                : FrameTxSimulationResult.Accept(TestItem.AddressB));
+
+        AcceptTxResult result = Accept(state, simulator, tx, options: options, headInfo: headInfo);
+
+        Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted));
+    }
+
     [TestCase(true, TxHandlingOptions.None, false, true)]
     [TestCase(false, TxHandlingOptions.None, false, false)]
     [TestCase(true, TxHandlingOptions.PersistentBroadcast, false, false)]

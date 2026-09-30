@@ -2024,6 +2024,8 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock { get; set; }
 
+        public bool IsBuildingBlock { get; set; }
+
         /// <inheritdoc/>
         /// <remarks>
         /// AuRa finalization, era import and XDC can call this concurrently. Deciding whether finality advanced,

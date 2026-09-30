@@ -24,6 +24,7 @@ public class BlockTreeTestDouble : IBlockTree
     private BlockHeader? _lowestInsertedBeaconHeader;
     private (ulong BlockNumber, Hash256 BlockHash) _syncPivot;
     private bool _isProcessingBlock;
+    private bool _isBuildingBlock;
 
     protected IBlockTree? Inner { get; }
 
@@ -161,6 +162,16 @@ public class BlockTreeTestDouble : IBlockTree
         {
             if (Inner is not null) Inner.IsProcessingBlock = value;
             _isProcessingBlock = value;
+        }
+    }
+
+    public virtual bool IsBuildingBlock
+    {
+        get => Inner?.IsBuildingBlock ?? _isBuildingBlock;
+        set
+        {
+            if (Inner is not null) Inner.IsBuildingBlock = value;
+            _isBuildingBlock = value;
         }
     }
 

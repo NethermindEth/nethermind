@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.Producers
                 Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
+                    Block? processedBlock = ProcessBuiltBlock(block, blockTracer, token);
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -188,6 +188,21 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
             Sealer.SealBlock(block, token);
+
+        /// <summary>Executes the block being built with <see cref="IBlockTree.IsBuildingBlock"/> raised, so gossiped
+        /// frame-transaction validation yields to it as it yields to block import.</summary>
+        private Block? ProcessBuiltBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
+        {
+            BlockTree.IsBuildingBlock = true;
+            try
+            {
+                return ProcessPreparedBlock(block, blockTracer, token);
+            }
+            finally
+            {
+                BlockTree.IsBuildingBlock = false;
+            }
+        }
 
         protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
             CancellationToken token = default) => Processor.Process(block, GetProcessingOptions(), blockTracer ?? NullBlockTracer.Instance, token);
