@@ -150,6 +150,38 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameRpc_EstimateGas_RejectsBeforeActivation()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(London.Instance));
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", UnsignedFrameRequest());
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo(TxErrorMessages.InvalidTxType(London.Instance.Name)), response);
+    }
+
+    [Test]
+    public async Task FrameRpc_EstimateGas_RespectsTheCompleteGasCap([Values(50_000ul, 100_000ul)] ulong gasCap)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        ctx.Test.RpcConfig.GasCap = gasCap;
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+        transaction.Frames![0].ExecutionGas = 25_000;
+        transaction.Frames[1].ExecutionGas = 15_000;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
+
+        JToken parsed = JToken.Parse(response);
+        if (gasCap == 50_000)
+            Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo($"{GasEstimator.GasExceedsAllowanceMsgPrefix} ({gasCap})"), response);
+        else
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            Assert.That(Convert.ToUInt64(parsed["result"]!.Value<string>(), 16), Is.LessThanOrEqualTo(gasCap));
+        }
+    }
+
+    [Test]
     public async Task FrameRpc_EstimateGas_PlaceholderCoversSignedTransaction()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
