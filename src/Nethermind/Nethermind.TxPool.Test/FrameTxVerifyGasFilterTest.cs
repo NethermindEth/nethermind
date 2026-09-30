@@ -17,7 +17,7 @@ namespace Nethermind.TxPool.Test;
 [Parallelizable(ParallelScope.All)]
 internal class FrameTxVerifyGasFilterTest
 {
-    private const ulong ConfiguredMaxVerifyGas = Eip8141Constants.MaxVerifyGas;
+    private const ulong ConfiguredMaxVerifyGas = Eip8141Constants.MaxVerifyGas / 3;
 
     // An unrecognized layout is charged its whole frame list: whether an approving DEFAULT frame approves at
     // all depends on sender-controlled code, so the frames behind it may still run before any gas is paid.
