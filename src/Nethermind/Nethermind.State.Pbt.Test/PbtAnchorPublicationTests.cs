@@ -82,7 +82,7 @@ public class PbtAnchorPublicationTests
         blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [genesis]);
         Hash256 expectedShadowRoot = new(Metadata("anchor").GetProperty("pbtRoot").GetString()!);
         Nethermind.JsonRpc.Modules.DebugModule.IMigrationTelemetry telemetry = container.Resolve<Nethermind.JsonRpc.Modules.DebugModule.IMigrationTelemetry>();
-        Assert.That(telemetry.GetShadowRoot(genesis.Hash!), Is.EqualTo(expectedShadowRoot), "genesis is mirrored into PBT by main processing");
+        Assert.That(telemetry.GetShadowRoot(genesis.Hash!), Is.Null, "main processing does not write genesis into PBT");
         if (mode == "wrong-genesis")
         {
             Assert.ThrowsAsync<InvalidDataException>(() => bootstrap.Initialize(CancellationToken.None));
@@ -651,7 +651,7 @@ public class PbtAnchorPublicationTests
         public PbtTestContext Pbt { get; private set; } = null!;
         private PbtAnchorPublication? _publication;
         public PbtAnchorPublication Publication => _publication ??=
-            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, _config), Target, Pbt.Persistence, Pbt.Manager, Pbt.Coordinator, _config, LimboLogs.Instance);
+            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, _config), Target, Pbt.Persistence, Pbt.Coordinator, _config, LimboLogs.Instance);
         private readonly string _name;
         private readonly PbtConfig _config;
 

@@ -234,13 +234,17 @@ public class MigrationRestartE2ETests
         }
         IBlockchainProcessor processor = container.Resolve<IMainProcessingContext>().BlockchainProcessor;
         foreach (Block block in branch)
+        {
+            if (expectPbt && harness.Expected[names[Array.IndexOf(branch, block)]].GetProperty("binary").GetBoolean())
+                harness.WaitForPbt(harness.Tree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!);
             Assert.That(processor.Process(block, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts,
                 NullBlockTracer.Instance)?.Hash, Is.EqualTo(block.Hash));
+        }
         if (!expectPbt) return;
         foreach (string name in names)
         {
             bool binary = harness.Expected[name].GetProperty("binary").GetBoolean();
-            Assert.That(harness.Telemetry.GetShadowRoot(harness.Blocks[name].Hash!), Is.EqualTo(binary ? null : PbtRoot(harness, name)), name);
+            Assert.That(() => harness.Telemetry.GetShadowRoot(harness.Blocks[name].Hash!), Is.EqualTo(binary ? null : PbtRoot(harness, name)).After(30_000, 50), name);
         }
     }
 

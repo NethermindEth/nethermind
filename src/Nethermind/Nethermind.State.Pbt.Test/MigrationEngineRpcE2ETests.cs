@@ -134,6 +134,8 @@ public class MigrationEngineRpcE2ETests
         IBlockchainProcessor processor = harness.Container.Resolve<IMainProcessingContext>().BlockchainProcessor;
         foreach (Block block in branch)
         {
+            // The activation block needs its parent in PBT, which the background BAL replay provides.
+            if (block == branch[^1]) harness.WaitForPbt(branch[^2].Header);
             Block? processed = processor.Process(block, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts, NullBlockTracer.Instance);
             Assert.That(processed?.Hash, Is.EqualTo(block.Hash));
         }

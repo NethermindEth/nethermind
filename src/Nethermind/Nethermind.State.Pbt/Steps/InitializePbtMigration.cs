@@ -14,11 +14,13 @@ internal sealed class InitializePbtMigration(
     PbtMigrationBootstrap bootstrap,
     PbtMigrationImport import,
     PbtBalFollowerScheduler follower,
+    PbtBranchFollower branchFollower,
     MerkleShadowFollower merkleShadow,
     IPbtConfig config) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
+        branchFollower.Start();
         if (PbtMigrationBootstrap.HasSource(config))
         {
             import.Start();

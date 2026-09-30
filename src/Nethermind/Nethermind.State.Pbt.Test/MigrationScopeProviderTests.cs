@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
@@ -12,13 +11,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
-using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.Migration;
-using Nethermind.State.Pbt.Mirror;
 using Nethermind.State.Pbt.ScopeProvider;
 using NSubstitute;
 using NUnit.Framework;
@@ -77,55 +74,32 @@ public class MigrationScopeProviderTests
     }
 
     [Test]
-    public async Task Main_provider_mirrors_in_lockstep_and_runs_flat_alone_while_pbt_lacks_the_base()
+    public async Task Main_provider_runs_flat_before_activation_even_when_pbt_holds_the_base_and_pbt_from_activation()
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
             .AddSingleton<ISpecProvider>(Specs())
             .Build();
         await using PbtTestContext pbt = new();
-        FlatWorldStateManager flat = container.Resolve<FlatWorldStateManager>();
-        MigrationBackendSelector selector = new(Specs(), pbt.Manager);
-        MigrationScopeProvider provider = new(flat, pbt.WorldStateManager, pbt.Manager, pbt.ResourcePool, selector, pbt.Config, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
+        MigrationScopeProvider provider = new(container.Resolve<FlatWorldStateManager>(), pbt.WorldStateManager, new MigrationBackendSelector(Specs()), UnavailableStateHeaderProvider.Instance);
         BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).TestObject;
         BlockHeader block1 = Build.A.BlockHeader.WithParent(genesis).WithTimestamp(12).TestObject;
         BlockHeader activation = Build.A.BlockHeader.WithParent(block1).WithTimestamp(Activation).TestObject;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.Select(null, genesis), Is.TypeOf<PbtMirrorScopeProvider>(), "both backends start empty, so genesis is mirrored");
-            Assert.That(provider.Select(block1, activation), Is.TypeOf<PbtScopeProvider>(), "the activation block runs on PBT");
-            Assert.That(provider.Select(activation, null), Is.TypeOf<PbtScopeProvider>());
-        }
-
-        // Commit genesis into PBT only and persist it: PBT is now ahead of a flat that holds nothing.
+        // Commit genesis into PBT: before activation main processing still runs on flat alone.
         using (IWorldStateScopeProvider.IScope scope = pbt.WorldStateManager.GlobalWorldState.BeginScope(null, new LocalMetrics()))
         {
             scope.UpdateRootHash();
             ((PbtWorldStateScope)scope).UseAuthoritativeRoot(genesis.StateRoot!);
             scope.Commit(0);
         }
-        pbt.Manager.FlushCache(CancellationToken.None);
-        BlockHeader behind = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).WithStateRoot(TestItem.KeccakA).TestObject;
-        BlockHeader parentOfBehind = Build.A.BlockHeader.WithParent(behind).WithTimestamp(12).TestObject;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(selector.PbtHas(genesis), Is.True);
-            Assert.That(provider.Select(genesis, block1), Is.TypeOf<PbtMirrorScopeProvider>(), "PBT holds the base: lockstep");
-            Assert.That(provider.Select(block1, parentOfBehind), Is.TypeOf<FlatScopeProvider>(), "PBT behind the base: flat alone while the follower catches up");
-        }
-        // Persist a second PBT state so the pointer is above block 0.
-        using (IWorldStateScopeProvider.IScope scope = pbt.WorldStateManager.GlobalWorldState.BeginScope(genesis, new LocalMetrics()))
-        {
-            scope.UpdateRootHash();
-            ((PbtWorldStateScope)scope).UseAuthoritativeRoot(block1.StateRoot!);
-            scope.Commit(1);
-        }
-        pbt.Manager.FlushCache(CancellationToken.None);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.Select(behind, parentOfBehind), Is.TypeOf<FlatScopeProvider>(), "PBT persisted past the base: flat alone");
-            Assert.That(provider.Select(block1, activation), Is.TypeOf<PbtScopeProvider>());
+            Assert.That(pbt.Manager.HasStateForBlock(new StateId(genesis)), Is.True);
+            Assert.That(provider.Select(null, genesis), Is.TypeOf<FlatScopeProvider>(), "genesis is not written into PBT");
+            Assert.That(provider.Select(genesis, block1), Is.TypeOf<FlatScopeProvider>(), "PBT holding the base does not make main processing write to it");
+            Assert.That(provider.Select(block1, activation), Is.TypeOf<PbtScopeProvider>(), "the activation block runs on PBT");
+            Assert.That(provider.Select(activation, null), Is.TypeOf<PbtScopeProvider>());
         }
     }
 }
