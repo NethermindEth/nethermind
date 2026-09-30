@@ -99,9 +99,18 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     /// <inheritdoc/>
-    /// <remarks>A frame transaction carries no envelope signature and no element after its blob versioned hashes.</remarks>
-    protected override void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+    /// <remarks>A frame transaction carries no envelope signature and no element after its blob versioned hashes.
+    /// An overlong declared payload length leaves the end-of-payload checkpoint past the end of the buffer; that is
+    /// reported as a truncation rather than as a trailing element.</remarks>
+    protected override void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+    {
+        if (decoderContext.Position >= decoderContext.Length)
+        {
+            ThrowTruncatedPayload();
+        }
+
         ThrowTrailingElement();
+    }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
         RlpBehaviors rlpBehaviors)
@@ -267,6 +276,10 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTrailingElement() => throw new RlpException("frame transaction must not carry a trailing element");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowTruncatedPayload() =>
+        throw new RlpException("RLP data is truncated: frame transaction payload is incomplete.");
 }
 
 /// <summary>

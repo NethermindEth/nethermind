@@ -120,6 +120,7 @@ public static class FrameExceptionFragments
         // sequence and is not. The latter is trimmed of the byte range it goes on to name.
         "Unexpected RLP prefix",
         "Expected a sequence prefix",
+        "frame transaction payload is incomplete",
         // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",
