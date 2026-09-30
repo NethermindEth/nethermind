@@ -262,6 +262,23 @@ public class ExecutionPayloadTests
         Assert.That(result.Error, Contains.Substring($"Transaction {invalidIndex}"));
     }
 
+    [Test]
+    public void DecodeTxs_skipping_errors_drops_undecodable_entries_in_order([Values(8, 64)] int count)
+    {
+        byte[][] rlps = EncodeTxs(count);
+        rlps[1] = [0x01];
+        rlps[count - 2] = [.. rlps[count - 2], 0xDC, 0xAF];
+
+        TransactionDecodingResult result = TxsDecoder.DecodeTxs(rlps, skipErrors: true);
+
+        ulong[] expected = Enumerable.Range(0, count).Where(i => i != 1 && i != count - 2).Select(i => (ulong)i).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Transactions.Select(tx => tx.Nonce), Is.EqualTo(expected));
+        }
+    }
+
     // The early-started root task must be the one TryGetBlock consumes, with an identical root
     [Test]
     public void TryGetBlock_uses_early_started_tx_root_computation()
