@@ -656,17 +656,54 @@ public class LmdbDbTests
     }
 
     [Test]
-    public void MaxOperationsPerWave_does_not_split_a_single_callers_own_write_batch()
+    public void MaxOperationsPerWave_splits_a_single_callers_oversized_write_batch_into_sequential_chunks()
     {
-        // The cap only bounds coalescing ACROSS separate queued writers - a single caller's own write batch
-        // (already-atomic by construction) must still commit as one physical transaction even if it exceeds the
-        // cap by itself, since splitting it would sacrifice its current all-or-nothing atomicity - see
-        // ILmdbConfig.MaxOperationsPerWave's remarks.
+        // A single caller's write batch that BY ITSELF exceeds the cap is split into sequential physical
+        // commits (CommitLargeWriteInChunks) rather than committed uncapped - see PLAN-LMDB.md "Known issues"
+        // for why (an unbounded single commit, observed in practice for snap-sync account-tree writes averaging
+        // ~42,000 operations, blocks every concurrent CreateSnapshot reader for that commit's entire duration).
+        // This trades away that batch's previous all-or-nothing atomicity across chunks - accepted because the
+        // callers that actually produce oversized batches already tolerate losing the whole thing on a crash via
+        // WriteFlags.DisableWAL, so tolerating a rare partial application here is no worse.
         const int tinyWaveCap = 4;
         const int opsInOneBatch = 50;
-        string path = Path.Combine("testdb-lmdb-wavecap-atomic", TestContext.CurrentContext.Test.ID);
+        string path = Path.Combine("testdb-lmdb-wavecap-split", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("wave-cap-atomic-test", path, TestMapSize, TestMaxReaders, tinyWaveCap);
+        using LmdbDb db = new("wave-cap-split-test", path, TestMapSize, TestMaxReaders, tinyWaveCap);
+        try
+        {
+            using (IWriteBatch batch = db.StartWriteBatch())
+            {
+                for (int i = 0; i < opsInOneBatch; i++)
+                {
+                    batch.PutSpan(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+                }
+            }
+
+            for (int i = 0; i < opsInOneBatch; i++)
+            {
+                Assert.That(db.Get(BitConverter.GetBytes(i)), Is.EqualTo(BitConverter.GetBytes(i)));
+            }
+
+            LmdbDb.DiagnosticsSnapshot diagnostics = db.TakeAndResetDiagnostics();
+            int expectedChunks = (opsInOneBatch + tinyWaveCap - 1) / tinyWaveCap;
+            Assert.That(diagnostics.WriteWaveCount, Is.EqualTo(expectedChunks));
+            Assert.That(diagnostics.AvgWriteWaveOps, Is.LessThanOrEqualTo(tinyWaveCap));
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void MaxOperationsPerWave_does_not_split_a_single_callers_write_batch_under_the_cap()
+    {
+        const int tinyWaveCap = 4;
+        const int opsInOneBatch = 3;
+        string path = Path.Combine("testdb-lmdb-wavecap-nosplit", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = new("wave-cap-nosplit-test", path, TestMapSize, TestMaxReaders, tinyWaveCap);
         try
         {
             using (IWriteBatch batch = db.StartWriteBatch())

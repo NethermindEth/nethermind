@@ -49,21 +49,25 @@ public interface ILmdbConfig : IConfig
     int MaxReaders { get; set; }
 
     /// <summary>
-    /// Caps how many operations from separate, already-queued write batches <see cref="LmdbDb"/>'s group-commit
-    /// coordinator (<c>DrainIfLeader</c>) will coalesce into one physical LMDB write transaction. Every
+    /// Caps how many operations <see cref="LmdbDb"/>'s group-commit coordinator (<c>DrainIfLeader</c>) will
+    /// apply in one physical LMDB write transaction, whether coalesced from several separate queued write
+    /// batches or drawn from a single caller's own oversized one (see <c>CommitLargeWriteInChunks</c>). Every
     /// concurrent <see cref="LmdbDb.CreateSnapshot"/> call is blocked for a commit's entire duration (see
-    /// PLAN-LMDB.md "Known issues" - this is a real correctness requirement, not a bug), so an unbounded wave can
-    /// turn one slow/large commit into a system-wide stall affecting every reader, not just the writers waiting
-    /// on it.
+    /// PLAN-LMDB.md "Known issues" - this is a real correctness requirement, not a bug), so an unbounded
+    /// commit can turn one slow/large physical transaction into a system-wide stall affecting every reader, not
+    /// just the writers waiting on it - observed in practice as consensus-client Engine API timeouts during a
+    /// live sync, traced to snap-sync account-tree writes coalescing tens of thousands of operations into a
+    /// single <c>IWriteBatch.Dispose()</c> call.
     /// </summary>
     /// <remarks>
-    /// This bounds coalescing <em>across separate queued write batches</em> only - it does not split a single
-    /// caller's own write batch (e.g. one <c>IWriteBatch</c> accumulated from many <c>PutSpan</c> calls before a
-    /// single <c>Dispose()</c>) into multiple physical commits, since doing so would sacrifice that batch's
-    /// current all-or-nothing atomicity. If a single write batch is itself larger than this cap, it is still
-    /// committed as one physical transaction, uncapped - see <see cref="LmdbDb.DiagnosticsSnapshot.AvgWriteWaveOps"/>
-    /// to check whether that is actually happening before assuming this setting is being honored.
+    /// A single caller's own write batch that by itself exceeds this cap is split into sequential chunks, each
+    /// its own physical commit - this trades away that batch's previous all-or-nothing atomicity across chunks
+    /// (a failure partway through can leave it partially applied), accepted because the callers observed
+    /// producing oversized batches already pass <see cref="Nethermind.Core.WriteFlags.DisableWAL"/> and so
+    /// already tolerate losing the *entire* batch on a crash - see <c>CommitLargeWriteInChunks</c>'s remarks for
+    /// the full reasoning. Use <see cref="LmdbDb.DiagnosticsSnapshot.AvgWriteWaveOps"/> to confirm this cap is
+    /// actually bringing per-commit size down for a given column.
     /// </remarks>
-    [ConfigItem(Description = "Max operations coalesced from separate queued write batches into one physical LMDB commit. Does not split a single caller's own write batch - see PLAN-LMDB.md.", DefaultValue = "4096")]
+    [ConfigItem(Description = "Max operations per physical LMDB commit, whether coalesced from several write batches or chunked from a single oversized one - see PLAN-LMDB.md.", DefaultValue = "4096")]
     int MaxOperationsPerWave { get; set; }
 }

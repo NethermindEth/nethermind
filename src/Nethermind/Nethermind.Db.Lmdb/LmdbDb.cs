@@ -361,11 +361,13 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
 
     /// <summary>
     /// Becomes the sole writer for as long as there is queued work: repeatedly drains currently-queued writes -
-    /// up to <see cref="ILmdbConfig.MaxOperationsPerWave"/> operations' worth, see the cap's own remarks for why -
-    /// into one physical LMDB write transaction ("wave"), commits it once, and signals every caller whose
-    /// operations were part of that wave. If another thread is already draining, this returns immediately - that
-    /// thread's own loop will pick up the work this call just enqueued, since the enqueue always happens before
-    /// this check.
+    /// up to <see cref="ILmdbConfig.MaxOperationsPerWave"/> operations' worth, coalesced from as many separate
+    /// callers as fit - into one physical LMDB write transaction ("wave"), commits it once, and signals every
+    /// caller whose operations were part of that wave. A single caller whose own write batch already exceeds the
+    /// cap by itself is routed to <see cref="CommitLargeWriteInChunks"/> instead of being coalesced - see that
+    /// method's remarks for why splitting it is necessary and what it costs. If another thread is already
+    /// draining, this returns immediately - that thread's own loop will pick up the work this call just enqueued,
+    /// since the enqueue always happens before this check.
     /// </summary>
     private void DrainIfLeader()
     {
@@ -377,32 +379,33 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             {
                 while (_pendingWrites.TryDequeue(out PendingWrite? first))
                 {
-                    // Never splits a single caller's own PendingWrite (that would sacrifice its current
-                    // all-or-nothing atomicity) - only bounds how many SEPARATE, already-queued writes get
-                    // coalesced together. A caller whose own write batch already exceeds the cap by itself still
-                    // commits as one uncapped physical transaction - see ILmdbConfig.MaxOperationsPerWave.
+                    if (first.Operations.Count > _maxOperationsPerWave)
+                    {
+                        CommitLargeWriteInChunks(first);
+                        continue;
+                    }
+
                     List<PendingWrite> wave = [first];
                     int opsInWave = first.Operations.Count;
+                    // An oversized item encountered while coalescing is deferred rather than folded into this
+                    // wave (it needs CommitLargeWriteInChunks, not this loop) - handled right after this wave
+                    // commits, before returning to the outer dequeue loop, so overall processing order relative
+                    // to the queue is preserved.
+                    PendingWrite? deferredLargeWrite = null;
                     while (opsInWave < _maxOperationsPerWave && _pendingWrites.TryDequeue(out PendingWrite? more))
                     {
+                        if (more.Operations.Count > _maxOperationsPerWave)
+                        {
+                            deferredLargeWrite = more;
+                            break;
+                        }
+
                         wave.Add(more);
                         opsInWave += more.Operations.Count;
                     }
 
-                    try
-                    {
-                        CommitWaveWithMapGrowthRetry(wave);
-                        foreach (PendingWrite w in wave) w.Done.Set();
-                    }
-                    catch (Exception ex)
-                    {
-                        ExceptionDispatchInfo info = ExceptionDispatchInfo.Capture(ex);
-                        foreach (PendingWrite w in wave)
-                        {
-                            w.Error = info;
-                            w.Done.Set();
-                        }
-                    }
+                    CommitWaveAndSignal(wave);
+                    if (deferredLargeWrite is not null) CommitLargeWriteInChunks(deferredLargeWrite);
                 }
             }
             finally
@@ -416,6 +419,73 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             // around again rather than leaving that work stranded until an unrelated future write picks it up.
             if (_pendingWrites.IsEmpty) return;
         }
+    }
+
+    private void CommitWaveAndSignal(List<PendingWrite> wave)
+    {
+        try
+        {
+            bool durable = false;
+            List<(byte[] Key, byte[]? Value)> operations = new(wave.Count == 1 ? wave[0].Operations.Count : _maxOperationsPerWave);
+            foreach (PendingWrite w in wave)
+            {
+                durable |= w.WantsDurability;
+                operations.AddRange(w.Operations);
+            }
+
+            CommitOperationsWithMapGrowthRetry(operations, durable);
+            foreach (PendingWrite w in wave) w.Done.Set();
+        }
+        catch (Exception ex)
+        {
+            ExceptionDispatchInfo info = ExceptionDispatchInfo.Capture(ex);
+            foreach (PendingWrite w in wave)
+            {
+                w.Error = info;
+                w.Done.Set();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Splits a single caller's write batch that by itself exceeds <see cref="ILmdbConfig.MaxOperationsPerWave"/>
+    /// into sequential chunks, each committed as its own physical LMDB transaction - see PLAN-LMDB.md "Known
+    /// issues". Observed in practice: snap-sync account-tree writes coalesce tens of thousands of entries into
+    /// one <c>IWriteBatch</c> before a single <c>Dispose()</c> call, producing one ~40,000-operation physical
+    /// commit that (correctly, per <c>_writeCommitGate</c>'s own invariant) blocks every concurrent
+    /// <see cref="CreateSnapshot"/> reader for that commit's entire duration - measured at over 150ms average,
+    /// plausibly enough to blow past a consensus client's <c>newPayload</c> timeout.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the coalesced-wave path, a failure partway through here is <em>not</em> all-or-nothing: earlier
+    /// chunks may already be permanently committed by the time a later one fails, so this caller's write batch
+    /// can end up partially applied. Accepted specifically because the callers that produce oversized batches
+    /// (snap-sync tree writers - see <c>FlatSnapStateTree.Commit</c>/<c>FlatSnapStorageTree.Commit</c>) already
+    /// pass <see cref="WriteFlags.DisableWAL"/>, meaning they already tolerate losing the *entire* batch on a
+    /// crash because sync re-fetches and redoes it - the same reasoning extends to tolerating a rare partial
+    /// application on a non-crash failure here. This is not assumed to hold for every possible caller of this
+    /// plugin in general, only confirmed for the specific ones observed producing oversized batches in practice.
+    /// </remarks>
+    private void CommitLargeWriteInChunks(PendingWrite write)
+    {
+        List<(byte[] Key, byte[]? Value)> operations = write.Operations;
+        for (int offset = 0; offset < operations.Count; offset += _maxOperationsPerWave)
+        {
+            int count = Math.Min(_maxOperationsPerWave, operations.Count - offset);
+            List<(byte[] Key, byte[]? Value)> chunk = operations.GetRange(offset, count);
+            try
+            {
+                CommitOperationsWithMapGrowthRetry(chunk, write.WantsDurability);
+            }
+            catch (Exception ex)
+            {
+                write.Error = ExceptionDispatchInfo.Capture(ex);
+                write.Done.Set();
+                return;
+            }
+        }
+
+        write.Done.Set();
     }
 
     /// <summary>Doublings attempted before giving up and surfacing <see cref="MDBResultCode.MapFull"/> to callers
@@ -437,16 +507,9 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     /// correctly, not a long-lived one spanning the resize itself - flagged as a follow-up validation item before
     /// trusting this under real concurrent-snapshot load.
     /// </remarks>
-    private void CommitWaveWithMapGrowthRetry(List<PendingWrite> wave)
+    private void CommitOperationsWithMapGrowthRetry(List<(byte[] Key, byte[]? Value)> operations, bool durable)
     {
         long start = Stopwatch.GetTimestamp();
-        bool durable = false;
-        int opsCount = 0;
-        foreach (PendingWrite w in wave)
-        {
-            durable |= w.WantsDurability;
-            opsCount += w.Operations.Count;
-        }
 
         // Per-transaction NoSync (verified honored as of LMDB 1.0 - see PLAN-LMDB.md "Spike findings" #3) is the
         // per-commit durability knob: the environment itself is opened without the env-wide NoSync flag, so a
@@ -465,7 +528,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             // that regardless of which branch below runs, or which one returns out of the loop entirely.
             using (LightningTransaction tx = _env.BeginTransaction(flags))
             {
-                failure = ApplyWave(tx, wave);
+                failure = ApplyOperations(tx, operations);
 
                 if (failure is null)
                 {
@@ -481,7 +544,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
                     {
                         Interlocked.Increment(ref _writeWaveCount);
                         Interlocked.Add(ref _writeWaveElapsedTicks, Stopwatch.GetTimestamp() - start);
-                        Interlocked.Add(ref _writeWaveOpsCount, opsCount);
+                        Interlocked.Add(ref _writeWaveOpsCount, operations.Count);
                         return;
                     }
 
@@ -507,21 +570,18 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         }
     }
 
-    /// <summary>Applies every operation in <paramref name="wave"/> against <paramref name="tx"/>, stopping at the
-    /// first failing result code (currently only <see cref="MDBResultCode.MapFull"/> is expected in practice) so
-    /// the whole wave can be retried atomically rather than left half-applied in an aborted transaction.</summary>
-    private MDBResultCode? ApplyWave(LightningTransaction tx, List<PendingWrite> wave)
+    /// <summary>Applies every operation against <paramref name="tx"/>, stopping at the first failing result code
+    /// (currently only <see cref="MDBResultCode.MapFull"/> is expected in practice) so the whole set can be
+    /// retried atomically rather than left half-applied in an aborted transaction.</summary>
+    private MDBResultCode? ApplyOperations(LightningTransaction tx, List<(byte[] Key, byte[]? Value)> operations)
     {
-        foreach (PendingWrite w in wave)
+        foreach ((byte[] key, byte[]? value) in operations)
         {
-            foreach ((byte[] key, byte[]? value) in w.Operations)
-            {
-                MDBResultCode rc = value is null
-                    ? DeleteAllowingMissing(tx, key)
-                    : tx.Put(_database, key, value, PutOptions.None);
+            MDBResultCode rc = value is null
+                ? DeleteAllowingMissing(tx, key)
+                : tx.Put(_database, key, value, PutOptions.None);
 
-                if (rc != MDBResultCode.Success) return rc;
-            }
+            if (rc != MDBResultCode.Success) return rc;
         }
 
         return null;

@@ -386,6 +386,31 @@ would be the next thing to consider, informed by that data rather than guessed a
 (`MaxOperationsPerWave_splits_many_separate_write_batches_across_multiple_physical_commits`,
 `MaxOperationsPerWave_does_not_split_a_single_callers_own_write_batch`) pin down exactly this scope boundary.
 
+**Confirmed on the next check-in: it's the "one write batch is itself huge" case, not coalescing.** A fresh
+sync run (same live network, restarted with the `MaxOperationsPerWave` build) showed Account's `newPayload`
+timeouts still recurring, and diagnostics settled the open question directly: `Account: ... WriteWave x8 (avg
+157274.3us, avg 42206 ops/wave) ... Storage: ... WriteWave x8,663 (avg 3200.0us, avg 342 ops/wave)`. 42,206
+ops/wave is ~10x the 4096 cap - confirming each slow Account wave is one single write batch (matching
+`FlatSnapStateTree.Commit`'s pattern of accumulating many thousands of account entries into one `IWriteBatch`
+before a single `Dispose()`), not many small ones getting coalesced. The cap as first scoped genuinely could
+not help this case, exactly as flagged above.
+
+**Follow-up fix: `CommitLargeWriteInChunks` now splits a single oversized write batch into sequential physical
+commits**, accepting the partial-atomicity trade-off that was deliberately deferred until confirmed necessary.
+`DrainIfLeader` routes any dequeued `PendingWrite` whose own operation count exceeds `MaxOperationsPerWave` to
+this new path instead of the coalescing path (an oversized item encountered *while* coalescing others is
+deferred and handled the same way immediately after, preserving overall queue order). Internals were
+refactored to decouple "apply and commit operations" from `PendingWrite`/wave-of-`PendingWrite`s: the core
+(`CommitOperationsWithMapGrowthRetry`/`ApplyOperations`) now takes a flat `List<(byte[] Key, byte[]? Value)>`
+plus a `durable` bool directly, so both the coalesced-wave path and the chunked-single-batch path share it.
+Each chunk becomes its own `WriteWave` for diagnostics purposes, so the next check-in should show Account's
+wave count rise roughly 10x (42,206/4096 ≈ 11 chunks per what used to be one wave) with `AvgWriteWaveOps`
+dropping to at most the cap - if it doesn't, something in this fix isn't taking effect and needs re-checking
+before trusting it. Two tests updated/added to match the new semantics: a single oversized batch now *does*
+split into `ceil(ops/cap)` physical commits with correct data in every chunk
+(`MaxOperationsPerWave_splits_a_single_callers_oversized_write_batch_into_sequential_chunks`), while a batch
+under the cap still commits as exactly one (`MaxOperationsPerWave_does_not_split_a_single_callers_write_batch_under_the_cap`).
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,
