@@ -268,6 +268,21 @@ public class FrameTxDecoderTests
         Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing element"));
     }
 
+    [Test]
+    public void Decode_PayloadLengthOverrunningTheBuffer_ThrowsTruncated()
+    {
+        byte[] payload = TypedPayload(FrameTxBody());
+        payload[1]++;
+
+        void Decode()
+        {
+            RlpReader reader = new(payload);
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        }
+
+        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("payload is incomplete"));
+    }
+
     private static IEnumerable<TestCaseData> TrailingListCases()
     {
         yield return new TestCaseData(Rlp.OfEmptyList).SetName("Decode_PayloadWithTrailingEmptyList_Throws");
