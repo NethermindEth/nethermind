@@ -38,7 +38,7 @@ internal static class PbtOfflineExport
             {
                 if (!isAnchorCurrent()) throw new InvalidOperationException("Export anchor is no longer current.");
                 PbtArtifactWriter.PbtArtifactDigests digests = PbtOfflineSource.WriteArtifacts(source, code, anchor,
-                    temporary, snapshot, preimages, logManager, sortBufferBytes, workerCount, cancellationToken);
+                    scratchDirectory, snapshot, preimages, logManager, sortBufferBytes, workerCount, cancellationToken);
                 snapshot.Flush(flushToDisk: true);
                 preimages.Flush(flushToDisk: true);
                 cancellationToken.ThrowIfCancellationRequested();
