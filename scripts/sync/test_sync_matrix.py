@@ -153,7 +153,10 @@ class RunnerShapeCheckTest(unittest.TestCase):
             ("c2-standard-8", 2),
             ("c3d-standard-8-lssd", 1),
             ("c3d-standard-30-lssd", 2),
+            ("c3d-highmem-8-lssd", 1),
+            ("c3d-highmem-360-lssd", 32),
             ("c3d-standard-8", 0),
+            ("c3-standard-8-lssd", 2),
             ("n2-standard-8", 4),
         ):
             with self.subTest(machine_type=machine_type, local_ssd_count=count):
@@ -165,6 +168,8 @@ class RunnerShapeCheckTest(unittest.TestCase):
         for machine_type, count in (
             ("c3d-standard-8-lssd", 2),
             ("c3d-standard-16-lssd", 2),
+            ("c3d-highmem-8-lssd", 2),
+            ("c3d-highcpu-8-lssd", 1),
             ("c3d-standard-8", 1),
         ):
             with self.subTest(machine_type=machine_type, local_ssd_count=count):

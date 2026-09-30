@@ -6,17 +6,18 @@ set -euo pipefail
 matrix=$(cat)
 
 # -lssd types bundle a fixed number of Local SSDs and take no --local-ssd; plain C3D takes none.
+# C3D's standard and highmem -lssd series bundle the same count for a given vCPU size.
 errors=$(jq -r '
-  {
-    "c3d-standard-8-lssd": 1, "c3d-standard-16-lssd": 1, "c3d-standard-30-lssd": 2,
-    "c3d-standard-60-lssd": 4, "c3d-standard-90-lssd": 8, "c3d-standard-180-lssd": 16,
-    "c3d-standard-360-lssd": 32
-  } as $bundled
+  {"8": 1, "16": 1, "30": 2, "60": 4, "90": 8, "180": 16, "360": 32} as $bundled_by_vcpus
   | .[]
   | .machine_type as $type
   | .local_ssd_count as $count
-  | if ($type | endswith("-lssd")) and $bundled[$type] != null and $bundled[$type] != $count then
-      "\(.network): \($type) bundles \($bundled[$type]) Local SSD(s), but local_ssd_count is \($count)"
+  | ($type | capture("^c3d-(standard|highmem)-(?<vcpus>[0-9]+)-lssd$").vcpus // null) as $vcpus
+  | ($bundled_by_vcpus[$vcpus // ""]) as $bundled
+  | if ($type | test("^c3d-.*-lssd$")) and $bundled == null then
+      "\(.network): \($type) is not a C3D -lssd shape this check knows; add its bundled count"
+    elif $bundled != null and $bundled != $count then
+      "\(.network): \($type) bundles \($bundled) Local SSD(s), but local_ssd_count is \($count)"
     elif ($type | startswith("c3d-")) and ($type | endswith("-lssd") | not) and $count > 0 then
       "\(.network): \($type) cannot attach Local SSD; use a -lssd type or local_ssd_count 0"
     else empty end' <<<"$matrix")
