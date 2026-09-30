@@ -143,6 +143,23 @@ public class TraceStoreRpcModuleTests
         return buffer.ToArray();
     }
 
+    // Replays the stored transaction, or its block, and returns the transaction's serialized result.
+    private static async Task<JsonElement> ReplayStored(TestContext test, string[] types, bool blockReplay)
+    {
+        using JsonRpcResponse response = blockReplay
+            ? test.Module.trace_replayBlockTransactions(BlockParameter.Latest, types)
+            : test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, types);
+        using JsonDocument document = JsonDocument.Parse(await Serialize(response));
+        JsonElement result = document.RootElement.GetProperty("result");
+        if (blockReplay)
+        {
+            Assert.That(result.GetArrayLength(), Is.EqualTo(1));
+            result = result[0];
+        }
+
+        return result.Clone();
+    }
+
     [Test]
     public async Task Stored_replay_preserves_output_without_trace(
         [Values("stateDiff", "vmTrace", "")] string selection, [Values] bool blockReplay, [Values] bool streaming)
@@ -153,18 +170,7 @@ public class TraceStoreRpcModuleTests
         ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
         ParityLikeTxTrace reward = new() { BlockHash = test.DbTrace.BlockHash, Action = new ParityTraceAction { Type = "reward", Author = TestItem.AddressA, RewardType = "block" } };
         test.Store.Set(test.DbTrace.BlockHash!, serializer.Serialize(new[] { test.DbTrace, reward }));
-        string[] types = selection.Length == 0 ? [] : [selection];
-        using JsonRpcResponse response = blockReplay
-            ? test.Module.trace_replayBlockTransactions(BlockParameter.Latest, types)
-            : test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, types);
-        byte[] serialized = await Serialize(response);
-        using JsonDocument document = JsonDocument.Parse(serialized);
-        JsonElement result = document.RootElement.GetProperty("result");
-        if (blockReplay)
-        {
-            Assert.That(result.GetArrayLength(), Is.EqualTo(1));
-            result = result[0];
-        }
+        JsonElement result = await ReplayStored(test, selection.Length == 0 ? [] : [selection], blockReplay);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.GetProperty("output").GetString(), Is.EqualTo("0x2a"));
@@ -184,16 +190,7 @@ public class TraceStoreRpcModuleTests
         test.DbTrace.VmTrace = new ParityVmTrace { Code = [], Operations = [new ParityVmOperationTrace { Store = new ParityStorageChangeTrace { Key = [1], Value = [1] }, Sub = sub }] };
         test.Store.Set(test.DbTrace.BlockHash!, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(new[] { test.DbTrace }));
         string[] types = selection.Split(',');
-        using JsonRpcResponse response = blockReplay
-            ? test.Module.trace_replayBlockTransactions(BlockParameter.Latest, types)
-            : test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, types);
-        byte[] serialized = await Serialize(response);
-        using JsonDocument document = JsonDocument.Parse(serialized);
-        JsonElement result = document.RootElement.GetProperty("result");
-        if (blockReplay)
-        {
-            result = result[0];
-        }
+        JsonElement result = await ReplayStored(test, types, blockReplay);
 
         JsonElement vmTrace = result.GetProperty("vmTrace");
         using (Assert.EnterMultipleScope())
