@@ -117,7 +117,9 @@ public partial class HostMemoryFastPathTests
     }
 
     /// <summary>A random program of the ported stack opcodes, with PUSH2 jumps to JUMPDESTs it holds or to bad destinations.</summary>
-    private static byte[] GenerateStackProgram(Random random)
+    /// <param name="random">The source of the program.</param>
+    /// <param name="origin">Where the program will sit in the code, which its jump destinations count from.</param>
+    internal static byte[] GenerateStackProgram(Random random, int origin = 0)
     {
         List<byte> code = [];
         List<int> jumpDestinations = [];
@@ -163,7 +165,7 @@ public partial class HostMemoryFastPathTests
             }
             else if (pick < 90)
             {
-                jumpDestinations.Add(code.Count);
+                jumpDestinations.Add(origin + code.Count);
                 code.Add(JUMPDEST);
             }
             else
@@ -192,7 +194,7 @@ public partial class HostMemoryFastPathTests
         {
             int destination = jumpDestinations.Count != 0 && random.Next(5) != 0
                 ? jumpDestinations[random.Next(jumpDestinations.Count)]
-                : random.Next(3) switch { 0 => random.Next(0, code.Count + 2), 1 => 0xffff, _ => at + 2 };
+                : random.Next(3) switch { 0 => origin + random.Next(0, code.Count + 2), 1 => 0xffff, _ => origin + at + 2 };
             code[at] = (byte)(destination >> 8);
             code[at + 1] = (byte)destination;
         }
