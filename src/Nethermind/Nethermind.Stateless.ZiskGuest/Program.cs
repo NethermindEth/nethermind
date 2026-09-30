@@ -52,30 +52,27 @@ partial class Program
         state.Word2 = initialState[2];
         state.Word3 = initialState[3];
 
-        Sha256Parameters parameters;
-        parameters.State = (ulong*)&state;
-
         bool adjacent = Unsafe.AreSame(ref Unsafe.Add(ref Unsafe.AsRef(in left), 1), ref Unsafe.AsRef(in right));
         fixed (UInt256* pair = &left)
         {
             // The precompile requires 8-byte aligned operands; the locals and the RVA padding block are.
             Sha256Block block;
+            ulong* input;
             if (adjacent && ((nuint)pair & 7) == 0)
             {
-                parameters.Input = (ulong*)pair;
+                input = (ulong*)pair;
             }
             else
             {
                 block.Left = left;
                 block.Right = right;
-                parameters.Input = (ulong*)&block;
+                input = (ulong*)&block;
             }
 
-            syscall_sha256_f(&parameters);
+            Accelerators.Sha256F((ulong*)&state, input);
         }
 
-        parameters.Input = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
-        syscall_sha256_f(&parameters);
+        Accelerators.Sha256F((ulong*)&state, (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage)));
 
         parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
     }
@@ -109,20 +106,4 @@ partial class Program
         public UInt256 Left;
         public UInt256 Right;
     }
-
-    private unsafe struct Sha256Parameters
-    {
-        public ulong* State;
-        public ulong* Input;
-    }
-
-    /// <summary>The SHA-256 compression precompile: absorbs the 64-byte block at <c>Input</c> into <c>State</c>.</summary>
-    /// <remarks>
-    /// Suppresses the GC transition as the entry point is a single CSR write, which can neither block nor
-    /// call back. A <c>DllImport</c> rather than a <c>LibraryImport</c> because bflat compiles this file
-    /// without source generators.
-    /// </remarks>
-    [DllImport("__Internal")]
-    [SuppressGCTransition]
-    private static extern unsafe void syscall_sha256_f(Sha256Parameters* parameters);
 }
