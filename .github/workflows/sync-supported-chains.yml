@@ -138,6 +138,8 @@ jobs:
             exit 1
           fi
 
+          matrix=$(echo "$matrix" | nethermind/scripts/sync/check-runner-shapes.sh)
+
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 
   sync:
