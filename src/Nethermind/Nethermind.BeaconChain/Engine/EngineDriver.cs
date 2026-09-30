@@ -121,8 +121,8 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// <inheritdoc/>
     /// <remarks>
     /// Bridges the synchronous transition hook onto <see cref="NewPayload"/> for
-    /// <see cref="CurrentBlock"/>. Blocking on the call is acceptable here: the state transition
-    /// runs on a dedicated worker thread and the in-process engine call never re-enters it.
+    /// <see cref="CurrentBlock"/>. It blocks the calling thread until the engine answers, so the caller must not be a
+    /// thread-pool thread; the in-process engine call never re-enters the state transition.
     /// SYNCING/ACCEPTED map to <see cref="ExecutionStatus.Optimistic"/> per the spec's
     /// <c>verify_and_notify_new_payload</c>; only INVALID rejects the block.
     /// </remarks>

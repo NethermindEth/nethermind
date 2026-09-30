@@ -37,9 +37,10 @@ namespace Nethermind.BeaconChain.Sync;
 /// </summary>
 /// <remarks>
 /// Threading model: producers (gossip events on libp2p threads, the slot timer, the range-sync
-/// feed) only write to a bounded channel; one worker loop consumes it and is the only thread that
-/// touches the <see cref="IBlockImporter"/> (and through it the state transition and fork choice,
-/// neither of which is thread-safe). A fork-choice head step - <c>engine_forkchoiceUpdated</c>,
+/// feed) only write to a bounded channel; one worker loop consumes it and is the only caller of the
+/// <see cref="IBlockImporter"/> (and through it the state transition and fork choice, neither of which is
+/// thread-safe). Each import runs to completion on <see cref="ImportThread"/> before the next starts, as its
+/// engine call blocks. A fork-choice head step - <c>engine_forkchoiceUpdated</c>,
 /// finality handling, status refresh - runs on the worker after every drained import batch (or
 /// every <see cref="HeadStepImportInterval"/> imports while saturated) and on every slot tick.
 /// </remarks>
@@ -78,6 +79,9 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Bounds the range-synced blocks held for a deferred block, so gossip blocks held for a parent keep the rest of <see cref="MaxPendingGossipBlocks"/>.</summary>
     internal const int MaxRangeHeldBlocks = MaxPendingGossipBlocks / 2;
+
+    /// <summary>The most held range blocks whose missing columns are fetched at once, so the blocks behind a deferred one do not wait for each other's fetch.</summary>
+    internal const int MaxConcurrentHeldColumnFetches = 8;
 
     /// <summary>Cap on blocks awaiting a data/engine-availability retry, so a stuck peer or a stalled EL cannot grow this without bound.</summary>
     private const int MaxPendingRetryBlocks = 128;
@@ -121,6 +125,9 @@ public sealed class BeaconSyncOrchestrator(
     private const int ConcurrentDials = 16;
 
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconSyncOrchestrator>();
+
+    /// <summary>Runs the importer's block and envelope imports, whose engine call blocks, off the thread pool.</summary>
+    private readonly ImportThread _importThread = new();
     private readonly Channel<WorkItem> _work = Channel.CreateBounded<WorkItem>(
         new BoundedChannelOptions(WorkQueueCapacity) { SingleReader = true });
 
@@ -208,6 +215,15 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>The roots of the range-synced blocks held on the chain of <see cref="_rangeHeld"/>; touched by the worker only.</summary>
     private readonly HashSet<Hash256> _rangeHeldRoots = [];
+
+    /// <summary>The held range blocks whose by-root column fetch runs ahead of their turn to import, at most <see cref="MaxConcurrentHeldColumnFetches"/>.</summary>
+    private readonly HashSet<Hash256> _heldColumnFetches = [];
+
+    /// <summary>The held range blocks waiting for a place among <see cref="_heldColumnFetches"/>, oldest first; bounded by <see cref="MaxRangeHeldBlocks"/>.</summary>
+    private readonly Queue<(Hash256 Root, BeaconBlock Message)> _heldColumnFetchQueue = new();
+
+    /// <summary>Refused blocks whose columns a held fetch is already fetching, imported once that fetch ends complete; at most <see cref="MaxConcurrentHeldColumnFetches"/>.</summary>
+    private readonly Dictionary<Hash256, ForkedSignedBeaconBlock> _refusedOnHeldFetch = [];
 
     /// <summary>The head slot at the latest slot tick, and the first tick it was seen at.</summary>
     private (ulong HeadSlot, ulong SinceSlot)? _headSlotSeen;
@@ -309,6 +325,9 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>The slot of the newest range-synced block held for a deferred block, or <c>null</c> when none is; for tests.</summary>
     internal ulong? RangeHeldSlot => _rangeHeld?.Tip.Slot;
+
+    /// <summary>The held blocks waiting for a place among the by-root column fetches, bounded by <see cref="MaxRangeHeldBlocks"/>; for tests.</summary>
+    internal int HeldColumnFetchQueueCount => _heldColumnFetchQueue.Count;
 
     /// <summary>Runs the full sync flow from the given anchor until cancelled.</summary>
     /// <param name="afterEngineKick">Runs once the execution layer has been pointed at the anchor and before any block is imported, so slow start-up work does not delay that first call.</param>
@@ -482,7 +501,7 @@ public sealed class BeaconSyncOrchestrator(
                 continue;
             }
 
-            if (block.ParentRoot != expectedParent || importer.Import(block, root, verifySignatures: false) != BlockImportResult.Imported)
+            if (block.ParentRoot != expectedParent || await _importThread.RunAsync(() => importer.Import(block, root, verifySignatures: false)) != BlockImportResult.Imported)
             {
                 break;
             }
@@ -671,17 +690,28 @@ public sealed class BeaconSyncOrchestrator(
                 break;
             case ColumnFetchEndedItem ended:
                 _columnFetchesInFlight.Remove(ended.BlockRoot);
+                if (_heldColumnFetches.Remove(ended.BlockRoot))
+                {
+                    StartHeldColumnFetches(token);
+                }
+
                 bool fetchAgain = _fetchAgainOnEnd.Remove(ended.BlockRoot);
                 if (ended.Refused is not null)
                 {
                     _refusedFetchRoot = null;
                 }
 
+                ForkedSignedBeaconBlock? refusedBlock = ended.Refused;
+                if (_refusedOnHeldFetch.Remove(ended.BlockRoot, out ForkedSignedBeaconBlock? carried))
+                {
+                    refusedBlock ??= carried;
+                }
+
                 if (ended.Complete)
                 {
                     _columnRecovery.Remove(ended.BlockRoot);
                     await RetryOnColumnsAsync(ended.BlockRoot, token);
-                    if (ended.Refused is { } refused && !_pendingRetry.ContainsKey(ended.BlockRoot) && !_importer!.IsKnown(ended.BlockRoot))
+                    if (refusedBlock is { } refused && !_pendingRetry.ContainsKey(ended.BlockRoot) && !_importer!.IsKnown(ended.BlockRoot))
                     {
                         await ImportBlockAsync(refused, token, retryingOnColumns: true);
                     }
@@ -760,16 +790,40 @@ public sealed class BeaconSyncOrchestrator(
         {
             if (held?.DeferredRoot != deferredRoot)
             {
-                _rangeHeldRoots.Clear();
+                ClearRangeHeldRoots();
             }
 
             _rangeHeld = new HeldRange(deferredRoot, new Tip(root, block.Slot));
         }
 
         // A block waiting on another chain's deferred block must not take this chain over.
-        if (_rangeHeld?.DeferredRoot == deferredRoot)
+        if (_rangeHeld?.DeferredRoot == deferredRoot && _rangeHeldRoots.Add(root) && result == BlockImportResult.UnknownParent)
         {
-            _rangeHeldRoots.Add(root);
+            QueueHeldColumnFetch(block, root, token);
+        }
+    }
+
+    /// <summary>Has the columns of a held blob block fetched by root now, not when its parent imports, so the blocks behind a deferred block do not fetch one after another.</summary>
+    private void QueueHeldColumnFetch(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token)
+    {
+        if (block is ForkedSignedBeaconBlock.OfFulu { Block.Message: { Body.BlobKzgCommitments.Length: > 0 } message })
+        {
+            _heldColumnFetchQueue.Enqueue((root, message));
+            StartHeldColumnFetches(token);
+        }
+    }
+
+    private void StartHeldColumnFetches(CancellationToken token)
+    {
+        while (_heldColumnFetches.Count < MaxConcurrentHeldColumnFetches && _heldColumnFetchQueue.TryDequeue(out (Hash256 Root, BeaconBlock Message) next))
+        {
+            Hash256 root = next.Root;
+            BeaconBlock message = next.Message;
+            // A block that left the held chain meanwhile needs nothing ahead of its turn.
+            if (_rangeHeldRoots.Contains(root) && StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, message, fetchToken), token))
+            {
+                _heldColumnFetches.Add(root);
+            }
         }
     }
 
@@ -810,7 +864,7 @@ public sealed class BeaconSyncOrchestrator(
     {
         Hash256 root = block.ComputeMessageRoot();
         long startMs = Environment.TickCount64;
-        BlockImportResult result = _importer!.Import(block, root, verifySignatures: true);
+        BlockImportResult result = await _importThread.RunAsync(() => _importer!.Import(block, root, verifySignatures: true));
 
         // These results come after the importer verified the proposer signature.
         if (result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified)
@@ -839,7 +893,7 @@ public sealed class BeaconSyncOrchestrator(
             if (!QueuePendingRetry(root, block))
             {
                 ReleaseImporterDeferral(root);
-                DropPendingChildren(root);
+                DropPendingChildren(root, "the retry set is full");
                 // The refused block's own fetch feeds back one import attempt; that attempt never fetches again, so the set stays the only place a block waits.
                 if (result == BlockImportResult.DataUnavailable && !retryingOnColumns)
                 {
@@ -871,7 +925,7 @@ public sealed class BeaconSyncOrchestrator(
 
             if (result == BlockImportResult.Invalid || (wasRetried && result == BlockImportResult.UnknownParent))
             {
-                DropPendingChildren(root);
+                DropPendingChildren(root, result == BlockImportResult.Invalid ? "it is invalid" : "its parent is no longer known");
             }
         }
 
@@ -901,9 +955,17 @@ public sealed class BeaconSyncOrchestrator(
             return;
         }
 
+        // A held block's fetch ahead of its turn may still run: its end retries this block, so a second fetch would only duplicate it.
+        bool heldFetchRunning = _heldColumnFetches.Contains(root);
         RangeSync.ColumnFetchRotation? rotation;
         if (refused)
         {
+            if (heldFetchRunning)
+            {
+                _refusedOnHeldFetch[root] = block;
+                return;
+            }
+
             if (_refusedFetchRoot is not null)
             {
                 return;
@@ -914,6 +976,12 @@ public sealed class BeaconSyncOrchestrator(
         else
         {
             WatchColumns(root, gloas: false);
+            if (heldFetchRunning)
+            {
+                _fetchAgainOnEnd.Add(root);
+                return;
+            }
+
             if (!_columnFetchRotations.TryGetValue(root, out rotation))
             {
                 _columnFetchRotations[root] = rotation = new RangeSync.ColumnFetchRotation(slotClock);
@@ -1048,19 +1116,65 @@ public sealed class BeaconSyncOrchestrator(
         if (_rangeHeld?.DeferredRoot == root)
         {
             _rangeHeld = null;
-            _rangeHeldRoots.Clear();
+            ClearRangeHeldRoots();
         }
     }
 
-    /// <summary>Forgets the gossip blocks held for <paramref name="parentRoot"/>, and theirs in turn, once that parent can no longer import.</summary>
-    /// <remarks>Otherwise they keep their share of <see cref="MaxPendingGossipBlocks"/> for the process lifetime.</remarks>
-    private void DropPendingChildren(Hash256 parentRoot)
+    /// <summary>Moves the held tip back to the deferred block its chain waits on once the tip is dropped, so the next round fetches the dropped blocks again instead of starting past them.</summary>
+    private void LowerRangeHeldTip()
     {
-        if (!_pendingByParent.ContainsKey(parentRoot))
+        if (_rangeHeld is not { } held)
         {
             return;
         }
 
+        if (_pendingRetry.TryGetValue(held.DeferredRoot, out PendingRetry deferred))
+        {
+            _rangeHeld = held with { Tip = new Tip(held.DeferredRoot, deferred.Block.Slot) };
+        }
+        else
+        {
+            _rangeHeld = null;
+            ClearRangeHeldRoots();
+        }
+    }
+
+    private void ClearRangeHeldRoots()
+    {
+        _rangeHeldRoots.Clear();
+        _heldColumnFetchQueue.Clear();
+    }
+
+    /// <summary>Keeps in the fetch queue only the blocks still held, so blocks dropped and fetched again cannot pile up behind fetches that wait on a slow peer.</summary>
+    private void DropHeldColumnFetchesOfDroppedBlocks()
+    {
+        for (int waiting = _heldColumnFetchQueue.Count; waiting > 0; waiting--)
+        {
+            (Hash256 Root, BeaconBlock Message) next = _heldColumnFetchQueue.Dequeue();
+            if (_rangeHeldRoots.Contains(next.Root))
+            {
+                _heldColumnFetchQueue.Enqueue(next);
+            }
+        }
+    }
+
+    /// <summary>Forgets the blocks held for <paramref name="parentRoot"/>, and theirs in turn, once that parent can no longer import.</summary>
+    /// <remarks>Otherwise they keep their share of <see cref="MaxPendingGossipBlocks"/> for the process lifetime. The drop is logged once and counted.</remarks>
+    /// <param name="cause">Why <paramref name="parentRoot"/> cannot import, for the log line.</param>
+    private void DropPendingChildren(Hash256 parentRoot, string cause)
+    {
+        bool tipDropped = _rangeHeld?.Tip.Root == parentRoot;
+        if (!_pendingByParent.ContainsKey(parentRoot))
+        {
+            if (tipDropped)
+            {
+                LowerRangeHeldTip();
+            }
+
+            return;
+        }
+
+        int count = 0;
         Stack<Hash256> dropped = new();
         dropped.Push(parentRoot);
         while (dropped.TryPop(out Hash256? root))
@@ -1071,13 +1185,28 @@ public sealed class BeaconSyncOrchestrator(
             }
 
             _pendingCount -= children.Count;
+            count += children.Count;
             foreach (ForkedSignedBeaconBlock child in children)
             {
                 Hash256 childRoot = child.ComputeMessageRoot();
                 _heldForPayload.Remove(childRoot);
+                _rangeHeldRoots.Remove(childRoot);
+                tipDropped |= _rangeHeld?.Tip.Root == childRoot;
                 ReleaseImporterDeferral(childRoot);
                 dropped.Push(childRoot);
             }
+        }
+
+        if (tipDropped)
+        {
+            LowerRangeHeldTip();
+        }
+
+        if (count > 0)
+        {
+            DropHeldColumnFetchesOfDroppedBlocks();
+            Metrics.BeaconChainHeldBlocksDropped += (ulong)count;
+            if (_logger.IsInfo) _logger.Info($"Dropped the {count} held block{(count == 1 ? "" : "s")} behind {parentRoot}: {cause}");
         }
     }
 
@@ -1108,7 +1237,7 @@ public sealed class BeaconSyncOrchestrator(
                 ReleaseRangeHeld(root);
                 _columnFetchRotations.Remove(root);
                 ReleaseColumnWatch(root);
-                DropPendingChildren(root);
+                DropPendingChildren(root, retry.Block.Slot <= finalizedSlot ? "it fell behind finality" : "its retry expired");
                 if (retry.Block.Slot > finalizedSlot && _logger.IsWarn)
                     _logger.Warn($"Dropping block {root} at slot {retry.Block.Slot}: its data did not become available within {MaxPendingRetryAgeEpochs} epochs");
                 // Nothing else brings back a dropped block the head waits on: range sync re-delivers it from the head.
@@ -1268,7 +1397,7 @@ public sealed class BeaconSyncOrchestrator(
         ExecutionPayloadEnvelopeImportResult result;
         try
         {
-            result = _importer!.ImportEnvelope(envelope);
+            result = await _importThread.RunAsync(() => _importer!.ImportEnvelope(envelope));
         }
         catch (Exception e)
         {
@@ -1486,7 +1615,7 @@ public sealed class BeaconSyncOrchestrator(
         // The parent's import drains this child, so the parent is not fetched again.
         if (IsWaitingForPayload(block.ParentRoot))
         {
-            HoldForWaitingParent(block);
+            await HoldForWaitingParentAsync(block);
             return;
         }
 
@@ -1614,12 +1743,12 @@ public sealed class BeaconSyncOrchestrator(
     /// a later by-root fetch delivers it after its parent. A block the full queue cannot take is not marked seen.
     /// </remarks>
     /// <returns>Whether the block is held.</returns>
-    private bool HoldForWaitingParent(ForkedSignedBeaconBlock block)
+    private async Task<bool> HoldForWaitingParentAsync(ForkedSignedBeaconBlock block)
     {
         Hash256 root = block.ComputeMessageRoot();
         if (_pendingCount >= MaxPendingGossipBlocks
             || gossipRouter.IsProposalSeen(block.Slot, block.ProposerIndex)
-            || _importer!.Import(block, root, verifySignatures: true) != BlockImportResult.ParentPayloadUnverified)
+            || await _importThread.RunAsync(() => _importer!.Import(block, root, verifySignatures: true)) != BlockImportResult.ParentPayloadUnverified)
         {
             return false;
         }
@@ -1631,11 +1760,11 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Holds <paramref name="chain"/> from index <paramref name="from"/> down to its gossip block at index 0, stopping at the first block not held.</summary>
-    private void HoldChainForWaitingParent(List<ForkedSignedBeaconBlock> chain, int from)
+    private async Task HoldChainForWaitingParentAsync(List<ForkedSignedBeaconBlock> chain, int from)
     {
         for (int i = from; i >= 0; i--)
         {
-            if (!HoldForWaitingParent(chain[i]))
+            if (!await HoldForWaitingParentAsync(chain[i]))
             {
                 return;
             }
@@ -1652,7 +1781,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             if (IsWaitingForPayload(parent))
             {
-                HoldChainForWaitingParent(chain, chain.Count - 1);
+                await HoldChainForWaitingParentAsync(chain, chain.Count - 1);
                 return;
             }
 
@@ -1678,7 +1807,7 @@ public sealed class BeaconSyncOrchestrator(
             BlockImportResult result = await ImportBlockAsync(chain[i], token);
             if (result == BlockImportResult.ParentPayloadUnverified && i > 0 && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
             {
-                HoldChainForWaitingParent(chain, i - 1);
+                await HoldChainForWaitingParentAsync(chain, i - 1);
                 return;
             }
 
@@ -2436,6 +2565,89 @@ public sealed class BeaconSyncOrchestrator(
             }
 
             return all;
+        }
+    }
+
+    /// <summary>Runs blocking import work, one item at a time, on a thread that is not a thread-pool thread.</summary>
+    /// <remarks>
+    /// The importer's newPayload call blocks its thread until the execution layer answers, which can take minutes under load,
+    /// so it must not hold a pool thread. The thread starts on the first item and ends after <see cref="IdleTimeout"/> without one,
+    /// so an instance nobody uses holds no thread and needs no disposal.
+    /// </remarks>
+    internal sealed class ImportThread
+    {
+        // Two slots, so gossip blocks 12 s apart keep one thread and its thread-local caches.
+        private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(24);
+
+        private readonly object _gate = new();
+        private readonly Queue<Action> _queue = new();
+        private readonly Action<Thread> _start;
+        private bool _running;
+
+        /// <param name="start">Starts the import thread; replaced by tests to fail it.</param>
+        internal ImportThread(Action<Thread>? start = null) => _start = start ?? (static thread => thread.Start());
+
+        /// <returns>A task with the result or the exception of <paramref name="work"/>, whose continuations never run on the import thread.</returns>
+        public Task<T> RunAsync<T>(Func<T> work)
+        {
+            TaskCompletionSource<T> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_gate)
+            {
+                _queue.Enqueue(() =>
+                {
+                    try
+                    {
+                        completion.SetResult(work());
+                    }
+                    catch (Exception e)
+                    {
+                        completion.SetException(e);
+                    }
+                });
+
+                if (_running)
+                {
+                    Monitor.Pulse(_gate);
+                }
+                else
+                {
+                    _running = true;
+                    try
+                    {
+                        _start(new Thread(Run) { IsBackground = true, Name = "Beacon block import" });
+                    }
+                    catch
+                    {
+                        // No thread will drain the queue, so the next call must start one instead of waiting for it.
+                        _running = false;
+                        _queue.Clear();
+                        throw;
+                    }
+                }
+            }
+
+            return completion.Task;
+        }
+
+        private void Run()
+        {
+            while (true)
+            {
+                Action work;
+                lock (_gate)
+                {
+                    while (!_queue.TryDequeue(out work!))
+                    {
+                        if (!Monitor.Wait(_gate, IdleTimeout) && _queue.Count == 0)
+                        {
+                            _running = false;
+                            return;
+                        }
+                    }
+                }
+
+                work();
+            }
         }
     }
 }
