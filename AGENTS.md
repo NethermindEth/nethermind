@@ -74,7 +74,7 @@ Before creating a pull request:
 
 ## Agent reviews
 
-- When submitting a GitHub review, use `APPROVE` or `COMMENT`, never `REQUEST_CHANGES`. A requested-changes review blocks the merge until that reviewer re-reviews, even after other maintainers approve. Post blocking findings in a `COMMENT` review, and leave the decision to block to a human.
+- When submitting a GitHub review, use `APPROVE` or `COMMENT`, never `REQUEST_CHANGES`. Post blocking findings in a `COMMENT` review.
 
 ## Benchmark workflows
 
