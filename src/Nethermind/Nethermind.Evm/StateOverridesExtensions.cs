@@ -24,7 +24,7 @@ public static class StateOverridesExtensions
         IReleaseSpec spec)
     {
         // As in geth, each simulated block starts from the spec's precompiles, even one without overrides.
-        overridableCodeInfoRepository.ResetPrecompileOverrides();
+        overridableCodeInfoRepository.ResetPrecompileOverrides(spec);
         if (overrides is not null)
         {
             foreach ((Address address, AccountOverride accountOverride) in overrides)
@@ -104,7 +104,7 @@ public static class StateOverridesExtensions
             // As in geth, a precompile cannot be moved onto an account that is overridden itself.
             if (overrides.ContainsKey(accountOverride.MovePrecompileToAddress))
             {
-                throw new ArgumentException($"Account {accountOverride.MovePrecompileToAddress} is already overridden");
+                throw new ArgumentException($"account {accountOverride.MovePrecompileToAddress} is already overridden");
             }
 
             overridableCodeInfoRepository.MovePrecompile(

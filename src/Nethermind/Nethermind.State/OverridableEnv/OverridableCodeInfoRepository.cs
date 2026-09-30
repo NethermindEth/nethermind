@@ -16,11 +16,7 @@ namespace Nethermind.State.OverridableEnv;
 public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState, CodeOverrideStore? overrides = null) : IOverridableCodeInfoRepository
 {
     private readonly Dictionary<Address, CodeInfo> _codeOverrides = (overrides ??= new CodeOverrideStore()).Code;
-    private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = overrides.Precompiles;
-
-    /// <summary>Precompile addresses whose code is overridden, moved-away origins included.</summary>
-    /// <remarks>They dispatch as code only for the block that overrides them.</remarks>
-    private readonly HashSet<Address> _overriddenPrecompileAddresses = [];
+    private readonly Dictionary<Address, CodeInfo> _precompileOverrides = overrides.Precompiles;
 
     public bool IsCodeOverridable => true;
 
@@ -28,7 +24,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         delegationAddress = null;
         // Moved precompiles are rare, so skip the hash lookup when there are none.
-        if (_precompileOverrides.Count != 0 && _precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) precompile)) return precompile.codeInfo;
+        if (_precompileOverrides.Count != 0 && _precompileOverrides.TryGetValue(codeSource, out CodeInfo? precompile)) return precompile;
 
         if (_codeOverrides.TryGetValue(codeSource, out CodeInfo? result))
         {
@@ -51,7 +47,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverrides.TryGetValue(target, out CodeInfo? result) ? result : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
-        _precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) precompile) ? precompile.codeInfo.Precompile
+        _precompileOverrides.TryGetValue(codeSource, out CodeInfo? precompile) ? precompile.Precompile
         : _codeOverrides.TryGetValue(codeSource, out CodeInfo? result) ? result.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
@@ -61,17 +57,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value)
-    {
-        _codeOverrides[key] = value;
-        if (vmSpec.IsPrecompile(key)) _overriddenPrecompileAddresses.Add(key);
-    }
+        CodeInfo value) => _codeOverrides[key] = value;
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
-        _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
+        _precompileOverrides[targetAddr] = this.GetCachedCodeInfo(precompileAddr, vmSpec);
         _codeOverrides[precompileAddr] = new CodeInfo(worldState.GetCode(precompileAddr));
-        _overriddenPrecompileAddresses.Add(precompileAddr);
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
@@ -88,16 +79,18 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         _precompileOverrides.Clear();
         _codeOverrides.Clear();
-        _overriddenPrecompileAddresses.Clear();
     }
 
-    public void ResetPrecompileOverrides()
+    /// <remarks>
+    /// Also drops the code overrides at <paramref name="spec"/>'s precompile addresses, moved-away origins included,
+    /// so each block dispatches its precompiles again, even at an address a fork made a precompile since.
+    /// </remarks>
+    public void ResetPrecompileOverrides(IReleaseSpec spec)
     {
-        foreach (Address address in _overriddenPrecompileAddresses)
+        foreach (Address address in _codeOverrides.Keys)
         {
-            _codeOverrides.Remove(address);
+            if (spec.IsPrecompile(address)) _codeOverrides.Remove(address);
         }
-        _overriddenPrecompileAddresses.Clear();
         _precompileOverrides.Clear();
     }
 }

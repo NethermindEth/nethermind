@@ -70,15 +70,9 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
     /// <summary>Returns the precompile moved to <paramref name="codeSource"/>.</summary>
     private bool TryGetMoved(Address codeSource, [NotNullWhen(true)] out CodeInfo? codeInfo)
     {
-        Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> precompiles = overrides.Precompiles;
-        if (precompiles.Count != 0 && precompiles.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) moved))
-        {
-            codeInfo = moved.codeInfo;
-            return true;
-        }
-
+        Dictionary<Address, CodeInfo> precompiles = overrides.Precompiles;
         codeInfo = null;
-        return false;
+        return precompiles.Count != 0 && precompiles.TryGetValue(codeSource, out codeInfo);
     }
 
     /// <summary>Returns the code of a precompile address that an override, a move away included, turned into an account.</summary>

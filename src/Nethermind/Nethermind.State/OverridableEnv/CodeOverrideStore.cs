@@ -15,5 +15,5 @@ namespace Nethermind.State.OverridableEnv;
 public sealed class CodeOverrideStore
 {
     internal Dictionary<Address, CodeInfo> Code { get; } = [];
-    internal Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> Precompiles { get; } = [];
+    internal Dictionary<Address, CodeInfo> Precompiles { get; } = [];
 }

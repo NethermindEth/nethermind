@@ -1944,12 +1944,14 @@ public class EthSimulateTestsBlocksAndTransactions
 
     /// <summary>
     /// Regression test: as in geth, any override of a precompile's address turns it into an ordinary account, which
-    /// runs its code instead of the precompile, on the EIP-7928 path and on the sequential one.
+    /// runs its code instead of the precompile, both when called and through a delegation, on the EIP-7928 path and on
+    /// the sequential one.
     /// </summary>
     [Test]
     public async Task eth_simulateV1_overridden_precompile_address_runs_code([Values] bool balPath, [Values] bool overrideCode)
     {
         Address identity = Address.FromNumber(4);
+        Address delegator = new("0xc400000000000000000000000000000000000000");
 
         using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
 
@@ -1961,19 +1963,24 @@ public class EthSimulateTestsBlocksAndTransactions
                 {
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { identity, overrideCode ? new AccountOverride { Code = Return42Code } : new AccountOverride { Balance = 1.Ether } }
+                        { identity, overrideCode ? new AccountOverride { Code = Return42Code } : new AccountOverride { Balance = 1.Ether } },
+                        { delegator, new AccountOverride { Code = Bytes.Concat(Eip7702Constants.DelegationHeader, identity.Bytes) } }
                     },
-                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = identity, Input = EcrecoverInput, GasPrice = UInt256.Zero }]
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = identity, Input = EcrecoverInput, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = delegator, Input = EcrecoverInput, GasPrice = UInt256.Zero }
+                    ]
                 }
             ]
         };
 
-        SimulateCallResult call = SimulateSingleBlock(chain, payload).Single();
+        SimulateCallResult[] calls = SimulateSingleBlock(chain, payload);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(call.Error, Is.Null);
-            Assert.That(call.ReturnData, overrideCode ? Is.EqualTo(new UInt256(42).ToBigEndian()) : Is.Empty);
+            Assert.That(calls.Select(static c => c.Error), Is.All.Null);
+            Assert.That(calls.Select(static c => c.ReturnData), overrideCode ? Is.All.EqualTo(new UInt256(42).ToBigEndian()) : Is.All.Empty);
         }
     }
 
@@ -2055,7 +2062,7 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.Error, Is.EqualTo($"Account {movedTo} is already overridden"));
+        Assert.That(result.Result.Error, Is.EqualTo($"account {movedTo} is already overridden"));
     }
 
     /// <summary>
