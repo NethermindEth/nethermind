@@ -177,7 +177,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             for (int i = 0; i < bytes.Length; i += EvmStack.WordSize)
             {
                 UInt256 word = new(bytes.Slice(i, EvmStack.WordSize), isBigEndian: true);
-                size += "\"0x\""u8.Length + Math.Max(1, (259 - word.CountLeadingZeros()) / 4);
+                size += "\"0x\""u8.Length + Math.Max(1, (256 - word.CountLeadingZeros() + 3) / 4);
             }
             size += Math.Max(0, bytes.Length / EvmStack.WordSize - 1);
         }
@@ -211,6 +211,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         return length;
     }
 
+    /// <remarks>Keep in sync with <see cref="GetEntrySize"/>; GethLikeTxTraceSizeTests verifies the size against this output.</remarks>
     internal static void WriteEntry(
         Utf8JsonWriter writer,
         GethTxTraceEntry entry,
