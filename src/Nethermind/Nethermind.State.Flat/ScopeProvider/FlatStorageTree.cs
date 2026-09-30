@@ -550,14 +550,17 @@ public sealed class FlatStorageTree(
 
     // ParallelStorageRoot: the trie already holds every committed write (coalesced to its final value), so only mirror
     // the values into the flat overlay and commit. A clear resets the trie, after which the remaining writes must go in again.
+    // As with the other batches, DeferStorageTrieCommit leaves the nodes to the scope commit and only hashes here.
     private sealed class PrebuiltStorageWriteBatch(
         FlatStorageTree storageTree,
         Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         private bool _cleared;
+        private int _writes;
 
         public void Set(in UInt256 index, in UInt256 value)
         {
+            _writes++;
             if (_cleared)
             {
                 Span<byte> buffer = stackalloc byte[32];
@@ -576,7 +579,8 @@ public sealed class FlatStorageTree(
         public void Dispose()
         {
             StorageTree tree = storageTree.GetTrees().Tree;
-            tree.Commit();
+            if (storageTree._config.DeferStorageTrieCommit) tree.UpdateRootHash(_writes > MinWritesToHashInParallel);
+            else tree.Commit();
             onRootUpdated(storageTree._address, tree.RootHash);
         }
     }
