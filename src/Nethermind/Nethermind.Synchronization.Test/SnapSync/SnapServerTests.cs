@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -106,6 +107,47 @@ public class SnapServerTests
         using IByteArrayList result = _server.GetByteCodes([hashA, hashB], 1, CancellationToken.None);
 
         Assert.That(result.Count, Is.EqualTo(1));
+    }
+
+    // Code is read as native memory the store must free, so a missing code or a read cut short by the limit still frees it.
+    [Test]
+    public void GetByteCodes_releases_every_code_it_reads()
+    {
+        ValueHash256 hashA = StoreCode(new byte[100]);
+        ValueHash256 hashB = StoreCode(new byte[100]);
+        ValueHash256 missing = Keccak.Compute([9, 9, 9]).ValueHash256;
+        ReleaseCountingCodeDb codeDb = new(_codeDb);
+        SnapServer server = new(NoopSnapServer.Instance, codeDb, _blockTree, _balStore);
+
+        using IByteArrayList result = server.GetByteCodes([missing, hashA, hashB], 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeDb.Reads, Is.EqualTo(2), "the limit stops the reads after the first code");
+            Assert.That(codeDb.Held, Is.Zero);
+        }
+    }
+
+    /// <summary>Counts code reads and the ones not yet released.</summary>
+    private sealed class ReleaseCountingCodeDb(IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore
+    {
+        public int Reads { get; private set; }
+        public int Held { get; private set; }
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+
+        public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            Reads++;
+            Held++;
+            return inner.GetSpan(key, flags);
+        }
+
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        {
+            Held--;
+            inner.DangerousReleaseMemory(span);
+        }
     }
 
     [Test]
