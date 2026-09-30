@@ -150,7 +150,16 @@ namespace Nethermind.Trie
 
         // Acquire pairs with the release publication of _nodeData in DecodeRlp: a concurrent resolver may publish a
         // decode while another thread tests whether the node is resolved, and the decoded fields must be visible with it.
-        public NodeType NodeType => ReadNodeData()?.NodeType ?? NodeType.Unknown;
+        // A type switch over the sealed node data classes rather than an INodeData call: interface dispatch through a
+        // call site that sees several classes costs an amount that depends on where the runtime placed them.
+        public NodeType NodeType => ReadNodeData() switch
+        {
+            BranchData => NodeType.Branch,
+            ExtensionData => NodeType.Extension,
+            LeafData => NodeType.Leaf,
+            null => NodeType.Unknown,
+            { } other => other.NodeType,
+        };
         public INodeData? NodeData => ReadNodeData();
 
         // BranchData is sealed and the only branch data, so one type test answers this without the NodeType dispatch.
@@ -158,7 +167,13 @@ namespace Nethermind.Trie
 
         public byte[]? Key
         {
-            get { return _nodeData is INodeWithKey node ? node?.Key : null; }
+            get => _nodeData switch
+            {
+                ExtensionData extension => extension.Key,
+                LeafData leaf => leaf.Key,
+                INodeWithKey node => node.Key,
+                _ => null,
+            };
             internal set
             {
                 if (_nodeData is not INodeWithKey node)
@@ -688,7 +703,7 @@ namespace Nethermind.Trie
                 ThrowNotABranch();
             }
 
-            ref object? data = ref _nodeData![i];
+            ref object? data = ref DataItem(i);
             if (data is null)
             {
                 CappedArray<byte> rlp = ReadRlp();
@@ -713,7 +728,7 @@ namespace Nethermind.Trie
                 i++;
             }
 
-            ref object? data = ref _nodeData![i];
+            ref object? data = ref DataItem(i);
             if (data is null)
             {
                 dirtyChild = null;
@@ -849,7 +864,17 @@ namespace Nethermind.Trie
         /// when setting to object[] array
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetItem(int i, TrieNode? node) => _nodeData![i] = node ?? _nullNode;
+        private void SetItem(int i, TrieNode? node) => DataItem(i) = node ?? _nullNode;
+
+        /// <summary>Child slot <paramref name="i"/> of the node data, reached through the sealed classes, not <see cref="INodeData"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ref object? DataItem(int i)
+        {
+            INodeData? nodeData = _nodeData;
+            if (nodeData is BranchData branch) return ref branch[i];
+            if (nodeData is ExtensionData extension) return ref extension[i];
+            return ref nodeData![i];
+        }
 
         public long GetMemorySize(bool recursive)
         {
@@ -1287,7 +1312,7 @@ namespace Nethermind.Trie
         {
             // A resolved child needs no RLP, so the seqlock read stays behind that check. A branch's
             // slot is read from its inline array directly rather than through the interface indexer.
-            ref object? data = ref _nodeData is BranchData branch ? ref branch[i] : ref _nodeData![i];
+            ref object? data = ref DataItem(i);
             return data ?? ResolveChildFromRlp(tree, ref childPath, ref data, i);
         }
 
@@ -1407,7 +1432,7 @@ namespace Nethermind.Trie
 
         internal void UnresolveChild(int i)
         {
-            ref object? data = ref _nodeData![i];
+            ref object? data = ref DataItem(i);
             if (IsPersisted)
             {
                 data = null;
@@ -1448,7 +1473,7 @@ namespace Nethermind.Trie
             private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
             {
                 // A resolved child needs no RLP, so the seqlock read stays behind that check.
-                ref object? data = ref node._nodeData![i];
+                ref object? data = ref node.DataItem(i);
                 object? childOrRef = data;
                 if (childOrRef is null)
                 {

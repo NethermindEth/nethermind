@@ -35,6 +35,45 @@ internal static unsafe partial class ThreadAffinity
         fixed (ulong* p = previous) sched_setaffinity(0, MaskWords * sizeof(ulong), p);
     }
 
+    /// <summary>
+    /// Takes <paramref name="cpu"/> out of the CPU set of every other thread of the process that may still run on it,
+    /// so the pinned thread has the core to itself; threads created later inherit their creator's set. Returns how
+    /// many threads were moved.
+    /// </summary>
+    public static int ExcludeFromOtherThreads(int cpu)
+    {
+        if (!OperatingSystem.IsLinux() || cpu < 0 || cpu >= MaskWords * 64) return 0;
+
+        int self = (int)syscall(RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 178 : 186);
+        int moved = 0;
+        ulong* mask = stackalloc ulong[MaskWords];
+        string[] tasks;
+        try
+        {
+            tasks = System.IO.Directory.GetDirectories("/proc/self/task");
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+        foreach (string task in tasks)
+        {
+            if (!int.TryParse(System.IO.Path.GetFileName(task), out int tid) || tid == self) continue;
+            if (sched_getaffinity(tid, MaskWords * sizeof(ulong), mask) != 0) continue;
+            ulong bit = 1UL << (cpu % 64);
+            if ((mask[cpu / 64] & bit) == 0) continue;
+            mask[cpu / 64] &= ~bit;
+            bool othersLeft = false;
+            for (int i = 0; i < MaskWords && !othersLeft; i++) othersLeft = mask[i] != 0;
+            // A thread with no other CPU keeps this one.
+            if (othersLeft && sched_setaffinity(tid, MaskWords * sizeof(ulong), mask) == 0) moved++;
+        }
+        return moved;
+    }
+
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial long syscall(long number);
+
     [LibraryImport("libc", SetLastError = true)]
     private static partial int sched_getaffinity(int pid, nuint size, ulong* mask);
 

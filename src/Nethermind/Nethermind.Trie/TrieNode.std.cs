@@ -16,9 +16,10 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private INodeData? ReadNodeData() => Volatile.Read(ref _nodeData);
 
-        public bool IsLeaf => NodeType == NodeType.Leaf;
+        // Type tests, not NodeType compares: the node data classes are sealed, so each is one method-table compare.
+        public bool IsLeaf => ReadNodeData() is LeafData;
 
-        public bool IsExtension => NodeType == NodeType.Extension;
+        public bool IsExtension => ReadNodeData() is ExtensionData;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private byte ExchangeBlockAndFlags(byte newValue, byte comparand)

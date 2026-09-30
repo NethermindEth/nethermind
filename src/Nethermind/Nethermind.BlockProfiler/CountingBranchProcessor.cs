@@ -48,6 +48,13 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     private static readonly int s_pinCpu = int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_COUNT_PIN_CPU"), out int cpu) ? cpu : -1;
     private static int s_pinLogged;
     private ulong[]? _savedAffinity;
+
+    /// <summary>
+    /// <c>NETHERMIND_COUNT_EXCLUSIVE_CPU=1</c> (with a pin CPU) also moves the process's other threads off that CPU at
+    /// every branch start and keeps the processing thread there between branches, so nothing else of the node runs on it.
+    /// </summary>
+    private static readonly bool s_exclusiveCpu = Environment.GetEnvironmentVariable("NETHERMIND_COUNT_EXCLUSIVE_CPU") == "1";
+    private static int s_exclusiveLogged;
     [ThreadStatic] private static int t_commitPhasesSeen;
 
     /// <summary>
@@ -114,6 +121,14 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
             _savedAffinity = ThreadAffinity.PinCurrentThread(s_pinCpu);
             if (Interlocked.Exchange(ref s_pinLogged, 1) == 0 && _logger.IsInfo)
                 _logger.Info(_savedAffinity is null ? $"EXPB-COUNT could not pin branches to CPU {s_pinCpu}" : $"EXPB-COUNT branches pinned to CPU {s_pinCpu}");
+            if (s_exclusiveCpu)
+            {
+                // Stays pinned: a restored thread would bring the CPU back to the threads it starts.
+                _savedAffinity = null;
+                int moved = ThreadAffinity.ExcludeFromOtherThreads(s_pinCpu);
+                if (Interlocked.Exchange(ref s_exclusiveLogged, 1) == 0 && _logger.IsInfo)
+                    _logger.Info($"EXPB-COUNT CPU {s_pinCpu} kept for block processing: moved {moved} other threads off it");
+            }
         }
         // The region's own collection runs here, before the window opens.
         NoGcRegion.TryEnter(_logger);
