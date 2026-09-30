@@ -761,14 +761,18 @@ public partial class EngineModuleTests
     // newPayloadV6 (2.1) requires a VALID response to carry the real compliance answer, and the max would
     // have this one report the censorship as absent, so the payload is answered SYNCING — (2.2) leaves
     // `inclusionListSatisfied` null there — and only a safe re-execution can give the answer instead.
-    [TestCase(50, false, false, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions")]
-    [TestCase(1, false, false, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions_after_the_payload_cache_evicts_it")]
-    [TestCase(1, true, false, false, TestName = "NewPayloadV6_declines_to_judge_a_resent_block_once_both_caches_lose_the_gas_dimensions")]
-    [TestCase(1, true, true, false, TestName = "NewPayloadV6_answers_an_included_list_after_both_dimension_caches_are_lost")]
-    [TestCase(1, true, false, true, TestName = "NewPayloadV6_declines_an_omitted_list_for_the_head_after_both_dimension_caches_are_lost")]
-    [TestCase(1, true, true, true, TestName = "NewPayloadV6_answers_an_included_list_for_the_head_after_both_dimension_caches_are_lost")]
+    [TestCase(50, false, InclusionListEntry.Boundary, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions")]
+    [TestCase(1, false, InclusionListEntry.Boundary, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions_after_the_payload_cache_evicts_it")]
+    [TestCase(1, true, InclusionListEntry.Boundary, false, TestName = "NewPayloadV6_declines_to_judge_a_resent_block_once_both_caches_lose_the_gas_dimensions")]
+    [TestCase(1, true, InclusionListEntry.Included, false, TestName = "NewPayloadV6_answers_an_included_list_after_both_dimension_caches_are_lost")]
+    [TestCase(1, true, InclusionListEntry.Boundary, true, TestName = "NewPayloadV6_declines_an_omitted_list_for_the_head_after_both_dimension_caches_are_lost")]
+    [TestCase(1, true, InclusionListEntry.Included, true, TestName = "NewPayloadV6_answers_an_included_list_for_the_head_after_both_dimension_caches_are_lost")]
+    [TestCase(1, true, InclusionListEntry.Small, false, TestName = "NewPayloadV6_reports_censorship_proven_without_gas_dimensions")]
+    [TestCase(1, true, InclusionListEntry.Small, true, TestName = "NewPayloadV6_reports_censorship_for_the_head_without_gas_dimensions")]
+    [TestCase(1, true, InclusionListEntry.WrongNonce, false, TestName = "NewPayloadV6_answers_an_unappendable_list_without_gas_dimensions")]
+    [TestCase(1, true, InclusionListEntry.WrongNonce, true, TestName = "NewPayloadV6_answers_an_unappendable_list_for_the_head_without_gas_dimensions")]
     public async Task NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions(
-        int newPayloadCacheSize, bool dimensionsLost, bool listIncluded, bool resendHead)
+        int newPayloadCacheSize, bool dimensionsLost, InclusionListEntry entry, bool resendHead)
     {
         // Genesis is raised to the production target so the block's remaining gas exceeds the execution cap;
         // the 4M default leaves no room for a transaction big enough to tell the two rules apart.
@@ -806,9 +810,11 @@ public partial class EngineModuleTests
         // Reserves the whole remaining state dimension, and only the execution cap on the execution dimension:
         // appendable on the recorded dimensions, over budget against max(execution, state).
         Transaction censored = Build.A.Transaction
-            .WithNonce(0).WithGasLimit(gasLimit - state).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithNonce(entry == InclusionListEntry.WrongNonce ? 99UL : 0UL)
+            .WithGasLimit(entry == InclusionListEntry.Small ? 100_000UL : gasLimit - state).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-        Assert.That(censored.GasLimit, Is.GreaterThan(gasLimit - execution), "the entry must not fit the max");
+        if (entry == InclusionListEntry.Boundary)
+            Assert.That(censored.GasLimit, Is.GreaterThan(gasLimit - execution), "the entry must not fit the max");
 
         // What a restart leaves behind: the payload cache is already past this block at size 1, and a header
         // read back from disk carries no dimensions. Neither an ancestor nor the head itself can be
@@ -827,18 +833,22 @@ public partial class EngineModuleTests
         }
 
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            first, [], Keccak.Zero, [], listIncluded ? firstList : [Rlp.Encode(censored).Bytes]);
+            first, [], Keccak.Zero, [], entry == InclusionListEntry.Included ? firstList : [Rlp.Encode(censored).Bytes]);
 
-        bool answerUnavailable = dimensionsLost && !listIncluded;
+        bool answerUnavailable = dimensionsLost && entry == InclusionListEntry.Boundary;
+        bool expectedSatisfied = entry is InclusionListEntry.Included or InclusionListEntry.WrongNonce;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(resend.Data.Status, Is.EqualTo(answerUnavailable ? PayloadStatus.Syncing : PayloadStatus.Valid));
-            Assert.That(resend.Data.InclusionListSatisfied, answerUnavailable ? Is.Null : Is.EqualTo(listIncluded),
+            Assert.That(resend.Data.InclusionListSatisfied, answerUnavailable ? Is.Null : Is.EqualTo(expectedSatisfied),
                 answerUnavailable ? "without the dimensions the answer must be withheld, not guessed"
-                    : listIncluded ? "entries already included need no gas dimensions"
-                    : "the entry the block left room for on both dimensions makes the block a censor");
+                    : expectedSatisfied ? "the entry is included or cannot be appended"
+                    : "the omitted entry fits the remaining gas dimensions");
         }
     }
+
+    /// <summary>Entries exercising known and ambiguous compliance after gas-dimension cache loss.</summary>
+    public enum InclusionListEntry { Boundary, Included, Small, WrongNonce }
 
     private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot, bool finalize = true)
     {

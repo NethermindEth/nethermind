@@ -21,6 +21,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -431,21 +432,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // max(execution, state) carries them back, so without what execution recorded this would answer on a
         // coarser gas rule than the processing path and could report real censorship as absent.
         block.Header.GasUsedPerDimension = RecordedGasDimensions(hash);
-        ValidationResult result;
-        if (spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null)
-        {
-            // Included entries need no appendability calculation (EIP-7805).
-            if (!AllInclusionListTransactionsIncluded(block)) return null;
-            result = ValidationResult.Valid;
-        }
-        else
-        {
-            _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
-            result = InclusionListValidator.IsSatisfied(
-                block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
-                ? ValidationResult.Valid
-                : ValidationResult.InclusionListUnsatisfied;
-        }
+        _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
+        SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
+        bool? satisfied = spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
+            ? EvaluateWithUnknownGasDimensions(block, state, spec)
+            : InclusionListValidator.IsSatisfied(block, state, spec, _txValidator);
+        if (satisfied is null) return null;
+
+        ValidationResult result = satisfied.Value ? ValidationResult.Valid : ValidationResult.InclusionListUnsatisfied;
 
         _latestBlocks?.Set(hash, new CachedPayloadResult(result, null, ComputeInclusionListDigest(block), block.Header.GasUsedPerDimension));
         return result == ValidationResult.Valid
@@ -453,16 +447,26 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
     }
 
-    private static bool AllInclusionListTransactionsIncluded(Block block)
+    /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
+    private bool? EvaluateWithUnknownGasDimensions(Block block, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
-        HashSet<Hash256> included = new(block.Transactions.Length);
-        foreach (Transaction tx in block.Transactions)
-            if (tx.Hash is { } hash) included.Add(hash);
+        // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
+        try
+        {
+            block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
+            if (!InclusionListValidator.IsSatisfied(block, state, spec, _txValidator)) return false;
 
-        foreach (Transaction tx in block.InclusionListTransactions!)
-            if (tx.Hash is not { } hash || !included.Contains(hash)) return false;
+            block.Header.GasUsedPerDimension = (block.GasUsed, 0);
+            if (!InclusionListValidator.IsSatisfied(block, state, spec, _txValidator)) return null;
 
-        return true;
+            block.Header.GasUsedPerDimension = (0, block.GasUsed);
+            return InclusionListValidator.IsSatisfied(block, state, spec, _txValidator) ? true : null;
+        }
+        finally
+        {
+            // Bounds must never escape as recorded execution totals, including through the payload cache.
+            block.Header.GasUsedPerDimension = null;
+        }
     }
 
     /// <summary>The EIP-8037 gas dimensions execution recorded for the block <paramref name="hash"/> names.</summary>
