@@ -6,7 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
@@ -18,7 +17,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
-using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
@@ -86,7 +84,7 @@ public class BlocksProtocolForkDecodeTests
         await using BeaconP2P client = CreateNode(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>(), Sepolia));
         await server.StartAsync(token);
         await client.StartAsync(token);
-        ISession toServer = await client.DialPeerAsync(LoopbackAddress(server), token);
+        ISession toServer = await PeerSessionNodes.DialAsync(client, server, token);
 
         IReadOnlyList<ForkedSignedBeaconBlock> byRange = await client.RequestBlocksByRangeAsync(toServer, LastFuluBlock.Slot, 2, token);
         IReadOnlyList<ForkedSignedBeaconBlock> byRoot = await client.RequestBlocksByRootAsync(toServer, [gloasRoot], token);
@@ -101,19 +99,8 @@ public class BlocksProtocolForkDecodeTests
     }
 
     private static BeaconP2P CreateNode(BeaconChainStore store) =>
-        new(new BeaconChainConfig { P2PPort = 0 }, Sepolia, store, new BeaconChainStatusHolder(Sepolia, Timestamper.Default), new LocalMetadataSource(),
-            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
-
-    private static Multiaddress LoopbackAddress(BeaconP2P node)
-    {
-        string address = node.ListenAddresses.First().ToString().Replace("0.0.0.0", "127.0.0.1");
-        if (!address.Contains("/p2p/"))
-        {
-            address += $"/p2p/{node.LocalPeerId}";
-        }
-
-        return Multiaddress.Decode(address);
-    }
+        PeerSessionNodes.Watched(logs => new BeaconP2P(new BeaconChainConfig { P2PPort = 0 }, Sepolia, store, new BeaconChainStatusHolder(Sepolia, Timestamper.Default), new LocalMetadataSource(),
+            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logs));
 
     private sealed class TestBlocksProtocol(BeaconChainSpec spec) : BlocksProtocolBase(spec)
     {

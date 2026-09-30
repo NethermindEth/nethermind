@@ -76,8 +76,8 @@ public class BeaconP2PLoopbackTests
             await server.P2P.StartAsync(token);
             await client.P2P.StartAsync(token);
 
-            ISession toServer = await client.P2P.DialPeerAsync(LoopbackAddress(server.P2P), token);
-            ISession toClient = await server.P2P.DialPeerAsync(LoopbackAddress(client.P2P), token);
+            ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
+            ISession toClient = await PeerSessionNodes.DialAsync(server.P2P, client.P2P, token);
 
             StatusMessageV2 statusSeenByClient = await client.P2P.RequestStatusAsync(toServer, token);
             StatusMessageV2 statusSeenByServer = await server.P2P.RequestStatusAsync(toClient, token);
@@ -163,7 +163,7 @@ public class BeaconP2PLoopbackTests
                 "served the canonical block's verified Gloas column by range, read in the Gloas shape");
             Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 2), "the by-range ask counts as a message sent");
 
-            ISession toServer = await client.P2P.DialPeerAsync(LoopbackAddress(server.P2P), token);
+            ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
             IReadOnlyList<DataColumnSidecar> fuluByRoot = await client.P2P.RequestDataColumnSidecarsByRootAsync(toServer, [new DataColumnsByRootIdentifier { BlockRoot = fuluRoot, Columns = [3] }], token);
             Assert.That(fuluByRoot.Select(static s => s.Index), Is.EqualTo(new[] { 3UL }), "the Fulu dial still reads Fulu chunks");
 
@@ -186,7 +186,7 @@ public class BeaconP2PLoopbackTests
         {
             await server.P2P.StartAsync(token);
             await client.P2P.StartAsync(token);
-            ISession toServer = await client.P2P.DialPeerAsync(LoopbackAddress(server.P2P), token);
+            ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
 
             using CancellationTokenSource quick = CancellationTokenSource.CreateLinkedTokenSource(token);
             quick.CancelAfter(TimeSpan.FromSeconds(5));
@@ -275,7 +275,7 @@ public class BeaconP2PLoopbackTests
         BeaconChainStatusHolder statusHolder = new(spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
         DataColumnSidecarPool pool = new();
-        BeaconP2P p2p = new(config, spec, store, statusHolder, metadataSource, pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+        BeaconP2P p2p = PeerSessionNodes.Watched(logs => new BeaconP2P(config, spec, store, statusHolder, metadataSource, pool, new ExecutionPayloadEnvelopePool(), logs));
         return new Node(p2p, store, statusHolder, metadataSource, config, pool);
     }
 }

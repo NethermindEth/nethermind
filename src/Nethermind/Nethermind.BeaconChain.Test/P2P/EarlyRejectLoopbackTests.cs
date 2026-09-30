@@ -130,14 +130,16 @@ public class EarlyRejectLoopbackTests
     /// <summary>Sends the request from a fresh plain libp2p peer and returns the whole response and how long it took.</summary>
     private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token)
     {
+        YamuxFaultLog requesterLog = new();
         ServiceProvider services = new ServiceCollection()
+            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(requesterLog))
             .AddSingleton<RawRequestProtocol>()
             .AddLibp2p(static builder => builder.AddAppLayerProtocol<RawRequestProtocol>())
             .BuildServiceProvider();
         await using (services)
         await using (ILocalPeer requester = services.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1)))
         {
-            ISession session = await requester.DialAsync(PeerSessionNodes.LoopbackAddress(server), token).WaitAsync(token);
+            ISession session = await PeerSessionNodes.DialFromPlainPeerAsync(requester, requesterLog, server, token);
             services.GetRequiredService<RawRequestProtocol>().Id = protocolId;
             services.GetRequiredService<RawRequestProtocol>().HalfClose = halfClose;
 
