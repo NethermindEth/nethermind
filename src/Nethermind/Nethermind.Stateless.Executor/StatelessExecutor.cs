@@ -174,7 +174,6 @@ public static class StatelessExecutor
         SchemaId = 0
     };
 
-    /// <summary>Recovers and assigns each transaction's sender, returning whether every signature recovered.</summary>
     private static bool TryRecoverSenders(
         Transaction[] transactions, byte[][] encodedTransactions, ISpecProvider specProvider, IReleaseSpec spec)
     {
