@@ -1142,7 +1142,7 @@ public class FlatWorldStateScopeProviderTests
     public void HintSet_SlotRestoredToBlockStartValue_EndsBlockAtThatValue(bool restoreApplied)
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(trieWarmer: warmer);
+        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
         CommitSlots(scope, TestItem.AddressA, 1, (1, 5), (2, 6));
@@ -1162,7 +1162,7 @@ public class FlatWorldStateScopeProviderTests
     public void StorageWriteBatch_WhenNoJobRan_AppliesCommittedWrites()
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(trieWarmer: warmer);
+        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
         CommitSlots(scope, TestItem.AddressA, 1, (1, 5));
@@ -1181,7 +1181,7 @@ public class FlatWorldStateScopeProviderTests
     public void StorageWriteBatch_Clear_DropsWritesCommittedBeforeIt()
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(trieWarmer: warmer);
+        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
         CommitSlots(scope, TestItem.AddressA, 1, (1, 5), (2, 6));
@@ -1210,7 +1210,7 @@ public class FlatWorldStateScopeProviderTests
     public void ApplyStorageWrites_WhenJobFailsAfterChangingTrie_FinalBatchRollsItBack()
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(trieWarmer: warmer);
+        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
         CommitSlots(scope, TestItem.AddressA, 1, (1, 5), (2, 6));
@@ -1230,7 +1230,7 @@ public class FlatWorldStateScopeProviderTests
     public void ApplyStorageWrites_WhileWriteBatchIsOpen_LeavesTrieAlone()
     {
         ManualTrieWarmer warmer = new();
-        using TestContext ctx = new(trieWarmer: warmer);
+        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = true }, trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
 
@@ -1817,17 +1817,17 @@ public class FlatWorldStateScopeProviderTests
     public void StorageHintSet_FallsBackToMpmcBufferWhenSlotRingIsFull(bool slotRingAccepts, bool mpmcAccepts)
     {
         RecordingTrieWarmer warmer = new(slotRingAccepts, mpmcAccepts);
-        using TestContext ctx = new(config: new FlatDbConfig { StreamStorageWrites = false }, trieWarmer: warmer);
+        using TestContext ctx = new(trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
 
-        storageTree.HintSet((UInt256)1, (UInt256)7);
+        storageTree.HintSet((UInt256)1);
 
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 
         // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
-        storageTree.HintSet((UInt256)1, (UInt256)7);
+        storageTree.HintSet((UInt256)1);
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 

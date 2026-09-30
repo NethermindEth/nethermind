@@ -5,13 +5,17 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
@@ -45,14 +49,26 @@ public class FlatStorageWriteStreamingTests
 
         Hash256[] expected = Execute(TestWorldStateFactory.CreateForTest(), blocks, pauses: false);
 
-        (IWorldState flatState, _, IContainer container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
         Hash256[] actual;
-        using (container)
+        using (IContainer container = CreateStreamingFlatContainer())
         {
+            IWorldState flatState = new WorldState(container.Resolve<IWorldStateManager>().GlobalWorldState, LimboLogs.Instance);
             actual = Execute(flatState, blocks, pauses: true);
         }
 
         Assert.That(actual, Is.EqualTo(expected), "every block's root must be the one the trie backend computes from the same writes");
+    }
+
+    private static IContainer CreateStreamingFlatContainer()
+    {
+        ConfigProvider configProvider = new();
+        IFlatDbConfig flatConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatConfig.Enabled = true;
+        flatConfig.StreamStorageWrites = true;
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
+            .Build();
     }
 
     private static Hash256[] Execute(IWorldState worldState, List<Block> blocks, bool pauses)
