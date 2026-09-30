@@ -15,6 +15,13 @@
       <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
     </type>
   </assembly>
+  <assembly fullname="Nethermind.Evm">
+    <!-- Only ZisK's runtime exports the arith256 routines behind DIV, MOD, ADDMOD and MULMOD, so the
+         shared build leaves the flag off and this guest turns it on; ILC folds every check it gates. -->
+    <type fullname="Nethermind.Evm.ZiskArith256Flag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
   <assembly fullname="Nethermind.Serialization.Ssz">
     <!-- Only ZisK's runtime exports the SHA-256 compression precompile merkleization hashes pairs with, so the
          shared build leaves the flag off and this guest turns it on; ILC folds the check it gates. -->
