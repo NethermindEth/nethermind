@@ -73,7 +73,7 @@ internal static class PbtOfflineSource
             ulong accountCount = (ulong)totals.Accounts;
             ValueHash256 root = PbtRightmostGroupStore.CalculateRoot(CountLeaves(), PbtRightmostGroupStore.DefaultWindowSize, workers, cancellationToken);
             PbtArtifactWriter.PbtArtifactDigests digests = PbtArtifactWriter.Write(snapshot, preimages, root, layout,
-                Leaves("PBT export snapshot", leafCount), Accounts(), cancellationToken);
+                SnapshotLeaves(), Accounts(), cancellationToken);
             if (logger.IsInfo)
                 logger.Info($"PBT export wrote {leafCount:N0} leaves for {accountCount:N0} accounts and {totals.Slots:N0} slots in {exporting.Elapsed:hh\\:mm\\:ss}.");
             return digests;
@@ -136,6 +136,13 @@ internal static class PbtOfflineSource
                     layout.Add(entry);
                     yield return entry;
                 }
+            }
+
+            IEnumerable<RebuildEntry> SnapshotLeaves()
+            {
+                foreach (RebuildEntry entry in Leaves("PBT export snapshot", leafCount)) yield return entry;
+                // The snapshot is the spool's last reader, so its runs need not outlive it into the preimage drain.
+                leaves.Dispose();
             }
 
             // The spool is drained once to hash and once to write, so each drain names its own phase.

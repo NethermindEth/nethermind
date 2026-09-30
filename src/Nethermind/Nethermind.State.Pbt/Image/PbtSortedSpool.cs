@@ -70,6 +70,7 @@ internal sealed class PbtSortedSpool : IDisposable
     private int _openWriters;
     private int _activePreMerges;
     private bool _completed;
+    private bool _disposed;
 
     /// <param name="bufferBytes">Bytes buffered per writer before a segment is sorted and spilled to a run.</param>
     /// <param name="writerCount">Producers that will spool concurrently; sizes the segment pool with them.</param>
@@ -399,6 +400,8 @@ internal sealed class PbtSortedSpool : IDisposable
     /// writing a run file, or holding a segment, that this would otherwise delete or reclaim underneath it.</remarks>
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         lock (_lock) _completed = true;
         _abort.Cancel();
         WaitForPending();
