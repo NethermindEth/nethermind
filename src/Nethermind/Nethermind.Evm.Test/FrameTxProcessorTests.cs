@@ -83,6 +83,29 @@ public partial class FrameTxProcessorTests
     public void TearDown() => _worldStateCloser?.Dispose();
 
     [Test]
+    public void Execute_SimulateReportsGasBeforeRefunds([Values] bool clearStorage)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Done);
+        if (clearStorage)
+        {
+            _stateProvider.Set(new StorageCell(Observer, 0), (UInt256)1);
+            _stateProvider.Commit(Spec);
+        }
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer));
+        SimulateTxTracer tracer = new(false, tx, 1, TestItem.KeccakA, 1, 0, 0);
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.TraceResult, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.TraceResult.MaxUsedGas, Is.EqualTo(tx.BlockGasUsed));
+            Assert.That(tracer.TraceResult.MaxUsedGas,
+                clearStorage ? Is.GreaterThan(tracer.TraceResult.GasUsed) : Is.EqualTo(tracer.TraceResult.GasUsed));
+        }
+    }
+
+    [Test]
     public void Execute_NonceHigherThanAccount_ReturnsNonceTooHigh()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));

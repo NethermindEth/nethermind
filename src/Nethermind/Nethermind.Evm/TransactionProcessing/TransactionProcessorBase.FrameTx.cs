@@ -588,7 +588,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             frameReceiptTracer?.ReportFrameTxReceipt(payer, frameReceipts);
 
-            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
+            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, blockRegularGas + blockStateGas);
             if (postTxReverted)
             {
                 // The failed receipt rebuilds the log set from the frame receipts reported above.
