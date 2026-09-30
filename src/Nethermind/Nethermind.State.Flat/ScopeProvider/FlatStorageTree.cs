@@ -65,7 +65,8 @@ public sealed class FlatStorageTree(
     // computation at the end of the block starts from a trie that already holds them and is mostly hashed. The
     // final write batch applies whatever is still pending first, so every committed write reaches the trie in
     // commit order, and the batch then re-sets values the trie already holds, which leaves those nodes untouched.
-    private readonly Lock _writesLock = new();
+    // Created with the first streamed write, so a scope that does not stream allocates nothing.
+    private Lock? _writesLock;
     private ArrayPoolList<(UInt256 Index, UInt256 Value)>? _pendingWrites;
     private ArrayPoolList<(UInt256 Index, UInt256 Value)>? _spareWrites;
     private bool _writesScheduled;
@@ -145,10 +146,18 @@ public sealed class FlatStorageTree(
         if (Volatile.Read(ref _earlyQueued) == 0 && Interlocked.Exchange(ref _earlyQueued, 1) == 0) _scope.EarlyApplier.Enqueue(this);
     }
 
+    private Lock WritesLock => Volatile.Read(ref _writesLock) ?? CreateWritesLock();
+
+    private Lock CreateWritesLock()
+    {
+        Lock created = new();
+        return Interlocked.CompareExchange(ref _writesLock, created, null) ?? created;
+    }
+
     private void StreamStorageWrite(in UInt256 index, in UInt256 value)
     {
         bool schedule;
-        lock (_writesLock)
+        lock (WritesLock)
         {
             (_pendingWrites ??= new ArrayPoolList<(UInt256 Index, UInt256 Value)>(4)).Add((index, value));
             schedule = !_writesScheduled && !_writesFaulted;
@@ -157,7 +166,7 @@ public sealed class FlatStorageTree(
 
         if (schedule && !_scope.TryScheduleStorageWrites(this))
         {
-            lock (_writesLock) _writesScheduled = false;
+            lock (WritesLock) _writesScheduled = false;
         }
     }
 
@@ -167,7 +176,7 @@ public sealed class FlatStorageTree(
     {
         if (!_scope.TryEnterStorageWrites(sequenceId))
         {
-            lock (_writesLock) _writesScheduled = false;
+            lock (WritesLock) _writesScheduled = false;
             return;
         }
 
@@ -187,7 +196,7 @@ public sealed class FlatStorageTree(
                 }
                 catch (Exception)
                 {
-                    lock (_writesLock)
+                    lock (WritesLock)
                     {
                         _writesFaulted = true;
                         _writesScheduled = false;
@@ -205,7 +214,7 @@ public sealed class FlatStorageTree(
 
     private bool TryTakePendingWrites(int sequenceId, [NotNullWhen(true)] out ArrayPoolList<(UInt256 Index, UInt256 Value)>? writes)
     {
-        lock (_writesLock)
+        lock (WritesLock)
         {
             writes = _pendingWrites;
             if (writes is null || writes.Count == 0 || _writesFaulted || !_scope.AreStorageWritesOpen(sequenceId))
@@ -224,7 +233,7 @@ public sealed class FlatStorageTree(
     private bool RecycleAndCheckPending(ArrayPoolList<(UInt256 Index, UInt256 Value)> writes)
     {
         writes.Clear();
-        lock (_writesLock)
+        lock (WritesLock)
         {
             if (_spareWrites is null) _spareWrites = writes;
             else writes.Dispose();
@@ -254,7 +263,7 @@ public sealed class FlatStorageTree(
     {
         ArrayPoolList<(UInt256 Index, UInt256 Value)>? pending;
         bool faulted;
-        lock (_writesLock)
+        lock (WritesLock)
         {
             pending = _pendingWrites;
             _pendingWrites = null;
@@ -277,19 +286,21 @@ public sealed class FlatStorageTree(
 
     private void DiscardStorageWrites()
     {
-        lock (_writesLock)
+        lock (WritesLock)
         {
             _pendingWrites?.Dispose();
             _pendingWrites = null;
             _writesFaulted = false;
         }
+
+        _holdsUnbatchedWrites = false;
     }
 
     /// <summary>Returns the pooled write buffers once the scope is done with this tree.</summary>
     /// <remarks>Runs with the scope's storage writes closed, so no job holds a buffer.</remarks>
     internal void ReleaseStorageWrites()
     {
-        lock (_writesLock)
+        lock (WritesLock)
         {
             _pendingWrites?.Dispose();
             _pendingWrites = null;
@@ -448,13 +459,12 @@ public sealed class FlatStorageTree(
     internal void ClearStorage()
     {
         // The writes committed before the clear go with it.
-        DiscardStorageWrites();
+        if (_scope.StreamsStorageWrites) DiscardStorageWrites();
         _bundle.ClearStorage(_address, AddressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         // Trieless scopes too: IWorldState.GetStorageRoot still reads RootHash there.
         GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
         _committedRoot = Keccak.EmptyTreeHash;
-        _holdsUnbatchedWrites = false;
     }
 
     // Matches PatriciaTree.Commit, which splits the commit, hashing included, across threads above 4 writes.
@@ -482,9 +492,10 @@ public sealed class FlatStorageTree(
         // valid. The hash then goes parallel from the size at which a commit would split the tree across threads.
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, tree, onRootUpdated, _address,
             commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel);
-        return earlyApplied is null
-            ? new StorageTreeBulkWriteBatch(trieBatch, this)
-            : new EarlyAppliedStorageWriteBatch(trieBatch, this, earlyApplied);
+        if (earlyApplied is not null) return new EarlyAppliedStorageWriteBatch(trieBatch, this, earlyApplied);
+        return _scope.StreamsStorageWrites
+            ? new StreamedStorageWriteBatch(trieBatch, this)
+            : new StorageTreeBulkWriteBatch(trieBatch, this);
     }
 
     // For a tree that already holds the early writes: unchanged slots only update the flat overlay.
@@ -538,6 +549,27 @@ public sealed class FlatStorageTree(
 
     // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
     private sealed class StorageTreeBulkWriteBatch(
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
+        FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            trieBatch.Set(in index, value);
+            storageTree.Set(index, value);
+        }
+
+        public void Clear()
+        {
+            trieBatch.Clear();
+            storageTree.ClearStorage();
+        }
+
+        public void Dispose() => trieBatch.Dispose();
+    }
+
+    // A scope that streams storage writes: the trie first takes the committed writes no job reached, then the batch
+    // runs as in a normal scope and re-sets values the trie already holds.
+    private sealed class StreamedStorageWriteBatch(
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {

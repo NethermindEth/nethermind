@@ -587,9 +587,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Volatile.Read(ref _stateTree)?.Commit();
         }
 
-        foreach (FlatStorageTree storage in _storages.Values)
+        if (_streamStorageWrites)
         {
-            storage.ReleaseStorageWrites();
+            foreach (FlatStorageTree storage in _storages.Values) storage.ReleaseStorageWrites();
         }
 
         _storages.Clear();
