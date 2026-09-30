@@ -142,6 +142,7 @@ CHOSEN_ZONE=""
 MODEL_USED=""
 INSTANCE_JSON=""
 QUOTA_SEEN=""
+OFFERED=false
 
 for model in "${MODELS[@]}"; do
   build_create_args "$model"
@@ -167,6 +168,12 @@ for model in "${MODELS[@]}"; do
       INSTANCE_JSON="$out"
       break 2
     fi
+    if grep -qE "$NOT_OFFERED_CREATE_ERR" <<<"$err"; then
+      echo "::notice title=GCP runner::${zone} does not offer ${MACHINE_TYPE}, trying next"
+      delete_partial "$zone"
+      continue
+    fi
+    OFFERED=true
     if grep -qE "$QUOTA_CREATE_ERR" <<<"$err"; then
       # Quota is per-region, so the sibling zones would fail identically.
       QUOTA_BLOCKED+="${region} "
@@ -189,7 +196,15 @@ for model in "${MODELS[@]}"; do
     cleanup_failed
     exit 1
   done
+  # Offered nowhere means a misspelt machine type, which a STANDARD retry cannot fix.
+  [ "$OFFERED" = true ] || break
 done
+
+if [ -z "$CHOSEN_ZONE" ] && [ "$OFFERED" != true ]; then
+  echo "::error title=GCP runner::${MACHINE_TYPE} is not offered in any of ${ZONES}"
+  cleanup_failed
+  exit 1
+fi
 
 if [ -z "$CHOSEN_ZONE" ]; then
   echo "::error title=GCP runner::could not create ${MACHINE_TYPE} in any of ${ZONES}"
