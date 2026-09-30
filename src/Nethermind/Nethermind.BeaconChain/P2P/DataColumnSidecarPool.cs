@@ -7,11 +7,13 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.P2P;
@@ -108,11 +110,15 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
     }
 
-    /// <summary>Floors <see cref="EarliestCompletelyServableSlot"/> one past the canonical index top at start-up, unless the store already recorded a floor.</summary>
+    /// <summary>
+    /// Floors <see cref="EarliestCompletelyServableSlot"/> one past the canonical index top at start-up, unless the store already recorded a floor;
+    /// a recorded floor is raised above the highest stored canonical slot that is missing a column.
+    /// </summary>
     /// <param name="canonicalIndexTopSlot">The highest slot the canonical index may hold, or <c>null</c> for a database that has none.</param>
     /// <remarks>
     /// The first sidecar this process is given can sit below the head it resumes from, and would otherwise make every slot up to the head look
-    /// complete. A recorded store floor already says which slots the store holds, so it is not overridden.
+    /// complete. A recorded store floor already says which slots the store holds, so it is not overridden, only checked: a write the store
+    /// refused together with the floor it would have raised leaves a slot incomplete that the recorded floor still covers.
     /// </remarks>
     internal void SeedCompletelyServableFloor(ulong? canonicalIndexTopSlot)
     {
@@ -121,12 +127,60 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
             return;
         }
 
+        ulong storedFloor;
         lock (_servedLock)
         {
             if (_storedFloor is null)
             {
                 _seededFloor = Math.Max(_seededFloor, top == ulong.MaxValue ? top : top + 1);
+                return;
             }
+
+            storedFloor = _storedFloor.Value;
+        }
+
+        RaiseFloorAboveIncompleteStoredSlot(storedFloor, top);
+    }
+
+    private void RaiseFloorAboveIncompleteStoredSlot(ulong storedFloor, ulong top)
+    {
+        if (store!.FindIncompleteDataColumnSlot(storedFloor, top, clock?.CurrentEpoch, StoredSampledColumns(), out BeaconChainStore.DataColumnShortfall shortfall) is not { } slot)
+        {
+            return;
+        }
+
+        ulong servedFrom = slot == ulong.MaxValue ? slot : slot + 1;
+        lock (_servedLock)
+        {
+            _writeFailedBelow = Math.Max(_writeFailedBelow, servedFrom);
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Stored data column sidecars at slot {slot} are incomplete ({shortfall}); DataColumnSidecarsByRange is served as complete from slot {servedFrom}");
+        PersistWriteFailedFloor();
+    }
+
+    // Discovery derives the node id from this stored key with CUSTODY_REQUIREMENT groups; import needed every sampled column, which includes the custody ones (fulu/das-core.md).
+    private UInt128? StoredSampledColumns()
+    {
+        try
+        {
+            if (store!.GetMetadata(BeaconDiscovery.IdentityMetadataKey) is not { } key)
+            {
+                return null;
+            }
+
+            using PrivateKey nodeKey = new(key);
+            UInt128 columns = UInt128.Zero;
+            foreach (ulong column in new NodeColumnCustody(nodeKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement).SampledColumns)
+            {
+                columns |= UInt128.One << (int)column;
+            }
+
+            return columns;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return null;
         }
     }
 
