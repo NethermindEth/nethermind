@@ -65,6 +65,7 @@ public class RangeSyncGloasColumnsTests
         RootOutsideBatch,
         UnrequestedColumn,
         TamperedProof,
+        MalformedColumn,
     }
 
     public enum WindowClock
@@ -122,6 +123,7 @@ public class RangeSyncGloasColumnsTests
     [TestCase(BadSidecar.RootOutsideBatch)]
     [TestCase(BadSidecar.UnrequestedColumn)]
     [TestCase(BadSidecar.TamperedProof)]
+    [TestCase(BadSidecar.MalformedColumn)]
     [CancelAfter(30_000)]
     public async Task A_range_sidecar_breaking_one_rule_is_not_pooled_and_penalizes_the_peer(BadSidecar bad, CancellationToken token)
     {
@@ -272,6 +274,237 @@ public class RangeSyncGloasColumnsTests
             Assert.That(peer.Reports, Is.Empty, "the second copy of each column was not verified");
             Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
         }
+    }
+
+    /// <summary>A reply repeating one invalid (root, index) is verified and penalized once, not once per copy: each copy would cost a KZG verification.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Repeated_invalid_copies_of_a_column_in_one_range_response_penalize_the_peer_once(CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong victim = SampledColumns(discovery)[0];
+        RangeSyncTests.StubPeer peer = chain.CreatePeer((_, _, columns) =>
+            [.. columns.Where(c => c != victim).Select(c => chain.GloasSidecar(c)), .. Enumerable.Range(0, 50).Select(_ => Forge(BadSidecar.TamperedProof, chain.GloasSidecar(victim)))]);
+
+        await RunAsync(peer, new DataColumnSidecarPool(), discovery, clock: null, chain, token);
+
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+    }
+
+    [Test]
+    public async Task Repeated_invalid_copies_of_a_column_in_one_by_root_response_penalize_the_peer_once()
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong victim = SampledColumns(discovery)[0];
+        RangeSyncTests.StubPeer lying = chain.CreateRootPeer("lying", ids =>
+            [.. ids[0].Columns!.Where(c => c != victim).Select(c => chain.GloasSidecar(c)), .. Enumerable.Range(0, 50).Select(_ => Forge(BadSidecar.TamperedProof, chain.GloasSidecar(victim)))]);
+
+        await CreateSync(new DataColumnSidecarPool(), discovery, clock: null, lying).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
+
+        Assert.That(lying.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+    }
+
+    /// <summary>Only a copy that reached KZG shadows later copies: a cheap rejection must not hide the valid copy that follows it in the same reply.</summary>
+    [Test]
+    public async Task A_by_root_copy_rejected_before_KZG_does_not_hide_the_valid_copy_after_it([Values(BadSidecar.WrongSlot, BadSidecar.MalformedColumn)] BadSidecar bad)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong victim = SampledColumns(discovery)[0];
+        RangeSyncTests.StubPeer peer = chain.CreateRootPeer("peer", ids =>
+            [.. Enumerable.Range(0, 3).Select(_ => Forge(bad, chain.GloasSidecar(victim))), .. ids[0].Columns!.Select(c => chain.GloasSidecar(c))]);
+        DataColumnSidecarPool pool = new();
+
+        bool available = await CreateSync(pool, discovery, clock: null, peer).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(available, Is.True, "the valid copy after the rejected ones is pooled");
+            Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out _), Is.True);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_range_copy_rejected_before_KZG_does_not_hide_the_valid_copy_after_it([Values(BadSidecar.WrongSlot, BadSidecar.MalformedColumn)] BadSidecar bad, CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        RangeSyncTests.StubPeer peer = chain.CreatePeer((_, _, columns) =>
+            [.. Enumerable.Range(0, 3).Select(_ => Forge(bad, chain.GloasSidecar(sampled[0]))), .. columns.Select(c => chain.GloasSidecar(c))]);
+        DataColumnSidecarPool pool = new();
+
+        await RunAsync(peer, pool, discovery, clock: null, chain, token);
+
+        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "the valid copy after the rejected ones is pooled");
+    }
+
+    /// <summary>A later round starts at the first slot lacking a column and ends at the last one, so a slot still lacking one is never skipped and none past it is asked.</summary>
+    [TestCase(true, 2UL)]
+    [TestCase(false, 1UL)]
+    [CancelAfter(30_000)]
+    public async Task A_later_range_round_spans_exactly_the_slots_still_lacking_a_column(bool secondSlotLacksToo, ulong expectedCount, CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create(withSecondGloas: true, anchorSlot: FuluSlot - 1);
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        DataColumnSidecarPool pool = new();
+        foreach (ulong column in sampled.Skip(1))
+        {
+            pool.AddGloas(chain.GloasSidecar(column));
+            pool.AddGloas(chain.SecondGloasSidecar(column));
+        }
+
+        if (!secondSlotLacksToo)
+        {
+            pool.AddGloas(chain.SecondGloasSidecar(sampled[0]));
+        }
+
+        List<(ulong Start, ulong Count)> requests = [];
+        RangeSyncTests.StubPeer[] peers = [.. Enumerable.Range(0, 2).Select(i => chain.CreatePeer((start, count, _) =>
+        {
+            requests.Add((start, count));
+            return [];
+        }, id: $"peer-{i}", headSlot: SecondGloasSlot))];
+
+        await RunAsync(pool, discovery, clock: null, chain, SecondGloasSlot, token, peers);
+
+        Assert.That(requests, Is.EqualTo(new[] { (GloasSlot, 2UL), (GloasSlot, expectedCount) }));
+    }
+
+    /// <summary>The advertised supernode is preferred by custody, so without the per-peer bound it takes every sampled column while the floor custodians idle.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_advertised_supernode_is_asked_for_no_more_than_its_share_while_other_custodians_serve_the_rest(CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        Dictionary<string, List<ulong>> asked = [];
+        RangeSyncTests.StubPeer Custodian(string id, PeerColumnCustody custody) => chain.CreatePeer((_, _, columns) =>
+        {
+            asked[id] = [.. columns];
+            return [.. columns.Select(c => chain.GloasSidecar(c))];
+        }, id: id, custody: custody);
+        RangeSyncTests.StubPeer[] peers =
+        [
+            Custodian("supernode", RangeSyncTests.StubPeer.AllColumns),
+            .. Enumerable.Range(0, 3).Select(i => Custodian($"floor-{i}", new PeerColumnCustody([.. sampled.Where((_, c) => c % 3 == i)], isAdvertised: false))),
+        ];
+        DataColumnSidecarPool pool = new();
+
+        List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, peers);
+
+        int share = Math.Max(2, (sampled.Length + 3) / 4);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(yielded, Has.Count.EqualTo(2));
+            Assert.That(asked["supernode"], Has.Count.LessThanOrEqualTo(share), "one supernode does not take the batch");
+            Assert.That(asked.Keys.Count(static id => id.StartsWith("floor-", StringComparison.Ordinal)), Is.GreaterThan(0), "the other custodians are used");
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
+        }
+    }
+
+    /// <summary>A supernode that fails its request used to leave the batch's columns missing; they must come from a custodian that has not failed.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_custodian_that_failed_a_range_request_is_not_asked_again_and_another_serves_the_columns(CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        int failingRequests = 0;
+        List<ulong[]> goodRequests = [];
+        RangeSyncTests.StubPeer failing = chain.CreatePeer((_, _, _) =>
+        {
+            failingRequests++;
+            throw new IOException("connection reset");
+        }, id: "failing");
+        RangeSyncTests.StubPeer good = chain.CreatePeer((_, _, columns) =>
+        {
+            goodRequests.Add(columns);
+            return [.. columns.Select(c => chain.GloasSidecar(c))];
+        }, id: "good");
+        DataColumnSidecarPool pool = new();
+
+        List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, failing, good);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(yielded, Has.Count.EqualTo(2));
+            Assert.That(failingRequests, Is.EqualTo(1), "a custodian that failed this batch is not picked again in it");
+            Assert.That(failing.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
+            Assert.That(goodRequests, Has.Count.EqualTo(2), "a second round asks for what the failed request left missing");
+            Assert.That(goodRequests.SelectMany(static c => c), Is.EquivalentTo(sampled).And.Unique);
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
+        }
+    }
+
+    /// <summary>A reply that omits a requested column keeps the sidecars it did deliver; the rest is asked of another peer and the short peer is not asked again.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_custodian_that_leaves_a_column_unserved_keeps_its_partial_reply_and_is_not_asked_again(CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        List<ulong[]> shortRequests = [];
+        List<ulong[]> goodRequests = [];
+        RangeSyncTests.StubPeer shortPeer = chain.CreatePeer((_, _, columns) =>
+        {
+            shortRequests.Add(columns);
+            return [.. columns[1..].Select(c => chain.GloasSidecar(c))];
+        }, id: "short");
+        RangeSyncTests.StubPeer good = chain.CreatePeer((_, _, columns) =>
+        {
+            goodRequests.Add(columns);
+            return [.. columns.Select(c => chain.GloasSidecar(c))];
+        }, id: "good");
+        DataColumnSidecarPool pool = new();
+
+        await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, shortPeer, good);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shortRequests, Has.Count.EqualTo(1), "a peer that left a column unserved is not asked again");
+            Assert.That(goodRequests.SelectMany(static c => c), Is.EquivalentTo(sampled.Except(shortRequests[0][1..])), "only what the short reply did not deliver is asked of the other peer");
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
+            Assert.That(shortPeer.Failures + good.Failures, Is.Zero);
+        }
+    }
+
+    /// <summary>A later round must ask only for the slots still lacking a column, not the whole batch window again.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_later_range_round_requests_only_from_the_first_slot_still_missing_a_column(CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create(withSecondGloas: true, anchorSlot: FuluSlot - 1);
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        ulong lacking = sampled[0];
+        DataColumnSidecarPool pool = new();
+        foreach (ulong column in sampled)
+        {
+            pool.AddGloas(chain.GloasSidecar(column));
+            if (column != lacking)
+            {
+                pool.AddGloas(chain.SecondGloasSidecar(column));
+            }
+        }
+
+        List<(ulong Start, ulong Count)> requests = [];
+        RangeSyncTests.StubPeer[] peers = [.. Enumerable.Range(0, 2).Select(i => chain.CreatePeer((start, count, _) =>
+        {
+            requests.Add((start, count));
+            return [];
+        }, id: $"peer-{i}", headSlot: SecondGloasSlot))];
+
+        await RunAsync(pool, discovery, clock: null, chain, SecondGloasSlot, token, peers);
+
+        Assert.That(requests, Is.EqualTo(new[] { (GloasSlot, 2UL), (SecondGloasSlot, 1UL) }), "round 0 covers the Gloas blocks, the next round only the slot still lacking the column");
     }
 
     /// <summary>The batch peer custodies nothing, so the column request goes to the custodian instead of the peer that served the blocks.</summary>
@@ -618,6 +851,9 @@ public class RangeSyncGloasColumnsTests
                 break;
             case BadSidecar.TamperedProof:
                 sidecar.KzgProofs = [sidecar.KzgProofs![1], sidecar.KzgProofs[0]];
+                break;
+            case BadSidecar.MalformedColumn:
+                sidecar.Column = [sidecar.Column![0]];
                 break;
         }
 

@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.RangeSyncTests;
 
@@ -321,6 +322,32 @@ public class RangeSyncColumnCustodyTests
         }
 
         Assert.That(requests, Is.EqualTo(new[] { (first.Slot, 2UL), (second.Slot, 1UL) }), "round 0 covers the batch, the next round only the slot still lacking the column");
+    }
+
+    /// <summary>A reply repeating one invalid (root, index) is verified and penalized once, not once per copy: each copy would cost a KZG verification.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Repeated_invalid_copies_of_a_column_in_one_reply_penalize_the_peer_once(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer peer = fixture.FailingColumnPeer("repeating", columns =>
+        {
+            DataColumnSidecar valid = fixture.Chain.Columns[(int)columns[0]];
+            DataColumnSidecar tampered = new()
+            {
+                Index = valid.Index,
+                Column = [.. valid.Column!.Select(static cell => { byte[] bytes = cell.AsSpan().ToArray(); bytes[^1] ^= 0xFF; return SszBlobCell.FromSpan(bytes); })],
+                KzgCommitments = valid.KzgCommitments,
+                KzgProofs = valid.KzgProofs,
+                SignedBlockHeader = valid.SignedBlockHeader,
+                KzgCommitmentsInclusionProof = valid.KzgCommitmentsInclusionProof,
+            };
+            return [.. fixture.ServeColumns(columns[1..]), .. Enumerable.Repeat(tampered, 50)];
+        });
+
+        await fixture.RunOneRoundAsync([peer], token);
+
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
     }
 
     /// <summary>One supernode must not take a whole batch while other custodians can serve columns: it is asked for at most the per-peer bound, the rest wait for the next round.</summary>
