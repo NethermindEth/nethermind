@@ -72,12 +72,10 @@ internal sealed class TracerRuntime : IDisposable
     /// <summary>
     /// Compiles the tracer given as inline code or as the name of a tracer shipped under <c>Data/JSTracers</c>.
     /// </summary>
-    public V8Script GetTracerScript(string tracer)
-    {
-        return TryGetBuiltInName(tracer, out string fileName)
+    public V8Script GetTracerScript(string tracer) =>
+        TryGetBuiltInName(tracer, out string fileName)
             ? GetScript(fileName, _builtInSources.Value[fileName], pack: true)
             : GetScript(tracer, tracer, pack: true);
-    }
 
     private static bool TryGetBuiltInName(string tracer, out string fileName)
     {
