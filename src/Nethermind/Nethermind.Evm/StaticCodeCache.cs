@@ -8,8 +8,8 @@ using Nethermind.Evm.CodeAnalysis;
 namespace Nethermind.Evm;
 
 /// <summary>LRU <see cref="ICodeCache"/>; <see cref="Instance"/> is the process-wide one used for normal block processing and reset between shared-cache test runs.</summary>
-/// <remarks>Capacities below <see cref="MemoryAllowance.CodeCacheSize"/> are for short-lived,
-/// single-block caches; overflowing one only costs a re-read and re-analysis of the code.</remarks>
+/// <remarks>The single-tier constructor is for short-lived caches, such as one block's or a test's; overflowing one only
+/// costs a re-read and re-analysis of the code.</remarks>
 public sealed class StaticCodeCache : ICodeCache
 {
     /// <summary>The largest code the small tier holds.</summary>

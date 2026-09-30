@@ -184,6 +184,7 @@ public interface IWorldStateScopeProvider
     public interface ICodeDb
     {
         /// <summary>The code stored under <paramref name="codeHash"/>, or <c>default</c> when it is missing.</summary>
+        /// <remarks>Return empty code as <c>Array.Empty&lt;byte&gt;()</c>: <see cref="ReadOnlyMemory{T}.Empty"/> is <c>default</c>, which callers read as missing.</remarks>
         ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash);
 
         ICodeSetter BeginCodeWrite();

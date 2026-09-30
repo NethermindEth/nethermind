@@ -340,9 +340,9 @@ public sealed class AssociativeKeyCache<TKey>
 
     /// <summary>Whether <paramref name="ticker"/> is newer than every other ticker in the set; a tie is not newest.</summary>
     /// <remarks>
-    /// Reads all eight tickers, which sit beside the headers, so a hot set is usually already in cache. A skipped hit keeps
-    /// its older stamp, so a later stamp in the same clock tick ranks after it, as in access order, where stamping every
-    /// hit would have tied them.
+    /// Stops at the first ticker at least as new, but proving an entry newest reads all eight, up to seven lines past the
+    /// matched way; that trades loads for the clock read and the shared ticker write. A skipped hit keeps its older stamp,
+    /// so a later stamp in the same clock tick ranks after it, as in access order, where stamping every hit would tie them.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsNewestInSet(ref Entry entries, int baseIdx, int way, long ticker)
