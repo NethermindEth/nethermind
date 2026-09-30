@@ -856,7 +856,17 @@ namespace Nethermind.Trie
             int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;
             CappedArray<byte> rlp = ReadRlp();
             long rlpSize = MemorySizes.RefSize + (rlp.IsNotNull ? MemorySizes.ArrayOverhead + rlp.UnderlyingLength : 0);
-            long dataSize = MemorySizes.RefSize + (_nodeData?.MemorySize ?? 0);
+            // A switch over the sealed node data types rather than an interface call: a call site that sees all three
+            // dispatches through the runtime's shared stub cache, whose cost per call varies with where the types load,
+            // and the trie node cache accounts every node it takes in.
+            long dataSize = MemorySizes.RefSize + _nodeData switch
+            {
+                BranchData branch => branch.MemorySize,
+                ExtensionData extension => extension.MemorySize,
+                LeafData leaf => leaf.MemorySize,
+                null => 0,
+                _ => _nodeData.MemorySize,
+            };
             int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
             int blockAndFlagsSize = sizeof(long);
 
