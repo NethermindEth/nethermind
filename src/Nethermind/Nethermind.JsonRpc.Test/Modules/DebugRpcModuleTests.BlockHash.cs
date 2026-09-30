@@ -15,7 +15,6 @@ using Nethermind.Evm;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
