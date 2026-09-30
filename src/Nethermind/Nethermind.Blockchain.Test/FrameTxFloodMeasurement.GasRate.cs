@@ -87,6 +87,7 @@ public partial class FrameTxFloodMeasurement
     {
         foreach (ulong ceiling in FrameTxPrefixShapes.SweptCeilings)
         {
+            yield return new TestCaseData(ceiling, "unprotected");
             yield return new TestCaseData(ceiling, "direct");
             yield return new TestCaseData(ceiling, "scheduler");
         }
@@ -119,7 +120,9 @@ public partial class FrameTxFloodMeasurement
     public async Task Sustainable_declared_gas_rate_during_block_production_signature_stuffed(ulong ceiling) =>
         await MeasureProductionGasRamp("signature-stuffed", ceiling);
 
-    /// <summary>A3: a periodic compute victim, with the flood submitted directly or through the gossip scheduler.</summary>
+    /// <summary>A3: a periodic compute victim. <c>unprotected</c>: straight to the pool, no processing flag (the node
+    /// before gossip preemption); <c>direct</c>: straight to the pool with the flag, so admission preempts itself;
+    /// <c>scheduler</c>: the flag plus the gossip scheduler, as a node receives gossip.</summary>
     [TestCaseSource(nameof(CeilingPathCases))]
     public async Task Periodic_import_delay_by_declared_gas_rate(ulong ceiling, string path) =>
         await MeasurePeriodicImportGasRamp("keccak-wide", ceiling, path);
@@ -187,11 +190,12 @@ public partial class FrameTxFloodMeasurement
             long warmEnd = Stopwatch.GetTimestamp() + (long)(ComputeFixtureWarmup.TotalSeconds * Stopwatch.Frequency);
             while (Stopwatch.GetTimestamp() < warmEnd)
             {
-                _chain.BranchProcessor.Process(_parent, [_computeBlock], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+                ProcessImport(_computeBlock);
             }
             _computeWarmed = true;
         }
 
+        s_blockProcessingSignal = path != "unprotected";
         bool scheduled = path == "scheduler";
         await using GossipSubmitter submitter = new(_chain, scheduled, () => Volatile.Read(ref _victimActive));
 
@@ -458,7 +462,7 @@ public partial class FrameTxFloodMeasurement
             Volatile.Write(ref _victimActive, true);
             try
             {
-                _chain.BranchProcessor.Process(_parent, [_computeBlock], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+                ProcessImport(_computeBlock);
             }
             finally
             {

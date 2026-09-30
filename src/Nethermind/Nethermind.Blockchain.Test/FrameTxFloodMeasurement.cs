@@ -160,6 +160,14 @@ public partial class FrameTxFloodMeasurement
 
     private bool _shedding;
 
+    /// <summary>Whether import victims raise the block tree's processing flag, as the node's processing loop does.</summary>
+    /// <remarks>Gossip admission yields to block processing on this flag: a simulation neither starts nor keeps running
+    /// while it is set. Only the periodic arm raises it: a victim processing back to back would hold the flag almost
+    /// continuously and defer every flood transaction, so those arms measure import without the signal. The producer
+    /// never raises it, as block building does not. Static so every row, emitted from any helper, can report it; the
+    /// fixture is non-parallelizable.</remarks>
+    private static bool s_blockProcessingSignal;
+
     private byte[] _frameCalldataPrefix = [];
 
     private TxFrameSignature[] _frameSignatures = [];
@@ -230,6 +238,7 @@ public partial class FrameTxFloodMeasurement
     [SetUp]
     public void Setup()
     {
+        s_blockProcessingSignal = false;
         _chain = null!;
         _frameCalldataPrefix = [];
         _frameSignatures = [];
@@ -965,8 +974,23 @@ public partial class FrameTxFloodMeasurement
         while (Stopwatch.GetTimestamp() < end) ProcessOnce();
     }
 
-    private void ProcessOnce() =>
-        _chain.BranchProcessor.Process(_parent, [_workloadBlock], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+    private void ProcessOnce() => ProcessImport(_workloadBlock);
+
+    /// <summary>Processes <paramref name="block"/> on the main branch processor the way the import loop does: with the
+    /// block tree's processing flag raised, unless the arm measures a node without that signal.</summary>
+    private void ProcessImport(Block block)
+    {
+        bool signal = s_blockProcessingSignal;
+        if (signal) _chain.BlockTree.IsProcessingBlock = true;
+        try
+        {
+            _chain.BranchProcessor.Process(_parent, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        }
+        finally
+        {
+            if (signal) _chain.BlockTree.IsProcessingBlock = false;
+        }
+    }
 
     private FloodOutcome MeasureUnderFlood(int offeredRate, Func<long>? rejectionCounter = null) =>
         MeasureUnderFloodGeneric(offeredRate,
@@ -1044,12 +1068,13 @@ public partial class FrameTxFloodMeasurement
     }
 
     /// <summary>
-    /// Admission the simulator refused without running the prefix: the per-head budget is spent, or the
-    /// simulator is already busy. Shed transactions cost the node nothing, so they are not rejections.
+    /// Admission the simulator refused or deferred without finishing the prefix: the per-head budget is spent, the
+    /// simulator is already busy, or block processing preempted it. None of these is a rejection.
     /// </summary>
     private static long ShedCount() =>
         Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsBudgetExhausted)
-        + Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsBusy);
+        + Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsBusy)
+        + Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsPreempted);
 
     private static void WaitUntil(long dueTimestamp, CancellationToken token)
     {
@@ -1296,7 +1321,7 @@ public partial class FrameTxFloodMeasurement
                       ?? Path.Combine(Path.GetTempPath(), "frame-tx-flood.txt");
         // Recorded on every row so a reader of -results.txt alone, without PROVENANCE.txt, can tell whether
         // the build ran against the stock MAX_VERIFY_GAS or one patched by raise_verify_gas_const.
-        string record = $"RESULT {line} max_verify_gas_const={Eip8141Constants.MaxVerifyGas}";
+        string record = $"RESULT {line} max_verify_gas_const={Eip8141Constants.MaxVerifyGas} block_processing_signal={(s_blockProcessingSignal ? "on" : "off")}";
         TestContext.Out.WriteLine(record);
         File.AppendAllText(path, record + Environment.NewLine);
     }
