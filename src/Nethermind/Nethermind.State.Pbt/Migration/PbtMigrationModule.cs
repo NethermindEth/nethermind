@@ -78,6 +78,7 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<PbtBalReplay>()
             .AddSingleton<PbtBalFollower>()
             .AddSingleton<PbtBalFollowerScheduler>()
+            .AddSingleton<PbtBranchFollower>()
             .AddSingleton<MerkleShadowFollower>()
             .Bind<IMerkleShadowFollower, MerkleShadowFollower>()
             .AddSingleton<IMigrationTelemetry, MigrationTelemetry>()

@@ -12,6 +12,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -123,6 +124,33 @@ public class MigrationBalFollowerTests
         harness.RestoreBal("a2");
         Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, default), Is.True, harness.Follower.Error);
         AssertState(harness, "a3");
+    }
+
+    [Test]
+    public async Task Branch_follower_replays_any_branch_and_drops_only_one_beside_finality()
+    {
+        using Harness harness = new();
+        await using PbtBranchFollower follower = harness.CreateBranchFollower();
+        Assert.That(follower.Follow(harness.Blocks["a3"].Header, default), Is.False, "PBT holds no ancestor before the anchor import");
+        await harness.Publish();
+        harness.BlockTree.ForkChoiceUpdated(harness.Blocks["a1"].Hash, Hash256.Zero);
+
+        Block missing = harness.Blocks["b2"];
+        harness.Store.Delete(missing.Number, missing.Hash!);
+        Assert.Throws<InvalidDataException>(() => follower.Follow(harness.Blocks["b3"].Header, default));
+        Assert.That(harness.Manager.HasStateForBlock(new StateId(missing.Header)), Is.False);
+        harness.RestoreBal("b2");
+        Assert.That(follower.Follow(harness.Blocks["b3"].Header, default), Is.True);
+        AssertState(harness, "b3");
+
+        harness.Canonical("b");
+        harness.BlockTree.ForkChoiceUpdated(harness.Blocks["b3"].Hash, Hash256.Zero);
+        Assert.That(follower.Follow(harness.Blocks["a3"].Header, default), Is.True, "a branch beside the finalized chain is done");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Manager.HasStateForBlock(new StateId(harness.Blocks["a2"].Header)), Is.False);
+            Assert.That(harness.Manager.HasStateForBlock(new StateId(harness.Blocks["a3"].Header)), Is.False);
+        }
     }
 
     [Test]
@@ -288,6 +316,9 @@ public class MigrationBalFollowerTests
 
         private void Close() => _pbt.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
+        public PbtBranchFollower CreateBranchFollower() =>
+            new(_blockTree, Store, _pbt.Manager, Replay, SpecProvider, Substitute.For<IMainProcessingContext>(), LimboLogs.Instance);
+
         public PbtBalFollower CreateFollower(IBlockTree blockTree, BalFetcher fetcher, IBlockAccessListStore store) =>
             new(blockTree, fetcher, store, _pbt.Manager, Replay, SpecProvider, LimboLogs.Instance) { MigrationRetryDelay = TimeSpan.Zero };
 
@@ -298,7 +329,7 @@ public class MigrationBalFollowerTests
             Directory.CreateDirectory(_scratch.Path);
             using FileStream snapshot = File.OpenRead(Path.Combine(Fixtures, "canonical", "anchor", "snapshot.pbt"));
             using FileStream preimages = File.OpenRead(Path.Combine(Fixtures, "canonical", "anchor", "preimages.bin"));
-            await new PbtAnchorPublication(new PbtRocksDbPersistence(_target, new PbtConfig()), _target, _pbt.Persistence, _pbt.Manager, _pbt.Coordinator, new PbtConfig(), LimboLogs.Instance)
+            await new PbtAnchorPublication(new PbtRocksDbPersistence(_target, new PbtConfig()), _target, _pbt.Persistence, _pbt.Coordinator, new PbtConfig(), LimboLogs.Instance)
                 .PublishSnapshot(snapshot, preimages, anchor, _scratch.Path, () => true, default);
         }
 

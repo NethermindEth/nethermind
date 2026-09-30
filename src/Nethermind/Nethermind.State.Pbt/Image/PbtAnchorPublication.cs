@@ -21,14 +21,12 @@ namespace Nethermind.State.Pbt.Image;
 /// <remarks>
 /// The provenance marker written before staging makes the import idempotent: a restart with the same source takes
 /// the fast path without re-verifying the whole image, a restart with another source is refused, and an interrupted
-/// staging is wiped and redone. When PBT already holds the anchor (a genesis bootstrap mirrors genesis before this
-/// runs) the snapshot's claimed root is only checked against it.
+/// staging is wiped and redone.
 /// </remarks>
 internal sealed class PbtAnchorPublication(
     PbtRocksDbPersistence target,
     IColumnsDb<PbtColumns> targetDb,
     IPbtPersistence persistence,
-    IPbtDbManager manager,
     PbtPersistenceCoordinator coordinator,
     IPbtConfig config,
     ILogManager logManager)
@@ -129,7 +127,6 @@ internal sealed class PbtAnchorPublication(
         Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, ValueHash256? claimedRoot, Stream? preimages,
         Func<bool> isAnchorCurrent, Stopwatch importing, CancellationToken cancellationToken)
     {
-        if (AdoptHeldAnchor(anchor, claimedRoot) is { } held) return held;
         PrepareStaging(anchor, cancellationToken);
         (ulong Accounts, ulong Slots) staged;
         using (LogicalBatch batch = new(target, cancellationToken))
@@ -147,20 +144,6 @@ internal sealed class PbtAnchorPublication(
         ValueHash256 root = await Fold(leaves, new StateId(anchor.Header), claimedRoot, cancellationToken);
         Finish(anchor, root, staged.Accounts, staged.Slots, importing, cancellationToken);
         return root;
-    }
-
-    /// <summary>Adopts the PBT state already held at the anchor, as a genesis bootstrap leaves it, or returns null.</summary>
-    private ValueHash256? AdoptHeldAnchor(PbtImageAnchor anchor, ValueHash256? expectedRoot)
-    {
-        StateId anchorState = new(anchor.Header);
-        if (!manager.HasStateForBlock(anchorState)) return null;
-        ValueHash256 held;
-        using (PbtReadOnlySnapshotBundle bundle = manager.GatherReadOnlyBundle(anchorState)) held = bundle.TreeRoot;
-        if (expectedRoot is { } expected && held != expected) throw new InvalidDataException("The PBT state already held at the anchor differs from the image.");
-        IDb metadata = targetDb.GetColumnDb(PbtColumns.Metadata);
-        metadata.Set(_provenanceKey, Provenance(anchor));
-        metadata.SyncWal();
-        return held;
     }
 
     /// <summary>The native root when this anchor was already imported, or null when the import has yet to run.</summary>

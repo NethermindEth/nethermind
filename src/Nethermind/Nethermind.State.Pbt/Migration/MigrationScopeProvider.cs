@@ -5,33 +5,24 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Logging;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.State.Pbt.Mirror;
 using Nethermind.State.Pbt.ScopeProvider;
 
 namespace Nethermind.State.Pbt.Migration;
 
-/// <summary>Main-processing scope provider: flat mirrored into PBT before activation, PBT alone after.</summary>
+/// <summary>Main-processing scope provider: flat before activation, PBT after.</summary>
+/// <remarks>Before activation <see cref="PbtBranchFollower"/>, not main processing, brings PBT up to the processed blocks.</remarks>
 internal sealed class MigrationScopeProvider(
     FlatWorldStateManager flat,
     PbtWorldStateManager pbt,
-    IPbtDbManager pbtManager,
-    IPbtResourcePool resourcePool,
     MigrationBackendSelector selector,
-    IPbtConfig config,
-    IStateHeaderProvider stateHeaderProvider,
-    ILogManager logManager) : IWorldStateScopeProvider
+    IStateHeaderProvider stateHeaderProvider) : IWorldStateScopeProvider
 {
     private readonly IWorldStateScopeProvider _flat = flat.GlobalWorldState;
-    private readonly IWorldStateScopeProvider _mirror = new PbtMirrorScopeProvider(flat.GlobalWorldState, pbtManager, resourcePool, config, stateHeaderProvider, logManager);
     private readonly IWorldStateScopeProvider _pbt = pbt.GlobalWorldState;
 
-    internal IWorldStateScopeProvider Select(BlockHeader? baseBlock, BlockHeader? targetBlock)
-    {
-        if (selector.IsBinary(baseBlock, targetBlock)) return _pbt;
-        return selector.PbtHas(baseBlock) ? _mirror : _flat;
-    }
+    internal IWorldStateScopeProvider Select(BlockHeader? baseBlock, BlockHeader? targetBlock) =>
+        selector.IsBinary(baseBlock, targetBlock) ? _pbt : _flat;
 
     public bool HasRoot(BlockHeader? baseBlock) => Select(baseBlock, null).HasRoot(baseBlock);
 

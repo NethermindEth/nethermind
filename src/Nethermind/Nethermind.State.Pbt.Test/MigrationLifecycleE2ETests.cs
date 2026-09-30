@@ -111,6 +111,7 @@ public class MigrationLifecycleE2ETests
         List<int> branchSizes = [];
         processing.BranchProcessor.BlocksProcessing += (_, args) => branchSizes.Add(args.Blocks.Count);
         ProcessingOptions options = ProcessingOptions.MarkAsProcessed | ProcessingOptions.DoNotUpdateHead | ProcessingOptions.StoreReceipts;
+        ReplayIntoPbt("a3");
         Assert.That(processing.BlockchainProcessor.Process(blocks["a5"], options, NullBlockTracer.Instance)?.Hash, Is.EqualTo(blocks["a5"].Hash));
         Assert.That(branchSizes, Is.EqualTo(new[] { 5 }), "one processing request must span activation");
         foreach (string name in new[] { "a1", "a2", "a3", "a4", "a5" }) AssertRoot(name);
@@ -135,6 +136,7 @@ public class MigrationLifecycleE2ETests
         Assert.That(telemetry.GetProgress().Phase, Is.EqualTo("running"));
         AssertTransition("a3", "a4", "a5");
         Select("a1", Hash256.Zero);
+        ReplayIntoPbt("b3");
         Assert.That(processing.BlockchainProcessor.Process(blocks["b6"], options, NullBlockTracer.Instance)?.Hash, Is.EqualTo(blocks["b6"].Hash));
         Assert.That(branchSizes, Is.EqualTo(new[] { 5, 5 }));
         foreach (string name in new[] { "b2", "b3", "b4", "b5", "b6" }) AssertRoot(name);
@@ -150,6 +152,14 @@ public class MigrationLifecycleE2ETests
             Assert.That(container.Resolve<IFlatDbConfig>().Layout, Is.EqualTo(layout));
             // Flat gets no commits after activation; finalizing the activation persists it up to the activation parent.
             Assert.That(() => FlatState(flatPersistence), Is.EqualTo(new Flat.StateId(blocks["b3"].Header)).After(10_000, 50));
+        }
+
+        // A request spanning activation needs PBT at the activation parent before main processing reaches it; the branch
+        // follower replays that non-canonical, not yet processed branch from its stored BALs.
+        void ReplayIntoPbt(string activationParent)
+        {
+            container.Resolve<PbtBranchFollower>().Add(blocks[activationParent].Header);
+            harness.WaitForPbt(blocks[activationParent].Header);
         }
 
         void Select(string name, Hash256 finalized)
@@ -221,6 +231,8 @@ public class MigrationLifecycleE2ETests
             {
                 Block block = harness.Blocks[$"a{number}"];
                 Prepare(block);
+                // The activation block needs its parent in PBT, which the background BAL replay provides.
+                if (number == 4) harness.WaitForPbt(parent.Header);
                 Assert.That(processing.BlockchainProcessor.Process(block, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts,
                     NullBlockTracer.Instance)?.Hash, Is.EqualTo(block.Hash));
                 parent = block;

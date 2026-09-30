@@ -17,8 +17,8 @@ namespace Nethermind.State.Pbt.Migration;
 
 /// <summary>Advances the native PBT state by one canonical block from its BAL, without executing transactions.</summary>
 /// <remarks>
-/// The committed snapshot is keyed by the child's header root, exactly as the mirror keys the snapshots main
-/// processing produces, so the two producers are interchangeable and <see cref="PbtDbManager.AddSnapshot"/>
+/// The committed snapshot is keyed by the child's header root, exactly as main processing keys the snapshots it
+/// produces past activation, so the two producers are interchangeable and <see cref="PbtDbManager.AddSnapshot"/>
 /// de-duplicates whichever lands second.
 /// </remarks>
 internal sealed class PbtBalReplay(

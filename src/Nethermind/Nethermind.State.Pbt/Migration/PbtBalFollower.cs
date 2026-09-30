@@ -20,8 +20,8 @@ internal sealed record PbtFollowerCursor(ulong Number, Hash256 Hash, Hash256 Tre
 
 /// <summary>Advances the native PBT state through authenticated canonical BALs, without executing transactions.</summary>
 /// <remarks>
-/// Needed only while PBT lags flat: after an anchor import behind the head, or when PBT persisted less than flat
-/// before a crash. Main processing mirrors every block it executes, so once PBT holds the head the follower idles.
+/// Brings PBT from the imported anchor up to the canonical head, fetching missing BALs from peers.
+/// <see cref="PbtBranchFollower"/> replays the blocks main processing executes, on any branch.
 /// A reorg needs no rewind: PBT retains every state above its persisted pointer, so the walk from the target simply
 /// lands on the canonical ancestor it still holds. Past activation the header commits to the PBT root, so a replayed
 /// block is also checked against it.

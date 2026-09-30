@@ -76,7 +76,7 @@ internal sealed class PbtBalFollowerScheduler(Func<BlockHeader, CancellationToke
             StateId headState = new(head.Header);
             if (_manager!.HasStateForBlock(headState))
             {
-                // Main processing mirrored this block; the follower is only needed for delayed catch-up.
+                // PBT already holds the head; the follower is only needed for delayed catch-up.
                 Volatile.Write(ref _headCursor, Describe(head.Header, headState));
                 _cancellation?.Cancel();
                 return;

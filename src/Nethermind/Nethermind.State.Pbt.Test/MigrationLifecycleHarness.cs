@@ -38,6 +38,10 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
     public IMigrationTelemetry Telemetry => container.Resolve<IMigrationTelemetry>();
     public PbtBalFollowerScheduler Scheduler => container.Resolve<PbtBalFollowerScheduler>();
     public Block Anchor => blocks["anchor"];
+
+    /// <summary>Waits until the background BAL replay has brought PBT up to <paramref name="header"/>.</summary>
+    public void WaitForPbt(BlockHeader header) =>
+        Assert.That(() => Pbt.HasStateForBlock(new StateId(header)), Is.True.After(30_000, 50), header.ToString(BlockHeader.Format.Short));
     public Dictionary<string, Block> Blocks => blocks;
     public Dictionary<string, JsonElement> Expected => expected;
     public ValueTask DisposeAsync() => container.DisposeAsync();
