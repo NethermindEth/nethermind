@@ -378,8 +378,8 @@ public class WitnessGeneratingWorldState(
     private void RecordBytecode(in ValueHash256 codeHash, ReadOnlyMemory<byte> code)
     {
         if (code.Length == 0 || _inBlockDeployed.Contains(codeHash)) return;
-        // The witness serialises exact arrays; copy once per contract.
+        // The witness serialises exact arrays, so only code in a larger buffer is copied, once per contract.
         ref byte[]? recorded = ref CollectionsMarshal.GetValueRefOrAddDefault(_bytecodes, codeHash, out bool exists);
-        if (!exists) recorded = code.ToArray();
+        if (!exists) recorded = code.AsArray();
     }
 }
