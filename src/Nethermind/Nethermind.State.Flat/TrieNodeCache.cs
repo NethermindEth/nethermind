@@ -108,6 +108,15 @@ public sealed class TrieNodeCache : ITrieNodeCache
     /// <inheritdoc cref="LastAddSlots"/>
     public static long LastAddShardsCleared { get; private set; }
 
+    /// <summary>
+    /// Benchmark diagnostics: when set, <see cref="Add"/> reads this counter (the calling thread's retired instructions)
+    /// around each step of taking in a node and sums the steps into <see cref="LastAddSteps"/>.
+    /// </summary>
+    public static Func<ulong>? StepCounter { get; set; }
+
+    /// <summary>Instructions of the last <see cref="Add"/> per step: prune the new node, size it, swap it in, the old node's size and prune; nodes added and replaced.</summary>
+    public static (ulong PruneNew, ulong SizeNew, ulong Exchange, ulong Old, long Added, long Replaced) LastAddSteps { get; private set; }
+
     public void Add(TransientResource transientResource)
     {
         transientResource.WaitForExclusiveLease();
@@ -118,6 +127,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
         LastAddSlots = slots;
         LastAddNodes = transientResource.Nodes.Count;
         LastAddShardsCleared = 0;
+        LastAddSteps = default;
         FlatDbManager.CommitPhase?.Invoke(5);
 
         if (_maxCacheMemoryThreshold == 0)
@@ -136,6 +146,12 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         void AddToCacheWithHashCode(int shardIdx, int hashCode, TrieNode newNode)
         {
+            if (StepCounter is { } read)
+            {
+                AddCounted(shardIdx, hashCode, newNode, read);
+                return;
+            }
+
             int bucketIdx = hashCode & _bucketMask;
             newNode.PrunePersistedRecursively(1);
             Interlocked.Add(ref _shardMemoryUsages[shardIdx], newNode.GetMemorySize(false));
@@ -148,6 +164,32 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
                 Interlocked.Add(ref _shardMemoryUsages[shardIdx], -oldMemory);
             }
+        }
+
+        // AddToCacheWithHashCode with a counter reading between its steps, for the benchmark diagnostics.
+        void AddCounted(int shardIdx, int hashCode, TrieNode newNode, Func<ulong> read)
+        {
+            int bucketIdx = hashCode & _bucketMask;
+            ulong start = read();
+            newNode.PrunePersistedRecursively(1);
+            ulong pruned = read();
+            long newMemory = newNode.GetMemorySize(false);
+            ulong sized = read();
+            Interlocked.Add(ref _shardMemoryUsages[shardIdx], newMemory);
+            TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], newNode);
+            ulong exchanged = read();
+            ulong oldSteps = 0;
+            if (oldNode is not null)
+            {
+                long oldMemory = oldNode.GetMemorySize(false);
+                oldNode.PrunePersistedRecursively(1);
+                Interlocked.Add(ref _shardMemoryUsages[shardIdx], -oldMemory);
+                oldSteps = read() - exchanged;
+            }
+
+            (ulong pruneNew, ulong sizeNew, ulong exchange, ulong old, long added, long replaced) = LastAddSteps;
+            LastAddSteps = (pruneNew + pruned - start, sizeNew + sized - pruned, exchange + exchanged - sized, old + oldSteps,
+                added + 1, replaced + (oldNode is null ? 0 : 1));
         }
 
         static TrieNode? TryMaterializeResolvedWarmerNode(TrieNode source)

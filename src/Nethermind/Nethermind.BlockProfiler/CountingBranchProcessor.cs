@@ -86,6 +86,9 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     {
         _inner = inner;
         Nethermind.State.Flat.FlatDbManager.CommitPhase = OnCommitPhase;
+        // NETHERMIND_COUNT_POPSTEPS=1: the cache fill reads the counter between the steps of taking in each node.
+        if (Environment.GetEnvironmentVariable("NETHERMIND_COUNT_POPSTEPS") == "1")
+            Nethermind.State.Flat.TrieNodeCache.StepCounter = static () => ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample sample) ? sample.Instructions : 0;
         _blockProcessor = blockProcessor;
         _logger = logManager.GetClassLogger<CountingBranchProcessor>();
         _inner.BlocksProcessing += OnBlocksProcessing;
@@ -169,7 +172,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         string steps = (t_commitPhasesSeen & 0b1111) == 0b1111 && phases is not null
             ? $" pop={phases[1] - phases[0]} compact={phases[2] - phases[1]} persist={phases[3] - phases[2]}" +
               $" popslots={Nethermind.State.Flat.TrieNodeCache.LastAddSlots} popnodes={Nethermind.State.Flat.TrieNodeCache.LastAddNodes}" +
-              $" popclear={Nethermind.State.Flat.TrieNodeCache.LastAddShardsCleared}"
+              $" popclear={Nethermind.State.Flat.TrieNodeCache.LastAddShardsCleared}" + PopSteps()
             : string.Empty;
         // cmp: snapshots the inline compaction merged / how many were already compacted / added (1), refused (0),
         // nothing assembled (-1), not attempted (-2).
@@ -183,6 +186,14 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit} cmp={inputs}/{compactedInputs}/{added}{phaseCycles}{host}");
         if (DiagnosticCounters.Enabled && Interlocked.Exchange(ref s_hostLogged, 1) == 0 && _logger.IsInfo)
             _logger.Info($"EXPB-COUNT host{HostActivity.Facts(s_pinCpu)}");
+    }
+
+    // popsteps: the cache fill's per-node steps summed over the block (see TrieNodeCache.LastAddSteps).
+    private static string PopSteps()
+    {
+        if (Nethermind.State.Flat.TrieNodeCache.StepCounter is null) return string.Empty;
+        (ulong pruneNew, ulong sizeNew, ulong exchange, ulong old, long added, long replaced) = Nethermind.State.Flat.TrieNodeCache.LastAddSteps;
+        return $" popsteps={pruneNew}/{sizeNew}/{exchange}/{old}/{added}/{replaced}";
     }
 
     private static void OnCommitPhase(int phase)
