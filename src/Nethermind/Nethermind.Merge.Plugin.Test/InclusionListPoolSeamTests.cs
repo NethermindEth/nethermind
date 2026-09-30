@@ -1,20 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Spec;
-using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -30,9 +27,9 @@ namespace Nethermind.Merge.Plugin.Test;
 /// from a vouched-for bucket: the two judge the same bucket by the same rule, in different code.
 /// </summary>
 /// <remarks>
-/// Both sides are the production ones — a real <see cref="TxPool"/> admitting real transactions and a real
-/// <see cref="InclusionListBuilder"/> — so a readiness dimension gained by one and not the other turns one of
-/// the two assertions red instead of silently shortening the list.
+/// Both sides are the production ones — a <see cref="TxPool"/> wired by the production modules, admitting real
+/// transactions, and a real <see cref="InclusionListBuilder"/> — so a readiness dimension gained by one and not
+/// the other turns one of the two assertions red instead of silently shortening the list.
 /// </remarks>
 public class InclusionListPoolSeamTests
 {
@@ -51,6 +48,9 @@ public class InclusionListPoolSeamTests
     private static readonly ISpecProvider PoolSpecProvider =
         new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true });
 
+    /// <summary>Genesis funds this one without code, so the pool admits transactions from it.</summary>
+    private static readonly PrivateKey SenderKey = TestItem.PrivateKeyB;
+
     [TestCase(Bucket.KeyedFrameOnly, false)]
     [TestCase(Bucket.OrdinaryAtTheNonce, true)]
     [TestCase(Bucket.KeyedFrameAndOrdinaryAtTheNonce, true)]
@@ -63,47 +63,34 @@ public class InclusionListPoolSeamTests
     public async Task Pool_vouches_for_exactly_the_buckets_the_builder_can_draw_from(Bucket bucket, bool expectedReady)
     {
         UInt256 nextBaseFee = bucket == Bucket.OrdinaryAtTheNonceButPricedOut ? 2 : UInt256.Zero;
-        TestReadOnlyStateProvider state = new();
-        Address sender = TestItem.PrivateKeyA.Address;
-        state.CreateAccount(sender, 100.Ether);
-
-        BlockHeader head = Build.A.BlockHeader.WithNumber(1).WithBaseFee(UInt256.Zero).TestObject;
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithHeader(head).TestObject);
-        blockTree.BestSuggestedHeader.Returns(head);
-        blockTree.FindBestSuggestedHeader().Returns(head);
-        EthereumEcdsa ecdsa = new(PoolSpecProvider.ChainId);
-
-        await using Nethermind.TxPool.TxPool txPool = new(
-            ecdsa,
-            new BlobTxStorage(),
-            new ChainHeadInfoProvider(new ChainHeadSpecProvider(PoolSpecProvider, blockTree), blockTree, state),
-            new TxPoolConfig { BlobsSupport = BlobsSupportMode.Disabled },
-            new TxValidator(PoolSpecProvider.ChainId),
-            new SpecChangeTxValidator(PoolSpecProvider.ChainId),
-            LimboLogs.Instance,
-            new TransactionComparerProvider(PoolSpecProvider, blockTree).GetDefaultComparer());
+        // The prefix simulator is the one production component overridden: these frame transactions stand for a
+        // bucket shape, and no EVM-executable prefix is needed to judge readiness.
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(PoolSpecProvider)
+            .AddSingleton(AcceptingPrefixSimulator()));
+        EthereumEcdsa ecdsa = new(chain.SpecProvider.ChainId);
 
         foreach (Transaction tx in TransactionsOf(bucket, ecdsa))
         {
-            Assert.That(txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(chain.TxPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
         // Frontier leaves the parent's base fee alone, so this header fixes the fee both sides are judged at.
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithBaseFee(nextBaseFee).TestObject;
-        bool vouched = txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(nextBaseFee).ContainsKey(sender);
+        bool vouched = chain.TxPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(nextBaseFee)
+            .ContainsKey(SenderKey.Address);
 
-        using InclusionListBytes drawn = BuildBuilder(txPool, blockTree, state).GetInclusionList(parent);
+        using InclusionListBytes drawn = BuildBuilder(chain.TxPool, chain).GetInclusionList(parent);
         using InclusionListBytes drawnIfVouchedForAnyway =
-            BuildBuilder(VouchingFor(txPool.GetPendingTransactionsBySender()), blockTree, state).GetInclusionList(parent);
+            BuildBuilder(VouchingFor(chain.TxPool.GetPendingTransactionsBySender()), chain).GetInclusionList(parent);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(vouched, Is.EqualTo(expectedReady));
             Assert.That(drawnIfVouchedForAnyway.Count > 0, Is.EqualTo(vouched),
                 "the pool vouches for a bucket the builder draws nothing from, or drops one it could have used");
             Assert.That(drawn.Count > 0, Is.EqualTo(vouched), "the list holds what the pool vouched for");
-        });
+        }
     }
 
     private static IEnumerable<Transaction> TransactionsOf(Bucket bucket, EthereumEcdsa ecdsa)
@@ -140,14 +127,14 @@ public class InclusionListPoolSeamTests
             .WithGasLimit(21_000)
             .WithMaxFeePerGas(maxFee)
             .WithMaxPriorityFeePerGas(maxFee)
-            .SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(ecdsa, SenderKey).TestObject;
 
     /// <remarks>A frame transaction authenticates by its frame signatures, so it carries a sender rather than an
     /// outer signature.</remarks>
     private static Transaction FrameTxWithNonceKeys(UInt256[] nonceKeys)
     {
         Transaction tx = FrameTxTestFrames.FrameTx(
-            TestItem.PrivateKeyA.Address, [], FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas));
+            SenderKey.Address, [], FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas));
         tx.ChainId = PoolSpecProvider.ChainId;
         tx.Nonce = 0;
         tx.NonceKeys = nonceKeys;
@@ -158,6 +145,14 @@ public class InclusionListPoolSeamTests
         return tx;
     }
 
+    private static IFrameTxPrefixSimulator AcceptingPrefixSimulator()
+    {
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
+            .Returns(FrameTxSimulationResult.Accept(SenderKey.Address));
+        return simulator;
+    }
+
     /// <summary>A pool that vouches for every bucket, to show what the builder would have drawn from one.</summary>
     private static ITxPool VouchingFor(IDictionary<AddressAsKey, Transaction[]> buckets)
     {
@@ -166,6 +161,6 @@ public class InclusionListPoolSeamTests
         return pool;
     }
 
-    private static InclusionListBuilder BuildBuilder(ITxPool pool, IBlockTree blockTree, TestReadOnlyStateProvider state) =>
-        new(pool, blockTree, new TestSpecProvider(Frontier.Instance), state);
+    private static InclusionListBuilder BuildBuilder(ITxPool pool, BasicTestBlockchain chain) =>
+        new(pool, chain.BlockTree, new TestSpecProvider(Frontier.Instance), chain.ReadOnlyState);
 }
