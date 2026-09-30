@@ -42,6 +42,14 @@ PHASES = [
     ("commit", "commit"),
 ]
 
+# The same split in cycles; the phases come from the `cyc=exec/roots/commit` field.
+CYCLE_PHASES = [
+    ("Cycles, whole block", "cycles"),
+    ("transaction execution", "exec_cycles"),
+    ("receipts and state root", "roots_cycles"),
+    ("commit", "commit_cycles"),
+]
+
 TOP_BLOCKS = 5
 
 # What two runs of one build showed on the EXPB runner; the note quotes it so a reader can tell a change from noise.
@@ -186,10 +194,13 @@ def render(
         before = per_block(master, key) if shared else None
         row(name, millions(before), millions(after), change(before, after))
 
-    cycles_after = per_block(pr, "cycles")
-    cycles_before = per_block(master, "cycles") if shared else None
-    cycles_delta = change(cycles_before, cycles_after)
-    row("Cycles", millions(cycles_before), millions(cycles_after), f"{cycles_delta} (noise ±2%)" if cycles_delta else "")
+    # Cycles per phase: a phase that runs beside another thread's work can take more cycles for the same instructions.
+    for index, (label, key) in enumerate(CYCLE_PHASES):
+        name = f"**{label}**" if index == 0 else f"&nbsp;&nbsp;{label}"
+        after = per_block(pr, key)
+        before = per_block(master, key) if shared else None
+        delta = change(before, after)
+        row(name, millions(before), millions(after), f"{delta} (noise ±2%)" if delta and index == 0 else delta)
     alloc_after = per_block(pr, "alloc")
     alloc_before = per_block(master, "alloc") if shared else None
     row("Allocated", megabytes(alloc_before), megabytes(alloc_after), change(alloc_before, alloc_after))

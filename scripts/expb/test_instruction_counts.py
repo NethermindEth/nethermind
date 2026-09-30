@@ -98,6 +98,9 @@ class ReportTests(unittest.TestCase):
         text = report("--pr", pr, "--master", master, "--master-sha", "a" * 40, "--base-sha", "a" * 40)
         self.assertIn("| per block, mean of 3 blocks | master | PR | Δ |", text)
         self.assertIn("| **Instructions, whole block** | 1.00M | 1.01M | +1.00% |", text)
+        # Cycles follow the same phase split; count_line gives each block cycles of half its instructions.
+        self.assertIn("| **Cycles, whole block** | 0.50M | 0.51M | +1.00% (noise ±2%) |", text)
+        self.assertIn("| &nbsp;&nbsp;transaction execution | 0.25M | 0.25M | +1.00% |", text)
         self.assertIn("Single blocks: median change 0.00%, 9 in 10 within 3.00%.", text)
         self.assertIn("| 102 | 10 | 1,000,000 | 1.00M | 1.03M | +3.00% |", text)
         self.assertIn("Baseline: master `aaaaaaaaaaaa`, the PR's base.", text)
