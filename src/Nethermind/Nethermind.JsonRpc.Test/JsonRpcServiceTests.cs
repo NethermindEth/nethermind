@@ -825,6 +825,35 @@ public class JsonRpcServiceTests
         traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
     }
 
+    private const string TraceFilterHash = "0x96cfa0fb5e50b0a3f6cc76f3299cfbf48f17e8b41798d1394474e67ec8a97e9f";
+
+    [TestCase($$"""{"fromBlock":"{{TraceFilterHash}}"}""", TraceFilterForRpc.BlockHashBoundNotAllowed)]
+    [TestCase($$$"""{"toBlock":{"blockHash":"{{{TraceFilterHash}}}"}}""", TraceFilterForRpc.BlockHashBoundNotAllowed)]
+    [TestCase($$"""{"blockHash":"{{TraceFilterHash}}","fromBlock":"0x1"}""", TraceFilterForRpc.BlockHashWithRange)]
+    [TestCase($$"""{"toBlock":"latest","blockHash":"{{TraceFilterHash}}"}""", TraceFilterForRpc.BlockHashWithRange)]
+    public void Trace_filter_rejects_block_hash_bounds(string filter, string expectedMessage)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        AssertInvalidParamsWithoutData(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{filter}]"), expectedMessage);
+
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [TestCase($$"""{"blockHash":"{{TraceFilterHash}}"}""")]
+    [TestCase($$"""{"blockHash":"{{TraceFilterHash}}","fromBlock":null,"toBlock":null}""")]
+    [TestCase($$"""{"fromBlock":null,"blockHash":"{{TraceFilterHash}}"}""")]
+    public void Trace_filter_reads_block_hash(string filter)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        RpcTest.AssertSuccess(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{filter}]"));
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(static f =>
+            f.BlockHash == new Hash256(TraceFilterHash) && f.FromBlock == null && f.ToBlock == null));
+    }
+
     [Test]
     public void Trace_filter_reads_every_known_member_in_utf8_params()
     {

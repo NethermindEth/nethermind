@@ -873,6 +873,35 @@ public class TraceRpcModuleTests
         Assert.That(traces.Data.Count(), Is.EqualTo(1));
     }
     [Test]
+    public async Task Trace_filter_with_block_hash_selects_only_that_block()
+    {
+        Context context = new();
+        await context.Build();
+        TestRpcBlockchain blockchain = context.Blockchain;
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        await blockchain.AddBlock(Build.A.Transaction.WithNonce(nonce).WithTo(TestItem.AddressC).SignedAndResolved(blockchain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject);
+        Hash256 selected = blockchain.BlockTree.Head!.Hash!;
+        await blockchain.AddBlock(Build.A.Transaction.WithNonce(nonce + 1).WithTo(TestItem.AddressC).SignedAndResolved(blockchain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject);
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(
+            new TraceFilterForRpc { BlockHash = selected, ToAddress = [TestItem.AddressC] });
+
+        Assert.That(traces.Data.Select(static t => t.BlockHash), Is.EqualTo(new[] { selected }));
+    }
+
+    [Test]
+    public async Task Trace_filter_with_unknown_block_hash_fails()
+    {
+        Context context = new();
+        await context.Build();
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(
+            new TraceFilterForRpc { BlockHash = TestItem.KeccakA });
+
+        Assert.That(traces.Result.ResultType, Is.EqualTo(ResultType.Failure));
+    }
+
+    [Test]
     public async Task Trace_filter_with_filtering_by_sender()
     {
         Context context = new();
