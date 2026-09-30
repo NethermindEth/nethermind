@@ -139,9 +139,6 @@ public class Snapshot : RefCountingDisposable
         }
     }
 
-    /// <summary>Counts the storage keys now, not the count sealed at the first observation.</summary>
-    internal int CountStoragesNow() => _isSorted ? _sorted!.StoragesCount : _mutable!.Storages.Count;
-
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
         => _isSorted ? _sorted!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node!);
 

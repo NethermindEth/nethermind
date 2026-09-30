@@ -59,10 +59,6 @@ public sealed class ReadOnlySnapshotBundle(
         ? SlotFilterNotBuilt
         : SlotFilterSkipped;
 
-    // The slot keys the build added to _slotFilter, or -1 while none was built here (a filter the test hook published
-    // holds no keys). Written before _slotFilter is published.
-    private long _slotFilterKeyCount = -1;
-
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
     private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
@@ -309,7 +305,6 @@ public sealed class ReadOnlySnapshotBundle(
             return null;
         }
 
-        _slotFilterKeyCount = filter.Count;
         Volatile.Write(ref _slotFilter, filter);
         Volatile.Write(ref _slotFilterState, SlotFilterReady);
         Metrics.RecordInMemorySlotFilterBuilt(filter.DataBytes, Stopwatch.GetTimestamp() - start);
@@ -325,54 +320,13 @@ public sealed class ReadOnlySnapshotBundle(
     /// </summary>
     internal bool MayFilterSlots => Volatile.Read(ref _slotFilterState) != SlotFilterSkipped;
 
-    /// <summary>
-    /// <c>false</c> when the in-memory snapshots now hold another number of slot keys than the build added to the slot
-    /// filter: a key gained after the build is missing from the filter, so filtered reads of it were wrong. Always
-    /// <c>true</c> while no filter was built here, including for one <see cref="PublishSlotFilter"/> installed.
-    /// </summary>
-    internal bool SlotFilterMatchesSnapshots
-    {
-        get
-        {
-            long built = Volatile.Read(ref _slotFilterKeyCount);
-            return built < 0 || built == CountStoragesNow();
-        }
-    }
-
-    /// <summary>
-    /// Test hook: publishes <paramref name="filter"/> as the slot filter as if a read had built it, e.g. one that
-    /// answers "maybe" for every key. The bundle owns it from then on. No key count is checked for it at cleanup: it
-    /// was not built from the snapshots.
-    /// </summary>
-    internal void PublishSlotFilter(BloomFilter filter)
-    {
-        int state = Volatile.Read(ref _slotFilterState);
-        if ((state != SlotFilterNotBuilt && state != SlotFilterSkipped)
-            || Interlocked.CompareExchange(ref _slotFilterState, SlotFilterBuilding, state) != state)
-        {
-            throw new InvalidOperationException("A slot filter is already built or being built.");
-        }
-
-        Volatile.Write(ref _slotFilter, filter);
-        Volatile.Write(ref _slotFilterState, SlotFilterReady);
-        Metrics.RecordInMemorySlotFilterBuilt(filter.DataBytes, 0);
-    }
-
     private void ReleaseSlotFilter()
     {
         BloomFilter? filter = Interlocked.Exchange(ref _slotFilter, null);
         if (filter is null) return;
 
-        Debug.Assert(SlotFilterMatchesSnapshots, "A snapshot gained or lost slot keys after the slot filter was built.");
         Metrics.RecordInMemorySlotFilterReleased(filter.DataBytes);
         filter.Dispose();
-    }
-
-    private long CountStoragesNow()
-    {
-        long count = 0;
-        for (int i = 0; i < snapshots.Count; i++) count += snapshots[i].CountStoragesNow();
-        return count;
     }
 
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
