@@ -89,7 +89,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
         using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(config));
         tracer.ReportAction(79000, 1, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
-        tracer.ReportRejectedCall(10000, 1, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, callType, EvmExceptionType.StackOverflow);
+        tracer.ReportRejectedAction(10000, 10000, 1, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, callType, EvmExceptionType.CallDepthExceeded);
         tracer.ReportActionEnd(70000, ReadOnlyMemory<byte>.Empty);
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
