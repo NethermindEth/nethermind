@@ -303,7 +303,7 @@ public class PrewarmerScopeProvider(
             if (prefetchCode && !isPrewarmer)
             {
                 // The block's parent readers take from it too, so it is shared through the caches.
-                code = new CodePrefetcher(baseScope.CodeDb, codeCache);
+                code = new CodePrefetcher(baseScope.CodeDb, codeCache, logManager: logManager);
                 preBlockCaches.CodePrefetcher?.Stop();
                 preBlockCaches.CodePrefetcher = code;
             }

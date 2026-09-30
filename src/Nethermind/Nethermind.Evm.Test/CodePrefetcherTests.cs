@@ -36,8 +36,11 @@ public class CodePrefetcherTests
         codeDb.Release();
         Assert.That(taking.Wait(TimeSpan.FromSeconds(10)), "execution never received the prefetched code");
         prefetching.Wait(TimeSpan.FromSeconds(10));
-        Assert.That(taking.Result.ToArray(), Is.EqualTo(Code));
-        Assert.That(codeDb.Reads, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(taking.Result.ToArray(), Is.EqualTo(Code));
+            Assert.That(codeDb.Reads, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -124,12 +127,17 @@ public class CodePrefetcherTests
         GatedCodeDb codeDb = GatedCodeDb.Open();
         CodePrefetcher prefetcher = new(codeDb);
 
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 20; i++)
         {
+            // Every reader is asleep before the code is queued, so only a wake-up can get it read.
+            if (i > 0)
+            {
+                Assert.That(SpinWait.SpinUntil(() => CodePrefetcher.IdleReaders == CodePrefetcher.Readers, TimeSpan.FromSeconds(10)),
+                    "the readers never all went to sleep");
+            }
+
             prefetcher.Enqueue(ValueKeccak.Compute(BitConverter.GetBytes(i)));
             Assert.That(SpinWait.SpinUntil(() => codeDb.Reads == i + 1, TimeSpan.FromSeconds(5)), $"code queued at {i} was never read");
-            // Idle readers go to sleep, so the next code is queued with no reader awake.
-            if (i % 10 == 0) Thread.Sleep(20);
         }
     }
 

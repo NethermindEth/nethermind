@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.State;
 
@@ -20,7 +21,12 @@ namespace Nethermind.Evm.State;
 /// <param name="codeDb">The store the code is read from.</param>
 /// <param name="codeCache">Code it already holds is served without a read, so is not prefetched.</param>
 /// <param name="maxHeldBytes">The most prefetched code held before it is taken.</param>
-public sealed class CodePrefetcher(IWorldStateScopeProvider.ICodeDb codeDb, ICodeCache? codeCache = null, long maxHeldBytes = CodePrefetcher.DefaultMaxHeldBytes)
+/// <param name="logManager">Logs reads that fail; execution meets the same error only if it runs the code.</param>
+public sealed class CodePrefetcher(
+    IWorldStateScopeProvider.ICodeDb codeDb,
+    ICodeCache? codeCache = null,
+    long maxHeldBytes = CodePrefetcher.DefaultMaxHeldBytes,
+    ILogManager? logManager = null)
 {
     /// <summary>Enough for 4k contracts of 64 KiB ahead of execution.</summary>
     public const long DefaultMaxHeldBytes = 256L * 1024 * 1024;
@@ -34,6 +40,14 @@ public sealed class CodePrefetcher(IWorldStateScopeProvider.ICodeDb codeDb, ICod
     private static readonly int ReaderCount = Math.Clamp(Environment.ProcessorCount, 4, 32);
     private static int _readersStarted;
     private static int _idleReaders;
+
+    /// <summary>Readers asleep waiting for queued code.</summary>
+    internal static int IdleReaders => Volatile.Read(ref _idleReaders);
+
+    /// <summary>The number of background readers once started.</summary>
+    internal static int Readers => ReaderCount;
+
+    private readonly ILogger _logger = logManager is null ? default : logManager.GetClassLogger<CodePrefetcher>();
 
     // Code taken before any prefetch of it, marked by a bit of its hash: a lock-free add, where the dictionary locks.
     // A shared bit only skips a prefetch, and execution reads that code itself.
@@ -124,9 +138,10 @@ public sealed class CodePrefetcher(IWorldStateScopeProvider.ICodeDb codeDb, ICod
         {
             return codeDb.GetCode(in codeHash);
         }
-        catch
+        catch (Exception e)
         {
-            // The caller reads the code itself and meets the error there.
+            // The caller reads the code itself and meets the error there; code no one runs is never read again.
+            if (_logger.IsDebug) _logger.Debug($"Code {codeHash} could not be read ahead: {e.Message}");
             return default;
         }
     }

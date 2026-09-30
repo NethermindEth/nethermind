@@ -57,8 +57,13 @@ public static class ExecutableCodeMemory
 
         public override Span<byte> GetSpan() => Buffer.AsSpan(0, codeLength);
 
+        /// <remarks>
+        /// <paramref name="elementIndex"/> is an offset into the code, from 0 to its length. The returned handle owns the
+        /// only pin of <see cref="Buffer"/>: the pointer is valid until the handle is disposed, which frees the pin.
+        /// </remarks>
         public override unsafe MemoryHandle Pin(int elementIndex = 0)
         {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)codeLength, nameof(elementIndex));
             GCHandle handle = GCHandle.Alloc(Buffer, GCHandleType.Pinned);
             return new MemoryHandle(Unsafe.Add<byte>((void*)handle.AddrOfPinnedObject(), elementIndex), handle);
         }
