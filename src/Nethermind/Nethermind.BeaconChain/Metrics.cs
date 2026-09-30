@@ -71,6 +71,10 @@ public class Metrics
     public static long BeaconChainLastBlockImportMs { get; set; }
 
     [CounterMetric]
+    [Description("Blocks held for a parent or a deferred block that were dropped because it could not import.")]
+    public static ulong BeaconChainHeldBlocksDropped { get; set; }
+
+    [CounterMetric]
     [Description("Gossip messages accepted across the beacon chain topics.")]
     public static ulong BeaconChainGossipAccepted { get; set; }
 
