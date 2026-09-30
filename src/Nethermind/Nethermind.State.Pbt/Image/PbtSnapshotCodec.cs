@@ -21,11 +21,10 @@ internal static class PbtSnapshotCodec
     private const byte ContractHeader = 0x01;
     private const byte DelegationHeader = 0x02;
     private const byte CodeGroup = 0x03;
-    private const byte FirstStorageGroup = 0x04;
-    private const byte NextStorageGroup = 0x05;
-    private const byte FirstSingleStorageGroup = 0x06;
-    private const byte NextSingleStorageGroup = 0x07;
-    private const byte End = 0x08;
+    private const byte StorageAccount = 0x04;
+    private const byte SingleStorageGroup = 0x05;
+    private const byte StorageGroup = 0x06;
+    private const byte End = 0x07;
     private const int HeaderStorageSlots = 64;
     private const int DelegationLength = 23;
     private const int GroupWidth = 256;
@@ -49,6 +48,7 @@ internal static class PbtSnapshotCodec
         byte[] storagePrefix = new byte[1 + ValueHash256.MemorySize];
         storagePrefix[0] = Eip8297KeyDerivation.StorageZone;
         ValueHash256? previousHeader = null, previousCode = null, previousStorage = null, previousStem = null;
+        bool awaitingStorageGroup = false;
         int tag;
         while ((tag = ReadByte(source)) != End)
         {
@@ -61,24 +61,27 @@ internal static class PbtSnapshotCodec
                 case CodeGroup when previousStorage is null:
                     previousCode = ReadGroup(source, codePrefix, previousCode, single: false, leaves);
                     break;
-                case FirstStorageGroup or FirstSingleStorageGroup:
+                case StorageAccount when !awaitingStorageGroup:
                     ValueHash256 addressHash = ReadAscendingHash(source, previousStorage);
                     headers.Require(addressHash);
                     previousStorage = addressHash;
                     addressHash.Bytes.CopyTo(storagePrefix.AsSpan(1));
-                    previousStem = ReadGroup(source, storagePrefix, null, tag == FirstSingleStorageGroup, leaves);
+                    previousStem = null;
+                    awaitingStorageGroup = true;
                     break;
-                case (NextStorageGroup or NextSingleStorageGroup) when previousStorage is not null:
-                    previousStem = ReadGroup(source, storagePrefix, previousStem, tag == NextSingleStorageGroup, leaves);
+                case (SingleStorageGroup or StorageGroup) when previousStorage is not null:
+                    previousStem = ReadGroup(source, storagePrefix, previousStem, tag == SingleStorageGroup, leaves);
+                    awaitingStorageGroup = false;
                     break;
                 default:
                     throw new InvalidDataException("Unexpected snapshot record tag.");
             }
-            if (tag is FirstStorageGroup or NextStorageGroup && leaves.Count == 1)
-                throw new InvalidDataException("A one-slot storage group must use a single-slot tag.");
+            if (tag == StorageGroup && leaves.Count == 1)
+                throw new InvalidDataException("A one-slot storage group must use the single-slot tag.");
             foreach (RebuildEntry leaf in leaves) yield return leaf;
             leaves.Clear();
         }
+        if (awaitingStorageGroup) throw new InvalidDataException("A storage account must be followed by a storage group.");
         cancellationToken.ThrowIfCancellationRequested();
         ReadHash(source);
         if (source.ReadByte() != -1) throw new InvalidDataException("Trailing snapshot bytes.");
@@ -302,8 +305,8 @@ internal static class PbtSnapshotCodec
         private readonly byte[] _subIndexes = new byte[GroupWidth];
         private readonly ValueHash256[] _values = new ValueHash256[GroupWidth];
         private readonly byte[] _storageAddress = new byte[ValueHash256.MemorySize];
-        // Large enough for the widest write: a first storage group's tag and address, then a full group.
-        private readonly byte[] _record = new byte[1 + 2 * ValueHash256.MemorySize + 1 + GroupWidth * (2 + ValueHash256.MemorySize)];
+        // Large enough for the widest write: a storage account record, then a full storage group record.
+        private readonly byte[] _record = new byte[2 + 2 * ValueHash256.MemorySize + 1 + GroupWidth * (2 + ValueHash256.MemorySize)];
         private int _stemLength;
         private int _count;
         private int _position;
@@ -409,15 +412,15 @@ internal static class PbtSnapshotCodec
 
         private void AppendStorageGroup(ReadOnlySpan<byte> addressHash, ReadOnlySpan<byte> stemHash)
         {
-            bool single = _count == 1;
-            if (_inStorage && addressHash.SequenceEqual(_storageAddress)) _record[_position++] = single ? NextSingleStorageGroup : NextStorageGroup;
-            else
+            if (!_inStorage || !addressHash.SequenceEqual(_storageAddress))
             {
                 _inStorage = true;
                 addressHash.CopyTo(_storageAddress);
-                _record[_position++] = single ? FirstSingleStorageGroup : FirstStorageGroup;
+                _record[_position++] = StorageAccount;
                 Append(addressHash);
             }
+            bool single = _count == 1;
+            _record[_position++] = single ? SingleStorageGroup : StorageGroup;
             AppendGroup(stemHash, single);
         }
 

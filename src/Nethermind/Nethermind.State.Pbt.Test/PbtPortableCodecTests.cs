@@ -131,7 +131,7 @@ public class PbtPortableCodecTests
         using MemoryStream stream = new();
         PbtSnapshotCodec.Write(stream, leaves, PbtTestLeaves.Claiming(default));
         Assert.That(stream.ToArray(), Is.EqualTo(Snapshot(ValidHeader, "03" + CodeStem + "00" + "00" + "020102",
-            "06" + AddressHash + StorageStem + "07" + "01ff", "05" + SecondStorageStem + "01" + "01" + "0101" + "02" + "0102")));
+            "04" + AddressHash, "05" + StorageStem + "07" + "01ff", "06" + SecondStorageStem + "01" + "01" + "0101" + "02" + "0102")));
         stream.Position = 0;
         Assert.That(PbtSnapshotCodec.ReadLeaves(stream).ToList(), Is.EqualTo(leaves));
     }
@@ -162,16 +162,18 @@ public class PbtPortableCodecTests
 
     [Test]
     public void Snapshot_rejects_malformed_records([Values("empty", "unknown-tag", "leading-zero", "over-width", "empty-account", "zero-code-size",
-        "zero-value", "slot-64", "slot-order", "header-order", "header-after-code", "code-after-storage", "orphan-next-group", "orphan-below",
-        "orphan-above", "counted-single-slot", "split-stem", "sub-index-order", "missing-end", "trailing", "truncated", "cancel")] string corruption)
+        "zero-value", "slot-64", "slot-order", "header-order", "header-after-code", "code-after-storage", "orphan-storage-group", "orphan-below",
+        "orphan-above", "groupless-storage-account", "trailing-storage-account", "counted-single-slot", "split-stem", "sub-index-order", "missing-end", "trailing", "truncated", "cancel")] string corruption)
     {
         const string header = "0101" + "00";
         string codeGroup = "03" + CodeStem + "00" + "00" + "0101";
-        string storageGroup = "06" + AddressHash + StorageStem + "07" + "01ff";
+        string singleStorageGroup = "05" + StorageStem + "07" + "01ff";
+        string storageRecord = "04" + AddressHash + singleStorageGroup;
+        string lastHeader = "00" + new string('f', 64) + header + "00";
         byte[] bytes = corruption switch
         {
             "empty" => [],
-            "unknown-tag" => Snapshot("09" + AddressHash + header + "00"),
+            "unknown-tag" => Snapshot("08" + AddressHash + header + "00"),
             "leading-zero" => Snapshot("00" + AddressHash + "020001" + "00" + "00"),
             "over-width" => Snapshot("00" + AddressHash + "09" + "010101010101010101" + "00" + "00"),
             "empty-account" => Snapshot("00" + AddressHash + "00" + "00" + "00"),
@@ -181,11 +183,13 @@ public class PbtPortableCodecTests
             "slot-order" => Snapshot("00" + AddressHash + header + "02" + "01" + "0101" + "00" + "0101"),
             "header-order" => Snapshot(ValidHeader, ValidHeader),
             "header-after-code" => Snapshot(codeGroup, ValidHeader),
-            "code-after-storage" => Snapshot(ValidHeader, storageGroup, codeGroup),
-            "orphan-next-group" => Snapshot(ValidHeader, "07" + StorageStem + "07" + "01ff"),
-            "orphan-below" => Snapshot(ValidHeader, "06" + new string('0', 64) + StorageStem + "07" + "01ff"),
-            "orphan-above" => Snapshot(ValidHeader, "06" + new string('f', 64) + StorageStem + "07" + "01ff"),
-            "counted-single-slot" => Snapshot(ValidHeader, "04" + AddressHash + StorageStem + "00" + "07" + "01ff"),
+            "code-after-storage" => Snapshot(ValidHeader, storageRecord, codeGroup),
+            "orphan-storage-group" => Snapshot(ValidHeader, singleStorageGroup),
+            "orphan-below" => Snapshot(ValidHeader, "04" + new string('0', 64) + singleStorageGroup),
+            "orphan-above" => Snapshot(ValidHeader, "04" + new string('f', 64) + singleStorageGroup),
+            "groupless-storage-account" => Snapshot(ValidHeader, lastHeader, "04" + AddressHash, "04" + new string('f', 64) + singleStorageGroup),
+            "trailing-storage-account" => Snapshot(ValidHeader, "04" + AddressHash),
+            "counted-single-slot" => Snapshot(ValidHeader, "04" + AddressHash + "06" + StorageStem + "00" + "07" + "01ff"),
             "split-stem" => Snapshot(ValidHeader, "03" + CodeStem + "00" + "00" + "0101", "03" + CodeStem + "00" + "01" + "0101"),
             "sub-index-order" => Snapshot(ValidHeader, "03" + CodeStem + "01" + "01" + "0101" + "00" + "0101"),
             "missing-end" => Bytes.FromHexString(ValidHeader + new string('0', 64)),
@@ -277,5 +281,5 @@ public class PbtPortableCodecTests
 
     /// <summary>A snapshot of the given tagged records, each already hex-encoded, with an end tag and a zero root.</summary>
     private static byte[] Snapshot(params string[] records) =>
-        Bytes.FromHexString(string.Concat(records) + "08" + new string('0', 64));
+        Bytes.FromHexString(string.Concat(records) + "07" + new string('0', 64));
 }
