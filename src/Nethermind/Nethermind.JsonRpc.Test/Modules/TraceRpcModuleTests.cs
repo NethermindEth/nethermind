@@ -930,12 +930,12 @@ public class TraceRpcModuleTests
             yield return new TestCaseData($"{{\"blockHash\":\"{TestItem.KeccakA}\",{bounds}}}", ErrorMessages.BlockHashAndRange);
 
         foreach (string bound in new[] { "fromBlock", "toBlock" })
-        foreach (string value in new[]
-        {
+            foreach (string value in new[]
+            {
             $"\"{TestItem.KeccakA}\"", $"{{\"blockHash\":\"{TestItem.KeccakA}\"}}",
             $"{{\"blockHash\":\"{TestItem.KeccakA}\",\"requireCanonical\":true}}"
         })
-            yield return new TestCaseData($"{{\"{bound}\":{value}}}", "block hash is not a block number or tag");
+                yield return new TestCaseData($"{{\"{bound}\":{value}}}", "block hash is not a block number or tag");
     }
 
     [TestCaseSource(nameof(InvalidTraceFilterBlocks))]
