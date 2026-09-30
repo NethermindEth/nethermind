@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 using System.Threading;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -61,13 +62,16 @@ public static class BeaconChainMetadataKeys
 public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSpec? spec = null)
 {
     /// <summary>Layout version of every column; bump it whenever a change needs an existing database migrated or refused.</summary>
-    public const uint CurrentSchemaVersion = ExecutionPayloadEnvelopesSchemaVersion;
+    public const uint CurrentSchemaVersion = DataColumnSidecarsSchemaVersion;
 
     /// <summary>The first version whose children index is known to cover every stored block; an older database gets the index rebuilt.</summary>
     private const uint ChildrenIndexSchemaVersion = 2;
 
     /// <summary>The first version stamped by a build that knows <see cref="BeaconChainDbColumns.ExecutionPayloadEnvelopes"/>, so a build that does not refuses the database.</summary>
     private const uint ExecutionPayloadEnvelopesSchemaVersion = 3;
+
+    /// <summary>The first version stamped by a build that knows <see cref="BeaconChainDbColumns.DataColumnSidecars"/>, so a build that does not prune it refuses the database.</summary>
+    private const uint DataColumnSidecarsSchemaVersion = 4;
 
     /// <summary>Offset of <c>parent_root</c> in a serialized <c>SignedBeaconBlock</c>: the message offset and signature precede the message, whose slot and proposer index precede the root; the same in every fork.</summary>
     private const int ParentRootOffset = sizeof(uint) + BlsSignature.Length + sizeof(ulong) + sizeof(ulong);
@@ -93,7 +97,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// <summary><c>compute_min_epochs_for_block_requests()</c> (phase0/p2p-interface.md), the epochs ExecutionPayloadEnvelopesByRange/ByRoot must serve (gloas/p2p-interface.md).</summary>
     internal const ulong MinEpochsForBlockRequests = Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
 
-    /// <summary>The most slots one envelope prune batch covers, so a prune after a long gap never builds one unbounded batch.</summary>
+    /// <summary>The most slots one envelope prune batch covers, so a prune after a long outage never builds one unbounded batch.</summary>
     internal const ulong EnvelopePruneBatchSlots = 1024;
 
     /// <summary>Envelope column key of the lowest and highest slot (8 bytes big-endian each) that may still have envelopes; its 1-byte length never collides with slot (8) or root (32) keys.</summary>
@@ -109,6 +113,29 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     private readonly IDb _metadata = db.GetColumnDb(BeaconChainDbColumns.Metadata);
     private readonly IDb _envelopes = db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
     private readonly Lock _envelopeIndexLock = new();
+    private readonly IDb _dataColumns = db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars);
+    private readonly Lock _columnIndexLock = new();
+
+    /// <summary>The most slots one data column prune batch covers, so a prune after a long outage never builds one unbounded batch.</summary>
+    internal const ulong ColumnPruneBatchSlots = 1024;
+
+    /// <summary>The most batches of each kind one prune call runs, so the caller is never held for a whole backlog; the next call resumes where this one stopped.</summary>
+    internal const int MaxColumnPruneBatchesPerCall = 8;
+
+    /// <summary>Column table keys never collide by length: 40 bytes is <c>root ++ index</c>, 8 is a slot index entry, 1 is one of the records below.</summary>
+    private const int ColumnKeyLength = Hash256.Size + sizeof(ulong);
+    private static ReadOnlySpan<byte> ColumnBoundsKey => [0];
+    private static ReadOnlySpan<byte> ColumnFloorKey => [1];
+    private static ReadOnlySpan<byte> ColumnCheckedKey => [2];
+    private const int ColumnBoundsLength = 2 * sizeof(ulong);
+
+    /// <summary>A slot index entry is a block root followed by the 128-bit big-endian bitmap of its stored columns.</summary>
+    private const int ColumnSlotEntryLength = Hash256.Size + 16;
+
+    /// <summary>A record is a shape byte, the 8-byte big-endian slot and the SSZ sidecar.</summary>
+    private const int ColumnRecordHeaderLength = 1 + sizeof(ulong);
+    private const byte FuluColumnRecord = 0;
+    private const byte GloasColumnRecord = 1;
 
     /// <summary>Stores a pre-Gloas block; see <see cref="PutForkedBlock"/>.</summary>
     /// <exception cref="InvalidOperationException">The block's slot is in the Gloas fork.</exception>
@@ -883,6 +910,500 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         return false;
     }
 
+    /// <summary>Stores a verified Fulu data column sidecar under (<paramref name="blockRoot"/>, index) and indexes it by <paramref name="slot"/> for <see cref="PruneDataColumnSidecars"/>.</summary>
+    /// <remarks>The record, its slot index entry and the slot bounds are one write batch. A record is stored raw: cells and proofs are high-entropy, so compression only costs CPU.</remarks>
+    /// <exception cref="ArgumentException">The column index is out of range, or the sidecar encodes to more than <c>MAX_PAYLOAD_SIZE</c> bytes.</exception>
+    public void PutDataColumnSidecar(Hash256 blockRoot, ulong slot, DataColumnSidecar sidecar) =>
+        PutDataColumnRecord(blockRoot, slot, sidecar.Index, FuluColumnRecord, DataColumnSidecar.Encode(sidecar));
+
+    /// <summary>Stores a verified Gloas data column sidecar under its own <c>beacon_block_root</c> and index; see <see cref="PutDataColumnSidecar(Hash256, ulong, DataColumnSidecar)"/>.</summary>
+    /// <exception cref="ArgumentException">The sidecar names no beacon block root, its column index is out of range, or it encodes to more than <c>MAX_PAYLOAD_SIZE</c> bytes.</exception>
+    public void PutDataColumnSidecar(DataColumnSidecarGloas sidecar) =>
+        PutDataColumnRecord(sidecar.BeaconBlockRoot ?? throw new ArgumentException("A Gloas data column sidecar must name its beacon block root", nameof(sidecar)),
+            sidecar.Slot, sidecar.Index, GloasColumnRecord, DataColumnSidecarGloas.Encode(sidecar));
+
+    private void PutDataColumnRecord(Hash256 blockRoot, ulong slot, ulong index, byte shape, byte[] ssz)
+    {
+        if (index >= Eip7594DasConstants.NumberOfColumns)
+        {
+            throw new ArgumentException($"Column index {index} is not below NUMBER_OF_COLUMNS", nameof(index));
+        }
+
+        if (ssz.Length > ReqRespFraming.MaxPayloadSize)
+        {
+            throw new ArgumentException($"The column sidecar for {blockRoot} encodes to {ssz.Length} bytes, above MAX_PAYLOAD_SIZE, so no read would accept it", nameof(ssz));
+        }
+
+        byte[] record = new byte[ColumnRecordHeaderLength + ssz.Length];
+        record[0] = shape;
+        BinaryPrimitives.WriteUInt64BigEndian(record.AsSpan(1), slot);
+        ssz.CopyTo(record.AsSpan(ColumnRecordHeaderLength));
+        Span<byte> key = stackalloc byte[ColumnKeyLength];
+        WriteColumnKey(key, blockRoot, index);
+
+        lock (_columnIndexLock)
+        {
+            using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+            IWriteBatch columns = batch.GetColumnBatch(BeaconChainDbColumns.DataColumnSidecars);
+            // A root re-added under another slot would leave its old slot's index entry behind, never pruned with the record.
+            if (_dataColumns.Get(key) is { Length: >= ColumnRecordHeaderLength } stored
+                && BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(1)) is var storedSlot && storedSlot != slot)
+            {
+                UpdateColumnSlotIndex(columns, storedSlot, blockRoot, (int)index, present: false);
+            }
+
+            UpdateColumnSlotIndex(columns, slot, blockRoot, (int)index, present: true);
+            columns.Set(key, record);
+
+            // A sidecar verified before finalization can land below the non-canonical cursor, so that pass must visit its slot again.
+            if (_dataColumns.Get(ColumnCheckedKey) is { Length: sizeof(ulong) } checkedFrom && BinaryPrimitives.ReadUInt64BigEndian(checkedFrom) > slot)
+            {
+                Span<byte> rewound = stackalloc byte[sizeof(ulong)];
+                BinaryPrimitives.WriteUInt64BigEndian(rewound, slot);
+                columns.PutSpan(ColumnCheckedKey, rewound);
+            }
+
+            bool bounded = TryGetColumnBounds(out ulong lowest, out ulong highest);
+            if (!bounded || slot < lowest || slot > highest)
+            {
+                columns.Set(ColumnBoundsKey, ColumnBounds(bounded ? Math.Min(lowest, slot) : slot, bounded ? Math.Max(highest, slot) : slot));
+            }
+        }
+    }
+
+    /// <summary>Reads the Fulu data column sidecar stored under (<paramref name="blockRoot"/>, <paramref name="column"/>); <c>false</c> when none is stored or the record is a Gloas one.</summary>
+    /// <exception cref="InvalidDataException">The stored record is not an SSZ sidecar of that column.</exception>
+    public bool TryGetDataColumnSidecar(Hash256 blockRoot, ulong column, [NotNullWhen(true)] out DataColumnSidecar? sidecar)
+    {
+        sidecar = null;
+        if (!TryReadDataColumnRecord(blockRoot, column, FuluColumnRecord, out byte[]? record))
+        {
+            return false;
+        }
+
+        try
+        {
+            DataColumnSidecar.Decode(record.AsSpan(ColumnRecordHeaderLength), out sidecar);
+        }
+        catch (Exception e)
+        {
+            throw new InvalidDataException($"The column sidecar stored under {blockRoot} index {column} is not SSZ: {e.Message}", e);
+        }
+
+        return sidecar.Index == column
+            ? true
+            : throw new InvalidDataException($"The column sidecar stored under {blockRoot} index {column} holds index {sidecar.Index}");
+    }
+
+    /// <summary>Reads the Gloas data column sidecar stored under (<paramref name="blockRoot"/>, <paramref name="column"/>); <c>false</c> when none is stored or the record is a Fulu one.</summary>
+    /// <exception cref="InvalidDataException">The stored record is not an SSZ sidecar of that root and column.</exception>
+    public bool TryGetDataColumnSidecarGloas(Hash256 blockRoot, ulong column, [NotNullWhen(true)] out DataColumnSidecarGloas? sidecar)
+    {
+        sidecar = null;
+        if (!TryReadDataColumnRecord(blockRoot, column, GloasColumnRecord, out byte[]? record))
+        {
+            return false;
+        }
+
+        try
+        {
+            DataColumnSidecarGloas.Decode(record.AsSpan(ColumnRecordHeaderLength), out sidecar);
+        }
+        catch (Exception e)
+        {
+            throw new InvalidDataException($"The column sidecar stored under {blockRoot} index {column} is not SSZ: {e.Message}", e);
+        }
+
+        return sidecar.Index == column && sidecar.BeaconBlockRoot == blockRoot
+            ? true
+            : throw new InvalidDataException($"The column sidecar stored under {blockRoot} index {column} names another root or index");
+    }
+
+    private bool TryReadDataColumnRecord(Hash256 blockRoot, ulong column, byte shape, [NotNullWhen(true)] out byte[]? record)
+    {
+        record = null;
+        if (column >= Eip7594DasConstants.NumberOfColumns)
+        {
+            return false;
+        }
+
+        Span<byte> key = stackalloc byte[ColumnKeyLength];
+        WriteColumnKey(key, blockRoot, column);
+        byte[]? stored = _dataColumns.Get(key);
+        if (stored is null)
+        {
+            return false;
+        }
+
+        if (stored.Length < ColumnRecordHeaderLength || stored.Length - ColumnRecordHeaderLength > ReqRespFraming.MaxPayloadSize)
+        {
+            throw new InvalidDataException($"The column sidecar stored under {blockRoot} index {column} has an impossible length of {stored.Length}");
+        }
+
+        if (stored[0] != shape)
+        {
+            return false;
+        }
+
+        record = stored;
+        return true;
+    }
+
+    /// <summary>Whether a record is stored under (<paramref name="blockRoot"/>, <paramref name="column"/>), without reading it.</summary>
+    public bool HasDataColumnRecord(Hash256 blockRoot, ulong column)
+    {
+        if (column >= Eip7594DasConstants.NumberOfColumns)
+        {
+            return false;
+        }
+
+        Span<byte> key = stackalloc byte[ColumnKeyLength];
+        WriteColumnKey(key, blockRoot, column);
+        return _dataColumns.KeyExists(key);
+    }
+
+    /// <summary>The columns of <paramref name="blockRoot"/> the slot index holds at <paramref name="slot"/>, bit <c>i</c> set for column <c>i</c>.</summary>
+    public UInt128 GetStoredDataColumns(ulong slot, Hash256 blockRoot)
+    {
+        Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+        if (_dataColumns.Get(slotKey) is not { } entries)
+        {
+            return UInt128.Zero;
+        }
+
+        for (int offset = 0; offset + ColumnSlotEntryLength <= entries.Length; offset += ColumnSlotEntryLength)
+        {
+            if (entries.AsSpan(offset, Hash256.Size).SequenceEqual(blockRoot.Bytes))
+            {
+                return BinaryPrimitives.ReadUInt128BigEndian(entries.AsSpan(offset + Hash256.Size));
+            }
+        }
+
+        return UInt128.Zero;
+    }
+
+    /// <summary>The slot from which the store holds every data column sidecar it was given, as last recorded; <c>false</c> before the first.</summary>
+    public bool TryGetDataColumnFloor(out ulong slot)
+    {
+        if (_dataColumns.Get(ColumnFloorKey) is { Length: sizeof(ulong) } value)
+        {
+            slot = BinaryPrimitives.ReadUInt64BigEndian(value);
+            return true;
+        }
+
+        slot = 0;
+        return false;
+    }
+
+    /// <summary>Records <paramref name="slot"/> as the data column floor unless it is lower than the recorded one, so the floor never decreases.</summary>
+    public void RaiseDataColumnFloor(ulong slot)
+    {
+        lock (_columnIndexLock)
+        {
+            if (!TryGetDataColumnFloor(out ulong floor) || slot > floor)
+            {
+                Span<byte> value = stackalloc byte[sizeof(ulong)];
+                BinaryPrimitives.WriteUInt64BigEndian(value, slot);
+                _dataColumns.PutSpan(ColumnFloorKey, value);
+            }
+        }
+    }
+
+    /// <summary>Deletes every stored data column sidecar below the DataColumnSidecarsByRange/ByRoot retention window as of <paramref name="currentEpoch"/>, then the ones of blocks that are not canonical below <paramref name="finalizedSlot"/>.</summary>
+    /// <remarks>
+    /// The window is <see cref="DataAvailabilityBoundary.ComputeStartSlot"/> (fulu/p2p-interface.md). The floor is raised to the window start before
+    /// anything is deleted, so an interrupted prune never claims sidecars it removed. Only the stored slot bounds are visited, at most
+    /// <see cref="ColumnPruneBatchSlots"/> slots per write batch, and each batch moves its bound with its deletions, so an interrupted prune
+    /// resumes where it stopped, and a call runs at most <see cref="MaxColumnPruneBatchesPerCall"/> batches of each kind. A slot with no canonical entry keeps its
+    /// sidecars; above the canonical index top the block may still be indexed, so the non-canonical pass stops there and revisits the slot next call.
+    /// </remarks>
+    /// <param name="currentEpoch">The wall-clock epoch.</param>
+    /// <param name="finalizedSlot">The slot below which the canonical index is final, so a block that differs from it can never become canonical.</param>
+    /// <exception cref="InvalidOperationException">This store has no spec, so it knows no window.</exception>
+    public void PruneDataColumnSidecars(ulong currentEpoch, ulong finalizedSlot)
+    {
+        BeaconChainSpec networkSpec = spec ?? throw new InvalidOperationException($"A store without a {nameof(BeaconChainSpec)} knows no retention window to prune data column sidecars by");
+        ulong keepFrom = DataAvailabilityBoundary.ComputeStartSlot(currentEpoch, networkSpec);
+        if (TryGetDataColumnFloor(out _))
+        {
+            RaiseDataColumnFloor(keepFrom);
+        }
+
+        for (int batches = 0; batches < MaxColumnPruneBatchesPerCall && PruneDataColumnBatch(keepFrom); batches++)
+        {
+        }
+
+        for (int batches = 0; batches < MaxColumnPruneBatchesPerCall && DeleteNonCanonicalDataColumnBatch(finalizedSlot); batches++)
+        {
+        }
+    }
+
+    /// <returns><c>false</c> when no stored slot is below <paramref name="keepFrom"/>.</returns>
+    private bool PruneDataColumnBatch(ulong keepFrom)
+    {
+        lock (_columnIndexLock)
+        {
+            if (!TryGetColumnBounds(out ulong lowest, out ulong highest) || keepFrom <= lowest)
+            {
+                return false;
+            }
+
+            bool prunesAll = keepFrom > highest;
+            ulong last = prunesAll ? highest : keepFrom - 1;
+            ulong batchLast = last - lowest >= ColumnPruneBatchSlots ? lowest + ColumnPruneBatchSlots - 1 : last;
+            Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
+            Span<byte> key = stackalloc byte[ColumnKeyLength];
+            using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+            IWriteBatch columns = batch.GetColumnBatch(BeaconChainDbColumns.DataColumnSidecars);
+            for (ulong slot = lowest; ; slot++)
+            {
+                BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+                if (_dataColumns.Get(slotKey) is { } entries)
+                {
+                    for (int offset = 0; offset + ColumnSlotEntryLength <= entries.Length; offset += ColumnSlotEntryLength)
+                    {
+                        RemoveEntryRecords(columns, entries.AsSpan(offset, ColumnSlotEntryLength), key);
+                    }
+
+                    columns.Remove(slotKey);
+                }
+
+                if (slot == batchLast)
+                {
+                    break;
+                }
+            }
+
+            if (prunesAll && batchLast == last)
+            {
+                columns.Remove(ColumnBoundsKey);
+            }
+            else
+            {
+                columns.Set(ColumnBoundsKey, ColumnBounds(batchLast + 1, highest));
+            }
+
+            return true;
+        }
+    }
+
+    /// <returns><c>false</c> when every stored slot below <paramref name="finalizedSlot"/> has been checked.</returns>
+    private bool DeleteNonCanonicalDataColumnBatch(ulong finalizedSlot)
+    {
+        lock (_columnIndexLock)
+        {
+            if (!TryGetColumnBounds(out ulong lowest, out ulong highest))
+            {
+                return false;
+            }
+
+            ulong start = _dataColumns.Get(ColumnCheckedKey) is { Length: sizeof(ulong) } value ? Math.Max(lowest, BinaryPrimitives.ReadUInt64BigEndian(value)) : lowest;
+            if (start >= finalizedSlot || start > highest)
+            {
+                return false;
+            }
+
+            ulong last = Math.Min(finalizedSlot - 1, highest);
+            ulong batchLast = last - start >= ColumnPruneBatchSlots ? start + ColumnPruneBatchSlots - 1 : last;
+            ulong? canonicalTop = GetCanonicalIndexTopSlot();
+            ulong resume = batchLast + 1;
+            bool stalled = false;
+            Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
+            Span<byte> key = stackalloc byte[ColumnKeyLength];
+            using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+            IWriteBatch columns = batch.GetColumnBatch(BeaconChainDbColumns.DataColumnSidecars);
+            for (ulong slot = start; ; slot++)
+            {
+                BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+                if (_dataColumns.Get(slotKey) is { } entries)
+                {
+                    if (TryGetCanonicalRoot(slot, out Hash256? canonical))
+                    {
+                        DropNonCanonicalEntries(columns, slotKey, entries, canonical, key);
+                    }
+                    else if (!stalled && (canonicalTop is not { } top || slot > top))
+                    {
+                        // Above the canonical index top the block may still be indexed, so the next pass must look at this slot again.
+                        stalled = true;
+                        resume = slot;
+                    }
+                }
+
+                if (slot == batchLast)
+                {
+                    break;
+                }
+            }
+
+            Span<byte> next = stackalloc byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64BigEndian(next, resume);
+            columns.PutSpan(ColumnCheckedKey, next);
+            return !stalled && batchLast < last;
+        }
+    }
+
+    private static void DropNonCanonicalEntries(IWriteBatch columns, ReadOnlySpan<byte> slotKey, byte[] entries, Hash256 canonical, Span<byte> key)
+    {
+        byte[] kept = new byte[entries.Length];
+        int keptLength = 0;
+        for (int offset = 0; offset + ColumnSlotEntryLength <= entries.Length; offset += ColumnSlotEntryLength)
+        {
+            ReadOnlySpan<byte> entry = entries.AsSpan(offset, ColumnSlotEntryLength);
+            if (entry[..Hash256.Size].SequenceEqual(canonical.Bytes))
+            {
+                entry.CopyTo(kept.AsSpan(keptLength));
+                keptLength += ColumnSlotEntryLength;
+            }
+            else
+            {
+                RemoveEntryRecords(columns, entry, key);
+            }
+        }
+
+        if (keptLength == 0)
+        {
+            columns.Remove(slotKey);
+        }
+        else if (keptLength != entries.Length)
+        {
+            columns.PutSpan(slotKey, kept.AsSpan(0, keptLength));
+        }
+    }
+
+    /// <summary>Removes the records of one slot index entry: a root and the bitmap of its stored columns.</summary>
+    private static void RemoveEntryRecords(IWriteBatch columns, ReadOnlySpan<byte> entry, Span<byte> key)
+    {
+        UInt128 bits = BinaryPrimitives.ReadUInt128BigEndian(entry[Hash256.Size..]);
+        entry[..Hash256.Size].CopyTo(key);
+        for (int column = 0; column < Eip7594DasConstants.NumberOfColumns; column++)
+        {
+            if ((bits >> column & UInt128.One) != UInt128.Zero)
+            {
+                BinaryPrimitives.WriteUInt64BigEndian(key[Hash256.Size..], (ulong)column);
+                columns.Remove(key);
+            }
+        }
+    }
+
+    /// <summary>Sets or clears one column in the slot index entry of a block root, adding or dropping the entry and the slot record as needed.</summary>
+    private void UpdateColumnSlotIndex(IWriteBatch columns, ulong slot, Hash256 blockRoot, int column, bool present)
+    {
+        Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+        byte[] stored = _dataColumns.Get(slotKey) ?? [];
+        int count = stored.Length / ColumnSlotEntryLength;
+        int at = -1;
+        for (int i = 0; i < count; i++)
+        {
+            if (stored.AsSpan(i * ColumnSlotEntryLength, Hash256.Size).SequenceEqual(blockRoot.Bytes))
+            {
+                at = i;
+                break;
+            }
+        }
+
+        UInt128 bits = at < 0 ? UInt128.Zero : BinaryPrimitives.ReadUInt128BigEndian(stored.AsSpan(at * ColumnSlotEntryLength + Hash256.Size));
+        UInt128 mask = UInt128.One << column;
+        UInt128 next = present ? bits | mask : bits & ~mask;
+        if (next == bits)
+        {
+            return;
+        }
+
+        int newCount = count - (at >= 0 ? 1 : 0) + (next == UInt128.Zero ? 0 : 1);
+        if (newCount == 0)
+        {
+            columns.Remove(slotKey);
+            return;
+        }
+
+        byte[] updated = new byte[newCount * ColumnSlotEntryLength];
+        int written = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (i == at) continue;
+            stored.AsSpan(i * ColumnSlotEntryLength, ColumnSlotEntryLength).CopyTo(updated.AsSpan(written));
+            written += ColumnSlotEntryLength;
+        }
+
+        if (next != UInt128.Zero)
+        {
+            blockRoot.Bytes.CopyTo(updated.AsSpan(written));
+            BinaryPrimitives.WriteUInt128BigEndian(updated.AsSpan(written + Hash256.Size), next);
+        }
+
+        columns.Set(slotKey, updated);
+    }
+
+    private static void WriteColumnKey(Span<byte> key, Hash256 blockRoot, ulong column)
+    {
+        blockRoot.Bytes.CopyTo(key);
+        BinaryPrimitives.WriteUInt64BigEndian(key[Hash256.Size..], column);
+    }
+
+    /// <summary>The stored slot bounds of the column table, rebuilt from the slot index when the record is malformed or inverted; the caller holds <see cref="_columnIndexLock"/>.</summary>
+    /// <returns><c>false</c> when no slot may hold sidecars.</returns>
+    private bool TryGetColumnBounds(out ulong lowest, out ulong highest)
+    {
+        lowest = highest = 0;
+        byte[]? value = _dataColumns.Get(ColumnBoundsKey);
+        if (value is null)
+        {
+            return false;
+        }
+
+        if (value.Length == ColumnBoundsLength)
+        {
+            lowest = BinaryPrimitives.ReadUInt64BigEndian(value);
+            highest = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
+            if (lowest <= highest)
+            {
+                return true;
+            }
+        }
+
+        return RebuildColumnBounds(out lowest, out highest);
+    }
+
+    /// <remarks>Scans every key of the table, so it runs only on a damaged record, which would otherwise leave slots outside the bounds that no prune visits.</remarks>
+    private bool RebuildColumnBounds(out ulong lowest, out ulong highest)
+    {
+        bool found = false;
+        lowest = ulong.MaxValue;
+        highest = 0;
+        foreach (byte[] key in _dataColumns.GetAllKeys())
+        {
+            if (key.Length != sizeof(ulong))
+            {
+                continue;
+            }
+
+            ulong slot = BinaryPrimitives.ReadUInt64BigEndian(key);
+            lowest = Math.Min(lowest, slot);
+            highest = Math.Max(highest, slot);
+            found = true;
+        }
+
+        if (found)
+        {
+            _dataColumns.Set(ColumnBoundsKey, ColumnBounds(lowest, highest));
+            return true;
+        }
+
+        _dataColumns.Remove(ColumnBoundsKey);
+        lowest = highest = 0;
+        return false;
+    }
+
+    private static byte[] ColumnBounds(ulong lowest, ulong highest)
+    {
+        byte[] value = new byte[ColumnBoundsLength];
+        BinaryPrimitives.WriteUInt64BigEndian(value, lowest);
+        BinaryPrimitives.WriteUInt64BigEndian(value.AsSpan(sizeof(ulong)), highest);
+        return value;
+    }
+
     public byte[]? GetMetadata(string key) => _metadata.Get(Encoding.UTF8.GetBytes(key));
 
     public void PutMetadata(string key, byte[] value) => _metadata.Set(Encoding.UTF8.GetBytes(key), value);
@@ -894,6 +1415,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// every stored block, so a database that held blocks before the index existed answers child
     /// queries as complete. Version 3 rewrites nothing, since the envelope column keeps its layout; the
     /// stamp makes a version-2 build, which never prunes that column, refuse the database.
+    /// Version 4 rewrites nothing either: the data column table starts empty, and the stamp makes an older build, which never prunes it, refuse the database.
     /// A newer version may hold key shapes this build does not know, so it is
     /// refused rather than reinterpreted, and left unstamped.
     /// </remarks>

@@ -141,6 +141,57 @@ public class ColumnGossipRouterTests
         Assert.That(pooled!.Index, Is.EqualTo((ulong)required));
     }
 
+    // das-core.md: reconstruction works from every column the node holds, however it got them; range sync adds to the pool without gossip.
+    [Test]
+    public void Columns_added_to_the_pool_by_sync_count_toward_reconstruction()
+    {
+        const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
+        DataColumnSidecarPool pool = new();
+        ColumnGossipRouter router = CreateRouter(pool);
+        router.Start(id => new FakeTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, required).Select(i => (ulong)i)]);
+        List<DataColumnSidecar> received = [];
+        router.DataColumnSidecarReceived += received.Add;
+
+        DataColumnSidecar last = DataColumnSidecarTestFixture.BuildValidSidecar(required - 1, CurrentSlot);
+        Hash256 blockRoot = SszRoots.HashTreeRoot(last.SignedBlockHeader!.Message!);
+        for (ulong column = 0; column < required - 1; column++)
+        {
+            pool.Add(blockRoot, CurrentSlot, DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot));
+        }
+
+        router.Handle(required - 1, gloasTopic: false, Message(last));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.TryGet(blockRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the 64th held column, the only one gossip delivered, completes the matrix");
+            Assert.That(received.Select(s => s.Index), Is.EquivalentTo(Enumerable.Range(required - 1, required + 1).Select(i => (ulong)i)), "the gossip column plus the 64 reconstructed ones");
+        }
+    }
+
+    // das-core.md: a node SHOULD reconstruct once it holds half the columns, including ones an earlier run verified and stored.
+    [Test]
+    public void Columns_stored_before_a_restart_count_toward_reconstruction()
+    {
+        const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
+        Nethermind.Db.MemColumnsDb<Nethermind.BeaconChain.Storage.BeaconChainDbColumns> db = new();
+        Nethermind.BeaconChain.Storage.BeaconChainStore store = new(db, Spec);
+        DataColumnSidecar last = DataColumnSidecarTestFixture.BuildValidSidecar(required - 1, CurrentSlot);
+        Hash256 blockRoot = SszRoots.HashTreeRoot(last.SignedBlockHeader!.Message!);
+        DataColumnSidecarPool earlierRun = new(store: store);
+        for (ulong column = 0; column < required - 1; column++)
+        {
+            earlierRun.Add(blockRoot, CurrentSlot, DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot));
+        }
+
+        DataColumnSidecarPool pool = new(store: store);
+        ColumnGossipRouter router = CreateRouter(pool);
+        router.Start(id => new FakeTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, required).Select(i => (ulong)i)]);
+
+        router.Handle(required - 1, gloasTopic: false, Message(last));
+
+        Assert.That(pool.TryGet(blockRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the stored columns and the one gossip delivered complete the matrix");
+    }
+
     private static IEnumerable<TestCaseData> DroppedCases()
     {
         yield return new TestCaseData(new Func<DataColumnSidecar>(() =>
