@@ -299,9 +299,12 @@ public sealed class ReadOnlySnapshotBundle(
         }
         catch (Exception)
         {
-            // The plain loop is always right, so a filter that cannot be built is just not used.
+            // The plain loop is always right, so a filter that cannot be built is just not used. That deliberately
+            // includes OutOfMemoryException: the one large allocation here is the filter's native block, and a read
+            // must not fail because an optional filter did not fit.
             filter?.Dispose();
             Volatile.Write(ref _slotFilterState, SlotFilterSkipped);
+            Metrics.RecordInMemorySlotFilterBuildFailed();
             return null;
         }
 

@@ -218,6 +218,16 @@ public static class Metrics
         set => Volatile.Write(ref _inMemorySlotFilterBuilds, value);
     }
 
+    private static long _inMemorySlotFilterBuildFailures;
+
+    [CounterMetric]
+    [Description("Negative filters over the in-memory snapshots' slots that failed to build; their bundles read slots without a filter")]
+    public static long InMemorySlotFilterBuildFailures
+    {
+        get => Volatile.Read(ref _inMemorySlotFilterBuildFailures);
+        set => Volatile.Write(ref _inMemorySlotFilterBuildFailures, value);
+    }
+
     [DetailedMetric]
     [Description("Time to build the negative filter over the in-memory snapshots' slots (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
@@ -229,6 +239,8 @@ public static class Metrics
         Interlocked.Increment(ref _inMemorySlotFilterBuilds);
         InMemorySlotFilterBuildTime.Observe(elapsedTicks);
     }
+
+    internal static void RecordInMemorySlotFilterBuildFailed() => Interlocked.Increment(ref _inMemorySlotFilterBuildFailures);
 
     internal static void RecordInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _inMemorySlotFilterMemory, -bytes);
 

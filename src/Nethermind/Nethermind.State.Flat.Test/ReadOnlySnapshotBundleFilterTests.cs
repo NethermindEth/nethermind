@@ -237,6 +237,7 @@ public class ReadOnlySnapshotBundleFilterTests
         stack.AddInMemory(MakeSnapshot(0, c => c.Storages[(address, 1)] = 1));
         stack.AddInMemory(MakeSnapshot(1, c => c.Storages[(address, 1)] = 2));
         long builds = Metrics.InMemorySlotFilterBuilds;
+        long failures = Metrics.InMemorySlotFilterBuildFailures;
 
         // BloomFilter rejects a non-finite bits-per-key value, so the build throws for real.
         using ReadOnlySnapshotBundle bundle = stack.CreateBundle(double.PositiveInfinity, detailedMetrics: false, out _);
@@ -249,6 +250,7 @@ public class ReadOnlySnapshotBundleFilterTests
             Assert.That(miss, Is.EqualTo((UInt256?)22));
             Assert.That(bundle.SlotFilter, Is.Null);
             Assert.That(Metrics.InMemorySlotFilterBuilds, Is.EqualTo(builds));
+            Assert.That(Metrics.InMemorySlotFilterBuildFailures - failures, Is.EqualTo(1), "one failed build, then no retry");
         }
     }
 
