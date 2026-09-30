@@ -22,7 +22,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     private readonly ulong _currentBlockTimestamp;
     private readonly ulong _txIndex;
     private readonly ulong _logIndexStart;
-    private readonly List<LogEntry> _logs;
+    private readonly List<(LogEntry Entry, ulong Index)> _logs;
     private readonly Transaction _tx;
     private readonly bool _isTracingTransfers;
     private List<Log>? _frameTxLogs;
@@ -59,19 +59,20 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         _logs = [];
     }
 
-    public int LogCount => _logs.Count;
+    /// <summary>The number of block log indices this transaction consumed, including those of logs a revert dropped.</summary>
+    public int LogCount { get; private set; }
     public SimulateCallResult? TraceResult { get; set; }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        // A frame transaction's logs follow its receipt, which drops a reverted call's logs and transfers.
-        if (_tx.SupportsFrames) (_callLogStarts ??= new Stack<int>()).Push(_logs.Count);
+        // Logs and synthetic transfers emitted by a reverted call frame do not survive in the transaction result.
+        (_callLogStarts ??= new Stack<int>()).Push(_logs.Count);
         if (!_isTracingTransfers) return;
         if (callType == ExecutionType.DELEGATECALL) return;
         if (!value.IsZero)
         {
-            _logs.Add(TransferLog.CreateSimulateTransfer(from, to, value));
+            AddLog(TransferLog.CreateSimulateTransfer(from, to, value));
         }
     }
 
@@ -81,14 +82,14 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (!_isTracingTransfers) return;
         if (!balance.IsZero)
         {
-            _logs.Add(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
+            AddLog(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
         }
     }
 
     public override void ReportLog(LogEntry log)
     {
         base.ReportLog(log);
-        _logs.Add(log);
+        AddLog(log);
     }
 
     /// <inheritdoc/>
@@ -157,7 +158,14 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         _frameLogEnd = _logs.Count;
     }
 
-    private void TruncateLogs(int count) => _logs.RemoveRange(count, _logs.Count - count);
+    private void AddLog(LogEntry log) => _logs.Add((log, _logIndexStart + (ulong)LogCount++));
+
+    private void TruncateLogs(int count)
+    {
+        _logs.RemoveRange(count, _logs.Count - count);
+        // Like geth, a dropped log keeps its index; a frame transaction's logs are numbered as its receipt's are.
+        if (_tx.SupportsFrames) LogCount = count;
+    }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
@@ -196,12 +204,12 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         ? frameError.GetEvmExceptionDescription() ?? frameError.ToString()
         : error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error;
 
-    private List<Log> BuildLogs() => _logs.Select((entry, i) => new Log
+    private List<Log> BuildLogs() => _logs.Select(log => new Log
     {
-        Address = entry.Address,
-        Topics = entry.Topics,
-        Data = entry.Data,
-        LogIndex = _logIndexStart + (ulong)i,
+        Address = log.Entry.Address,
+        Topics = log.Entry.Topics,
+        Data = log.Entry.Data,
+        LogIndex = log.Index,
         TransactionHash = _tx.Hash!,
         TransactionIndex = _txIndex,
         BlockHash = _currentBlockHash,

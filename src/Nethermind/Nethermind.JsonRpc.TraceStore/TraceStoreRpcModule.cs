@@ -217,6 +217,11 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
         }
 
+        if (_blockFinder.IsRangeInFuture(traceFilterForRpc.FromBlock, traceFilterForRpc.ToBlock))
+        {
+            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
+        }
+
         IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(
             traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
             traceFilterForRpc.ToBlock ?? BlockParameter.Latest);

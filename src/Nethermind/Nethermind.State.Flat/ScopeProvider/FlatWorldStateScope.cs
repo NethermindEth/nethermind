@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -482,10 +483,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
-        // Storage tree commits already happened during WriteBatch.Dispose() via
-        // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        // No tree means nothing was written, so there is nothing to commit.
-        if (!_trieless) Volatile.Read(ref _stateTree)?.Commit();
+        // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
+        // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
+        // bundle before CollectAndApplySnapshot takes the block's changes. No tree means nothing was written.
+        if (!_trieless)
+        {
+            CommitStorageTrees();
+            Volatile.Read(ref _stateTree)?.Commit();
+        }
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
@@ -509,6 +514,34 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
         _pausePrewarmer = false;
+    }
+
+    private void CommitStorageTrees()
+    {
+        if (_storages.Count == 0) return;
+
+        using ArrayPoolList<FlatStorageTree> dirty = new(_storages.Count);
+        foreach (FlatStorageTree storage in _storages.Values)
+        {
+            if (storage.HasUncommittedNodes) dirty.Add(storage);
+        }
+
+        if (dirty.Count == 0) return;
+
+        if (dirty.Count == 1 || Core.Cpu.RuntimeInformation.IsSingleProcessor)
+        {
+            foreach (FlatStorageTree storage in dirty) storage.CommitTree();
+            return;
+        }
+
+        // Each address writes its own node dictionary in the bundle, so the trees commit independently.
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+        ParallelUnbalancedWork.For(0, dirty.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+            dirty, static (i, trees) =>
+            {
+                trees[i].CommitTree();
+                return trees;
+            });
     }
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
