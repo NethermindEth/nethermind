@@ -68,7 +68,6 @@ public class InclusionListBuilderTests
         return TxDecoder.Instance.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
     }
 
-    /// <summary>A synthetic floor: smaller than any pool-admissible tx, since gasLimit 0 is below the intrinsic floor.</summary>
     private static Transaction MinimalTx(PrivateKey sender) => Build.A.Transaction
         .WithNonce(0)
         .WithValue(0)
@@ -365,7 +364,6 @@ public class InclusionListBuilderTests
         Assert.That(il.Select(b => senderByHash[Decode(b).Hash!]).Distinct().Count(), Is.EqualTo(senderCount));
     }
 
-    // 255 signers is below the sample capacity, so the cap is reached through second nonces, not eviction.
     [Test]
     public void Handles_more_transactions_than_the_sample_capacity()
     {
@@ -384,13 +382,9 @@ public class InclusionListBuilderTests
         yield return new TestCaseData(TestItem.PrivateKeys.Length / 2).SetName("Reservoir_saturates_the_byte_budget_when_half_the_senders_are_skipped_for_size");
     }
 
-    // Sized to only what the byte cap can emit, the reservoir silently under-fills: a skipped entry spends
-    // a draw with no spare sender left to refill it.
     [TestCaseSource(nameof(ReservoirCases))]
     public void Reservoir_saturates_the_byte_budget(int sendersSkippedForSize)
     {
-        // At 74-75 bytes each, 255 senders barely fill 8 KiB; the skipped ones are headed by a tx larger
-        // than the whole list, so they never contribute.
         Transaction[] txs = [.. TestItem.PrivateKeys.Select((key, i) => i < sendersSkippedForSize
             ? TxOfSize(Eip7805Constants.MaxBytesPerInclusionList, 0, key)
             : MinimalTx(key))];
@@ -400,7 +394,6 @@ public class InclusionListBuilderTests
 
         using (Assert.EnterMultipleScope())
         {
-            // Slack is bounded by the larger of the break threshold (32B) and the smallest entry seen (~75B).
             Assert.That(totalBytes, Is.GreaterThan(Eip7805Constants.MaxBytesPerInclusionList - 100));
             Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
         }
