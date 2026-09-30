@@ -387,6 +387,132 @@ public partial class GossipRouterTests
         Assert.That(raised, Is.EqualTo(expectedRaised));
     }
 
+    /// <summary>
+    /// gloas/p2p-interface.md REJECTs a vote whose validator is not in get_ptc(head state, slot): non-members are never tracked, so a flood of
+    /// them cannot push a member's spent pair out of the cache and reopen it for more verifies.
+    /// </summary>
+    [Test]
+    public void Payload_attestation_flood_of_non_members_is_rejected_and_never_reopens_a_spent_member_pair()
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        router.RequiresPtc = true;
+        router.SetPtc(PtcSlot, [PtcValidator]);
+        int raised = 0;
+        router.PayloadAttestationMessageReceived += _ => raised++;
+        for (byte seed = 1; seed <= GossipRouter.PayloadAttestationVerifyAttempts; seed++)
+        {
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, seed));
+        }
+
+        Assert.That(raised, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts), "fixture: the member spent its attempts");
+        const int flood = 3 * GossipRouter.PayloadAttestationPairsPerSlot;
+        MessageValidity[] verdicts = new MessageValidity[flood];
+        for (int i = 0; i < flood; i++)
+        {
+            verdicts[i] = Handle(router, PtcVote(PtcBlockRoot, PtcSlot, 1000 + (ulong)i));
+        }
+
+        raised = 0;
+        long duplicatesBefore = router.GetDropCount(GossipDropReason.Duplicate);
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Rejected));
+            Assert.That(raised, Is.Zero, "the spent pair stays spent");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(duplicatesBefore + 1));
+        }
+    }
+
+    /// <summary>A member's repeats are raised up to the attempt limit and ignored after a vote verified, as for any pair.</summary>
+    [Test]
+    public void Payload_attestation_member_repeats_are_ignored_after_the_attempts_and_after_a_verified_vote()
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        router.RequiresPtc = true;
+        router.SetPtc(PtcSlot, [PtcValidator, PtcValidator + 1]);
+        List<ulong> raised = [];
+        router.PayloadAttestationMessageReceived += vote => raised.Add(vote.ValidatorIndex);
+
+        for (byte seed = 1; seed <= GossipRouter.PayloadAttestationVerifyAttempts + 2; seed++)
+        {
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, seed));
+        }
+
+        PayloadAttestationMessage verified = PtcVote(PtcBlockRoot, PtcSlot, PtcValidator + 1, signatureSeed: 1);
+        Handle(router, verified);
+        router.MarkPayloadAttestationVerified(verified);
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator + 1, signatureSeed: 2));
+
+        Assert.That(raised, Is.EqualTo(Enumerable.Repeat(PtcValidator, GossipRouter.PayloadAttestationVerifyAttempts).Append(PtcValidator + 1)));
+    }
+
+    /// <summary>gloas/p2p-interface.md needs the head state's committee: while it is unknown the vote is IGNOREd, nothing is tracked, and the vote is raised once the committee is known.</summary>
+    [Test]
+    public void Payload_attestation_with_an_unknown_ptc_is_ignored_without_tracking_the_pair()
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        router.RequiresPtc = true;
+        int raised = 0;
+        router.PayloadAttestationMessageReceived += _ => raised++;
+
+        MessageValidity[] unknown = [.. Enumerable.Range(1, GossipRouter.PayloadAttestationVerifyAttempts + 1).Select(seed => Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: (byte)seed)))];
+        int whileUnknown = raised;
+        router.SetPtc(PtcSlot, [PtcValidator]);
+        for (byte seed = 10; seed < 10 + GossipRouter.PayloadAttestationVerifyAttempts; seed++)
+        {
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: seed));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unknown, Is.All.EqualTo(MessageValidity.Ignored));
+            Assert.That(whileUnknown, Is.Zero);
+            Assert.That(raised, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts), "the pair kept its full attempts");
+        }
+    }
+
+    /// <summary>A head that can no longer tell the committee (null) is unknown, not empty: an honest member is IGNOREd, not REJECTed, and nothing is tracked.</summary>
+    [Test]
+    public void Payload_attestation_after_the_ptc_becomes_unknown_is_ignored_not_rejected()
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        router.RequiresPtc = true;
+        int raised = 0;
+        router.PayloadAttestationMessageReceived += _ => raised++;
+        router.SetPtc(PtcSlot, [PtcValidator]);
+
+        router.SetPtc(PtcSlot, null);
+        MessageValidity whileUnknown = Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 1));
+        int raisedWhileUnknown = raised;
+        router.SetPtc(PtcSlot, [PtcValidator]);
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 2));
+
+        Assert.That((whileUnknown, raisedWhileUnknown, raised), Is.EqualTo((MessageValidity.Ignored, 0, 1)));
+    }
+
+    /// <summary>A head that changes its committee is followed: a validator that left the PTC is rejected, one that joined is raised.</summary>
+    [Test]
+    public void Payload_attestation_membership_follows_the_latest_ptc_of_the_slot()
+    {
+        (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
+        store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        router.RequiresPtc = true;
+        int raised = 0;
+        router.PayloadAttestationMessageReceived += _ => raised++;
+        router.SetPtc(PtcSlot, [PtcValidator]);
+
+        router.SetPtc(PtcSlot, [PtcValidator + 1]);
+        MessageValidity leaver = Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 1));
+        MessageValidity joiner = Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator + 1, signatureSeed: 1));
+
+        Assert.That((leaver, joiner, raised), Is.EqualTo((MessageValidity.Rejected, MessageValidity.Ignored, 1)));
+    }
+
     /// <summary>Pairs of a slot too old to receive votes are dropped, so the tracked pairs stay bounded as slots advance.</summary>
     [Test]
     public void Payload_attestation_pairs_of_slots_that_can_no_longer_be_voted_are_dropped()

@@ -193,6 +193,10 @@ public sealed class BeaconSyncOrchestrator(
     private readonly ConcurrentDictionary<string, byte> _dialedPeerIds = new();
 
     private IBlockImporter? _importer;
+
+    /// <summary>Answers the PTC of a head root and slot for the gossip router; tests script it, otherwise the <see cref="BlockImporter"/> reads its head state.</summary>
+    internal Func<Hash256, ulong, ulong[]?>? PtcReader { get; set; }
+
     private volatile Tip _syncTip = new(Hash256.Zero, 0);
 
     /// <summary>Cancelled and replaced to restart range sync; see <see cref="ResumeRangeSyncFromHead"/>.</summary>
@@ -1774,6 +1778,13 @@ public sealed class BeaconSyncOrchestrator(
             },
             head.HeadPayloadFull ? head.HeadRoot : null);
 
+        // A payload attestation is accepted for the wall slot and, within the clock disparity, its neighbours.
+        ulong wallSlot = slotClock.CurrentSlot;
+        for (ulong slot = wallSlot == 0 ? 0 : wallSlot - 1; slot <= wallSlot + 1; slot++)
+        {
+            gossipRouter.SetPtc(slot, PtcReader is { } reader ? reader(head.HeadRoot, slot) : (importer as BlockImporter)?.GetPtc(head.HeadRoot, slot));
+        }
+
         // A replay near the wall clock runs before the libp2p host starts, and topics exist only once it has.
         if (!GossipStarted && p2p?.LocalPeerId is not null && head.HeadSlot + GossipStartDistanceSlots >= slotClock.CurrentSlot)
         {
@@ -1877,6 +1888,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Routes the gossip router's blocks and envelopes into the work channel and its votes and slashings into the vote channel; gossip overflow is droppable.</summary>
     internal void RouteGossipEvents()
     {
+        gossipRouter.RequiresPtc = true;
         gossipRouter.BeaconBlockReceived += block => _work.Writer.TryWrite(new GossipBlockItem(block));
         gossipRouter.AggregateAndProofReceived += aggregate => QueueVote(new GossipAggregateItem(aggregate));
         gossipRouter.GloasAggregateAndProofReceived += aggregate => QueueVote(new GossipGloasAggregateItem(aggregate));
