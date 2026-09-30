@@ -13,12 +13,20 @@ internal static unsafe partial class ThreadAffinity
     // cpu_set_t is 1024 bits.
     private const int MaskWords = 16;
 
+    // The calling thread's CPU set before its first pin: the CPUs the process may use.
+    private static ulong[]? s_processCpus;
+
     /// <summary>Moves the calling thread onto <paramref name="cpu"/>; false when refused or not on Linux.</summary>
     public static bool PinCurrentThread(int cpu)
     {
         if (!OperatingSystem.IsLinux() || cpu < 0 || cpu >= MaskWords * 64) return false;
 
         ulong* mask = stackalloc ulong[MaskWords];
+        if (s_processCpus is null && sched_getaffinity(0, MaskWords * sizeof(ulong), mask) == 0)
+        {
+            s_processCpus = new Span<ulong>(mask, MaskWords).ToArray();
+        }
+
         new Span<ulong>(mask, MaskWords).Clear();
         mask[cpu / 64] = 1UL << (cpu % 64);
         // pid 0 is the calling thread; the kernel moves it onto the CPU before returning.
@@ -27,7 +35,8 @@ internal static unsafe partial class ThreadAffinity
 
     /// <summary>
     /// Takes <paramref name="cpu"/> out of the CPU set of every other thread of the process, so the pinned thread has
-    /// the core to itself; threads created later inherit their creator's set. Returns how many threads were moved.
+    /// the core to itself. A thread the pinned thread started inherited that one CPU, so it gets the process's other
+    /// CPUs instead. Returns how many threads were moved.
     /// </summary>
     public static int ExcludeFromOtherThreads(int cpu)
     {
@@ -53,12 +62,25 @@ internal static unsafe partial class ThreadAffinity
             if (sched_getaffinity(tid, MaskWords * sizeof(ulong), mask) != 0) continue;
             if ((mask[cpu / 64] & bit) == 0) continue;
             mask[cpu / 64] &= ~bit;
-            bool othersLeft = false;
-            for (int i = 0; i < MaskWords && !othersLeft; i++) othersLeft = mask[i] != 0;
+            if (!HasAny(mask) && s_processCpus is not null)
+            {
+                s_processCpus.CopyTo(new Span<ulong>(mask, MaskWords));
+                mask[cpu / 64] &= ~bit;
+            }
+
             // A thread with no other CPU keeps this one.
-            if (othersLeft && sched_setaffinity(tid, MaskWords * sizeof(ulong), mask) == 0) moved++;
+            if (HasAny(mask) && sched_setaffinity(tid, MaskWords * sizeof(ulong), mask) == 0) moved++;
         }
         return moved;
+    }
+
+    private static bool HasAny(ulong* mask)
+    {
+        for (int i = 0; i < MaskWords; i++)
+        {
+            if (mask[i] != 0) return true;
+        }
+        return false;
     }
 
     [LibraryImport("libc", SetLastError = true)]
