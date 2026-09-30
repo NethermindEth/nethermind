@@ -62,6 +62,38 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(JsonSerializer.Serialize(expected)));
     }
 
+    [TestCase("", "")]
+    [TestCase("0x", "")]
+    [TestCase("1", "01")]
+    [TestCase("0Xabc", "0abc")]
+    [TestCase("0xzz", "")]
+    [TestCase("xyz", "")]
+    [TestCase("0x12zz34", "12")]
+    [TestCase("0x123z", "12")]
+    [TestCase("0x1zz", "01")]
+    [TestCase("1é", "01")]
+    public void Javascript_string_helpers_keep_decoded_hex_prefix(string input, string decodedHex)
+    {
+        byte[] decoded = Convert.FromHexString(decodedHex);
+        byte[] word = decoded.PadLeft(32);
+        Address address = new(decoded.PadLeft(Address.Size));
+        string argument = JsonSerializer.Serialize(input);
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result:function(){return {word:toHex(toWord(" + argument + "))," +
+            "address:toHex(toAddress(" + argument + ")),contract:toHex(toContract(" + argument + ",0))," +
+            "contract2:toHex(toContract2(" + argument + "," + argument + "," + argument + ")),precompile:isPrecompiled(" + argument + ")};}}");
+        object result = tracer.result();
+        object expected = new
+        {
+            word = "0x" + Convert.ToHexStringLower(word),
+            address = address.ToString(),
+            @contract = ContractAddress.From(address, 0).ToString(),
+            contract2 = ContractAddress.From(address, word, decoded).ToString(),
+            precompile = Shanghai.Instance.IsPrecompile(address)
+        };
+        Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(JsonSerializer.Serialize(expected)));
+    }
+
     [TestCase(false, 0)]
     [TestCase(true, 0)]
     [TestCase(true, 1)]

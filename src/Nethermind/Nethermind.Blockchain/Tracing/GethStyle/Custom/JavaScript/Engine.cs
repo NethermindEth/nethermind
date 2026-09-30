@@ -4,6 +4,8 @@
 using System;
 using System.IO;
 using System.Numerics;
+using System.Text;
+using Nethermind.Core;
 using System.Text.RegularExpressions;
 using Microsoft.ClearScript;
 using System.Threading;
@@ -118,16 +120,30 @@ public class Engine : IDisposable
     /// <summary>
     /// Converts input to 32 byte word
     /// </summary>
-    private ITypedArray<byte> ToWord(object bytes) => ToWordBytes(bytes).ToTypedScriptArray();
+    private ITypedArray<byte> ToWord(object bytes) => ToFixedBytes(bytes, EvmStack.WordSize).ToTypedScriptArray();
 
-    private static byte[] ToWordBytes(object input)
+    private static byte[] HelperBytes(object input)
     {
-        ReadOnlySpan<byte> bytes = input.ToBytes();
-        int length = Math.Min(bytes.Length, EvmStack.WordSize);
-        byte[] word = new byte[EvmStack.WordSize];
-        bytes[^length..].CopyTo(word.AsSpan(EvmStack.WordSize - length));
+        if (input is not string hex) return input.ToBytes();
+        if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
+        byte[] encoded = Encoding.UTF8.GetBytes(hex);
+        if ((encoded.Length & 1) != 0) encoded = [(byte)'0', .. encoded];
+        byte[] decoded = new byte[encoded.Length / 2];
+        // Geth common.FromHex retains the decoded prefix when hex.DecodeString encounters invalid input.
+        Convert.FromHexString(encoded, decoded, out _, out int written);
+        return written == decoded.Length ? decoded : decoded[..written];
+    }
+
+    private static byte[] ToFixedBytes(object input, int size)
+    {
+        ReadOnlySpan<byte> bytes = HelperBytes(input);
+        int length = Math.Min(bytes.Length, size);
+        byte[] word = new byte[size];
+        bytes[^length..].CopyTo(word.AsSpan(size - length));
         return word;
     }
+
+    private static Address HelperAddress(object input) => new(ToFixedBytes(input, Address.Size));
 
     /// <summary>
     /// Converts input to hex string
@@ -137,12 +153,12 @@ public class Engine : IDisposable
     /// <summary>
     /// Converts input to 20 byte Address byte representation
     /// </summary>
-    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToArray().ToTypedScriptArray();
+    private ITypedArray<byte> ToAddress(object address) => ToFixedBytes(address, Address.Size).ToTypedScriptArray();
 
     /// <summary>
     /// Checks if contract at given address is a precompile
     /// </summary>
-    private bool IsPrecompiled(object address) => _spec.IsPrecompile(address.ToAddress());
+    private bool IsPrecompiled(object address) => _spec.IsPrecompile(HelperAddress(address));
 
     /// <summary>
     /// Returns a slice of input
@@ -160,13 +176,13 @@ public class Engine : IDisposable
     /// <summary>
     /// Creates a contract address from sender and nonce (used for CREATE instruction)
     /// </summary>
-    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToArray().ToTypedScriptArray();
+    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(HelperAddress(from), nonce).Bytes.ToArray().ToTypedScriptArray();
 
     /// <summary>
     /// Creates a contract address from sender, salt and initcode (used for CREATE2 instruction)
     /// </summary>
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
-        ContractAddress.From(from.ToAddress(), ToWordBytes(salt), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
+        ContractAddress.From(HelperAddress(from), ToFixedBytes(salt, EvmStack.WordSize), HelperBytes(initcode)).Bytes.ToArray().ToTypedScriptArray();
 
     /// <summary>
     /// Stops the running script. Called from a timer thread, so the engine may be disposed between the check
