@@ -203,17 +203,24 @@ public class PubkeyCacheTests
 
     /// <summary>Validators appended while the warm-up runs must not cost it the verdicts of the keys it already covered, or the imports that follow repeat those checks inline.</summary>
     [Test]
-    public async Task A_registry_extension_during_the_warm_up_keeps_every_verdict_of_the_original_keys()
+    public void A_registry_extension_during_the_warm_up_keeps_every_verdict_of_the_original_keys()
     {
-        const int original = 16_000;
+        const int original = DistinctKeys;
         Validator[] validators = CycledRegistry(original + 1);
         PubkeyCache cache = new();
         cache.Build(validators[..original]);
+        bool extended = false;
+        // The first pass then stores its verdicts in the array the extension has already copied and replaced.
+        cache.WarmUpPassStarted = () =>
+        {
+            if (!extended)
+            {
+                extended = true;
+                cache.Extend(validators, original);
+            }
+        };
 
-        Task warm = Task.Run(() => cache.WarmSubgroupChecks(CancellationToken.None));
-        SpinWait.SpinUntil(() => cache.HasSubgroupCheck(0));
-        cache.Extend(validators, original);
-        await warm;
+        cache.WarmSubgroupChecks(CancellationToken.None);
 
         AssertEveryVerdictRemembered(cache, original);
     }
@@ -223,27 +230,30 @@ public class PubkeyCacheTests
     public async Task A_warm_up_that_ends_inside_a_registry_extension_keeps_every_verdict_of_the_original_keys()
     {
         const int original = DistinctKeys;
-        Validator[] validators = CycledRegistry(original + 400_000);
-        // A loaded host can stretch the warm-up past the extension, which leaves nothing to observe, so such an attempt is repeated.
-        for (int attempt = 0; attempt < 5; attempt++)
+        Validator[] validators = CycledRegistry(original + 1);
+        PubkeyCache cache = new();
+        cache.Build(validators[..original]);
+        using ManualResetEventSlim decoded = new();
+        using ManualResetEventSlim release = new();
+        cache.ExtensionDecoded = () =>
         {
-            PubkeyCache cache = new();
-            cache.Build(validators[..original]);
+            decoded.Set();
+            release.Wait();
+        };
 
-            Task extend = Task.Factory.StartNew(() => cache.Extend(validators, original), TaskCreationOptions.LongRunning);
-            await Task.Delay(100);
+        Task extend = Task.Factory.StartNew(() => cache.Extend(validators, original), TaskCreationOptions.LongRunning);
+        try
+        {
+            Assert.That(decoded.Wait(TimeSpan.FromSeconds(30)), Is.True, "the extension holds before it publishes");
             cache.WarmSubgroupChecks(CancellationToken.None);
-            bool warmUpEndedFirst = !extend.IsCompleted;
-            await extend;
-
-            if (warmUpEndedFirst)
-            {
-                AssertEveryVerdictRemembered(cache, original);
-                return;
-            }
         }
+        finally
+        {
+            release.Set();
+        }
+        await extend;
 
-        Assert.Fail("every extension ended before the warm-up it was meant to outlast");
+        AssertEveryVerdictRemembered(cache, original);
     }
 
     private const int DistinctKeys = 64;
