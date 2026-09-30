@@ -336,12 +336,13 @@ public sealed class FlatStorageTree(
     /// <remarks>
     /// Must run after the scope closed the builder, so no job can start concurrently. Returns false when no job ever
     /// touched the trie (the flush applies everything itself) or the builder faulted (the trie is reset to the
-    /// parent root first, as a job may have left it half-applied).
+    /// parent root first, as a job may have left it half-applied). A trie an earlier flush of the block finalized
+    /// misses every write since, which went past the closed builder, so a later batch applies its writes itself.
     /// </remarks>
     private bool FinishBuilding()
     {
         StorageRootBuilder? builder = _scope.StorageRootBuilderForFinalization;
-        if (builder is null) return false;
+        if (builder is null || _finalized) return false;
 
         long start = Stopwatch.GetTimestamp();
         WaitForJob();
