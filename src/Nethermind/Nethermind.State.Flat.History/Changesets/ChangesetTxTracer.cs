@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -35,10 +37,10 @@ internal sealed class ChangesetTxTracer(ChangesetCollector collector) : TxTracer
     /// <summary>A wipe is not inferred from code appearing over an existing account: every path that clears storage
     /// inside a transaction goes through IWorldState.ClearStorage, and every committed clear is journaled and
     /// reported through ReportStorageClear, so inferring one from a code change would only add a way to disagree.</summary>
-    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public override void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
-        if (after is null) collector.Deleted(address);
-        else collector.Code(address, after);
+        if (after.IsNull()) collector.Deleted(address);
+        else collector.Code(address, after.Span);
     }
 
     public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) =>

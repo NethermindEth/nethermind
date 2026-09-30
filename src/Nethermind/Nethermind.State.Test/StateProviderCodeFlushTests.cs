@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -39,7 +40,7 @@ public class StateProviderCodeFlushTests
             provider.Commit(Prague.Instance, tracer, commitRoots, false);
 
             // Both byte[] arguments take a matcher: NSubstitute refuses a mix of literal and matcher across arguments of one type.
-            tracer.Received(1).ReportCodeChange(address, Arg.Is<byte[]>(previous => previous == null), Arg.Is<byte[]>(bytes => bytes.SequenceEqual(code)));
+            tracer.Received(1).ReportCodeChange(address, Arg.Is<ReadOnlyMemory<byte>>(previous => previous.IsNull()), Arg.Is<ReadOnlyMemory<byte>>(bytes => bytes.ToArray().SequenceEqual(code)));
             Assert.That(provider.GetCode(hash).ToArray(), Is.EqualTo(code), "committed and staged code must remain readable");
         }
         Assert.That(codeDb.Writes, Is.EqualTo(commitRoots ? 2 : 0), "tracing must not force a staged-only commit to flush");
@@ -58,7 +59,7 @@ public class StateProviderCodeFlushTests
 
         Assert.Throws<IOException>(() => provider.Commit(Prague.Instance, tracer, true, false));
 
-        tracer.DidNotReceive().ReportCodeChange(Arg.Any<Address>(), Arg.Any<byte[]>(), Arg.Any<byte[]>());
+        tracer.DidNotReceive().ReportCodeChange(Arg.Any<Address>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<ReadOnlyMemory<byte>>());
     }
 
     private static StateProvider CreateProvider(RecordingCodeDb codeDb)

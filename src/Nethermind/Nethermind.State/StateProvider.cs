@@ -1171,18 +1171,18 @@ internal static class Extensions
 
             if (beforeCodeHash != afterCodeHash)
             {
-                byte[]? beforeCode = beforeCodeHash is null
-                    ? null
+                ReadOnlyMemory<byte> beforeCode = beforeCodeHash is null
+                    ? default
                     : beforeCodeHash == Keccak.OfAnEmptyString
-                        ? []
-                        : stateProvider.GetCode(in beforeCodeHash.ValueHash256).ToArray();
-                byte[]? afterCode = afterCodeHash is null
-                    ? null
+                        ? Array.Empty<byte>()
+                        : stateProvider.GetCode(in beforeCodeHash.ValueHash256);
+                ReadOnlyMemory<byte> afterCode = afterCodeHash is null
+                    ? default
                     : afterCodeHash == Keccak.OfAnEmptyString
-                        ? []
-                        : stateProvider.GetCode(in afterCodeHash.ValueHash256).ToArray();
+                        ? Array.Empty<byte>()
+                        : stateProvider.GetCode(in afterCodeHash.ValueHash256);
 
-                if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
+                if (!(beforeCode.IsEmpty && afterCode.IsEmpty))
                 {
                     stateTracer.ReportCodeChange(address, beforeCode, afterCode);
                 }

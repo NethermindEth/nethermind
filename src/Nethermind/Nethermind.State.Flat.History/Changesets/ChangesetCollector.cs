@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -27,7 +28,7 @@ internal sealed class ChangesetCollector
 
     public void Nonce(Address address, in UInt256 after) => ChangeFor(address).Nonce = after;
 
-    public void Code(Address address, byte[] after) => ChangeFor(address).CodeHash = after.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(after);
+    public void Code(Address address, ReadOnlySpan<byte> after) => ChangeFor(address).CodeHash = after.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(after);
 
     public void Deleted(Address address) => ChangeFor(address).IsDeleted = true;
 
