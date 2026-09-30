@@ -26,7 +26,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
 
-    private readonly ConcurrentDictionary<Address, Account?> _accounts = new();
+    private ConcurrentDictionary<Address, Account?> _accounts;
     private readonly CarryForwardSlotTable _slots;
     private int _accountCount;
     private int _disposed;
@@ -73,6 +73,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         _inner = inner;
         _maxEntriesPerKind = maxEntriesPerKind;
+        _accounts = NewAccountCache();
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
         _slots = new CarryForwardSlotTable(slotCapacity);
@@ -122,6 +123,13 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     internal Lock CacheLock => _lock;
 
+    // Sized for the cap up front: a ConcurrentDictionary grows by re-creating every entry, which from the default
+    // capacity takes a dozen rounds on the way to the cap, the last ones tens of megabytes on whichever reader adds
+    // the entry that crosses a threshold. Clear() would shrink it back to the default, so a wipe swaps in a new one.
+    // One lock: every write already runs under _lock, and a dictionary grows once any one lock passes its share of
+    // the buckets, so with more locks the fullest one would still trigger a growth just short of the cap.
+    private ConcurrentDictionary<Address, Account?> NewAccountCache() => new(concurrencyLevel: 1, _maxEntriesPerKind);
+
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
 
     private void TryCacheAccount(Address address, Account? account, long readerGeneration)
@@ -135,7 +143,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (_accounts.ContainsKey(address)) return;
             if (_accountCount >= _maxEntriesPerKind)
             {
-                _accounts.Clear();
+                _accounts = NewAccountCache();
                 _accountCount = 0;
                 Metrics.IncrementCarryForwardAccountWipes();
             }
@@ -211,7 +219,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void ClearAllNoLock()
     {
-        _accounts.Clear();
+        // An empty cache keeps its table: raw and range writes clear everything on every batch, and snap sync and
+        // healing write such a batch for every account while nothing is cached. The count is exact under _lock.
+        if (_accountCount != 0) _accounts = NewAccountCache();
         _accountCount = 0;
         if (_slots.TryLease())
         {
