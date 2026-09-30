@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -20,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
-using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -47,7 +45,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
         await server.StartAsync(token);
         await client.StartAsync(token);
 
-        ISession toServer = await client.DialPeerAsync(LoopbackAddress(server), token);
+        ISession toServer = await PeerSessionNodes.DialAsync(client, server, token);
         IReadOnlyList<DataColumnSidecar> served = await client.RequestDataColumnSidecarsByRangeAsync(toServer, slot, 1, [column], token);
 
         Assert.That(served.Select(static s => (s.SignedBlockHeader!.Message!.Slot, s.Index)), Is.EqualTo(new[] { (slot, column) }));
@@ -72,7 +70,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
         await server.StartAsync(token);
         await client.StartAsync(token);
 
-        ISession toServer = await client.DialPeerAsync(LoopbackAddress(server), token);
+        ISession toServer = await PeerSessionNodes.DialAsync(client, server, token);
 
         Exception? error = Assert.CatchAsync(async () => await client.RequestDataColumnSidecarsByRangeAsync(toServer, slot - 1, 2, [column], token));
 
@@ -114,7 +112,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
         await server.StartAsync(token);
         await client.StartAsync(token);
 
-        ISession toServer = await client.DialPeerAsync(LoopbackAddress(server), token);
+        ISession toServer = await PeerSessionNodes.DialAsync(client, server, token);
         IReadOnlyList<DataColumnSidecar> served = await client.RequestDataColumnSidecarsByRangeAsync(toServer, firstSlot, 16, columns, token);
 
         Assert.That(served, Has.Count.EqualTo(16 * columns.Length));
@@ -222,7 +220,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
         await using BeaconP2P client = CreateHost(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new DataColumnSidecarPool());
         await server.StartAsync(token);
         await client.StartAsync(token);
-        ISession toServer = await client.DialPeerAsync(LoopbackAddress(server), token);
+        ISession toServer = await PeerSessionNodes.DialAsync(client, server, token);
 
         TaskCompletionSource chunkRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using ManualResetEventSlim requestEnded = new();
@@ -276,16 +274,5 @@ public class DataColumnSidecarsByRangeLoopbackTests
     }
 
     private static BeaconP2P CreateHost(BeaconChainStore store, DataColumnSidecarPool pool, SlotClock? clock = null) =>
-        new(new BeaconChainConfig { P2PPort = 0 }, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance, clock: clock);
-
-    private static Multiaddress LoopbackAddress(BeaconP2P node)
-    {
-        string address = node.ListenAddresses.First().ToString().Replace("0.0.0.0", "127.0.0.1");
-        if (!address.Contains("/p2p/"))
-        {
-            address += $"/p2p/{node.LocalPeerId}";
-        }
-
-        return Multiaddress.Decode(address);
-    }
+        PeerSessionNodes.Watched(logs => new BeaconP2P(new BeaconChainConfig { P2PPort = 0 }, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), pool, new ExecutionPayloadEnvelopePool(), logs, clock: clock));
 }
