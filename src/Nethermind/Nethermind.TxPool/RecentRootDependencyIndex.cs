@@ -83,22 +83,23 @@ internal sealed class RecentRootDependencyIndex
 
     /// <summary>Adds to <paramref name="into"/> the transactions whose tuples fail the age or storage predicate at
     /// <paramref name="currentSlot"/> against <paramref name="state"/>.</summary>
-    /// <remarks>Only an aged-out tuple is final. The other failures turn on the chain and can reverse in a reorganization.</remarks>
+    /// <remarks>Only an aged-out tuple is final. The other failures turn on the chain and can reverse in a reorganization.
+    /// Storage is read outside the lock, so pool inserts and removals do not wait on cold trie reads.</remarks>
     public void CollectInvalid(IReadOnlyStateProvider state, ulong currentSlot, List<(Hash256 Hash, bool Final)> into)
     {
+        Dependencies[] snapshot;
+        lock (_lock) snapshot = [.. _byTx.Values];
+
         Dictionary<StorageCell, UInt256> entries = [];
-        lock (_lock)
+        foreach (Dependencies dependencies in snapshot)
         {
-            foreach (Dependencies dependencies in _byTx.Values)
+            if (dependencies.ExpirySlot <= currentSlot)
             {
-                if (dependencies.ExpirySlot <= currentSlot)
-                {
-                    into.Add((dependencies.Hash, true));
-                }
-                else if (dependencies.LatestSlot >= currentSlot || !AreCommitted(state, dependencies.Entries, entries))
-                {
-                    into.Add((dependencies.Hash, false));
-                }
+                into.Add((dependencies.Hash, true));
+            }
+            else if (dependencies.LatestSlot >= currentSlot || !AreCommitted(state, dependencies.Entries, entries))
+            {
+                into.Add((dependencies.Hash, false));
             }
         }
     }
