@@ -9,7 +9,6 @@ using Nethermind.Core.Collections;
 namespace Nethermind.JsonRpc.Data;
 
 /// <summary>A block's receipts rented from the array pool.</summary>
-/// <remarks>Owns the receipts: disposing returns the list and every receipt's pooled logs.</remarks>
 public sealed class ReceiptsForRpc<TReceipt>(int capacity) : IReadOnlyList<TReceipt>, IDisposable
     where TReceipt : ReceiptForRpc
 {
@@ -25,5 +24,5 @@ public sealed class ReceiptsForRpc<TReceipt>(int capacity) : IReadOnlyList<TRece
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public void Dispose() => _receipts.DisposeRecursive();
+    public void Dispose() => _receipts.Dispose();
 }

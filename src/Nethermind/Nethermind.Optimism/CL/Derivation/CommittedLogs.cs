@@ -43,7 +43,7 @@ internal static class CommittedLogs
             int start = 0;
             foreach (FrameReceiptForRpc frame in frames)
             {
-                int count = frame.Logs?.Length ?? 0;
+                int count = frame.Logs?.Count ?? 0;
                 if (frame.Status == TxFrameReceipt.StatusSuccess)
                 {
                     for (int i = start; i < start + count; i++) yield return logs[i];

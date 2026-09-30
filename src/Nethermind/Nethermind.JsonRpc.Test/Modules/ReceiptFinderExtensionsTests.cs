@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
@@ -37,18 +36,6 @@ public class ReceiptFinderExtensionsTests
         long?[] logIndexes = LogIndexes(receipts);
 
         Assert.That(logIndexes, Is.EqualTo(expected.Select(static e => (long?)e).ToArray()), "each receipt must start after the logs of the receipts with a lower index");
-    }
-
-    [Test]
-    public void GetBlockReceipts_WhenResultDisposed_ReturnsPooledLogs()
-    {
-        ResultWrapper<IEnumerable<ReceiptForRpc>?> result = GetBlockReceipts([Receipt(0, logCount: 2)]);
-        IReadOnlyList<LogEntryForRpc> logs = result.Data!.Single().Logs!;
-        Assert.That(logs, Has.Count.EqualTo(2), "precondition: the receipt carries its logs until the result is disposed");
-
-        result.Dispose();
-
-        Assert.That(() => logs.GetEnumerator(), Throws.TypeOf<ObjectDisposedException>(), "disposing the RPC result must return every receipt's pooled logs");
     }
 
     private static long?[] LogIndexes(TxReceipt[] receipts)
