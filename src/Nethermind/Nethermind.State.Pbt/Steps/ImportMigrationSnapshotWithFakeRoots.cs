@@ -35,7 +35,7 @@ internal sealed class ImportMigrationSnapshotWithFakeRoots(
 
         await using FileStream snapshot = File.Open(config.MigrationSnapshotPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
         await using FileStream preimages = File.Open(config.MigrationPreimagesPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
-        await publication.Publish(snapshot, preimages, PbtMigrationAnchor.Create(chainSpec, genesis, anchor), scratch,
+        await publication.PublishSnapshot(snapshot, preimages, PbtMigrationAnchor.Create(chainSpec, genesis, anchor), scratch,
             () => blockTree.IsMainChain(anchor), cancellationToken);
     }
 }

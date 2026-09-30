@@ -39,8 +39,9 @@ internal static class PbtMigrationConfigValidator
         bool snapshot = HasPath(config.MigrationSnapshotPath);
         bool preimages = HasPath(config.MigrationPreimagesPath);
         bool source = HasPath(config.MigrationPreimageSourcePath);
-        if ((snapshot ? 1 : 0) + (preimages ? 1 : 0) + (source ? 1 : 0) + (config.MigrationGenesisBootstrap ? 1 : 0) > 1)
-            Fail("Select at most one migration source: snapshot, preimages, offline preimage-flat, or genesis bootstrap.");
+        // Preimages beside a snapshot only verify it, so they are not a source of their own.
+        if ((snapshot ? 1 : 0) + (preimages && !snapshot ? 1 : 0) + (source ? 1 : 0) + (config.MigrationGenesisBootstrap ? 1 : 0) > 1)
+            Fail("Select at most one migration source: snapshot (optionally verified by preimages), preimages, offline preimage-flat, or genesis bootstrap.");
         if ((snapshot || preimages || source) && config.MigrationAnchor is null)
             Fail("MigrationAnchor is required for an external migration source.");
 

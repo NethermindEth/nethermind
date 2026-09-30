@@ -19,8 +19,8 @@ namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Exports a caller-pinned offline preimage-flat generation into unpublished canonical artifacts.</summary>
 /// <remarks>The caller owns the reader, code source and outputs and must hold the source exclusively immutable
-/// throughout this operation. This helper never opens or writes a source database. Outputs must pass
-/// <see cref="PbtImageVerifier"/> before publication: flat metadata alone does not prove the anchor root.
+/// throughout this operation. This helper never opens or writes a source database. Outputs must be verified against
+/// the anchor on import: flat metadata alone does not prove the anchor root.
 /// <para>The scan workers share the one reader: its iterators are independent, and the source is pinned for the
 /// whole call anyway, so a reader per worker would only multiply the pinned snapshots.</para></remarks>
 internal static class PbtOfflineSource

@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
@@ -47,13 +46,12 @@ public class PbtOfflineSourceTests
             using SnapshotableMemColumnsDb<FlatDbColumns> database = new("offline");
             using MemDb codes = new();
             PreimageRocksdbPersistence persistence = new(database, LimboLogs.Instance, FlatLayout.PreimageFlat);
-            using (PbtVerifiedImage image = PbtImageVerifier.Verify(inputSnapshot, inputPreimages, anchor, directory, LimboLogs.Instance))
             using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(header), WriteFlags.None))
-                image.Replay((address, account, code) =>
+                Eip8347FixtureState.Replay(inputSnapshot, inputPreimages, (address, account, code) =>
                 {
                     batch.SetAccount(address, account);
                     if (code.Length != 0) codes[account.CodeHash.Bytes] = code;
-                }, (address, slot, value) => batch.SetStorage(address, slot, new UInt256(value.Bytes, true)));
+                }, (address, slot, value) => batch.SetStorage(address, slot, value));
             using IPersistence.IPersistenceReader reader = persistence.CreateReader();
             using MemoryStream snapshot = new(), preimages = new();
             PbtOfflineSource.WriteArtifacts(reader, codes, anchor, directory, snapshot, preimages, LimboLogs.Instance,
@@ -65,8 +63,6 @@ public class PbtOfflineSourceTests
                 Assert.That(reader.CurrentState, Is.EqualTo(new FlatStateId(header)));
                 Assert.That(Directory.GetFileSystemEntries(directory), Is.Empty);
             }
-            snapshot.Position = preimages.Position = 0;
-            using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, anchor, directory, LimboLogs.Instance);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

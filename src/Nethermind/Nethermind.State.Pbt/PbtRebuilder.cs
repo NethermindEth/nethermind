@@ -35,14 +35,16 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         ChannelReader<ArrayPoolList<RebuildEntry>> source,
         StateId targetState,
         CancellationToken cancellationToken,
-        int windowSize = 0) => Rebuild(source, targetState, cancellationToken, windowSize, WriteFlags.DisableWAL);
+        int windowSize = 0) => Rebuild(source, targetState, cancellationToken, windowSize, WriteFlags.DisableWAL, expectedRoot: null);
 
+    /// <param name="expectedRoot">When set, a completed root that differs is refused before anything is published.</param>
     internal async Task<ValueHash256> Rebuild(
         ChannelReader<ArrayPoolList<RebuildEntry>> source,
         StateId targetState,
         CancellationToken cancellationToken,
         int windowSize,
-        WriteFlags stagingWriteFlags)
+        WriteFlags stagingWriteFlags,
+        ValueHash256? expectedRoot)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(windowSize);
         if (windowSize == 0) windowSize = DefaultWindowSize;
@@ -78,6 +80,8 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         cancellationToken.ThrowIfCancellationRequested();
         target.Flush();
         cancellationToken.ThrowIfCancellationRequested();
+        if (expectedRoot is { } expected && root != expected)
+            throw new InvalidDataException("Staged PBT root differs from the snapshot's claimed root.");
         using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None);
         batch.Commit();
         if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {receivedCount} received leaves in {committedWindows} windows, tree root {root}");

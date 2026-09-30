@@ -103,9 +103,9 @@ public class PbtAnchorPublicationTests
 
     [Test]
     public async Task Portable_image_publishes_native_state_and_matching_restart_takes_the_fast_path(
-        [Values("anchor", "a1", "a2", "a3", "a4", "a5")] string name, [Values(4096, 1)] int maxBufferedRuns)
+        [Values("anchor", "a1", "a2", "a3", "a4", "a5", "b2", "b3", "b4", "b5", "b6")] string name)
     {
-        using Harness harness = new(name) { MaxBufferedRuns = maxBufferedRuns };
+        using Harness harness = new(name);
         ValueHash256 root = await harness.Publish();
         AssertPublishedState(harness, root, name);
         harness.Reopen();
@@ -123,17 +123,69 @@ public class PbtAnchorPublicationTests
 
     /// <remarks>The anchor now comes only from the consumer's own chain, so the image's agreement with the
     /// anchor's MPT root is the whole of the check; there is no second description of the anchor to disagree.</remarks>
-    [Test]
-    public void Image_that_does_not_rebuild_the_anchor_root_does_not_stage_or_publish()
+    [TestCase("trusted-root")]
+    [TestCase("activation")]
+    [TestCase("missing-hash")]
+    [TestCase("missing-root")]
+    [TestCase("claimed-pbt-root")]
+    public void Rejects_wrong_trusted_anchor(string failure)
     {
         using Harness harness = new("anchor");
-        harness.Anchor = harness.WithStateRoot(Hash256.Zero);
+        switch (failure)
+        {
+            case "trusted-root": harness.Anchor = harness.WithStateRoot(Hash256.Zero); break;
+            case "activation": harness.Anchor.Header.Timestamp = harness.Anchor.ActivationTimestamp!.Value; break;
+            case "missing-hash": harness.Anchor.Header.Hash = null; break;
+            case "missing-root": harness.Anchor.Header.StateRoot = null!; break;
+        }
+        byte[] bytes = File.ReadAllBytes(Path.Combine(Fixtures, "canonical", "anchor", "snapshot.pbt"));
+        if (failure == "claimed-pbt-root") bytes[0] ^= 1;
+        using MemoryStream snapshot = new(bytes);
+        using FileStream preimages = OpenArtifact("anchor", "preimages.bin");
 
-        Assert.ThrowsAsync<InvalidDataException>(() => harness.Publish());
+        Assert.ThrowsAsync<InvalidDataException>(() => harness.Publication.PublishSnapshot(snapshot, preimages, harness.Anchor, harness.Scratch.Path, () => true));
 
         AssertUnpublished(harness);
-        AssertNoNativeState(harness);
     }
+
+    /// <remarks>An anchor without an activation is an export on a chain specification that schedules no
+    /// binaryTrieTime; there is then nothing for the anchor to precede.</remarks>
+    [Test]
+    public async Task Accepts_an_anchor_without_an_activation()
+    {
+        using Harness harness = new("anchor");
+        harness.Anchor = harness.Anchor with { ActivationTimestamp = null };
+
+        AssertPublishedState(harness, await harness.Publish(), "anchor");
+    }
+
+    [Test]
+    public async Task Local_resource_refusal_does_not_invalidate_the_import_and_can_be_retried()
+    {
+        using Harness harness = new("a5");
+        PbtImageAnchor anchor = harness.Anchor;
+        harness.Anchor = anchor with { MaxBufferedCodeBytes = 0 };
+
+        Assert.ThrowsAsync<PbtImageResourceLimitException>(() => harness.Publish());
+
+        AssertUnpublished(harness);
+        harness.Anchor = anchor;
+        AssertPublishedState(harness, await harness.Publish(), "a5");
+    }
+
+    /// <remarks>Each snapshot carries a recomputed PBT root, so only the staging checks stand between it and publication.</remarks>
+    [Test]
+    public void Noncanonical_snapshot_is_refused_with_or_without_preimages(
+        [Values("code", "pushdata", "padding", "code-size", "version", "reserved", "missing-basic", "missing-code-hash", "missing-code",
+            "delegation-prefix", "delegation-padding", "delegation-size", "delegation-code-hash", "delegation-with-code-leaves",
+            "reserved-sub-index", "extra-code-chunk", "codeless-without-code-hash")] string corruption, [Values] bool withPreimages) =>
+        AssertRefused(corruption, withPreimages);
+
+    [Test]
+    public void Preimages_refuse_a_snapshot_off_the_anchor_state(
+        [Values("nonce", "balance", "storage", "missing-storage", "surplus-account-leaves", "orphan-storage-leaf", "anchored-elsewhere",
+            "missing-account-preimage", "missing-slot-preimage", "wrong-account-preimage", "wrong-slot-preimage", "surplus-slot-preimage")] string corruption) =>
+        AssertRefused(corruption, withPreimages: true);
 
     [Test]
     public void Cancellation_does_not_publish([Values] bool afterNativeSync)
@@ -245,7 +297,7 @@ public class PbtAnchorPublicationTests
         exportedSnapshot.Position = 0;
         exportedPreimages.Position = 0;
 
-        ValueHash256 root = await harness.Publication.Publish(exportedSnapshot, exportedPreimages, harness.Anchor, harness.Scratch.Path, () => true);
+        ValueHash256 root = await harness.Publication.PublishSnapshot(exportedSnapshot, exportedPreimages, harness.Anchor, harness.Scratch.Path, () => true);
 
         AssertPublishedState(harness, root, "a5");
     }
@@ -259,7 +311,7 @@ public class PbtAnchorPublicationTests
         if (mode == "snapshot")
         {
             using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
-            root = await harness.Publication.PublishSnapshot(snapshot, harness.Anchor, harness.Scratch.Path, () => true);
+            root = await harness.Publication.PublishSnapshot(snapshot, null, harness.Anchor, harness.Scratch.Path, () => true);
         }
         else
         {
@@ -328,12 +380,149 @@ public class PbtAnchorPublicationTests
         }
     }
 
+    private static void AssertRefused(string corruption, bool withPreimages)
+    {
+        using Harness harness = new("a4");
+        (MemoryStream snapshot, MemoryStream preimages) = Corrupt("a4", corruption);
+        using (snapshot)
+        using (preimages)
+        {
+            InvalidDataException exception = Assert.ThrowsAsync<InvalidDataException>(() =>
+                harness.Publication.PublishSnapshot(snapshot, withPreimages ? preimages : null, harness.Anchor, harness.Scratch.Path, () => true))!;
+            Assert.That(exception.Message, Does.Not.Contain("claimed root"));
+        }
+        AssertUnpublished(harness);
+    }
+
+    /// <summary>Corrupts one fixture's artifacts, recomputing the snapshot's claimed PBT root over the corrupted leaves.</summary>
+    private static (MemoryStream Snapshot, MemoryStream Preimages) Corrupt(string name, string corruption)
+    {
+        using FileStream original = OpenArtifact(name, "snapshot.pbt");
+        (_, ulong count) = PbtSnapshotCodec.ReadHeader(original);
+        List<RebuildEntry> leaves = [.. PbtSnapshotCodec.ReadLeaves(original, count)];
+        using FileStream originalPreimages = OpenArtifact(name, "preimages.bin");
+        List<PbtAccountPreimages> accounts = ReadPreimages(originalPreimages);
+        Address writer = new("0x1000000000000000000000000000000000000001");
+        Address authority = new("0x2b5ad5c4795c026514f8317c7a215e218dccd6cf");
+        Address history = new("0x0000f90827f1c53a10cb7a02335b175320002935");
+        ValueHash256 writerCodeHash = ValueKeccak.Compute(Bytes.FromHexString("60003560005500"));
+        PbtStorageTreeKey basic = (PbtStorageTreeKey)PbtStateKey.Account(writer, 0);
+        PbtStorageTreeKey hash = (PbtStorageTreeKey)PbtStateKey.Account(writer, 1);
+        PbtStorageTreeKey chunk = (PbtStorageTreeKey)PbtStateKey.Code(writerCodeHash, 0);
+        PbtStorageTreeKey delegation = (PbtStorageTreeKey)PbtStateKey.Account(authority, 2);
+        PbtStorageTreeKey storageKey = PbtStateKey.Storage(history, UInt256.Zero);
+        switch (corruption)
+        {
+            case "code": Mutate(chunk, 1); break;
+            case "pushdata": Mutate(chunk, 0); break;
+            case "padding": Mutate(chunk, 31); break;
+            case "code-size": Mutate(basic, 7); break;
+            case "version": Mutate(basic, 0); break;
+            case "reserved": Mutate(basic, 3); break;
+            case "nonce": Mutate(basic, 15); break;
+            case "balance": Mutate(basic, 31); break;
+            case "storage": Mutate(storageKey, 31); break;
+            case "missing-storage": Remove(storageKey); break;
+            case "missing-basic": Remove(basic); break;
+            case "missing-code-hash": Remove(hash); break;
+            case "missing-code": Remove(chunk); break;
+            case "delegation-prefix": Mutate(delegation, 0); break;
+            case "delegation-padding": Mutate(delegation, 31); break;
+            case "delegation-size": Mutate((PbtStorageTreeKey)PbtStateKey.Account(authority, 0), 7); break;
+            case "delegation-code-hash": leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(authority, 1), Keccak.OfAnEmptyString.ValueHash256)); break;
+            case "delegation-with-code-leaves":
+                byte[] delegationCode = leaves.Find(entry => entry.Key.Equals(delegation)).Leaf.Bytes[..23].ToArray();
+                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Code(ValueKeccak.Compute(delegationCode), 0), new ValueHash256(PbtKeyDerivation.ChunkifyCode(delegationCode))));
+                break;
+            case "reserved-sub-index": leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(Address.Zero, 3), Keccak.OfAnEmptyString.ValueHash256)); break;
+            // A chunk past the account's code size: reachable by no code read, so nothing accounts for it.
+            case "extra-code-chunk": leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Code(writerCodeHash, 1), Keccak.OfAnEmptyString.ValueHash256)); break;
+            case "codeless-without-code-hash": Remove((PbtStorageTreeKey)PbtStateKey.Account(Eoa(), 1)); break;
+            case "surplus-account-leaves":
+                Address surplus = new("0x00000000000000000000000000000000deadbeef");
+                ValueHash256 basicData = default;
+                PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, 1, UInt256.Zero);
+                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(surplus, 0), basicData));
+                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(surplus, 1), Keccak.OfAnEmptyString.ValueHash256));
+                break;
+            case "orphan-storage-leaf":
+                leaves.Add(new(PbtStateKey.Storage(new Address("0x00000000000000000000000000000000cafebabe"), 100),
+                    new ValueHash256(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001"))));
+                break;
+            // Both artifacts drop one account consistently: the image is whole, but not the anchor's state.
+            case "anchored-elsewhere":
+                Address dropped = Eoa();
+                ValueHash256 droppedStem = PbtKeyDerivation.AddressKeyHash(dropped);
+                leaves.RemoveAll(entry => entry.Key.Bytes[0] == 0 && entry.Key.Bytes.Slice(1, 32).SequenceEqual(droppedStem.Bytes));
+                accounts.RemoveAll(account => account.Address == dropped);
+                break;
+            case "missing-account-preimage": accounts.RemoveAt(accounts.FindIndex(account => account.Address == writer)); break;
+            case "missing-slot-preimage": ChangeSlots(slots => slots.RemoveAt(0)); break;
+            case "wrong-slot-preimage": ChangeSlots(slots => slots[0] = Keccak.OfAnEmptyString.ValueHash256); break;
+            case "surplus-slot-preimage": ChangeSlots(slots => slots.Add(Keccak.OfAnEmptyString.ValueHash256)); break;
+            case "wrong-account-preimage":
+                int accountIndex = accounts.FindIndex(account => account.Address == writer);
+                accounts[accountIndex] = accounts[accountIndex] with { Address = new Address("0x9999999999999999999999999999999999999999") };
+                accounts.Sort(static (left, right) => CompareHashes(ValueKeccak.Compute(left.Address.Bytes), ValueKeccak.Compute(right.Address.Bytes)));
+                break;
+            default: throw new ArgumentOutOfRangeException(nameof(corruption));
+        }
+        leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
+        ValueHash256 attackerRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, CancellationToken.None);
+        MemoryStream snapshot = new();
+        PbtSnapshotCodec.Write(snapshot, attackerRoot, (ulong)leaves.Count, leaves);
+        snapshot.Position = 0;
+        MemoryStream preimages = new();
+        PbtPreimageCodec.Write(preimages, accounts);
+        preimages.Position = 0;
+        return (snapshot, preimages);
+
+        void Mutate(PbtStorageTreeKey key, int offset)
+        {
+            int index = leaves.FindIndex(entry => entry.Key.Equals(key));
+            Assert.That(index, Is.GreaterThanOrEqualTo(0), corruption);
+            byte[] bytes = leaves[index].Leaf.Bytes.ToArray();
+            bytes[offset] ^= 1;
+            leaves[index] = new(key, new ValueHash256(bytes));
+        }
+
+        void Remove(PbtStorageTreeKey key) => Assert.That(leaves.RemoveAll(entry => entry.Key.Equals(key)), Is.EqualTo(1));
+
+        // A codeless account without storage, whose leaves are only its basic data and empty code hash.
+        Address Eoa() => accounts.Find(account => account.SlotCount == 0 && leaves.Exists(entry =>
+            entry.Key.Equals((PbtStorageTreeKey)PbtStateKey.Account(account.Address, 1)) && entry.Leaf == Keccak.OfAnEmptyString.ValueHash256)).Address;
+
+        void ChangeSlots(Action<List<ValueHash256>> change)
+        {
+            int index = accounts.FindIndex(account => account.Address == history);
+            List<ValueHash256> slots = [.. accounts[index].Slots];
+            change(slots);
+            slots.Sort(static (left, right) => CompareHashes(ValueKeccak.Compute(left.Bytes), ValueKeccak.Compute(right.Bytes)));
+            accounts[index] = new(history, (uint)slots.Count, slots);
+        }
+    }
+
+    private static int CompareHashes(ValueHash256 left, ValueHash256 right) => left.Bytes.SequenceCompareTo(right.Bytes);
+
+    private static List<PbtAccountPreimages> ReadPreimages(Stream source)
+    {
+        List<PbtAccountPreimages> accounts = [];
+        PbtPreimageReader reader = new(source);
+        while (reader.ReadAccount(out Address? address, out uint count))
+        {
+            List<ValueHash256> slots = [];
+            for (uint index = 0; index < count; index++) slots.Add(reader.ReadSlot());
+            accounts.Add(new(address!, count, slots));
+        }
+        return accounts;
+    }
+
     private static void AssertUnpublished(Harness harness)
     {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.Pbt.Manager.HasStateForBlock(new StateId(harness.Anchor.Header)), Is.False);
-            Assert.That(new PbtRocksDbPersistence(harness.Target, new PbtConfig()).IsValid, Is.False);
+            Assert.That(harness.Target.GetColumnDb(PbtColumns.Metadata).Get("validState"u8), Is.Null);
             Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
         }
     }
@@ -422,12 +611,10 @@ public class PbtAnchorPublicationTests
         public readonly SyncColumnsDb Target = new();
         public PbtImageAnchor Anchor;
         public Func<bool> IsAnchorCurrent = () => true;
-        public int MaxBufferedRuns { get; init; } = 4096;
         public PbtTestContext Pbt { get; private set; } = null!;
         private PbtAnchorPublication? _publication;
-        // Created on first use so the initializer's MaxBufferedRuns applies.
         public PbtAnchorPublication Publication => _publication ??=
-            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, _config), Target, Pbt.Persistence, Pbt.Manager, Pbt.Coordinator, _config, LimboLogs.Instance) { MaxBufferedRuns = MaxBufferedRuns };
+            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, _config), Target, Pbt.Persistence, Pbt.Manager, Pbt.Coordinator, _config, LimboLogs.Instance);
         private readonly string _name;
         private readonly PbtConfig _config;
 
@@ -467,7 +654,7 @@ public class PbtAnchorPublicationTests
         {
             using FileStream snapshot = OpenArtifact(_name, "snapshot.pbt");
             using FileStream preimages = OpenArtifact(_name, "preimages.bin");
-            return await Publication.Publish(snapshot, preimages, Anchor, Scratch.Path, IsAnchorCurrent, cancellationToken);
+            return await Publication.PublishSnapshot(snapshot, preimages, Anchor, Scratch.Path, IsAnchorCurrent, cancellationToken);
         }
 
         public void Dispose()
@@ -495,13 +682,12 @@ public class PbtAnchorPublicationTests
                 PreimageRocksdbPersistence source = new(_sourceDatabase, LimboLogs.Instance, FlatLayout.PreimageFlat);
                 using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
                 using FileStream preimages = OpenArtifact(name, "preimages.bin");
-                using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Anchor, ScratchDirectory, LimboLogs.Instance);
                 using (IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(Anchor.Header), WriteFlags.None))
-                    image.Replay((address, account, code) =>
+                    Eip8347FixtureState.Replay(snapshot, preimages, (address, account, code) =>
                     {
                         batch.SetAccount(address, account);
                         if (code.Length != 0) _code[account.CodeHash.Bytes] = code;
-                    }, (address, slot, value) => batch.SetStorage(address, slot, new UInt256(value.Bytes, true)));
+                    }, (address, slot, value) => batch.SetStorage(address, slot, value));
                 _sourceReader = source.CreateReader();
             }
             else

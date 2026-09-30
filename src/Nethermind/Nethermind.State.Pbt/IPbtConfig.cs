@@ -19,14 +19,14 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Block number of the EIP-8347 anchor block, whose state is converted. Required to import external artifacts. For an export, null anchors at the current persisted flat state, and a number ahead of it runs the node until persistence lands on it.", DefaultValue = "null")]
     long? MigrationAnchor { get; set; }
 
-    /// <summary>Path to the canonical EIP-8347 PBT snapshot, imported on its own. Defaults to null.</summary>
-    /// <remarks>The snapshot is trusted as is: nothing ties it to the anchor's MPT state root.</remarks>
-    [ConfigItem(Description = "Path to the canonical EIP-8347 PBT snapshot. The PBT state is built from the snapshot alone, without verifying it against the anchor's MPT state root.", DefaultValue = "null")]
+    /// <summary>Path to the canonical EIP-8347 PBT snapshot, the only source the PBT state is built from. Defaults to null.</summary>
+    /// <remarks>Without MigrationPreimagesPath the snapshot is trusted as is: nothing ties it to the anchor's MPT state root.</remarks>
+    [ConfigItem(Description = "Path to the canonical EIP-8347 PBT snapshot. The PBT state is built from the snapshot alone; with MigrationPreimagesPath it is also verified against the anchor's MPT state root.", DefaultValue = "null")]
     string? MigrationSnapshotPath { get; set; }
 
-    /// <summary>Path to canonical EIP-8347 preimages, whose values are read from the local flat state. Defaults to null.</summary>
-    /// <remarks>The persisted flat state must be at MigrationAnchor.</remarks>
-    [ConfigItem(Description = "Path to canonical EIP-8347 preimages. The PBT state is built from the listed addresses and slots with their values read from the local flat state, which must be persisted at MigrationAnchor.", DefaultValue = "null")]
+    /// <summary>Path to canonical EIP-8347 preimages. Beside MigrationSnapshotPath they only verify the snapshot; alone, their values are read from the local flat state. Defaults to null.</summary>
+    /// <remarks>Alone, the persisted flat state must be at MigrationAnchor.</remarks>
+    [ConfigItem(Description = "Path to canonical EIP-8347 preimages. With MigrationSnapshotPath, they only verify the imported snapshot against the anchor's MPT state root. Alone, the PBT state is built from the listed addresses and slots with their values read from the local flat state, which must be persisted at MigrationAnchor.", DefaultValue = "null")]
     string? MigrationPreimagesPath { get; set; }
 
     /// <summary>Path to a separate offline read-only preimage-flat source database. Defaults to null.</summary>

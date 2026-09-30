@@ -68,7 +68,7 @@ internal sealed class PbtMigrationBootstrap(
         if (!lease.IsAnchorCurrent()) throw new InvalidOperationException("Migration anchor is no longer available.");
         if (lease.Snapshot is { } snapshot)
         {
-            await publication.PublishSnapshot(snapshot, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
+            await publication.PublishSnapshot(snapshot, lease.Preimages, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
             return;
         }
         if (lease.OfflineSource is null || lease.OfflineCode is null)
@@ -91,7 +91,7 @@ internal sealed class PbtMigrationBootstrap(
                 configuration.ExportSortBufferBytes, configuration.ExportConcurrency, cancellationToken);
             exportedSnapshot.Position = 0;
             exportedPreimages.Position = 0;
-            await publication.Publish(exportedSnapshot, exportedPreimages, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
+            await publication.PublishSnapshot(exportedSnapshot, exportedPreimages, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

@@ -36,6 +36,11 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
             {
                 lease._snapshot = File.Open(snapshot, FileMode.Open, FileAccess.Read, FileShare.Read);
                 lease._owned.Add(lease._snapshot);
+                if (configuration.MigrationPreimagesPath is { } verifyingPreimages)
+                {
+                    lease._preimages = File.Open(verifyingPreimages, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    lease._owned.Add(lease._preimages);
+                }
             }
             else if (configuration.MigrationPreimagesPath is { } preimages)
             {

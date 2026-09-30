@@ -15,13 +15,14 @@ using Nethermind.State.Pbt.Image;
 
 namespace Nethermind.State.Pbt.Test;
 
-public class PbtImageMptRootCalculatorTests
+public class MptRightmostNodeStoreTests
 {
     [Test]
     public void MatchesPatriciaTree(
         [Values(0, 1, 2, 16, 257, 4096)] int count,
         [Values(0, 1, 30)] int sharedPrefixBytes,
-        [Values(1, 27, 28, 32, 128)] int valueLength)
+        [Values(1, 27, 28, 32, 128)] int valueLength,
+        [Values(1, 7, 1000)] int windowSize)
     {
         List<KeyValuePair<ValueHash256, byte[]>> entries = new(count);
         Random random = new(12345);
@@ -49,7 +50,7 @@ public class PbtImageMptRootCalculatorTests
             tree.Set(entry.Key.Bytes, entry.Value);
         tree.UpdateRootHash();
 
-        ValueHash256 actual = PbtImageMptRootCalculator.Calculate(entries, CancellationToken.None);
+        ValueHash256 actual = MptRightmostNodeStore.CalculateRoot(entries, windowSize, CancellationToken.None);
 
         Assert.That(actual, Is.EqualTo(tree.RootHash.ValueHash256));
     }
@@ -61,7 +62,7 @@ public class PbtImageMptRootCalculatorTests
         ValueHash256 second = duplicate ? first : new(Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000001"));
         KeyValuePair<ValueHash256, byte[]>[] entries = [new(first, Bytes.FromHexString("01")), new(second, Bytes.FromHexString("02"))];
 
-        Assert.Throws<System.IO.InvalidDataException>(() => PbtImageMptRootCalculator.Calculate(entries, CancellationToken.None));
+        Assert.Throws<System.IO.InvalidDataException>(() => MptRightmostNodeStore.CalculateRoot(entries, MptRightmostNodeStore.DefaultWindowSize, CancellationToken.None));
     }
 
     [Test]
@@ -72,7 +73,7 @@ public class PbtImageMptRootCalculatorTests
         if (cancelBeforeFirst)
             cancellation.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => PbtImageMptRootCalculator.Calculate(Entries(), cancellation.Token));
+        Assert.Throws<OperationCanceledException>(() => MptRightmostNodeStore.CalculateRoot(Entries(), MptRightmostNodeStore.DefaultWindowSize, cancellation.Token));
         Assert.That(disposed, Is.EqualTo(!cancelBeforeFirst));
 
         IEnumerable<KeyValuePair<ValueHash256, byte[]>> Entries()

@@ -21,7 +21,7 @@ namespace Nethermind.State.Pbt.Image;
 /// The provenance marker written before staging makes the import idempotent: a restart with the same source takes
 /// the fast path without re-verifying the whole image, a restart with another source is refused, and an interrupted
 /// staging is wiped and redone. When PBT already holds the anchor (a genesis bootstrap mirrors genesis before this
-/// runs) the image is only verified against it.
+/// runs) the snapshot's claimed root is only checked against it.
 /// </remarks>
 internal sealed class PbtAnchorPublication(
     PbtRocksDbPersistence target,
@@ -41,103 +41,16 @@ internal sealed class PbtAnchorPublication(
         new AnchorProvenance(anchor.ChainId, anchor.GenesisHash.ToString(), anchor.Header.Hash!.ToString(),
             (long)anchor.Header.Number, anchor.Header.StateRoot!.ToString()));
     private const int BatchSize = 4096;
-    private const string StagePhase = "PBT anchor staging";
-
-    /// <summary>How many of one account's slot runs staging buffers before spilling them to the target.</summary>
-    internal int MaxBufferedRuns { get; init; } = 4096;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorPublication>();
 
-    public async Task<ValueHash256> Publish(Stream snapshot, Stream preimages,
+    /// <summary>Imports the native PBT state at the anchor from a snapshot, optionally verified by preimages.</summary>
+    /// <remarks>The preimages are not ingested: they only rebuild the anchor's MPT root over the staged state. Without
+    /// them nothing ties the snapshot to the anchor's MPT root; only its own claimed PBT root is checked.</remarks>
+    public async Task<ValueHash256> PublishSnapshot(Stream snapshot, Stream? preimages,
         PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Stopwatch importing = Stopwatch.StartNew();
-        if (ImportedEarlier(anchor) is { } imported) return imported;
-        StateId anchorState = new(anchor.Header);
-
-        // Verification and folding must read the same immutable bytes, even if an input file is replaced.
-        string copyPath = Path.Combine(scratchDirectory, $"pbt-source-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(scratchDirectory);
-        try
-        {
-            await using FileStream copiedSnapshot = new(copyPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-            await snapshot.CopyToAsync(copiedSnapshot, cancellationToken);
-            copiedSnapshot.Position = 0;
-            using PbtVerifiedImage image = PbtImageVerifier.Verify(copiedSnapshot, preimages, anchor, scratchDirectory, logManager, cancellationToken);
-            if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
-
-            if (AdoptHeldAnchor(anchor, image.PbtRoot) is { } held) return held;
-
-            PrepareStaging(anchor, cancellationToken);
-
-            ulong stagedAccounts = 0;
-            ulong stagedSlots = 0;
-            using (LogicalBatch batch = new(target))
-            {
-                // The image lists an account's slots in hash order, so a run completes only once the account ends. A
-                // bounded buffer spills a large account's runs early and merges its later slots into the staged rows.
-                Dictionary<PbtStorageTreeKey, ISlotRun> runs = [];
-                Address? slotsAddress = null;
-                bool spilled = false;
-                using ProgressReporter progress = PbtImageProgress.Start(StagePhase, "acc", 0, logManager);
-                progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(StagePhase, "acc", p)} | {stagedSlots,15:N0} slot");
-                image.Replay((address, account, code) =>
-                {
-                    progress.Update(++stagedAccounts);
-                    batch.Next().SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
-                    if (code.Length != 0) batch.Next().SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
-                }, (address, slot, value) =>
-                {
-                    stagedSlots++;
-                    if (address != slotsAddress)
-                    {
-                        FlushRuns();
-                        spilled = false;
-                    }
-                    else if (runs.Count == MaxBufferedRuns)
-                    {
-                        FlushRuns();
-                        spilled = true;
-                    }
-                    slotsAddress = address;
-                    PbtStorageTreeKey key = PbtStateKey.Storage(address, slot);
-                    PbtStorageTreeKey runKey = SlotRun.RunKey(key);
-                    ISlotRun previous = runs.TryGetValue(runKey, out ISlotRun? held) ? held : SlotRun.Empty;
-                    runs[runKey] = previous.With(SlotRun.IndexOf(key), EvmWordSlot.FromStripped(value.Bytes));
-                    SlotRun.Return(previous);
-                }, cancellationToken);
-                FlushRuns();
-                batch.Commit();
-
-                void FlushRuns()
-                {
-                    if (runs.Count == 0) return;
-                    if (spilled) batch.Flush();
-                    using IPbtPersistence.IReader? staged = spilled ? target.CreateReader() : null;
-                    foreach ((PbtStorageTreeKey runKey, ISlotRun run) in runs)
-                    {
-                        ISlotRun whole = staged is null ? run : MergeInto(staged.GetSlotRun(runKey), run);
-                        batch.Next().SetSlotRun(runKey, whole);
-                        SlotRun.Return(whole);
-                    }
-                    runs.Clear();
-                }
-            }
-
-            ValueHash256 root = await Fold(token => SnapshotLeaves(copiedSnapshot, token), anchorState, cancellationToken);
-            if (root != image.PbtRoot) throw new InvalidDataException("Staged PBT root differs from the verified image.");
-            Finish(anchor, root, stagedAccounts, stagedSlots, importing, cancellationToken);
-            return root;
-        }
-        finally { File.Delete(copyPath); }
-    }
-
-    /// <summary>Imports the native PBT state at the anchor from a snapshot alone.</summary>
-    /// <remarks>Nothing ties the snapshot to the anchor's MPT root; only its own claimed PBT root is checked.</remarks>
-    public async Task<ValueHash256> PublishSnapshot(Stream snapshot,
-        PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
+        PbtImageVerifier.ValidateAnchor(anchor);
         Stopwatch importing = Stopwatch.StartNew();
         if (ImportedEarlier(anchor) is { } imported) return imported;
 
@@ -151,7 +64,7 @@ internal sealed class PbtAnchorPublication(
             copiedSnapshot.Position = 0;
             (ValueHash256 claimedRoot, _) = PbtSnapshotCodec.ReadHeader(copiedSnapshot);
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
-            return await ImportLeaves(anchor, scratchDirectory, token => SnapshotLeaves(copiedSnapshot, token), claimedRoot, importing, cancellationToken);
+            return await ImportLeaves(anchor, scratchDirectory, token => SnapshotLeaves(copiedSnapshot, token), claimedRoot, preimages, isAnchorCurrent, importing, cancellationToken);
         }
         finally { File.Delete(copyPath); }
     }
@@ -162,6 +75,7 @@ internal sealed class PbtAnchorPublication(
         PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        PbtImageVerifier.ValidateAnchor(anchor);
         Stopwatch importing = Stopwatch.StartNew();
         if (ImportedEarlier(anchor) is { } imported) return imported;
         if (flat.CurrentState.BlockNumber != anchor.Header.Number || flat.CurrentState.StateRoot != anchor.Header.StateRoot!.ValueHash256)
@@ -175,7 +89,7 @@ internal sealed class PbtAnchorPublication(
             using (PbtSortedSpool.Writer writer = leaves.CreateWriter())
                 WritePreimageLeaves(preimages, flat, code, writer, cancellationToken);
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
-            return await ImportLeaves(anchor, scratchDirectory, _ => SpoolLeaves(leaves), claimedRoot: null, importing, cancellationToken);
+            return await ImportLeaves(anchor, scratchDirectory, _ => SpoolLeaves(leaves), claimedRoot: null, preimages: null, isAnchorCurrent, importing, cancellationToken);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
@@ -207,20 +121,29 @@ internal sealed class PbtAnchorPublication(
     }
 
     /// <summary>Stages the logical state of an ascending leaf stream, then folds the same stream into the tree.</summary>
+    /// <remarks>Preimages are verified before the fold, which is what marks the target valid, so a refused import
+    /// stays unpublished and a restart wipes its staging.</remarks>
     private async Task<ValueHash256> ImportLeaves(PbtImageAnchor anchor, string scratchDirectory,
-        Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, ValueHash256? claimedRoot, Stopwatch importing, CancellationToken cancellationToken)
+        Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, ValueHash256? claimedRoot, Stream? preimages,
+        Func<bool> isAnchorCurrent, Stopwatch importing, CancellationToken cancellationToken)
     {
         if (AdoptHeldAnchor(anchor, claimedRoot) is { } held) return held;
         PrepareStaging(anchor, cancellationToken);
-        (ulong stagedAccounts, ulong stagedSlots) staged;
+        (ulong Accounts, ulong Slots) staged;
         using (LogicalBatch batch = new(target))
         {
-            staged = PbtLeafStaging.Stage(batch, leaves(cancellationToken), scratchDirectory, cancellationToken);
+            staged = PbtLeafStaging.Stage(batch, leaves(cancellationToken), scratchDirectory, anchor.MaxBufferedCodeBytes, cancellationToken);
             batch.Commit();
         }
-        ValueHash256 root = await Fold(leaves, new StateId(anchor.Header), cancellationToken);
-        if (claimedRoot is { } expected && root != expected) throw new InvalidDataException("Staged PBT root differs from the snapshot's claimed root.");
-        Finish(anchor, root, staged.stagedAccounts, staged.stagedSlots, importing, cancellationToken);
+        if (preimages is not null)
+        {
+            using (IPbtPersistence.IReader reader = target.CreateReader())
+                if (PbtImageVerifier.Verify(preimages, reader, anchor, logManager, cancellationToken) != staged)
+                    throw new InvalidDataException("Snapshot holds state its preimages do not list.");
+            if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
+        }
+        ValueHash256 root = await Fold(leaves, new StateId(anchor.Header), claimedRoot, cancellationToken);
+        Finish(anchor, root, staged.Accounts, staged.Slots, importing, cancellationToken);
         return root;
     }
 
@@ -258,8 +181,8 @@ internal sealed class PbtAnchorPublication(
             throw new InvalidOperationException("PBT anchor staging must start empty.");
     }
 
-    /// <summary>Folds the ascending leaves into the tree and publishes them as <paramref name="anchorState"/>.</summary>
-    private async Task<ValueHash256> Fold(Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, StateId anchorState, CancellationToken cancellationToken)
+    /// <summary>Folds the ascending leaves into the tree and publishes them as <paramref name="anchorState"/>, unless the root differs from <paramref name="expectedRoot"/>.</summary>
+    private async Task<ValueHash256> Fold(Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, StateId anchorState, ValueHash256? expectedRoot, CancellationToken cancellationToken)
     {
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(2);
@@ -291,7 +214,7 @@ internal sealed class PbtAnchorPublication(
         }, CancellationToken.None);
         try
         {
-            ValueHash256 root = await new PbtRebuilder(target, config, logManager).Rebuild(channel.Reader, anchorState, linked.Token, 16_384, WriteFlags.None);
+            ValueHash256 root = await new PbtRebuilder(target, config, logManager).Rebuild(channel.Reader, anchorState, linked.Token, 16_384, WriteFlags.None, expectedRoot);
             await producer;
             return root;
         }
@@ -370,21 +293,6 @@ internal sealed class PbtAnchorPublication(
             metadata.Set(key, provenance);
             metadata.SyncWal();
         }
-    }
-
-    /// <summary>Consumes both runs and returns the owned union, <paramref name="later"/>'s slots winning.</summary>
-    private static ISlotRun MergeInto(ISlotRun earlier, ISlotRun later)
-    {
-        ISlotRun merged = earlier;
-        for (int index = 0; index < SlotRun.Width; index++)
-        {
-            if ((later.Mask & (1 << index)) == 0) continue;
-            ISlotRun next = merged.With(index, later.Get(index));
-            SlotRun.Return(merged);
-            merged = next;
-        }
-        SlotRun.Return(later);
-        return merged;
     }
 
     internal sealed class LogicalBatch(PbtRocksDbPersistence target) : IDisposable
