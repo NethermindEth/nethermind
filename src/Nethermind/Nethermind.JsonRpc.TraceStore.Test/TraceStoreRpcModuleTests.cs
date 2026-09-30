@@ -143,7 +143,6 @@ public class TraceStoreRpcModuleTests
         return buffer.ToArray();
     }
 
-    // Replays the stored transaction, or its block, and returns the transaction's serialized result.
     private static async Task<JsonElement> ReplayStored(TestContext test, string[] types, bool blockReplay)
     {
         using JsonRpcResponse response = blockReplay
