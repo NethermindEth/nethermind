@@ -19,6 +19,9 @@ internal sealed class PbtPreimageReader(Stream source)
     private ValueHash256? _previousSlotHash;
     private uint _remainingSlots;
 
+    /// <summary>The Keccak path of the account read last, which ascends through the stream.</summary>
+    public ValueHash256? AccountHash => _previousAccountHash;
+
     public bool ReadAccount(out Address? address, out uint slotCount, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

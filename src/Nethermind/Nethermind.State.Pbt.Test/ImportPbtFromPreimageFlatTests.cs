@@ -98,8 +98,8 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
         foreach (string partitionName in new[] { "accounts/code", "storage" })
         {
-            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName}: 0.00 % ")));
-            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName}: 100.00 % ")));
+            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName} {"0.00 %",8} ")));
+            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName} {"100.00 %",8} ")));
         }
         PbtScanReport scan = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
         Assert.That(scan.Accounts.RecordCount, Is.EqualTo(5), scan.Format());
@@ -183,9 +183,9 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(resumedPages, Is.EqualTo(pages));
             Assert.That(db.ActiveViews, Is.Zero);
             Assert.That(target.IsValid, Is.False);
-            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName}: 0.00 % ")));
-            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName}: {percentage} ")));
-            logger.DidNotReceive().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName}: 100.00 % ")));
+            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName} {"0.00 %",8} ")));
+            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName} {percentage,8} ")));
+            logger.DidNotReceive().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName} {"100.00 %",8} ")));
         }
     }
 

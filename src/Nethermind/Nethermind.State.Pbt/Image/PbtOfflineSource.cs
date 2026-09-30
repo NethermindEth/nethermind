@@ -122,23 +122,26 @@ internal static class PbtOfflineSource
             {
                 int partitionCount = Math.Min(workers * PartitionsPerWorker, PartitionPrefixSpace);
                 int nextPartition = -1;
+                PbtKeyspaceProgress keyspace = new(partitionCount);
                 using ProgressReporter progress = PbtImageProgress.Start(ScanPhase, "acc", 0, logManager);
                 Func<string> slotCounter = PbtImageProgress.Counter("slot", () => (ulong)Interlocked.Read(ref totals.Slots));
-                progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(ScanPhase, "acc", p)} | {slotCounter()}");
+                progress.Logger.SetFormat(p => PbtImageProgress.Format(ScanPhase, keyspace.Walked / (float)PbtKeyspaceProgress.Keyspace,
+                    $"{PbtImageProgress.Counted("acc", p)} | {slotCounter()}"));
 
                 void ScanPartitions()
                 {
                     using PbtSortedSpool.Writer leafWriter = leaves.CreateWriter();
                     using PbtSortedSpool.Writer? rawKeyWriter = rawKeys?.CreateWriter();
-                    ScanWorker worker = new(codeSource, anchor, leafWriter, rawKeyWriter, progress, totals);
+                    ScanWorker worker = new(codeSource, anchor, leafWriter, rawKeyWriter, progress, keyspace, totals);
                     int partition;
                     while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
                     {
                         (ValueHash256 start, ValueHash256 end) = PartitionBounds(partition, partitionCount);
-                        worker.ScanRange(source, start, end, cancellationToken);
+                        worker.ScanRange(source, partition, start, end, cancellationToken);
                         // The flat iterator's upper bound is exclusive and truncates to twenty bytes, so the
                         // maximum address is reached only by the last range, and only by an explicit lookup.
                         if (partition == partitionCount - 1) worker.ScanMaximumAddress(source);
+                        keyspace.Complete(partition);
                     }
                     worker.PublishProgress();
                 }
@@ -164,7 +167,7 @@ internal static class PbtOfflineSource
 
             IEnumerable<RebuildEntry> CountLeaves()
             {
-                foreach (RebuildEntry entry in Leaves("PBT export hash", 0))
+                foreach (RebuildEntry entry in Leaves("PBT export hash", (ulong)totals.Leaves))
                 {
                     leafCount++;
                     layout.Add(entry);
@@ -243,6 +246,7 @@ internal static class PbtOfflineSource
     {
         public long Accounts;
         public long Slots;
+        public long Leaves;
     }
 
     /// <summary>One scan worker: its own spool writers, scratch keys and unpublished progress counts.</summary>
@@ -254,14 +258,16 @@ internal static class PbtOfflineSource
         PbtSortedSpool.Writer leaves,
         PbtSortedSpool.Writer? rawKeys,
         ProgressReporter progress,
+        PbtKeyspaceProgress keyspace,
         ScanTotals totals)
     {
         private readonly byte[] _preimageKey = new byte[PreimageKeyLength];
         private readonly byte[] _accountValue = new byte[Address.Size + sizeof(uint)];
         private long _pendingAccounts;
         private long _pendingSlots;
+        private long _pendingLeaves;
 
-        public void ScanRange(FlatPersistence.IPersistenceReader reader, in ValueHash256 start, in ValueHash256 end,
+        public void ScanRange(FlatPersistence.IPersistenceReader reader, int partition, in ValueHash256 start, in ValueHash256 end,
             CancellationToken cancellationToken)
         {
             using FlatPersistence.IFlatIterator accounts = reader.CreateAccountIterator(start, end);
@@ -272,6 +278,8 @@ internal static class PbtOfflineSource
                 RlpReader rlp = new(accounts.CurrentValue);
                 Account account = AccountDecoder.Slim.Decode(ref rlp) ?? throw new InvalidDataException("Invalid source account.");
                 ScanAccount(reader, accountKey, account, cancellationToken);
+                // Published with the counts, which reset them.
+                if (_pendingAccounts == 0) keyspace.Publish(partition, accountKey.Bytes);
             }
         }
 
@@ -342,12 +350,18 @@ internal static class PbtOfflineSource
         {
             long accounts = Interlocked.Add(ref totals.Accounts, _pendingAccounts);
             Interlocked.Add(ref totals.Slots, _pendingSlots);
+            Interlocked.Add(ref totals.Leaves, _pendingLeaves);
             _pendingAccounts = 0;
             _pendingSlots = 0;
+            _pendingLeaves = 0;
             progress.Update((ulong)accounts);
         }
 
         // Leaf keys are prefix-free (34 bytes in zone 0/1, 66 in zone 255), so their raw order is total.
-        private void AddLeaf(in PbtStorageTreeKey key, ValueHash256 value) => leaves.Add(key.Bytes, value.Bytes);
+        private void AddLeaf(in PbtStorageTreeKey key, ValueHash256 value)
+        {
+            leaves.Add(key.Bytes, value.Bytes);
+            _pendingLeaves++;
+        }
     }
 }

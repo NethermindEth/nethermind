@@ -155,15 +155,17 @@ internal static class PbtImageVerifier
                     TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
 
+            float walked = 0;
             using ProgressReporter progress = PbtImageProgress.Start(ReadPhase, "acc", 0, logManager);
             Func<string> slotCounter = PbtImageProgress.Counter("slot", () => slots);
-            progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(ReadPhase, "acc", p)} | {slotCounter()}");
+            progress.Logger.SetFormat(p => PbtImageProgress.Format(ReadPhase, walked, $"{PbtImageProgress.Counted("acc", p)} | {slotCounter()}"));
             PbtPreimageReader reader = new(preimages);
             while (reader.ReadAccount(out Address? address, out uint slotCount, abort.Token))
             {
-                progress.Update(++accounts);
                 ValueHash256 addressKeyHash = PbtKeyDerivation.AddressKeyHash(address!);
                 ValueHash256 addressHash = ValueKeccak.Compute(address!.Bytes);
+                walked = PbtImageProgress.KeyspaceFraction(addressHash);
+                progress.Update(++accounts);
                 Queue(new Job((PbtStorageTreeKey)PbtStateKey.Account(addressKeyHash, PbtKeyDerivation.BasicDataLeafKey),
                     address, addressHash, default, slotCount, IsSlot: false));
                 for (uint index = 0; index < slotCount; index++)

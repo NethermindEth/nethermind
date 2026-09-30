@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Pbt.Image;
@@ -28,11 +30,24 @@ internal static class PbtImageProgress
     /// <summary>Renders the counted records and their rate, preceded by a meter once the total is known.</summary>
     public static string Format(string phase, string unit, ProgressLogger progress)
     {
-        string counted = $"{progress.CurrentValue,15:N0} {unit} ({progress.CurrentPerSecond,8:N0}/s)";
+        string counted = Counted(unit, progress);
         if (progress.TargetValue == 0) return $"{phase} | {counted}";
-        float percentage = Math.Clamp(progress.CurrentValue / (float)progress.TargetValue, 0, 1);
+        return Format(phase, progress.CurrentValue / (float)progress.TargetValue, counted);
+    }
+
+    /// <summary>Renders a meter at <paramref name="fraction"/> of the phase, followed by <paramref name="counted"/>.</summary>
+    /// <remarks>For a phase that cannot know its record count in advance but knows how far through its input it is.</remarks>
+    public static string Format(string phase, float fraction, string counted)
+    {
+        float percentage = Math.Clamp(fraction, 0, 1);
         return $"{phase} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | {counted}";
     }
+
+    /// <summary>Renders the reporter's counted records and their rate.</summary>
+    public static string Counted(string unit, ProgressLogger progress) => $"{progress.CurrentValue,15:N0} {unit} ({progress.CurrentPerSecond,8:N0}/s)";
+
+    /// <summary>Returns the fraction of a hash keyspace that precedes <paramref name="hash"/>.</summary>
+    public static float KeyspaceFraction(in ValueHash256 hash) => BinaryPrimitives.ReadUInt64BigEndian(hash.Bytes) / (float)ulong.MaxValue;
 
     /// <summary>Returns a renderer of a count the meter does not track, with its rate since the previous rendering.</summary>
     /// <remarks>The renderer is stateful, so only the reporter's formatter, which the reporter serializes, may call it.</remarks>

@@ -449,8 +449,8 @@ public class ImportPbtFromPreimageFlat(
                 int countedZone = zone;
                 Func<string> slotCounter = PbtImageProgress.Counter("slot", () => scanProgress.GetSlots(countedZone));
                 progress.SetFormat(logger =>
-                    $"PBT import phase 2 {partitionName}: {(logger.CurrentValue / (double)ScanProgress.Keyspace).ToString("P2", CultureInfo.InvariantCulture)} of address keyspace scanned | {slotCounter()}");
-                progress.Reset(0, ScanProgress.Keyspace);
+                    PbtImageProgress.Format($"PBT import phase 2 {partitionName}", logger.CurrentValue / (float)PbtKeyspaceProgress.Keyspace, slotCounter()));
+                progress.Reset(0, PbtKeyspaceProgress.Keyspace);
                 progressLoggers[zone] = progress;
             }
 
@@ -526,33 +526,18 @@ public class ImportPbtFromPreimageFlat(
 
     private sealed class ScanProgress(int partitionCount)
     {
-        // A 48-bit address prefix retains sub-partition precision, with an exact exclusive 2^256 endpoint.
-        public const ulong Keyspace = 1UL << 48;
-        private readonly long[] _scanned = new long[partitionCount * 2];
+        private readonly PbtKeyspaceProgress[] _scanned = [new(partitionCount), new(partitionCount)];
         private readonly long[] _slots = new long[2];
 
-        private long Boundary(int partition) => (long)partition * PartitionPrefixSpace / partitionCount << 32;
+        public void Publish(int partition, ReadOnlySpan<byte> key) => _scanned[partition / partitionCount].Publish(partition % partitionCount, key);
 
-        public void Publish(int partition, ReadOnlySpan<byte> key)
-        {
-            long position = (long)(BinaryPrimitives.ReadUInt64BigEndian(key) >> 16);
-            Volatile.Write(ref _scanned[partition], position - Boundary(partition % partitionCount));
-        }
-
-        public void Complete(int partition) => Volatile.Write(ref _scanned[partition],
-            Boundary(partition % partitionCount + 1) - Boundary(partition % partitionCount));
+        public void Complete(int partition) => _scanned[partition / partitionCount].Complete(partition % partitionCount);
 
         public void AddSlots(int partition, int count) => Interlocked.Add(ref _slots[partition / partitionCount], count);
 
         public ulong GetSlots(int zone) => (ulong)Interlocked.Read(ref _slots[zone]);
 
-        public ulong GetScanned(int zone)
-        {
-            ulong scanned = 0;
-            for (int partition = zone * partitionCount; partition < (zone + 1) * partitionCount; partition++)
-                scanned += (ulong)Volatile.Read(ref _scanned[partition]);
-            return scanned;
-        }
+        public ulong GetScanned(int zone) => _scanned[zone].Walked;
     }
 
     private static (byte[] Start, byte[] End) ScanBounds(int partition, int partitionCount)
