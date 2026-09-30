@@ -69,7 +69,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         worldStateScopeProvider,
                         ctx.Resolve<IPrewarmerState>(),
                         ctx.Resolve<ILogManager>(),
-                        ctx.ResolveOptional<ICodeCache>()
+                        ctx.ResolveOptional<ICodeCache>(),
+                        blocksConfig.PrefetchBlockAccessListCode
                     );
                 })
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();

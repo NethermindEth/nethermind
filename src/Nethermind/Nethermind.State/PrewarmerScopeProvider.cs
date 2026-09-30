@@ -46,11 +46,13 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 /// itself as the block's <see cref="PreBlockCaches.MainScope"/>; a populator pushes trie warm-up hints into it.
 /// </param>
 /// <param name="codeCache">Code it holds is not read ahead from a block access list, as execution needs no read for it.</param>
+/// <param name="prefetchCode">Whether a consumer scope reads the code a block access list names ahead of execution.</param>
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     IPrewarmerState prewarmerState,
     ILogManager logManager,
-    ICodeCache? codeCache = null
+    ICodeCache? codeCache = null,
+    bool prefetchCode = false
 ) : IWorldStateScopeProvider
 {
     private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
@@ -112,7 +114,7 @@ public class PrewarmerScopeProvider(
             }
         }
         PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot, codeCache);
+        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot, prefetchCode ? codeCache : null, prefetchCode);
     }
 
     private sealed class ScopeWrapper(
@@ -123,7 +125,8 @@ public class PrewarmerScopeProvider(
         PreBlockCaches.StorageReadCapture? storageReadCapture,
         LocalMetrics metrics,
         Hash256? baseStateRoot,
-        ICodeCache? codeCache) : IWorldStateScopeProvider.IScope
+        ICodeCache? codeCache,
+        bool prefetchCode) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
@@ -297,7 +300,7 @@ public class PrewarmerScopeProvider(
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             CodePrefetcher? code = null;
-            if (!isPrewarmer)
+            if (prefetchCode && !isPrewarmer)
             {
                 // The block's parent readers take from it too, so it is shared through the caches.
                 code = new CodePrefetcher(baseScope.CodeDb, codeCache);

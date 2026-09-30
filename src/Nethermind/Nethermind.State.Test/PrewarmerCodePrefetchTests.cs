@@ -38,7 +38,7 @@ public class PrewarmerCodePrefetchTests
             caches.StateCache.Set(in key, Contract);
         }
 
-        PrewarmerScopeProvider consumer = new(provider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance, new StaticCodeCache(16));
+        PrewarmerScopeProvider consumer = new(provider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance, new StaticCodeCache(16), prefetchCode: true);
 
         IWorldStateScopeProvider.IScope scope = consumer.BeginScope(parent);
         scope.HintBal(AccessList()).Wait();
@@ -64,13 +64,31 @@ public class PrewarmerCodePrefetchTests
         PreBlockCaches caches = PrepareCaches(parent);
         StaticCodeCache codeCache = new(16);
         codeCache.Set(in CodeHash, new CodeInfo(Code));
-        PrewarmerScopeProvider consumer = new(provider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance, codeCache);
+        PrewarmerScopeProvider consumer = new(provider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance, codeCache, prefetchCode: true);
 
         ManualResetEventSlim readAhead = SignalReads(codeKv);
 
         using IWorldStateScopeProvider.IScope scope = consumer.BeginScope(parent);
         scope.HintBal(AccessList()).Wait();
 
+        // Readers are idle, so a queued read would start at once.
+        Assert.That(readAhead.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
+        codeKv.KeyWasRead(CodeHash.ToByteArray(), 0);
+    }
+
+    [Test]
+    public void Code_is_not_read_ahead_unless_enabled_as_parallel_execution_reads_it_as_fast_on_demand()
+    {
+        (TrieStoreScopeProvider provider, TestMemDb codeKv, BlockHeader parent) = CommitContract();
+        PreBlockCaches caches = PrepareCaches(parent);
+        PrewarmerScopeProvider consumer = new(provider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance, new StaticCodeCache(16));
+
+        ManualResetEventSlim readAhead = SignalReads(codeKv);
+
+        using IWorldStateScopeProvider.IScope scope = consumer.BeginScope(parent);
+        scope.HintBal(AccessList()).Wait();
+
+        Assert.That(caches.CodePrefetcher, Is.Null, "no prefetcher is started");
         // Readers are idle, so a queued read would start at once.
         Assert.That(readAhead.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
         codeKv.KeyWasRead(CodeHash.ToByteArray(), 0);
