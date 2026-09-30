@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -124,22 +124,15 @@ public static partial class EvmInstructions
     {
         if (!TryGetPostTxView(vm, out TransactionDiffView view, out _)) return EvmExceptionType.BadInstruction;
 
-        // Spec stack order: param on top, address second, in3 (slot key / local index / unused) third.
+        // Spec stack order: param, address or topic, then in3 (slot key / local index / unused).
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (param > 0x0C) return EvmExceptionType.BadInstruction;
         if (param >= 0x0B)
         {
             if (!stack.PopUInt256(out UInt256 topicValue) || !stack.PopUInt256(out UInt256 localIndex))
                 return EvmExceptionType.StackUnderflow;
-            if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-            Span<byte> topicBytes = stackalloc byte[32];
-            topicValue.ToBigEndian(topicBytes);
-            ValueHash256 topic = new(topicBytes);
-            return param == 0x0B
-                ? localIndex.IsZero ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.TopicEventCount(in topic)) : EvmExceptionType.BadInstruction
-                : view.TryGetTopicEventGlobalIndex(in topic, in localIndex, out int globalIndex)
-                    ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)globalIndex)
-                    : EvmExceptionType.BadInstruction;
+            ValueHash256 topic = topicValue.ToValueHash();
+            return TxDiffTopicView<TGasPolicy, TTracingInst>(ref gas, (byte)param.u0, view, in topic, in localIndex, ref stack);
         }
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) return EvmExceptionType.StackUnderflow;
@@ -154,6 +147,23 @@ public static partial class EvmInstructions
                 ? TxDiffAccount<TGasPolicy, TTracingInst>(vm, ref gas, p, view, address, account, ref stack)
                 : EvmExceptionType.BadInstruction,
             _ => TxDiffAddressView<TGasPolicy, TTracingInst>(ref gas, p, view, address, in in3, account, ref stack),
+        };
+    }
+
+    // 0x0B/0x0C: topic1..3 views, flat priced without account or storage access.
+    private static EvmExceptionType TxDiffTopicView<TGasPolicy, TTracingInst>(ref TGasPolicy gas, byte param, TransactionDiffView view, in ValueHash256 topic, in UInt256 localIndex, ref EvmStack stack)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        return param switch
+        {
+            0x0B => localIndex.IsZero
+                ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.TopicEventCount(in topic))
+                : EvmExceptionType.BadInstruction,
+            _ => view.TryGetTopicEventGlobalIndex(in topic, in localIndex, out int globalIndex)
+                ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)globalIndex)
+                : EvmExceptionType.BadInstruction,
         };
     }
 
