@@ -17,7 +17,7 @@ namespace Nethermind.TxPool.Test;
 [Parallelizable(ParallelScope.All)]
 internal class FrameTxVerifyGasFilterTest
 {
-    private const ulong ConfiguredMaxVerifyGas = 100_000;
+    private const ulong ConfiguredMaxVerifyGas = Eip8141Constants.MaxVerifyGas;
 
     // An unrecognized layout is charged its whole frame list: whether an approving DEFAULT frame approves at
     // all depends on sender-controlled code, so the frames behind it may still run before any gas is paid.
@@ -34,10 +34,10 @@ internal class FrameTxVerifyGasFilterTest
             .SetName("a prefix exactly at the configured ceiling is accepted");
         yield return new TestCaseData(new[] { ApprovingDefault(ConfiguredMaxVerifyGas + 1) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)ConfiguredMaxVerifyGas)
             .SetName("a prefix one gas over the configured ceiling is rejected");
-        yield return new TestCaseData(new[] { SelfVerify(100_000) }, AcceptTxResult.Accepted, null)
-            .SetName("the default ceiling accepts 100000 gas");
-        yield return new TestCaseData(new[] { SelfVerify(100_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, null)
-            .SetName("the default ceiling rejects 100001 gas");
+        yield return new TestCaseData(new[] { SelfVerify(Eip8141Constants.MaxVerifyGas) }, AcceptTxResult.Accepted, null)
+            .SetName("the default ceiling accepts MAX_VERIFY_GAS");
+        yield return new TestCaseData(new[] { SelfVerify(Eip8141Constants.MaxVerifyGas + 1) }, AcceptTxResult.FrameTxVerifyGasTooHigh, null)
+            .SetName("the default ceiling rejects one gas above MAX_VERIFY_GAS");
     }
 
     [TestCaseSource(nameof(PrefixCases))]
@@ -108,8 +108,8 @@ internal class FrameTxVerifyGasFilterTest
             .SetName("P256 verification at the fixed MAX_VERIFY_GAS is accepted with the ceiling lifted");
         yield return new TestCaseData(P256AtCeiling + 1, TxFrameSignature.SchemeP256, AcceptTxResult.FrameTxVerifyGasTooHigh)
             .SetName("P256 verification over the fixed MAX_VERIFY_GAS is rejected with the ceiling lifted");
-        yield return new TestCaseData(DecoderSignatureCap, TxFrameSignature.SchemeArbitrary, AcceptTxResult.FrameTxVerifyGasTooHigh)
-            .SetName("a decoder-cap run of arbitrary entries exceeds the fixed MAX_VERIFY_GAS with the ceiling lifted");
+        yield return new TestCaseData(DecoderSignatureCap, TxFrameSignature.SchemeArbitrary, AcceptTxResult.Accepted)
+            .SetName("a decoder-cap run of arbitrary entries stays under the fixed MAX_VERIFY_GAS with the ceiling lifted");
     }
 
     [TestCaseSource(nameof(LiftedCeilingCases))]
