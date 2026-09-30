@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -25,7 +26,7 @@ public class TransactionDiffViewTests
     public void Build_EnumeratesDeploymentsByPreTxCode(bool hadCode, int expected)
     {
         BlockAccessListAtIndex slice = new();
-        slice.AddCodeChange(Low, hadCode ? [0x00] : [], Code);
+        slice.AddCodeChange(Low, hadCode ? new byte[] { 0x00 } : Array.Empty<byte>(), Code);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
 
@@ -37,7 +38,7 @@ public class TransactionDiffViewTests
     public void Build_DelegationDesignatorOnFreshEoa_IsNotADeployment()
     {
         BlockAccessListAtIndex slice = new();
-        slice.AddCodeChange(Low, [], Designator);
+        slice.AddCodeChange(Low, Array.Empty<byte>(), Designator);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
 
@@ -129,9 +130,9 @@ public class TransactionDiffViewTests
     public void Build_SortsDeployedAddressesAscending()
     {
         BlockAccessListAtIndex slice = new();
-        slice.AddCodeChange(High, [], Code);
-        slice.AddCodeChange(Low, [], Code);
-        slice.AddCodeChange(Mid, [], Code);
+        slice.AddCodeChange(High, Array.Empty<byte>(), Code);
+        slice.AddCodeChange(Low, Array.Empty<byte>(), Code);
+        slice.AddCodeChange(Mid, Array.Empty<byte>(), Code);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
 
