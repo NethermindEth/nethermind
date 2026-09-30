@@ -62,10 +62,10 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Bytes buffered per export scan worker before the records are sorted and spilled to a temporary run, split between the leaf and preimage spools. Resident sort memory is roughly this times the worker count.", DefaultValue = "268435456", HiddenFromDocs = true)]
     int ExportSortBufferBytes { get; set; }
 
-    /// <summary>Memory for the preimage verifier's bucket tables, in bytes, shared by all its workers. Defaults to 8 GiB.</summary>
+    /// <summary>Memory for the preimage verifier's bucket tables, in bytes, shared by all its workers. Defaults to 4 GiB.</summary>
     /// <remarks>The preimage reader pauses while the tables are full; the workers sweep them once they are 90% full,
     /// or once the reader is done.</remarks>
-    [ConfigItem(Description = "Bytes of listed accounts and slots the EIP-8347 preimage verifier queues in its bucket tables, shared by all its workers, before the preimage reader pauses.", DefaultValue = "8589934592", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Bytes of listed accounts and slots the EIP-8347 preimage verifier queues in its bucket tables, shared by all its workers, before the preimage reader pauses.", DefaultValue = "4294967296", HiddenFromDocs = true)]
     long MigrationVerifyBucketBytes { get; set; }
 
     /// <summary>Whether to report the known child header's state root instead of the computed PBT root. Defaults to false.</summary>
