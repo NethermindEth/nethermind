@@ -148,18 +148,6 @@ namespace Nethermind.Trie
 
         public CappedArray<byte> FullRlp => ReadRlp();
 
-        // Acquire pairs with the release publication of _nodeData in DecodeRlp: a concurrent resolver may publish a
-        // decode while another thread tests whether the node is resolved, and the decoded fields must be visible with it.
-        // A type switch over the sealed node data classes: an INodeData call here would go through interface dispatch,
-        // and trie walks read the node type several times per node.
-        public NodeType NodeType => ReadNodeData() switch
-        {
-            BranchData => NodeType.Branch,
-            ExtensionData => NodeType.Extension,
-            LeafData => NodeType.Leaf,
-            null => NodeType.Unknown,
-            { } other => other.NodeType,
-        };
         public INodeData? NodeData => ReadNodeData();
 
         // BranchData is sealed and the only branch data, so one type test answers this without the NodeType dispatch.
@@ -167,13 +155,7 @@ namespace Nethermind.Trie
 
         public byte[]? Key
         {
-            get => _nodeData switch
-            {
-                ExtensionData extension => extension.Key,
-                LeafData leaf => leaf.Key,
-                INodeWithKey node => node.Key,
-                _ => null,
-            };
+            get => ReadKey();
             internal set
             {
                 if (_nodeData is not INodeWithKey node)
@@ -866,64 +848,6 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SetItem(int i, TrieNode? node) => DataItem(i) = node ?? _nullNode;
 
-        /// <summary>Child slot <paramref name="i"/> of the node data, reached through the sealed classes, not <see cref="INodeData"/>.</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private ref object? DataItem(int i)
-        {
-            INodeData? nodeData = _nodeData;
-            if (nodeData is BranchData branch) return ref branch[i];
-            if (nodeData is ExtensionData extension) return ref extension[i];
-            return ref nodeData![i];
-        }
-
-        public long GetMemorySize(bool recursive)
-        {
-            int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;
-            CappedArray<byte> rlp = ReadRlp();
-            long rlpSize = MemorySizes.RefSize + (rlp.IsNotNull ? MemorySizes.ArrayOverhead + rlp.UnderlyingLength : 0);
-            // A switch over the sealed node data types rather than an interface call: the trie node cache sizes every
-            // node it takes in.
-            long dataSize = MemorySizes.RefSize + _nodeData switch
-            {
-                BranchData branch => branch.MemorySize,
-                ExtensionData extension => extension.MemorySize,
-                LeafData leaf => leaf.MemorySize,
-                null => 0,
-                _ => _nodeData.MemorySize,
-            };
-            int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
-            int blockAndFlagsSize = sizeof(long);
-
-            if (_nodeData is BranchData data)
-            {
-                for (int i = 0; i < data.Length; i++) dataSize += ChildMemorySize(data[i], recursive);
-            }
-            else if (_nodeData is ExtensionData extensionData)
-            {
-                dataSize += ChildMemorySize(extensionData.Value, recursive);
-            }
-
-            long unaligned = keccakSize +
-                             rlpSize +
-                             dataSize +
-                             blockAndFlagsSize +
-                             objectOverhead;
-
-            return MemorySizes.Align(unaligned);
-        }
-
-        // Exact and sealed type tests only: `is byte[]` also admits covariant arrays, so the runtime answers it through
-        // its shared cast cache for every child that is not an array, at a cost that changed from process to process.
-        private static long ChildMemorySize(object? child, bool recursive) => child switch
-        {
-            null => 0,
-            TrieNode node => recursive ? node.GetMemorySize(true) : 0,
-            Hash256 => Hash256.MemorySize,
-            CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength + MemorySizes.SmallObjectOverhead,
-            _ when child.GetType() == typeof(byte[]) => MemorySizes.ArrayOverhead + Unsafe.As<byte[]>(child).Length,
-            _ => 0,
-        };
-
         public TrieNode CloneWithChangedKey(byte[] key)
         {
             TrieNode trieNode = Clone();
@@ -1303,7 +1227,7 @@ namespace Nethermind.Trie
         {
             // A resolved child needs no RLP, so the seqlock read stays behind that check. A branch's
             // slot is read from its inline array directly rather than through the interface indexer.
-            ref object? data = ref DataItem(i);
+            ref object? data = ref _nodeData is BranchData branch ? ref branch[i] : ref DataItem(i);
             return data ?? ResolveChildFromRlp(tree, ref childPath, ref data, i);
         }
 
