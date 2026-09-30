@@ -126,6 +126,22 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(accounts ? cache.HasSpareWrittenAccounts : cache.HasSpareWrittenSlots, Is.True);
     }
 
+    [Test]
+    public async Task WriteBatch_ClearingAnEmptyCache_KeepsItsAccountTable()
+    {
+        // The default cap: the pre-sized account table is about 2 MB, so replacing it would show up here.
+        await using CarryForwardCachingPersistence cache = new(new FakePersistence());
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            // A raw write clears everything, as every snap sync and healing batch does.
+            batch.SetAccountRaw(default, new Account(1, 100));
+        }
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(256 * 1024));
+    }
+
     [TestCaseSource(nameof(CacheReadCases))]
     public async Task RetainedReader_RecordsCurrentCacheProbeButNotStaleBypass(CacheKind kind, bool found)
     {

@@ -444,7 +444,7 @@ namespace Nethermind.Synchronization
 
                 if (!found && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
-                    Span<byte> value = _codeDb.GetSpan(keys[i].Bytes);
+                    Span<byte> value = _codeDb.GetSpan(keys[i].Bytes, ReadFlags.HintCacheMiss);
                     writer.WriteValue(value);
                     _codeDb.DangerousReleaseMemory(value);
                     found = true;

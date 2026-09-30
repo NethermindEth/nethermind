@@ -57,11 +57,6 @@ on:
         description: "A comma-separated list of ips allowed to connect to a spawned node"
         default: ''
         required: false
-      convert_to_paprika:
-        type: boolean
-        description: "When checked, attempts to convert a spawned node to paprika"
-        default: false
-        required: false
       ssh_keys:
         type: string
         description: "Comma-separated SSH public keys to install on spawned nodes."
@@ -106,7 +101,6 @@ jobs:
         env:
           NODE_TYPE: ${{ inputs.node_type }}
           NETHERMIND_IP: ${{ inputs.nethermind_ip }}
-          CONVERT_TO_PAPRIKA: ${{ inputs.convert_to_paprika }}
           SPAWN_GETH: ${{ inputs.spawn_geth }}
           REFERENCE_REF: ${{ inputs.reference_ref }}
           REFERENCE_URL: ${{ inputs.reference_url }}
@@ -154,11 +148,6 @@ jobs:
             exit 1
           fi
 
-          if [ "$CONVERT_TO_PAPRIKA" == "true" ] && { [ "$NODE_TYPE" != "pruned" ] || [ -n "$NETHERMIND_IP" ]; }; then
-            echo "Error: 'convert_to_paprika' requires node_type 'pruned' and no nethermind_ip (a newly spawned node)."
-            exit 1
-          fi
-
           # At most one reference source: spawned Geth, spawned reference Nethermind, or a provided URL.
           # (Leaving all three empty runs rpc_int in regression mode against the committed fixtures.)
           reference_sources=0
@@ -190,7 +179,6 @@ jobs:
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
       network: ${{ inputs.network }}
-      convert_to_paprika: "${{ inputs.convert_to_paprika }}"
 
   # Spawn a pruned Geth node via the smoke-tests framework
   create_geth_node:
@@ -232,7 +220,6 @@ jobs:
       nethermind_repo_ref: ${{ inputs.reference_ref }}
       custom_run_id: ${{ github.run_id }}-ref
       network: ${{ inputs.network }}
-      convert_to_paprika: "${{ inputs.convert_to_paprika }}"
 
   resolve_urls:
     name: Resolve Nethermind and reference RPC URLs
@@ -348,7 +335,6 @@ jobs:
           GETH_URL: ${{ needs.resolve_urls.outputs.reference_url }}
           REFERENCE_REF: ${{ inputs.reference_ref }}
           REFERENCE_NM_URL: ${{ needs.resolve_urls.outputs.reference_url }}
-          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         shell: bash
         run: |
           # -u for nounset safety; intentionally NOT -e: this is a polling loop that
@@ -462,104 +448,6 @@ jobs:
             done
           }
 
-          # ------------------------------------------------------------
-          # Function: detect a brief downtime/restart and then confirm JSON-RPC is back
-          # (already guarded; add headers/timeouts)
-          # ------------------------------------------------------------
-          check_jsonrpc_responding() {
-            local rpc_url="$1"
-            echo "Checking if JsonRPC restarts and responds at $rpc_url."
-
-            local has_failed_before=false
-
-            while true; do
-              response="$(curl -sS \
-                               -m 10 --connect-timeout 5 \
-                               --retry 3 --retry-all-errors --retry-connrefused \
-                               -H 'Content-Type: application/json' \
-                               -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
-                               "$rpc_url" 2>/dev/null)" || response="curl_failed"
-
-              if [[ "$response" == "curl_failed" || -z "$response" ]]; then
-                echo "JsonRPC not responding at $rpc_url (expected during migration/restart)."
-                has_failed_before=true
-              else
-                if [[ "$has_failed_before" == true ]]; then
-                  echo "JsonRPC responded at $rpc_url after a failure; node likely restarted."
-                  break
-                else
-                  echo "JsonRPC currently responding at $rpc_url; waiting to observe at least one failure before confirming restart."
-                fi
-              fi
-              sleep 60
-            done
-          }
-
-          # ------------------------------------------------------------
-          # Function: compare node head vs Etherscan (optional)
-          # (extra guards for null/empty and missing API key)
-          # ------------------------------------------------------------
-          check_chain_head() {
-            local rpc_url="$1"
-            local etherscan_api_key="${ETHERSCAN_API_KEY:-}"
-            local etherscan_api_url="https://api.etherscan.io/api"
-
-            if [[ -z "$etherscan_api_key" ]]; then
-              echo "ETHERSCAN_API_KEY not provided; skipping head comparison."
-              return 0
-            fi
-
-            echo "Comparing chain head of $rpc_url vs Etherscan ..."
-
-            while true; do
-              # Node head
-              node_resp="$(rpc_post "$rpc_url" '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}')" \
-                || { echo "RPC unreachable at $rpc_url; retrying in 30s"; sleep 30; continue; }
-
-              node_head_hex="$(echo "$node_resp" | jq -r '.result // empty' 2>/dev/null)"
-              if [[ -z "$node_head_hex" || "$node_head_hex" == "null" ]]; then
-                echo "No blockNumber yet from $rpc_url; retrying in 30s..."
-                sleep 30
-                continue
-              fi
-              # hex -> dec (strip 0x)
-              node_head_decimal=$((16#${node_head_hex#0x}))
-              echo "Current chain head at $rpc_url: $node_head_decimal"
-
-              # Etherscan head
-              etherscan_response="$(curl -sS -m 10 --connect-timeout 5 \
-                                       --retry 5 --retry-all-errors --retry-connrefused \
-                                       "$etherscan_api_url?module=proxy&action=eth_blockNumber&apikey=$etherscan_api_key")" \
-                || { echo "Etherscan unreachable; retrying in 30s"; sleep 30; continue; }
-
-              if ! echo "$etherscan_response" | jq -e . >/dev/null 2>&1; then
-                echo "Invalid JSON from Etherscan: $etherscan_response"
-                echo "Retrying in 30s..."
-                sleep 30
-                continue
-              fi
-
-              etherscan_head_hex="$(echo "$etherscan_response" | jq -r '.result // empty')"
-              if [[ -z "$etherscan_head_hex" || "$etherscan_head_hex" == "null" ]]; then
-                echo "Etherscan did not return a blockNumber; retrying in 30s..."
-                sleep 30
-                continue
-              fi
-              etherscan_head_decimal=$((16#${etherscan_head_hex#0x}))
-              echo "Current chain head at Etherscan: $etherscan_head_decimal"
-
-              # Compare heads
-              if (( node_head_decimal >= etherscan_head_decimal )); then
-                echo "Node at $rpc_url has caught up with the chain."
-                break
-              else
-                echo "Node at $rpc_url has not caught up yet. Node: $node_head_decimal, Etherscan: $etherscan_head_decimal"
-                echo "Waiting for 30 seconds before rechecking..."
-                sleep 30
-              fi
-            done
-          }
-
           # -----------------------------
           # Warmup (avoid transient boot noise)
           # -----------------------------
@@ -582,15 +470,6 @@ jobs:
           for url in "${geth_urls[@]}"; do
             check_eth_syncing "$url"
           done
-
-          # -----------------------------
-          # Optional: Paprika import wait and head comparison (Nethermind only)
-          # -----------------------------
-          if [[ "${{ inputs.convert_to_paprika }}" == "true" && ${#nm_urls[@]} -gt 0 ]]; then
-            url="${nm_urls[0]}"
-            check_jsonrpc_responding "$url"
-            check_chain_head "$url"
-          fi
 
           # -----------------------------
           # Extra wait for ~96 blocks after StateHealing (Nethermind)

@@ -193,6 +193,10 @@ namespace Nethermind.Core.Extensions
         public static bool IsNullOrEmpty<T>(this in ReadOnlySpan<T> span) => span.Length == 0;
         public static bool IsNull<T>(this in ReadOnlySpan<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
 
+        /// <summary>Whether <paramref name="memory"/> has no backing store, as <c>default</c> or a converted <c>null</c> array does.</summary>
+        /// <remarks>Unlike an empty span of a real array, which is empty but not null. Compares fields without materialising the span.</remarks>
+        public static bool IsNull<T>(this in ReadOnlyMemory<T> memory) => memory.Equals(default);
+
         public static ArrayPoolList<T> ToPooledList<T>(this in ReadOnlySpan<T> span)
         {
             ArrayPoolList<T> newList = new(span.Length);
