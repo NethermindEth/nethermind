@@ -726,6 +726,20 @@ public sealed class BlockImporter : IBlockImporter
         }
     }
 
+    /// <summary>Spec <c>get_ptc</c> of the post-state of <paramref name="headRoot"/> for <paramref name="slot"/>.</summary>
+    /// <returns>The committee's validator indices, or <c>null</c> when the head is not a held Gloas block or the slot is outside its window.</returns>
+    internal ulong[]? GetPtc(Hash256 headRoot, ulong slot)
+    {
+        try
+        {
+            return _states.GetGloasBlockState(headRoot)?.GetPtc(slot, _spec).Indices;
+        }
+        catch (BeaconStateException)
+        {
+            return null;
+        }
+    }
+
     /// <inheritdoc/>
     public HeadView ComputeHead()
     {

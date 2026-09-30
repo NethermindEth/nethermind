@@ -810,6 +810,7 @@ public partial class BeaconSyncOrchestratorTests
             envelopePool: envelopePool);
 
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
+        orchestrator.PtcReader = (_, slot) => importer.Ptc(slot);
         orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
         return new Harness(orchestrator, importer, engine, pool, router, statusHolder, timestamper, envelopePool);
     }
@@ -957,6 +958,9 @@ public partial class BeaconSyncOrchestratorTests
         public bool OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => Consume(slashing);
 
         public bool OnGossipPayloadAttestation(PayloadAttestationMessage message) => Consume(message);
+
+        /// <summary>The committee of a slot as the head state answers it; <c>null</c> is a head state that cannot tell.</summary>
+        public Func<ulong, ulong[]?> Ptc { get; set; } = static _ => EveryValidator;
 
         private bool Consume(object operation)
         {

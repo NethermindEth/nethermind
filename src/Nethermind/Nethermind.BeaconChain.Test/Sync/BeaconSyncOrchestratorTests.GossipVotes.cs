@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -488,11 +490,105 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    private static MessageValidity PtcVote(GossipRouter router, ulong slot, ulong validatorIndex, bool payloadPresent = true, byte signatureSeed = 0) =>
-        router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(new PayloadAttestationMessage
+    // These tests are about queueing, so every validator index is a member of the slot's PTC; membership is covered with the router.
+    private static readonly ulong[] EveryValidator = [.. Enumerable.Range(0, 1 << 16).Select(static i => (ulong)i)];
+    private static readonly ConditionalWeakTable<GossipRouter, HashSet<ulong>> SlotsWithPtc = [];
+
+    private static MessageValidity PtcVote(GossipRouter router, ulong slot, ulong validatorIndex, bool payloadPresent = true, byte signatureSeed = 0)
+    {
+        HashSet<ulong> slots = SlotsWithPtc.GetOrCreateValue(router);
+        lock (slots)
+        {
+            if (slots.Add(slot))
+            {
+                router.SetPtc(slot, EveryValidator);
+            }
+        }
+
+        return router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(new PayloadAttestationMessage
         {
             ValidatorIndex = validatorIndex,
             Data = new PayloadAttestationData { BeaconBlockRoot = Keccak.Compute("voted block"), Slot = slot, PayloadPresent = payloadPresent },
+            Signature = new BlsSignature([.. Enumerable.Repeat(signatureSeed, BlsSignature.Length)]),
+        })));
+    }
+
+    /// <summary>
+    /// gloas/p2p-interface.md REJECTs a payload attestation from outside get_ptc(head state, slot): each head step tells the router the
+    /// committee of the slots a vote can name, so the router tracks only members and a non-member costs fork choice nothing.
+    /// </summary>
+    [Test]
+    public async Task Head_step_tells_the_router_the_ptc_so_only_members_reach_fork_choice()
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(wallSlot: slot, router: router);
+        harness.Importer.Ptc = _ => [7];
+        harness.Orchestrator.RouteGossipEvents();
+        MessageValidity beforeHeadStep = PtcVoteWithoutPtc(router, slot, validatorIndex: 7);
+
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        MessageValidity member = PtcVoteWithoutPtc(router, slot, validatorIndex: 7, signatureSeed: 1);
+        MessageValidity nonMember = PtcVoteWithoutPtc(router, slot, validatorIndex: 8, signatureSeed: 1);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((beforeHeadStep, member, nonMember), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored, MessageValidity.Rejected)));
+            Assert.That(harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>().Select(static vote => vote.ValidatorIndex), Is.EqualTo(new ulong[] { 7 }), "only the member, after the head step");
+        }
+    }
+
+    /// <summary>
+    /// A vote is accepted for the wall slot and, within the clock disparity, the slots either side of it (altair <c>is_current_slot</c>),
+    /// so the head step must tell the router the committee of all three or a member's early or late vote is refused.
+    /// </summary>
+    [TestCase(-1, 100L, TestName = "head step tells the router the previous slot's committee")]
+    [TestCase(0, 6000L, TestName = "head step tells the router the wall slot's committee")]
+    [TestCase(1, 11700L, TestName = "head step tells the router the next slot's committee")]
+    public async Task Head_step_tells_the_router_the_committee_of_the_slots_a_vote_can_name(int slotOffset, long millisecondsIntoWallSlot)
+    {
+        ulong wallSlot = FirstGloasSlot + 2;
+        ulong slot = (ulong)((long)wallSlot + slotOffset);
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + wallSlot * Sepolia.SecondsPerSlot).AddMilliseconds(millisecondsIntoWallSlot))), LimboLogs.Instance);
+        Harness harness = CreateHarness(wallSlot: wallSlot, router: router);
+        harness.Importer.Ptc = committeeSlot => [committeeSlot];
+        harness.Orchestrator.RouteGossipEvents();
+
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        MessageValidity member = PtcVoteWithoutPtc(router, slot, validatorIndex: slot);
+        MessageValidity nonMember = PtcVoteWithoutPtc(router, slot, validatorIndex: slot + 1);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((member, nonMember), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Rejected)), "a known committee separates the member from the rest");
+            Assert.That(harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>().Select(static vote => vote.ValidatorIndex), Is.EqualTo(new[] { slot }));
+        }
+    }
+
+    /// <summary>A head state that cannot tell the committee (a head not yet Gloas, an unknown head) must leave votes IGNOREd, not REJECTed: the sender is honest.</summary>
+    [Test]
+    public async Task Head_step_that_cannot_read_the_committee_leaves_the_votes_ignored()
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(wallSlot: slot, router: router);
+        harness.Importer.Ptc = _ => null;
+        harness.Orchestrator.RouteGossipEvents();
+
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        MessageValidity vote = PtcVoteWithoutPtc(router, slot, validatorIndex: 7);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        Assert.That((vote, harness.Importer.GossipOperations.Count), Is.EqualTo((MessageValidity.Ignored, 0)));
+    }
+
+    private static MessageValidity PtcVoteWithoutPtc(GossipRouter router, ulong slot, ulong validatorIndex, byte signatureSeed = 0) =>
+        router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(new PayloadAttestationMessage
+        {
+            ValidatorIndex = validatorIndex,
+            Data = new PayloadAttestationData { BeaconBlockRoot = Keccak.Compute("voted block"), Slot = slot, PayloadPresent = true },
             Signature = new BlsSignature([.. Enumerable.Repeat(signatureSeed, BlsSignature.Length)]),
         })));
 }
