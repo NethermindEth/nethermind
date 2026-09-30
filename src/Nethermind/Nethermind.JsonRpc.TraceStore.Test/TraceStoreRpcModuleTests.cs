@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -130,6 +131,30 @@ public class TraceStoreRpcModuleTests
             Assert.That(To(0, 0), Is.EqualTo(TestItem.AddressC));
             Assert.That(To(1), Is.EqualTo(TestItem.AddressD));
             Assert.That(To(2), Is.Null);
+        }
+    }
+
+    // A receipt can still point at a block a reorg replaced; like live replay, the store serves it only for traceNonCanonical.
+    [Test]
+    public void Stored_trace_of_non_canonical_block_requires_trace_non_canonical([Values] bool traceNonCanonical, [Values] bool replay)
+    {
+        TestContext test = new(streaming: false);
+        BlockTree blockTree = (BlockTree)test.BlockFinder;
+        Block orphan = Build.A.Block.WithParent(blockTree.FindParent(blockTree.Head!, BlockTreeLookupOptions.None)!).WithExtraData([1]).TestObject;
+        blockTree.SuggestBlock(orphan);
+        Hash256 txHash = TestItem.KeccakG;
+        test.ReceiptFinder.FindBlockHash(txHash).Returns(orphan.Hash);
+        test.Store.Set(orphan.Hash!, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize([new ParityLikeTxTrace { BlockHash = orphan.Hash, TransactionHash = txHash }]));
+
+        if (replay)
+        {
+            using ResultWrapper<ParityTxTraceFromReplay?> result = test.Module.trace_replayTransaction(txHash, ["trace"], traceNonCanonical);
+            test.InnerModule.Received(traceNonCanonical ? 0 : 1).trace_replayTransaction(txHash, Arg.Any<string[]>(), traceNonCanonical);
+        }
+        else
+        {
+            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> result = test.Module.trace_transaction(txHash, traceNonCanonical);
+            test.InnerModule.Received(traceNonCanonical ? 0 : 1).trace_transaction(txHash, traceNonCanonical);
         }
     }
 
