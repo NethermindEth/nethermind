@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
@@ -83,6 +85,9 @@ public partial class BlockProcessorTests
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = Historical(await AddSharedStateBlock(chain));
         IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        Assert.That(receipts, Has.Length.EqualTo(block.Transactions.Length));
+        ulong logIndexOffset = 0;
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
@@ -92,7 +97,12 @@ public partial class BlockProcessorTests
             ExecutionCounter seeded = new();
 
             string expected = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, traceOptions), seeds: null, replayed));
-            string actual = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, traceOptions), seeds, seeded));
+            // This direct seed fixture supplies receipt context explicitly; RPC replay cannot derive it from a state seed alone.
+            Func<IWorldState, IBlockTracer<GethLikeTxTrace>> seededTracer = traceOptions.Tracer == NativeCallTracer.CallTracer
+                ? _ => new GethLikeBlockNativeTracer(target, (tracedBlock, tx) =>
+                    new NativeCallTracer(tx, chain.SpecProvider.GetSpec(tracedBlock.Header), traceOptions) { LogIndexOffset = logIndexOffset })
+                : GethTracer(chain, block, traceOptions);
+            string actual = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, seededTracer, seeds, seeded));
 
             using (Assert.EnterMultipleScope())
             {
@@ -100,6 +110,7 @@ public partial class BlockProcessorTests
                 Assert.That(seeded.Calls, Is.EqualTo(1), $"transaction {i} is seeded from the access list, so only it executes");
                 Assert.That(actual, Is.EqualTo(expected), $"the seeded trace of transaction {i} must be byte-identical to the replay");
             }
+            logIndexOffset += (ulong)receipts[i].Logs!.Length;
         }
     }
 
