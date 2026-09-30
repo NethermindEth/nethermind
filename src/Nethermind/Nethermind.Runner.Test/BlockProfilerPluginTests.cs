@@ -7,6 +7,7 @@ using Nethermind.BlockProfiler;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -53,13 +54,41 @@ public class BlockProfilerPluginTests
         Block first = Build.A.Block.WithNumber(1).TestObject;
         Block second = Build.A.Block.WithNumber(2).TestObject;
 
-        inner.BlockExecuted += Raise.EventWith(inner, new BlockExecutedEventArgs(first));
-        inner.BlockExecuted += Raise.EventWith(inner, new BlockExecutedEventArgs(second));
-        Assert.That(answered, Is.Empty, "no verdict leaves before the branch completes");
+        bool wasProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = true;
+        try
+        {
+            inner.BlocksProcessing += Raise.EventWith(inner, new BlocksProcessingEventArgs([first, second]));
+            inner.BlockExecuted += Raise.EventWith(inner, new BlockExecutedEventArgs(first));
+            inner.BlockExecuted += Raise.EventWith(inner, new BlockExecutedEventArgs(second));
+            Assert.That(answered, Is.Empty, "no verdict leaves before the branch completes");
 
-        inner.BranchProcessingCompleted += Raise.EventWith(inner, branchSucceeds
-            ? new BranchProcessingCompletedEventArgs([first, second], 2)
-            : new BranchProcessingCompletedEventArgs([first, second], 1, new InvalidOperationException()));
+            inner.BranchProcessingCompleted += Raise.EventWith(inner, branchSucceeds
+                ? new BranchProcessingCompletedEventArgs([first, second], 2)
+                : new BranchProcessingCompletedEventArgs([first, second], 1, new InvalidOperationException()));
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = wasProcessingThread;
+        }
+
         Assert.That(answered, Is.EqualTo(branchSucceeds ? new[] { first, second } : Array.Empty<Block>()));
+    }
+
+    [Test]
+    public void Counting_passes_the_verdicts_of_other_threads_branches_straight_through()
+    {
+        // Block building and the tracing calls run branches of their own, off the block processing thread.
+        IBranchProcessor inner = Substitute.For<IBranchProcessor>();
+        using CountingBranchProcessor counting = new(inner, LimboLogs.Instance);
+        List<Block> answered = [];
+        counting.BlockExecuted += (_, e) => answered.Add(e.Block);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        Assert.That(ProcessingThread.IsBlockProcessingThread, Is.False);
+        inner.BlocksProcessing += Raise.EventWith(inner, new BlocksProcessingEventArgs([block]));
+        inner.BlockExecuted += Raise.EventWith(inner, new BlockExecutedEventArgs(block));
+
+        Assert.That(answered, Is.EqualTo(new[] { block }));
     }
 }

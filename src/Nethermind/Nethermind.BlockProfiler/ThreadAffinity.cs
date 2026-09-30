@@ -52,7 +52,7 @@ internal static unsafe partial class ThreadAffinity
             return 0;
         }
 
-        int self = (int)syscall(RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 178 : 186); // gettid
+        int self = (int)syscall(RuntimeInformation.ProcessArchitecture is Architecture.Arm64 or Architecture.RiscV64 ? 178 : 186); // gettid
         ulong bit = 1UL << (cpu % 64);
         ulong* mask = stackalloc ulong[MaskWords];
         int moved = 0;
