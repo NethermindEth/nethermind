@@ -15,7 +15,8 @@ namespace Nethermind.Consensus.Tracing
         BlockchainProcessorFacade traceProcessor,
         BlockchainProcessorFacade executeProcessor,
         ProcessingOptions executeOptions = TraceProcessingOptions.ReadOnlyReplay,
-        ProcessingOptions traceOptions = TraceProcessingOptions.ReadOnlyReplay)
+        ProcessingOptions traceOptions = TraceProcessingOptions.ReadOnlyReplay,
+        ProcessingOptions executeSignedOptions = TraceProcessingOptions.ReadOnlySigned)
         : ITracer
     {
         private void Process(Block block, IBlockTracer blockTracer, BlockchainProcessorFacade processor, ProcessingOptions options)
@@ -32,7 +33,7 @@ namespace Nethermind.Consensus.Tracing
 
         public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeOptions);
 
-        public void ExecuteSigned(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, TraceProcessingOptions.ReadOnlySigned);
+        public void ExecuteSigned(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeSignedOptions);
 
         public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>
         {

@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
     /// <summary>
     /// All methods that receive a call from users uses ITransactionProcessor.Trace
     /// A call priced at zero pays no gas fee and runs with a zero base fee, as eth_call does; a priced one is charged for gas
-    /// A signed transaction from users is validated as block inclusion validates it and uses ITransactionProcessor.Execute
+    /// A signed transaction from users is validated with block inclusion's checks in the latest block's context and uses ITransactionProcessor.Execute
     ///
     /// All methods that traces transactions from chain uses ITransactionProcessor.Execute
     /// From-chain transactions should have stateDiff as we got during normal execution. Also we are sure that sender have enough funds to pay gas
@@ -275,8 +275,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// Traces one raw transaction on the latest state, in the latest block's context, validated as block inclusion validates
-        /// it there: an invalid transaction, for example one whose nonce isn't the sender's, is rejected, and a valid one runs as signed.
+        /// Traces one raw transaction on the latest state, in the latest block's context, validated there with block inclusion's
+        /// checks: an invalid transaction, for example one whose nonce isn't the sender's, is rejected, and a valid one runs as signed.
+        /// The context is the latest block, where the transaction is traced, not the next block, where it would be included.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
@@ -732,8 +733,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// Traces constructed <paramref name="block"/>: a signed transaction is validated as block inclusion validates it and
-        /// runs with its own nonce, while an unsigned call is traced as eth_call runs it.
+        /// Traces constructed <paramref name="block"/>: a signed transaction runs with its own nonce, which the processor
+        /// validates with its other state checks, while an unsigned call is traced as eth_call runs it.
         /// </summary>
         private static void TraceConstructedBlock(ITracer tracer, Block block, IBlockTracer blockTracer, bool isSigned)
         {

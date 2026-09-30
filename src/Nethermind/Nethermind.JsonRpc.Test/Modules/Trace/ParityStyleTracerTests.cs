@@ -34,7 +34,7 @@ public class ParityStyleTracerTests
     [SetUp]
     public async Task Setup()
     {
-        // trace_rawTransaction validates a transaction as block inclusion does, so the fork must enable an access list.
+        // trace_rawTransaction rejects a transaction type the latest block's fork doesn't enable, so it must enable access lists.
         ISpecProvider specProvider = new TestSpecProvider(Berlin.Instance);
 
         _blockTree = Build.A.BlockTree()

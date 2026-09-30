@@ -1826,9 +1826,12 @@ public class TraceRpcModuleTests
 
     private static void AssertRejected(JToken response, string error)
     {
-        Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.TransactionRejected), response.ToString());
-        Assert.That(response["error"]?["message"]?.Value<string>(), Does.StartWith(error), response.ToString());
-        Assert.That(response["result"], Is.Null, response.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.TransactionRejected), response.ToString());
+            Assert.That(response["error"]?["message"]?.Value<string>(), Does.StartWith(error), response.ToString());
+            Assert.That(response["result"], Is.Null, response.ToString());
+        }
     }
 
     // As in block inclusion, the signed nonce must be the sender's; it is not replaced with the sender's nonce, which for
@@ -1852,11 +1855,11 @@ public class TraceRpcModuleTests
 
         JToken response = await TraceRawSerialized(context, transaction);
 
-        using (Assert.EnterMultipleScope())
+        if (nonceOffset == 0)
         {
-            if (nonceOffset == 0)
+            JToken? trace = response["result"]?["trace"]?[0];
+            using (Assert.EnterMultipleScope())
             {
-                JToken? trace = response["result"]?["trace"]?[0];
                 Assert.That(trace?["action"]?["from"]?.Value<string>(), Is.EqualTo(TestItem.AddressA.ToString()), response.ToString());
                 if (create)
                 {
@@ -1864,10 +1867,10 @@ public class TraceRpcModuleTests
                         Is.EqualTo(ContractAddress.From(TestItem.AddressA, nonce).ToString()), response.ToString());
                 }
             }
-            else
-            {
-                AssertRejected(response, nonceOffset < 0 ? "nonce too low" : "nonce too high");
-            }
+        }
+        else
+        {
+            AssertRejected(response, nonceOffset < 0 ? "nonce too low" : "nonce too high");
         }
     }
 
@@ -1895,16 +1898,13 @@ public class TraceRpcModuleTests
 
         JToken response = await TraceRawSerialized(context, transaction);
 
-        using (Assert.EnterMultipleScope())
+        AssertRejected(response, rejected switch
         {
-            AssertRejected(response, rejected switch
-            {
-                RejectedByValidator.TypeNotInFork => "InvalidTxType",
-                RejectedByValidator.PriorityFeeAboveFeeCap => TxErrorMessages.InvalidMaxPriorityFeePerGas,
-                RejectedByValidator.GasAboveCap => "TxGasLimitCapExceeded",
-                _ => TxErrorMessages.NonceTooHigh,
-            });
-        }
+            RejectedByValidator.TypeNotInFork => "InvalidTxType",
+            RejectedByValidator.PriorityFeeAboveFeeCap => TxErrorMessages.InvalidMaxPriorityFeePerGas,
+            RejectedByValidator.GasAboveCap => "TxGasLimitCapExceeded",
+            _ => TxErrorMessages.NonceTooHigh,
+        });
     }
 
     // EIP-3607: block inclusion rejects a sender with deployed code, unless the code is an EIP-7702 delegation.
@@ -1938,10 +1938,7 @@ public class TraceRpcModuleTests
         }
         else
         {
-            using (Assert.EnterMultipleScope())
-            {
-                AssertRejected(response, "sender has deployed code");
-            }
+            AssertRejected(response, "sender has deployed code");
         }
     }
 
@@ -2284,10 +2281,7 @@ public class TraceRpcModuleTests
         }
         else
         {
-            using (Assert.EnterMultipleScope())
-            {
-                AssertRejected(response, "max fee per gas less than block base fee");
-            }
+            AssertRejected(response, "max fee per gas less than block base fee");
         }
     }
 
