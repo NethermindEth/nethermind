@@ -105,6 +105,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     internal string UnboundFieldName =>
         JsonNamingPolicy.CamelCase.ConvertName(((PayloadFields)(1u << BitOperations.TrailingZeroCount((uint)_unboundFields))).ToString());
 
+    /// <summary>The invalid-params message for the first unbound field; call only when <see cref="HasUnboundField"/> is <c>true</c>.</summary>
+    internal string UnboundFieldError => $"{UnboundFieldName} must be set";
+
     protected byte[][] _encodedTransactions = [];
 
     /// <summary>

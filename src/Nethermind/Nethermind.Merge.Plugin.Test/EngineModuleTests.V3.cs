@@ -83,11 +83,38 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         ExecutionPayloadV3 executionPayload = await CreateBlockRequestV3(
-            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
+            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [], blobGasUsed: 0, excessBlobGas: 0);
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(executionPayload, [], executionPayload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+    }
+
+    [Test]
+    public async Task NewPayloadV3_pre_cancun_with_missing_blob_fields_returns_invalid_params([Values] bool omit)
+    {
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)
+            = await PreparePayloadRequestEnv(Shanghai.Instance);
+        using MergeTestBlockchain disposeChain = chain;
+
+        JsonObject payload = serializer.Deserialize<JsonObject>(serializer.Serialize(executionPayload))!;
+        foreach (string field in (string[])["blobGasUsed", "excessBlobGas"])
+        {
+            if (omit)
+                payload.Remove(field);
+            else
+                payload[field] = null;
+        }
+
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(payload), "[]", null);
+
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error.Message, Is.EqualTo("blobGasUsed must be set"));
+        }
     }
 
     [Test]

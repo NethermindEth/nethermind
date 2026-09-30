@@ -99,6 +99,14 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         if (!executionPayload.ValidateForkOnNewPayload(_specProvider, version))
         {
+            // A payload that does not match the method's structure is invalid params before it is an unsupported fork.
+            if (executionPayload.HasUnboundField)
+            {
+                string unboundError = executionPayload.UnboundFieldError;
+                if (_logger.IsWarn) _logger.Warn(unboundError);
+                return ResultWrapper<PayloadStatusV1>.Fail(unboundError, ErrorCodes.InvalidParams);
+            }
+
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.NewPayload.V2 ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
         }
