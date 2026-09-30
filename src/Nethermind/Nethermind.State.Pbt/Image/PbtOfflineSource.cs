@@ -67,9 +67,10 @@ internal static class PbtOfflineSource
             Scan();
 
             ulong leafCount = 0;
+            PbtSnapshotLayout layout = new();
             ulong accountCount = (ulong)totals.Accounts;
             ValueHash256 root = PbtRightmostGroupStore.CalculateRoot(CountLeaves(), PbtRightmostGroupStore.DefaultWindowSize, cancellationToken);
-            PbtArtifactWriter.PbtArtifactDigests digests = PbtArtifactWriter.Write(snapshot, preimages, root, leafCount,
+            PbtArtifactWriter.PbtArtifactDigests digests = PbtArtifactWriter.Write(snapshot, preimages, root, layout,
                 Leaves("PBT export snapshot", leafCount), Accounts(), cancellationToken);
             if (logger.IsInfo)
                 logger.Info($"PBT export wrote {leafCount:N0} leaves for {accountCount:N0} accounts and {totals.Slots:N0} slots in {exporting.Elapsed:hh\\:mm\\:ss}.");
@@ -125,6 +126,7 @@ internal static class PbtOfflineSource
                 foreach (RebuildEntry entry in Leaves("PBT export hash", 0))
                 {
                     leafCount++;
+                    layout.Add(entry);
                     yield return entry;
                 }
             }

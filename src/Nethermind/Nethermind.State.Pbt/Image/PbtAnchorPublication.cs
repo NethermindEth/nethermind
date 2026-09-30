@@ -64,9 +64,9 @@ internal sealed class PbtAnchorPublication(
             await using FileStream copiedSnapshot = new(copyPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             await snapshot.CopyToAsync(copiedSnapshot, cancellationToken);
             copiedSnapshot.Position = 0;
-            (ValueHash256 claimedRoot, ulong leafCount) = PbtSnapshotCodec.ReadHeader(copiedSnapshot);
+            ValueHash256 claimedRoot = PbtSnapshotCodec.ReadHeader(copiedSnapshot);
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
-            return await ImportLeaves(anchor, scratchDirectory, token => SnapshotLeaves(copiedSnapshot, token), leafCount, claimedRoot, preimages, isAnchorCurrent, importing, cancellationToken);
+            return await ImportLeaves(anchor, scratchDirectory, token => SnapshotLeaves(copiedSnapshot, token), leafCount: 0, claimedRoot, preimages, isAnchorCurrent, importing, cancellationToken);
         }
         finally { File.Delete(copyPath); }
     }
@@ -250,8 +250,8 @@ internal sealed class PbtAnchorPublication(
     private static IEnumerable<RebuildEntry> SnapshotLeaves(Stream snapshot, CancellationToken cancellationToken)
     {
         snapshot.Position = 0;
-        (_, ulong count) = PbtSnapshotCodec.ReadHeader(snapshot);
-        foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, count, cancellationToken)) yield return entry;
+        PbtSnapshotCodec.ReadHeader(snapshot);
+        foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, cancellationToken)) yield return entry;
     }
 
     private static IEnumerable<RebuildEntry> SpoolLeaves(PbtSortedSpool spool)
@@ -309,9 +309,8 @@ internal sealed class PbtAnchorPublication(
     {
         private readonly PbtRocksDbPersistence _target;
         private readonly CancellationTokenSource _cancellation;
-        private readonly Channel<IPbtPersistence.IWriteBatch> _pending = Channel.CreateBounded<IPbtPersistence.IWriteBatch>(
-            new BoundedChannelOptions(2 * Environment.ProcessorCount) { SingleWriter = true });
         private readonly Task[] _flushers = new Task[Environment.ProcessorCount];
+        private Channel<IPbtPersistence.IWriteBatch> _pending = null!;
         private ExceptionDispatchInfo? _failure;
         private IPbtPersistence.IWriteBatch? _batch;
         private int _count;
@@ -320,8 +319,7 @@ internal sealed class PbtAnchorPublication(
         {
             _target = target;
             _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            for (int i = 0; i < _flushers.Length; i++)
-                _flushers[i] = Task.Run(Flush, CancellationToken.None);
+            StartFlushers();
         }
 
         public IPbtPersistence.IWriteBatch Next()
@@ -329,6 +327,16 @@ internal sealed class PbtAnchorPublication(
             if (_count == BatchSize) Enqueue();
             _count++;
             return _batch ??= _target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
+        }
+
+        /// <summary>Waits for every write staged so far, then opens a reader that observes them.</summary>
+        public IPbtPersistence.IReader CreateReader()
+        {
+            if (_batch is not null) Enqueue();
+            _pending.Writer.Complete();
+            WaitFlushers();
+            StartFlushers();
+            return _target.CreateReader();
         }
 
         /// <summary>Waits for every staged write, then flushes the write buffers so the no-WAL writes are durable.</summary>
@@ -363,6 +371,14 @@ internal sealed class PbtAnchorPublication(
             }
             _batch = null;
             _count = 0;
+        }
+
+        private void StartFlushers()
+        {
+            _pending = Channel.CreateBounded<IPbtPersistence.IWriteBatch>(
+                new BoundedChannelOptions(2 * Environment.ProcessorCount) { SingleWriter = true });
+            for (int i = 0; i < _flushers.Length; i++)
+                _flushers[i] = Task.Run(Flush, CancellationToken.None);
         }
 
         private async Task Flush()

@@ -9,6 +9,7 @@ using Nethermind.Pbt;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Image;
 
@@ -34,6 +35,7 @@ internal static class PbtLeafStaging
         ulong accounts = 0;
         ulong slots = 0;
         long chunkCount = 0;
+        IPbtPersistence.IReader? stagedState = null;
         try
         {
             BuildTable(chunkPath, (ref SortedTableBuilder<ArenaBufferWriter> chunks) =>
@@ -44,6 +46,7 @@ internal static class PbtLeafStaging
                 ValueHash256? delegation = null;
                 PbtStorageTreeKey? runKey = null;
                 ISlotRun run = SlotRun.Empty;
+                ValueHash256? storageOwner = null;
 
                 foreach (RebuildEntry entry in leaves)
                 {
@@ -79,7 +82,19 @@ internal static class PbtLeafStaging
                                 throw new InvalidDataException("Snapshot holds a leaf at a reserved account sub-index.");
                         }
                     }
-                    else FlushAccount();
+                    else
+                    {
+                        FlushAccount();
+                        ValueHash256 owner = new(key[1..33]);
+                        if (storageOwner != owner)
+                        {
+                            // Every header precedes every storage leaf, so the staged state already holds the owner.
+                            stagedState ??= batch.CreateReader();
+                            if (stagedState.GetAccount(owner) is null)
+                                throw new InvalidDataException("Snapshot holds storage of an account it has no header for.");
+                            storageOwner = owner;
+                        }
+                    }
 
                     slots++;
                     PbtStorageTreeKey slotRunKey = SlotRun.RunKey(entry.Key);
@@ -167,7 +182,11 @@ internal static class PbtLeafStaging
             if (consumed != chunkCount) throw new InvalidDataException("Snapshot holds code chunks no account's code accounts for.");
             return (accounts, slots);
         }
-        finally { File.Delete(chunkPath); }
+        finally
+        {
+            stagedState?.Dispose();
+            File.Delete(chunkPath);
+        }
     }
 
     private delegate void TableFill(ref SortedTableBuilder<ArenaBufferWriter> table);

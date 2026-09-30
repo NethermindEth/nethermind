@@ -15,12 +15,12 @@ internal static class PbtArtifactWriter
     internal readonly record struct PbtArtifactDigests(ValueHash256 Snapshot, ValueHash256 Preimages);
 
     public static PbtArtifactDigests Write(Stream snapshot, Stream preimages,
-        ValueHash256 pbtRoot, ulong leafCount, IEnumerable<RebuildEntry> leaves,
+        ValueHash256 pbtRoot, PbtSnapshotLayout layout, IEnumerable<RebuildEntry> leaves,
         IEnumerable<PbtAccountPreimages> accounts, CancellationToken cancellationToken = default)
     {
         using DigestWriter snapshotWriter = new(snapshot);
         using DigestWriter preimageWriter = new(preimages);
-        PbtSnapshotCodec.Write(snapshotWriter, pbtRoot, leafCount, leaves, cancellationToken);
+        PbtSnapshotCodec.Write(snapshotWriter, pbtRoot, layout, leaves, cancellationToken);
         PbtPreimageCodec.Write(preimageWriter, accounts, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return new(snapshotWriter.Digest, preimageWriter.Digest);
