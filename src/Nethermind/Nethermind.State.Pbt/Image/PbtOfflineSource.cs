@@ -62,9 +62,9 @@ internal static class PbtOfflineSource
         try
         {
             using PbtSortedSpool leaves = new(directory, sortBufferBytes / 2, workers, logManager, cancellationToken)
-            { FinalMerge = () => LogFinalMerge("leaves") };
+            { FinalMerge = () => LogFinalMerge("leaves"), MaxConcurrentPreMerges = workers };
             using PbtSortedSpool rawKeys = new(directory, sortBufferBytes / 2, workers, logManager, cancellationToken)
-            { FinalMerge = () => LogFinalMerge("preimages") };
+            { FinalMerge = () => LogFinalMerge("preimages"), MaxConcurrentPreMerges = workers };
             ScanTotals totals = new();
             Scan();
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.MemoryMappedFiles;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.Io;
 
@@ -16,6 +17,11 @@ namespace Nethermind.State.Flat.Io;
 /// </remarks>
 internal sealed unsafe class MappedByteFile : IByteReaderSource<MappedByteFile, NoOpPin>, IByteReader<NoOpPin>, IDisposable
 {
+    private const int MADV_SEQUENTIAL = 2;
+
+    [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
+    private static extern int Madvise(void* addr, nuint length, int advice);
+
     private readonly MemoryMappedFile _file;
     private readonly MemoryMappedViewAccessor _view;
     private byte* _basePtr;
@@ -42,6 +48,12 @@ internal sealed unsafe class MappedByteFile : IByteReaderSource<MappedByteFile, 
     public long Length { get; }
 
     public MappedByteFile CreateReader() => this;
+
+    /// <summary>Hints the kernel that the mapping will be read front to back, widening its readahead.</summary>
+    public void AdviseSequential()
+    {
+        if (OperatingSystem.IsLinux()) Madvise(_basePtr, (nuint)Length, MADV_SEQUENTIAL);
+    }
 
     public bool TryRead(long offset, scoped Span<byte> output)
     {

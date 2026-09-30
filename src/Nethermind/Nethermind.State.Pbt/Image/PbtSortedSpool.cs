@@ -447,6 +447,7 @@ internal sealed class PbtSortedSpool : IDisposable
                 {
                     MappedByteFile file = new(runs[index]);
                     _files[index] = file;
+                    file.AdviseSequential();
                     _sources[index] = new SortedTableEnumerator<MappedByteFile, NoOpPin>(in file, new Bound(0, file.Length));
                     // Only counted once the enumerator owns its buffer, so Dispose never frees a default one.
                     _opened = index + 1;
