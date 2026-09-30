@@ -224,8 +224,6 @@ public partial class EngineModuleTests
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
     }
 
-    // Consensus gossip caps each member's list by bytes, and an empty entry costs only its SSZ offset, so
-    // a conforming member can carry ~2,048 entries. An aggregate of such members must not be rejected.
     [Test]
     public async Task NewPayloadV6_accepts_an_aggregate_of_entry_dense_conforming_members()
     {
@@ -238,9 +236,8 @@ public partial class EngineModuleTests
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
 
-        // Three members of 1,400 empty entries each: 5,600 SSZ bytes apiece, well inside the per-member cap.
-        byte[][] aggregate = new byte[3 * 1400][];
-        for (int i = 0; i < aggregate.Length; i++) aggregate[i] = [];
+        byte[][] aggregate = new byte[Eip7805Constants.MaxAggregateInclusionListBytes / 2][];
+        for (int i = 0; i < aggregate.Length; i++) aggregate[i] = [(byte)(i >> 8), (byte)i];
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
             payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, aggregate);
