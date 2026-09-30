@@ -28,12 +28,14 @@ public interface IPbtPersistence
         StateId CurrentState { get; }
         ValueHash256 CurrentRoot { get; }
 
-        Account? GetAccount(in ValueHash256 addressHash);
+        PbtAccount? GetAccount(in ValueHash256 addressHash);
         /// <summary>Gets a caller-owned copy of the persisted run keyed by <paramref name="runKey"/> (a <see cref="SlotRun.RunKey"/>); <see cref="SlotRun.Empty"/> when absent.</summary>
         ISlotRun GetSlotRun(in PbtStorageTreeKey runKey);
         CodeInfo? GetCode(in ValueHash256 codeHash);
-        /// <summary>Gets a caller-owned iterator over persisted accounts.</summary>
-        IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts();
+        /// <summary>Gets the code-chunk leaf keyed by <paramref name="key"/>; false when absent, which an all-zero chunk always is.</summary>
+        bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value);
+        /// <summary>Gets a caller-owned iterator over persisted accounts in address-hash order.</summary>
+        IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts();
         /// <summary>Gets a caller-owned iterator over persisted storage, optionally limited to one account, in <see cref="PbtStorageKeyLayout.Comparer"/> order.</summary>
         IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null);
 
@@ -56,10 +58,12 @@ public interface IPbtPersistence
 
     public interface IWriteBatch : IDisposable
     {
-        void SetAccount(in ValueHash256 addressHash, Account? account);
+        void SetAccount(in ValueHash256 addressHash, PbtAccount? account);
         /// <summary>Stages the whole run keyed by <paramref name="runKey"/> (a <see cref="SlotRun.RunKey"/>); an empty run deletes it. The run is borrowed for the call.</summary>
         void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run);
         void SetCode(in ValueHash256 codeHash, CodeInfo code);
+        /// <summary>Stages the code-chunk leaf keyed by <paramref name="key"/>; the caller omits all-zero chunks.</summary>
+        void SetCodeLeaf(in PbtPath key, in ValueHash256 value);
         /// <summary>Deletes every persisted run of <paramref name="addressHash"/>.</summary>
         /// <remarks>Only persisted runs are deleted: a run staged earlier in this batch survives, so clear before staging the address's runs.</remarks>
         void ClearStorage(in ValueHash256 addressHash);

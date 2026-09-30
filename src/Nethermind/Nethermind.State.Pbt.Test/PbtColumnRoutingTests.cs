@@ -36,7 +36,7 @@ public class PbtColumnRoutingTests
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), value, WriteFlags.None))
         {
-            batch.SetAccount(addressHash, account);
+            batch.SetAccount(addressHash, account.ToPbtAccount());
             batch.SetSlot(storageKey, slot);
             batch.SetCode(value, code);
             batch.SetNodeGroup(node, group);
@@ -47,15 +47,13 @@ public class PbtColumnRoutingTests
         using RefCountingMemory? persistedGroup = reader.GetNodeGroup(node);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.GetAccount(addressHash), Is.EqualTo(account));
+            Assert.That(reader.GetAccount(addressHash), Is.EqualTo(account.ToPbtAccount()));
             Assert.That(reader.GetSlot(storageKey), Is.EqualTo(slot));
             Assert.That(reader.GetCode(value), Is.EqualTo(code));
             Assert.That(db.GetColumnDb(PbtColumns.Accounts).Get(addressHash.Bytes), Is.Not.Null);
             Assert.That(db.GetColumnDb(PbtColumns.Storages).Get(PbtStorageKeyLayout.Encode(storageKey, new byte[PbtStorageTreeKey.MaxLength])), Is.Not.Null);
             Assert.That(db.GetColumnDb(PbtColumns.Codes).Get(value.Bytes), Is.EqualTo(code.Code.ToArray()));
-            Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
             Assert.That(persistedGroup!.GetSpan().ToArray(), Is.EqualTo(group!.GetSpan().ToArray()));
-            Assert.That(db.GetColumnDb(PbtColumns.AccountLeaves).GetAll(), Is.Empty);
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.EqualTo(group.GetSpan().ToArray()));
         }
     }

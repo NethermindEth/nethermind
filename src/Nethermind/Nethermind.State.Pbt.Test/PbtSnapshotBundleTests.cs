@@ -42,7 +42,7 @@ public class PbtSnapshotBundleTests
         }
         else
         {
-            using IEnumerator<KeyValuePair<ValueHash256, Account>> iterator = readOnly.EnumerateAccounts().GetEnumerator();
+            using IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> iterator = readOnly.EnumerateAccounts().GetEnumerator();
             Assert.That(iterator.MoveNext(), Is.True);
         }
         Assert.That(reader.IteratorDisposals, Is.EqualTo(1));
@@ -1164,12 +1164,14 @@ public class PbtSnapshotBundleTests
         Bytes.FromHexString("6001600055").CopyTo(bytes, 0);
         CodeInfo code = new(bytes);
         Account account = Build.An.Account.WithNonce(nonce).WithBalance(nonce).WithStorageRoot(TestItem.KeccakB).WithCode(bytes).TestObject;
+        // PBT keeps no storage root, so the account reads back over the empty tree.
+        Account stored = account.WithChangedStorageRoot(Keccak.EmptyTreeHash);
         if (codeFirst) bundle.SetCode(account.CodeHash.ValueHash256, code);
         bundle.SetAccount(TestItem.AddressA, account);
         if (!codeFirst) bundle.SetCode(account.CodeHash.ValueHash256, code);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.SameAs(account));
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(stored));
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
         }
         ValueHash256 root = Fold(bundle, default);
@@ -1180,9 +1182,9 @@ public class PbtSnapshotBundleTests
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.SameAs(account));
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(stored));
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
-            Assert.That(snapshot.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)], Is.SameAs(account));
+            Assert.That(snapshot.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)]?.ToAccount(), Is.EqualTo(stored));
             Assert.That(snapshot.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
         }
         Account rebalanced = account.WithChangedBalance(nonce + 1);
@@ -1452,7 +1454,7 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(readsBeforeCollect, Is.Zero, "hinted accounts are not read from persistence");
-            Assert.That(hintedA, Is.SameAs(written), "a later hint never shadows a write");
+            Assert.That(hintedA, Is.EqualTo(written), "a later hint never shadows a write");
             Assert.That(hintedB, Is.Null, "a null hint is served as an absent account");
             Assert.That(reader.AccountReadCount, Is.EqualTo(1), "hints are dropped with the write buffer");
         }
@@ -1492,10 +1494,10 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(root));
-            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.SameAs(replacement));
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(replacement));
             Assert.Throws<InvalidOperationException>(() => bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root));
             Assert.That(original.TreeRoot, Is.EqualTo(root));
-            Assert.That(original.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)], Is.SameAs(account));
+            Assert.That(original.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)]?.ToAccount(), Is.EqualTo(account));
         }
     }
 
@@ -1611,13 +1613,14 @@ public class PbtSnapshotBundleTests
         public int AccountReadCount { get; private set; }
         public StateId CurrentState => StateId.PreGenesis;
         public ValueHash256 CurrentRoot { get; set; }
-        public Account? GetAccount(in ValueHash256 addressHash)
+        public PbtAccount? GetAccount(in ValueHash256 addressHash)
         {
             AccountReadCount++;
             foreach ((ValueHash256 hash, Account account) in Accounts)
-                if (hash == addressHash) return account;
+                if (hash == addressHash) return ToPbtAccount(account);
             return null;
         }
+        private PbtAccount ToPbtAccount(Account account) => PbtAccount.From(account, account.HasCode ? Codes[account.CodeHash.ValueHash256] : null);
         public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey)
         {
             PbtStorageTreeKey wanted = runKey;
@@ -1636,7 +1639,13 @@ public class PbtSnapshotBundleTests
             CodeReadCount++;
             return Codes.GetValueOrDefault(codeHash);
         }
-        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(Track(Accounts));
+        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
+        {
+            value = default;
+            return false;
+        }
+        public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() =>
+            new PbtIterator<KeyValuePair<ValueHash256, PbtAccount>>(Track(Accounts.Select(account => new KeyValuePair<ValueHash256, PbtAccount>(account.Key, ToPbtAccount(account.Value)))));
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) =>
             new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(Track(EnumerateStorageCore(addressHash)));
 

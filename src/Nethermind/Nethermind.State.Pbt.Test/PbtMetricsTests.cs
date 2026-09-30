@@ -115,7 +115,7 @@ public class PbtMetricsTests
         reader.GetSlotRun(Arg.Any<PbtStorageTreeKey>()).Returns(SlotRun.Empty);
         if (scenario != "missing")
         {
-            reader.GetAccount(addressHash).Returns(account);
+            reader.GetAccount(addressHash).Returns(account.ToPbtAccount());
             reader.GetSlotRun(SlotRun.RunKey(headerStorageKey)).Returns(_ => SlotRun.Empty.With(SlotRun.IndexOf(headerStorageKey), slot));
             reader.GetSlotRun(SlotRun.RunKey(storageKey)).Returns(_ => SlotRun.Empty.With(SlotRun.IndexOf(storageKey), slot));
             reader.GetCode(codeHash).Returns(code);
@@ -127,7 +127,7 @@ public class PbtMetricsTests
         bool deleted = scenario is "tombstone" or "selfdestruct";
         if (snapshotHit)
         {
-            content.Accounts[addressHash] = deleted ? null : account;
+            content.Accounts[addressHash] = deleted ? null : account.ToPbtAccount();
             if (scenario == "selfdestruct") content.ClearStorage(addressHash, isNewStorage: false);
             else
             {
@@ -146,7 +146,7 @@ public class PbtMetricsTests
         snapshots.Add(new PbtSnapshot(new StateId(0, default), new StateId(1, default), default, emptyContent, pool, PbtResourcePool.Usage.MainBlockProcessing));
         using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics);
 
-        Account? actualAccount = bundle.GetAccount(TestItem.AddressA);
+        Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
         EvmWord actualHeaderSlot = bundle.GetSlot(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));
         EvmWord actualSlot = bundle.GetSlot(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
         ISlotRun headerRun = bundle.RentRun(SlotRun.RunKey(headerStorageKey), addressHash);
@@ -186,7 +186,7 @@ public class PbtMetricsTests
         {
             state = new StateId(0, default);
             PbtSnapshotContent content = ctx.ResourcePool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-            content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)] = new Account(1, 100);
+            content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)] = new Account(1, 100).ToPbtAccount();
             ctx.Repository.TryAdd(new PbtSnapshot(StateId.PreGenesis, state, default, content, ctx.ResourcePool, PbtResourcePool.Usage.MainBlockProcessing));
         }
         using PbtReadOnlySnapshotBundle bundle = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(state);

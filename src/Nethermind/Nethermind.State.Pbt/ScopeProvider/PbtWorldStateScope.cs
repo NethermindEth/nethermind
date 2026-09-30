@@ -30,7 +30,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
-    private readonly bool _promoteHintedAccounts;
     private readonly ITrieWarmer _trieWarmer;
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
     private readonly object _warmupLock = new();
@@ -72,7 +71,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _commitTarget = commitTarget;
         _childHeaders = childHeaders;
         _isReadOnly = isReadOnly;
-        _promoteHintedAccounts = config.PromoteHintedAccounts;
         _trieWarmer = trieWarmer;
         _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
@@ -100,11 +98,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     // A read rewrites nothing at commit, so its trie path needs no warming; changes hint through HintWarmAccount.
     public Account? Get(Address address) => Bundle.GetAndPromoteAccount(address);
 
-    public void HintGet(Address address, Account? account)
-    {
-        if (_promoteHintedAccounts) Bundle.PromoteAccount(address, account);
-        else Bundle.HintAccount(address, account);
-    }
+    public void HintGet(Address address, Account? account) => Bundle.HintAccount(address, account);
 
     public void HintWarmAccount(Address address)
     {

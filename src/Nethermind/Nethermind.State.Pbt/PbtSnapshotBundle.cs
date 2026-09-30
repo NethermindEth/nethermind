@@ -28,7 +28,8 @@ public sealed class PbtSnapshotBundle(
     private readonly PbtWriteBatchBuilder<PbtPath> _accountBatch = resourcePool.GetWriteBatch(usage);
     private readonly PbtWriteBatchBuilder<PbtPath> _codeBatch = resourcePool.GetWriteBatch(usage);
     private readonly PbtWriteBatchBuilder<PbtStoragePath> _storageBatch = resourcePool.GetStorageWriteBatch(usage);
-    private readonly ConcurrentDictionary<ValueHash256, ValueHash256> _accountsAwaitingCode = new();
+    // Accounts set before their code arrived; they reach the write buffer once the code converts them to their stem.
+    private readonly ConcurrentDictionary<ValueHash256, Account> _accountsAwaitingCode = new();
     // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
     private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
     // Accounts the layer above read past this bundle for the block in the write buffer, so a write never re-reads them.
@@ -72,10 +73,10 @@ public sealed class PbtSnapshotBundle(
     internal PbtPartitionBatches PrepareLeafChanges()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        foreach ((ValueHash256 addressHash, ValueHash256 awaitedCodeHash) in _accountsAwaitingCode)
+        foreach ((ValueHash256 addressHash, Account awaiting) in _accountsAwaitingCode)
         {
-            CodeInfo code = GetCode(awaitedCodeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaitedCodeHash}.");
-            WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
+            CodeInfo code = GetCode(awaiting.CodeHash.ValueHash256) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaiting.CodeHash}.");
+            StoreAccount(addressHash, PbtAccount.From(awaiting, code));
         }
         _accountsAwaitingCode.Clear();
         PbtPartitionBatches changes = new();
@@ -117,39 +118,36 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetNodeGroup(storagePath);
     }
 
-    public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address), out _);
+    public Account? GetAccount(Address address) => ReadAccount(PbtKeyDerivation.AddressKeyHash(address), promote: false);
 
     /// <summary>Reads an account, promoting one found past the write buffer and the hint memo into the write buffer.</summary>
     /// <remarks>The promoted account is sealed into the next snapshot, so later heads read it from the newest layer.</remarks>
-    public Account? GetAndPromoteAccount(Address address)
+    public Account? GetAndPromoteAccount(Address address) => ReadAccount(PbtKeyDerivation.AddressKeyHash(address), promote: true);
+
+    private Account? ReadAccount(in ValueHash256 addressHash, bool promote)
     {
-        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-        Account? account = GetAccount(addressHash, out bool isBuffered);
-        if (!isBuffered) PromoteAccount(addressHash, account);
-        return account;
+        if (_accountsAwaitingCode.TryGetValue(addressHash, out Account? awaiting)) return awaiting;
+        if (WriteBuffer.Accounts.TryGetValue(addressHash, out PbtAccount? buffered)) return buffered?.ToAccount();
+        if (_hintedAccounts.TryGetValue(addressHash, out Account? hinted)) return hinted;
+        PbtAccount? account = GetLayeredAccount(addressHash);
+        if (promote) PromoteAccount(addressHash, account);
+        return account?.ToAccount();
     }
 
-    private Account? GetAccount(in ValueHash256 addressHash, out bool isBuffered)
+    private PbtAccount? GetLayeredAccount(in ValueHash256 addressHash)
     {
-        isBuffered = true;
-        if (WriteBuffer.Accounts.TryGetValue(addressHash, out Account? account)) return account;
-        if (_hintedAccounts.TryGetValue(addressHash, out account)) return account;
-        isBuffered = false;
         for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out account)) return account;
+            if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out PbtAccount? account)) return account;
         return readOnlyBundle.GetAccount(addressHash);
     }
 
     /// <summary>Records an account the layer above read past this bundle; a value already written or hinted here wins, and the memo is dropped with the write buffer at snapshot collection.</summary>
     public void HintAccount(Address address, Account? account) => _hintedAccounts.TryAdd(PbtKeyDerivation.AddressKeyHash(address), account);
 
-    /// <summary>Carries an account the layer above read past this bundle into the write buffer; a value already written here wins.</summary>
-    public void PromoteAccount(Address address, Account? account) => PromoteAccount(PbtKeyDerivation.AddressKeyHash(address), account);
-
-    private void PromoteAccount(in ValueHash256 addressHash, Account? account)
+    private void PromoteAccount(in ValueHash256 addressHash, PbtAccount? account)
     {
         // ContainsKey is lock-free; TryAdd alone would take the bucket lock on every hot re-promote.
-        ConcurrentDictionary<ValueHash256, Account?> accounts = WriteBuffer.Accounts;
+        ConcurrentDictionary<ValueHash256, PbtAccount?> accounts = WriteBuffer.Accounts;
         if (!accounts.ContainsKey(addressHash)) accounts.TryAdd(addressHash, account);
     }
 
@@ -178,59 +176,53 @@ public sealed class PbtSnapshotBundle(
     public void SetAccount(Address address, Account? account)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-        Account? previous = GetAccount(addressHash, out _);
+        // The previous value is known as a stem, or as an account when it awaits its code or was hinted.
+        PbtAccount? previous = null;
+        if (!_accountsAwaitingCode.TryRemove(addressHash, out Account? prior) && !WriteBuffer.Accounts.TryGetValue(addressHash, out previous) &&
+            !_hintedAccounts.TryGetValue(addressHash, out prior))
+            previous = GetLayeredAccount(addressHash);
         // Code chunk leaves are shared per code hash without a reference count, so a non-delegation code hash
         // can never be replaced or removed once set (EIP-6780 and EIP-161 guarantee this in protocol execution).
-        if (previous is { HasCode: true } && previous.CodeHash != account?.CodeHash)
-        {
-            CodeInfo previousCode = GetCode(previous.CodeHash.ValueHash256) ?? throw new InvalidDataException($"Missing PBT bytecode for {previous.CodeHash}.");
-            if (!Eip7702Constants.IsDelegatedCode(previousCode.CodeSpan))
-                throw new InvalidOperationException($"The code of {address} cannot be replaced or removed: EIP-8297 code leaves are shared by code hash.");
-        }
-        CodeInfo? code = account is { HasCode: true } ? GetCode(account.CodeHash.ValueHash256) : null;
+        ValueHash256? previousCodeHash = prior is { HasCode: true } ? prior.CodeHash.ValueHash256 : previous is { HasCode: true } stored ? stored.CodeHash : (ValueHash256?)null;
+        if (previousCodeHash is { } replaced && replaced != account?.CodeHash.ValueHash256 && !(previous?.IsDelegation ?? IsDelegation(replaced)))
+            throw new InvalidOperationException($"The code of {address} cannot be replaced or removed: EIP-8297 code leaves are shared by code hash.");
 
-        WriteAccountLeaves(addressHash, account, code);
-
-        _accountsAwaitingCode.TryRemove(addressHash, out _);
-        WriteBuffer.Accounts[addressHash] = account;
         if (account is null)
         {
+            StoreAccount(addressHash, null);
             SelfDestruct(addressHash);
         }
-        else if (account.HasCode && code is null)
+        else if (previous is { } known && known.CodeHash == account.CodeHash.ValueHash256)
         {
-            _accountsAwaitingCode[addressHash] = account.CodeHash.ValueHash256;
-        }
-    }
-
-    private void WriteAccountLeaves(ValueHash256 addressHash, Account? account, CodeInfo? code)
-    {
-        bool isDelegation = code is not null && Eip7702Constants.IsDelegatedCode(code.CodeSpan);
-        ValueHash256 basicData = default;
-        if (account is not null && (!account.HasCode || code is not null))
-        {
-            PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, (uint)(code?.Code.Length ?? 0), account.Nonce, account.Balance);
-            if (isDelegation)
-            {
-                ValueHash256 delegation = default;
-                code!.CodeSpan.CopyTo(delegation.BytesAsSpan);
-                SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.DelegationLeafKey), delegation);
-            }
-            else
-            {
-                SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
-                // Chunk leaves are keyed by code hash alone, so only code written in this block (see SetCode) stages them;
-                // code held by an older layer already has its chunks in the tree.
-                if (code is not null && WriteBuffer.Codes.ContainsKey(account.CodeHash.ValueHash256)) WriteCodeChunkLeaves(account.CodeHash.ValueHash256, code);
-            }
+            StoreAccount(addressHash, PbtAccount.From(known, account));
         }
         else
         {
-            SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account?.CodeHash.ValueHash256);
+            CodeInfo? code = account.HasCode ? GetCode(account.CodeHash.ValueHash256) : null;
+            if (account.HasCode && code is null) _accountsAwaitingCode[addressHash] = account;
+            else StoreAccount(addressHash, PbtAccount.From(account, code));
         }
-        // A zero basic-data value is stored as a deletion by the batch builder.
-        SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
+    }
+
+    private bool IsDelegation(in ValueHash256 codeHash) =>
+        Eip7702Constants.IsDelegatedCode((GetCode(codeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {codeHash}.")).CodeSpan);
+
+    private void StoreAccount(in ValueHash256 addressHash, PbtAccount? account)
+    {
+        WriteAccountLeaves(addressHash, account);
+        WriteBuffer.Accounts[addressHash] = account;
+    }
+
+    private void WriteAccountLeaves(in ValueHash256 addressHash, PbtAccount? account)
+    {
+        bool isDelegation = account is { IsDelegation: true };
+        SetPbtLeaf(PbtStateKey.Account(addressHash, isDelegation ? (byte)PbtKeyDerivation.DelegationLeafKey : (byte)PbtKeyDerivation.CodeHashLeafKey), account?.CodeLeaf);
         SetPbtLeaf(PbtStateKey.Account(addressHash, isDelegation ? (byte)PbtKeyDerivation.CodeHashLeafKey : (byte)PbtKeyDerivation.DelegationLeafKey), null);
+        // A zero basic-data value is stored as a deletion by the batch builder.
+        SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), account?.BasicData ?? default);
+        // Chunk leaves are keyed by code hash alone, so only code written in this block (see SetCode) stages them;
+        // code held by an older layer already has its chunks in the tree.
+        if (account is { IsDelegation: false } stem && WriteBuffer.Codes.TryGetValue(stem.CodeLeaf, out CodeInfo? code)) WriteCodeChunkLeaves(stem.CodeLeaf, code);
     }
 
     /// <summary>Sets a storage slot, reusing a precomputed <see cref="PbtKeyDerivation.AddressKeyHash"/> so a run of slots for one address pays only the per-tree-index suffix hash.</summary>
@@ -277,21 +269,14 @@ public sealed class PbtSnapshotBundle(
         WriteBuffer.Codes[codeHash] = code;
         // An account registered after this scan is resolved by PrepareLeafChanges. Removing by address and code hash
         // claims the entry, so an account re-set to other code meanwhile keeps waiting for that code.
-        foreach ((ValueHash256 addressHash, ValueHash256 awaitedCodeHash) in _accountsAwaitingCode)
-            if (awaitedCodeHash == codeHash && _accountsAwaitingCode.TryRemove(new KeyValuePair<ValueHash256, ValueHash256>(addressHash, codeHash)))
-                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
+        foreach ((ValueHash256 addressHash, Account awaiting) in _accountsAwaitingCode)
+            if (awaiting.CodeHash.ValueHash256 == codeHash && _accountsAwaitingCode.TryRemove(new KeyValuePair<ValueHash256, Account>(addressHash, awaiting)))
+                StoreAccount(addressHash, PbtAccount.From(awaiting, code));
     }
 
     private void WriteCodeChunkLeaves(in ValueHash256 codeHash, CodeInfo code)
     {
-        int chunkCount = (code.Code.Length + 30) / 31;
-        using ArrayPoolListRef<byte> chunks = new(chunkCount * PbtKeyDerivation.CodeChunkSize, chunkCount * PbtKeyDerivation.CodeChunkSize);
-        PbtKeyDerivation.ChunkifyCode(code.CodeSpan, chunks.AsSpan());
-        for (int chunkId = 0; chunkId < chunkCount; chunkId++)
-        {
-            ValueHash256 chunk = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
-            if (chunk != default) SetPbtLeaf(Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId), chunk);
-        }
+        foreach ((PbtPath key, ValueHash256 chunk) in PbtFlatState.CodeLeaves(codeHash, code)) SetPbtLeaf(key, chunk);
     }
 
     /// <summary>The bytecode as a PBT layer holds it; null when no layer has it, in which case its chunk leaves are not in the tree either.</summary>

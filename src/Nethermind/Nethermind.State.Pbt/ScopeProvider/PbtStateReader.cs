@@ -17,7 +17,7 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
         using PbtReadOnlySnapshotBundle? bundle = manager.TryGatherReadOnlyBundle(new StateId(baseBlock));
-        if (bundle?.GetAccount(address) is { } accountClass)
+        if (bundle?.GetAccount(address)?.ToAccount() is { } accountClass)
         {
             account = accountClass.ToStruct();
             return true;

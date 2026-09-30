@@ -90,22 +90,22 @@ public sealed class PbtReadOnlySnapshotBundle(
         return path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.CodeZone ? 1 : 0;
     }
 
-    internal IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
+    internal IEnumerable<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts()
     {
         GuardDispose();
         if (snapshots.Count == 0)
         {
-            using IPbtIterator<KeyValuePair<ValueHash256, Account>> accounts = reader.EnumerateAccounts();
+            using IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> accounts = reader.EnumerateAccounts();
             while (accounts.MoveNext()) yield return accounts.Current;
             yield break;
         }
-        SortedDictionary<ValueHash256, Account?> visible = new(Comparer<ValueHash256>.Create(static (left, right) => left.Bytes.SequenceCompareTo(right.Bytes)));
-        using (IPbtIterator<KeyValuePair<ValueHash256, Account>> accounts = reader.EnumerateAccounts())
+        SortedDictionary<ValueHash256, PbtAccount?> visible = new(Comparer<ValueHash256>.Create(static (left, right) => left.Bytes.SequenceCompareTo(right.Bytes)));
+        using (IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> accounts = reader.EnumerateAccounts())
             while (accounts.MoveNext()) visible[accounts.Current.Key] = accounts.Current.Value;
         foreach (PbtSnapshot snapshot in snapshots)
-            foreach ((ValueHash256 hash, Account? account) in snapshot.Content.Accounts) visible[hash] = account;
-        foreach ((ValueHash256 hash, Account? account) in visible)
-            if (account is not null) yield return new(hash, account);
+            foreach ((ValueHash256 hash, PbtAccount? account) in snapshot.Content.Accounts) visible[hash] = account;
+        foreach ((ValueHash256 hash, PbtAccount? account) in visible)
+            if (account is { } value) yield return new(hash, value);
     }
 
     internal IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
@@ -130,22 +130,22 @@ public sealed class PbtReadOnlySnapshotBundle(
         while (storage.MoveNext()) yield return storage.Current;
     }
 
-    public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address));
+    public PbtAccount? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address));
 
-    internal Account? GetAccount(in ValueHash256 addressHash)
+    internal PbtAccount? GetAccount(in ValueHash256 addressHash)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int index = snapshots.Count - 1; index >= 0; index--)
         {
-            if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out Account? account))
+            if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out PbtAccount? account))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
                 return account;
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        Account? result = reader.GetAccount(addressHash);
+        PbtAccount? result = reader.GetAccount(addressHash);
         if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
         return result;
     }

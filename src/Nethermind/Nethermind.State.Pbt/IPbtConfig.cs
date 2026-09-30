@@ -141,9 +141,6 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Cache persisted account and storage-run reads across heads, so a new head does not re-read the serving working set from the database. Only the write-set of each persisted batch is dropped.", DefaultValue = "true", HiddenFromDocs = true)]
     bool CarryForwardCache { get; set; }
 
-    [ConfigItem(Description = "Carry accounts hinted by the pre-block caches into the block's snapshot like the ones read from state, so later blocks find them in the newest snapshot. Off keeps a hint for its own block only.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool PromoteHintedAccounts { get; set; }
-
     [ConfigItem(Description = "Keep node-group payloads in slab-allocated native memory sized to jemalloc-style classes. Off rents pooled managed arrays in power-of-two buckets instead.", DefaultValue = "true", HiddenFromDocs = true)]
     bool NativeNodeGroupMemory { get; set; }
 

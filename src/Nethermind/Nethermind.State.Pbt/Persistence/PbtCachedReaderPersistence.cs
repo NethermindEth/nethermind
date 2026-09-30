@@ -127,10 +127,11 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     {
         public StateId CurrentState => inner.CurrentState;
         public ValueHash256 CurrentRoot => inner.CurrentRoot;
-        public Account? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
+        public PbtAccount? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
         public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey) => inner.GetSlotRun(runKey);
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
-        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => inner.EnumerateAccounts();
+        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => inner.TryGetCodeLeaf(key, out value);
+        public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => inner.EnumerateAccounts();
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => inner.EnumerateStorage(addressHash);
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
         public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => inner.EnumerateNodeGroupKeys();
@@ -144,9 +145,10 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         private bool _commitAttempted;
         private bool _disposed;
 
-        public void SetAccount(in ValueHash256 addressHash, Account? account) => inner.SetAccount(addressHash, account);
+        public void SetAccount(in ValueHash256 addressHash, PbtAccount? account) => inner.SetAccount(addressHash, account);
         public void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run) => inner.SetSlotRun(runKey, run);
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
+        public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) => inner.SetCodeLeaf(key, value);
         public void ClearStorage(in ValueHash256 addressHash) => inner.ClearStorage(addressHash);
         public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.CodeAnalysis;
@@ -47,7 +46,7 @@ public class PbtSnapshotCompactor(
             {
                 PbtSnapshotContent content = chainOldestFirst[i].Content;
                 foreach ((ValueHash256 addressHash, bool isNewStorage) in content.SelfDestructedStorageAddresses) merged.ClearStorage(addressHash, isNewStorage);
-                foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) merged.Accounts[addressHash] = account;
+                foreach ((ValueHash256 addressHash, PbtAccount? account) in content.Accounts) merged.Accounts[addressHash] = account;
                 foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in content.Storages) merged.SetRun(runKey, run.Clone());
                 foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) merged.Codes[codeHash] = code;
                 foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.AccountNodeGroups) merged.SetNodeGroup(groupKey, payload);

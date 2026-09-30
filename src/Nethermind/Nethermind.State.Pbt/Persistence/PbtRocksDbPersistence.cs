@@ -5,13 +5,11 @@ using System.Buffers;
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Pbt.Migration;
 
 namespace Nethermind.State.Pbt.Persistence;
@@ -31,7 +29,7 @@ public class PbtRocksDbPersistence(
     private const byte InteriorOmissionStamp = 1;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
-    private const int SchemaEpoch = 22;
+    private const int SchemaEpoch = 23;
     /// <summary>Account groups keyed at or above this depth are top groups: the last level before the 16^8 dense band.</summary>
     internal const int AccountTopDepth = 28;
     /// <summary>Code and storage groups keyed at or above this depth are top groups: every group keyed shorter than zone and address hash.</summary>
@@ -106,10 +104,8 @@ public class PbtRocksDbPersistence(
     {
         if (db.GetColumnDb(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null) return true;
 
-        PbtColumns[] columns = [PbtColumns.FullLeaves,
+        PbtColumns[] columns = [PbtColumns.CodeLeaves,
             PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups,
-            PbtColumns.AccountLeaves, PbtColumns.CodeLeaves, PbtColumns.StorageLeaves,
-            PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes,
             PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes];
         foreach (PbtColumns column in columns)
         {
@@ -218,6 +214,7 @@ public class PbtRocksDbPersistence(
         private readonly IReadOnlyKeyValueStore _accounts = snapshot.GetColumn(PbtColumns.Accounts);
         private readonly IReadOnlyKeyValueStore _storages = snapshot.GetColumn(PbtColumns.Storages);
         private readonly IReadOnlyKeyValueStore _codes = snapshot.GetColumn(PbtColumns.Codes);
+        private readonly IReadOnlyKeyValueStore _codeLeaves = snapshot.GetColumn(PbtColumns.CodeLeaves);
         private readonly IReadOnlyKeyValueStore _accountNodeGroups = snapshot.GetColumn(PbtColumns.AccountNodeGroups);
         private readonly IReadOnlyKeyValueStore _codeNodeGroups = snapshot.GetColumn(PbtColumns.CodeNodeGroups);
         private readonly IReadOnlyKeyValueStore _storageNodeGroups = snapshot.GetColumn(PbtColumns.StorageNodeGroups);
@@ -226,12 +223,12 @@ public class PbtRocksDbPersistence(
         public StateId CurrentState => _current.State;
         public ValueHash256 CurrentRoot => _current.Root;
 
-        public Account? GetAccount(in ValueHash256 addressHash)
+        public PbtAccount? GetAccount(in ValueHash256 addressHash)
         {
             ReadOnlySpan<byte> value = _accounts.GetSpan(addressHash.Bytes);
             try
             {
-                return value.IsNull() ? null : DecodeAccount(value);
+                return value.IsNull() ? null : PbtAccount.Decode(value);
             }
             finally
             {
@@ -267,17 +264,37 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() =>
-            new PbtIterator<KeyValuePair<ValueHash256, Account>>(EnumerateAccountsCore());
+        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
+        {
+            ReadOnlySpan<byte> stored = _codeLeaves.GetSpan(key.Bytes);
+            try
+            {
+                if (stored.IsNull())
+                {
+                    value = default;
+                    return false;
+                }
+                if (stored.Length != ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT code leaf.");
+                value = new ValueHash256(stored);
+                return true;
+            }
+            finally
+            {
+                _codeLeaves.DangerousReleaseMemory(stored);
+            }
+        }
 
-        private IEnumerator<KeyValuePair<ValueHash256, Account>> EnumerateAccountsCore()
+        public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() =>
+            new PbtIterator<KeyValuePair<ValueHash256, PbtAccount>>(EnumerateAccountsCore());
+
+        private IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccountsCore()
         {
             ISortedKeyValueStore accounts = (ISortedKeyValueStore)_accounts;
             Span<byte> upper = stackalloc byte[ValueHash256.MemorySize + 1];
             upper.Fill(byte.MaxValue);
             using ISortedView view = accounts.GetViewBetween([], upper);
             while (view.MoveNext())
-                yield return new(new ValueHash256(view.CurrentKey), DecodeAccount(view.CurrentValue));
+                yield return new(new ValueHash256(view.CurrentKey), PbtAccount.Decode(view.CurrentValue));
         }
 
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) =>
@@ -297,12 +314,6 @@ public class PbtRocksDbPersistence(
                     if ((run.Mask & (1 << index)) != 0) yield return new(SlotRun.SlotKey(runKey, index), run.Get(index));
                 SlotRun.Return(run);
             }
-        }
-
-        private static Account DecodeAccount(ReadOnlySpan<byte> value)
-        {
-            RlpReader reader = new(value);
-            return AccountDecoder.Slim.Decode(ref reader) ?? throw new InvalidDataException("Invalid persisted PBT account.");
         }
 
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
@@ -377,14 +388,15 @@ public class PbtRocksDbPersistence(
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
-        public void SetAccount(in ValueHash256 addressHash, Account? account)
+        public void SetAccount(in ValueHash256 addressHash, PbtAccount? account)
         {
             IWriteBatch accounts = _batch.GetColumnBatch(PbtColumns.Accounts);
-            if (account is null) accounts.Set(addressHash.Bytes, null, flags);
+            if (account is not { } value) accounts.Set(addressHash.Bytes, null, flags);
             else
             {
-                using ArrayPoolSpan<byte> encoded = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-                accounts.PutSpan(addressHash.Bytes, encoded, flags);
+                Span<byte> encoded = stackalloc byte[PbtAccount.MaxEncodedLength];
+                value.Encode(encoded);
+                accounts.PutSpan(addressHash.Bytes, encoded[..value.EncodedLength], flags);
             }
         }
 
@@ -405,6 +417,9 @@ public class PbtRocksDbPersistence(
 
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) =>
             _batch.GetColumnBatch(PbtColumns.Codes).PutSpan(codeHash.Bytes, code.CodeSpan, flags);
+
+        public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) =>
+            _batch.GetColumnBatch(PbtColumns.CodeLeaves).PutSpan(key.Bytes, value.Bytes, flags);
 
         public void ClearStorage(in ValueHash256 addressHash)
         {

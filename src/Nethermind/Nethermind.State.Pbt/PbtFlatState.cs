@@ -28,6 +28,12 @@ internal static class PbtFlatState
         }
         yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
         if (code is null) yield break;
+        foreach (KeyValuePair<PbtPath, ValueHash256> leaf in CodeLeaves(account.CodeHash.ValueHash256, code)) yield return leaf;
+    }
+
+    /// <summary>The code-chunk leaves of <paramref name="code"/>, omitting all-zero chunks as the tree does.</summary>
+    internal static IEnumerable<KeyValuePair<PbtPath, ValueHash256>> CodeLeaves(ValueHash256 codeHash, CodeInfo code)
+    {
         int codeLength = code.Code.Length;
         int chunkCount = (codeLength + 30) / 31;
         int chunksLength = chunkCount * PbtKeyDerivation.CodeChunkSize;
@@ -36,7 +42,7 @@ internal static class PbtFlatState
         for (int chunkId = 0; chunkId < chunkCount; chunkId++)
         {
             ValueHash256 value = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
-            if (value != default) yield return new(PbtStateKey.Code(account.CodeHash.ValueHash256, chunkId), value);
+            if (value != default) yield return new(PbtStateKey.Code(codeHash, chunkId), value);
         }
     }
 

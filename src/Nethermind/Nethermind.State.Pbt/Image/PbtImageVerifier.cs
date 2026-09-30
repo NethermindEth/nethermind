@@ -262,7 +262,7 @@ internal static class PbtImageVerifier
                 job.AddressHash.Bytes.CopyTo(key);
                 if (!job.IsSlot)
                 {
-                    Account account = state.GetAccount(new ValueHash256(job.StateKey.Bytes[1..33]))
+                    Account account = state.GetAccount(new ValueHash256(job.StateKey.Bytes[1..33]))?.ToAccount()
                         ?? throw new InvalidDataException($"Preimages list the account {job.Address} the snapshot lacks.");
                     byte[] rlp = AccountDecoder.Slim.Encode(account).Bytes;
                     byte[] value = new byte[sizeof(uint) + rlp.Length];

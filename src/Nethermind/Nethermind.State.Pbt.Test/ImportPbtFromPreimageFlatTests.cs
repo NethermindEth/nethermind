@@ -108,8 +108,6 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(reader.GetCode(bigCodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(bigCode));
         Assert.That(codeDb.ReadsCount, Is.EqualTo(2), "shared bytecode is fetched once per code hash");
-        Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
-        Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
 
         PbtRocksDbPersistence reopened = new(pbtDb, config);
@@ -160,7 +158,7 @@ public class ImportPbtFromPreimageFlatTests
                 key[2] = 0xFF;
                 if (zone != 0) key[ValueHash256.MemorySize] = Eip8297KeyDerivation.StorageZone;
                 byte[] value = zone == 0
-                    ? Nethermind.Serialization.Rlp.Rlp.Encode(new Account(1, 100)).Bytes
+                    ? new Account(1, 100).ToPbtAccount().Encoded()
                     : SlotRunTestExtensions.SingleSlotRow(TestItem.KeccakA.Bytes);
                 db.GetColumnDb(column).Set(key, value);
             }
@@ -386,7 +384,7 @@ public class ImportPbtFromPreimageFlatTests
 
         using (IPbtPersistence.IWriteBatch staging = pbtTarget.CreateStagingWriteBatch(WriteFlags.None))
         {
-            staging.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressC), new Account(1, 2));
+            staging.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressC), new Account(1, 2).ToPbtAccount());
             PbtTreeKey staleNodeKey = new([0x80]);
             PbtNodePath groupKey = new([], 0);
             using PbtNodeGroupStore staleNodes = new();
@@ -417,7 +415,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000016")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000017")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
@@ -433,7 +431,6 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             foreach (PbtColumns column in groupColumns)
                 Assert.That(pbtDb.GetColumnDb(column).Get(maximumGroupKey), Is.Null, column.ToString());
-            Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty, "import must not populate a split-leaf column");
             Assert.That(pbtDb.GetColumnDb(PbtColumns.Storages).Get(maximumLengthKey), Is.Null, "the full keyspace must be cleared during retry");
             Assert.That(() => new PbtRocksDbPersistence(pbtDb, new PbtConfig()), Throws.Nothing);
         }
@@ -895,7 +892,7 @@ public class ImportPbtFromPreimageFlatTests
                     if (!hashes.Add(Convert.ToHexString(hashBytes))) continue;
                     ValueHash256 hash = new(hashBytes);
                     Account account = new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA);
-                    staging.SetAccount(hash, account);
+                    staging.SetAccount(hash, account.ToPbtAccount());
                     expectedReads[$"{PbtColumns.Accounts}:{Convert.ToHexString(hashBytes)}"] = 1;
                     foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(hash, account, null))
                         model[Convert.ToHexString(key.Bytes)] = value.Bytes.ToArray();

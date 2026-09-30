@@ -4,7 +4,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Collections;
@@ -22,7 +21,7 @@ namespace Nethermind.State.Pbt;
 /// </remarks>
 public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
-    internal readonly ConcurrentDictionary<ValueHash256, Account?> Accounts = new();
+    internal readonly ConcurrentDictionary<ValueHash256, PbtAccount?> Accounts = new();
     // Whole slot runs keyed by run key (see SlotRun.RunKey); this layer owns the runs. A read probes every
     // layer with the same key; the pre-hashed key pays the 66-byte hash once instead of once per layer.
     internal readonly ConcurrentDictionary<HashedKey<PbtStorageTreeKey>, ISlotRun> Storages = new();

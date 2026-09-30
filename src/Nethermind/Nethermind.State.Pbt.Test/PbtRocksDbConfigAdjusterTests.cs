@@ -58,9 +58,7 @@ public class PbtRocksDbConfigAdjusterTests
 
     [Test]
     public void LegacyColumnsAndDatabaseItselfGetTheSharedOptionsOnly(
-        [Values(null, "NodeGroups", nameof(PbtColumns.FullLeaves), nameof(PbtColumns.AccountLeaves), nameof(PbtColumns.CodeLeaves),
-            nameof(PbtColumns.StorageLeaves), nameof(PbtColumns.AccountTrieNodes), nameof(PbtColumns.CodeTrieNodes),
-            nameof(PbtColumns.StorageTrieNodes))] string? columnName)
+        [Values(null, "NodeGroups", nameof(PbtColumns.CodeLeaves))] string? columnName)
     {
         IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
             .GetForDatabase(nameof(DbNames.Pbt), columnName);
@@ -164,7 +162,7 @@ public class PbtRocksDbConfigAdjusterTests
         {
             PbtRocksDbPersistence persistence = new(db, pbtConfig);
             using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, treeRoot, WriteFlags.None);
-            batch.SetAccount(addressHash, account);
+            batch.SetAccount(addressHash, account.ToPbtAccount());
             batch.SetSlot(storageKey, slot);
             batch.SetCode(account.CodeHash.ValueHash256, code);
             BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
@@ -200,10 +198,9 @@ public class PbtRocksDbConfigAdjusterTests
             {
                 Assert.That(reader.CurrentState, Is.EqualTo(state));
                 Assert.That(reader.CurrentRoot, Is.EqualTo(treeRoot));
-                Assert.That(reader.GetAccount(addressHash), Is.EqualTo(account));
+                Assert.That(reader.GetAccount(addressHash), Is.EqualTo(account.ToPbtAccount()));
                 Assert.That(reader.GetSlot(storageKey), Is.EqualTo(slot));
                 Assert.That(reader.GetCode(account.CodeHash.ValueHash256), Is.EqualTo(code));
-                Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
                 Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EquivalentTo(expectedPaths));
             }
             foreach ((PbtStorageNodePath path, PbtColumns column) in groups)

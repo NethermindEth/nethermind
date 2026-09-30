@@ -108,7 +108,7 @@ public class PbtSnapshotCompactorTests
         CodeInfo code = new(Bytes.FromHexString("6001600055"));
         Account account = Build.An.Account.WithNonce(7).WithBalance(9).WithStorageRoot(TestItem.KeccakB).WithCode(code.Code.ToArray()).TestObject;
         PbtSnapshotContent older = new();
-        older.Accounts[addressHash] = Build.An.Account.TestObject;
+        older.Accounts[addressHash] = Build.An.Account.TestObject.ToPbtAccount();
         older.SetSlot(key, original);
         older.SetSlot(otherSlot, original);
         older.SetSlot(otherAddress, original);
@@ -117,7 +117,7 @@ public class PbtSnapshotCompactorTests
         PbtSnapshotContent writing = new();
         writing.SetSlot(key, replacement);
         ISlotRun writtenRun = writing.Storages[SlotRun.RunKey(key)];
-        writing.Accounts[addressHash] = account;
+        writing.Accounts[addressHash] = PbtAccount.From(account, code);
         writing.Codes[account.CodeHash.ValueHash256] = code;
         PbtSnapshot compacted;
         using (PbtSnapshotPooledList chain = new(3))
@@ -130,7 +130,7 @@ public class PbtSnapshotCompactorTests
         using (compacted)
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(compacted.Content.Accounts[addressHash], Is.SameAs(account));
+            Assert.That(compacted.Content.Accounts[addressHash], Is.EqualTo(PbtAccount.From(account, code)));
             Assert.That(compacted.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
             Assert.That(compacted.Content.SelfDestructedStorageAddresses.ContainsKey(addressHash), Is.True);
             Assert.That(compacted.Content.TryGetSlot(key, out _), Is.EqualTo(!clearLast));

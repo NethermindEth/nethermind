@@ -65,7 +65,7 @@ public class PbtRocksDbPersistenceTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
-        metadata[SchemaEpochKey] = Epoch(22);
+        metadata[SchemaEpochKey] = Epoch(23);
         if (layoutStamp is not null) metadata[NodeGroupKeyLayoutKey] = layoutStamp;
         metadata[PrefixlessBranchOmissionKey] = [1];
 
@@ -87,7 +87,7 @@ public class PbtRocksDbPersistenceTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
-        metadata[SchemaEpochKey] = Epoch(22);
+        metadata[SchemaEpochKey] = Epoch(23);
         metadata[NodeGroupKeyLayoutKey] = [1];
         if (stamp is not null) metadata[PrefixlessBranchOmissionKey] = stamp;
 
@@ -135,7 +135,7 @@ public class PbtRocksDbPersistenceTests
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, value, WriteFlags.None))
         {
-            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), new Account(7, 9, TestItem.KeccakC, TestItem.KeccakD));
+            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), new Account(7, 9, TestItem.KeccakC, TestItem.KeccakD).ToPbtAccount());
             WriteGroup(batch, path, node);
             batch.Commit();
         }
@@ -146,7 +146,7 @@ public class PbtRocksDbPersistenceTests
         {
             Assert.That(reader.CurrentState, Is.EqualTo(state));
             Assert.That(reader.CurrentRoot, Is.EqualTo(value));
-            Assert.That(reader.GetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)), Is.EqualTo(new Account(7, 9, TestItem.KeccakC, TestItem.KeccakD)));
+            Assert.That(reader.GetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)), Is.EqualTo(new Account(7, 9, TestItem.KeccakC, TestItem.KeccakD).ToPbtAccount()));
             Assert.That(ReadNode(reader, path), Is.EqualTo(node));
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey), Is.EqualTo(new byte[] { 1 }));
         }
@@ -337,7 +337,7 @@ public class PbtRocksDbPersistenceTests
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
         {
-            batch.SetAccount(addressHash, Account.TotallyEmpty);
+            batch.SetAccount(addressHash, Account.TotallyEmpty.ToPbtAccount());
             batch.SetSlot(storageKey, slot);
             batch.SetCode(codeHash, code);
             batch.Commit();
@@ -354,13 +354,12 @@ public class PbtRocksDbPersistenceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.CurrentState, Is.EqualTo(commit ? second : first));
-            Assert.That(reader.GetAccount(addressHash), Is.EqualTo(commit ? null : Account.TotallyEmpty));
+            Assert.That(reader.GetAccount(addressHash), Is.EqualTo(commit ? null : Account.TotallyEmpty.ToPbtAccount()));
             Assert.That(reader.GetSlot(storageKey), Is.EqualTo(commit ? default : slot));
             Assert.That(reader.EnumerateAccounts().Drain().Count, Is.EqualTo(commit ? 0 : 1));
             Assert.That(reader.EnumerateStorage().Drain().Count, Is.EqualTo(commit ? 0 : 1));
             Assert.That(reader.GetCode(codeHash), Is.EqualTo(code));
             Assert.That(reader.GetCode(TestItem.KeccakC.ValueHash256), Is.Null);
-            Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         }
     }
 
@@ -531,7 +530,7 @@ public class PbtRocksDbPersistenceTests
                 {
                     StateId next = new(number, TestItem.KeccakA.ValueHash256);
                     PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-                    content.Accounts[addressHash] = new Account(number, number + 10);
+                    content.Accounts[addressHash] = new Account(number, number + 10).ToPbtAccount();
                     foreach (PbtPhysicalPayload physical in tree.PhysicalPayloads)
                     {
                         using RefCountingMemory payload = RefCountingMemory.OwningRocksDb(new ArrayMemoryManager(physical.Payload.ToArray()));
@@ -553,7 +552,7 @@ public class PbtRocksDbPersistenceTests
             {
                 Assert.That(reader.CurrentState, Is.EqualTo(last));
                 Assert.That(reader.CurrentRoot, Is.EqualTo(tree.RootHash));
-                Assert.That(reader.GetAccount(addressHash), Is.EqualTo(new Account(5, 15)));
+                Assert.That(reader.GetAccount(addressHash), Is.EqualTo(new Account(5, 15).ToPbtAccount()));
             }
             List<PbtPhysicalPayload> persisted = [];
             using IPbtIterator<PbtStorageNodePath> groupKeys = reader.EnumerateNodeGroupKeys();
@@ -641,7 +640,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(22)));
+            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(23)));
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
         }
@@ -658,7 +657,7 @@ public class PbtRocksDbPersistenceTests
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateStagingWriteBatch(WriteFlags.None))
         {
-            batch.SetAccount(addressHash, Account.TotallyEmpty);
+            batch.SetAccount(addressHash, Account.TotallyEmpty.ToPbtAccount());
             batch.Commit();
         }
 
@@ -686,7 +685,7 @@ public class PbtRocksDbPersistenceTests
             default,
             WriteFlags.None))
         {
-            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty);
+            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty.ToPbtAccount());
             batch.Commit();
         }
 
@@ -703,7 +702,7 @@ public class PbtRocksDbPersistenceTests
         ValueHash256 stagedAddressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         using (IPbtPersistence.IWriteBatch staging = persistence.CreateStagingWriteBatch(WriteFlags.None))
         {
-            staging.SetAccount(stagedAddressHash, Account.TotallyEmpty);
+            staging.SetAccount(stagedAddressHash, Account.TotallyEmpty.ToPbtAccount());
             staging.Commit();
         }
 
@@ -737,12 +736,13 @@ public class PbtRocksDbPersistenceTests
         yield return new TestCaseData(Epoch(8), null, null, false).SetName("Rejects_epoch_8");
         yield return new TestCaseData(Epoch(9), CurrentState(), new byte[] { 1 }, false).SetName("Rejects_epoch_9");
         yield return new TestCaseData(Epoch(18), CurrentState(), new byte[] { 1 }, false).SetName("Rejects_epoch_18");
+        yield return new TestCaseData(Epoch(22), CurrentState(), new byte[] { 1 }, false).SetName("Rejects_epoch_22");
         yield return new TestCaseData(new byte[] { 9 }, null, null, false).SetName("Rejects_malformed_epoch");
-        yield return new TestCaseData(Epoch(22), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
-        yield return new TestCaseData(Epoch(22), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
-        yield return new TestCaseData(Epoch(22), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
-        yield return new TestCaseData(Epoch(22), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
-        yield return new TestCaseData(Epoch(22), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
+        yield return new TestCaseData(Epoch(23), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
+        yield return new TestCaseData(Epoch(23), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
+        yield return new TestCaseData(Epoch(23), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
+        yield return new TestCaseData(Epoch(23), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
+        yield return new TestCaseData(Epoch(23), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
         yield return new TestCaseData(null, CurrentState(), null, false).SetName("Rejects_unstamped_current_state");
         yield return new TestCaseData(null, null, null, true).SetName("Rejects_unstamped_populated_store");
     }
@@ -759,7 +759,7 @@ public class PbtRocksDbPersistenceTests
         if (epoch is not null) metadata[SchemaEpochKey] = epoch;
         if (currentState is not null) metadata[CurrentStateKey] = currentState;
         if (validity is not null) metadata[ValidStateKey] = validity;
-        if (populateLegacyColumn) inner.GetColumnDb(PbtColumns.FullLeaves)[new byte[] { 1 }] = [2];
+        if (populateLegacyColumn) inner.GetColumnDb(PbtColumns.CodeLeaves)[new byte[] { 1 }] = [2];
         ThrowOnNodeGroupsDb db = new(inner);
 
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()), Throws.TypeOf<InvalidDataException>());
@@ -769,17 +769,11 @@ public class PbtRocksDbPersistenceTests
     [TestCase(PbtColumns.Accounts)]
     [TestCase(PbtColumns.Storages)]
     [TestCase(PbtColumns.Codes)]
-    [TestCase(PbtColumns.FullLeaves)]
     [TestCase(PbtColumns.AccountNodeGroups)]
     [TestCase(PbtColumns.CodeNodeGroups)]
     [TestCase(PbtColumns.StorageNodeGroups)]
     [TestCase(PbtColumns.TopNodeGroups)]
-    [TestCase(PbtColumns.AccountLeaves)]
     [TestCase(PbtColumns.CodeLeaves)]
-    [TestCase(PbtColumns.StorageLeaves)]
-    [TestCase(PbtColumns.AccountTrieNodes)]
-    [TestCase(PbtColumns.CodeTrieNodes)]
-    [TestCase(PbtColumns.StorageTrieNodes)]
     public void Unstamped_populated_canonical_or_reserved_column_is_rejected(PbtColumns column)
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
@@ -851,7 +845,7 @@ public class PbtRocksDbPersistenceTests
             Assert.That(deletedReader.EnumerateNodeGroupKeys().Drain(), Is.Empty);
             Assert.That(db.GetColumnDb(column).Get(physicalKey), Is.Null);
             Assert.That(ReadNode(olderReader, path), Is.EqualTo(BranchNode(1)));
-            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(SchemaEpochKey), Is.EqualTo(Epoch(22)));
+            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(SchemaEpochKey), Is.EqualTo(Epoch(23)));
         }
     }
 
@@ -865,7 +859,7 @@ public class PbtRocksDbPersistenceTests
         db.GetColumnDb(column).Set(key, Bytes.FromHexString("01"));
         if (stamped)
         {
-            db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(22));
+            db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(23));
             db.GetColumnDb(PbtColumns.Metadata).Set(NodeGroupKeyLayoutKey, [1]);
             db.GetColumnDb(PbtColumns.Metadata).Set(PrefixlessBranchOmissionKey, [1]);
         }
