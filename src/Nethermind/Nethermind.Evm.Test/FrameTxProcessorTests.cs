@@ -3113,13 +3113,13 @@ public partial class FrameTxProcessorTests
 
     /// <remarks>Only the state half of the check may follow <c>SkipValidation</c>: the RPC view caps nothing,
     /// so an oversized set would reach fixed-size buffers that assume a well-formed one. The in-pool prefix
-    /// simulator is the other such entry point, and <c>TXPARAM 0x0E</c> hashes the set into one of those buffers.</remarks>
+    /// simulator is the other such entry point, and <c>TXPARAM 0x0F</c> hashes the set into one of those buffers.</remarks>
     [TestCase(false, TestName = "CallAndRestore_KeyedNonceSetOverTheLimit_IsMalformedNotThrown")]
     [TestCase(true, TestName = "SimulateValidationPrefix_KeyedNonceSetOverTheLimit_IsMalformedNotThrown")]
     public void KeyedNonceSetOverTheLimit_IsMalformedNotThrown(bool validationPrefixOnly)
     {
         DeploySmartSender([
-            .. Prepare.EvmCode.PushData(0x0E).Op(Instruction.TXPARAM).Op(Instruction.POP).Done,
+            .. Prepare.EvmCode.PushData(0x0F).Op(Instruction.TXPARAM).Op(Instruction.POP).Done,
             .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)]);
         // Full-width and strictly increasing, so the length is the only thing that is wrong with the set.
         UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
@@ -3479,8 +3479,8 @@ public partial class FrameTxProcessorTests
     }
 
     // The EIP-8141 envelope answers as the key set [0], so verifier code reads one shape for both.
-    [TestCase(0x0D, false, ExpectedResult = 1UL, TestName = "Execute_TxParam_NonceKeyCount_WithoutKeys")]
-    [TestCase(0x0D, true, ExpectedResult = 2UL, TestName = "Execute_TxParam_NonceKeyCount_WithKeys")]
+    [TestCase(0x0E, false, ExpectedResult = 1UL, TestName = "Execute_TxParam_NonceKeyCount_WithoutKeys")]
+    [TestCase(0x0E, true, ExpectedResult = 2UL, TestName = "Execute_TxParam_NonceKeyCount_WithKeys")]
     [TestCase(0x10, false, ExpectedResult = 0UL, TestName = "Execute_TxParam_FirstNonceKey_WithoutKeys")]
     [TestCase(0x10, true, ExpectedResult = 3UL, TestName = "Execute_TxParam_FirstNonceKey_WithKeys")]
     public ulong Execute_TxParam_ReadsTheNonceKeySet(int param, bool keyed)
@@ -3506,7 +3506,7 @@ public partial class FrameTxProcessorTests
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x0E).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0x0F).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
 
         UInt256[] keys = keyed ? [3, 9] : [UInt256.Zero];
@@ -3533,7 +3533,7 @@ public partial class FrameTxProcessorTests
         _stateProvider.IncrementNonce(Sender);
         _stateProvider.Commit(Spec);
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x11).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0x0D).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
 
         Transaction tx = FrameTx(nonce: 1, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
@@ -3557,6 +3557,23 @@ public partial class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
 
         Assert.That(Process(tx).TransactionExecuted, Is.True);
+        return (ulong)StorageAt(new StorageCell(Observer, 0));
+    }
+
+    [TestCase(0x0F, ExpectedResult = 1UL, TestName = "Execute_TxParam_NonceKeysHashIndex_ReadsWithRecentRootsActive")]
+    [TestCase(0x10, ExpectedResult = 1UL, TestName = "Execute_TxParam_LastKeyedNonceIndex_Reads")]
+    [TestCase(0x11, ExpectedResult = 0UL, TestName = "Execute_TxParam_PastTheKeyedNonceIndices_Halts")]
+    public ulong Execute_TxParam_IndicesEndAtTheFirstNonceKey(int param)
+    {
+        _spec.IsEip8272Enabled = true;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData((UInt256)param).Op(Instruction.TXPARAM).Op(Instruction.POP)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
+
+        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
         return (ulong)StorageAt(new StorageCell(Observer, 0));
     }
 
@@ -4616,41 +4633,6 @@ public partial class FrameTxProcessorTests
 
         Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
         AssertStorage(Observer, 0, (UInt256)expectedSentinel);
-    }
-
-    [TestCase(0, TestName = "Execute_TxParamReferenceCount_WithoutReferences")]
-    [TestCase(2, TestName = "Execute_TxParamReferenceCount_WithReferences")]
-    public void Execute_TxParam_ReportsTheReferenceCount(int referenceCount)
-    {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x0F).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
-            .Op(Instruction.STOP).Done);
-        RecentRootReference[] references = new RecentRootReference[referenceCount];
-        for (int i = 0; i < referenceCount; i++) references[i] = CommitReference(ReferencedSlot - (ulong)i);
-
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
-        tx.RecentRootReferences = references;
-
-        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, (UInt256)referenceCount);
-    }
-
-    // Asserted through a sentinel: an ungated read returns 0, which is also what a halted frame leaves.
-    [TestCase(true, ExpectedResult = 0UL, TestName = "Execute_ReferenceCountTxParamBeforeTheFork_Halts")]
-    [TestCase(false, ExpectedResult = 1UL, TestName = "Execute_ReferenceCountTxParamAfterTheFork_Reads")]
-    public ulong Execute_ReferenceCountTxParam_IsGatedOnTheFork(bool beforeTheFork)
-    {
-        _spec.IsEip8272Enabled = !beforeTheFork;
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x0F).Op(Instruction.TXPARAM).Op(Instruction.POP)
-            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
-
-        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
-        return (ulong)StorageAt(new StorageCell(Observer, 0));
     }
 
     [TestCase(Instruction.APPROVE, (byte)0xAA, TestName = "RegistryByte_APPROVE_0xAA")]
