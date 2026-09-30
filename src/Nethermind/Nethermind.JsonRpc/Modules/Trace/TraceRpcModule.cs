@@ -115,10 +115,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
-            Result<Transaction> txResult = ToCallTransaction(call, specProvider.GetSpec(headerSearch.Object!));
+            // The call is converted for the block it runs on, so it is traced on that header rather than on a new lookup.
+            Result<Transaction> txResult = ToCallTransaction(call, headerSearch.Object!);
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
-                : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
+                : TraceTx(transaction, traceTypes, headerSearch, stateOverride);
         }
 
         /// <summary>
@@ -157,7 +158,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Transaction[] txs = new Transaction[calls.Count];
             for (int i = 0; i < calls.Count; i++)
             {
-                Result<Transaction> txResult = ToCallTransaction(calls[i].Transaction, specProvider.GetSpec(header));
+                Result<Transaction> txResult = ToCallTransaction(calls[i].Transaction, header);
                 if (!txResult.Success(out Transaction? tx, out string? error))
                 {
                     return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(error, ErrorCodes.InvalidInput);
@@ -192,14 +193,26 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// Converts <paramref name="call"/> for trace_call and trace_callMany, rejecting a priority fee above the fee cap as eth_call does.
+        /// Converts <paramref name="call"/> for trace_call and trace_callMany on top of <paramref name="header"/> as eth_call does:
+        /// it rejects a priority fee above the fee cap, and defaults an omitted blob fee cap to the block's blob base fee.
         /// </summary>
-        private Result<Transaction> ToCallTransaction(TransactionForRpc call, IReleaseSpec spec)
+        private Result<Transaction> ToCallTransaction(TransactionForRpc call, BlockHeader header)
         {
+            IReleaseSpec spec = specProvider.GetSpec(header);
             Result<Transaction> result = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: spec);
-            return result.Success(out Transaction? tx, out _) && tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap
-                ? Result<Transaction>.Fail(tipAboveFeeCap)
-                : result;
+            if (!result.Success(out Transaction? tx, out _))
+                return result;
+
+            if (tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap)
+                return Result<Transaction>.Fail(tipAboveFeeCap);
+
+            if (spec.IsEip4844Enabled && tx.Type is TxType.Blob && tx.MaxFeePerBlobGas is null)
+            {
+                BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee);
+                tx.MaxFeePerBlobGas = blobBaseFee;
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -263,7 +276,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                         $"Signed transaction gas limit exceeds the RPC gas cap of {gasCap}.",
                         ErrorCodes.ClientLimitExceededError);
                 }
-                return TraceTx(tx, traceTypes, BlockParameter.Latest, isSigned: true);
+                return TraceTx(tx, traceTypes, blockFinder.SearchForHeader(BlockParameter.Latest), isSigned: true);
             }
             catch (RlpException)
             {
@@ -271,7 +284,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
         }
 
-        private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
+        private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, SearchResult<BlockHeader> headerSearch,
             Dictionary<Address, AccountOverride>? stateOverride = null, bool isSigned = false)
         {
             if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
@@ -279,7 +292,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return InvalidTraceTypes<ParityTxTraceFromReplay>();
             }
 
-            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);

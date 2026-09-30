@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
@@ -35,6 +36,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -54,10 +56,14 @@ public class TraceRpcModuleTests
 {
     private class Context
     {
-        public async Task Build(ISpecProvider? specProvider = null, bool isAura = false)
+        public async Task Build(ISpecProvider? specProvider = null, bool isAura = false, Action<ContainerBuilder>? configurer = null)
         {
             JsonRpcConfig = new JsonRpcConfig();
-            Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
+            Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(builder =>
+            {
+                if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+                configurer?.Invoke(builder);
+            });
 
             await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether);
             await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether);
@@ -2060,6 +2066,53 @@ public class TraceRpcModuleTests
             _ => $",\"maxFeePerGas\":\"{price}\",\"maxPriorityFeePerGas\":\"0x0\"",
         };
         return $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{contract}\",\"gas\":\"0x186a0\"{feeFields}}}";
+    }
+
+    private static readonly byte[] BlobBaseFeeReturnCode = Prepare.EvmCode
+        .Op(Instruction.BLOBBASEFEE)
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .PushData("0x20")
+        .PushData("0x0")
+        .Op(Instruction.RETURN)
+        .Done;
+
+    // Shaped like trace-interop's blob-fee-defaulted probe: a blob call to a contract returning BLOBBASEFEE, without maxFeePerBlobGas.
+    // The test chain sets the excess blob gas only in its genesis header, so the call runs on top of genesis. The sender holds
+    // exactly one blob's fee at the blob base fee, which funds a cap equal to the blob base fee but not a higher one.
+    [Test]
+    public async Task Trace_call_and_callMany_default_an_omitted_blob_fee_cap_as_eth_call_does([Values] bool many, [Values] bool streaming)
+    {
+        Address contract = TestItem.AddressF;
+        Context context = new();
+        await context.Build(new TestSpecProvider(Cancun.Instance), configurer: builder =>
+            builder.WithGenesisPostProcessor((genesis, state) =>
+            {
+                BlobGasCalculator.TryCalculateFeePerBlobGas(genesis.Header, Cancun.Instance.BlobBaseFeeUpdateFraction, out UInt256 genesisBlobBaseFee);
+                state.CreateAccount(TestItem.AddressE, (UInt256)Eip4844Constants.GasPerBlob * genesisBlobBaseFee);
+                state.CreateAccount(contract, 0);
+                state.InsertCode(contract, BlobBaseFeeReturnCode, Cancun.Instance);
+            }));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        string call = $"{{\"from\":\"{TestItem.AddressE}\",\"to\":\"{contract}\",\"gas\":\"0x186a0\",\"blobVersionedHashes\":[\"0x01{new string('0', 62)}\"]}}";
+        using JsonDocument callDocument = JsonDocument.Parse(call);
+        using JsonDocument calls = JsonDocument.Parse($"[[{call},[\"trace\"]]]");
+
+        string eth = await RpcTest.TestSerializedRequest(blockchain.EthRpcModule, "eth_call", callDocument.RootElement, "0x0");
+        string trace = many
+            ? await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls.RootElement, "0x0")
+            : await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", callDocument.RootElement, new[] { "trace" }, "0x0");
+
+        BlockHeader genesis = blockchain.BlockTree.Genesis!;
+        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(genesis, Cancun.Instance.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee), Is.True,
+            "precondition: the genesis header has a blob base fee");
+        JToken? result = JToken.Parse(trace)["result"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(eth)["result"]?.Value<string>(), Is.EqualTo(Word(blobBaseFee)), eth);
+            Assert.That((many ? result?[0] : result)?["output"]?.Value<string>(), Is.EqualTo(Word(blobBaseFee)), trace);
+        }
     }
 
     [Test]
