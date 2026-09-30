@@ -18,7 +18,7 @@ public class PbtConfig : IPbtConfig
     public int ExportStepDistance { get; set; }
     public int ExportConcurrency { get; set; }
     public int ExportSortBufferBytes { get; set; } = (int)256UL.MiB;
-    public long MigrationVerifyBucketBytes { get; set; } = 8L.GiB;
+    public long MigrationVerifyBucketBytes { get; set; } = 4L.GiB;
     public bool FakeMatchingStateRoot { get; set; }
     public bool ImportMigrationSnapshotWithFakeRoots { get; set; }
     public ulong AccountTrieNodeCacheSizeBudget { get; set; } = 128UL.MiB;
