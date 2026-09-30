@@ -54,7 +54,7 @@ public class IdentifyTests
         await server.StartAsync(token);
         await client.StartAsync(token);
 
-        ISession session = await client.DialPeerAsync(PeerSessionNodes.LoopbackAddress(server), token);
+        ISession session = await PeerSessionNodes.DialAsync(client, server, token);
         BeaconP2P.SessionInfo info = await client.GetSessionInfoAsync(session, token);
         string[] advertised = client.PeerInfoForTest(server.LocalPeerId!).SupportedProtocols ?? [];
 
@@ -80,7 +80,7 @@ public class IdentifyTests
         await server.StartAsync(token);
         await client.StartAsync(token);
 
-        ISession session = await client.DialPeerAsync(PeerSessionNodes.LoopbackAddress(server), token);
+        ISession session = await PeerSessionNodes.DialAsync(client, server, token);
         await client.GetSessionInfoAsync(session, token);
         PeerStore.PeerInfo serverInfo = client.PeerInfoForTest(server.LocalPeerId!);
         // The pinned identify applies an answer only over an older record, so the record is forgotten to let the push land.
