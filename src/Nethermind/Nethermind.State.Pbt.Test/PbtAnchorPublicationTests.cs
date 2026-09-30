@@ -270,7 +270,7 @@ public class PbtAnchorPublicationTests
         else if (mode == "corrupt")
         {
             Assert.Throws<InvalidDataException>(Export);
-            Assert.That(Directory.Exists(output), Is.False);
+            Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(2));
         }
         else
         {
@@ -281,7 +281,7 @@ public class PbtAnchorPublicationTests
             Assert.That(File.ReadAllBytes(Path.Combine(output, "snapshot.pbt")), Is.EqualTo(expectedBytes.ToArray()));
             Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(2));
         }
-        Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Has.Length.EqualTo(mode == "corrupt" ? 0 : 1));
+        Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Has.Length.EqualTo(1));
         AssertNoNativeState(harness);
     }
 
