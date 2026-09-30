@@ -799,10 +799,16 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void EarlyStorageApply_IsOffByDefault()
+    public void EarlyStorageApply_IsOnByDefaultButNotWithVerifyWithTrie()
     {
-        using TestContext ctx = new();
-        Assert.That(ctx.Scope.AppliesStorageWritesEarly, Is.False);
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using (TestContext ctx = new())
+        {
+            Assert.That(ctx.Scope.AppliesStorageWritesEarly, Is.True);
+        }
+
+        using TestContext verifying = new(config: new FlatDbConfig { VerifyWithTrie = true });
+        Assert.That(verifying.Scope.AppliesStorageWritesEarly, Is.False);
     }
 
     [Test]
