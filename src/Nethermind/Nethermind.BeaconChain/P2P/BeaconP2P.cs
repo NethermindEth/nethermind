@@ -178,9 +178,16 @@ public sealed class BeaconP2P : IAsyncDisposable
     internal static ILoggerFactory CreateLibp2pLoggerFactory(ILogManager logManager) =>
         new NethermindLoggerFactory(logManager, lowerLogLevel: true, maxLogLevel: Microsoft.Extensions.Logging.LogLevel.Trace);
 
-    /// <summary>Records a protocol violation by an inbound requester against the peer's failure count, when the peer is in the sync pool.</summary>
-    private void ReportRequestViolation(PeerId peerId, string detail)
+    /// <summary>Records a protocol violation by an inbound requester against the peer's failure count, when the peer is connected.</summary>
+    /// <remarks>The peer manager finds the peer by id; any other pool can only offer the peers selection would hand out.</remarks>
+    internal void ReportRequestViolation(PeerId peerId, string detail)
     {
+        if (_peerPool?.Value is PeerManager manager)
+        {
+            manager.TryReportInboundViolation(peerId, detail);
+            return;
+        }
+
         string peerSuffix = $"/p2p/{peerId}";
         foreach (IBeaconSyncPeer peer in _peerPool?.Value.GetBestPeers(0) ?? [])
         {

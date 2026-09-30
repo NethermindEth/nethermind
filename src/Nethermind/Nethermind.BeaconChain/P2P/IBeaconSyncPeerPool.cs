@@ -70,7 +70,7 @@ public interface IBeaconSyncPeer
 /// <summary>The pool of sync-usable peers maintained by the peer manager.</summary>
 public interface IBeaconSyncPeerPool
 {
-    /// <summary>Returns peers advertising a head at or past <paramref name="minHeadSlot"/>, best head first, leaving out peers whose requests keep failing (see <see cref="IBeaconSyncPeer.ReportFailure"/>).</summary>
+    /// <summary>Returns peers advertising a head at or past <paramref name="minHeadSlot"/>, best head first, leaving out peers whose requests keep failing and listing peers that just failed a request after the others (see <see cref="IBeaconSyncPeer.ReportFailure"/>).</summary>
     IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot);
 
     /// <summary>Raised once a peer is admitted and its custody is known, so a waiter can ask it without waiting for its next poll; never raised by a pool that does not implement it.</summary>

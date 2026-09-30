@@ -31,10 +31,10 @@ public class InboundRequestWatchTests
 
     private static readonly PeerId Requester = new Identity(privateKey: null, KeyType.Secp256K1).PeerId;
 
-    // The watch outliving the request would leak a task per served stream and could report a peer for bytes sent after it was served.
+    // A requester can send what it must not once the response is out, and the channel is torn down as soon as the listener returns.
     [Test]
     [CancelAfter(30_000)]
-    public async Task The_watch_stops_when_the_request_is_finished_and_reports_nothing(CancellationToken token)
+    public async Task The_listener_returns_only_once_the_requester_ended_its_stream_reporting_nothing(CancellationToken token)
     {
         List<string> reported = [];
         using LateByteStream stream = new(await RequestBytesAsync(token), lateByte: null);
@@ -43,13 +43,80 @@ public class InboundRequestWatchTests
 
         await protocol.ReadAsync(stream, token);
         await stream.WatchStarted.WaitAsync(token);
-        protocol.Dispose();
+        Task listenerReturn = protocol.DisposeAsync().AsTask();
+        bool returnedBeforeTheRequesterEnded = listenerReturn.IsCompleted;
+        stream.Teardown();
+        await listenerReturn.WaitAsync(token);
 
-        await stream.WatchEnded.WaitAsync(token);
-        Assert.That(reported, Is.Empty, "cancelling the watch is not a violation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(returnedBeforeTheRequesterEnded, Is.False, "the channel is torn down when the listener returns, so the listener waits for the requester");
+            Assert.That(reported, Is.Empty, "a requester that ends its stream is not a violation");
+        }
     }
 
-    // The watch ends at the listener's end only if a pending channel read honours its token; otherwise it lives until the channel is torn down.
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_byte_sent_after_the_response_is_complete_is_reported_against_the_peer(CancellationToken token)
+    {
+        TaskCompletionSource<PeerId> reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using LateByteStream stream = new(await RequestBytesAsync(token), lateByte: null);
+        ProbeProtocol protocol = new((peer, _) => reported.TrySetResult(peer));
+        protocol.Enter(Context());
+        await protocol.ReadAsync(stream, token);
+        await stream.WatchStarted.WaitAsync(token);
+        Task listenerReturn = protocol.DisposeAsync().AsTask();
+
+        stream.SendLate(0x2a);
+
+        Assert.That(await reported.Task.WaitAsync(token), Is.EqualTo(Requester));
+        await listenerReturn.WaitAsync(token);
+    }
+
+    // A requester that never ends its stream must not hold a listener for good.
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task The_listener_returns_after_the_linger_when_the_requester_never_ends_its_stream(CancellationToken token)
+    {
+        List<string> reported = [];
+        using LateByteStream stream = new(await RequestBytesAsync(token), lateByte: null);
+        ProbeProtocol protocol = new((_, detail) => reported.Add(detail)) { WatchLingerAfterServed = TimeSpan.FromMilliseconds(100) };
+        protocol.Enter(Context());
+        await protocol.ReadAsync(stream, token);
+        await stream.WatchStarted.WaitAsync(token);
+
+        await protocol.DisposeAsync().AsTask().WaitAsync(token);
+
+        Assert.That(reported, Is.Empty, "the end of the linger is not a violation");
+    }
+
+    // A peer that holds its streams open must not hold more of them than the cap allows.
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_stream_held_for_the_requester_to_end_keeps_the_peers_concurrency_slot(CancellationToken token)
+    {
+        using LateByteStream stream = new(await RequestBytesAsync(token), lateByte: null);
+        ProbeProtocol protocol = new((_, _) => { });
+        ISessionContext context = Context();
+        protocol.Enter(context);
+        await protocol.ReadAsync(stream, token);
+        await stream.WatchStarted.WaitAsync(token);
+        Task lingering = protocol.DisposeAsync().AsTask();
+        await using IAsyncDisposable? second = protocol.TryEnterAnother(context);
+
+        IAsyncDisposable? third = protocol.TryEnterAnother(context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.Null, "test setup: one slot is free beside the lingering stream");
+            Assert.That(third, Is.Null, "the lingering stream still counts against the peer");
+        }
+
+        stream.Teardown();
+        await lingering.WaitAsync(token);
+    }
+
+    // The linger ends a watch only if a pending channel read honours its token.
     [Test]
     public void A_pending_read_on_a_libp2p_channel_ends_when_its_token_is_cancelled()
     {
@@ -71,7 +138,7 @@ public class InboundRequestWatchTests
         ProbeProtocol protocol = new((peer, detail) => reported.TrySetResult((peer, detail)));
         long before = InvalidMessageCount();
         protocol.Enter(Context());
-        using ProbeProtocol probe = protocol;
+        await using ProbeProtocol probe = protocol;
 
         await protocol.ReadAsync(stream, token);
         (PeerId peer, string detail) = await reported.Task.WaitAsync(token);
@@ -106,7 +173,7 @@ public class InboundRequestWatchTests
                     throw new InvalidOperationException(message);
                 });
                 protocol.Enter(Context());
-                using ProbeProtocol probe = protocol;
+                await using ProbeProtocol probe = protocol;
                 await protocol.ReadAsync(stream, token);
                 await sinkCalled.Task.WaitAsync(token);
             }
@@ -162,6 +229,7 @@ public class InboundRequestWatchTests
             chunks.Add(chunk);
         }
 
+        await channel.WriteEofAsync(token);
         await listen;
         using (Assert.EnterMultipleScope())
         {
@@ -215,7 +283,7 @@ public class InboundRequestWatchTests
     }
 
     /// <summary>Exposes the protected slot of <see cref="ReqRespProtocolBase"/> to the tests.</summary>
-    private sealed class ProbeProtocol : ReqRespProtocolBase, IDisposable
+    private sealed class ProbeProtocol : ReqRespProtocolBase, IAsyncDisposable
     {
         public ProbeProtocol(Action<PeerId, string> sink) => RequestViolationSink = sink;
 
@@ -225,27 +293,45 @@ public class InboundRequestWatchTests
 
         public Task<byte[]> ReadAsync(Stream stream, CancellationToken token) => _request!.ReadRequestAsync(stream, maxSize: 8, token);
 
-        public void Dispose() => _request!.Dispose();
+        public IAsyncDisposable? TryEnterAnother(ISessionContext context) => TryEnterInbound(context, ProbeId);
+
+        public ValueTask DisposeAsync() => _request!.DisposeAsync();
     }
 
-    /// <summary>Serves the request, then answers the first read as "nothing buffered", then blocks on the next until cancelled or, when given, hands over one late byte.</summary>
-    private sealed class LateByteStream(byte[] request, byte? lateByte) : Stream
+    /// <summary>Serves the request, then answers the first read as "nothing buffered", then blocks on the next until cancelled, torn down, or handed one late byte.</summary>
+    private sealed class LateByteStream : Stream
     {
+        private readonly byte[] _request;
+        private readonly TaskCompletionSource<byte?> _next = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _watchStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _watchEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _position;
         private int _readsAfterRequest;
 
+        public LateByteStream(byte[] request, byte? lateByte)
+        {
+            _request = request;
+            if (lateByte is not null)
+            {
+                _next.TrySetResult(lateByte);
+            }
+        }
+
         public Task WatchStarted => _watchStarted.Task;
 
         public Task WatchEnded => _watchEnded.Task;
 
+        /// <summary>Ends the stream the way a torn-down channel does: the pending read returns no bytes.</summary>
+        public void Teardown() => _next.TrySetResult(null);
+
+        public void SendLate(byte late) => _next.TrySetResult(late);
+
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            if (_position < request.Length)
+            if (_position < _request.Length)
             {
-                int count = Math.Min(buffer.Length, request.Length - _position);
-                request.AsMemory(_position, count).CopyTo(buffer);
+                int count = Math.Min(buffer.Length, _request.Length - _position);
+                _request.AsMemory(_position, count).CopyTo(buffer);
                 _position += count;
                 return count;
             }
@@ -256,23 +342,22 @@ public class InboundRequestWatchTests
             }
 
             _watchStarted.TrySetResult();
-            if (lateByte is { } late)
-            {
-                buffer.Span[0] = late;
-                return 1;
-            }
-
             try
             {
-                await Task.Delay(Timeout.Infinite, cancellationToken);
+                if (await _next.Task.WaitAsync(cancellationToken) is not { } late)
+                {
+                    _watchEnded.TrySetResult();
+                    return 0;
+                }
+
+                buffer.Span[0] = late;
+                return 1;
             }
             catch (OperationCanceledException)
             {
                 _watchEnded.TrySetResult();
                 throw;
             }
-
-            return 0;
         }
 
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
