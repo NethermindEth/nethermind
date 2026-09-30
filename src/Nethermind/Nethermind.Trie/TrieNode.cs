@@ -150,8 +150,8 @@ namespace Nethermind.Trie
 
         // Acquire pairs with the release publication of _nodeData in DecodeRlp: a concurrent resolver may publish a
         // decode while another thread tests whether the node is resolved, and the decoded fields must be visible with it.
-        // A type switch over the sealed node data classes rather than an INodeData call: interface dispatch through a
-        // call site that sees several classes costs an amount that depends on where the runtime placed them.
+        // A type switch over the sealed node data classes: an INodeData call here would go through interface dispatch,
+        // and trie walks read the node type several times per node.
         public NodeType NodeType => ReadNodeData() switch
         {
             BranchData => NodeType.Branch,
@@ -881,9 +881,8 @@ namespace Nethermind.Trie
             int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;
             CappedArray<byte> rlp = ReadRlp();
             long rlpSize = MemorySizes.RefSize + (rlp.IsNotNull ? MemorySizes.ArrayOverhead + rlp.UnderlyingLength : 0);
-            // A switch over the sealed node data types rather than an interface call: a call site that sees all three
-            // dispatches through the runtime's shared stub cache, whose cost per call varies with where the types load,
-            // and the trie node cache accounts every node it takes in.
+            // A switch over the sealed node data types rather than an interface call: the trie node cache sizes every
+            // node it takes in.
             long dataSize = MemorySizes.RefSize + _nodeData switch
             {
                 BranchData branch => branch.MemorySize,
