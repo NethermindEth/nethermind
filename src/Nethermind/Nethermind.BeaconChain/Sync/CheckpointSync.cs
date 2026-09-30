@@ -50,9 +50,12 @@ public class CheckpointSync(
     private const string ConsensusVersionHeader = "Eth-Consensus-Version";
     /// <summary>Fallback initial buffer size when the state response has no Content-Length.</summary>
     private const int DefaultStateBufferSize = 64 * 1024 * 1024;
+    /// <summary>Fallback initial buffer size when the anchor block response has no Content-Length.</summary>
+    private const int DefaultBlockBufferSize = 1024 * 1024;
     private const int DefaultMaxDownloadAttempts = 5;
     private static readonly TimeSpan DefaultRetryBaseDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultReadStallTimeout = TimeSpan.FromSeconds(60);
 
     private readonly ILogger _logger = logManager.GetClassLogger<CheckpointSync>();
     private readonly HttpClient _httpClient = new(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All })
@@ -69,6 +72,13 @@ public class CheckpointSync(
 
     /// <summary>Pool the state bytes are read into; every array rented from it is returned, including those of a dropped attempt.</summary>
     internal ArrayPool<byte> BufferPool { get; init; } = ArrayPool<byte>.Shared;
+
+    /// <summary>Longest wait for the next bytes of a response body before the download counts as dropped and is retried.</summary>
+    /// <remarks>
+    /// <see cref="HttpClient.Timeout"/> stops at the response headers under <see cref="HttpCompletionOption.ResponseHeadersRead"/>,
+    /// so a provider that vanishes mid-body without its FIN or RST reaching this host would otherwise leave the read waiting forever.
+    /// </remarks>
+    internal TimeSpan ReadStallTimeout { get; init; } = DefaultReadStallTimeout;
 
     /// <summary>
     /// The operator-configured URL if set, otherwise the selected network's default provider.
@@ -118,8 +128,7 @@ public class CheckpointSync(
         using HttpResponseMessage response = await GetOctetStreamAsync("/eth/v2/debug/beacon/states/finalized", cancellationToken);
         ThrowIfUnsupportedFork(response.Headers.TryGetValues(ConsensusVersionHeader, out IEnumerable<string>? values) ? values.FirstOrDefault() : null);
 
-        await using Stream content = await response.Content.ReadAsStreamAsync(cancellationToken);
-        (byte[] buffer, int length) = await ReadToPooledBufferAsync(content, response.Content.Headers.ContentLength, cancellationToken);
+        (byte[] buffer, int length) = await ReadResponseBodyAsync(response, DefaultStateBufferSize, cancellationToken);
 
         if (_logger.IsInfo) _logger.Info($"Downloaded finalized beacon state: {length / (1024.0 * 1024.0):F1} MB in {stopwatch.Elapsed.TotalSeconds:F1} s");
         return (buffer, length);
@@ -128,12 +137,19 @@ public class CheckpointSync(
     private async Task<(byte[] Buffer, int Length)> ReadStateFileAsync(string stateFile, CancellationToken cancellationToken)
     {
         await using FileStream content = File.OpenRead(stateFile);
-        return await ReadToPooledBufferAsync(content, content.Length, cancellationToken);
+        return await ReadToPooledBufferAsync(content, (int)content.Length, Timeout.InfiniteTimeSpan, cancellationToken);
     }
 
-    private async Task<(byte[] Buffer, int Length)> ReadToPooledBufferAsync(Stream content, long? expectedLength, CancellationToken cancellationToken)
+    private async Task<(byte[] Buffer, int Length)> ReadResponseBodyAsync(HttpResponseMessage response, int defaultLength, CancellationToken cancellationToken)
     {
-        byte[] buffer = BufferPool.Rent((int)(expectedLength ?? DefaultStateBufferSize));
+        await using Stream content = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await ReadToPooledBufferAsync(content, (int)(response.Content.Headers.ContentLength ?? defaultLength), ReadStallTimeout, cancellationToken);
+    }
+
+    private async Task<(byte[] Buffer, int Length)> ReadToPooledBufferAsync(Stream content, int initialLength, TimeSpan stallTimeout, CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        byte[] buffer = BufferPool.Rent(initialLength);
         int length = 0;
         try
         {
@@ -147,7 +163,8 @@ public class CheckpointSync(
                     buffer = grown;
                 }
 
-                int read = await content.ReadAsync(buffer.AsMemory(length), cancellationToken);
+                stall.CancelAfter(stallTimeout);
+                int read = await content.ReadAsync(buffer.AsMemory(length), stall.Token);
                 if (read == 0)
                 {
                     return (buffer, length);
@@ -156,10 +173,15 @@ public class CheckpointSync(
                 length += read;
             }
         }
-        catch
+        catch (Exception e)
         {
             // A dropped transfer is retried, so its buffer must not be left to the GC once per attempt.
             BufferPool.Return(buffer);
+            if (e is OperationCanceledException && stall.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                throw new IOException($"No data arrived for {stallTimeout.TotalSeconds:F0} s");
+            }
+
             throw;
         }
     }
@@ -359,7 +381,15 @@ public class CheckpointSync(
             blockSsz = await RetryTransientAsync("anchor block download", async token =>
             {
                 using HttpResponseMessage response = await GetOctetStreamAsync($"/eth/v2/beacon/blocks/{blockRoot}", token);
-                return await response.Content.ReadAsByteArrayAsync(token);
+                (byte[] buffer, int length) = await ReadResponseBodyAsync(response, DefaultBlockBufferSize, token);
+                try
+                {
+                    return buffer.AsSpan(0, length).ToArray();
+                }
+                finally
+                {
+                    BufferPool.Return(buffer);
+                }
             }, cancellationToken);
         }
 

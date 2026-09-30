@@ -24,6 +24,8 @@ internal enum StateResponse
     Serve,
     /// <summary>Promises the whole body, sends half and resets the connection.</summary>
     DropMidBody,
+    /// <summary>Promises the whole body, sends half and then sends nothing more while the connection stays open.</summary>
+    StallMidBody,
     ServerError,
     NotFound,
 }
@@ -32,6 +34,7 @@ internal enum StateResponse
 internal sealed class FlakyCheckpointProvider : IAsyncDisposable
 {
     private readonly WebApplication _app;
+    private readonly CancellationTokenSource _stopping = new();
     private int _stateRequests;
     private int _blockRequests;
 
@@ -58,7 +61,7 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         WebApplication app = builder.Build();
         FlakyCheckpointProvider provider = new(app);
-        static async Task Answer(HttpContext c, StateResponse response, byte[] body, string? consensusVersion)
+        static async Task Answer(HttpContext c, StateResponse response, byte[] body, string? consensusVersion, CancellationToken stopping)
         {
             switch (response)
             {
@@ -78,6 +81,24 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
                     await c.Response.Body.FlushAsync();
                     c.Abort();
                     break;
+                case StateResponse.StallMidBody:
+                    c.Response.ContentType = "application/octet-stream";
+                    c.Response.ContentLength = body.Length;
+                    await c.Response.Body.WriteAsync(body.AsMemory(0, body.Length / 2));
+                    await c.Response.Body.FlushAsync();
+                    using (CancellationTokenSource held = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted, stopping))
+                    {
+                        try
+                        {
+                            await Task.Delay(Timeout.Infinite, held.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                        }
+                    }
+
+                    c.Abort();
+                    break;
                 case StateResponse.ServerError:
                     c.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                     break;
@@ -88,7 +109,7 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
         }
 
         app.MapGet("/eth/v2/debug/beacon/states/finalized", (HttpContext c) =>
-            Answer(c, responseFor(Interlocked.Increment(ref provider._stateRequests)), stateSsz, consensusVersion));
+            Answer(c, responseFor(Interlocked.Increment(ref provider._stateRequests)), stateSsz, consensusVersion, provider._stopping.Token));
         app.MapGet("/eth/v2/beacon/blocks/{root}", (HttpContext c, string root) =>
         {
             if (root != first.Root.ToString())
@@ -98,13 +119,18 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
             }
 
             int request = Interlocked.Increment(ref provider._blockRequests);
-            return Answer(c, blockResponseFor?.Invoke(request) ?? StateResponse.Serve, blockSsz, null);
+            return Answer(c, blockResponseFor?.Invoke(request) ?? StateResponse.Serve, blockSsz, null, provider._stopping.Token);
         });
         await app.StartAsync();
         return provider;
     }
 
-    public ValueTask DisposeAsync() => _app.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await _stopping.CancelAsync();
+        await _app.DisposeAsync();
+        _stopping.Dispose();
+    }
 }
 
 /// <summary>A log manager recording every line with its level, for asserting what an operator would read.</summary>
