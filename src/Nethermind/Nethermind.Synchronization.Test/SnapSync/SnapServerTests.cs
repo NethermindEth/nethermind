@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.State.SnapServer;
@@ -20,7 +21,7 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 [TestFixture]
 public class SnapServerTests
 {
-    private MemDb _codeDb = null!;
+    private TestMemDb _codeDb = null!;
     private IBlockTree _blockTree = null!;
     private IBlockAccessListStore _balStore = null!;
     private SnapServer _server = null!;
@@ -28,7 +29,7 @@ public class SnapServerTests
     [SetUp]
     public void SetUp()
     {
-        _codeDb = new MemDb();
+        _codeDb = new TestMemDb();
         _blockTree = Substitute.For<IBlockTree>();
         _balStore = Substitute.For<IBlockAccessListStore>();
         _server = new SnapServer(NoopSnapServer.Instance, _codeDb, _blockTree, _balStore);
@@ -67,6 +68,9 @@ public class SnapServerTests
         Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[0].ToArray(), Is.EqualTo(codeA));
         Assert.That(result[1].ToArray(), Is.EqualTo(codeB));
+        // Peers ask for hash-random code, so serving must not churn the block cache.
+        _codeDb.KeyWasReadWithFlags(hashA.ToByteArray(), ReadFlags.HintCacheMiss);
+        _codeDb.KeyWasReadWithFlags(hashB.ToByteArray(), ReadFlags.HintCacheMiss);
     }
 
     [Test]

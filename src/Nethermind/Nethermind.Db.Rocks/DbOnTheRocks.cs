@@ -1092,11 +1092,22 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, out nint handle, ReadFlags flags)
     {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
         ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
-        if (!_db.TryGetPinned(key, out PinnedSlice slice, cf, readOptions))
+        PinnedSlice slice;
+        try
         {
-            handle = default;
-            return null;
+            if (!_db.TryGetPinned(key, out slice, cf, readOptions))
+            {
+                handle = default;
+                return null;
+            }
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
         }
 
         ReadOnlySpan<byte> value = slice.Value;

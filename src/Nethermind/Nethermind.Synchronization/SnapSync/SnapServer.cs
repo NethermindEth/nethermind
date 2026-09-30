@@ -70,7 +70,8 @@ public sealed class SnapServer(
                 continue;
             }
 
-            byte[]? code = codeDb[codeHash.Bytes];
+            // Code keys are hashes, so a cached block holds no likely next request.
+            byte[]? code = codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
             if (code is not null)
             {
                 writer.WriteValue(code);

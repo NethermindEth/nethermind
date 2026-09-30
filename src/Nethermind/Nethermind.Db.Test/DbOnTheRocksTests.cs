@@ -195,14 +195,15 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [Test]
-        public void CodeDb_uses_lz4_compression()
+        [TestCase("compression=kLZ4Compression")]
+        [TestCase("allow_mmap_reads=false", TestName = "No mmap reads: a page fault per cold contract reads 3.8 GB of fresh code about 3x slower than pread")]
+        public void CodeDb_applies_default_option(string option)
         {
             using IContainer container = CreateRocksDbContainer(new DbConfig());
             using IDb db = container.Resolve<IDbFactory>().CreateDb(new DbSettings(DbNames.Code, DbPath));
             db.Flush();
 
-            Assert.That(ReadOptionsFile(DbPath), Does.Contain("compression=kLZ4Compression"));
+            Assert.That(ReadOptionsFile(DbPath), Does.Contain(option));
         }
 
         [Test]
@@ -569,9 +570,12 @@ namespace Nethermind.Db.Test
             Assert.That(didShutDown, Is.True);
         }
 
-        [TestCase(false, TestName = "Corrupted_exception_on_byte_array_get_writes_marker_and_shuts_down")]
-        [TestCase(true, TestName = "Corrupted_exception_on_caller_buffer_get_writes_marker_and_shuts_down")]
-        public void Corrupted_exception_on_get_writes_marker_and_shuts_down(bool callerBuffer)
+        public enum GetPath { ByteArray, CallerBuffer, NativeSlice }
+
+        [TestCase(GetPath.ByteArray, TestName = "Corrupted_exception_on_byte_array_get_writes_marker_and_shuts_down")]
+        [TestCase(GetPath.CallerBuffer, TestName = "Corrupted_exception_on_caller_buffer_get_writes_marker_and_shuts_down")]
+        [TestCase(GetPath.NativeSlice, TestName = "Corrupted_exception_on_native_slice_get_writes_marker_and_shuts_down")]
+        public void Corrupted_exception_on_get_writes_marker_and_shuts_down(GetPath path)
         {
             IDbConfig config = new DbConfig();
             byte[] key = [1, 2, 3];
@@ -596,22 +600,40 @@ namespace Nethermind.Db.Test
             using FatalShutdownTrackingDbOnTheRocks corruptedDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
                 _rocksdbConfigFactory, LimboLogs.Instance, () => didShutDown = true);
 
-            IReadOnlyKeyValueStore keyValueStore = corruptedDb;
-            Action read = () =>
-            {
-                if (callerBuffer)
-                {
-                    keyValueStore.Get(key, new byte[value.Length]);
-                }
-                else
-                {
-                    keyValueStore.Get(key);
-                }
-            };
-
-            Assert.That(read, Throws.InstanceOf<RocksDbException>());
+            Assert.That(() => ReadBy(corruptedDb, path, key, value.Length), Throws.InstanceOf<RocksDbException>());
             Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
             Assert.That(didShutDown, Is.True);
+        }
+
+        // Background readers can outlive the block that queued them; a read after dispose begins must not reach the closed native DB.
+        [Test]
+        public void Get_after_dispose_begins_throws_instead_of_reading_the_closed_db([Values] GetPath path)
+        {
+            byte[] key = [1, 2, 3];
+            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            db.Dispose();
+
+            Assert.That(() => ReadBy(db, path, key, 64), Throws.InstanceOf<ObjectDisposedException>());
+        }
+
+        private static void ReadBy(DbOnTheRocks db, GetPath path, byte[] key, int length)
+        {
+            IReadOnlyKeyValueStore keyValueStore = db;
+            switch (path)
+            {
+                case GetPath.CallerBuffer:
+                    keyValueStore.Get(key, new byte[length]);
+                    break;
+                case GetPath.NativeSlice:
+                    // Code reads for execution take this path.
+                    _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
+                    db.DangerousReleaseHandle(handle);
+                    break;
+                default:
+                    keyValueStore.Get(key);
+                    break;
+            }
         }
 
         // An "IO error" (fd exhaustion, full disk, permissions) is not on-disk corruption, so it
