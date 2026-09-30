@@ -12,7 +12,6 @@ public class PbtConfig : IPbtConfig
     public long? MigrationAnchor { get; set; }
     public string? MigrationSnapshotPath { get; set; }
     public string? MigrationPreimagesPath { get; set; }
-    public string? MigrationPreimageSourcePath { get; set; }
     public bool MigrationGenesisBootstrap { get; set; }
     public string? MigrationExportPath { get; set; }
     public int ExportStepDistance { get; set; }

@@ -29,10 +29,6 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Path to canonical EIP-8347 preimages. With MigrationSnapshotPath, they only verify the imported snapshot against the anchor's MPT state root. Alone, the PBT state is built from the listed addresses and slots with their values read from the local flat state, which must be persisted at MigrationAnchor.", DefaultValue = "null")]
     string? MigrationPreimagesPath { get; set; }
 
-    /// <summary>Path to a separate offline read-only preimage-flat source database. Defaults to null.</summary>
-    [ConfigItem(Description = "Path to a separate offline read-only preimage-flat source database.", DefaultValue = "null")]
-    string? MigrationPreimageSourcePath { get; set; }
-
     /// <summary>Whether to generate a separate offline source from the MPT genesis allocation. Defaults to false.</summary>
     [ConfigItem(Description = "Whether to generate a separate offline source from the MPT genesis allocation.", DefaultValue = "false")]
     bool MigrationGenesisBootstrap { get; set; }

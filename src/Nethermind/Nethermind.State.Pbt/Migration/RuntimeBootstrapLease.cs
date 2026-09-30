@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Image;
 
@@ -27,7 +26,7 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
 
     public static RuntimeBootstrapLease Create(PbtImageAnchor anchor,
         string scratchDirectory, Func<bool> isCurrent, IPbtConfig configuration,
-        MigrationGenesisSource? genesisSource, IPersistence localFlat, IReadOnlyKeyValueStore code, ILogManager logManager)
+        MigrationGenesisSource? genesisSource, IPersistence localFlat, IReadOnlyKeyValueStore code)
     {
         RuntimeBootstrapLease lease = new(anchor, scratchDirectory, isCurrent);
         try
@@ -49,13 +48,6 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
                 lease._source = localFlat.CreateReader();
                 lease._owned.Add(lease._source);
                 lease._code = code;
-            }
-            else if (configuration.MigrationPreimageSourcePath is { } sourcePath)
-            {
-                MigrationOfflineSourceLease source = MigrationOfflineSourceLease.Open(sourcePath, logManager);
-                lease._owned.Add(source);
-                lease._source = source.Reader;
-                lease._code = source.Code;
             }
             else if (configuration.MigrationGenesisBootstrap)
             {
