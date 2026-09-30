@@ -351,6 +351,18 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_CallMethods_FillWithoutAnRpcGasCap([Values("eth_call", "eth_estimateGas")] string method, [Values] bool withBlockOverride)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        ctx.Test.RpcConfig.GasCap = null;
+        object? blockOverride = withBlockOverride ? JsonSerializer.Deserialize<object>("""{"gasLimit":"0x30d40"}""") : null;
+
+        string response = await ctx.Test.TestEthRpc(method, FrameGasRequest(), "latest", null, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
     public async Task FrameGas_EstimateGas_RespectsRpcGasCap([Values] bool tooSmall)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));

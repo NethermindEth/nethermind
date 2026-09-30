@@ -20,7 +20,7 @@ public partial class EthRpcModule
         BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride = null)
     {
         // Requests the executor rejects before execution get its errors, as they would with explicit limits.
-        if (request is not FrameTransactionForRpc frameTx || !NeedsFrameGas(frameTx) || blockOverride?.GasLimit > _rpcConfig.GasCap!.Value)
+        if (request is not FrameTransactionForRpc frameTx || !NeedsFrameGas(frameTx) || blockOverride?.GasLimit > _rpcConfig.GasCap.EffectiveGasCap())
             return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride);
 
         SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
