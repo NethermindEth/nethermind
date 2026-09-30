@@ -10,7 +10,8 @@ using Nethermind.Pbt;
 namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Streams the canonical EIP-8347 snapshot artifact without trusting its claimed root.</summary>
-/// <remarks>Streams remain caller-owned. Input must be consumed to completion to validate the section counts and EOF.
+/// <remarks>Streams remain caller-owned. Input must be consumed to completion to validate the section counts and EOF, and
+/// must be seekable, since each storage record's account is checked against a second pass over the header section.
 /// The artifact holds typed account header records and stem-grouped code and storage leaves; the codec translates them
 /// to and from the ascending PBT leaf stream they derive. Writers require strictly ordered leaves; they do not sort or
 /// retain the input. Cancellation is checked per record.</remarks>
@@ -29,7 +30,9 @@ internal static class PbtSnapshotCodec
     {
         List<RebuildEntry> leaves = new(GroupWidth);
         ValueHash256? previous = null;
-        for (ulong count = ReadCount(source), index = 0; index < count; index++)
+        ulong headerCount = ReadCount(source);
+        long headersStart = source.Position;
+        for (ulong index = 0; index < headerCount; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             previous = ReadHeaderRecord(source, previous, leaves);
@@ -50,10 +53,12 @@ internal static class PbtSnapshotCodec
         prefix = new byte[1 + ValueHash256.MemorySize];
         prefix[0] = Eip8297KeyDerivation.StorageZone;
         previous = null;
+        using HeaderCursor headers = new(source, headersStart, headerCount);
         for (ulong count = ReadCount(source), index = 0; index < count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ValueHash256 addressHash = ReadAscendingHash(source, previous);
+            headers.Require(addressHash);
             previous = addressHash;
             addressHash.Bytes.CopyTo(prefix.AsSpan(1));
             ulong groupCount = ReadGroupCount(source);
@@ -227,6 +232,57 @@ internal static class PbtSnapshotCodec
             throw new InvalidDataException("Invalid snapshot key zone or length.");
         if (entry.Leaf == default || (previous.Length != 0 && previous.CompareTo(entry.Key) >= 0))
             throw new InvalidDataException("Snapshot leaves must be nonzero and strictly ordered.");
+    }
+
+    /// <summary>Walks the header section alongside the storage section, rejecting storage whose account has no header record.</summary>
+    /// <remarks>Both sections ascend by address hash, so one forward pass over a second view of the headers suffices.
+    /// Buffering that view limits the source seeks it costs to one per buffer refill.</remarks>
+    private sealed class HeaderCursor(Stream source, long headersStart, ulong headerCount) : IDisposable
+    {
+        private readonly BufferedStream _headers = new(new PositionedReader(source, headersStart), 1 << 16);
+        private readonly List<RebuildEntry> _discarded = [];
+        private ulong _remaining = headerCount;
+        private ValueHash256? _current;
+
+        public void Require(in ValueHash256 addressHash)
+        {
+            while (_remaining != 0 && (_current is not { } current || current.Bytes.SequenceCompareTo(addressHash.Bytes) < 0))
+            {
+                _remaining--;
+                _current = ReadHeaderRecord(_headers, _current, _discarded);
+                _discarded.Clear();
+            }
+            if (_current != addressHash) throw new InvalidDataException("Snapshot holds storage of an account it has no header for.");
+        }
+
+        public void Dispose() => _headers.Dispose();
+    }
+
+    /// <summary>Reads <paramref name="source"/> from a position of its own, restoring the source's position after every read.</summary>
+    private sealed class PositionedReader(Stream source, long position) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            long resume = source.Position;
+            source.Position = position;
+            int read = source.Read(buffer);
+            position += read;
+            source.Position = resume;
+            return read;
+        }
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     /// <summary>Buffers one stem of the ascending leaf stream and writes it as a record of its zone's section once the stem ends.</summary>

@@ -303,7 +303,7 @@ internal sealed class PbtAnchorPublication(
         private readonly PbtRocksDbPersistence _target;
         private readonly CancellationTokenSource _cancellation;
         private readonly Task[] _flushers;
-        private Channel<IPbtPersistence.IWriteBatch> _pending = null!;
+        private readonly Channel<IPbtPersistence.IWriteBatch> _pending;
         private ExceptionDispatchInfo? _failure;
         private IPbtPersistence.IWriteBatch? _batch;
         private int _count;
@@ -313,7 +313,10 @@ internal sealed class PbtAnchorPublication(
             _target = target;
             _flushers = new Task[flusherCount];
             _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            StartFlushers();
+            _pending = Channel.CreateBounded<IPbtPersistence.IWriteBatch>(
+                new BoundedChannelOptions(2 * flusherCount) { SingleWriter = true });
+            for (int i = 0; i < _flushers.Length; i++)
+                _flushers[i] = Task.Run(Flush, CancellationToken.None);
         }
 
         public IPbtPersistence.IWriteBatch Next()
@@ -321,16 +324,6 @@ internal sealed class PbtAnchorPublication(
             if (_count == BatchSize) Enqueue();
             _count++;
             return _batch ??= _target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
-        }
-
-        /// <summary>Waits for every write staged so far, then opens a reader that observes them.</summary>
-        public IPbtPersistence.IReader CreateReader()
-        {
-            if (_batch is not null) Enqueue();
-            _pending.Writer.Complete();
-            WaitFlushers();
-            StartFlushers();
-            return _target.CreateReader();
         }
 
         /// <summary>Waits for every staged write, then flushes the write buffers so the no-WAL writes are durable.</summary>
@@ -365,14 +358,6 @@ internal sealed class PbtAnchorPublication(
             }
             _batch = null;
             _count = 0;
-        }
-
-        private void StartFlushers()
-        {
-            _pending = Channel.CreateBounded<IPbtPersistence.IWriteBatch>(
-                new BoundedChannelOptions(2 * _flushers.Length) { SingleWriter = true });
-            for (int i = 0; i < _flushers.Length; i++)
-                _flushers[i] = Task.Run(Flush, CancellationToken.None);
         }
 
         private async Task Flush()

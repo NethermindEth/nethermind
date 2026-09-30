@@ -162,7 +162,7 @@ public class PbtPortableCodecTests
 
     [Test]
     public void Snapshot_rejects_malformed_records([Values("empty", "unknown-kind", "leading-zero", "over-width", "empty-account", "zero-code-size",
-        "zero-value", "slot-64", "slot-order", "header-order", "no-groups", "split-stem", "sub-index-order", "trailing", "truncated", "cancel")] string corruption)
+        "zero-value", "slot-64", "slot-order", "header-order", "no-groups", "orphan-below", "orphan-above", "split-stem", "sub-index-order", "trailing", "truncated", "cancel")] string corruption)
     {
         const string header = "0101" + "00";
         byte[] bytes = corruption switch
@@ -178,6 +178,8 @@ public class PbtPortableCodecTests
             "slot-order" => Snapshot([AddressHash + header + "00" + "02" + "01" + "0101" + "00" + "0101"], [], []),
             "header-order" => Snapshot([ValidHeader, ValidHeader], [], []),
             "no-groups" => Snapshot([ValidHeader], [], [AddressHash + "00"]),
+            "orphan-below" => Snapshot([ValidHeader], [], [new string('0', 64) + "0101" + StorageStem + "00" + "07" + "01ff"]),
+            "orphan-above" => Snapshot([ValidHeader], [], [new string('f', 64) + "0101" + StorageStem + "00" + "07" + "01ff"]),
             "split-stem" => Snapshot([ValidHeader], [CodeStem + "00" + "00" + "0101", CodeStem + "00" + "01" + "0101"], []),
             "sub-index-order" => Snapshot([ValidHeader], [CodeStem + "01" + "01" + "0101" + "00" + "0101"], []),
             "trailing" => [.. Snapshot([ValidHeader], [], []), 0],
