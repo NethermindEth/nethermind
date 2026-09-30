@@ -420,6 +420,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// is readable at its own state root, so the only work left is recovering the list's senders.
     /// Null when EIP-8037 leaves the answer undecidable from state alone: only execution records the gas
     /// dimensions appendability is judged on, so the caller must fall through to it rather than guess.
+    /// After cache loss or restart, even resending the current head can therefore answer SYNCING.
     /// </remarks>
     private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)
     {
@@ -430,19 +431,38 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // max(execution, state) carries them back, so without what execution recorded this would answer on a
         // coarser gas rule than the processing path and could report real censorship as absent.
         block.Header.GasUsedPerDimension = RecordedGasDimensions(hash);
-        if (spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null) return null;
-
-        _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
-
-        ValidationResult result = InclusionListValidator.IsSatisfied(
-            block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
-            ? ValidationResult.Valid
-            : ValidationResult.InclusionListUnsatisfied;
+        ValidationResult result;
+        if (spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null)
+        {
+            // Included entries need no appendability calculation (EIP-7805).
+            if (!AllInclusionListTransactionsIncluded(block)) return null;
+            result = ValidationResult.Valid;
+        }
+        else
+        {
+            _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
+            result = InclusionListValidator.IsSatisfied(
+                block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
+                ? ValidationResult.Valid
+                : ValidationResult.InclusionListUnsatisfied;
+        }
 
         _latestBlocks?.Set(hash, new CachedPayloadResult(result, null, ComputeInclusionListDigest(block), block.Header.GasUsedPerDimension));
         return result == ValidationResult.Valid
             ? NewPayloadV1Result.Valid(block.Hash)
             : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
+    }
+
+    private static bool AllInclusionListTransactionsIncluded(Block block)
+    {
+        HashSet<Hash256> included = new(block.Transactions.Length);
+        foreach (Transaction tx in block.Transactions)
+            if (tx.Hash is { } hash) included.Add(hash);
+
+        foreach (Transaction tx in block.InclusionListTransactions!)
+            if (tx.Hash is not { } hash || !included.Contains(hash)) return false;
+
+        return true;
     }
 
     /// <summary>The EIP-8037 gas dimensions execution recorded for the block <paramref name="hash"/> names.</summary>

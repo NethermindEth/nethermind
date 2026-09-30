@@ -761,10 +761,14 @@ public partial class EngineModuleTests
     // newPayloadV6 (2.1) requires a VALID response to carry the real compliance answer, and the max would
     // have this one report the censorship as absent, so the payload is answered SYNCING — (2.2) leaves
     // `inclusionListSatisfied` null there — and only a safe re-execution can give the answer instead.
-    [TestCase(50, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions")]
-    [TestCase(1, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions_after_the_payload_cache_evicts_it")]
-    [TestCase(1, true, TestName = "NewPayloadV6_declines_to_judge_a_resent_block_once_both_caches_lose_the_gas_dimensions")]
-    public async Task NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions(int newPayloadCacheSize, bool dimensionsLost)
+    [TestCase(50, false, false, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions")]
+    [TestCase(1, false, false, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions_after_the_payload_cache_evicts_it")]
+    [TestCase(1, true, false, false, TestName = "NewPayloadV6_declines_to_judge_a_resent_block_once_both_caches_lose_the_gas_dimensions")]
+    [TestCase(1, true, true, false, TestName = "NewPayloadV6_answers_an_included_list_after_both_dimension_caches_are_lost")]
+    [TestCase(1, true, false, true, TestName = "NewPayloadV6_declines_an_omitted_list_for_the_head_after_both_dimension_caches_are_lost")]
+    [TestCase(1, true, true, true, TestName = "NewPayloadV6_answers_an_included_list_for_the_head_after_both_dimension_caches_are_lost")]
+    public async Task NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions(
+        int newPayloadCacheSize, bool dimensionsLost, bool listIncluded, bool resendHead)
     {
         // Genesis is raised to the production target so the block's remaining gas exceeds the execution cap;
         // the 4M default leaves no room for a transaction big enough to tell the two rules apart.
@@ -787,7 +791,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 first = payloadResult.Data!.ExecutionPayload;
 
         await rpc.engine_newPayloadV6(first, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, firstList);
-        await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3);
+        await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3, finalize: !resendHead);
 
         Block executed = chain.BlockTree.FindBlock(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
         Assert.That(executed.Header.GasUsedPerDimension, Is.Not.Null, "the dimensions must reach the block a re-check is handed");
@@ -807,8 +811,15 @@ public partial class EngineModuleTests
         Assert.That(censored.GasLimit, Is.GreaterThan(gasLimit - execution), "the entry must not fit the max");
 
         // What a restart leaves behind: the payload cache is already past this block at size 1, and a header
-        // read back from disk carries no dimensions. The block is an ancestor of the head, so it cannot be
-        // re-executed to recover them either.
+        // read back from disk carries no dimensions. Neither an ancestor nor the head itself can be
+        // re-executed to recover them here.
+        if (resendHead)
+        {
+            await rpc.engine_forkchoiceUpdatedV5(
+                new ForkchoiceStateV1(first.BlockHash, first.BlockHash, first.BlockHash), payloadAttributes: null);
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(first.BlockHash), "the resend must target the current head");
+        }
+
         if (dimensionsLost)
         {
             executed.Header.GasUsedPerDimension = null;
@@ -816,17 +827,20 @@ public partial class EngineModuleTests
         }
 
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            first, [], Keccak.Zero, [], [Rlp.Encode(censored).Bytes]);
+            first, [], Keccak.Zero, [], listIncluded ? firstList : [Rlp.Encode(censored).Bytes]);
 
+        bool answerUnavailable = dimensionsLost && !listIncluded;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resend.Data.Status, Is.EqualTo(dimensionsLost ? PayloadStatus.Syncing : PayloadStatus.Valid));
-            Assert.That(resend.Data.InclusionListSatisfied, dimensionsLost ? Is.Null : Is.False,
-                "the entry the block left room for on both dimensions makes the block a censor");
+            Assert.That(resend.Data.Status, Is.EqualTo(answerUnavailable ? PayloadStatus.Syncing : PayloadStatus.Valid));
+            Assert.That(resend.Data.InclusionListSatisfied, answerUnavailable ? Is.Null : Is.EqualTo(listIncluded),
+                answerUnavailable ? "without the dimensions the answer must be withheld, not guessed"
+                    : listIncluded ? "entries already included need no gas dimensions"
+                    : "the entry the block left room for on both dimensions makes the block a censor");
         }
     }
 
-    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot)
+    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot, bool finalize = true)
     {
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent, Keccak.Zero, parent),
@@ -836,7 +850,7 @@ public partial class EngineModuleTests
 
         await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
         await rpc.engine_forkchoiceUpdatedV5(
-            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
+            new ForkchoiceStateV1(payload.BlockHash, finalize ? payload.BlockHash : parent, finalize ? payload.BlockHash : parent), payloadAttributes: null);
         return payload;
     }
 
