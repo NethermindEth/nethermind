@@ -289,14 +289,16 @@ public class TrailingRequestBytesLoopbackTests
     private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token,
         Identity? requesterIdentity = null, int requests = 1, Func<IChannel, CancellationToken, Task>? afterRequest = null, Func<IChannel, CancellationToken, Task>? afterResponse = null)
     {
+        YamuxFaultLog requesterLog = new();
         ServiceProvider services = new ServiceCollection()
+            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(requesterLog))
             .AddSingleton<RawRequestProtocol>()
             .AddLibp2p(static builder => builder.AddAppLayerProtocol<RawRequestProtocol>())
             .BuildServiceProvider();
         await using (services)
         await using (ILocalPeer requester = services.GetRequiredService<IPeerFactory>().Create(requesterIdentity ?? new Identity(privateKey: null, KeyType.Secp256K1)))
         {
-            ISession session = await requester.DialAsync(PeerSessionNodes.LoopbackAddress(server), token).WaitAsync(token);
+            ISession session = await PeerSessionNodes.DialFromPlainPeerAsync(requester, requesterLog, server, token);
             RawRequestProtocol protocol = services.GetRequiredService<RawRequestProtocol>();
             protocol.Id = protocolId;
             protocol.HalfClose = halfClose;
