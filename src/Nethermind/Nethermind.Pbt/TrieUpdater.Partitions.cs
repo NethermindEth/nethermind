@@ -67,6 +67,7 @@ public static partial class TrieUpdater
                 if (!GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.TryLoad(store, rootPath, currentRoot,
                         out GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> rootReader))
                 {
+                    if (currentRoot != default) throw new InvalidDataException("A referenced PBT node group is missing.");
                     AbsentGroupFrame<PbtStorageTreeKey, PbtStorageNodePath> emptyRoot = new(0);
                     return FoldZones(store, ref emptyRoot, default, workers, sharedReaders.AsSpan(), sharedWriters.AsSpan(), zoneFrontiers.AsSpan(),
                         touchedZoneMasks, storeWriter, foldQuota, memoryProvider);

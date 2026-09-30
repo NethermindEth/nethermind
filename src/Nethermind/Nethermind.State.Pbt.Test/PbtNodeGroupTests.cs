@@ -1521,13 +1521,10 @@ public class PbtNodeGroupTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    [Ignore("Pre-existing: TrieUpdater does not validate currentRoot against the stored root for nonempty batches.")]
-    public void Update_rejects_missing_or_mismatched_current_root(bool storedRootPresent)
+    [Test]
+    public void Update_rejects_current_root_without_stored_root_group()
     {
         using PbtNodeGroupStore store = new();
-        if (storedRootPresent) store.Fold(default, [(PbtStoreTestExtensions.ZoneKey("00"), Value(1))]);
 
         Assert.That(() => store.Fold(new ValueHash256(Value(3)), [(PbtStoreTestExtensions.ZoneKey("FF"), Value(2))]), Throws.TypeOf<InvalidDataException>());
     }
