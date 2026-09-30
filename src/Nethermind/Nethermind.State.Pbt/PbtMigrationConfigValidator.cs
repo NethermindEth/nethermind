@@ -38,14 +38,13 @@ internal static class PbtMigrationConfigValidator
 
         bool snapshot = HasPath(config.MigrationSnapshotPath);
         bool preimages = HasPath(config.MigrationPreimagesPath);
-        bool source = HasPath(config.MigrationPreimageSourcePath);
         // Preimages beside a snapshot only verify it, so they are not a source of their own.
-        if ((snapshot ? 1 : 0) + (preimages && !snapshot ? 1 : 0) + (source ? 1 : 0) + (config.MigrationGenesisBootstrap ? 1 : 0) > 1)
-            Fail("Select at most one migration source: snapshot (optionally verified by preimages), preimages, offline preimage-flat, or genesis bootstrap.");
-        if ((snapshot || preimages || source) && config.MigrationAnchor is null)
+        if ((snapshot ? 1 : 0) + (preimages && !snapshot ? 1 : 0) + (config.MigrationGenesisBootstrap ? 1 : 0) > 1)
+            Fail("Select at most one migration source: snapshot (optionally verified by preimages), preimages, or genesis bootstrap.");
+        if ((snapshot || preimages) && config.MigrationAnchor is null)
             Fail("MigrationAnchor is required for an external migration source.");
 
-        foreach (string? path in new[] { config.MigrationSnapshotPath, config.MigrationPreimagesPath, config.MigrationPreimageSourcePath })
+        foreach (string? path in new[] { config.MigrationSnapshotPath, config.MigrationPreimagesPath })
         {
             if (path is null) continue;
             if (!HasPath(path)) Fail("Migration input paths must not be empty or whitespace.");
@@ -71,13 +70,10 @@ internal static class PbtMigrationConfigValidator
         string output = Path.GetFullPath(exportPath);
         RejectLinks(output);
         if (Directory.Exists(output) || File.Exists(output)) Fail("MigrationExportPath must be a new directory.");
-        foreach (string? input in new[] { targetPath, config.MigrationPreimageSourcePath })
-        {
-            if (input is null) continue;
-            RejectLinks(Path.GetFullPath(input));
-            if (ContainsPath(Path.GetFullPath(input), output) || ContainsPath(output, Path.GetFullPath(input)))
-                Fail("Migration export must not overlap target or source paths.");
-        }
+        string target = Path.GetFullPath(targetPath);
+        RejectLinks(target);
+        if (ContainsPath(target, output) || ContainsPath(output, target))
+            Fail("Migration export must not overlap the target path.");
     }
 
     private static void ValidateFakeRootSnapshotImport(IPbtConfig config)

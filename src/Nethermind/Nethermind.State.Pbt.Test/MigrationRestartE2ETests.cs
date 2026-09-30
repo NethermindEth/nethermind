@@ -129,46 +129,6 @@ public class MigrationRestartE2ETests
         Directory.Delete(directory, recursive: true);
     }
 
-    [Test]
-    public async Task External_offline_preimage_database_bootstraps_standard_flat_and_reopens()
-    {
-        string directory = CreateTestDirectory();
-        try
-        {
-            string producerPath = Path.Combine(directory, "producer");
-            string sourcePath = Path.Combine(directory, "offline-source");
-            await using (MigrationLifecycleHarness producer = await MigrationLifecycleHarness.Create(producerPath, false, FlatLayout.Flat, builder => ConfigureRocks(builder)))
-            {
-                producer.Container.Resolve<MigrationGenesisSource>().Database.Flush();
-                producer.Container.Resolve<IDbProvider>().CodeDb.Flush();
-            }
-            CopyDirectory(Path.Combine(producerPath, "migration-work", "genesis-source"), Path.Combine(sourcePath, "flat"));
-            CopyDirectory(Path.Combine(producerPath, "code"), Path.Combine(sourcePath, "code"));
-            Dictionary<string, string> originalFiles = HashFiles(sourcePath);
-            string target = Path.Combine(directory, "target");
-            for (int pass = 0; pass < 2; pass++)
-            {
-                await using MigrationLifecycleHarness consumer = await MigrationLifecycleHarness.Create(target, true, FlatLayout.Flat,
-                    builder => ConfigureRocks(builder), configureMigration: config =>
-                    {
-                        config.MigrationSnapshotPath = null;
-                        config.MigrationPreimagesPath = null;
-                        config.MigrationPreimageSourcePath = sourcePath;
-                    });
-                using IPersistence.IPersistenceReader native = consumer.Container.Resolve<IPersistence>().CreateReader();
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(native.IsPreimageMode, Is.False);
-                    Assert.That(native.CurrentState.BlockNumber, Is.Zero);
-                    Assert.That(consumer.Telemetry.GetShadowRoot(consumer.Anchor.Hash!), Is.EqualTo(PbtRoot(consumer, "anchor")));
-                }
-            }
-            Assert.That(HashFiles(sourcePath), Is.EquivalentTo(originalFiles), "offline source must remain byte-for-byte unchanged");
-        }
-        catch { TestContext.Out.WriteLine($"Retained failed restart datadir: {directory}"); throw; }
-        Directory.Delete(directory, recursive: true);
-    }
-
     private static Hash256 PbtRoot(MigrationLifecycleHarness harness, string name) => new(harness.Expected[name].GetProperty("pbtRoot").GetString()!);
 
     private static void AssertAllocation(MigrationLifecycleHarness harness, string name)
@@ -191,21 +151,6 @@ public class MigrationRestartE2ETests
         string directory = Path.Combine(root, ".tmp", "eip8347-restart", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         return directory;
-    }
-
-    private static void CopyDirectory(string source, string target)
-    {
-        Directory.CreateDirectory(target);
-        foreach (string file in Directory.GetFiles(source)) File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
-        foreach (string child in Directory.GetDirectories(source)) CopyDirectory(child, Path.Combine(target, Path.GetFileName(child)));
-    }
-
-    private static Dictionary<string, string> HashFiles(string directory)
-    {
-        Dictionary<string, string> result = [];
-        foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
-            result.Add(Path.GetRelativePath(directory, file), Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(file))));
-        return result;
     }
 
     private static ContainerBuilder ConfigureRocks(ContainerBuilder builder) => builder

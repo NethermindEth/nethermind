@@ -57,7 +57,7 @@ internal sealed class PbtMigrationBootstrap(
         VerifyAlignment();
     }
 
-    internal static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationPreimagesPath is not null || configuration.MigrationPreimageSourcePath is not null || configuration.MigrationGenesisBootstrap;
+    internal static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationPreimagesPath is not null || configuration.MigrationGenesisBootstrap;
 
     private async Task Import(PbtBootstrapLease lease, CancellationToken cancellationToken)
     {
@@ -120,6 +120,6 @@ internal sealed class PbtMigrationBootstrap(
         PbtImageAnchor anchor = PbtMigrationAnchor.Create(chainSpec, genesis, header);
         string scratch = Path.Combine(dbFactory.GetFullDbPath(new DbSettings("migration-work", "migration-work")), "bootstrap");
         return RuntimeBootstrapLease.Create(anchor, scratch, IsCurrent,
-            configuration, genesisBootstrap?.Source, flatPersistence, dbProvider.CodeDb, logManager);
+            configuration, genesisBootstrap?.Source, flatPersistence, dbProvider.CodeDb);
     }
 }
