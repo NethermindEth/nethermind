@@ -4106,7 +4106,7 @@ public partial class FrameTxProcessorTests
     [TestCase((byte)0x0B, 0ul, 2ul, true, StatusCode.Success)]
     [TestCase((byte)0x0C, 0ul, 1ul, true, StatusCode.Success)]
     [TestCase((byte)0x0C, 1ul, 2ul, true, StatusCode.Success)]
-    [TestCase((byte)0x0B, 1ul, 0ul, true, StatusCode.Failure)]
+    [TestCase((byte)0x0B, 1ul, 2ul, true, StatusCode.Failure)]
     [TestCase((byte)0x0C, 2ul, 0ul, true, StatusCode.Failure)]
     [TestCase((byte)0x0C, 0ul, 0ul, false, StatusCode.Failure)]
     [TestCase((byte)0x0B, 0ul, 0ul, false, StatusCode.Success)]
