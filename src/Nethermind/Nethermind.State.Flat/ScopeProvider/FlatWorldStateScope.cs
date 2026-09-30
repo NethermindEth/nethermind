@@ -96,8 +96,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
 
+        // The storage root builder takes the committed writes instead, so the two never run together.
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
-            && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
+            && !configuration.ParallelStorageRoot && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
