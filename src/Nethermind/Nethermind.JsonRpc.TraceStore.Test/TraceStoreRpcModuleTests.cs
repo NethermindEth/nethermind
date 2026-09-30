@@ -23,6 +23,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -168,6 +169,46 @@ public class TraceStoreRpcModuleTests
         {
             Assert.That(result.GetProperty("output").GetString(), Is.EqualTo("0x2a"));
             Assert.That(result.GetProperty("trace").GetArrayLength(), Is.Zero);
+        }
+    }
+
+    // Live replay builds vmTrace only when it is requested, and then records ex.store at every depth, stateDiff or not.
+    [Test]
+    public async Task Stored_replay_selects_vm_trace_like_live_replay(
+        [Values("trace", "stateDiff", "vmTrace", "vmTrace,stateDiff")] string selection, [Values] bool blockReplay, [Values] bool streaming)
+    {
+        TestContext test = new(streaming: streaming);
+        test.DbTrace.Action = new ParityTraceAction { Type = "call", CallType = "call", From = TestItem.AddressA, To = TestItem.AddressB };
+        test.DbTrace.StateChanges = new() { [TestItem.AddressA] = new ParityAccountStateChange { Balance = new ParityStateChange<UInt256?>(1, 2) } };
+        ParityVmTrace sub = new() { Code = [], Operations = [new ParityVmOperationTrace { Store = new ParityStorageChangeTrace { Key = [2], Value = [2] } }] };
+        test.DbTrace.VmTrace = new ParityVmTrace { Code = [], Operations = [new ParityVmOperationTrace { Store = new ParityStorageChangeTrace { Key = [1], Value = [1] }, Sub = sub }] };
+        test.Store.Set(test.DbTrace.BlockHash!, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(new[] { test.DbTrace }));
+        string[] types = selection.Split(',');
+        using JsonRpcResponse response = blockReplay
+            ? test.Module.trace_replayBlockTransactions(BlockParameter.Latest, types)
+            : test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, types);
+        byte[] serialized = await Serialize(response);
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result");
+        if (blockReplay)
+        {
+            result = result[0];
+        }
+
+        JsonElement vmTrace = result.GetProperty("vmTrace");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("stateDiff").ValueKind, Is.EqualTo(types.Contains("stateDiff") ? JsonValueKind.Object : JsonValueKind.Null));
+            if (types.Contains("vmTrace"))
+            {
+                JsonElement operation = vmTrace.GetProperty("ops")[0];
+                Assert.That(operation.GetProperty("ex").GetProperty("store").GetProperty("key").GetString(), Is.EqualTo("0x1"));
+                Assert.That(operation.GetProperty("sub").GetProperty("ops")[0].GetProperty("ex").GetProperty("store").GetProperty("key").GetString(), Is.EqualTo("0x2"));
+            }
+            else
+            {
+                Assert.That(vmTrace.ValueKind, Is.EqualTo(JsonValueKind.Null));
+            }
         }
     }
 
