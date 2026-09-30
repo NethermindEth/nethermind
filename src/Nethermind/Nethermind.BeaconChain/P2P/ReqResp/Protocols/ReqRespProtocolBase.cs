@@ -175,6 +175,9 @@ public abstract class ReqRespProtocolBase
     /// <summary>Receives the peer of an inbound request that broke the protocol after the listener began serving it, for the peer manager to score.</summary>
     internal Action<PeerId, string>? RequestViolationSink { get; init; }
 
+    /// <summary>How long a served stream is held for the requester to end it, so a requester that never does cannot pin a listener for good.</summary>
+    internal TimeSpan WatchLingerAfterServed { get; init; } = RespTimeout;
+
     private void ReportViolation(ISessionContext context, string protocolId, string detail)
     {
         RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
@@ -185,10 +188,17 @@ public abstract class ReqRespProtocolBase
     }
 
     /// <summary>An inbound stream being served: it holds the peer's concurrency slot and, once the request is read, watches the stream for bytes that must not follow it.</summary>
-    /// <remarks>A request is complete once its payload is read, so serving starts without waiting for the requester's EOF; bytes that arrive later are reported, not waited for.</remarks>
-    protected sealed class InboundRequest(ReqRespProtocolBase owner, ISessionContext context, string protocolId, IDisposable slot) : IDisposable
+    /// <remarks>
+    /// A request is complete once its payload is read, so serving starts without waiting for the requester's EOF; bytes that arrive later are reported, not waited for.
+    /// The channel is torn down when the listener returns, so disposing ends the response with an EOF and then holds the listener until the requester ends its side,
+    /// at the longest <see cref="WatchLingerAfterServed"/>: a requester that reads to the end of the response ends its side at once, so the wait is over then.
+    /// The concurrency slot is held through the wait, so <see cref="MaxConcurrentRequests"/> also bounds the streams one peer can keep open by never ending its side.
+    /// </remarks>
+    protected sealed class InboundRequest(ReqRespProtocolBase owner, ISessionContext context, string protocolId, IDisposable slot) : IAsyncDisposable
     {
-        private readonly CancellationTokenSource _served = new();
+        private readonly CancellationTokenSource _watchEnd = new();
+        private Stream? _stream;
+        private Task? _watching;
 
         /// <exception cref="Eth2ReqRespException">The request is malformed, or bytes after it are already buffered.</exception>
         public async Task<byte[]> ReadRequestAsync(Stream stream, int maxSize, CancellationToken token, bool allowEmpty = false)
@@ -210,7 +220,8 @@ public abstract class ReqRespProtocolBase
         {
             if (!tail.IsClosed)
             {
-                _ = ObserveAsync(stream, tail);
+                _stream = stream;
+                _watching = ObserveAsync(stream, tail);
             }
         }
 
@@ -219,7 +230,7 @@ public abstract class ReqRespProtocolBase
         {
             try
             {
-                string? violation = await tail.WatchAsync(stream, _served.Token);
+                string? violation = await tail.WatchAsync(stream, _watchEnd.Token);
                 if (violation is not null)
                 {
                     owner.ReportViolation(context, protocolId, violation);
@@ -227,15 +238,30 @@ public abstract class ReqRespProtocolBase
             }
             catch (Exception)
             {
-                // Nothing awaits this task, so an escaping exception would surface as an unobserved one.
+                // Awaited only when disposing, so an escaping exception must not fail the listener.
             }
         }
 
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
-            _served.Cancel();
-            _served.Dispose();
-            slot.Dispose();
+            try
+            {
+                if (_watching is not null)
+                {
+                    _watchEnd.CancelAfter(owner.WatchLingerAfterServed);
+                    if (_stream is ChannelStreamAdapter channel)
+                    {
+                        await channel.TryWriteEofAsync(_watchEnd.Token);
+                    }
+
+                    await _watching;
+                }
+            }
+            finally
+            {
+                _watchEnd.Dispose();
+                slot.Dispose();
+            }
         }
     }
 
@@ -312,7 +338,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
+        await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
             return;
