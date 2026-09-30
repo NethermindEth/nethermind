@@ -352,7 +352,7 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new FrameTxPayerFilter(_logger));
 
             // EIP-8141: after FrameTxPayerFilter, so the natively-resolved fast path bypasses it.
-            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger));
+            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger, _headInfo));
 
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
@@ -1577,7 +1577,11 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
-            if (accepted != AcceptTxResult.Invalid
+            if (state.FrameSimulationYielded && _retryCache.TryDefer(tx.Hash!))
+            {
+                _hashCache.DeleteFromCurrentBlock(tx.Hash!);
+            }
+            else if (accepted != AcceptTxResult.Invalid
                 && accepted != AcceptTxResult.InvalidBlobProofs)
             {
                 _retryCache.Received(tx.Hash!);
@@ -2611,6 +2615,12 @@ namespace Nethermind.TxPool
             : _transactions.ContainsKey(hash)
                 || (txType == TxType.FrameTx && _blobTransactions.ContainsKey(hash))
                 || _broadcaster.ContainsTx(hash);
+
+        /// <remarks>The sum of the three stores <see cref="ContainsTx"/> reads, each of which only counts up.</remarks>
+        public long GetRemovalGeneration(Address sender) =>
+            _transactions.GetRemovalGeneration(sender)
+            + _blobTransactions.GetRemovalGeneration(sender)
+            + _broadcaster.GetRemovalGeneration(sender);
 
         public bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
             _transactions.TryGetValue(hash, out transaction)

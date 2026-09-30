@@ -19,7 +19,7 @@ public class GetPayloadV5Result<TVersionedExecutionPayload>(Block block, UInt256
     public override bool ValidateFork(ISpecProvider specProvider)
     {
         IReleaseSpec spec = specProvider.GetSpec(Block.Number, Block.Timestamp);
-        return spec.IsEip7594Enabled && !spec.BlockLevelAccessListsEnabled;
+        return spec.IsOsakaEnabled && !spec.IsAmsterdamEnabled;
     }
 }
 

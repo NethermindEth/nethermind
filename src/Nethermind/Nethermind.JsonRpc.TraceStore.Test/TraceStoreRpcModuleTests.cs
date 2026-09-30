@@ -54,7 +54,7 @@ public class TraceStoreRpcModuleTests
                 return [];
             }
         };
-        test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(stream));
+        test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(stream));
 
         if (fail) Assert.Throws<InvalidOperationException>(() => test.Module.trace_get(TestItem.KeccakA, [0]));
         else
@@ -70,8 +70,8 @@ public class TraceStoreRpcModuleTests
     public void trace_get_preserves_inner_error([Values(ErrorCodes.ResourceNotFound, ErrorCodes.ResourceUnavailable)] int errorCode)
     {
         TestContext test = new();
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> error =
-            ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("Trace unavailable", errorCode, isTemporary: true);
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> error =
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Fail("Trace unavailable", errorCode, isTemporary: true);
         test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(error);
 
         using ResultWrapper<ParityTxTraceFromStore?> result = test.Module.trace_get(TestItem.KeccakA, [0]);
@@ -80,6 +80,27 @@ public class TraceStoreRpcModuleTests
             Assert.That(result.Result.Error, Is.EqualTo("Trace unavailable"));
             Assert.That(result.ErrorCode, Is.EqualTo(errorCode));
             Assert.That(result.IsTemporary, Is.True);
+        }
+    }
+
+    [Test]
+    public void transaction_lookups_return_null_for_missing_transaction()
+    {
+        TestContext test = new();
+        test.InnerModule.trace_transaction(TestItem.KeccakB).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(null));
+        test.InnerModule.trace_replayTransaction(TestItem.KeccakB, Arg.Any<string[]>()).Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(null));
+
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> traces = test.Module.trace_transaction(TestItem.KeccakB);
+        using ResultWrapper<ParityTxTraceFromStore?> trace = test.Module.trace_get(TestItem.KeccakB, []);
+        using ResultWrapper<ParityTxTraceFromReplay?> replay = test.Module.trace_replayTransaction(TestItem.KeccakB, ["trace"]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(traces.Data, Is.Null);
+            Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(trace.Data, Is.Null);
+            Assert.That(replay.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(replay.Data, Is.Null);
         }
     }
 
@@ -301,6 +322,152 @@ public class TraceStoreRpcModuleTests
         Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
     }
 
+    private static readonly string StoreAToB = $"{TestItem.AddressA} -> {TestItem.AddressB}";
+    private static readonly string StoreBToB = $"{TestItem.AddressB} -> {TestItem.AddressB}";
+    private static readonly string StoreAToC = $"{TestItem.AddressA} -> {TestItem.AddressC}";
+    private static readonly string StoreRewardToC = $"reward -> {TestItem.AddressC}";
+
+    private static ParityTraceAction Call(Address from, Address to) => new() { Type = "call", CallType = "call", From = from, To = to };
+
+    // A -> B, B -> B, A -> C and a reward to C.
+    private static readonly ParityTraceAction[] StoreActions =
+    [
+        Call(TestItem.AddressA, TestItem.AddressB), Call(TestItem.AddressB, TestItem.AddressB), Call(TestItem.AddressA, TestItem.AddressC),
+        new() { Type = "reward", Author = TestItem.AddressC, RewardType = "block" },
+    ];
+
+    // Stores the actions (by default StoreActions) at the latest block, then filters them with the given fields.
+    private static async Task<string[]> FilterStore(bool streaming, string fields, ParityTraceAction[]? actions = null)
+    {
+        TestContext test = new(streaming: streaming);
+        Hash256 block = test.DbTrace.BlockHash!;
+        test.Store.Set(block, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(
+            [.. (actions ?? StoreActions).Select(action => new ParityLikeTxTrace
+            {
+                BlockHash = block,
+                TransactionHash = action.Type == "reward" ? null : test.DbTrace.TransactionHash,
+                Action = action
+            })]));
+
+        // Read as the RPC server reads it, so an omitted or null mode takes the default.
+        TraceFilterForRpc filter = JsonSerializer.Deserialize<TraceFilterForRpc>(
+            $"{{\"fromBlock\":\"latest\",\"toBlock\":\"latest\"{fields}}}",
+            EthereumJsonSerializer.JsonRpcRequestOptions)!;
+        using JsonRpcResponse response = test.Module.trace_filter(filter);
+
+        // Written as the RPC server writes it, so the streaming case runs the streamed filter, not the buffered one.
+        JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
+        return [.. result.Select(static trace => $"{trace["action"]!["from"] ?? "reward"} -> {trace["action"]!["to"] ?? trace["action"]!["author"] ?? trace["result"]?["address"]}")];
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_matches_creation_only_by_the_address_its_result_reports(
+        [Values("\"intersection\"", "\"union\"")] string mode,
+        [Values] bool streaming)
+    {
+        // A creation by A of B that succeeded, reverted or halted: a failed one still carries B as its action's To.
+        ParityTraceAction[] creations =
+        [
+            new() { Type = "create", CallType = "create", CreationMethod = "create", From = TestItem.AddressA, To = TestItem.AddressB, Result = new() { Address = TestItem.AddressB } },
+            new() { Type = "create", CallType = "create", CreationMethod = "create", From = TestItem.AddressA, To = TestItem.AddressB, Result = new() { GasUsed = 0x12 }, Error = "Reverted" },
+            new() { Type = "create", CallType = "create", CreationMethod = "create", From = TestItem.AddressA, To = TestItem.AddressB, Result = null, Error = "Out of gas" },
+        ];
+        string created = $"{TestItem.AddressA} -> {TestItem.AddressB}";
+        string failed = $"{TestItem.AddressA} -> ";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await FilterStore(streaming, $",\"toAddress\":[\"{TestItem.AddressB}\"],\"mode\":{mode}", creations), Is.EqualTo(new[] { created }));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[\"{TestItem.AddressB}\"],\"mode\":{mode}", creations),
+                Is.EqualTo(mode == "\"union\"" ? new[] { created, failed, failed } : new[] { created }));
+        }
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_combines_address_lists_by_mode(
+        [Values(null, "null", "\"intersection\"", "\"union\"")] string? mode,
+        [Values] bool streaming)
+    {
+        string modeField = mode is null ? "" : $",\"mode\":{mode}";
+        string[] matched = await FilterStore(streaming, $",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[\"{TestItem.AddressC}\"]{modeField}");
+        string[] expected = mode == "\"union\"" ? [StoreAToB, StoreAToC, StoreRewardToC] : [StoreAToC];
+        Assert.That(matched, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_reads_an_empty_address_list_as_unrestricted(
+        [Values(null, "\"intersection\"", "\"union\"")] string? mode,
+        [Values] bool streaming)
+    {
+        string modeField = mode is null ? "" : $",\"mode\":{mode}";
+        string[] all = [StoreAToB, StoreBToB, StoreAToC, StoreRewardToC];
+        string[] toC = await FilterStore(streaming, $",\"toAddress\":[\"{TestItem.AddressC}\"]{modeField}");
+        string[] fromA = await FilterStore(streaming, $",\"fromAddress\":[\"{TestItem.AddressA}\"]{modeField}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toC, Is.EqualTo(new[] { StoreAToC, StoreRewardToC }));
+            Assert.That(fromA, Is.EqualTo(new[] { StoreAToB, StoreAToC }));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[],\"toAddress\":[\"{TestItem.AddressC}\"]{modeField}"), Is.EqualTo(toC));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[]{modeField}"), Is.EqualTo(fromA));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[],\"toAddress\":[]{modeField}"), Is.EqualTo(all));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[]{modeField}"), Is.EqualTo(all));
+            Assert.That(await FilterStore(streaming, $",\"toAddress\":[]{modeField}"), Is.EqualTo(all));
+        }
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_reads_after_and_count_as_unsigned(
+        [Values("\"0xffffffff\"", "18446744073709551615")] string count, [Values] bool streaming) =>
+        Assert.That(await FilterStore(streaming, $",\"after\":1,\"count\":{count}"), Is.EqualTo(new[] { StoreBToB, StoreAToC, StoreRewardToC }));
+
+    [Test]
+    public void trace_filter_returns_invalid_params_for_reversed_range([Values(0, 1, 2)] int parallelization)
+    {
+        TestContext test = new(parallelization);
+        // The omitted fromBlock is the stored head, block 2.
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_filter(new TraceFilterForRpc { ToBlock = new BlockParameter(1) });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Is.EqualTo("From block number: 2 is greater than to block number 1"));
+        }
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    // The stored head is block 2; an omitted toBlock is latest.
+    private static readonly (ulong From, ulong? To)[] RangesPastTheHead = [(3, null), (2, 3), (1, 0xffff)];
+
+    [Test]
+    public void trace_filter_returns_invalid_params_for_a_bound_past_the_head(
+        [ValueSource(nameof(RangesPastTheHead))] (ulong From, ulong? To) range, [Values(0, 1, 2)] int parallelization)
+    {
+        TestContext test = new(parallelization);
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_filter(new TraceFilterForRpc
+        {
+            FromBlock = new BlockParameter(range.From),
+            ToBlock = range.To is null ? null : new BlockParameter(range.To.Value)
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Is.EqualTo("requested block range is in the future"));
+        }
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void trace_filter_returns_from_store_with_the_head_as_a_bound([Values(0, 1, 2)] int parallelization)
+    {
+        TestContext test = new(parallelization);
+
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(2), ToBlock = new BlockParameter(2) });
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> expected = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
+
+        Assert.That(JToken.Parse(Serializer.Serialize(result)), Is.EqualTo(JToken.Parse(Serializer.Serialize(expected))).Using(JToken.EqualityComparer));
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
     [Test]
     public void trace_filter_returns_from_inner_module_when_any_block_trace_is_missing([Values(0, 1, 2)] int parallelization)
     {
@@ -309,6 +476,55 @@ public class TraceStoreRpcModuleTests
         Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
 
         test.InnerModule.Received().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    // Pending resolves to the head, whose traces are stored; neither the store nor the inner module may answer it.
+    [Test]
+    public void rejects_pending_block_as_invalid_params(
+        [Values("trace_block", "trace_replayBlockTransactions", "trace_filter fromBlock", "trace_filter toBlock")] string request)
+    {
+        TestContext test = new();
+        IResultWrapper result = request switch
+        {
+            "trace_block" => test.Module.trace_block(BlockParameter.Pending),
+            "trace_replayBlockTransactions" => test.Module.trace_replayBlockTransactions(BlockParameter.Pending, [ParityTraceTypes.Trace.ToString()]),
+            "trace_filter fromBlock" => test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Pending, ToBlock = BlockParameter.Latest }),
+            _ => test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Pending }),
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Is.EqualTo("Pending block is not supported for tracing"));
+            Assert.That(test.InnerModule.ReceivedCalls(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_reads_null_member_as_omitted(
+        [Values("after", "count")] string member, [Values] bool streaming)
+    {
+        TestContext test = new(streaming: streaming);
+        test.DbTrace.Action = new ParityTraceAction { Type = "call", CallType = "call", From = TestItem.AddressA, To = TestItem.AddressB };
+        test.Store.Set(test.DbTrace.BlockHash!, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(new[] { test.DbTrace }));
+        const string range = "\"fromBlock\":\"latest\",\"toBlock\":\"latest\"";
+
+        async Task<string> Filter(string json)
+        {
+            // Read and written as the RPC server does, so the streaming case runs the streamed filter.
+            TraceFilterForRpc filter = JsonSerializer.Deserialize<TraceFilterForRpc>(json, EthereumJsonSerializer.JsonRpcRequestOptions)!;
+            using JsonRpcResponse response = test.Module.trace_filter(filter);
+            return Encoding.UTF8.GetString(await Serialize(response));
+        }
+
+        string withNull = await Filter($"{{{range},\"{member}\":null}}");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(withNull)["result"]!.Select(static trace => (string?)trace["action"]!["to"]), Is.EqualTo(new[] { TestItem.AddressB.ToString() }), withNull);
+            Assert.That(withNull, Is.EqualTo(await Filter($"{{{range}}}")));
+        }
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
     }
 
     [Test]
@@ -370,7 +586,7 @@ public class TraceStoreRpcModuleTests
                 .Returns(nonDbReplayWrapper);
 
             InnerModule.trace_replayTransaction(nonDbTransaction, Arg.Any<string[]>())
-                .Returns(nonDbReplayWrapper);
+                .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplay(NonDbTraces[0])));
 
             InnerModule.trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>())
                 .Returns(nonDbReplaysWrapper);
@@ -383,7 +599,7 @@ public class TraceStoreRpcModuleTests
                 .Returns(nonDbFromStoreWrapper);
 
             InnerModule.trace_transaction(nonDbTransaction)
-                .Returns(nonDbFromStoreWrapper);
+                .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
 
         }
     }

@@ -33,14 +33,22 @@ public static class FrameTxSignatureValidator
     public static readonly Address P256VerifyPrecompileAddress = PrecompiledAddresses.P256Verify;
 
     public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
-        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error);
+        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
+
+    /// <summary>Same validation, optionally accepting a SECP256K1 or P256 entry with empty signature bytes as a
+    /// placeholder. Simulation can also skip signature verification while retaining structural checks.</summary>
+    /// <remarks>With <paramref name="skipVerification"/> only the length and the SECP256K1 recovery id are checked:
+    /// execution-apis#907 exempts signature checks from eth_simulateV1, so placeholder bytes need not be a
+    /// canonical signature nor, for P256, carry the signer's public key.</remarks>
+    internal static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification)
+        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures, skipVerification);
 
     /// <summary>Same validation for callers without a sig hash: computed lazily, so a transaction whose
     /// entries all carry an explicit digest never pays for it.</summary>
     public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
-        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error);
+        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
 
-    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
+    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification = false)
     {
         error = null;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
@@ -61,6 +69,17 @@ public static class FrameTxSignatureValidator
                 return Fail(InvalidMsgLength, out error);
             }
 
+            if (allowEmptySignatures && signature.Signature.IsEmpty)
+            {
+                if (signature.Scheme == TxFrameSignature.SchemeSecp256k1) continue;
+                if (signature.Scheme == TxFrameSignature.SchemeP256)
+                {
+                    if (p256Precompile is null) return Fail(P256NotSupported, out error);
+                    continue;
+                }
+                return Fail(InvalidSignature, out error);
+            }
+
             if (signature.Msg.IsEmpty && !sigHashComputed)
             {
                 sigHash = FrameTxSigHash.ComputeValue(tx);
@@ -72,8 +91,8 @@ public static class FrameTxSignatureValidator
 
             bool ok = signature.Scheme switch
             {
-                TxFrameSignature.SchemeSecp256k1 => ValidateSecp256k1(signature, resolvedSigner, in message, ecdsa, out error),
-                TxFrameSignature.SchemeP256 => ValidateP256(signature, resolvedSigner, in message, p256Precompile, spec, out error),
+                TxFrameSignature.SchemeSecp256k1 => ValidateSecp256k1(signature, resolvedSigner, in message, ecdsa, skipVerification, out error),
+                TxFrameSignature.SchemeP256 => ValidateP256(signature, resolvedSigner, in message, p256Precompile, spec, skipVerification, out error),
                 _ => Fail(InvalidSignature, out error),
             };
 
@@ -83,7 +102,7 @@ public static class FrameTxSignatureValidator
         return true;
     }
 
-    private static bool ValidateSecp256k1(TxFrameSignature signature, Address resolvedSigner, in ValueHash256 message, IEthereumEcdsa ecdsa, out string? error)
+    private static bool ValidateSecp256k1(TxFrameSignature signature, Address resolvedSigner, in ValueHash256 message, IEthereumEcdsa ecdsa, bool skipVerification, out string? error)
     {
         error = null;
         ReadOnlySpan<byte> raw = signature.Signature.Span;
@@ -91,6 +110,7 @@ public static class FrameTxSignatureValidator
 
         ulong v = raw[0];
         if (v > 1) return Fail(NonCanonicalSignature, out error);
+        if (skipVerification) return true;
 
         UInt256 r = new(raw[1..33], isBigEndian: true);
         UInt256 s = new(raw[33..65], isBigEndian: true);
@@ -108,11 +128,12 @@ public static class FrameTxSignatureValidator
         return recovered == resolvedSigner || Fail(InvalidSecp256k1Signer, out error);
     }
 
-    private static bool ValidateP256(TxFrameSignature signature, Address resolvedSigner, in ValueHash256 message, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
+    private static bool ValidateP256(TxFrameSignature signature, Address resolvedSigner, in ValueHash256 message, IPrecompile? p256Precompile, IReleaseSpec spec, bool skipVerification, out string? error)
     {
         error = null;
         ReadOnlySpan<byte> raw = signature.Signature.Span;
         if (raw.Length != TxFrameSignature.P256SignatureLength) return Fail(InvalidSignatureLength, out error);
+        if (skipVerification) return p256Precompile is not null || Fail(P256NotSupported, out error);
 
         // P256VERIFY accepts high-s, so the EIP-8141 low-s gate has to run here instead.
         UInt256 r = new(raw[..32], isBigEndian: true);

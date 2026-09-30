@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
-    public async Task GethLikeTxTraceStreamingSingleResult_WhenCancelledMidTrace_ClosesJsonEnvelope()
+    public async Task GethLikeTxTraceStreamingSingleResult_WhenCancelledMidTrace_PropagatesCancellation()
     {
         using CancellationTokenSource requestCts = new();
         CancellationTokenSource timeoutCts = new();
@@ -43,8 +43,8 @@ public partial class DebugRpcModuleTests
 
         Pipe pipe = new();
 
-        Assert.That(async () => await result.WriteToAsync(pipe.Writer, requestCts.Token), Throws.Nothing,
-            "WriteToAsync swallows OperationCanceledException so the HTTP layer can close the response cleanly");
+        Assert.That(async () => await result.WriteToAsync(pipe.Writer, requestCts.Token), Throws.InstanceOf<OperationCanceledException>(),
+            "the response writer must distinguish cancellation from successful completion");
 
         await pipe.Writer.CompleteAsync();
 
@@ -135,7 +135,7 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task GethLikeTxTraceStreamingBlockResult_WhenCancelledMidBlock_ClosesOuterArray()
+    public async Task GethLikeTxTraceStreamingBlockResult_WhenCancelledMidBlock_PropagatesCancellation()
     {
         using CancellationTokenSource requestCts = new();
         CancellationTokenSource timeoutCts = new();
@@ -159,8 +159,8 @@ public partial class DebugRpcModuleTests
 
         Pipe pipe = new();
 
-        Assert.That(async () => await result.WriteToAsync(pipe.Writer, requestCts.Token), Throws.Nothing,
-            "cancellation is swallowed so the response can close cleanly");
+        Assert.That(async () => await result.WriteToAsync(pipe.Writer, requestCts.Token), Throws.InstanceOf<OperationCanceledException>(),
+            "the response writer must distinguish cancellation from successful completion");
 
         await pipe.Writer.CompleteAsync();
         ReadResult readResult = await pipe.Reader.ReadAsync();
