@@ -902,6 +902,83 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
     }
 
+    [Test]
+    public void ParallelStorageRoot_ReplacesTheEarlyApply([Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    {
+        const int slotCount = 40;
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new(config: new FlatDbConfig
+        {
+            ApplyStorageWritesOnIdleThread = true,
+            ParallelStorageRoot = true,
+            ParallelStorageRootBatchSize = 1,
+            DeferStorageTrieCommit = deferStorageTrieCommit
+        });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+
+        // Every slot once, then slot 1 again and slot 2 back to its pre-block zero, which the flush skips.
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+        UInt256[] expected = new UInt256[slotCount];
+        for (int slot = 0; slot < slotCount; slot++) storageTree.HintSet((UInt256)slot, expected[slot] = (UInt256)(slot + 1));
+        storageTree.HintSet(1, expected[1] = 1000);
+        storageTree.HintSet(2, expected[2] = 0);
+        storageTree.WaitForJob();
+        // The builder has filled the tree, but until a write batch finalizes it the root is the pre-block one.
+        Assert.That(storageTree.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
+
+        long prebuiltTrees = Db.Metrics.ParallelStorageRootPrebuiltTrees;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+            if (clearAtBlockEnd) storageBatch.Clear();
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                if (slot != 2) storageBatch.Set((UInt256)slot, expected[slot]);
+            }
+        }
+        // Deferred, the batch only hashed the trie and leaves its nodes to the scope commit.
+        Assert.That(storageTree.HasUncommittedNodes, Is.EqualTo(deferStorageTrieCommit));
+        scope.Commit(1);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            if (!expected[slot].IsZero) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
+        }
+        expectedTree.UpdateRootHash();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Db.Metrics.ParallelStorageRootPrebuiltTrees, Is.GreaterThan(prebuiltTrees), "the builder must have built the trie");
+            Assert.That(scope.EarlyApplyCounts, Is.EqualTo((0, 0, 0, 0)));
+            Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+            Assert.That(storageTree.EarlyWritesDrained, Is.True);
+            Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+        }
+    }
+
+    [Test]
+    public void ParallelStorageRoot_CommitsNoNodesOfATrieTheFlushSkipped([Values] bool deferStorageTrieCommit)
+    {
+        using TestContext ctx = new(config: new FlatDbConfig { ParallelStorageRoot = true, ParallelStorageRootBatchSize = 1, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        // The builder applies the write, but no write batch ever takes the contract, as for one the flush prunes.
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+        long builderWrites = Db.Metrics.ParallelStorageRootWrites;
+        storageTree.HintSet(1, 1);
+        storageTree.WaitForJob();
+        Assert.That(Db.Metrics.ParallelStorageRootWrites, Is.GreaterThan(builderWrites), "the builder must have applied the write");
+
+        scope.Commit(1);
+
+        Assert.That(ctx.LastCommittedSnapshot!.StorageNodes, Is.Empty);
+    }
+
     // Process-wide, so restore the previous value.
     private static IDisposable SetMinIdleGap(TimeSpan gap)
     {
@@ -919,6 +996,21 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(nodesAtCommit, Is.Not.Empty);
         Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
         Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
+    }
+
+    [Test]
+    public void ParallelStorageRoot_CommitsTheSameStorageNodes([Values(1, 3)] int contractCount, [Values] bool clearInSecondBatch, [Values] bool deferStorageTrieCommit)
+    {
+        (HashSet<string> serialNodes, Hash256[] serialRoots) = CommitStorageSlots(deferStorageTrieCommit: false, contractCount, clearInSecondBatch);
+        long prebuiltTrees = Db.Metrics.ParallelStorageRootPrebuiltTrees;
+        (HashSet<string> builtNodes, Hash256[] builtRoots) = CommitStorageSlots(deferStorageTrieCommit, contractCount, clearInSecondBatch, parallelStorageRoot: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Db.Metrics.ParallelStorageRootPrebuiltTrees - prebuiltTrees, Is.GreaterThanOrEqualTo(contractCount), "every trie must come from the builder");
+            Assert.That(builtNodes, Is.EquivalentTo(serialNodes));
+            Assert.That(builtRoots, Is.EqualTo(serialRoots));
+        }
     }
 
     [Test]
@@ -973,10 +1065,16 @@ public class FlatWorldStateScopeProviderTests
         }
     }
 
-    private static (HashSet<string> Nodes, Hash256[] Roots) CommitStorageSlots(bool deferStorageTrieCommit, int contractCount, bool clearInSecondBatch)
+    private static (HashSet<string> Nodes, Hash256[] Roots) CommitStorageSlots(bool deferStorageTrieCommit, int contractCount, bool clearInSecondBatch, bool parallelStorageRoot = false)
     {
         const int slotCount = 64;
-        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
+        using TestContext ctx = new(config: new FlatDbConfig
+        {
+            DeferStorageTrieCommit = deferStorageTrieCommit,
+            ParallelStorageRoot = parallelStorageRoot,
+            ParallelStorageRootBatchSize = 1,
+            ParallelStorageRootThreads = contractCount
+        });
         FlatWorldStateScope scope = ctx.Scope;
         Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
         addresses = addresses[..contractCount];
@@ -987,12 +1085,22 @@ public class FlatWorldStateScopeProviderTests
         int batchCount = clearInSecondBatch ? 2 : 1;
         for (int batch = 0; batch < batchCount; batch++)
         {
+            // The builder takes the writes committed before the first write batch, which closes it for the block.
+            if (parallelStorageRoot && batch == 0)
+            {
+                for (int contract = 0; contract < addresses.Length; contract++)
+                {
+                    IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addresses[contract]);
+                    for (int slot = 0; slot < slotCount; slot++) storageTree.HintSet((UInt256)slot, SlotValue(slot, contract, batch));
+                }
+            }
+
             using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length);
             for (int contract = 0; contract < addresses.Length; contract++)
             {
                 using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addresses[contract], slotCount);
                 if (batch > 0) storageBatch.Clear();
-                for (int slot = batch * slotCount / 2; slot < slotCount; slot++) storageBatch.Set((UInt256)slot, (UInt256)(slot + 1 + contract * 100 + batch * 1000));
+                for (int slot = batch * slotCount / 2; slot < slotCount; slot++) storageBatch.Set((UInt256)slot, SlotValue(slot, contract, batch));
             }
         }
         scope.Commit(1);
@@ -1006,6 +1114,8 @@ public class FlatWorldStateScopeProviderTests
         Hash256[] roots = new Hash256[addresses.Length];
         for (int contract = 0; contract < addresses.Length; contract++) roots[contract] = scope.Get(addresses[contract])!.StorageRoot;
         return (nodes, roots);
+
+        static UInt256 SlotValue(int slot, int contract, int batch) => (UInt256)(slot + 1 + contract * 100 + batch * 1000);
     }
 
     [Test]
