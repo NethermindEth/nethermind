@@ -396,13 +396,13 @@ fi
         )
         self.assertEqual(0, code, log)
         self.assertEqual("true", output["should_run"])
-        self.assertEqual(["fusaka"], json.loads(output["payload_sets"]))
+        self.assertNotIn("payload_sets", output)
         self.assertEqual(self.AUTOMATED_CELLS, json.loads(output["cells"]))
 
     def test_master_push_runs_the_same_cells_as_the_label(self):
         code, log, output = self.run_resolver(EVENT_NAME="push", PUSH_BRANCH="master")
         self.assertEqual(0, code, log)
-        self.assertEqual(["fusaka"], json.loads(output["payload_sets"]))
+        self.assertNotIn("payload_sets", output)
         self.assertEqual(self.AUTOMATED_CELLS, json.loads(output["cells"]))
 
     def test_dispatch_is_one_cell_named_after_its_payload_set(self):
@@ -433,7 +433,9 @@ fi
             ({"DISPATCH_DELAY_SECONDS": "1s"}, "delay_seconds must be a non-negative number of seconds"),
             ({"DISPATCH_DELAY_SECONDS": "-1"}, "delay_seconds must be a non-negative number of seconds"),
             ({"DISPATCH_DELAY_SECONDS": "1x5"}, "delay_seconds must be a non-negative number of seconds"),
-            ({"DISPATCH_AMOUNT": '10"0'}, "amount must be a payload count"),
+            ({"DISPATCH_AMOUNT": '10"0'}, "amount must be a positive whole number of payloads"),
+            ({"DISPATCH_AMOUNT": "abc"}, "amount must be a positive whole number of payloads"),
+            ({"DISPATCH_AMOUNT": "0"}, "amount must be a positive whole number of payloads"),
         ):
             with self.subTest(**overrides):
                 code, log, output = self.run_resolver(**overrides)

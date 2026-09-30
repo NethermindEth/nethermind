@@ -239,7 +239,6 @@ jobs:
       retrospective_last: ${{ steps.resolve.outputs.retrospective_last }}
       retrospective_step: ${{ steps.resolve.outputs.retrospective_step }}
       state_layout: ${{ steps.resolve.outputs.state_layout }}
-      payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       cells: ${{ steps.resolve.outputs.cells }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
       perf: ${{ steps.resolve.outputs.perf }}
@@ -334,14 +333,13 @@ jobs:
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
-            payload_sets="[\"${payload_set}\"]"
             # The cell values are interpolated into JSON and the rendered config, so they must be plain tokens.
             if ! [[ "${delay_seconds}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
               echo "::error::delay_seconds must be a non-negative number of seconds, e.g. 1 or 0.25 (got '${delay_seconds}')."
               exit 1
             fi
-            if ! [[ "${amount}" =~ ^[A-Za-z0-9]+$ ]]; then
-              echo "::error::amount must be a payload count (got '${amount}')."
+            if ! [[ "${amount}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::amount must be a positive whole number of payloads (got '${amount}')."
               exit 1
             fi
             # A dispatch is one cell named after its payload set, so its artifact names stay as they were.
@@ -427,7 +425,6 @@ jobs:
             branch="${PR_HEAD_BRANCH}"
             state_layout="flat"
             payload_set="fusaka"
-            payload_sets='["fusaka"]'
             cells="${automated_cells}"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
@@ -454,7 +451,6 @@ jobs:
             branch="${PUSH_BRANCH}"
             state_layout="flat"
             payload_set="fusaka"
-            payload_sets='["fusaka"]'
             cells="${automated_cells}"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
@@ -703,7 +699,6 @@ jobs:
             echo "retrospective_last=${retrospective_last:-100}"
             echo "retrospective_step=${retrospective_step:-10}"
             echo "state_layout=${state_layout}"
-            echo "payload_sets=${payload_sets}"
             echo "cells=${cells}"
             echo "dottrace=${dottrace}"
             echo "perf=${perf:-false}"
@@ -2358,7 +2353,7 @@ jobs:
             });
 
   # ---------------------------------------------------------------------------
-  # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
+  # Single-image summary: aggregates all runs × cells into GITHUB_STEP_SUMMARY
   # ---------------------------------------------------------------------------
 
   single-summary:
