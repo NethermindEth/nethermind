@@ -370,10 +370,19 @@ public class Eth70ProtocolHandlerTests
         }
     }
 
-    [Test]
-    public void Should_validate_partial_receipts_of_known_block_with_zero_gas_limit()
+    [TestCase(true, "Receipt count exceeds block transactions count")]
+    [TestCase(false, "Block receipts size exceeds block gas limit allowance")]
+    public void Should_validate_partial_receipts_of_known_block_with_zero_gas_limit(bool bodyKnown, string expectedError)
     {
-        SetupBlockMetadata(Keccak.Zero, gasLimit: 0, gasUsed: 0);
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(Keccak.Zero)
+            .WithGasLimit(0)
+            .WithGasUsed(0)
+            .WithTransactionsRoot(bodyKnown ? Keccak.EmptyTreeHash : TestItem.KeccakB)
+            .TestObject;
+        _syncManager.FindHeader(Keccak.Zero).Returns(header);
+        _syncManager.Find(Keccak.Zero).Returns(bodyKnown ? new Block(header, [], []) : new Block(header));
+
         StrongBox<int> requestCount = RespondWithSingleReceiptPages(prependCompleteBlock: false, lastBlockIncomplete: true);
 
         HandleIncomingStatusMessage();
@@ -382,14 +391,19 @@ public class Eth70ProtocolHandlerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception?.Message, Is.EqualTo("Receipt count exceeds block transactions count"));
+            Assert.That(exception?.Message, Is.EqualTo(expectedError));
             Assert.That(requestCount.Value, Is.EqualTo(1));
         }
     }
 
     [Test]
-    public async Task Should_accept_empty_receipts_block_when_requesting_from_peer()
+    public async Task Should_accept_empty_receipts_block_when_requesting_from_peer([Values] bool emptyBlockHasZeroGasLimit)
     {
+        if (emptyBlockHasZeroGasLimit)
+        {
+            SetupBlockMetadata(Keccak.Zero, gasLimit: 0, gasUsed: 0);
+        }
+
         TxReceipt[] block2Receipts =
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
