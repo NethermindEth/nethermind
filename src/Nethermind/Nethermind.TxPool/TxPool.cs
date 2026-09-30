@@ -385,6 +385,45 @@ namespace Nethermind.TxPool
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
             DropUnreadySenders(_transactions.GetBucketSnapshot(), filterToReadyTx, baseFee);
 
+        /// <inheritdoc/>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256 baseFee)
+        {
+            // Readiness is checked after the snapshot, outside the pool-wide lock.
+            Dictionary<AddressAsKey, Transaction[]> bySender = _transactions.GetBucketSnapshot();
+            foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
+            {
+                if (bucket.Length == 0 || !HasReadyNonFrameTransaction(bucket, sender, baseFee)) bySender.Remove(sender);
+            }
+
+            return bySender;
+        }
+
+        /// <summary>Whether a sender's bucket holds a non-frame transaction ready for the next block.</summary>
+        /// <remarks>Frame-only buckets avoid account reads, and no EIP-8250 keyed-nonce state is needed for a
+        /// caller that discards frames. A spent ordinary entry does not block a later entry at the account nonce.
+        /// <para>Skipping on <see cref="Transaction.SupportsFrames"/> also drops account-domain frame transactions
+        /// that the full readiness scan can accept. The inclusion-list builder strips them on the same predicate,
+        /// so retaining their sender here would only consume a reservoir slot.</para></remarks>
+        private bool HasReadyNonFrameTransaction(ReadOnlySpan<Transaction> bucket, Address sender, in UInt256 baseFee)
+        {
+            ulong accountNonce = 0;
+            bool accountNonceRead = false;
+            foreach (Transaction tx in bucket)
+            {
+                if (tx.SupportsFrames) continue;
+                if (!accountNonceRead)
+                {
+                    accountNonce = _accounts.GetNonce(sender);
+                    accountNonceRead = true;
+                }
+
+                if (tx.Nonce < accountNonce) continue;
+                return tx.Nonce == accountNonce && tx.CanPayBaseFee(baseFee);
+            }
+
+            return false;
+        }
+
         /// <summary>Drops from a taken bucket snapshot the senders with nothing includable in the next block.</summary>
         /// <remarks>Judged after the pool walk rather than during it, to keep the head-state reads readiness needs
         /// off the pool-wide lock; the cost moves rather than goes away, as buckets later discarded are copied first.
