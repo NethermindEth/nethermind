@@ -799,7 +799,7 @@ public class EthereumRunnerTests
     [TestCase("gnosis", true)]
     [TestCase("xdc", true)]
     [TestCase("mainnet", false)]
-    public async Task Pool_initializer_retains_the_registered_frame_prefix_simulator(string network, bool chainSpecific)
+    public async Task Pool_initializer_retains_simulator_and_registers_shutdown_disposal(string network, bool chainSpecific)
     {
         ConfigProvider configProvider = new();
         configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
@@ -810,6 +810,7 @@ public class EthereumRunnerTests
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
         plugins.Add(new RunnerTestPlugin(true));
         EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        TxPool.TxPool? pool = null;
         try
         {
             INethermindApi api = runner.Api;
@@ -822,7 +823,7 @@ public class EthereumRunnerTests
                 Assert.That(step.StepType != typeof(InitializeBlockchain), Is.EqualTo(chainSpecific));
                 object initializer = runner.LifetimeScope.Resolve(step.StepType);
                 MethodInfo createPool = step.StepType.GetMethod("CreateTxPool", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                await using TxPool.TxPool pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
+                pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
                 FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 Assert.That(simulatorField.GetValue(pool), Is.SameAs(simulator));
                 return;
@@ -831,7 +832,13 @@ public class EthereumRunnerTests
         }
         finally
         {
+            await using TxPool.TxPool? poolCleanup = pool;
             await runner.StopAsync();
+            if (pool is not null)
+            {
+                FieldInfo disposedField = typeof(TxPool.TxPool).GetField("_isDisposed", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.That(disposedField.GetValue(pool), Is.True);
+            }
         }
     }
 

@@ -96,7 +96,7 @@ public class InitializeBlockchainAuRa(
 
         ITxFilter txPoolFilter = api.TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(minGasPricesContractDataStore);
 
-        return new TxPool.TxPool(
+        TxPool.TxPool txPool = new(
             api.EthereumEcdsa!,
             api.BlobTxStorage ?? NullBlobTxStorage.Instance,
             chainHeadInfoProvider,
@@ -109,6 +109,8 @@ public class InitializeBlockchainAuRa(
             [new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider)],
             txPriorityContract is not null || localDataSource is not null,
             frameTxPrefixSimulator: api.Context.ResolveOptional<IFrameTxPrefixSimulator>());
+        api.DisposeStack.Push(txPool);
+        return txPool;
     }
 
     private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
