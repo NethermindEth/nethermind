@@ -54,7 +54,7 @@ public static class PredeployInstaller
 
             ReadOnlyMemory<byte> code = predeploy.Code;
             ulong nonce = readState.GetNonce(predeploy.Address);
-            bool codeSatisfied = code.IsEmpty || readState.GetCode(predeploy.Address).AsSpan().SequenceEqual(code.Span);
+            bool codeSatisfied = code.IsEmpty || readState.GetCodeSpan(predeploy.Address).SequenceEqual(code.Span);
             if (codeSatisfied && (predeploy.Nonce is not ulong required || nonce >= required))
             {
                 continue;

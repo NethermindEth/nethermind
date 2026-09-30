@@ -22,4 +22,11 @@
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
   </assembly>
+  <assembly fullname="Nethermind.Serialization.Ssz">
+    <!-- Only ZisK's runtime exports the SHA-256 compression precompile merkleization hashes pairs with, so the
+         shared build leaves the flag off and this guest turns it on; ILC folds the check it gates. -->
+    <type fullname="Nethermind.Serialization.Ssz.Merkleization.ZiskSha256FFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
 </linker>

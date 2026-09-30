@@ -736,7 +736,7 @@ namespace Nethermind.TxPool
             // the account carrying code at all, which keeps a codeless sender to one cached read.
             if (!_accounts.TryGetAccount(address, out AccountStruct account) || !account.HasCode) return null;
 
-            ReadOnlySpan<byte> code = _headInfo.ReadOnlyStateProvider.GetCode(address);
+            ReadOnlySpan<byte> code = _headInfo.ReadOnlyStateProvider.GetCodeSpan(address);
             return Eip7702Constants.IsDelegatedCode(code)
                 ? new Address(code[Eip7702Constants.DelegationHeaderLength..])
                 : null;
