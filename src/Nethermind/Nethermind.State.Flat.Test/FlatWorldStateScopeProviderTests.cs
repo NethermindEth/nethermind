@@ -743,20 +743,29 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit,
+        [Values] bool handoffPerTransaction, [Values] bool hashAtBlockEnd)
     {
         const int slotCount = 40;
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly, DeferStorageTrieCommit = deferStorageTrieCommit });
+        using TestContext ctx = new(config: new FlatDbConfig
+        {
+            ApplyStorageWritesOnIdleThread = applyEarly,
+            DeferStorageTrieCommit = deferStorageTrieCommit,
+            EarlyApplyHandoffPerTransaction = handoffPerTransaction,
+            EarlyApplyHashAtBlockEnd = hashAtBlockEnd,
+        });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
 
-        // Every slot once, then slot 1 again and slot 2 back to its pre-block zero.
+        // Two transactions: every slot once, then slot 1 again and slot 2 back to its pre-block zero.
         FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
         for (int slot = 0; slot < slotCount; slot++) storageTree.HintSet((UInt256)slot, (UInt256)(slot + 1));
+        storageTree.HintRoundEnd();
         storageTree.HintSet(1, 1000);
         storageTree.HintSet(2, 0);
+        storageTree.HintRoundEnd();
         Assert.That(() => storageTree.EarlyWritesDrained, Is.True.After(5000, 10));
 
         UInt256[] expected = new UInt256[slotCount];

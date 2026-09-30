@@ -145,6 +145,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
     bool ApplyStorageWritesOnIdleThread { get; set; }
 
+    [ConfigItem(Description = "With ApplyStorageWritesOnIdleThread, hand a contract's committed writes to the idle thread once per transaction instead of once per slot.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool EarlyApplyHandoffPerTransaction { get; set; }
+
+    [ConfigItem(Description = "With ApplyStorageWritesOnIdleThread, only insert the writes during execution and hash the storage trie once at the end of the block.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool EarlyApplyHashAtBlockEnd { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 

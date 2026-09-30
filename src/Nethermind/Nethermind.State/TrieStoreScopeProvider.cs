@@ -464,6 +464,13 @@ public class TrieStoreScopeProvider(
         /// <summary>Updates the root on dispose even if no slot was set.</summary>
         public void MarkSet() => _wasSetCalled = true;
 
+        /// <summary>Counts a write the tree already holds but has yet to hash, as <see cref="Set"/> would.</summary>
+        public void MarkWritten()
+        {
+            _wasSetCalled = true;
+            _writes++;
+        }
+
         public void Dispose()
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;

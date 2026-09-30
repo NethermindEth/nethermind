@@ -279,6 +279,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         foreach (AddressAsKey address in toUpdateRoots)
         {
+            // Every slot this round committed to the contract is hinted, so the backend may hand them over together.
+            if (_storages.TryGetValue(address, out PerContractState? written)) written.HintRoundEnd();
+
             // since the accounts could be empty accounts that are removing (EIP-158)
             if (_stateProvider.AccountExists(address))
             {
@@ -1266,6 +1269,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// <remarks>Also runs off the block thread: the sequential BAL apply executes as iteration 0 of the
         /// parallel executor's loop, whose join publishes the flag before the block thread reads it.</remarks>
         public void MarkJournalled() => _journalledRound = Provider._originalsRound;
+
+        public void HintRoundEnd() => _backend?.HintRoundEnd();
 
         public void SaveChange(in StorageCell storageCell, in UInt256 value)
         {

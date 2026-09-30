@@ -219,6 +219,9 @@ public interface IWorldStateScopeProvider
 
         /// <summary>Hint that a transaction committed <paramref name="value"/> to a slot.</summary>
         void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
+
+        /// <summary>Hint that the commit round (a transaction) has hinted every slot it committed to this contract.</summary>
+        void HintRoundEnd() { }
     }
 
     /// <summary>

@@ -137,5 +137,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public void HintSet(in UInt256 index) => inner.HintSet(in index);
 
         public void HintSet(in UInt256 index, in UInt256 value) => inner.HintSet(in index, in value);
+
+        public void HintRoundEnd() => inner.HintRoundEnd();
     }
 }

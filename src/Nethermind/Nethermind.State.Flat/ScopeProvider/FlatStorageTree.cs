@@ -41,6 +41,10 @@ public sealed class FlatStorageTree(
 
     // Committed writes waiting for the early apply thread, in commit order.
     private ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? _earlyWrites;
+    // With EarlyApplyHandoffPerTransaction: the current commit round's writes, owned by the committing thread, and the
+    // rounds handed over so far, one entry per round.
+    private List<(UInt256 Slot, UInt256 Value)>? _roundWrites;
+    private ConcurrentQueue<(UInt256 Slot, UInt256 Value)[]>? _earlyRounds;
     // Owned by whoever holds _earlyState.
     private StorageTree? _earlyTree;
     private Dictionary<UInt256, UInt256>? _earlyApplied;
@@ -111,9 +115,33 @@ public sealed class FlatStorageTree(
         WarmUpSlot(index);
         if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) == EarlyClaimed) return;
 
+        if (_config.EarlyApplyHandoffPerTransaction)
+        {
+            (_roundWrites ??= []).Add((index, value));
+            return;
+        }
+
         ConcurrentQueue<(UInt256 Slot, UInt256 Value)> writes = Volatile.Read(ref _earlyWrites) ?? CreateEarlyWrites();
         writes.Enqueue((index, value));
-        // A set flag means a pass that has yet to clear it will see this write.
+        QueueForEarlyApply();
+    }
+
+    public void HintRoundEnd()
+    {
+        if (_roundWrites is not { Count: > 0 } round) return;
+        if (_scope.AppliesStorageWritesEarly && Volatile.Read(ref _earlyState) != EarlyClaimed)
+        {
+            ConcurrentQueue<(UInt256 Slot, UInt256 Value)[]> rounds = Volatile.Read(ref _earlyRounds) ?? CreateEarlyRounds();
+            rounds.Enqueue(round.ToArray());
+            QueueForEarlyApply();
+        }
+
+        round.Clear();
+    }
+
+    // A set flag means a pass that has yet to clear it will see the writes just queued.
+    private void QueueForEarlyApply()
+    {
         if (Volatile.Read(ref _earlyQueued) == 0 && Interlocked.Exchange(ref _earlyQueued, 1) == 0) _scope.EarlyApplier.Enqueue(this);
     }
 
@@ -122,6 +150,14 @@ public sealed class FlatStorageTree(
         ConcurrentQueue<(UInt256 Slot, UInt256 Value)> created = new();
         return Interlocked.CompareExchange(ref _earlyWrites, created, null) ?? created;
     }
+
+    private ConcurrentQueue<(UInt256 Slot, UInt256 Value)[]> CreateEarlyRounds()
+    {
+        ConcurrentQueue<(UInt256 Slot, UInt256 Value)[]> created = new();
+        return Interlocked.CompareExchange(ref _earlyRounds, created, null) ?? created;
+    }
+
+    private bool HasEarlyWrites => Volatile.Read(ref _earlyWrites) is not null || Volatile.Read(ref _earlyRounds) is not null;
 
     [SkipLocalsInit]
     internal void ApplyEarlyWrites()
@@ -135,11 +171,24 @@ public sealed class FlatStorageTree(
         try
         {
             ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? writes = Volatile.Read(ref _earlyWrites);
-            if (writes is null || writes.IsEmpty || !(leased = _bundle.TryLeaseReadOnlyBundle())) return;
+            ConcurrentQueue<(UInt256 Slot, UInt256 Value)[]>? rounds = Volatile.Read(ref _earlyRounds);
+            if ((writes is null || writes.IsEmpty) && (rounds is null || rounds.IsEmpty)) return;
+            if (!(leased = _bundle.TryLeaseReadOnlyBundle())) return;
 
             Dictionary<UInt256, UInt256> applied = _earlyApplied ??= [];
-            Dictionary<UInt256, UInt256> latest = new(writes.Count);
-            while (writes.TryDequeue(out (UInt256 Slot, UInt256 Value) write)) latest[write.Slot] = write.Value;
+            Dictionary<UInt256, UInt256> latest = new(writes?.Count ?? 0);
+            if (writes is not null)
+            {
+                while (writes.TryDequeue(out (UInt256 Slot, UInt256 Value) write)) latest[write.Slot] = write.Value;
+            }
+
+            if (rounds is not null)
+            {
+                while (rounds.TryDequeue(out (UInt256 Slot, UInt256 Value)[]? round))
+                {
+                    foreach ((UInt256 slot, UInt256 value) in round) latest[slot] = value;
+                }
+            }
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(latest.Count);
             Unsafe.SkipInit(out EvmWord word);
@@ -160,7 +209,8 @@ public sealed class FlatStorageTree(
             StorageTree tree = _earlyTree ??= CreateEarlyTree();
             // No thread-pool work: it would run at normal priority.
             tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
-            tree.UpdateRootHash(canBeParallel: false);
+            // A pass's hash is redone by every later pass that touches the same paths, so it can wait for the block end.
+            if (!_config.EarlyApplyHashAtBlockEnd) tree.UpdateRootHash(canBeParallel: false);
             _scope.CountEarlyApplied(entries.Count);
         }
         catch
@@ -179,7 +229,8 @@ public sealed class FlatStorageTree(
     }
 
     /// <summary>Whether every queued write has been applied to the early tree. For tests.</summary>
-    internal bool EarlyWritesDrained => Volatile.Read(ref _earlyWrites) is not { IsEmpty: false } && Volatile.Read(ref _earlyState) != EarlyApplying && Volatile.Read(ref _earlyQueued) == 0;
+    internal bool EarlyWritesDrained => Volatile.Read(ref _earlyWrites) is not { IsEmpty: false } && Volatile.Read(ref _earlyRounds) is not { IsEmpty: false }
+        && Volatile.Read(ref _earlyState) != EarlyApplying && Volatile.Read(ref _earlyQueued) == 0;
 
     /// <summary>Called once a pass has taken its writes. For tests.</summary>
     internal Action? OnEarlyPassDrained;
@@ -195,7 +246,7 @@ public sealed class FlatStorageTree(
 
     private Dictionary<UInt256, UInt256>? AdoptEarlyTree(StorageTree tree)
     {
-        if (Volatile.Read(ref _earlyWrites) is null) return null;
+        if (!HasEarlyWrites) return null;
 
         int previous = Interlocked.Exchange(ref _earlyState, EarlyClaimed);
         if (previous == EarlyApplying)
@@ -309,7 +360,10 @@ public sealed class FlatStorageTree(
             storageTree.Set(index, value);
             if (_earlyApplied is not null && _earlyApplied.Remove(index, out UInt256 applied) && applied == value)
             {
-                trieBatch.MarkSet();
+                // A tree the early passes left unhashed still has this write's path to hash, which counts towards
+                // hashing it in parallel.
+                if (storageTree._config.EarlyApplyHashAtBlockEnd) trieBatch.MarkWritten();
+                else trieBatch.MarkSet();
                 _reused++;
                 return;
             }

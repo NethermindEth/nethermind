@@ -123,6 +123,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void HintSet(in UInt256 index) => storageTree.HintSet(in index);
 
         public void HintSet(in UInt256 index, in UInt256 value) => storageTree.HintSet(in index, in value);
+
+        public void HintRoundEnd() => storageTree.HintRoundEnd();
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch

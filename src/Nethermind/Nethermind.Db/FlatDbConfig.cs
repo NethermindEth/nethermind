@@ -42,6 +42,8 @@ public class FlatDbConfig : IFlatDbConfig
     public bool VerifyWithTrie { get; set; } = false;
     public bool DeferStorageTrieCommit { get; set; } = true;
     public bool ApplyStorageWritesOnIdleThread { get; set; } = true;
+    public bool EarlyApplyHandoffPerTransaction { get; set; }
+    public bool EarlyApplyHashAtBlockEnd { get; set; }
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
