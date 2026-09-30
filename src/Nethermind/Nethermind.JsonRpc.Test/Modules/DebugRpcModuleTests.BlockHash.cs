@@ -4,7 +4,9 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Blockchain;
+using AddBlockResult = Nethermind.Blockchain.AddBlockResult;
+using BlockTreeLookupOptions = Nethermind.Blockchain.BlockTreeLookupOptions;
+using BlockTreeSuggestOptions = Nethermind.Blockchain.BlockTreeSuggestOptions;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
