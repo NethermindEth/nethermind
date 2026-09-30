@@ -44,6 +44,11 @@ internal sealed class PbtSortedSpool : IDisposable
     /// <summary>Background pre-merge rounds allowed to run at once; full levels wait for a free slot.</summary>
     internal int MaxConcurrentPreMerges { get; init; } = 1;
 
+    /// <summary>Invoked once, on the reading thread, when the first <see cref="Read"/> starts the final merge.</summary>
+    /// <remarks>Draining the background sorts and folding the leftover runs precede the first record, so a consumer
+    /// whose progress only counts records would otherwise look stalled for the whole merge.</remarks>
+    internal Action? FinalMerge { get; init; }
+
     private readonly string _directory;
     private readonly int _segmentBytes;
     private readonly int _writerCount;
@@ -271,6 +276,7 @@ internal sealed class PbtSortedSpool : IDisposable
             if (_openWriters != 0) throw new InvalidOperationException("Spool writers must be disposed before reading.");
             _completed = true;
         }
+        FinalMerge?.Invoke();
         WaitForPending();
         ThrowIfFaulted();
         foreach (List<string> tier in _levels) _runs.AddRange(tier);

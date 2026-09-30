@@ -79,7 +79,8 @@ internal sealed class PbtAnchorPublication(
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtSortedSpool leaves = new(directory, config.ExportSortBufferBytes, writerCount: 1, logManager, cancellationToken);
+            using PbtSortedSpool leaves = new(directory, config.ExportSortBufferBytes, writerCount: 1, logManager, cancellationToken)
+            { FinalMerge = () => { if (_logger.IsInfo) _logger.Info("PBT import: merging the sorted preimage leaves."); } };
             ulong leafCount;
             using (PbtSortedSpool.Writer writer = leaves.CreateWriter())
                 leafCount = WritePreimageLeaves(preimages, flat, code, writer, cancellationToken);

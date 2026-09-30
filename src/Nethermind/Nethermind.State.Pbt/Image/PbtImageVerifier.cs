@@ -70,7 +70,8 @@ internal static class PbtImageVerifier
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtSortedSpool spool = new(directory, bufferBytes, workers, logManager, cancellationToken);
+            using PbtSortedSpool spool = new(directory, bufferBytes, workers, logManager, cancellationToken)
+            { FinalMerge = () => { if (logger.IsInfo) logger.Info("PBT verify: merging the sorted preimages."); } };
             (ulong accounts, ulong slots) = Spool(preimages, state, spool, capacity, workers, logManager, cancellationToken);
 
             ValueHash256 mptRoot;
