@@ -136,8 +136,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
         // V5 and V6 share this payload type and differ only by the inclusion list beside it, so the
         // fork decides which version is valid.
-        return spec.BlockLevelAccessListsEnabled
-            && spec.IsEip7805Enabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V6);
+        return spec.IsAmsterdamEnabled
+            && spec.IsBogotaEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V6);
     }
 
 
