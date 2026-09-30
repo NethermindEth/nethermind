@@ -4112,7 +4112,7 @@ public partial class FrameTxProcessorTests
     [TestCase((byte)0x0B, 0ul, 0ul, false, StatusCode.Success)]
     public void Execute_TxDiff_ReadsPerTopicViews(byte param, ulong index, ulong expected, bool knownTopic, byte expectedStatus)
     {
-        UInt256 topic = UInt256.MaxValue;
+        UInt256 topic = new(Keccak.Compute("topic").Bytes, isBigEndian: true);
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
             .PushData(topic).PushData(0).PushData(0).Op(Instruction.LOG1)
