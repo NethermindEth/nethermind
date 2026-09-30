@@ -26,6 +26,8 @@ The low-level published EIP8297 vector set contains `zero_basic_data_with_storag
 
 EIPs commit `05f2918806` replaced the snapshot's RLP leaf records with typed header records and stem-grouped code and storage records. The pinned geth has no encoder for that format, so every `canonical/*/snapshot.pbt` (both editions) was transcoded in-repo: the leaves decoded from the geth-emitted bytes were re-encoded in the new format, with a check that the leaf set and the claimed PBT root are unchanged. `canonical-manifest.json` snapshot digests are of the transcoded files. The `images/` legacy files were not touched.
 
+They were transcoded again the same way when the snapshot moved to tagged records (the header record's tag carrying its account kind, and one-slot storage groups dropping their entry count) with an end tag and a trailing claimed PBT root, which lets a producer write it and fold its root in one pass.
+
 ## Approved reference discrepancy
 
 The pinned geth preimage codec is legacy RLP with raw-address/numeric-slot ordering. Current EIP8347 requires fixed 20-byte address, 4-byte big-endian count, full 32-byte slots and Keccak-path ordering. The user approved split oracle evidence: geth execution/conversion verifies state and roots; a narrow test-only encoder/parser verifies current canonical preimage bytes. Nethermind must implement **canonical/**, not the legacy **images/** format. Pinned geth CLI verification only applies to legacy images.

@@ -15,11 +15,12 @@ internal static class PbtArtifactWriter
     internal readonly record struct PbtArtifactDigests(ValueHash256 Snapshot, ValueHash256? Preimages);
 
     /// <summary>Writes the snapshot stream and returns its digest.</summary>
-    public static ValueHash256 WriteSnapshot(Stream snapshot, ValueHash256 pbtRoot, PbtSnapshotLayout layout,
-        IEnumerable<RebuildEntry> leaves, CancellationToken cancellationToken = default)
+    /// <param name="calculateRoot">Folds the claimed root from the snapshot leaves as they are written.</param>
+    public static ValueHash256 WriteSnapshot(Stream snapshot, IEnumerable<RebuildEntry> leaves,
+        Func<IEnumerable<RebuildEntry>, ValueHash256> calculateRoot, CancellationToken cancellationToken = default)
     {
         using DigestWriter snapshotWriter = new(snapshot);
-        PbtSnapshotCodec.Write(snapshotWriter, pbtRoot, layout, leaves, cancellationToken);
+        PbtSnapshotCodec.Write(snapshotWriter, leaves, calculateRoot, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return snapshotWriter.Digest;
     }

@@ -35,12 +35,12 @@ public class PbtPortableCodecTests
         {
             using MemoryStream snapshotInput = new(snapshot);
             using MemoryStream preimageInput = new(preimages);
-            ValueHash256 root = PbtSnapshotCodec.ReadHeader(snapshotInput);
+            ValueHash256 root = PbtSnapshotCodec.ReadRoot(snapshotInput);
             List<RebuildEntry> leaves = [.. PbtSnapshotCodec.ReadLeaves(snapshotInput)];
             using MemoryStream snapshotOutput = new();
             using MemoryStream preimageOutput = new();
             PbtArtifactWriter.PbtArtifactDigests digests = new(
-                PbtArtifactWriter.WriteSnapshot(snapshotOutput, root, PbtSnapshotLayout.Of(leaves), leaves),
+                PbtArtifactWriter.WriteSnapshot(snapshotOutput, leaves, PbtTestLeaves.Claiming(root)),
                 PbtArtifactWriter.WritePreimages(preimageOutput, ReadAccounts(preimageInput)));
             using (Assert.EnterMultipleScope())
             {
@@ -84,7 +84,7 @@ public class PbtPortableCodecTests
     public void Streamed_root_matches_canonical_artifact([Values("anchor", "a1", "a2", "a3", "a4", "a5", "b2", "b3", "b4", "b5", "b6")] string name)
     {
         using FileStream source = File.OpenRead(Path.Combine(Fixtures, "canonical", name, "snapshot.pbt"));
-        ValueHash256 root = PbtSnapshotCodec.ReadHeader(source);
+        ValueHash256 root = PbtSnapshotCodec.ReadRoot(source);
         Assert.That(PbtRightmostGroupStore.CalculateRoot(PbtSnapshotCodec.ReadLeaves(source), PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None), Is.EqualTo(root));
     }
 
@@ -101,7 +101,7 @@ public class PbtPortableCodecTests
         PbtTestLeaves.AddAccount(leaves, TestItem.AddressB, new Account(0, 1, Keccak.EmptyTreeHash, Keccak.Compute(code)), code);
         PbtTestLeaves.AddAccount(leaves, TestItem.AddressC, new Account(1, 0, Keccak.EmptyTreeHash, Keccak.Compute(delegation)), delegation);
         PbtTestLeaves.AddAccount(leaves, TestItem.AddressD, new Account(1, 0), null);
-        foreach (UInt256 slot in new UInt256[] { 0, 63, 64, 1000, UInt256.MaxValue })
+        foreach (UInt256 slot in new UInt256[] { 0, 63, 64, 65, 1000, UInt256.MaxValue })
         {
             PbtTestLeaves.AddSlot(leaves, TestItem.AddressC, slot, UInt256.One);
             PbtTestLeaves.AddSlot(leaves, TestItem.AddressD, slot, UInt256.MaxValue);
@@ -109,9 +109,9 @@ public class PbtPortableCodecTests
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
 
         using MemoryStream stream = new();
-        PbtSnapshotCodec.Write(stream, Keccak.Zero.ValueHash256, PbtSnapshotLayout.Of(leaves), leaves);
+        PbtSnapshotCodec.Write(stream, leaves, PbtTestLeaves.Claiming(Keccak.Zero.ValueHash256));
         stream.Position = 0;
-        Assert.That(PbtSnapshotCodec.ReadHeader(stream), Is.EqualTo(Keccak.Zero.ValueHash256));
+        Assert.That(PbtSnapshotCodec.ReadRoot(stream), Is.EqualTo(Keccak.Zero.ValueHash256));
         Assert.That(PbtSnapshotCodec.ReadLeaves(stream).ToList(), Is.EqualTo(leaves));
     }
 
@@ -125,12 +125,14 @@ public class PbtPortableCodecTests
             Leaf("00" + AddressHash + "40", "0x05"),
             Leaf("01" + CodeStem + "00", "0x0102"),
             Leaf("ff" + AddressHash + StorageStem + "07", "0xff"),
+            Leaf("ff" + AddressHash + SecondStorageStem + "01", "0x01"),
+            Leaf("ff" + AddressHash + SecondStorageStem + "02", "0x02"),
         ];
         using MemoryStream stream = new();
-        PbtSnapshotCodec.Write(stream, default, PbtSnapshotLayout.Of(leaves), leaves);
-        Assert.That(stream.ToArray(), Is.EqualTo(Snapshot([ValidHeader], [CodeStem + "00" + "00" + "020102"], [AddressHash + "0101" + StorageStem + "00" + "07" + "01ff"])));
+        PbtSnapshotCodec.Write(stream, leaves, PbtTestLeaves.Claiming(default));
+        Assert.That(stream.ToArray(), Is.EqualTo(Snapshot(ValidHeader, "03" + CodeStem + "00" + "00" + "020102",
+            "06" + AddressHash + StorageStem + "07" + "01ff", "05" + SecondStorageStem + "01" + "01" + "0101" + "02" + "0102")));
         stream.Position = 0;
-        PbtSnapshotCodec.ReadHeader(stream);
         Assert.That(PbtSnapshotCodec.ReadLeaves(stream).ToList(), Is.EqualTo(leaves));
     }
 
@@ -144,9 +146,6 @@ public class PbtPortableCodecTests
         Assert.That(reader.ReadAccount(out _, out uint count), Is.True);
         Assert.That(count, Is.EqualTo(uint.MaxValue));
         Assert.Throws<InvalidDataException>(() => reader.ReadSlot());
-        using MemoryStream huge = new(Bytes.FromHexString(new string('0', 64) + new string('f', 16)));
-        PbtSnapshotCodec.ReadHeader(huge);
-        Assert.That(() => PbtSnapshotCodec.ReadLeaves(huge).ToArray(), Throws.InstanceOf<InvalidDataException>());
     }
 
     private static IEnumerable<PbtAccountPreimages> ReadAccounts(Stream source)
@@ -162,38 +161,41 @@ public class PbtPortableCodecTests
     }
 
     [Test]
-    public void Snapshot_rejects_malformed_records([Values("empty", "unknown-kind", "leading-zero", "over-width", "empty-account", "zero-code-size",
-        "zero-value", "slot-64", "slot-order", "header-order", "no-groups", "orphan-below", "orphan-above", "split-stem", "sub-index-order", "trailing", "truncated", "cancel")] string corruption)
+    public void Snapshot_rejects_malformed_records([Values("empty", "unknown-tag", "leading-zero", "over-width", "empty-account", "zero-code-size",
+        "zero-value", "slot-64", "slot-order", "header-order", "header-after-code", "code-after-storage", "orphan-next-group", "orphan-below",
+        "orphan-above", "counted-single-slot", "split-stem", "sub-index-order", "missing-end", "trailing", "truncated", "cancel")] string corruption)
     {
         const string header = "0101" + "00";
+        string codeGroup = "03" + CodeStem + "00" + "00" + "0101";
+        string storageGroup = "06" + AddressHash + StorageStem + "07" + "01ff";
         byte[] bytes = corruption switch
         {
             "empty" => [],
-            "unknown-kind" => Snapshot([AddressHash + header + "03" + "00"], [], []),
-            "leading-zero" => Snapshot([AddressHash + "020001" + "00" + "00" + "00"], [], []),
-            "over-width" => Snapshot([AddressHash + "09" + "010101010101010101" + "00" + "00" + "00"], [], []),
-            "empty-account" => Snapshot([AddressHash + "00" + "00" + "00" + "00"], [], []),
-            "zero-code-size" => Snapshot([AddressHash + header + "01" + CodeStem + "00" + "00"], [], []),
-            "zero-value" => Snapshot([AddressHash + header + "00" + "01" + "00" + "00"], [], []),
-            "slot-64" => Snapshot([AddressHash + header + "00" + "01" + "40" + "0101"], [], []),
-            "slot-order" => Snapshot([AddressHash + header + "00" + "02" + "01" + "0101" + "00" + "0101"], [], []),
-            "header-order" => Snapshot([ValidHeader, ValidHeader], [], []),
-            "no-groups" => Snapshot([ValidHeader], [], [AddressHash + "00"]),
-            "orphan-below" => Snapshot([ValidHeader], [], [new string('0', 64) + "0101" + StorageStem + "00" + "07" + "01ff"]),
-            "orphan-above" => Snapshot([ValidHeader], [], [new string('f', 64) + "0101" + StorageStem + "00" + "07" + "01ff"]),
-            "split-stem" => Snapshot([ValidHeader], [CodeStem + "00" + "00" + "0101", CodeStem + "00" + "01" + "0101"], []),
-            "sub-index-order" => Snapshot([ValidHeader], [CodeStem + "01" + "01" + "0101" + "00" + "0101"], []),
-            "trailing" => [.. Snapshot([ValidHeader], [], []), 0],
-            "truncated" => Snapshot([ValidHeader], [], [])[..^1],
-            "cancel" => Snapshot([ValidHeader], [], []),
+            "unknown-tag" => Snapshot("09" + AddressHash + header + "00"),
+            "leading-zero" => Snapshot("00" + AddressHash + "020001" + "00" + "00"),
+            "over-width" => Snapshot("00" + AddressHash + "09" + "010101010101010101" + "00" + "00"),
+            "empty-account" => Snapshot("00" + AddressHash + "00" + "00" + "00"),
+            "zero-code-size" => Snapshot("01" + AddressHash + header + CodeStem + "00" + "00"),
+            "zero-value" => Snapshot("00" + AddressHash + header + "01" + "00" + "00"),
+            "slot-64" => Snapshot("00" + AddressHash + header + "01" + "40" + "0101"),
+            "slot-order" => Snapshot("00" + AddressHash + header + "02" + "01" + "0101" + "00" + "0101"),
+            "header-order" => Snapshot(ValidHeader, ValidHeader),
+            "header-after-code" => Snapshot(codeGroup, ValidHeader),
+            "code-after-storage" => Snapshot(ValidHeader, storageGroup, codeGroup),
+            "orphan-next-group" => Snapshot(ValidHeader, "07" + StorageStem + "07" + "01ff"),
+            "orphan-below" => Snapshot(ValidHeader, "06" + new string('0', 64) + StorageStem + "07" + "01ff"),
+            "orphan-above" => Snapshot(ValidHeader, "06" + new string('f', 64) + StorageStem + "07" + "01ff"),
+            "counted-single-slot" => Snapshot(ValidHeader, "04" + AddressHash + StorageStem + "00" + "07" + "01ff"),
+            "split-stem" => Snapshot(ValidHeader, "03" + CodeStem + "00" + "00" + "0101", "03" + CodeStem + "00" + "01" + "0101"),
+            "sub-index-order" => Snapshot(ValidHeader, "03" + CodeStem + "01" + "01" + "0101" + "00" + "0101"),
+            "missing-end" => Bytes.FromHexString(ValidHeader + new string('0', 64)),
+            "trailing" => [.. Snapshot(ValidHeader), 0],
+            "truncated" => Snapshot(ValidHeader)[..^1],
+            "cancel" => Snapshot(ValidHeader),
             _ => throw new ArgumentOutOfRangeException(nameof(corruption))
         };
         using MemoryStream source = new(bytes);
-        Assert.That(() =>
-            {
-                PbtSnapshotCodec.ReadHeader(source);
-                return PbtSnapshotCodec.ReadLeaves(source, new CancellationToken(corruption == "cancel")).ToArray();
-            },
+        Assert.That(() => PbtSnapshotCodec.ReadLeaves(source, new CancellationToken(corruption == "cancel")).ToArray(),
             corruption == "cancel" ? Throws.InstanceOf<OperationCanceledException>() : Throws.InstanceOf<InvalidDataException>());
     }
 
@@ -216,10 +218,10 @@ public class PbtPortableCodecTests
     }
 
     [Test]
-    public void Snapshot_rejects_truncated_header()
+    public void Snapshot_rejects_truncated_trailer()
     {
         using MemoryStream source = new(new byte[31]);
-        Assert.That(() => PbtSnapshotCodec.ReadHeader(source), Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => PbtSnapshotCodec.ReadRoot(source), Throws.InstanceOf<InvalidDataException>());
     }
 
     [Test]
@@ -234,7 +236,7 @@ public class PbtPortableCodecTests
     }
 
     [Test]
-    public void Writer_rejects_unrepresentable_leaves([Values("layout", "duplicate", "zero", "version", "reserved-sub-index", "missing-basic",
+    public void Writer_rejects_unrepresentable_leaves([Values("unconsumed", "duplicate", "zero", "version", "reserved-sub-index", "missing-basic",
         "missing-code-hash", "codeless-code-hash", "delegation-size", "cancel")] string failure)
     {
         RebuildEntry basic = Leaf("00" + AddressHash + "00", "0x0000000000000000000000000000000100000000000000000000000000000000");
@@ -251,25 +253,29 @@ public class PbtPortableCodecTests
             "delegation-size" => [basic, Leaf("00" + AddressHash + "02", "0xef01000000000000000000000000000000000000010000000000000000000000")],
             _ => [basic, codeHash]
         };
-        PbtSnapshotLayout layout = failure == "layout" ? new PbtSnapshotLayout() : PbtSnapshotLayout.Of(leaves);
+        Func<IEnumerable<RebuildEntry>, ValueHash256> calculateRoot = failure == "unconsumed" ? _ => default : PbtTestLeaves.Claiming(default);
         using MemoryStream destination = new();
-        Assert.That(() => PbtSnapshotCodec.Write(destination, default, layout, leaves, new CancellationToken(failure == "cancel")),
-            failure == "cancel" ? Throws.InstanceOf<OperationCanceledException>() : Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => PbtSnapshotCodec.Write(destination, leaves, calculateRoot, new CancellationToken(failure == "cancel")),
+            failure switch
+            {
+                "cancel" => Throws.InstanceOf<OperationCanceledException>(),
+                "unconsumed" => Throws.InstanceOf<InvalidOperationException>(),
+                _ => Throws.InstanceOf<InvalidDataException>()
+            });
     }
 
     private static readonly string AddressHash = string.Concat(Enumerable.Repeat("11", 32));
     private static readonly string CodeStem = string.Concat(Enumerable.Repeat("22", 32));
     private static readonly string StorageStem = string.Concat(Enumerable.Repeat("33", 32));
+    private static readonly string SecondStorageStem = string.Concat(Enumerable.Repeat("44", 32));
 
     /// <summary>A codeless account with nonce one and header slot zero holding five.</summary>
-    private static readonly string ValidHeader = AddressHash + "0101" + "00" + "00" + "01" + "00" + "0105";
+    private static readonly string ValidHeader = "00" + AddressHash + "0101" + "00" + "01" + "00" + "0105";
 
     private static RebuildEntry Leaf(string key, string value) =>
         new(new PbtStorageTreeKey(Bytes.FromHexString(key)), new ValueHash256(Bytes.FromHexString(value).PadLeft(32)));
 
-    /// <summary>A snapshot with a zero root and the given records, each already hex-encoded, in its three sections.</summary>
-    private static byte[] Snapshot(string[] headers, string[] codeGroups, string[] storageRecords) =>
-        Bytes.FromHexString(new string('0', 64) + Section(headers) + Section(codeGroups) + Section(storageRecords));
-
-    private static string Section(string[] records) => ((ulong)records.Length).ToString("x16") + string.Concat(records);
+    /// <summary>A snapshot of the given tagged records, each already hex-encoded, with an end tag and a zero root.</summary>
+    private static byte[] Snapshot(params string[] records) =>
+        Bytes.FromHexString(string.Concat(records) + "08" + new string('0', 64));
 }

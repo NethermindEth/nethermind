@@ -33,6 +33,13 @@ internal static class PbtTestLeaves
     public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>
         into.Add(new RebuildEntry(PbtStateKey.Storage(address, slot), new ValueHash256(value.ToBigEndian())));
 
+    /// <summary>A snapshot root calculation that consumes the written leaves and claims <paramref name="root"/> whatever they hold.</summary>
+    public static Func<IEnumerable<RebuildEntry>, ValueHash256> Claiming(ValueHash256 root) => leaves =>
+    {
+        foreach (RebuildEntry _ in leaves) { }
+        return root;
+    };
+
     public static PbtStorageTreeKey StoragePrefix(Address address) =>
         new([Eip8297KeyDerivation.StorageZone, .. PbtKeyDerivation.AddressKeyHash(address).Bytes]);
 
