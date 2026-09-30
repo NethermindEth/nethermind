@@ -49,7 +49,12 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             private readonly TraceStack _items = items;
 
             public int length() => _items.Count;
-            public IJavaScriptObject peek(int index) => new BigInteger(_items[^(index + 1)].Span, true, true).ToBigInteger();
+            public IJavaScriptObject peek(int index)
+            {
+                if ((uint)index >= (uint)_items.Count)
+                    Engine.CurrentEngine.AbortInput($"tracer accessed out of bound stack: size {_items.Count}, index {index}");
+                return new BigInteger(_items[^(index + 1)].Span, true, true).ToBigInteger();
+            }
         }
 
         public class Memory
@@ -60,9 +65,10 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
 
             public ITypedArray<byte> slice(long start, long end)
             {
+                if (start == end) return Array.Empty<byte>().ToTypedScriptArray();
                 if (start < 0 || end < start || end > Array.MaxLength)
                 {
-                    throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
+                    Engine.CurrentEngine.AbortInput($"tracer accessed out of bound memory: offset {start}, end {end}");
                 }
 
                 int length = (int)(end - start);
@@ -71,7 +77,12 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
                     .ToTypedScriptArray();
             }
 
-            public IJavaScriptObject getUint(int offset) => MemoryTrace.GetUint(offset).ToBigInteger();
+            public IJavaScriptObject getUint(int offset)
+            {
+                if (offset < 0 || (ulong)offset + EvmPooledMemory.WordSize > MemoryTrace.Size)
+                    Engine.CurrentEngine.AbortInput($"tracer accessed out of bound memory: available {MemoryTrace.Size}, offset {offset}, size {EvmPooledMemory.WordSize}");
+                return MemoryTrace.GetUint(offset).ToBigInteger();
+            }
         }
 
         public struct Contract(Address caller, Address address, UInt256 value, ReadOnlyMemory<byte>? input)

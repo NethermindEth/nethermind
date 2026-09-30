@@ -1061,6 +1061,54 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_javascript_log_bounds_are_user_errors(
+        [Values("stack-negative", "stack-empty", "memory-negative", "uint-negative", "uint-empty")] string scenario,
+        [Values] bool caught, [Values] bool mux)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        (string expression, string error) = scenario switch
+        {
+            "stack-negative" => ("log.stack.peek(-1)", "tracer accessed out of bound stack: size 0, index -1"),
+            "stack-empty" => ("log.stack.peek(0)", "tracer accessed out of bound stack: size 0, index 0"),
+            "memory-negative" => ("log.memory.slice(-1,1)", "tracer accessed out of bound memory: offset -1, end 1"),
+            "uint-negative" => ("log.memory.getUint(-1)", "tracer accessed out of bound memory: available 0, offset -1, size 32"),
+            _ => ("log.memory.getUint(0)", "tracer accessed out of bound memory: available 0, offset 0, size 32")
+        };
+        string body = caught ? "try {" + expression + ";} catch(e) {return;}" : expression + ";";
+        string tracer = "{fault:function(){},step:function(log){" + body + "},result:function(){return {};}}";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", FlatTransaction(), "latest", new
+        {
+            tracer = mux ? "muxTracer" : tracer,
+            tracerConfig = mux ? new Dictionary<string, object> { [tracer] = new { } } : null,
+            stateOverrides = ErcOverrides("00")
+        });
+        JToken envelope = JToken.Parse(response);
+        Assert.That(envelope["error"], Is.Not.Null, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envelope["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(envelope["error"]!["message"]!.Value<string>(), Is.EqualTo(error + "    in server-side tracer function 'step'"));
+            Assert.That(envelope["error"]!["data"], Is.Null);
+            Assert.That(envelope["result"], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_javascript_empty_memory_slice_ignores_offset([Values(-1L, 0L, 2147483648L)] long offset)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        string tracer = "{fault:function(){},step:function(log){this.value=toHex(log.memory.slice(" + offset + "," + offset + "));},result:function(){return {value:this.value};}}";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", FlatTransaction(), "latest", new
+        {
+            tracer,
+            stateOverrides = ErcOverrides("00")
+        });
+        JToken envelope = JToken.Parse(response);
+        Assert.That(envelope["error"], Is.Null, response);
+        Assert.That(envelope["result"]!["value"]!.Value<string>(), Is.EqualTo("0x"));
+    }
+
+    [Test]
     public async Task Debug_traceCall_javascript_null_error_is_catchable([Values] bool mux)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));

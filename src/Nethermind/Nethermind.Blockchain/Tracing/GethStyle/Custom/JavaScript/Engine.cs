@@ -173,11 +173,16 @@ public class Engine : IDisposable
 
         if (start < 0 || end < start || end > bytes.Length)
         {
-            PendingInputError ??= $"Tracer accessed out of bound memory: available {bytes.Length}, offset {start}, size {end - start}";
-            V8Engine.Interrupt();
-            throw new JavaScriptInputException(PendingInputError);
+            AbortInput($"Tracer accessed out of bound memory: available {bytes.Length}, offset {start}, size {end - start}");
         }
         return bytes.Slice((int)start, (int)(end - start)).ToTypedScriptArray();
+    }
+
+    internal void AbortInput(string message)
+    {
+        PendingInputError ??= message;
+        V8Engine.Interrupt();
+        throw new JavaScriptInputException(PendingInputError);
     }
 
     /// <summary>
