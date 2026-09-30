@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -23,7 +24,9 @@ public class TraceStoreModuleTests
     [Test]
     public void Registers_db_persisting_block_tracer_for_main_processor_only()
     {
-        using IContainer container = BuildContainer(new TraceStoreConfig { Enabled = true });
+        // The production graph always registers the spec provider, which prices frame transactions' root gas.
+        using IContainer container = BuildContainer(new TraceStoreConfig { Enabled = true }, builder => builder
+            .AddSingleton<ISpecProvider>(Substitute.For<ISpecProvider>()));
 
         // The tracer is contributed via an IMainProcessingModule, so it must NOT be resolvable at the root.
         Assert.That(container.Resolve<IEnumerable<IBlockTracer>>(), Is.Empty);

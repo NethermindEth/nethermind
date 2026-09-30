@@ -210,22 +210,18 @@ public static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth ||
             (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
         {
+            EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
+            if (vm.IsTracingActions)
+                TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckError);
+
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = default;
             EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
-            // Optionally report memory changes for refund tracing.
-            if (vm.IsTracingRefunds)
-            {
-                // Specific to Parity tracing: inspect 32 bytes from data offset.
-                ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
-                vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
-            }
-
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(in gas));
-                vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                vm.TraceCallOutputWindow(in outputOffset, in outputLength);
+                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), precheckError);
             }
 
             // Refund the remaining gas to the caller.
@@ -283,6 +279,29 @@ public static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 
+    /// <summary>
+    /// Reports a call that failed its depth or balance precheck as an action that entered no frame; the gas it
+    /// would have forwarded, including the stipend, returns at once.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceRejectedCall<TGasPolicy, TOpCall>(
+        VirtualMachine<TGasPolicy> vm,
+        in UInt256 dataOffset,
+        in UInt256 dataLength,
+        Address codeSource,
+        in UInt256 callValue,
+        ulong gas,
+        bool isPrecompile,
+        EvmExceptionType error)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+    {
+        ExecutionEnvironment env = vm.VmState.Env;
+        // The call already paid to expand memory over its input.
+        vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
+        vm.TxTracer.ReportRejectedAction(gas, gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, error, isPrecompile);
+    }
+
     // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
     // has no icache and counts instructions, so the NoInlining call and its wide argument
     // marshalling are pure overhead on every CALL; inline it, pulling the hot precompile path in too.
@@ -319,8 +338,7 @@ public static partial class EvmInstructions
         if (TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero) state.SubtractFromBalance(caller, in callValue, vm.Spec);
 
         // Load call data from memory.
-        if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-            return EvmExceptionType.OutOfGas;
+        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
@@ -424,13 +442,12 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
-            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
         {
             goto OutOfGas;
         }
 
-        vm.ReturnData = returnData.ToArray();
+        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length));
 
         return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.

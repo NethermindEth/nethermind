@@ -13,12 +13,16 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider, IPrefixStateSeedSource? prefixSeeds = null) : IOverridableEnvFactory
+public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider, IPrefixStateSeedSource? prefixSeeds = null)
+    : IOverridableEnvFactory, ITraceEnvFactory
 {
-    public IOverridableEnv Create()
+    public IOverridableEnv Create() => Create(readOverlay: null);
+
+    public IOverridableEnv CreateForTracing() => Create(prefixSeeds is { Enabled: true } ? new StateReadOverlaySlot() : null);
+
+    private IOverridableEnv Create(StateReadOverlaySlot? readOverlay)
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-        StateReadOverlaySlot? readOverlay = prefixSeeds is { Enabled: true } ? new StateReadOverlaySlot() : null;
         IWorldStateScopeProvider scopeProvider = readOverlay is null
             ? overridableScope.WorldState
             : new OverlaidScopeProvider(overridableScope.WorldState, readOverlay);

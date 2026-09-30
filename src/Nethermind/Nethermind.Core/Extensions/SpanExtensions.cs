@@ -31,7 +31,8 @@ namespace Nethermind.Core.Extensions
         /// <see href="https://github.com/eth-act/zkevm-standards/issues/41">eth-act/zkevm-standards#41</see>.
         /// <para>
         /// Install the entire seed before creating hash-keyed containers;
-        /// reseeding invalidates stored hashes. Not synchronised against concurrent hashing.
+        /// reseeding invalidates stored hashes, including those an <see cref="Address"/> keeps for itself
+        /// once hashed without AES. Not synchronised against concurrent hashing.
         /// In release guests, unseeded scalar hashing of 32-byte and other inputs longer than 16 bytes
         /// (except 20-byte addresses) silently uses a zero seed; address and short-input hashing access
         /// uninitialised seed arrays. Missing seeding is not guaranteed to fail immediately.
@@ -677,16 +678,9 @@ namespace Nethermind.Core.Extensions
             return (int)(hash ^ (hash >> 32));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MixAddress(ref byte b)
-        {
-            AssertSeeded();
-            ref ulong seeds = ref MemoryMarshal.GetArrayDataReference(AddressSeeds!);
-            return MixWords(
-                Unsafe.ReadUnaligned<ulong>(ref b),
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)),
-                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)), 0, ref seeds);
-        }
+        /// <summary>Mixes a 20-byte address into one 64-bit hash.</summary>
+        /// <remarks>The construction differs by build: see the <c>std</c> and <c>zkevm</c> partials.</remarks>
+        private static partial ulong MixAddress(ref byte b);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static long FastHash64For32BytesFallback(ref byte start)

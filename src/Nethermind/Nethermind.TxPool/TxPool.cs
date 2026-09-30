@@ -70,7 +70,7 @@ namespace Nethermind.TxPool
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
         private bool _specChangeMarkerUnpublished;
-        private readonly DelegationCache _pendingDelegations = new();
+        private readonly DelegationCache _pendingDelegations;
         private readonly PayerExposureCache _payerExposure = new();
         private readonly PendingPaymasterCache _pendingPaymasters = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
@@ -203,6 +203,7 @@ namespace Nethermind.TxPool
             _frameTxPrefixSimulator = frameTxPrefixSimulator;
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
+            _pendingDelegations = new DelegationCache(_specProvider.ChainId);
             ObserveHeadSpec(_specProvider.GetCurrentHeadSpec());
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
@@ -351,7 +352,7 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new FrameTxPayerFilter(_logger));
 
             // EIP-8141: after FrameTxPayerFilter, so the natively-resolved fast path bypasses it.
-            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger));
+            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger, _headInfo));
 
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
@@ -737,7 +738,7 @@ namespace Nethermind.TxPool
 
             ReadOnlySpan<byte> code = _headInfo.ReadOnlyStateProvider.GetCode(address);
             return Eip7702Constants.IsDelegatedCode(code)
-                ? new Address(code[Eip7702Constants.DelegationHeader.Length..])
+                ? new Address(code[Eip7702Constants.DelegationHeaderLength..])
                 : null;
         }
 
@@ -1576,7 +1577,11 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
-            if (accepted != AcceptTxResult.Invalid
+            if (state.FrameSimulationYielded && _retryCache.TryDefer(tx.Hash!))
+            {
+                _hashCache.DeleteFromCurrentBlock(tx.Hash!);
+            }
+            else if (accepted != AcceptTxResult.Invalid
                 && accepted != AcceptTxResult.InvalidBlobProofs)
             {
                 _retryCache.Received(tx.Hash!);
@@ -1766,8 +1771,7 @@ namespace Nethermind.TxPool
             {
                 foreach (AuthorizationTuple auth in tx.AuthorizationList)
                 {
-                    if (auth.Authority is not null)
-                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
+                    _pendingDelegations.Add(auth);
                 }
             }
         }
@@ -1778,8 +1782,7 @@ namespace Nethermind.TxPool
             {
                 foreach (AuthorizationTuple auth in transaction.AuthorizationList)
                 {
-                    if (auth.Authority is not null)
-                        _pendingDelegations.DecrementDelegationCount(auth.Authority!);
+                    _pendingDelegations.Remove(auth);
                 }
             }
         }
@@ -2612,6 +2615,12 @@ namespace Nethermind.TxPool
             : _transactions.ContainsKey(hash)
                 || (txType == TxType.FrameTx && _blobTransactions.ContainsKey(hash))
                 || _broadcaster.ContainsTx(hash);
+
+        /// <remarks>The sum of the three stores <see cref="ContainsTx"/> reads, each of which only counts up.</remarks>
+        public long GetRemovalGeneration(Address sender) =>
+            _transactions.GetRemovalGeneration(sender)
+            + _blobTransactions.GetRemovalGeneration(sender)
+            + _broadcaster.GetRemovalGeneration(sender);
 
         public bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
             _transactions.TryGetValue(hash, out transaction)

@@ -41,6 +41,7 @@ public abstract class TxTracer : ITxTracer
     public virtual bool IsTracingInstructions { get; protected set; }
     public virtual bool IsTracingRefunds { get; protected set; }
     public virtual bool IsTracingReturnData { get; protected set; }
+    public virtual bool IsTracingCallOutputMemory { get; protected set; }
     public virtual bool IsTracingCode { get; protected set; }
     public virtual bool IsTracingStack { get; protected set; }
     public virtual bool IsTracingBlockHash { get; protected set; }
@@ -68,7 +69,7 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
     public virtual void SetOperationMemory(TraceMemory memoryTrace) { }
     public virtual void SetOperationMemorySize(ulong newSize) { }
-    public virtual void SetOperationReturnData(ReadOnlyMemory<byte> returnData) { }
+    public virtual void SetOperationReturnData(ReadOnlySpan<byte> returnData) { }
     public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
     public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
     public virtual void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
@@ -78,6 +79,9 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
     public virtual void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) { }
     public virtual void ReportActionError(EvmExceptionType evmExceptionType) { }
+    public virtual void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    { }
     public virtual void ReportActionRemainingGas(ulong gas) { }
     public virtual void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
     public virtual void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) { }

@@ -225,7 +225,8 @@ internal class XdcBlockTreeTests
             MainnetSpecProvider.Instance,
             builder.SyncConfig,
             builder.StateBoundary,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new BlockTreeMutationLock());
 
         return (blockTree, consensus);
     }

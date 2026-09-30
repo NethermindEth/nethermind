@@ -15,6 +15,7 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
@@ -51,7 +52,7 @@ public class SyncPeerPoolTests
         public string Name => "SimpleMock";
 
         public Hash256 HeadHash { get; set; } = null!;
-        public byte ProtocolVersion { get; } = default;
+        public byte ProtocolVersion { get; set; }
         public string ProtocolCode { get; } = null!;
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
         public string ClientId { get; } = description;
@@ -551,14 +552,16 @@ public class SyncPeerPoolTests
         Assert.That(((SimpleSyncPeerMock)peerInfo.SyncPeer).DisconnectRequested, Is.True);
     }
 
-    [Test]
-    public async Task Will_not_allocate_same_peer_to_two_allocations()
+    [TestCase(AllocationContexts.All)]
+    [TestCase(AllocationContexts.BlockAccessLists)]
+    public async Task Will_not_allocate_same_peer_to_two_allocations(AllocationContexts contexts)
     {
         await using Context ctx = new();
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+        peers[0].ProtocolVersion = EthVersions.Eth71;
 
-        using SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), contexts);
+        using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), contexts);
 
         Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]));
         Assert.That(allocation2.Current, Is.Null);
