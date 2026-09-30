@@ -156,6 +156,15 @@ public sealed partial class KeccakHash
     /// it. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial ValueHash256 ComputeHash256(ReadOnlySpan<byte> input);
 
+    /// <summary>Writes the Keccak-256 digest of <paramref name="input"/> to <paramref name="output"/> through
+    /// <see cref="ComputeHash256"/>, where that is the target's faster path.</summary>
+    /// <returns>Whether the digest was written.</returns>
+    /// <remarks>The host returns false and keeps <see cref="ComputeHash"/>'s own path: its
+    /// <see cref="ComputeHash256"/> goes through <see cref="ComputeHash"/>, so taking it here would recurse. The
+    /// guest takes its lean absorb for every 256-bit digest, callers that hash straight into their own storage
+    /// included. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output);
+
     /// <summary>Computes the Keccak digest of <paramref name="input"/> in one shot.</summary>
     /// <param name="output">Receives the digest; its length picks the Keccak width and must be from 1 to 66.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="output"/> is empty or wider than 66 bytes,
@@ -165,6 +174,9 @@ public sealed partial class KeccakHash
     {
         if ((uint)(output.Length - 1) >= MAX_HASH_SIZE)
             ThrowInvalidHashSize($"{nameof(output)}.{nameof(output.Length)}", output.Length);
+
+        if (output.Length == HASH_SIZE && TryComputeHash256Into(input, output))
+            return;
 
         int inputLength = input.Length;
         // One-block fast path for the dominant EVM input sizes: address (20), word or hash (32), two words (64).

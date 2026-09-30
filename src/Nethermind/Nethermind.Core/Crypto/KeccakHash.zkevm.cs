@@ -12,6 +12,13 @@ namespace Nethermind.Core.Crypto;
 public sealed partial class KeccakHash
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output)
+    {
+        Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(output), ComputeHash256(input));
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void KeccakF(Span<ulong> st)
     {
         Debug.Assert(st.Length == STATE_LANES);
