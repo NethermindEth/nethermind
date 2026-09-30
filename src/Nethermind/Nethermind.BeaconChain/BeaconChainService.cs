@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Diagnostics;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.StateTransition;
@@ -37,7 +38,8 @@ public sealed class BeaconChainService(
     BeaconSyncOrchestrator orchestrator,
     ExternalClDetector externalClDetector,
     ILogManager logManager,
-    DataColumnSidecarPool? columnPool = null) : IDisposable, IStoppableService
+    DataColumnSidecarPool? columnPool = null,
+    ProcessStallWatchdog? watchdog = null) : IDisposable, IStoppableService
 {
     private static readonly TimeSpan DefaultStartRetryDelay = TimeSpan.FromSeconds(30);
 
@@ -58,6 +60,7 @@ public sealed class BeaconChainService(
     /// <exception cref="NotSupportedException">The persisted anchor state is at a slot before Electra.</exception>
     public Task Start()
     {
+        watchdog?.Start();
         externalClDetector.ExternalClDetected += Stop;
         // Detection may have fired before we subscribed.
         if (config.DisableOnExternalCl && externalClDetector.IsExternalClDetected)
@@ -216,6 +219,7 @@ public sealed class BeaconChainService(
             }
 
             _cancellationTokenSource.Cancel();
+            watchdog?.Dispose();
         }
     }
 
@@ -243,6 +247,7 @@ public sealed class BeaconChainService(
             // instead of surfacing secondary cancellations (e.g. engine internals going away) as errors.
             _cancellationTokenSource.Cancel();
             _disposed = true;
+            watchdog?.Dispose();
             externalClDetector.ExternalClDetected -= Stop;
             _cancellationTokenSource.Dispose();
         }
