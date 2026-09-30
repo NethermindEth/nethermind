@@ -115,6 +115,14 @@ public class TreePathTests
     }
 
     [Test]
+    public void Index_outside_the_path_throws([Values(-2, -1, 64)] int index)
+    {
+        TreePath path = new(Keccak.Zero, 64);
+        Assert.Throws<IndexOutOfRangeException>(() => _ = path[index]);
+        Assert.Throws<IndexOutOfRangeException>(() => path[index] = 1);
+    }
+
+    [Test]
     public void TestAppendArray()
     {
         byte[] nibbles = new byte[64];

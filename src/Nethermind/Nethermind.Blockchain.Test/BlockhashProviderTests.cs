@@ -521,13 +521,13 @@ public class BlockhashProviderTests
             Assert.That(fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _), Is.True, $"number {n} should resolve");
         }
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (ulong n = 1; n < 42; n++)
+        AssertNoPerLookupAllocation(100, 41, () =>
         {
-            fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _);
-        }
-
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero);
+            for (ulong n = 1; n < 42; n++)
+            {
+                fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _);
+            }
+        });
     }
 
     /// <summary>The memo must hit for the header the block actually executes with, which is a
@@ -547,13 +547,8 @@ public class BlockhashProviderTests
 
         Assert.That(fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _), Is.True, "warm the memo via the clone");
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++)
-        {
-            fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _);
-        }
-
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero, "the clone must hit the armed memo");
+        AssertNoPerLookupAllocation(1000, 1, () => fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _),
+            "the clone must hit the armed memo");
     }
 
     /// <summary>An unarmed provider (one that never prefetched) must never serve the memo — it re-reads
@@ -600,26 +595,35 @@ public class BlockhashProviderTests
             fixture.Provider.GetBlockhash(header, number, fixture.Spec);
         }
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Iterations; i++)
-        {
-            fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _);
-        }
-        long spanAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
-
-        start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Iterations; i++)
-        {
-            fixture.Provider.GetBlockhash(header, number, fixture.Spec);
-        }
-        long hashAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        long spanAllocated = AllocatedBy(Iterations, () => fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _));
+        long hashAllocated = AllocatedBy(Iterations, () => fixture.Provider.GetBlockhash(header, number, fixture.Spec));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spanAllocated, Is.Zero, $"span={spanAllocated} hash={hashAllocated}");
-            Assert.That(hashAllocated, blockHashInState ? Is.GreaterThan(Iterations * 8) : Is.Zero,
+            Assert.That(spanAllocated, Is.LessThan(Iterations * MaxBytesPerLookup), $"span={spanAllocated} hash={hashAllocated}");
+            Assert.That(hashAllocated, blockHashInState ? Is.GreaterThan(Iterations * 8) : Is.LessThan(Iterations * MaxBytesPerLookup),
                 "only the storage-backed path materialises a Hash256 per lookup");
         }
+    }
+
+    /// <summary>Allocation budget per lookup, below the 24-byte minimum object size on 64-bit.</summary>
+    /// <remarks>Any per-lookup allocation exceeds it on every call, while a rare one-off allocation by the runtime on
+    /// the test thread (2,112 bytes over 1,000 lookups has been seen in CI) stays inside it.</remarks>
+    private const int MaxBytesPerLookup = 8;
+
+    /// <summary>Asserts that <paramref name="lookups"/> allocates less than <see cref="MaxBytesPerLookup"/> per lookup.</summary>
+    private static void AssertNoPerLookupAllocation(int repeats, int lookupsPerRepeat, Action lookups, string? message = null) =>
+        Assert.That(AllocatedBy(repeats, lookups), Is.LessThan(repeats * lookupsPerRepeat * MaxBytesPerLookup), message);
+
+    private static long AllocatedBy(int repeats, Action action)
+    {
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < repeats; i++)
+        {
+            action();
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - start;
     }
 
     /// <summary>The span overload must left-pad exactly as the <see cref="Hash256"/> overload does.</summary>

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -12,7 +13,9 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -704,8 +707,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void StorageRootAfterParallelCommitMatchesRawTrie()
+    public void StorageRootAfterParallelCommitMatchesRawTrie([Values(1, 2, 4)] int concurrency)
     {
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
         const int slotsPerCommit = 1024;
         const int commitCount = 2;
         using TestContext ctx = new();
@@ -736,6 +740,104 @@ public class FlatWorldStateScopeProviderTests
         Account? account = scope.Get(address);
         Assert.That(account, Is.Not.Null);
         Assert.That(account!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
+    public void DeferredStorageTrieCommit_CommitsTheSameStorageNodes([Values(1, 3)] int contractCount, [Values] bool clearInSecondBatch)
+    {
+        (HashSet<string> nodesInBatch, Hash256[] rootsInBatch) = CommitStorageSlots(deferStorageTrieCommit: false, contractCount, clearInSecondBatch);
+        (HashSet<string> nodesAtCommit, Hash256[] rootsAtCommit) = CommitStorageSlots(deferStorageTrieCommit: true, contractCount, clearInSecondBatch);
+
+        Assert.That(nodesAtCommit, Is.Not.Empty);
+        Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
+        Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
+    }
+
+    [Test]
+    public void DeferredStorageTrieCommit_NextBlockBuildsOnTheCommittedNodes([Values] bool deferStorageTrieCommit, [Values] bool clearInSecondBatch)
+    {
+        const int slotCount = 64;
+        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB];
+        foreach (Address address in addresses) ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        UInt256[] expected = new UInt256[slotCount + 1];
+
+        // Block 1: two batches, the second overwriting half of the first, as per-transaction root commits do. Clearing
+        // first drops the other half too, as a self-destruct and recreation in a later transaction does.
+        for (int batch = 0; batch < 2; batch++)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length);
+            foreach (Address address in addresses)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+                if (batch == 1 && clearInSecondBatch) storageBatch.Clear();
+                for (int slot = batch * slotCount / 2; slot < slotCount; slot++)
+                {
+                    expected[slot] = (UInt256)(slot + 1 + batch * 1000);
+                    storageBatch.Set((UInt256)slot, expected[slot]);
+                }
+            }
+        }
+        if (clearInSecondBatch) Array.Clear(expected, 0, slotCount / 2);
+        scope.Commit(1);
+
+        // Block 2 updates the tries block 1 committed, so a node block 1 left out fails to resolve here.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length))
+        {
+            foreach (Address address in addresses)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 2);
+                expected[0] = 7;
+                expected[slotCount] = 9;
+                storageBatch.Set(0, expected[0]);
+                storageBatch.Set((UInt256)slotCount, expected[slotCount]);
+            }
+        }
+        scope.Commit(2);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot <= slotCount; slot++) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
+        expectedTree.UpdateRootHash();
+        foreach (Address address in addresses)
+        {
+            Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+        }
+    }
+
+    private static (HashSet<string> Nodes, Hash256[] Roots) CommitStorageSlots(bool deferStorageTrieCommit, int contractCount, bool clearInSecondBatch)
+    {
+        const int slotCount = 64;
+        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+        addresses = addresses[..contractCount];
+        foreach (Address address in addresses) ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        // A second batch that clears first drops the trie the first one built, as a self-destruct and recreation in a
+        // later transaction does, so none of that trie's nodes may reach the snapshot.
+        int batchCount = clearInSecondBatch ? 2 : 1;
+        for (int batch = 0; batch < batchCount; batch++)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(addresses.Length);
+            for (int contract = 0; contract < addresses.Length; contract++)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addresses[contract], slotCount);
+                if (batch > 0) storageBatch.Clear();
+                for (int slot = batch * slotCount / 2; slot < slotCount; slot++) storageBatch.Set((UInt256)slot, (UInt256)(slot + 1 + contract * 100 + batch * 1000));
+            }
+        }
+        scope.Commit(1);
+
+        HashSet<string> nodes = [];
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> node in ctx.LastCommittedSnapshot!.StorageNodes)
+        {
+            nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{node.Value.Keccak}");
+        }
+
+        Hash256[] roots = new Hash256[addresses.Length];
+        for (int contract = 0; contract < addresses.Length; contract++) roots[contract] = scope.Get(addresses[contract])!.StorageRoot;
+        return (nodes, roots);
     }
 
     [Test]
@@ -1164,6 +1266,148 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(disposeCompleted, Is.True, "Dispose should complete after the outstanding warmup finishes");
     }
 
+    /// <summary>A job still queued when the scope is disposed must skip its walk, so the wait covers only walks in flight.</summary>
+    [Test]
+    public async Task Dispose_QueuedWarmup_SkipsItsWalk()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        // A job queued before disposal carries the sequence id it was queued under.
+        int queuedSequenceId = scope.HintSequenceId;
+        scope.IncrementOutstandingWarmups();
+        using ManualResetEventSlim waitEntered = new(false);
+        // Holds dispose before its wait, so the bundle is still live when the job runs.
+        using ManualResetEventSlim jobRan = new(false);
+        scope.OnWaitingForWarmups = () =>
+        {
+            waitEntered.Set();
+            jobRan.Wait();
+        };
+
+        Task disposeTask = Task.Run(() => scope.Dispose());
+        bool walked;
+        try
+        {
+            Assert.That(waitEntered.Wait(5000), Is.True, "Dispose should enter the wait loop");
+            // The warmer dequeues it only now, as it would behind a backlog.
+            walked = scope.WarmUpStateTrie(TestItem.AddressA, queuedSequenceId);
+        }
+        finally
+        {
+            jobRan.Set();
+        }
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(walked, Is.False, "a job dequeued after disposal began must not walk the trie");
+    }
+
+    /// <summary>Dispose must return when the last warmup completes, not when its timeout expires.</summary>
+    [Test]
+    public async Task Dispose_ReturnsWhenTheLastWarmupCompletes()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        scope.IncrementOutstandingWarmups();
+        long completed = 0;
+        // The last job completes after dispose has re-read the count and just before it blocks.
+        scope.OnBlockingForWarmups = () =>
+        {
+            scope.DecrementOutstandingWarmups();
+            completed = Stopwatch.GetTimestamp();
+        };
+
+        // Measured on the disposing thread, so scheduling of this test's continuations is not counted.
+        TimeSpan blocked = await Task.Run(() =>
+        {
+            scope.Dispose();
+            return Stopwatch.GetElapsedTime(completed);
+        }).WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Without the wake, dispose returns only when its one-second timeout expires.
+        Assert.That(blocked, Is.LessThan(TimeSpan.FromMilliseconds(900)),
+            "the completing job must wake dispose rather than leave it to time out");
+    }
+
+    /// <summary>A wake from a job that reached zero before more were queued must not end the wait while one is still in flight.</summary>
+    [Test]
+    public async Task Dispose_StaleWake_KeepsWaitingForTheJobInFlight()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        scope.IncrementOutstandingWarmups();
+        int blocks = 0;
+        scope.OnBlockingForWarmups = () =>
+        {
+            if (Interlocked.Increment(ref blocks) == 1)
+            {
+                // One job completes to zero and sets the event, then another is counted: the wake is stale.
+                scope.DecrementOutstandingWarmups();
+                scope.IncrementOutstandingWarmups();
+            }
+            else
+            {
+                // Blocking again proves the stale wake did not end the wait; the job in flight completes now.
+                scope.DecrementOutstandingWarmups();
+            }
+        };
+
+        await Task.Run(() => scope.Dispose()).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(Volatile.Read(ref blocks), Is.EqualTo(2), "dispose must wait again after a stale wake instead of returning");
+    }
+
+    public enum WarmupHint
+    {
+        Account,
+        BalAccount,
+        StorageSlot,
+        HintSlot,
+        BalSlot,
+    }
+
+    /// <summary>
+    /// A job may complete before its push returns. Counting it only afterwards drives the count below zero, and then a
+    /// later increment can bring it to zero with no completion to wake a disposing scope, which waits out its timeout.
+    /// </summary>
+    [Test]
+    public async Task Warmup_CompletingDuringItsPush_NeverDrivesTheCountBelowZero([Values] WarmupHint hint)
+    {
+        InlineTrieWarmer warmer = new();
+        using TestContext ctx = new(trieWarmer: warmer);
+        // The slot hints warm only an account whose storage trie is not empty.
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
+        FlatWorldStateScope scope = ctx.Scope;
+        warmer.Scope = scope;
+
+        switch (hint)
+        {
+            case WarmupHint.Account:
+                scope.HintWarmAccount(TestItem.AddressA);
+                break;
+            case WarmupHint.BalAccount:
+                await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA)));
+                break;
+            case WarmupHint.StorageSlot:
+                scope.CreateStorageTree(TestItem.AddressA).HintSet((UInt256)1);
+                break;
+            case WarmupHint.HintSlot:
+                scope.HintWarmSlot(TestItem.AddressA, (UInt256)1);
+                break;
+            case WarmupHint.BalSlot:
+                await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, BalWriteKind.Storage)));
+                break;
+        }
+
+        int expectedJobs = hint is WarmupHint.Account or WarmupHint.BalAccount ? warmer.AddressJobs : warmer.SlotJobs;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedJobs, Is.EqualTo(1), "precondition: the hint must have run its job inside its push");
+            Assert.That(warmer.LowestCountAfterCompletion, Is.GreaterThanOrEqualTo(0));
+            Assert.That(scope.OutstandingWarmups, Is.Zero);
+        }
+    }
+
     [Test]
     public async Task Dispose_CompletesImmediately_WhenNoOutstandingWarmups()
     {
@@ -1198,7 +1442,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
         // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
         Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
 
         Task disposeTask = Task.Run(() => scope.Dispose());
@@ -1318,7 +1562,7 @@ public class FlatWorldStateScopeProviderTests
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         await scope.HintBal(CreateBal());
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
@@ -1331,9 +1575,9 @@ public class FlatWorldStateScopeProviderTests
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes)); // read-only in BAL
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes)); // not in BAL
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes)); // written, but already pushed by HintBal (bloom dedupe)
+        scope.HintWarmAccount(TestItem.AddressA); // read-only in BAL
+        scope.HintWarmAccount(TestItem.AddressC); // not in BAL
+        scope.HintWarmAccount(TestItem.AddressB); // written, but already pushed by HintBal (bloom dedupe)
 
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
     }
@@ -1347,7 +1591,7 @@ public class FlatWorldStateScopeProviderTests
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         scope.StartWriteBatch(0).Dispose();
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.Empty);
     }
@@ -1365,7 +1609,7 @@ public class FlatWorldStateScopeProviderTests
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressB)));
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.Empty);
     }
@@ -1376,7 +1620,7 @@ public class FlatWorldStateScopeProviderTests
         using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
         FlatWorldStateScope scope = ctx.Scope;
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
@@ -1445,6 +1689,45 @@ public class FlatWorldStateScopeProviderTests
                 if (path is not null) _addressJobPushes.Add(path);
             }
             return false;
+        }
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
+    }
+
+    /// <summary>Runs each job inside its push, as a worker that dequeues it at once would, and records the count after.</summary>
+    private sealed class InlineTrieWarmer : ITrieWarmer
+    {
+        public FlatWorldStateScope? Scope { get; set; }
+        public int AddressJobs { get; private set; }
+        public int SlotJobs { get; private set; }
+        public int LowestCountAfterCompletion { get; private set; } = int.MaxValue;
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+            => PushSlotJobMpmc(storageTree, index, sequenceId);
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            // The mocked persistence holds no trie nodes; the real warmer drops the same exception.
+            try { storageTree.WarmUpStorageTrie(index, sequenceId); }
+            catch (TrieNodeException) { }
+            SlotJobs++;
+            return Record();
+        }
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            try { scope.WarmUpStateTrie(path!, sequenceId); }
+            catch (TrieNodeException) { }
+            AddressJobs++;
+            return Record();
+        }
+
+        private bool Record()
+        {
+            LowestCountAfterCompletion = Math.Min(LowestCountAfterCompletion, Scope!.OutstandingWarmups);
+            return true;
         }
 
         public void OnEnterScope() { }
