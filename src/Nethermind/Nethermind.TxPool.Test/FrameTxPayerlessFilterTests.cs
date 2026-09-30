@@ -68,7 +68,6 @@ public class FrameTxPayerlessFilterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxUnrecognizedPrefix));
-            Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Invalid));
             Assert.That(Metrics.PendingTransactionsFrameTxUnrecognizedPrefix, Is.EqualTo(before + 1));
         }
     }
