@@ -866,6 +866,9 @@ public partial class BeaconSyncOrchestratorTests
         /// <summary>Every block and envelope import in call order, each by the block root it names.</summary>
         public List<(bool Envelope, Hash256 Root)> ImportOrder { get; } = [];
 
+        /// <summary>Whether each block and envelope import ran on a thread-pool thread, in call order.</summary>
+        public List<bool> ImportedOnPoolThread { get; } = [];
+
         public List<object> GossipOperations { get; } = [];
 
         /// <summary>The count of <see cref="Ticks"/> when each of <see cref="GossipOperations"/> arrived.</summary>
@@ -893,6 +896,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             Imports.Add((block.Slot, blockRoot, verifySignatures));
             ImportOrder.Add((false, blockRoot));
+            ImportedOnPoolThread.Add(Thread.CurrentThread.IsThreadPoolThread);
             _deferred.Remove(blockRoot);
             if (Known.Contains(blockRoot)) return BlockImportResult.AlreadyKnown;
             if (!Known.Contains(block.ParentRoot)) return _deferred.Contains(block.ParentRoot) ? Defer(blockRoot) : BlockImportResult.UnknownParent;
@@ -917,6 +921,7 @@ public partial class BeaconSyncOrchestratorTests
             Hash256 blockRoot = envelope.Message!.BeaconBlockRoot!;
             Envelopes.Add(blockRoot);
             ImportOrder.Add((true, blockRoot));
+            ImportedOnPoolThread.Add(Thread.CurrentThread.IsThreadPoolThread);
             ExecutionPayloadEnvelopeImportResult result = EnvelopeVerdict?.Invoke(envelope) ?? EnvelopeResult;
             if (result is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic)
             {
