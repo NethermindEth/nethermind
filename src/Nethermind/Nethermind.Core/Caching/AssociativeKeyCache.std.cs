@@ -21,4 +21,5 @@ public sealed partial class AssociativeKeyCache<TKey>
         }
 
         newest = true;
-    }}
+    }
+}
