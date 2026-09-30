@@ -28,16 +28,7 @@ public class BlockBodiesMessageSerializerTests
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(bytes).AsDisposable();
         Assert.Throws<RlpException>(() => new BlockBodiesMessageSerializer().Deserialize(buffer));
 
-        List<Transaction> rented = [];
-        try
-        {
-            for (int i = 0; i < 2_048; i++) rented.Add(TxDecoder.TxObjectPool.Get());
-            Assert.That(rented, Is.SubsetOf(pooled));
-        }
-        finally
-        {
-            foreach (Transaction transaction in rented) TxDecoder.TxObjectPool.Return(transaction);
-        }
+        TransactionPoolTestHelper.AssertAllReturned(pooled);
     }
 
     [TestCaseSource(nameof(GetBlockBodyValues))]

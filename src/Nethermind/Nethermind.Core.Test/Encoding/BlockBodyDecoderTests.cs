@@ -56,28 +56,16 @@ public class BlockBodyDecoderTests
         };
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
-        Assert.Throws<RlpException>(() => DecodeMalformed(bytes, usePooledTransactions: true));
+        Assert.Throws<RlpException>(() => DecodeMalformed(bytes));
 
-        List<Transaction> rented = [];
-        try
-        {
-            for (int i = 0; i < 2_048; i++) rented.Add(TxDecoder.TxObjectPool.Get());
-            int replacements = 0;
-            foreach (Transaction transaction in rented)
-                if (!pooled.Contains(transaction)) replacements++;
-            Assert.That(replacements, Is.Zero);
-        }
-        finally
-        {
-            foreach (Transaction transaction in rented) TxDecoder.TxObjectPool.Return(transaction);
-        }
+        TransactionPoolTestHelper.AssertAllReturned(pooled);
     }
 
-    private static void DecodeMalformed(byte[] bytes, bool usePooledTransactions)
+    private static void DecodeMalformed(byte[] bytes)
     {
         RlpReader reader = new(bytes);
         reader.ReadSequenceLength();
-        BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions);
+        BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions: true);
     }
 
     [TestCaseSource(nameof(ValidBodies))]
