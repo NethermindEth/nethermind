@@ -78,7 +78,9 @@ internal static class PbtImageVerifier
             using (ProgressReporter progress = PbtImageProgress.Start(MptPhase, "acc", accounts, logManager))
             using (PbtSortedSpool.Cursor cursor = spool.Read())
             {
-                ulong folded = 0;
+                ulong folded = 0, foldedSlots = 0;
+                Func<string> slotCounter = PbtImageProgress.Counter("slot", () => foldedSlots);
+                progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(MptPhase, "acc", p)} | {slotCounter()}");
                 mptRoot = MptRightmostNodeStore.CalculateRoot(Accounts(), MptRightmostNodeStore.DefaultWindowSize, cancellationToken);
 
                 IEnumerable<KeyValuePair<ValueHash256, byte[]>> Accounts()
@@ -98,6 +100,7 @@ internal static class PbtImageVerifier
                             for (uint index = 0; index < slotCount; index++)
                             {
                                 cursor.MoveNext();
+                                foldedSlots++;
                                 yield return new(new ValueHash256(cursor.Key[33..]), cursor.Value.ToArray());
                             }
                         }
@@ -153,7 +156,8 @@ internal static class PbtImageVerifier
             }
 
             using ProgressReporter progress = PbtImageProgress.Start(ReadPhase, "acc", 0, logManager);
-            progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(ReadPhase, "acc", p)} | {slots,15:N0} slot");
+            Func<string> slotCounter = PbtImageProgress.Counter("slot", () => slots);
+            progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(ReadPhase, "acc", p)} | {slotCounter()}");
             PbtPreimageReader reader = new(preimages);
             while (reader.ReadAccount(out Address? address, out uint slotCount, abort.Token))
             {

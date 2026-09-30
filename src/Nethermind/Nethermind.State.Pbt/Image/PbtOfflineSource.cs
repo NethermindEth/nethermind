@@ -39,6 +39,7 @@ internal static class PbtOfflineSource
     private const int ProgressPublishInterval = 100_000;
 
     private const string ScanPhase = "PBT export scan";
+    private const string PreimagesPhase = "PBT export preimages";
 
     /// <param name="sortBufferBytes">Sort budget per worker, split between the leaf and preimage spools.</param>
     /// <param name="workerCount">Scan workers; zero uses the processor count.</param>
@@ -120,8 +121,8 @@ internal static class PbtOfflineSource
                 int partitionCount = Math.Min(workers * PartitionsPerWorker, PartitionPrefixSpace);
                 int nextPartition = -1;
                 using ProgressReporter progress = PbtImageProgress.Start(ScanPhase, "acc", 0, logManager);
-                progress.Logger.SetFormat(p =>
-                    $"{PbtImageProgress.Format(ScanPhase, "acc", p)} | {Interlocked.Read(ref totals.Slots),15:N0} slot");
+                Func<string> slotCounter = PbtImageProgress.Counter("slot", () => (ulong)Interlocked.Read(ref totals.Slots));
+                progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(ScanPhase, "acc", p)} | {slotCounter()}");
 
                 void ScanPartitions()
                 {
@@ -191,8 +192,10 @@ internal static class PbtOfflineSource
 
             IEnumerable<PbtAccountPreimages> Accounts()
             {
-                ulong written = 0;
-                using ProgressReporter progress = PbtImageProgress.Start("PBT export preimages", "acc", accountCount, logManager);
+                ulong written = 0, writtenSlots = 0;
+                using ProgressReporter progress = PbtImageProgress.Start(PreimagesPhase, "acc", accountCount, logManager);
+                Func<string> slotCounter = PbtImageProgress.Counter("slot", () => writtenSlots);
+                progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(PreimagesPhase, "acc", p)} | {slotCounter()}");
                 using PbtSortedSpool.Cursor cursor = rawKeys.Read();
                 while (cursor.MoveNext())
                 {
@@ -207,6 +210,7 @@ internal static class PbtOfflineSource
                         {
                             if (!cursor.MoveNext() || cursor.Key[32] != 1 || !cursor.Key[..32].SequenceEqual(accountHash.Bytes))
                                 throw new InvalidDataException("Source slot count mismatch.");
+                            writtenSlots++;
                             yield return new ValueHash256(cursor.Value);
                         }
                     }

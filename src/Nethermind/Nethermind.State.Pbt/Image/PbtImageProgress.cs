@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Globalization;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -31,5 +32,22 @@ internal static class PbtImageProgress
         if (progress.TargetValue == 0) return $"{phase} | {counted}";
         float percentage = Math.Clamp(progress.CurrentValue / (float)progress.TargetValue, 0, 1);
         return $"{phase} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | {counted}";
+    }
+
+    /// <summary>Returns a renderer of a count the meter does not track, with its rate since the previous rendering.</summary>
+    /// <remarks>The renderer is stateful, so only the reporter's formatter, which the reporter serializes, may call it.</remarks>
+    public static Func<string> Counter(string unit, Func<ulong> read)
+    {
+        ulong rendered = 0;
+        Stopwatch sinceRendered = Stopwatch.StartNew();
+        return () =>
+        {
+            ulong current = read();
+            double seconds = sinceRendered.Elapsed.TotalSeconds;
+            double perSecond = seconds > 0 ? (current - rendered) / seconds : 0;
+            rendered = current;
+            sinceRendered.Restart();
+            return $"{current,15:N0} {unit} ({perSecond,8:N0}/s)";
+        };
     }
 }

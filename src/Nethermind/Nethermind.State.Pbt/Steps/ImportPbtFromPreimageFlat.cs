@@ -22,6 +22,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 using FlatPersistence = Nethermind.State.Flat.Persistence.IPersistence;
 using FlatStateId = Nethermind.State.Flat.StateId;
@@ -445,8 +446,10 @@ public class ImportPbtFromPreimageFlat(
             {
                 string partitionName = partitionNames[zone];
                 ProgressLogger progress = new($"PBT import phase 2 {partitionName}", logManager);
+                int countedZone = zone;
+                Func<string> slotCounter = PbtImageProgress.Counter("slot", () => scanProgress.GetSlots(countedZone));
                 progress.SetFormat(logger =>
-                    $"PBT import phase 2 {partitionName}: {(logger.CurrentValue / (double)ScanProgress.Keyspace).ToString("P2", CultureInfo.InvariantCulture)} of address keyspace scanned");
+                    $"PBT import phase 2 {partitionName}: {(logger.CurrentValue / (double)ScanProgress.Keyspace).ToString("P2", CultureInfo.InvariantCulture)} of address keyspace scanned | {slotCounter()}");
                 progress.Reset(0, ScanProgress.Keyspace);
                 progressLoggers[zone] = progress;
             }
@@ -526,6 +529,7 @@ public class ImportPbtFromPreimageFlat(
         // A 48-bit address prefix retains sub-partition precision, with an exact exclusive 2^256 endpoint.
         public const ulong Keyspace = 1UL << 48;
         private readonly long[] _scanned = new long[partitionCount * 2];
+        private readonly long[] _slots = new long[2];
 
         private long Boundary(int partition) => (long)partition * PartitionPrefixSpace / partitionCount << 32;
 
@@ -537,6 +541,10 @@ public class ImportPbtFromPreimageFlat(
 
         public void Complete(int partition) => Volatile.Write(ref _scanned[partition],
             Boundary(partition % partitionCount + 1) - Boundary(partition % partitionCount));
+
+        public void AddSlots(int partition, int count) => Interlocked.Add(ref _slots[partition / partitionCount], count);
+
+        public ulong GetSlots(int zone) => (ulong)Interlocked.Read(ref _slots[zone]);
 
         public ulong GetScanned(int zone)
         {
@@ -607,6 +615,7 @@ public class ImportPbtFromPreimageFlat(
                 if (!account.HasStorage) continue;
                 ReadHeaderSlots(storage, addressHash, headerSlots);
                 for (int slot = 0; slot < headerSlots.Count; slot++) await sink.Add(headerSlots[slot]);
+                progress.AddSlots(partition, headerSlots.Count);
                 headerSlots.Clear();
             }
             buffered.Clear();
@@ -636,6 +645,7 @@ public class ImportPbtFromPreimageFlat(
             cancellationToken.ThrowIfCancellationRequested();
             if (resumeFrom is not null) progress.Publish(partition, resumeFrom);
             for (int index = 0; index < buffered.Count; index++) await sink.Add(buffered[index]);
+            progress.AddSlots(partition, buffered.Count);
             buffered.Clear();
             if (resumeFrom is null) return;
             cursor = resumeFrom;
