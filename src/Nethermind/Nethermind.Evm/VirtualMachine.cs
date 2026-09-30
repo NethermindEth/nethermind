@@ -701,7 +701,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
         else if (!chargedCodeDeposit && IsTracingActions)
         {
-            _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), callCodeOwner, code);
         }
     }
 

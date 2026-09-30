@@ -27,6 +27,8 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
     internal const string TracerName = "erc7562Tracer";
     private readonly IBlockTracer<GethLikeTxTrace> _inner;
     private readonly IWorldState _worldState;
+    private readonly ISpecProvider _specProvider;
+    private bool _failOnCodeDepositOutOfGas;
     private readonly Hash256? _txHash;
     private readonly bool[] _ignored;
     private readonly List<Collector> _collectors = [];
@@ -38,6 +40,7 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
         (bool withLog, bool[] ignored) = ParseConfig(options.TracerConfig);
         _ignored = ignored;
         _worldState = worldState;
+        _specProvider = specProvider;
         _txHash = options.TxHash;
         JsonElement config = JsonSerializer.SerializeToElement(new { withLog });
         _inner = new GethLikeBlockCallTracer(options.TxHash, (block, tx) =>
@@ -52,13 +55,14 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
         _results = null;
         _released = false;
         _collectors.Clear();
+        _failOnCodeDepositOutOfGas = _specProvider.GetSpec(block.Header).FailOnOutOfGasCodeDeposit;
         _inner.StartNewBlockTrace(block);
     }
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         ITxTracer native = _inner.StartNewTxTrace(tx);
         if (tx is null || _txHash is not null && tx.Hash != _txHash) return native;
-        Collector collector = new(_worldState, _ignored);
+        Collector collector = new(_worldState, _ignored, _failOnCodeDepositOutOfGas);
         _collectors.Add(collector);
         return new CompositeTxTracer(native, collector);
     }
@@ -196,8 +200,8 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
             writer.WriteEndObject();
         }
         writer.WriteEndObject();
-        writer.WriteBoolean("outOfGas", !root && call.Error is { } error &&
-            (error is "out of gas" or "contract creation code storage out of gas" || error.StartsWith("out of gas:", StringComparison.Ordinal)));
+        writer.WriteBoolean("outOfGas", !root && (frame.CodeDepositOutOfGas || call.Error is { } error &&
+            (error is "out of gas" or "contract creation code storage out of gas" || error.StartsWith("out of gas:", StringComparison.Ordinal))));
         if (root && preimages.Count != 0)
         {
             writer.WritePropertyName("keccak");
@@ -221,6 +225,9 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
 
     private sealed class Frame
     {
+        internal Instruction? LastOpcode;
+        internal ulong? ReturnGas;
+        internal bool CodeDepositOutOfGas;
         internal readonly List<Frame> Children = [];
         internal readonly Dictionary<string, string> Reads = [];
         internal readonly Dictionary<string, ulong> Writes = [];
@@ -235,6 +242,7 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
     {
         private readonly IWorldState _worldState;
         private readonly bool[] _ignored;
+        private readonly bool _failOnCodeDepositOutOfGas;
         private readonly Stack<Frame> _frames = new();
         private Instruction _opcode;
         private Instruction? _lastOpcode;
@@ -244,10 +252,11 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
         internal Frame? Root { get; private set; }
         internal SortedSet<string> Preimages { get; } = new(StringComparer.Ordinal);
 
-        internal Collector(IWorldState worldState, bool[] ignored)
+        internal Collector(IWorldState worldState, bool[] ignored, bool failOnCodeDepositOutOfGas)
         {
             _worldState = worldState;
             _ignored = ignored;
+            _failOnCodeDepositOutOfGas = failOnCodeDepositOutOfGas;
             IsTracingActions = IsTracingInstructions = IsTracingStack = IsTracingMemory = true;
         }
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -259,7 +268,19 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
         }
         private void Exit() { if (_frames.Count > 1) _frames.Pop(); }
         public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => Exit();
-        public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => Exit();
+        public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+        {
+            Frame frame = _frames.Peek();
+            // Frontier keeps CREATE successful when code deposit fails; Geth still marks the ERC exit out of gas.
+            frame.CodeDepositOutOfGas = !_failOnCodeDepositOutOfGas && frame.ReturnGas is { } remaining
+                && remaining < (ulong)deployedCode.Length * GasCostOf.CodeDeposit;
+            Exit();
+        }
+        public override void ReportOperationRemainingGas(ulong gas)
+        {
+            Frame frame = _frames.Peek();
+            if (frame.LastOpcode == Instruction.RETURN) frame.ReturnGas = gas;
+        }
         public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => Exit();
         public override void ReportActionError(EvmExceptionType evmExceptionType) => Exit();
         public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => _frames.Peek().Children.Add(new());
@@ -269,6 +290,9 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
         {
             _opcode = opcode;
             _account = env.ExecutingAccount;
+            Frame frame = _frames.Peek();
+            frame.LastOpcode = opcode;
+            frame.ReturnGas = null;
         }
         public override void SetOperationMemory(TraceMemory memoryTrace) => _memory = memoryTrace;
         public override void SetOperationStack(TraceStack stack)

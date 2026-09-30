@@ -118,7 +118,16 @@ public class Engine : IDisposable
     /// <summary>
     /// Converts input to 32 byte word
     /// </summary>
-    private ITypedArray<byte> ToWord(object bytes) => bytes.ToWord().ToTypedScriptArray();
+    private ITypedArray<byte> ToWord(object bytes) => ToWordBytes(bytes).ToTypedScriptArray();
+
+    private static byte[] ToWordBytes(object input)
+    {
+        ReadOnlySpan<byte> bytes = input.ToBytes();
+        int length = Math.Min(bytes.Length, EvmStack.WordSize);
+        byte[] word = new byte[EvmStack.WordSize];
+        bytes[^length..].CopyTo(word.AsSpan(EvmStack.WordSize - length));
+        return word;
+    }
 
     /// <summary>
     /// Converts input to hex string
@@ -157,7 +166,7 @@ public class Engine : IDisposable
     /// Creates a contract address from sender, salt and initcode (used for CREATE2 instruction)
     /// </summary>
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
-        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
+        ContractAddress.From(from.ToAddress(), ToWordBytes(salt), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
 
     /// <summary>
     /// Stops the running script. Called from a timer thread, so the engine may be disposed between the check

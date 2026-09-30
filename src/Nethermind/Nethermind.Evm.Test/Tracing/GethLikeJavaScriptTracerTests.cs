@@ -46,6 +46,34 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Javascript_word_helpers_pad_and_truncate([Values(0, 1, 32, 33, 65)] int length, [Values] bool arrayInput)
+    {
+        byte[] input = Enumerable.Range(0, length).Select(i => (byte)(i + 1)).ToArray();
+        byte[] word = new byte[32];
+        int count = Math.Min(length, word.Length);
+        input.AsSpan(length - count).CopyTo(word.AsSpan(word.Length - count));
+        string hex = "0x" + Convert.ToHexStringLower(input);
+        string argument = arrayInput ? JsonSerializer.Serialize(input.Select(b => (int)b).ToArray()) : JsonSerializer.Serialize(hex);
+        string address = TestItem.AddressA.ToString();
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result:function(){return [toHex(toWord(" + argument + ")),toHex(toContract2('" + address + "','" + hex + "',[]))];}}");
+        object result = tracer.result();
+        string[] expected = ["0x" + Convert.ToHexStringLower(word), ContractAddress.From(TestItem.AddressA, word, []).ToString()];
+        Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(JsonSerializer.Serialize(expected)));
+    }
+
+    [TestCase(false, 0)]
+    [TestCase(true, 0)]
+    [TestCase(true, 1)]
+    public void Javascript_db_exists_includes_empty_accounts(bool exists, int balance)
+    {
+        Address address = new("0x00000000000000000000000000000000deadbeef");
+        if (exists) TestState.CreateAccount(address, (UInt256)balance);
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Db db = new(TestState);
+        Assert.That(db.exists(address.ToString()), Is.EqualTo(exists));
+    }
+
+    [Test]
     public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
     {
         const int concurrency = 16;
