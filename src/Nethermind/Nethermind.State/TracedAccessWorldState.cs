@@ -154,7 +154,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (_generatingBlockAccessList is not null)
         {
-            _generatingBlockAccessList.AddCodeChange(address, GetCodeInternal(address).ToArray(), code);
+            _generatingBlockAccessList.AddCodeChange(address, GetCodeInternal(address), code);
         }
         return base.InsertCode(address, codeHash, code, spec, isGenesis);
     }
