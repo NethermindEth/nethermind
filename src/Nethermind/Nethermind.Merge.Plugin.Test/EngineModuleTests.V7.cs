@@ -688,40 +688,6 @@ public partial class EngineModuleTests
         }
     }
 
-    // That answer must be judged on the EIP-8037 gas execution recorded rather than on the max(execution, state)
-    // the header reduces it to, under which an entry fitting only the state dimension reads as unappendable. The
-    // dimensions reach the re-check through the block the payload was processed as, so they must land there.
-    [Test]
-    public async Task NewPayloadV6_records_the_gas_dimensions_on_the_block_it_processed()
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        // A block carrying a transaction, so the dimensions are not both trivially zero.
-        Transaction included = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] inclusionList = [Rlp.Encode(included).Bytes];
-
-        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
-            new ForkchoiceStateV1(chain.BlockTree.HeadHash, Keccak.Zero, chain.BlockTree.HeadHash),
-            BuildBogotaPayloadAttributes(inclusionList, timestamp: Timestamper.UnixTime.Seconds + 2, slotNumber: 2));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
-        ExecutionPayloadV4 first = payloadResult.Data!.ExecutionPayload;
-
-        await rpc.engine_newPayloadV6(first, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
-        await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3);
-
-        Block executed = chain.BlockTree.FindBlock(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(executed.Transactions, Has.Length.EqualTo(1));
-            Assert.That(executed.Header.GasUsedPerDimension, Is.Not.Null, "the dimensions must reach the block a re-check is handed");
-            (ulong execution, ulong state) = executed.Header.GasUsedPerDimension!.Value;
-            Assert.That(Math.Max(execution, state), Is.EqualTo(executed.GasUsed), "EIP-8037 reduces the dimensions to their maximum");
-        }
-    }
-
     /// <summary>
     /// The inclusion-list counterpart of <c>newPayloadV1_answers_valid_for_a_head_resent_while_its_re_execution_commits</c>:
     /// the resent head waits for its commit and has the new list judged against the restored state.
@@ -819,8 +785,14 @@ public partial class EngineModuleTests
         await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3);
 
         Block executed = chain.BlockTree.FindBlock(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
+        Assert.That(executed.Header.GasUsedPerDimension, Is.Not.Null, "the dimensions must reach the block a re-check is handed");
         (ulong execution, ulong state) = executed.Header.GasUsedPerDimension!.Value;
-        Assert.That(execution, Is.GreaterThan(state), "the max must exceed the state dimension for the two rules to differ");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executed.Transactions, Has.Length.EqualTo(1));
+            Assert.That(Math.Max(execution, state), Is.EqualTo(executed.GasUsed), "EIP-8037 reduces the dimensions to their maximum");
+            Assert.That(execution, Is.GreaterThan(state), "the max must exceed the state dimension for the two rules to differ");
+        }
 
         // Reserves the whole remaining state dimension, and only the execution cap on the execution dimension:
         // appendable on the recorded dimensions, over budget against max(execution, state).

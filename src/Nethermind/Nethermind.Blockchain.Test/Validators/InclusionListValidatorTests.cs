@@ -115,7 +115,7 @@ public class InclusionListValidatorTests
     // 513_317-gas execution total.
     [TestCase(34_067_749UL, true, ExpectedResult = false, TestName = "Entry at the exact state budget is appendable")]
     [TestCase(34_067_750UL, true, ExpectedResult = true, TestName = "Entry one gas past the state budget is not appendable")]
-    // Without the per-dimension totals — a block executed elsewhere — both dimensions fall back to that max.
+    // Without the per-dimension totals — no in-memory copy of the executed block left — both fall back to that max.
     [TestCase(34_067_749UL, false, ExpectedResult = true, TestName = "Entry is judged on the combined gas when dimensions are unknown")]
     public bool Appendability_is_judged_per_block_gas_dimension(ulong ilGasLimit, bool dimensionsKnown)
     {
