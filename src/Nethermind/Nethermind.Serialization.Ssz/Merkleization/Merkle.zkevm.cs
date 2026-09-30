@@ -2,35 +2,32 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 
-[assembly: InternalsVisibleTo("Nethermind.Core.ZkEvm.Test")]
-
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
 public static partial class Merkle
 {
-    private static unsafe delegate*<in UInt256, in UInt256, out UInt256, void> _hashPairAccelerator;
-
     /// <summary>Hashes the 64-byte concatenation of two chunks with SHA-256 into <paramref name="parent"/>, which may alias either chunk.</summary>
     /// <remarks>
-    /// Uses the pair hasher the guest registered through <see cref="TryRegisterHashPairAccelerator"/>, and
-    /// the SHA-256 accelerator every zkVM provides until one is registered.
+    /// ZisK's SHA-256 compression precompile when the ZisK guest switches on <see cref="ZiskSha256FFlag"/>, and
+    /// the SHA-256 accelerator every zkVM provides otherwise.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe void HashPair(in UInt256 left, in UInt256 right, out UInt256 parent)
+    private static void HashPair(in UInt256 left, in UInt256 right, out UInt256 parent)
     {
-        delegate*<in UInt256, in UInt256, out UInt256, void> accelerator = _hashPairAccelerator;
-        if (accelerator is null)
+        if (!ZiskSha256FFlag.IsActive)
         {
             HashPairWithSha256(in left, in right, out parent);
             return;
         }
 
-        accelerator(in left, in right, out parent);
+        HashPairWithSha256F(in left, in right, out parent);
     }
 
     [SkipLocalsInit]
@@ -56,41 +53,74 @@ public static partial class Merkle
     private static void HashNodes(in UInt256 left, in UInt256 right, int level, out UInt256 parent) =>
         HashPair(in left, in right, out parent);
 
-    /// <summary>Routes merkleization's pair hashing through a zkVM accelerator if it hashes a known pair correctly.</summary>
-    /// <param name="hashPair">
-    /// Hashes the 64-byte concatenation of its first two chunks with SHA-256 into the third, which may alias either.
-    /// </param>
-    /// <returns><see langword="true"/> if the accelerator now hashes merkle pairs; otherwise the SHA-256 accelerator keeps them.</returns>
+    /// <summary>Hashes the 64-byte concatenation of two chunks with ZisK's SHA-256 compression precompile.</summary>
     /// <remarks>
-    /// Checks a pair whose hash is fixed rather than only checking that the call returns, once with the chunks
-    /// side by side, as a merkle level's siblings are, and once apart, each time writing over the left chunk:
-    /// a binding that resolved to the wrong routine or mishandled either layout would otherwise go unnoticed
-    /// until a block produced a wrong root.
+    /// A 64-byte message is exactly one block, and the block after it is always the same padding, so the
+    /// generic hash's alignment check, padding logic and result copies all drop out. Chunks that already lie
+    /// side by side, as the siblings of a merkle level do, are absorbed where they are.
     /// </remarks>
-    public static unsafe bool TryRegisterHashPairAccelerator(delegate*<in UInt256, in UInt256, out UInt256, void> hashPair)
+    [SkipLocalsInit]
+    private static unsafe void HashPairWithSha256F(in UInt256 left, in UInt256 right, out UInt256 parent)
     {
-        Span<UInt256> chunks = stackalloc UInt256[3];
-        chunks[0] = chunks[2] = ZeroHash(1);
-        chunks[1] = ZeroHash(2);
+        ReadOnlySpan<ulong> initialState = Sha256InitialState;
+        Sha256State state;
+        state.Word0 = initialState[0];
+        state.Word1 = initialState[1];
+        state.Word2 = initialState[2];
+        state.Word3 = initialState[3];
 
-        hashPair(in chunks[0], in chunks[1], out chunks[0]);
-        hashPair(in chunks[2], in chunks[1], out chunks[2]);
+        bool adjacent = Unsafe.AreSame(ref Unsafe.Add(ref Unsafe.AsRef(in left), 1), ref Unsafe.AsRef(in right));
+        fixed (UInt256* pair = &left)
+        {
+            // The precompile requires 8-byte aligned operands; the locals and the RVA padding block are.
+            Sha256Block block;
+            ulong* input;
+            if (adjacent && ((nuint)pair & 7) == 0)
+            {
+                input = (ulong*)pair;
+            }
+            else
+            {
+                block.Left = left;
+                block.Right = right;
+                input = (ulong*)&block;
+            }
 
-        UInt256 expected = MemoryMarshal.Read<UInt256>(HashOfZeroHashes1And2);
-        if (chunks[0] != expected || chunks[2] != expected)
-            return false;
+            Accelerators.Sha256F((ulong*)&state, input);
+        }
 
-        _hashPairAccelerator = hashPair;
-        return true;
+        Accelerators.Sha256F((ulong*)&state, (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage)));
+
+        parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
     }
 
-    /// <summary>Returns pair hashing to the SHA-256 accelerator, so a test's registration does not outlive it.</summary>
-    internal static unsafe void ResetHashPairAccelerator() => _hashPairAccelerator = null;
+    /// <summary>Two state words of the precompile, native 32-bit words packed low first, as the digest's next eight bytes.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ToDigestWord(ulong state) => BitOperations.RotateRight(BinaryPrimitives.ReverseEndianness(state), 32);
 
-    /// <summary>SHA-256 of <c>ZeroHash(1) || ZeroHash(2)</c>.</summary>
-    private static ReadOnlySpan<byte> HashOfZeroHashes1And2 =>
+    /// <summary>The SHA-256 initial hash value (FIPS 180-4 5.3.3) in the precompile's state layout.</summary>
+    private static ReadOnlySpan<ulong> Sha256InitialState =>
     [
-        0x42, 0xb0, 0x52, 0x54, 0x1d, 0xce, 0x45, 0x55, 0x7d, 0x83, 0xd3, 0x46, 0x34, 0xa4, 0x5a, 0x56,
-        0xd2, 0x16, 0xd4, 0x37, 0x5e, 0x5a, 0x95, 0x84, 0xf6, 0x44, 0x5c, 0xe4, 0xe6, 0x33, 0x24, 0xaf,
+        0xbb67ae85_6a09e667UL, 0xa54ff53a_3c6ef372UL, 0x9b05688c_510e527fUL, 0x5be0cd19_1f83d9abUL
     ];
+
+    /// <summary>The block that pads a 64-byte message (FIPS 180-4 5.1.1): the 0x80 marker and the 512-bit length.</summary>
+    private static ReadOnlySpan<ulong> Sha256PaddingOf64ByteMessage =>
+    [
+        0x80UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0x0002_0000_0000_0000UL
+    ];
+
+    private struct Sha256State
+    {
+        public ulong Word0;
+        public ulong Word1;
+        public ulong Word2;
+        public ulong Word3;
+    }
+
+    private struct Sha256Block
+    {
+        public UInt256 Left;
+        public UInt256 Right;
+    }
 }
