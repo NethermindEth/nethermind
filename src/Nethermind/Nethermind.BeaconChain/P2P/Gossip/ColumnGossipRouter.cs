@@ -217,11 +217,6 @@ public sealed class ColumnGossipRouter(
     private readonly Lock _subscriptionLock = new();
     private readonly Dictionary<string, List<(ulong Subnet, ITopic Topic)>> _subscriptions = [];
 
-    // Per-block-root accumulation of held columns, purely to decide when to attempt reconstruction
-    // (das-core.md "SHOULD reconstruct" at 50%+); keyed by the full header's hash tree root rather
-    // than (slot, proposer_index) so, like DataColumnReconstruction itself, columns of two different
-    // blocks can never accumulate together under one key.
-    private readonly LruCache<Hash256, List<DataColumnSidecar>> _heldColumnsByBlockRoot = new(SeenCacheSize, "beacon column reconstruction held columns");
     private readonly LruKeyCache<Hash256> _reconstructedBlockRoots = new(SeenCacheSize, "beacon column reconstruction completed blocks");
     private readonly Lock _reconstructionLock = new();
 
@@ -784,7 +779,7 @@ public sealed class ColumnGossipRouter(
         pool?.Add(blockRoot, slot, sidecar);
         DataColumnSidecarReceived?.Invoke(sidecar);
 
-        TrackHeldColumnAndMaybeReconstruct(blockRoot, sidecar);
+        TrackHeldColumnAndMaybeReconstruct(blockRoot, slot);
         return true;
     }
 
@@ -1100,36 +1095,25 @@ public sealed class ColumnGossipRouter(
     /// block's held columns cross <see cref="Eip7594DasConstants.RequiredColumnsForReconstruction"/>,
     /// reconstructs the full matrix and exposes the columns this node did not itself receive. Runs at
     /// most once per block: a completed root is never revisited, so a later gossip arrival for the
-    /// same block cannot re-reconstruct or re-expose. Different subnets' validator calls can run
-    /// concurrently on separate threads for the very columns reconstruction watches, so the
-    /// read-check-mutate sequence over <see cref="_heldColumnsByBlockRoot"/> and
-    /// <see cref="_reconstructedBlockRoots"/> runs under <see cref="_reconstructionLock"/>: each
-    /// cache is individually thread-safe, but that does not make Get-then-Add-then-Set atomic, and
-    /// an unguarded race here silently drops held columns rather than merely delaying reconstruction.
+    /// same block cannot re-reconstruct or re-expose. The held columns are the pool's, so ones range sync
+    /// added or an earlier run stored count too. Different subnets' validator calls can run concurrently on separate threads for the
+    /// very columns reconstruction watches, so the check-then-mark sequence over
+    /// <see cref="_reconstructedBlockRoots"/> runs under <see cref="_reconstructionLock"/>.
     /// </summary>
-    private void TrackHeldColumnAndMaybeReconstruct(Hash256 blockRoot, DataColumnSidecar sidecar)
+    private void TrackHeldColumnAndMaybeReconstruct(Hash256 blockRoot, ulong slot)
     {
-        List<DataColumnSidecar> held;
+        DataColumnSidecar[] held;
         DataColumnSidecar[] fullMatrix;
         lock (_reconstructionLock)
         {
-            if (_reconstructedBlockRoots.Get(blockRoot))
-            {
-                return;
-            }
-
-            held = _heldColumnsByBlockRoot.Get(blockRoot) ?? [];
-            held.Add(sidecar);
-            _heldColumnsByBlockRoot.Set(blockRoot, held);
-
-            if (held.Count < Eip7594DasConstants.RequiredColumnsForReconstruction
+            if (pool is null || _reconstructedBlockRoots.Get(blockRoot)
+                || !pool.TryGetHeldColumns(blockRoot, slot, Eip7594DasConstants.RequiredColumnsForReconstruction, out held!)
                 || !DataColumnReconstruction.TryReconstruct(held, out fullMatrix))
             {
                 return;
             }
 
             _reconstructedBlockRoots.Set(blockRoot);
-            _heldColumnsByBlockRoot.Delete(blockRoot);
         }
 
         foreach (ReconstructedSidecarToPublish entry in ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix))

@@ -4,21 +4,27 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Threading;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>
-/// In-memory cache of data column sidecars this node has validated, serving
-/// <c>DataColumnSidecarsByRange</c>/<c>ByRoot</c>.
+/// Data column sidecars this node has validated, serving <c>DataColumnSidecarsByRange</c>/<c>ByRoot</c>.
 /// </summary>
 /// <remarks>
-/// This is a bounded recent-sidecar cache, not the spec-required persisted store (a node MUST be
+/// With a store, every added sidecar is persisted there and a read that misses the bounded in-memory
+/// cache falls through to it, so eviction and restarts lose nothing the store still retains (a node MUST be
 /// able to serve these requests for <see cref="Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests"/>
-/// epochs). Each served map retains at most <c>capacity</c> sidecars and evicts the lowest slot first, so
+/// epochs); the pool prunes the store once per wall-clock epoch. Without one, the pool is a bounded
+/// recent-sidecar cache only. Each served map retains at most <c>capacity</c> sidecars and evicts the lowest slot first, so
 /// a flood of old-slot sidecars can never push out a newer block's columns, and the slots still retained
 /// completely always form one suffix, reported by <see cref="EarliestCompletelyServableSlot"/>. The
 /// <c>capacity</c> most recently given sidecars are held as well, so a verified range-synced column
@@ -29,12 +35,28 @@ namespace Nethermind.BeaconChain.P2P;
 /// parked as pending: pending sidecars are never returned by the served lookups, and move to the
 /// served map only through <see cref="AddGloas"/> once verified against their block's bid.
 /// </remarks>
-public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
+/// <param name="capacity">The most sidecars each served map holds in memory.</param>
+/// <param name="store">Where sidecars are persisted and read back on a memory miss; <c>null</c> keeps them in memory only.</param>
+/// <param name="clock">Where the wall-clock epoch that sets the retention window is read from; <c>null</c> never prunes the store.</param>
+/// <param name="status">Where the finalized epoch is read from, below which sidecars of non-canonical blocks are pruned; <c>null</c> prunes none.</param>
+/// <param name="logManager">Reports stored sidecars that cannot be read or written.</param>
+public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainStore? store = null, SlotClock? clock = null, IBeaconChainStatusSource? status = null, ILogManager? logManager = null)
 {
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<DataColumnSidecarPool>();
+
     private readonly Lock _servedLock = new();
     private readonly SlotOrderedSidecars<DataColumnSidecar> _byRootAndColumn = new(capacity);
     private readonly SlotOrderedSidecars<DataColumnSidecarGloas> _gloasByRootAndColumn = new(capacity);
     private ulong? _firstGivenSlot;
+    private ulong _seededFloor;
+    private ulong _writeFailedBelow;
+    private ulong _writeFailedPersisted;
+    private int _storeReadFaultReported;
+    private ulong? _storedFloor = store is not null && store.TryGetDataColumnFloor(out ulong storedFloor) ? storedFloor : null;
+    private long _lastPrunedEpoch = -1;
+
+    // A corrupt record would otherwise be read and decoded again for every request that names it.
+    private readonly LruKeyCache<(Hash256 BlockRoot, ulong Column)> _unreadable = new(256, "unreadable data column sidecars");
     // Pending sidecars are unverified and peer-supplied, so they get a smaller bound than the served maps.
     private readonly int _maxPendingGloas = Math.Min(capacity, MaxPendingGloasSidecars);
     private readonly Lock _pendingLock = new();
@@ -69,7 +91,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
     /// <remarks>
     /// A lower slot either lost or was refused a sidecar, or is below the slot of the first sidecar this process received,
     /// so its columns cannot be assumed complete. Never decreases. A block that carried no blobs has no sidecars, so its
-    /// slot never counts against this.
+    /// slot never counts against this. With a store, memory eviction loses nothing, so the floor is the one the store recorded
+    /// when the first sidecar was given, raised by pruning and by a failed write, and it survives a restart.
     /// </remarks>
     internal ulong EarliestCompletelyServableSlot
     {
@@ -77,8 +100,124 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
         {
             lock (_servedLock)
             {
-                return Math.Max(_firstGivenSlot ?? ulong.MaxValue, Math.Max(_byRootAndColumn.IncompleteBelow, _gloasByRootAndColumn.IncompleteBelow));
+                ulong held = store is null
+                    ? Math.Max(_firstGivenSlot ?? ulong.MaxValue, Math.Max(_byRootAndColumn.IncompleteBelow, _gloasByRootAndColumn.IncompleteBelow))
+                    : _storedFloor ?? ulong.MaxValue;
+                return Math.Max(held, Math.Max(_seededFloor, _writeFailedBelow));
             }
+        }
+    }
+
+    /// <summary>Floors <see cref="EarliestCompletelyServableSlot"/> one past the canonical index top at start-up, unless the store already recorded a floor.</summary>
+    /// <param name="canonicalIndexTopSlot">The highest slot the canonical index may hold, or <c>null</c> for a database that has none.</param>
+    /// <remarks>
+    /// The first sidecar this process is given can sit below the head it resumes from, and would otherwise make every slot up to the head look
+    /// complete. A recorded store floor already says which slots the store holds, so it is not overridden.
+    /// </remarks>
+    internal void SeedCompletelyServableFloor(ulong? canonicalIndexTopSlot)
+    {
+        if (canonicalIndexTopSlot is not { } top)
+        {
+            return;
+        }
+
+        lock (_servedLock)
+        {
+            if (_storedFloor is null)
+            {
+                _seededFloor = Math.Max(_seededFloor, top == ulong.MaxValue ? top : top + 1);
+            }
+        }
+    }
+
+    /// <summary>Collects the Fulu sidecars held for <paramref name="blockRoot"/> at <paramref name="slot"/>, memory and store together, one per column, once there are at least <paramref name="atLeast"/>.</summary>
+    /// <remarks>The store is asked for its column bitmap only when memory alone falls short, and reads only the columns it holds, so a block whose columns arrived before a restart still reconstructs.</remarks>
+    /// <returns><c>false</c> when fewer are held.</returns>
+    internal bool TryGetHeldColumns(Hash256 blockRoot, ulong slot, int atLeast, [NotNullWhen(true)] out DataColumnSidecar[]? held)
+    {
+        UInt128 columns = UInt128.Zero;
+        int inMemory = 0;
+        lock (_servedLock)
+        {
+            for (ulong column = 0; column < Eip7594DasConstants.NumberOfColumns; column++)
+            {
+                if (_byRootAndColumn.TryGet((blockRoot, column), out _))
+                {
+                    columns |= UInt128.One << (int)column;
+                    inMemory++;
+                }
+            }
+        }
+
+        if (inMemory < atLeast && store is not null)
+        {
+            columns |= ReadStoredColumns(slot, blockRoot);
+        }
+
+        int candidates = (int)UInt128.PopCount(columns);
+        if (candidates < atLeast)
+        {
+            held = null;
+            return false;
+        }
+
+        DataColumnSidecar[] found = new DataColumnSidecar[candidates];
+        int next = 0;
+        for (ulong column = 0; column < Eip7594DasConstants.NumberOfColumns; column++)
+        {
+            if ((columns >> (int)column & UInt128.One) != UInt128.Zero && TryGet(blockRoot, column, out DataColumnSidecar? sidecar) && sidecar is not null)
+            {
+                found[next++] = sidecar;
+            }
+        }
+
+        if (next < atLeast)
+        {
+            held = null;
+            return false;
+        }
+
+        held = next == found.Length ? found : found[..next];
+        return true;
+    }
+
+    private UInt128 ReadStoredColumns(ulong slot, Hash256 blockRoot)
+    {
+        try
+        {
+            return store!.GetStoredDataColumns(slot, blockRoot);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            ReportStoreReadFault(e);
+            return UInt128.Zero;
+        }
+    }
+
+    private bool StoreHolds(Hash256 blockRoot, ulong column)
+    {
+        if (_unreadable.Get((blockRoot, column)))
+        {
+            return false;
+        }
+
+        try
+        {
+            return store!.HasDataColumnRecord(blockRoot, column);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            ReportStoreReadFault(e);
+            return false;
+        }
+    }
+
+    // A failing database would otherwise log once per request that names a stored column.
+    private void ReportStoreReadFault(Exception e)
+    {
+        if (Interlocked.Exchange(ref _storeReadFaultReported, 1) == 0 && _logger.IsError)
+        {
+            _logger.Error("Reading stored data column sidecars failed; the affected ones are not served until the store recovers", e);
         }
     }
 
@@ -92,6 +231,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
             wake = TakeWakeOnArrival(blockRoot, sidecar.Index);
         }
 
+        Persist(slot, blockRoot, sidecar.Index, sidecar, null);
         wake?.Invoke();
     }
 
@@ -107,10 +247,12 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
     /// </remarks>
     internal bool TryWatch(Hash256 blockRoot, IReadOnlyList<ulong> columns, bool gloas, Action wake)
     {
+        // The store is probed before the lock and memory inside it: a column added in between is in memory first, so it is seen either way.
+        IReadOnlyList<ulong> notStored = store is null ? columns : ColumnsNotStored(blockRoot, columns);
         HashSet<ulong> missing = [];
         lock (_servedLock)
         {
-            foreach (ulong column in columns)
+            foreach (ulong column in notStored)
             {
                 if (!(gloas ? _gloasByRootAndColumn.TryGet((blockRoot, column), out _) || HasPendingGloas(blockRoot, column) : _byRootAndColumn.TryGet((blockRoot, column), out _)))
                 {
@@ -129,6 +271,20 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
             Volatile.Write(ref _watchCount, _watches.Count);
             return true;
         }
+    }
+
+    private List<ulong> ColumnsNotStored(Hash256 blockRoot, IReadOnlyList<ulong> columns)
+    {
+        List<ulong> notStored = new(columns.Count);
+        foreach (ulong column in columns)
+        {
+            if (!StoreHolds(blockRoot, column))
+            {
+                notStored.Add(column);
+            }
+        }
+
+        return notStored;
     }
 
     /// <summary>Removes the watch on <paramref name="blockRoot"/>, if any.</summary>
@@ -180,11 +336,38 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
         public Action Wake { get; } = wake;
     }
 
+    /// <remarks>A sidecar the memory no longer holds is read from the store without being cached, so a range request never displaces the recent set.</remarks>
     public bool TryGet(Hash256 blockRoot, ulong column, out DataColumnSidecar? sidecar)
     {
         lock (_servedLock)
         {
-            return _byRootAndColumn.TryGet((blockRoot, column), out sidecar);
+            if (_byRootAndColumn.TryGet((blockRoot, column), out sidecar))
+            {
+                return true;
+            }
+        }
+
+        sidecar = null;
+        if (store is null || _unreadable.Get((blockRoot, column)))
+        {
+            return false;
+        }
+
+        try
+        {
+            bool found = store.TryGetDataColumnSidecar(blockRoot, column, out sidecar);
+            Volatile.Write(ref _storeReadFaultReported, 0);
+            return found;
+        }
+        catch (InvalidDataException e)
+        {
+            MarkUnreadable(blockRoot, column, gloas: false, e);
+            return false;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            ReportStoreReadFault(e);
+            return false;
         }
     }
 
@@ -201,6 +384,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
             wake = TakeWakeOnArrival(blockRoot, sidecar.Index);
         }
 
+        Persist(sidecar.Slot, blockRoot, sidecar.Index, null, sidecar);
+
         lock (_pendingLock)
         {
             if (_pendingByKey.Remove((blockRoot, sidecar.Index), out List<DataColumnSidecarGloas>? candidates))
@@ -216,7 +401,166 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
     {
         lock (_servedLock)
         {
-            return _gloasByRootAndColumn.TryGet((blockRoot, column), out sidecar);
+            if (_gloasByRootAndColumn.TryGet((blockRoot, column), out sidecar))
+            {
+                return true;
+            }
+        }
+
+        sidecar = null;
+        if (store is null || _unreadable.Get((blockRoot, column)))
+        {
+            return false;
+        }
+
+        try
+        {
+            bool found = store.TryGetDataColumnSidecarGloas(blockRoot, column, out sidecar);
+            Volatile.Write(ref _storeReadFaultReported, 0);
+            return found;
+        }
+        catch (InvalidDataException e)
+        {
+            MarkUnreadable(blockRoot, column, gloas: true, e);
+            return false;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            ReportStoreReadFault(e);
+            return false;
+        }
+    }
+
+    private void MarkUnreadable(Hash256 blockRoot, ulong column, bool gloas, InvalidDataException e)
+    {
+        _unreadable.Set((blockRoot, column));
+        // A write that replaced the record during the failed read clears the marker either after this set or before this re-read.
+        try
+        {
+            if (gloas ? store!.TryGetDataColumnSidecarGloas(blockRoot, column, out _) : store!.TryGetDataColumnSidecar(blockRoot, column, out _))
+            {
+                _unreadable.Delete((blockRoot, column));
+                return;
+            }
+        }
+        catch (Exception reread) when (reread is not OutOfMemoryException)
+        {
+        }
+
+        if (_logger.IsWarn) _logger.Warn($"Stored data column sidecar {blockRoot} index {column} is unreadable and is not served: {e.Message}");
+    }
+
+    /// <summary>Writes a sidecar the memory now holds to the store, fixes the stored floor on the first one, and prunes once per epoch.</summary>
+    /// <remarks>A failed write is reported and raises the floor above the slot, in the store too where it accepts the floor, so the sidecar is not claimed servable once memory evicts it or after a restart.</remarks>
+    private void Persist(ulong slot, Hash256 blockRoot, ulong column, DataColumnSidecar? fulu, DataColumnSidecarGloas? gloas)
+    {
+        if (store is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (fulu is not null)
+            {
+                store.PutDataColumnSidecar(blockRoot, slot, fulu);
+            }
+            else
+            {
+                store.PutDataColumnSidecar(gloas!);
+            }
+
+            _unreadable.Delete((blockRoot, column));
+            FixStoredFloor(slot);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            if (_logger.IsError) _logger.Error($"Could not store data column sidecar {blockRoot} index {column}; slots up to {slot} are no longer served as complete", e);
+            lock (_servedLock)
+            {
+                _writeFailedBelow = Math.Max(_writeFailedBelow, slot == ulong.MaxValue ? slot : slot + 1);
+            }
+        }
+
+        PersistWriteFailedFloor();
+        PruneOncePerEpoch();
+    }
+
+    /// <summary>Records the floor a failed write raised in the store, so a restart does not claim the slot complete; a failed attempt is repeated after the next sidecar.</summary>
+    private void PersistWriteFailedFloor()
+    {
+        ulong failedBelow;
+        ulong floor;
+        lock (_servedLock)
+        {
+            failedBelow = _writeFailedBelow;
+            if (failedBelow <= _writeFailedPersisted)
+            {
+                return;
+            }
+
+            floor = Math.Max(failedBelow, _seededFloor);
+        }
+
+        try
+        {
+            store!.RaiseDataColumnFloor(floor);
+            lock (_servedLock)
+            {
+                _writeFailedPersisted = Math.Max(_writeFailedPersisted, failedBelow);
+                _storedFloor = _storedFloor is { } known ? Math.Max(known, floor) : floor;
+            }
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            if (_logger.IsError) _logger.Error($"Could not record that slots up to {failedBelow} lost a data column sidecar; retried after the next one", e);
+        }
+    }
+
+    // The seed carries into the recorded floor, so a later start, which skips the seed, never takes a late column's slot for it.
+    private void FixStoredFloor(ulong slot)
+    {
+        lock (_servedLock)
+        {
+            if (_storedFloor is not null)
+            {
+                return;
+            }
+
+            ulong floor = Math.Max(slot, _seededFloor);
+            store!.RaiseDataColumnFloor(floor);
+            _storedFloor = floor;
+        }
+    }
+
+    private void PruneOncePerEpoch()
+    {
+        if (store is null || clock is null)
+        {
+            return;
+        }
+
+        long epoch = (long)clock.CurrentEpoch;
+        long previous = Volatile.Read(ref _lastPrunedEpoch);
+        if (previous == epoch || Interlocked.CompareExchange(ref _lastPrunedEpoch, epoch, previous) != previous)
+        {
+            return;
+        }
+
+        try
+        {
+            store.PruneDataColumnSidecars((ulong)epoch, status is null ? 0 : BeaconStateAccessors.ComputeStartSlotAtEpoch(status.CurrentStatus.FinalizedEpoch));
+            if (store.TryGetDataColumnFloor(out ulong floor))
+            {
+                lock (_servedLock)
+                {
+                    _storedFloor = _storedFloor is { } known ? Math.Max(known, floor) : _storedFloor;
+                }
+            }
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            if (_logger.IsError) _logger.Error("Pruning the stored data column sidecars failed; they are pruned again next epoch", e);
         }
     }
 
