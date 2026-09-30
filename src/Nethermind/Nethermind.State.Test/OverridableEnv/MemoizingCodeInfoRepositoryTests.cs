@@ -59,8 +59,11 @@ public class MemoizingCodeInfoRepositoryTests
         Lookup(repository, TestItem.AddressA, 2);
         repository.InsertCode(new byte[] { 0x60, 0x01 }, TestItem.AddressA, Spec);
         Lookup(repository, TestItem.AddressA, 3);
-        Assert.That(InnerLookups(inner), Is.EqualTo(4));
-        inner.Received(1).InsertCode(Arg.Any<ReadOnlyMemory<byte>>(), TestItem.AddressA, Spec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(InnerLookups(inner), Is.EqualTo(4));
+            inner.Received(1).InsertCode(Arg.Any<ReadOnlyMemory<byte>>(), TestItem.AddressA, Spec);
+        }
     }
 
     [Test]
@@ -70,8 +73,11 @@ public class MemoizingCodeInfoRepositoryTests
         Lookup(repository, TestItem.AddressB, 2);
         repository.SetDelegation(TestItem.AddressC, TestItem.AddressB, Spec);
         Lookup(repository, TestItem.AddressB, 2);
-        Assert.That(InnerLookups(inner), Is.EqualTo(3));
-        inner.Received(1).SetDelegation(TestItem.AddressC, TestItem.AddressB, Spec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(InnerLookups(inner), Is.EqualTo(3));
+            inner.Received(1).SetDelegation(TestItem.AddressC, TestItem.AddressB, Spec);
+        }
     }
 
     [Test]
