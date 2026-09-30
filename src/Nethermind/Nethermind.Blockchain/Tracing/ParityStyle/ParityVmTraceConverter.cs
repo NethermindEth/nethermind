@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -19,5 +20,16 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
         writer.WriteEndObject();
     }
 
-    public override ParityVmTrace? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
+    public override ParityVmTrace? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null) return null;
+        using JsonDocument document = JsonDocument.ParseValue(ref reader);
+        JsonElement value = document.RootElement;
+        if (value.ValueKind != JsonValueKind.Object) throw new JsonException();
+        return new ParityVmTrace
+        {
+            Code = value.GetProperty("code").Deserialize<byte[]>(options)!,
+            Operations = value.GetProperty("ops").Deserialize<List<ParityVmOperationTrace>>(options)!,
+        };
+    }
 }

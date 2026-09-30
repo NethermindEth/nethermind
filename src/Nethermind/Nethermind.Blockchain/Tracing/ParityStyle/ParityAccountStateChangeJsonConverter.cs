@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -21,7 +22,44 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
     public override ParityAccountStateChange Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options) => throw new NotImplementedException();
+        JsonSerializerOptions options)
+    {
+        using JsonDocument document = JsonDocument.ParseValue(ref reader);
+        JsonElement value = document.RootElement;
+        if (value.ValueKind != JsonValueKind.Object) throw new JsonException();
+        ParityAccountStateChange change = new()
+        {
+            Balance = ReadChange<UInt256?>(value.GetProperty("balance"), options),
+            Code = ReadChange<byte[]>(value.GetProperty("code"), options),
+            Nonce = ReadChange<UInt256?>(value.GetProperty("nonce"), options),
+            Storage = [],
+        };
+        foreach (JsonProperty slot in value.GetProperty("storage").EnumerateObject())
+        {
+            UInt256 index = UInt256Converter.ReadHex(Encoding.UTF8.GetBytes(slot.Name));
+            change.Storage[index] = ReadChange<byte[]>(slot.Value, options)!;
+        }
+        return change;
+    }
+
+    private static ParityStateChange<T>? ReadChange<T>(JsonElement value, JsonSerializerOptions options)
+    {
+        if (value.ValueKind == JsonValueKind.String && value.GetString() == "=") return null;
+        if (value.ValueKind != JsonValueKind.Object) throw new JsonException();
+        JsonElement.ObjectEnumerator fields = value.EnumerateObject();
+        if (!fields.MoveNext()) throw new JsonException();
+        JsonProperty marker = fields.Current;
+        if (fields.MoveNext()) throw new JsonException();
+        return marker.Name switch
+        {
+            "+" => new ParityStateChange<T>(default, marker.Value.Deserialize<T>(options)),
+            "-" => new ParityStateChange<T>(marker.Value.Deserialize<T>(options), default),
+            "*" => new ParityStateChange<T>(
+                marker.Value.GetProperty("from").Deserialize<T>(options),
+                marker.Value.GetProperty("to").Deserialize<T>(options)),
+            _ => throw new JsonException(),
+        };
+    }
 
     private static void WriteChange(Utf8JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializerOptions options)
     {

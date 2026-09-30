@@ -13,7 +13,44 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
     public override ParityVmOperationTrace Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options) => throw new NotImplementedException();
+        JsonSerializerOptions options)
+    {
+        using JsonDocument document = JsonDocument.ParseValue(ref reader);
+        JsonElement value = document.RootElement;
+        if (value.ValueKind != JsonValueKind.Object) throw new JsonException();
+        JsonElement execution = value.GetProperty("ex");
+        ParityVmOperationTrace operation = new()
+        {
+            Cost = value.GetProperty("cost").GetUInt64(),
+            Pc = value.GetProperty("pc").GetInt32(),
+            Sub = value.GetProperty("sub").Deserialize<ParityVmTrace>(options),
+            Halted = execution.ValueKind == JsonValueKind.Null,
+        };
+        if (!operation.Halted)
+        {
+            JsonElement memory = execution.GetProperty("mem");
+            if (memory.ValueKind != JsonValueKind.Null)
+            {
+                operation.Memory = new ParityMemoryChangeTrace
+                {
+                    Data = memory.GetProperty("data").Deserialize<byte[]>(options)!,
+                    Offset = memory.GetProperty("off").GetInt64(),
+                };
+            }
+            operation.Push = execution.GetProperty("push").Deserialize<byte[][]>(options);
+            JsonElement store = execution.GetProperty("store");
+            if (store.ValueKind != JsonValueKind.Null)
+            {
+                operation.Store = new ParityStorageChangeTrace
+                {
+                    Key = store.GetProperty("key").Deserialize<byte[]>(options)!,
+                    Value = store.GetProperty("val").Deserialize<byte[]>(options)!,
+                };
+            }
+            operation.Used = execution.GetProperty("used").GetUInt64();
+        }
+        return operation;
+    }
 
     public override void Write(
         Utf8JsonWriter writer,
