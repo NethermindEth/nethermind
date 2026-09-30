@@ -65,6 +65,19 @@ internal sealed class ChannelStreamAdapter(IChannel channel) : Stream
         return true;
     }
 
+    /// <summary>Half-closes the write side, which ends the response for the reader while this side keeps reading.</summary>
+    /// <remarks>A channel that is already closed, or a token that fires first, only means there is nothing left to end.</remarks>
+    internal async ValueTask TryWriteEofAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await channel.WriteEofAsync(cancellationToken);
+        }
+        catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException)
+        {
+        }
+    }
+
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
         ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 
