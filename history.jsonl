@@ -1,0 +1,3 @@
+{"run_id":36654987305,"run_attempt":1,"date":"2026-09-30T01:24:49Z","event":"workflow_run","commit":"306c289a7d","network":"gnosis","mode":"Flat","image":"nethermindeth/nethermind:master-306c289","verify_min":19.8,"drain_min":5.3,"source":"ci","job_min":140.0}
+{"run_id":36654987305,"run_attempt":1,"date":"2026-09-30T01:24:49Z","event":"workflow_run","commit":"306c289a7d","network":"gnosis","mode":"HalfPath","image":"nethermindeth/nethermind:master-306c289","verify_min":11.7,"source":"ci","job_min":110.2}
+{"run_id":36654987305,"run_attempt":1,"date":"2026-09-30T01:24:49Z","event":"workflow_run","commit":"306c289a7d","network":"mainnet","mode":"Flat","image":"nethermindeth/nethermind:master-306c289","verify_min":66.3,"source":"ci","job_min":238.7}
