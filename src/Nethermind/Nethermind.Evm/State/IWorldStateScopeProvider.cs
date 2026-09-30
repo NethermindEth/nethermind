@@ -183,7 +183,8 @@ public interface IWorldStateScopeProvider
 
     public interface ICodeDb
     {
-        byte[]? GetCode(in ValueHash256 codeHash);
+        /// <summary>The code stored under <paramref name="codeHash"/>, or <c>default</c> when it is missing.</summary>
+        ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash);
 
         ICodeSetter BeginCodeWrite();
 

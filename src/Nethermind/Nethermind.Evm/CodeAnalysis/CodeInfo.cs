@@ -72,10 +72,17 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
 
     private static byte[] CreatePaddedCode(ReadOnlySpan<byte> code)
     {
-        byte[] padded = GC.AllocateUninitializedArray<byte>(code.Length + ExecutionPadding);
+        byte[] padded = CreateExecutionBuffer(code.Length);
         code.CopyTo(padded);
-        padded.AsSpan(code.Length).Clear();
         return padded;
+    }
+
+    /// <summary>Allocates a buffer for <paramref name="codeLength"/> code bytes followed by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    internal static byte[] CreateExecutionBuffer(int codeLength)
+    {
+        byte[] buffer = GC.AllocateUninitializedArray<byte>(codeLength + ExecutionPadding);
+        buffer.AsSpan(codeLength).Clear();
+        return buffer;
     }
     private Address? _delegatedAddress;
     internal Address? DelegatedAddress

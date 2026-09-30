@@ -337,30 +337,32 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         return ref account is not null ? ref account.CodeHash.ValueHash256 : ref Keccak.OfAnEmptyString.ValueHash256;
     }
 
-    public byte[] GetCode(in ValueHash256 codeHash)
+    public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         => GetCodeCore(in codeHash);
 
-    private byte[] GetCodeCore(in ValueHash256 codeHash)
+    private ReadOnlyMemory<byte> GetCodeCore(in ValueHash256 codeHash)
     {
-        if (codeHash == Keccak.OfAnEmptyString.ValueHash256) return [];
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256) return Array.Empty<byte>();
 
-        if (_codeBatch is null || !_codeBatchAlternate.TryGetValue(codeHash, out byte[]? code))
+        if (_codeBatch is not null && _codeBatchAlternate.TryGetValue(codeHash, out byte[]? pending))
         {
-            code = CodeDb.GetCode(codeHash);
+            return pending;
         }
-        return code ?? ThrowMissingCode(in codeHash);
+
+        ReadOnlyMemory<byte> code = CodeDb.GetCode(codeHash);
+        return code.IsNull() ? ThrowMissingCode(in codeHash) : code;
 
         [DoesNotReturn, StackTraceHidden]
-        static byte[] ThrowMissingCode(in ValueHash256 codeHash)
+        static ReadOnlyMemory<byte> ThrowMissingCode(in ValueHash256 codeHash)
             => throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
     }
 
-    public byte[] GetCode(Address address)
+    public ReadOnlyMemory<byte> GetCode(Address address)
     {
         Account? account = GetThroughCache(address);
         if (account is null)
         {
-            return [];
+            return Array.Empty<byte>();
         }
 
         return GetCode(in account.CodeHash.ValueHash256);
@@ -1173,12 +1175,12 @@ internal static class Extensions
                     ? null
                     : beforeCodeHash == Keccak.OfAnEmptyString
                         ? []
-                        : stateProvider.GetCode(in beforeCodeHash.ValueHash256);
+                        : stateProvider.GetCode(in beforeCodeHash.ValueHash256).ToArray();
                 byte[]? afterCode = afterCodeHash is null
                     ? null
                     : afterCodeHash == Keccak.OfAnEmptyString
                         ? []
-                        : stateProvider.GetCode(in afterCodeHash.ValueHash256);
+                        : stateProvider.GetCode(in afterCodeHash.ValueHash256).ToArray();
 
                 if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                 {

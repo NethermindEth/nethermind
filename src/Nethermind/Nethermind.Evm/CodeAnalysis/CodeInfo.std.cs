@@ -18,9 +18,12 @@ public sealed partial class CodeInfo
     partial void InitializeCode(ReadOnlyMemory<byte> code)
     {
         _codeLength = code.Length;
-        _code = MemoryMarshal.TryGetArray(code, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length
-            ? (object)segment.Array
-            : code;
+        // An execution buffer is already padded, so GetExecutionCode takes it as the execution copy.
+        _code = ExecutableCodeMemory.TryGetExecutionBuffer(code, out byte[]? buffer)
+            ? buffer
+            : MemoryMarshal.TryGetArray(code, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length
+                ? (object)segment.Array
+                : code;
     }
 
     public partial ReadOnlyMemory<byte> Code => ViewOf(_code);

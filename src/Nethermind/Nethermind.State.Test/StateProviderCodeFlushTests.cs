@@ -40,7 +40,7 @@ public class StateProviderCodeFlushTests
 
             // Both byte[] arguments take a matcher: NSubstitute refuses a mix of literal and matcher across arguments of one type.
             tracer.Received(1).ReportCodeChange(address, Arg.Is<byte[]>(previous => previous == null), Arg.Is<byte[]>(bytes => bytes.SequenceEqual(code)));
-            Assert.That(provider.GetCode(hash), Is.EqualTo(code), "committed and staged code must remain readable");
+            Assert.That(provider.GetCode(hash).ToArray(), Is.EqualTo(code), "committed and staged code must remain readable");
         }
         Assert.That(codeDb.Writes, Is.EqualTo(commitRoots ? 2 : 0), "tracing must not force a staged-only commit to flush");
     }
@@ -75,7 +75,7 @@ public class StateProviderCodeFlushTests
         private byte[] _code;
         public int Writes { get; private set; }
         public bool Fail { get; init; }
-        public byte[] GetCode(in ValueHash256 codeHash) => _code;
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => _code;
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => this;
         public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
         {

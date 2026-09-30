@@ -175,17 +175,17 @@ public class WitnessGeneratingWorldState(
         return base.GetNonce(address);
     }
 
-    public override byte[]? GetCode(Address address)
+    public override ReadOnlyMemory<byte> GetCode(Address address)
     {
         RecordEmptySlots(address);
-        byte[]? code = base.GetCode(address);
+        ReadOnlyMemory<byte> code = base.GetCode(address);
         RecordBytecode(code);
         return code;
     }
 
-    public override byte[]? GetCode(in ValueHash256 codeHash)
+    public override ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
     {
-        byte[]? code = base.GetCode(in codeHash);
+        ReadOnlyMemory<byte> code = base.GetCode(in codeHash);
         // Hash already known: skip re-Keccaking the (potentially large) bytecode
         RecordBytecode(in codeHash, code);
         return code;
@@ -368,16 +368,18 @@ public class WitnessGeneratingWorldState(
         return slots;
     }
 
-    private void RecordBytecode(byte[]? code)
+    private void RecordBytecode(ReadOnlyMemory<byte> code)
     {
         // Address-keyed paths don't carry the code hash, so compute it here.
-        if (code?.Length > 0)
-            RecordBytecode(ValueKeccak.Compute(code), code);
+        if (code.Length > 0)
+            RecordBytecode(ValueKeccak.Compute(code.Span), code);
     }
 
-    private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
+    private void RecordBytecode(in ValueHash256 codeHash, ReadOnlyMemory<byte> code)
     {
-        if (code is not { Length: > 0 } || _inBlockDeployed.Contains(codeHash)) return;
-        _bytecodes.TryAdd(codeHash, code);
+        if (code.Length == 0 || _inBlockDeployed.Contains(codeHash)) return;
+        // The witness serialises exact arrays; copy once per contract.
+        ref byte[]? recorded = ref CollectionsMarshal.GetValueRefOrAddDefault(_bytecodes, codeHash, out bool exists);
+        if (!exists) recorded = code.ToArray();
     }
 }

@@ -265,7 +265,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
                 UInt256 nonce = account.Nonce;
-                byte[]? code = _worldState.GetCode(addr);
+                byte[] code = _worldState.GetCode(addr).ToArray();
                 _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code));
             }
             else
@@ -305,7 +305,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
-                _worldState.GetCode(addr));
+                _worldState.GetCode(addr).ToArray());
             NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
