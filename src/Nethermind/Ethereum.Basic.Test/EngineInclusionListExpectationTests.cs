@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Ethereum.Basic.Test;
 
 // EIP-7805 compliance is reported twice: by engine_newPayloadV6 and again by the fork-choice update to
-// that head. The harness only ever asserted the first, so the fork-choice rule had no fixture coverage.
+// that head, and a fixture's inclusionListSatisfied is the expectation for both.
 [TestFixture]
 public class EngineInclusionListExpectationTests
 {

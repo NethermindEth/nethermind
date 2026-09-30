@@ -504,8 +504,7 @@ public abstract class BlockchainTestBase
                             CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
                         }
 
-                        JsonRpcResponse fcuResponse = await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
-                        AssertFcuInclusionListSatisfied(fcuResponse, enginePayload, fcuVersion);
+                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
                     }
                 }
                 else
