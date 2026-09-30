@@ -115,7 +115,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
-            // The call is converted for the block it runs on, so it is traced on that header rather than on a new lookup.
             Result<Transaction> txResult = ToCallTransaction(call, headerSearch.Object!);
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)

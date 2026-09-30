@@ -2077,17 +2077,18 @@ public class TraceRpcModuleTests
         .Op(Instruction.RETURN)
         .Done;
 
-    // Shaped like trace-interop's blob-fee-defaulted probe: a blob call to a contract returning BLOBBASEFEE, without maxFeePerBlobGas.
     // The test chain sets the excess blob gas only in its genesis header, so the call runs on top of genesis. The sender holds
     // exactly one blob's fee at the blob base fee, which funds a cap equal to the blob base fee but not a higher one.
     [Test]
-    public async Task Trace_call_and_callMany_default_an_omitted_blob_fee_cap_as_eth_call_does([Values] bool many, [Values] bool streaming)
+    public async Task Trace_call_and_callMany_default_an_omitted_blob_fee_cap_as_eth_call_does(
+        [Values] bool many, [Values] bool streaming, [Values(0UL, 10_000_000UL)] ulong excessBlobGas)
     {
         Address contract = TestItem.AddressF;
         Context context = new();
         await context.Build(new TestSpecProvider(Cancun.Instance), configurer: builder =>
             builder.WithGenesisPostProcessor((genesis, state) =>
             {
+                genesis.Header.ExcessBlobGas = excessBlobGas;
                 BlobGasCalculator.TryCalculateFeePerBlobGas(genesis.Header, Cancun.Instance.BlobBaseFeeUpdateFraction, out UInt256 genesisBlobBaseFee);
                 state.CreateAccount(TestItem.AddressE, (UInt256)Eip4844Constants.GasPerBlob * genesisBlobBaseFee);
                 state.CreateAccount(contract, 0);
