@@ -801,8 +801,9 @@
   },
   {
     "pname": "Nethermind.Numerics.Int256",
-    "version": "1.9.0",
-    "hash": "sha256-AlueeeeK61ptszw/pbyCzjbPEjGYdVNF+wKrzB/XuZw="
+    "version": "1.10.0-rc",
+    "hash": "sha256-uhFzhDjYKl6ojBw4yW3Mpm78RdPjvcxRglM3ChjkhfE=",
+    "url": "https://apiint.nugettest.org/v3-flatcontainer/nethermind.numerics.int256/1.10.0-rc/nethermind.numerics.int256.1.10.0-rc.nupkg"
   },
   {
     "pname": "Nethermind.RocksDbBindings",
