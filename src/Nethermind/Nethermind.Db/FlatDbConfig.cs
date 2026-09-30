@@ -41,6 +41,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
     public bool DeferStorageTrieCommit { get; set; } = true;
+    public bool ApplyStorageWritesOnIdleThread { get; set; } = true;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
