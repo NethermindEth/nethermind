@@ -412,6 +412,23 @@ public class GloasBlockImporterTests
         Assert.That(accepted, Is.EqualTo(1), "the genuine vote verified after the forgery was refused");
     }
 
+    /// <summary>The router gets its slot's committee from the head state (gloas/p2p-interface.md <c>get_ptc(state, data.slot)</c>); a root or slot the head state cannot answer is null, not a throw on the worker.</summary>
+    [Test]
+    public void Head_ptc_is_the_head_states_committee_and_null_where_it_cannot_be_read()
+    {
+        SignedGloasChain chain = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        Import(importer, first);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.GetPtc(first.Root, ForkSlot), Is.EqualTo(first.PostState.GetPtc(ForkSlot, chain.Spec).Indices));
+            Assert.That(importer.GetPtc(Hash(0x5A), ForkSlot), Is.Null, "unknown head");
+            Assert.That(importer.GetPtc(first.Root, ForkSlot + 10 * Presets.SlotsPerEpoch), Is.Null, "outside the state's window");
+        }
+    }
+
     /// <summary>A PTC member's signed vote on <paramref name="block"/>'s payload for its slot, the data available with the payload.</summary>
     private static PayloadAttestationMessage PtcVote(SignedGloasChain.Block block, ulong validatorIndex, bool payloadPresent)
     {
