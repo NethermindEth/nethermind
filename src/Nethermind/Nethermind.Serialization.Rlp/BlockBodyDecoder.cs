@@ -154,6 +154,10 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
                 Transaction? transaction = usePooledTransactions ? TxDecoder.TxObjectPool.Get() : new Transaction();
                 transactions[decoded++] = transaction;
                 _txDecoder.Decode(ref ctx, ref transaction);
+                if (transaction is null) RlpHelpers.ThrowNullArrayElement(i);
+                if (usePooledTransactions && !ReferenceEquals(transaction, transactions[i]))
+                    TxDecoder.TxObjectPool.Return(transactions[i]);
+                transactions[i] = transaction;
             }
             ctx.Check(end);
             return transactions;
