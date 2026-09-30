@@ -53,11 +53,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
 
-    // Set when this is the writable main block processing scope and FlatDb.ApplyStorageWritesOnIdleThread is on.
     private readonly IdleStorageApplier? _earlyApplier;
-    // Closed while the block-end write batch runs, so the early apply thread leaves the trees to it.
+    // Closed from the block-end write batch on.
     private volatile bool _earlyApplyClosed;
-    // Advanced by every commit, so trees of an earlier block still queued for the early apply thread are skipped.
+    // Advanced by every commit, so trees of an earlier block are skipped.
     private volatile int _earlyApplyGeneration;
     private int _earlyAppliedSlots;
     private int _earlyReusedSlots;
@@ -569,7 +568,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
         if (logger.IsDebug) logger.Debug($"Early storage apply block={blockNumber} applied={applied} reused={reused} restored={restored} abandoned={abandoned}");
 
-        // The next block in this scope starts with its own trees, and right after this one, so back to back.
         _earlyApplier!.BlockCommitted();
         _earlyApplyGeneration++;
         _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();

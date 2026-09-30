@@ -746,23 +746,19 @@ public class FlatWorldStateScopeProviderTests
     public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
     {
         const int slotCount = 40;
-        // Open however recently an earlier test committed a block.
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        // With the deferred commit the adopted early tree's nodes are only written by the scope commit.
         using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly, DeferStorageTrieCommit = deferStorageTrieCommit });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
 
-        // What the transactions commit, in order: every slot once, then slot 1 again and slot 2 back to its
-        // pre-block zero, which the block-end flush then leaves out.
+        // Every slot once, then slot 1 again and slot 2 back to its pre-block zero.
         FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
         for (int slot = 0; slot < slotCount; slot++) storageTree.HintSet((UInt256)slot, (UInt256)(slot + 1));
         storageTree.HintSet(1, 1000);
         storageTree.HintSet(2, 0);
         Assert.That(() => storageTree.EarlyWritesDrained, Is.True.After(5000, 10));
 
-        // The block-end flush: every changed slot's final value, slot 1 differing from its first early write.
         UInt256[] expected = new UInt256[slotCount];
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
@@ -771,7 +767,6 @@ public class FlatWorldStateScopeProviderTests
             for (int slot = 0; slot < slotCount; slot++)
             {
                 if (slot == 2) continue;
-                // Slot 1 ends at a value the early writes never had, as after a restore of the block's changes.
                 expected[slot] = slot == 1 ? 2000 : (UInt256)(slot + 1);
                 storageBatch.Set((UInt256)slot, expected[slot]);
             }
@@ -784,7 +779,6 @@ public class FlatWorldStateScopeProviderTests
             {
                 Assert.That(applied, Is.GreaterThanOrEqualTo(slotCount));
                 Assert.That(abandoned, Is.Zero);
-                // Clearing drops the early writes: every slot goes through the batch and none is restored.
                 Assert.That(reused, Is.EqualTo(clearAtBlockEnd ? 0 : slotCount - 2));
                 Assert.That(restored, Is.EqualTo(clearAtBlockEnd ? 0 : 1));
             }
@@ -814,7 +808,6 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void EarlyStorageApply_SkipsBlocksProcessedBackToBack()
     {
-        // Open for the first block however recently an earlier test committed one.
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
         using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
         FlatWorldStateScope scope = ctx.Scope;
@@ -823,8 +816,6 @@ public class FlatWorldStateScopeProviderTests
         IdleStorageApplier.MinIdleGap = TimeSpan.FromHours(1);
         scope.Commit(1);
 
-        // The next block starts right after the commit, so it runs without the early apply thread, both in this scope
-        // and in a new one.
         Assert.That(scope.AppliesStorageWritesEarly, Is.False);
         using TestContext next = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
         Assert.That(next.Scope.AppliesStorageWritesEarly, Is.False);
@@ -840,10 +831,8 @@ public class FlatWorldStateScopeProviderTests
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
         FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
 
-        // With nothing queued, the thread parks rather than polling.
         Assert.That(() => scope.EarlyApplier.IsParked, Is.True.After(5000, 10));
 
-        // The next committed write wakes it.
         storageTree.HintSet(1, 1);
         Assert.That(() => storageTree.EarlyWritesDrained, Is.True.After(5000, 10));
         Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1));
@@ -859,7 +848,6 @@ public class FlatWorldStateScopeProviderTests
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
 
-        // Block 1 leaves a branched storage trie, so block 2's writes change branch nodes.
         UInt256[] expected = new UInt256[slotCount];
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
@@ -868,7 +856,7 @@ public class FlatWorldStateScopeProviderTests
         }
         scope.Commit(1);
 
-        // Block 2: the early apply thread takes a transaction's write to slot 3, then stalls before building on it.
+        // Block 2: the early pass takes slot 3's write, then stalls.
         FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
         using ManualResetEventSlim stalled = new();
         using ManualResetEventSlim resume = new();
@@ -883,14 +871,12 @@ public class FlatWorldStateScopeProviderTests
             storageTree.HintSet(3, 1000);
             Assert.That(stalled.Wait(5000), Is.True);
 
-            // The block-end batch finds the pass in progress and writes slot 3's final value itself. With one entry it
-            // writes straight into the block tree, whose new nodes stay unsealed until the batch is disposed.
+            // The batch abandons the pass and writes slot 3 into the block tree's unsealed nodes.
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
                 using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
                 storageBatch.Set(3, expected[3] = 2000);
 
-                // The abandoned pass then finishes while those nodes are still unsealed.
                 resume.Set();
                 Assert.That(() => scope.EarlyApplyCounts.Applied, Is.EqualTo(1).After(5000, 10));
             }
@@ -899,7 +885,6 @@ public class FlatWorldStateScopeProviderTests
         }
         finally
         {
-            // Never leave the process-wide thread stuck in the hook.
             resume.Set();
         }
 
@@ -911,7 +896,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
     }
 
-    // The gap is process-wide, like the thread it gates, so a test that changes it puts back the value it found.
+    // Process-wide, so restore the previous value.
     private static IDisposable SetMinIdleGap(TimeSpan gap)
     {
         TimeSpan previous = IdleStorageApplier.MinIdleGap;

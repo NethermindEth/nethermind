@@ -39,12 +39,10 @@ public sealed class FlatStorageTree(
     private const int EarlyApplying = 1;
     private const int EarlyClaimed = 2;
 
-    // Committed slot writes waiting for the early apply thread, in commit order. Created by the first hint.
+    // Committed writes waiting for the early apply thread, in commit order.
     private ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? _earlyWrites;
-    // The early apply thread's own tree. It starts from the block's pre-block root and changes nodes copy-on-write,
-    // so the block's tree only sees its writes once the block-end batch adopts its root.
+    // Owned by whoever holds _earlyState.
     private StorageTree? _earlyTree;
-    // The value each slot has in _earlyTree. Owned by whoever holds _earlyState.
     private Dictionary<UInt256, UInt256>? _earlyApplied;
     private int _earlyState;
     private int _earlyQueued;
@@ -54,7 +52,7 @@ public sealed class FlatStorageTree(
     {
         public readonly StorageTree Tree = tree;
         public readonly StorageTree Warmup = warmup;
-        // Tree's root before its first write: sealed, or null for an empty trie, so a tree built on it copies on write.
+        // The root before any write, so a tree built on it copies on write.
         public readonly TrieNode? PreBlockRoot = tree.RootRef;
     }
 
@@ -115,9 +113,7 @@ public sealed class FlatStorageTree(
 
         ConcurrentQueue<(UInt256 Slot, UInt256 Value)> writes = Volatile.Read(ref _earlyWrites) ?? CreateEarlyWrites();
         writes.Enqueue((index, value));
-        // The tree is usually still queued, and a plain read then skips the locked write. Enqueue reserves the write's
-        // slot with an interlocked operation, which orders it before this read, and a pass clears the flag with one
-        // before it reads the queue: if this still sees the flag set, the pass that clears it sees the write.
+        // A set flag means a pass that has yet to clear it will see this write.
         if (Volatile.Read(ref _earlyQueued) == 0 && Interlocked.Exchange(ref _earlyQueued, 1) == 0) _scope.EarlyApplier.Enqueue(this);
     }
 
@@ -127,13 +123,10 @@ public sealed class FlatStorageTree(
         return Interlocked.CompareExchange(ref _earlyWrites, created, null) ?? created;
     }
 
-    /// <summary>
-    /// Applies the committed writes queued so far to the early tree and hashes it. Runs on the early apply thread.
-    /// </summary>
     [SkipLocalsInit]
     internal void ApplyEarlyWrites()
     {
-        // Cleared first, and before the queue is read, so a hint that lands during this pass queues the tree again.
+        // Cleared before the queue is read, so a hint landing during the pass queues the tree again.
         Interlocked.Exchange(ref _earlyQueued, 0);
         if (_scope.EarlyApplyClosed || _scope.EarlyApplyGeneration != _earlyGeneration
             || Interlocked.CompareExchange(ref _earlyState, EarlyApplying, EarlyIdle) != EarlyIdle) return;
@@ -165,15 +158,14 @@ public sealed class FlatStorageTree(
 
             OnEarlyPassDrained?.Invoke();
             StorageTree tree = _earlyTree ??= CreateEarlyTree();
-            // Nothing here may fan out onto the thread pool, where it would compete at normal priority.
+            // No thread-pool work: it would run at normal priority.
             tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
-            // Hashing now leaves the block-end pass only the paths written after this one.
             tree.UpdateRootHash(canBeParallel: false);
             _scope.CountEarlyApplied(entries.Count);
         }
         catch
         {
-            // A partly applied tree no longer matches _earlyApplied, so it must never be adopted.
+            // A partly applied tree must never be adopted.
             _earlyTree = null;
             _earlyApplied = null;
             Volatile.Write(ref _earlyState, EarlyClaimed);
@@ -189,26 +181,18 @@ public sealed class FlatStorageTree(
     /// <summary>Whether every queued write has been applied to the early tree. For tests.</summary>
     internal bool EarlyWritesDrained => Volatile.Read(ref _earlyWrites) is not { IsEmpty: false } && Volatile.Read(ref _earlyState) != EarlyApplying && Volatile.Read(ref _earlyQueued) == 0;
 
-    /// <summary>Runs on the early apply thread once a pass has taken its writes, before it builds on the tree. For tests.</summary>
+    /// <summary>Called once a pass has taken its writes. For tests.</summary>
     internal Action? OnEarlyPassDrained;
 
     private StorageTree CreateEarlyTree()
     {
-        // Reads go through the warmer's adapter, which is safe off the block thread. The tree starts from the block
-        // tree's root before its first write, never its current one: a pass the block-end batch has abandoned can
-        // still be running while the batch writes into the block tree, and building on the batch's unsealed nodes
-        // would change them in place. Sharing the untouched root, like the warm-up tree, keeps the nodes both resolve
-        // in one place.
+        // Never the current root: an abandoned pass may still run while the batch writes into the block tree.
         StorageTree tree = new(new StorageTrieStoreWarmerAdapter(_bundle, AddressHash), _logManager);
         tree.SetRootHash(_storageRoot, false);
         tree.RootRef = GetTrees().PreBlockRoot;
         return tree;
     }
 
-    /// <summary>
-    /// Stops the early apply thread for this tree and, unless it was mid-pass, moves its writes into
-    /// <paramref name="tree"/>. Returns the value of every slot it applied, or null when nothing was adopted.
-    /// </summary>
     private Dictionary<UInt256, UInt256>? AdoptEarlyTree(StorageTree tree)
     {
         if (Volatile.Read(ref _earlyWrites) is null) return null;
@@ -216,8 +200,7 @@ public sealed class FlatStorageTree(
         int previous = Interlocked.Exchange(ref _earlyState, EarlyClaimed);
         if (previous == EarlyApplying)
         {
-            // The thread was preempted mid-pass. Waiting could take a scheduler tick, so its work is dropped and the
-            // batch writes every slot, as it would without the thread.
+            // Mid-pass: waiting could take a scheduler tick, so the batch writes every slot instead.
             _scope.CountEarlyAbandoned();
             return null;
         }
@@ -312,8 +295,7 @@ public sealed class FlatStorageTree(
             : new EarlyAppliedStorageWriteBatch(trieBatch, this, earlyApplied);
     }
 
-    // Normal scope whose tree already holds the early apply thread's writes: a slot written with the value it already
-    // has only goes to the flat overlay, and early writes the block did not end with are put back.
+    // For a tree that already holds the early writes: unchanged slots only update the flat overlay.
     private sealed class EarlyAppliedStorageWriteBatch(
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
         FlatStorageTree storageTree,
@@ -337,7 +319,7 @@ public sealed class FlatStorageTree(
 
         public void Clear()
         {
-            // Clearing resets the tree, early writes included, so every later slot goes through the batch.
+            // Clearing resets the tree, early writes included.
             _earlyApplied = null;
             trieBatch.Clear();
             storageTree.ClearStorage();
@@ -348,8 +330,7 @@ public sealed class FlatStorageTree(
             int restored = 0;
             if (_earlyApplied is { Count: > 0 } leftovers)
             {
-                // Slots written early that ended the block at the value they started it with, which the flush skips.
-                // The flat overlay holds nothing new for them, so it still returns that value.
+                // Early writes the block ended at their pre-block value, which the flush skips.
                 foreach (UInt256 slot in leftovers.Keys)
                 {
                     storageTree.Get(slot, out UInt256 value);
