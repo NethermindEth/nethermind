@@ -41,7 +41,7 @@ public class StartBeaconChainTests
     public void Execute_does_not_throw_for_an_engine_driver_that_implements_the_gloas_envelope_overload()
     {
         ExternalClDetector detector = new(new BeaconChainConfig(), new Lazy<IEngineRpcModule>(() => Substitute.For<IEngineRpcModule>()), LimboLogs.Instance);
-        EngineDriver engine = new(detector, LimboLogs.Instance);
+        EngineDriver engine = Engine.TestEngineDriver.Create(detector);
         // `Start()` checks the empty store synchronously; its background run then NREs on the null
         // checkpoint sync, which its own top-level catch swallows and logs.
         BeaconChainService service = new(new BeaconChainConfig(), null!, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), null!, null!, null!, detector, LimboLogs.Instance);

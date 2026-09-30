@@ -224,7 +224,7 @@ public class CheckpointSyncTests
     /// <summary>An orchestrator without the P2P components: its run fails fast, after the anchor and pubkey-cache init this test asserts on.</summary>
     private static BeaconSyncOrchestrator CreateOrchestrator(IBeaconChainConfig config, BeaconChainStore store, ILogManager logManager)
     {
-        EngineDriver engine = new(CreateDetector(logManager), logManager);
+        EngineDriver engine = Engine.TestEngineDriver.Create(CreateDetector(logManager), logManager: logManager);
         SlotClock slotClock = new(BeaconChainSpec.Mainnet, Timestamper.Default);
         NoPeers pool = new();
         return new BeaconSyncOrchestrator(

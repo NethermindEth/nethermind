@@ -6,6 +6,7 @@ using Autofac.Core;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -69,6 +70,7 @@ public class BeaconChainModule : Module
             .AddSingleton<ProposerLookaheadHolder>()
             .AddSingleton<FailedBlockRoots>()
             .AddSingleton<IBlockImporterFactory, BlockImporterFactory>()
+            .AddSingleton<INodeColumnCustodySource, BeaconDiscovery>(discovery => new DiscoveryNodeCustodySource(discovery))
             .AddSingleton<ExternalClDetector>()
             .AddSingleton<EngineDriver>()
             .Bind<IEngineDriver, EngineDriver>()
