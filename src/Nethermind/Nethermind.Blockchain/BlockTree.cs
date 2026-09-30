@@ -2024,7 +2024,18 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock { get; set; }
 
-        public bool IsBuildingBlock { get; set; }
+        private int _buildingBlocks;
+
+        /// <remarks>Counts builds, so producers that share this tree and overlap cannot clear each other's flag.</remarks>
+        public bool IsBuildingBlock
+        {
+            get => Volatile.Read(ref _buildingBlocks) > 0;
+            set
+            {
+                if (value) Interlocked.Increment(ref _buildingBlocks);
+                else Interlocked.Decrement(ref _buildingBlocks);
+            }
+        }
 
         /// <inheritdoc/>
         /// <remarks>

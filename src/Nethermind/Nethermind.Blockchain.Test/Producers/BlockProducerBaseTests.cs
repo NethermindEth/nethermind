@@ -10,12 +10,12 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Evm.Tracing;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -124,6 +124,24 @@ public partial class BlockProducerBaseTests
         {
             Assert.That(flagDuringExecution, Is.True, "gossiped validation cannot yield to a build it does not see");
             Assert.That(blockTree.IsBuildingBlock, Is.False, "a flag left raised would defer gossip until the next build");
+        }
+    }
+
+    [Test]
+    public void Building_flag_stays_raised_until_the_last_overlapping_build_ends()
+    {
+        IBlockTree blockTree = Build.A.BlockTree().TestObject;
+
+        blockTree.IsBuildingBlock = true;
+        blockTree.IsBuildingBlock = true;
+        blockTree.IsBuildingBlock = false;
+        bool raisedWhileOneBuildRuns = blockTree.IsBuildingBlock;
+        blockTree.IsBuildingBlock = false;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(raisedWhileOneBuildRuns, Is.True, "the first build to finish must not clear the other's flag");
+            Assert.That(blockTree.IsBuildingBlock, Is.False);
         }
     }
 }
