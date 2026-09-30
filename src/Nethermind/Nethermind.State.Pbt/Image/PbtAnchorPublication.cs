@@ -43,6 +43,8 @@ internal sealed class PbtAnchorPublication(
             (long)anchor.Header.Number, anchor.Header.StateRoot!.ToString()));
     // Below DbOnTheRocks.RocksDbWriteBatch.MaxWritesOnNoWal, so a no-WAL batch is written by its flusher, not inline by the reader.
     private const int BatchSize = 255;
+    private const string StagePhase = "PBT import stage";
+    private const string FoldPhase = "PBT import fold";
     private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorPublication>();
 
     /// <summary>Imports the native PBT state at the anchor from a snapshot, optionally verified by preimages.</summary>
@@ -64,9 +66,9 @@ internal sealed class PbtAnchorPublication(
             await using FileStream copiedSnapshot = new(copyPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             await snapshot.CopyToAsync(copiedSnapshot, cancellationToken);
             copiedSnapshot.Position = 0;
-            (ValueHash256 claimedRoot, _) = PbtSnapshotCodec.ReadHeader(copiedSnapshot);
+            (ValueHash256 claimedRoot, ulong leafCount) = PbtSnapshotCodec.ReadHeader(copiedSnapshot);
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
-            return await ImportLeaves(anchor, scratchDirectory, token => SnapshotLeaves(copiedSnapshot, token), claimedRoot, preimages, isAnchorCurrent, importing, cancellationToken);
+            return await ImportLeaves(anchor, scratchDirectory, token => SnapshotLeaves(copiedSnapshot, token), leafCount, claimedRoot, preimages, isAnchorCurrent, importing, cancellationToken);
         }
         finally { File.Delete(copyPath); }
     }
@@ -88,20 +90,23 @@ internal sealed class PbtAnchorPublication(
         try
         {
             using PbtSortedSpool leaves = new(directory, config.ExportSortBufferBytes, writerCount: 1, logManager, cancellationToken);
+            ulong leafCount;
             using (PbtSortedSpool.Writer writer = leaves.CreateWriter())
-                WritePreimageLeaves(preimages, flat, code, writer, cancellationToken);
+                leafCount = WritePreimageLeaves(preimages, flat, code, writer, cancellationToken);
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
-            return await ImportLeaves(anchor, scratchDirectory, _ => SpoolLeaves(leaves), claimedRoot: null, preimages: null, isAnchorCurrent, importing, cancellationToken);
+            return await ImportLeaves(anchor, scratchDirectory, _ => SpoolLeaves(leaves), leafCount, claimedRoot: null, preimages: null, isAnchorCurrent, importing, cancellationToken);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
 
     /// <summary>Emits the tree leaves of every account and slot the preimages list, with their values from the flat state.</summary>
-    private static void WritePreimageLeaves(Stream preimages, IPersistence.IPersistenceReader flat, IReadOnlyKeyValueStore code,
+    /// <returns>The number of leaves emitted.</returns>
+    private static ulong WritePreimageLeaves(Stream preimages, IPersistence.IPersistenceReader flat, IReadOnlyKeyValueStore code,
         PbtSortedSpool.Writer leaves, CancellationToken cancellationToken)
     {
         PbtPreimageReader reader = new(preimages);
         Span<byte> slotValue = stackalloc byte[32];
+        ulong leafCount = 0;
         while (reader.ReadAccount(out Address? address, out uint slotCount, cancellationToken))
         {
             Account account = flat.GetAccount(address!) ?? throw new InvalidDataException($"Flat state has no account {address} listed in the preimages.");
@@ -109,7 +114,10 @@ internal sealed class PbtAnchorPublication(
                 ? new CodeInfo(code.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing code {account.CodeHash} of {address}."))
                 : null;
             foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(PbtKeyDerivation.AddressKeyHash(address!), account, accountCode))
+            {
                 leaves.Add(key.Bytes, value.Bytes);
+                leafCount++;
+            }
 
             for (uint index = 0; index < slotCount; index++)
             {
@@ -118,15 +126,17 @@ internal sealed class PbtAnchorPublication(
                 if (!flat.TryGetSlot(address!, slot, ref value) || value.IsZero) continue;
                 value.ToBigEndian(slotValue);
                 leaves.Add(PbtStateKey.Storage(address!, slot).Bytes, slotValue);
+                leafCount++;
             }
         }
+        return leafCount;
     }
 
     /// <summary>Stages the logical state of an ascending leaf stream, then folds the same stream into the tree.</summary>
     /// <remarks>Preimages are verified before the fold, which is what marks the target valid, so a refused import
     /// stays unpublished and a restart wipes its staging.</remarks>
     private async Task<ValueHash256> ImportLeaves(PbtImageAnchor anchor, string scratchDirectory,
-        Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, ValueHash256? claimedRoot, Stream? preimages,
+        Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, ulong leafCount, ValueHash256? claimedRoot, Stream? preimages,
         Func<bool> isAnchorCurrent, Stopwatch importing, CancellationToken cancellationToken)
     {
         if (AdoptHeldAnchor(anchor, claimedRoot) is { } held) return held;
@@ -134,7 +144,7 @@ internal sealed class PbtAnchorPublication(
         (ulong Accounts, ulong Slots) staged;
         using (LogicalBatch batch = new(target, cancellationToken))
         {
-            staged = PbtLeafStaging.Stage(batch, leaves(cancellationToken), scratchDirectory, anchor.MaxBufferedCodeBytes, cancellationToken);
+            staged = PbtLeafStaging.Stage(batch, Reported(StagePhase, leaves(cancellationToken), leafCount), scratchDirectory, anchor.MaxBufferedCodeBytes, cancellationToken);
             batch.Commit();
         }
         if (preimages is not null)
@@ -144,7 +154,7 @@ internal sealed class PbtAnchorPublication(
                     throw new InvalidDataException("Snapshot holds state its preimages do not list.");
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
         }
-        ValueHash256 root = await Fold(leaves, new StateId(anchor.Header), claimedRoot, cancellationToken);
+        ValueHash256 root = await Fold(token => Reported(FoldPhase, leaves(token), leafCount), new StateId(anchor.Header), claimedRoot, cancellationToken);
         Finish(anchor, root, staged.Accounts, staged.Slots, importing, cancellationToken);
         return root;
     }
@@ -240,6 +250,17 @@ internal sealed class PbtAnchorPublication(
         if (_logger.IsInfo)
             _logger.Info($"Imported the PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} with root {root}: " +
                 $"{stagedAccounts:N0} accounts and {stagedSlots:N0} slots in {importing.Elapsed:hh\\:mm\\:ss}.");
+    }
+
+    private IEnumerable<RebuildEntry> Reported(string phase, IEnumerable<RebuildEntry> leaves, ulong leafCount)
+    {
+        ulong read = 0;
+        using ProgressReporter progress = PbtImageProgress.Start(phase, "leaf", leafCount, logManager);
+        foreach (RebuildEntry entry in leaves)
+        {
+            progress.Update(++read);
+            yield return entry;
+        }
     }
 
     private static IEnumerable<RebuildEntry> SnapshotLeaves(Stream snapshot, CancellationToken cancellationToken)
