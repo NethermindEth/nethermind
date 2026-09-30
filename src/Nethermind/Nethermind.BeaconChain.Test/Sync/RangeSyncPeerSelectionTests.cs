@@ -251,6 +251,181 @@ public class RangeSyncPeerSelectionTests
         }
     }
 
+    /// <summary>
+    /// The pool offers a peer whose last status is below the range once the chain is known to be past it (phase0/p2p-interface.md Status: that status may be stale).
+    /// Its empty answer may only mean it is behind: when the next batch does not link, the peer that served it is not at fault, the range is asked again of
+    /// another peer, and the peer that answered empty is not asked again in the round.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_peer_below_the_range_whose_empty_answer_the_next_batch_contradicts_is_not_believed_again_and_blames_no_one(CancellationToken token)
+    {
+        // Two batches, so the round-robin would come back to the peer if its empty answer did not leave it out.
+        ulong[] slots = [.. Enumerable.Range((int)AnchorSlot + 1, 2 * (int)RangeSync.DefaultBatchSize).Select(static s => (ulong)s)];
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, slots);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        // First in the pool, so the round-robin asks it first.
+        StubPeer behind = new("behind", AnchorSlot, static (_, _) => []);
+        StubPeer ahead = new("ahead", slots[^1], (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
+        RangeSync sync = new(new OfferingPool(behind, ahead), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        List<ForkedSignedBeaconBlock> yielded = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => slots[^1], token))
+        {
+            yielded.Add(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+            Assert.That(behind.Requests, Is.EqualTo(1), "asked once in the round");
+            Assert.That(ahead.Failures, Is.Zero);
+            Assert.That(behind.Failures, Is.Zero, "an empty answer from a peer below the range is not a fault");
+        }
+    }
+
+    /// <summary>
+    /// The caller writes some blocks (a Gloas run) only when the round ends, so a round whose offered peer answers the rest of the range
+    /// empty from below it ends with what it fetched rather than waiting for a peer that may never come.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_round_whose_offered_peers_answer_the_rest_of_the_range_empty_from_below_it_ends_with_what_it_fetched(CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12, 13, 14);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        // Its real head is slot 14: it serves the first batch in part and has nothing past it.
+        StubPeer behind = new("behind", AnchorSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
+        RangeSync sync = new(new OfferingPool(behind), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+        using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bound.CancelAfter(TimeSpan.FromSeconds(5));
+
+        List<ForkedSignedBeaconBlock> yielded = [];
+        bool ended = true;
+        try
+        {
+            await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => AnchorSlot + 2 * RangeSync.DefaultBatchSize, bound.Token))
+            {
+                yielded.Add(block);
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            ended = false;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ended, Is.True, "the round waited for a peer instead of ending");
+            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+            Assert.That(behind.Requests, Is.EqualTo(2));
+        }
+    }
+
+    /// <summary>BeaconBlocksByRange (phase0/p2p-interface.md) leaves skipped slots out, so a peer below the range may answer a whole batch of them empty truthfully.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_peer_below_the_range_that_answers_a_batch_of_skipped_slots_empty_serves_the_blocks_after_them(CancellationToken token)
+    {
+        ulong firstBlockSlot = AnchorSlot + 1 + RangeSync.DefaultBatchSize;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, firstBlockSlot, firstBlockSlot + 1, firstBlockSlot + 2);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        StubPeer behind = new("behind", AnchorSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
+        RangeSync sync = new(new OfferingPool(behind), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        List<ForkedSignedBeaconBlock> yielded = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => chain[^1].Message!.Slot, token))
+        {
+            yielded.Add(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+            Assert.That(behind.Failures, Is.Zero);
+        }
+    }
+
+    /// <summary>A sole peer whose empty answer the next batch contradicts is left out for the round, so the round ends rather than waiting for another peer; the next round asks it again.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_round_whose_only_peer_is_left_out_for_an_empty_answer_ends_and_the_next_round_asks_it_again(CancellationToken token)
+    {
+        ulong[] slots = [.. Enumerable.Range((int)AnchorSlot + 1, 2 * (int)RangeSync.DefaultBatchSize).Select(static s => (ulong)s)];
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, slots);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        int answers = 0;
+        // Behind at its first answer, caught up from its second.
+        StubPeer catchingUp = new("catching up", AnchorSlot, (start, count) => ++answers == 1 ? [] : [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
+        RangeSync sync = new(new OfferingPool(catchingUp), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        (bool firstEnded, int firstYielded) = await RunBoundedAsync(sync, anchorRoot, slots[^1], token);
+        (bool secondEnded, int secondYielded) = await RunBoundedAsync(sync, anchorRoot, slots[^1], token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstEnded, Is.True, "the round waited for a peer instead of ending");
+            Assert.That(firstYielded, Is.Zero);
+            Assert.That((secondEnded, secondYielded), Is.EqualTo((true, chain.Length)));
+            Assert.That(catchingUp.Failures, Is.Zero);
+        }
+    }
+
+    /// <summary>A first block that does not link after an empty answer is put down to an unverified anchor before the peer that answered empty.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_empty_answer_before_a_block_off_an_unverified_anchor_rejects_the_anchor_rather_than_the_peer(CancellationToken token)
+    {
+        const ulong heldSlot = AnchorSlot + 10;
+        ulong blockAfterGap = heldSlot + 1 + RangeSync.DefaultBatchSize;
+        ulong[] slots = [.. Enumerable.Range((int)AnchorSlot + 1, (int)(heldSlot - AnchorSlot)).Select(static s => (ulong)s), blockAfterGap];
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, slots);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        StubPeer behind = new("behind", AnchorSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
+        RangeSync sync = new(new OfferingPool(behind), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+        bool rejected = false;
+        RangeSync.AnchorFallback fallback = new(anchorRoot, AnchorSlot, () => rejected = true);
+
+        List<ForkedSignedBeaconBlock> yielded = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(Keccak.Compute("a held block off the chain"), heldSlot, () => blockAfterGap, token, fallback))
+        {
+            yielded.Add(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected, Is.True);
+            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+            Assert.That(behind.Failures, Is.Zero);
+        }
+    }
+
+    private static async Task<(bool Ended, int Yielded)> RunBoundedAsync(RangeSync sync, Hash256 anchorRoot, ulong target, CancellationToken token)
+    {
+        using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bound.CancelAfter(TimeSpan.FromSeconds(5));
+        int yielded = 0;
+        try
+        {
+            await foreach (ForkedSignedBeaconBlock _ in sync.Run(anchorRoot, AnchorSlot, () => target, bound.Token))
+            {
+                yielded++;
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            return (false, yielded);
+        }
+
+        return (true, yielded);
+    }
+
+    /// <summary>Offers every peer whatever its head, as <see cref="PeerManager"/> offers peers whose status predates the chain.</summary>
+    private sealed class OfferingPool(params IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
+    {
+        public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => peers;
+    }
+
     private sealed class CountingPool(IBeaconSyncPeer peer) : IBeaconSyncPeerPool
     {
         private int _calls;

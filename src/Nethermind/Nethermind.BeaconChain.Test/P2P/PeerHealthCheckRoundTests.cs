@@ -149,7 +149,7 @@ public class PeerHealthCheckRoundTests
         }
     }
 
-    private static async Task<PeerManager> StartAndAdmitAsync(Node client, Node[] servers, CancellationToken token, ILogManager? logManager = null)
+    internal static async Task<PeerManager> StartAndAdmitAsync(Node client, Node[] servers, CancellationToken token, ILogManager? logManager = null)
     {
         foreach (Node node in (Node[])[.. servers, client])
         {
@@ -172,7 +172,7 @@ public class PeerHealthCheckRoundTests
         return peerManager;
     }
 
-    private static async Task DisposeAsync(Node client, Node[] servers)
+    internal static async Task DisposeAsync(Node client, Node[] servers)
     {
         foreach (Node node in (Node[])[.. servers, client])
         {
@@ -212,7 +212,7 @@ public class PeerHealthCheckRoundTests
         public void Error(string text, Exception? ex = null) { }
     }
 
-    private static StatusMessageV2 WithHead(StatusMessageV2 status, ulong headSlot) => new()
+    internal static StatusMessageV2 WithHead(StatusMessageV2 status, ulong headSlot) => new()
     {
         ForkDigest = status.ForkDigest,
         FinalizedRoot = status.FinalizedRoot,

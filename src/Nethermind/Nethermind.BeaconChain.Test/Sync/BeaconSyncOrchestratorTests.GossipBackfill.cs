@@ -39,8 +39,8 @@ public partial class BeaconSyncOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ByRootRequests(peer), Is.EqualTo(expectedFetches));
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Math.Min(forged - expectedFetches, BeaconSyncOrchestrator.MaxHeldRefusedBackfills)),
-                "refused blocks hold at most their own share of the queue shared with payload-held blocks");
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Math.Min(forged, BeaconSyncOrchestrator.MaxHeldRefusedBackfills)),
+                "unknown-parent blocks hold at most their own share of the queue shared with payload-held blocks");
         }
     }
 
@@ -64,7 +64,7 @@ public partial class BeaconSyncOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ByRootRequests(peer), Is.EqualTo(2), "one for the repeated parent, one for another parent");
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(2), "the later children of the waiting parent are held");
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(3), "the later children of the waiting parent are held, and so is the block whose parent no peer returned");
         }
     }
 
@@ -105,7 +105,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             Assert.That(fetchesBeforeParent, Is.EqualTo(BeaconSyncOrchestrator.MaxBackfillsPerSlot), "fixture: the forged blocks spent the slot's budget");
             Assert.That(harness.Importer.Known, Does.Contain(parent.ComputeMessageRoot()).And.Contain(child.ComputeMessageRoot()));
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Math.Max(forgedHeld - 1, 0)), "the parent's import drained the held child");
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Math.Min(BeaconSyncOrchestrator.MaxBackfillsPerSlot + forgedHeld, BeaconSyncOrchestrator.MaxHeldRefusedBackfills - 1)), "the parent's import drained the held child");
         }
     }
 
