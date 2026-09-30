@@ -24,10 +24,10 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted);
     private readonly record struct InclusionListAnswer(ulong Number, bool Satisfied);
 
-    // Keep a parent's unanswered list when a child arrives: bogota.md FCUv5 (2.1) may still require its answer.
     private readonly Dictionary<Hash256, InclusionListAnswer> _inclusionListAnswers = [];
     private readonly Dictionary<Hash256, RetainedInclusionList> _retainedInclusionLists = [];
-    // bogota.md mandates retaining ACCEPTED tips; only best-effort SYNCING lists can be evicted.
+    // Keep even non-tip ACCEPTED lists until evaluation/finality to answer a later FCUv5 (bogota.md (2.1)).
+    // Stalled finality can grow this map with chain length; only best-effort SYNCING lists can be evicted.
     private readonly InclusionListInsertionOrder _syncingInclusionListOrder = new();
     // Answers outlive their list, so finality is their normal bound and this one only catches stalled finality.
     private readonly InclusionListInsertionOrder _inclusionListAnswerOrder = new();
