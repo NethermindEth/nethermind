@@ -202,6 +202,71 @@ public class DataColumnSidecarsByRangeLoopbackTests
         Assert.That(thrown, Is.InstanceOf<OperationCanceledException>());
     }
 
+    /// <summary>
+    /// A libp2p dial gives up on the caller's cancellation but leaves its protocol reading, so a first chunk can reach the
+    /// callback after the request ended and its timeout was disposed; that must not fault the read of the reply.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_first_chunk_delivered_after_the_request_ended_is_dropped_without_faulting_the_reply_read(CancellationToken token)
+    {
+        const ulong slot = 13_410_304;
+        const ulong column = 5;
+        Hash256 root = Keccak.Compute("canonical");
+        DataColumnSidecarPool serverPool = new();
+        serverPool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
+        BeaconChainStore serverStore = new(new MemColumnsDb<BeaconChainDbColumns>());
+        serverStore.SetCanonicalRoot(slot, root);
+
+        await using BeaconP2P server = CreateHost(serverStore, serverPool);
+        await using BeaconP2P client = CreateHost(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new DataColumnSidecarPool());
+        await server.StartAsync(token);
+        await client.StartAsync(token);
+        ISession toServer = await client.DialPeerAsync(LoopbackAddress(server), token);
+
+        TaskCompletionSource chunkRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim requestEnded = new();
+        TaskCompletionSource chunkDelivered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Exception? deliveryFailure = null;
+        ISession heldChunk = Substitute.For<ISession>();
+        heldChunk.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(default, default).ReturnsForAnyArgs(call =>
+        {
+            DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest> dial = call.Arg<DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>>();
+            Action<DataColumnSidecar> requestCallback = dial.OnSidecar!;
+            return toServer.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
+                dial with
+                {
+                    OnSidecar = sidecar =>
+                    {
+                        // The chunk is read while the request is live and reaches the request's callback only once it has ended.
+                        chunkRead.TrySetResult();
+                        requestEnded.Wait(token);
+                        try
+                        {
+                            requestCallback(sidecar);
+                        }
+                        catch (Exception e)
+                        {
+                            deliveryFailure = e;
+                        }
+
+                        chunkDelivered.TrySetResult();
+                    },
+                },
+                call.Arg<CancellationToken>());
+        });
+
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<IReadOnlyList<DataColumnSidecar>> request = client.RequestDataColumnSidecarsByRangeAsync(heldChunk, slot, 1, [column], caller.Token);
+        await chunkRead.Task.WaitAsync(token);
+        await caller.CancelAsync();
+        await Assert.ThatAsync(() => request, Throws.InstanceOf<OperationCanceledException>());
+        requestEnded.Set();
+        await chunkDelivered.Task.WaitAsync(token);
+
+        Assert.That(deliveryFailure, Is.Null, "a chunk that arrives after the request's timeout is disposed has nothing left to extend");
+    }
+
     private static ISession SessionThatDials(Func<DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, CancellationToken, Task<ForkedDataColumnSidecars>> dial)
     {
         ISession session = Substitute.For<ISession>();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -89,46 +90,56 @@ public class PeerHealthCheckRoundTests
         StatusMessageV2 status = client.StatusHolder.CurrentStatus;
         using ManualResetEventSlim roundStarted = new();
         using ManualResetEventSlim release = new();
-        int inFlight = 0;
-        int maxInFlight = 0;
-        ScriptedStatusSource held = new(_ =>
+        TaskCompletionSource maxHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        FailedCheckCounter failedChecks = new();
+        int held = 0;
+        // Counted once per peer, and only until a check fails: a status v1 retry to the same peer is the same check, and a check that
+        // failed has freed its slot for another while its server still holds, so later holds no longer show concurrency.
+        Node CreateHoldingNode()
         {
-            if (roundStarted.IsSet)
+            int arrived = 0;
+            return CreateNode(new ScriptedStatusSource(_ =>
             {
-                int now = Interlocked.Increment(ref inFlight);
-                for (int seen = Volatile.Read(ref maxInFlight); now > seen; seen = Volatile.Read(ref maxInFlight))
+                if (roundStarted.IsSet)
                 {
-                    Interlocked.CompareExchange(ref maxInFlight, now, seen);
+                    if (Interlocked.Exchange(ref arrived, 1) == 0 && failedChecks.Count == 0 && Interlocked.Increment(ref held) >= MaxConcurrentChecks)
+                    {
+                        maxHeld.TrySetResult();
+                    }
+
+                    // Held until the test ends, not for a fixed time, so a slow start under load cannot let earlier checks finish first.
+                    release.Wait(token);
                 }
 
-                release.Wait(TimeSpan.FromSeconds(30));
-                Interlocked.Decrement(ref inFlight);
-            }
+                return status;
+            }));
+        }
 
-            return status;
-        });
-        Node[] servers = [.. Enumerable.Range(0, peers).Select(_ => CreateNode(held))];
+        Node[] servers = [.. Enumerable.Range(0, peers).Select(_ => CreateHoldingNode())];
 
         try
         {
-            PeerManager peerManager = await StartAndAdmitAsync(client, servers, token);
+            PeerManager peerManager = await StartAndAdmitAsync(client, servers, token, new OneLoggerLogManager(new ILogger(failedChecks)));
             using CancellationTokenSource roundCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
             roundStarted.Set();
             Task round = peerManager.RunMaintenanceRoundAsync(roundCancellation.Token);
-            await PeerSessionNodes.WaitUntilAsync(() => Volatile.Read(ref inFlight) >= MaxConcurrentChecks, "the round never asked enough peers at once", token);
+            Assert.That(await Task.WhenAny(maxHeld.Task, round), Is.SameAs(maxHeld.Task), "the round ended before it asked enough peers at once");
             // Long enough for a check past the bound to have been started; the held ones cannot finish meanwhile.
             await Task.Delay(TimeSpan.FromSeconds(1), token);
-            int observedMax = Volatile.Read(ref maxInFlight);
+            int observedMax = Volatile.Read(ref held);
+            Stopwatch stopped = Stopwatch.StartNew();
             await roundCancellation.CancelAsync();
-            // Well under the request timeout, so only the round's token can end the held checks in time.
-            bool endedPromptly = await Task.WhenAny(round, Task.Delay(TimeSpan.FromSeconds(5), token)) == round;
+            await Task.WhenAny(round, Task.Delay(System.Threading.Timeout.Infinite, token));
+            stopped.Stop();
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(observedMax, Is.EqualTo(MaxConcurrentChecks));
-                Assert.That(endedPromptly, Is.True, "cancelling the round ends the checks in flight");
+                // Under the 15 s request timeout, so only the round's token can have ended the held checks in time.
+                Assert.That(stopped.Elapsed, Is.LessThan(RendezvousWait), "cancelling the round ends the checks in flight");
                 Assert.That(round.IsCanceled, Is.True);
                 Assert.That(peerManager.PeerCount, Is.EqualTo(peers), "a cancelled check does not count against its peer");
+                Assert.That(failedChecks.Count, Is.Zero, $"the round's token, not a failed request, ended the checks; last failure: {failedChecks.Last}");
             }
         }
         finally
@@ -138,14 +149,14 @@ public class PeerHealthCheckRoundTests
         }
     }
 
-    private static async Task<PeerManager> StartAndAdmitAsync(Node client, Node[] servers, CancellationToken token)
+    private static async Task<PeerManager> StartAndAdmitAsync(Node client, Node[] servers, CancellationToken token, ILogManager? logManager = null)
     {
         foreach (Node node in (Node[])[.. servers, client])
         {
             await node.P2P.StartAsync(token);
         }
 
-        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, logManager ?? LimboLogs.Instance);
         foreach (Node server in servers)
         {
             // Admission is not what these tests check, so a dial whose session the pinned libp2p loses is tried again.
@@ -169,6 +180,38 @@ public class PeerHealthCheckRoundTests
         }
     }
 
+    /// <summary>Counts the peer manager's debug lines that report a failed health check; safe to call from concurrent checks.</summary>
+    private sealed class FailedCheckCounter : InterfaceLogger
+    {
+        private int _count;
+
+        public int Count => Volatile.Read(ref _count);
+
+        public bool IsInfo => false;
+        public bool IsWarn => false;
+        public bool IsDebug => true;
+        public bool IsTrace => false;
+        public bool IsError => false;
+
+        private string? _last;
+
+        public string? Last => Volatile.Read(ref _last);
+
+        public void Debug(string text)
+        {
+            if (text.Contains("failed health check", StringComparison.Ordinal))
+            {
+                Volatile.Write(ref _last, text);
+                Interlocked.Increment(ref _count);
+            }
+        }
+
+        public void Info(string text) { }
+        public void Warn(string text) { }
+        public void Trace(string text) { }
+        public void Error(string text, Exception? ex = null) { }
+    }
+
     private static StatusMessageV2 WithHead(StatusMessageV2 status, ulong headSlot) => new()
     {
         ForkDigest = status.ForkDigest,
@@ -178,4 +221,19 @@ public class PeerHealthCheckRoundTests
         HeadSlot = headSlot,
         EarliestAvailableSlot = status.EarliestAvailableSlot,
     };
+}
+
+/// <summary>
+/// Held status answers and libp2p sessions block pool threads; under load the pool stayed at its minimum for tens of seconds,
+/// past the request timeout. The floor stays raised for the rest of the test process.
+/// </summary>
+[SetUpFixture]
+public class ThreadPoolFloor
+{
+    [OneTimeSetUp]
+    public static void Raise()
+    {
+        ThreadPool.GetMinThreads(out int workers, out int completionPorts);
+        ThreadPool.SetMinThreads(Math.Max(workers, 128), completionPorts);
+    }
 }
