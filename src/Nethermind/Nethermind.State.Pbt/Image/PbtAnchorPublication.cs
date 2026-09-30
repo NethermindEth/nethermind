@@ -40,7 +40,7 @@ internal sealed class PbtAnchorPublication(
         new AnchorProvenance(anchor.ChainId, anchor.GenesisHash.ToString(), anchor.Header.Hash!.ToString(),
             (long)anchor.Header.Number, anchor.Header.StateRoot!.ToString()));
     // Below DbOnTheRocks.RocksDbWriteBatch.MaxWritesOnNoWal, so a no-WAL batch is written by its flusher, not inline by the reader.
-    private const int BatchSize = 255;
+    internal const int BatchSize = 255;
     private const string StagePhase = "PBT import stage";
     private const string FoldPhase = "PBT import fold";
     private const string PreimagesPhase = "PBT import preimages";
@@ -143,17 +143,18 @@ internal sealed class PbtAnchorPublication(
         Func<bool> isAnchorCurrent, Stopwatch importing, CancellationToken cancellationToken)
     {
         PrepareStaging(anchor, cancellationToken);
-        (ulong Accounts, ulong Slots) staged;
+        (ulong Accounts, ulong Slots, long CodeChunks) staged;
         using (LogicalBatch batch = new(target, config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount, cancellationToken))
         {
-            staged = PbtLeafStaging.Stage(batch, Reported(StagePhase, leaves(cancellationToken), fraction), scratchDirectory, anchor.MaxBufferedCodeBytes, cancellationToken);
+            staged = PbtLeafStaging.Stage(batch, Reported(StagePhase, leaves(cancellationToken), fraction), anchor.MaxBufferedCodeBytes, cancellationToken);
             batch.Commit();
         }
+        PbtLeafStaging.RebuildCodes(target, staged.CodeChunks, logManager, cancellationToken);
         if (preimages is not null)
         {
             using (IPbtPersistence.IReader reader = target.CreateReader())
                 if (PbtImageVerifier.Verify(preimages, reader, anchor, scratchDirectory, config.MigrationVerifyBucketBytes, config.ExportSortBufferBytes,
-                        config.ImportConcurrency, logManager, cancellationToken) != staged)
+                        config.ImportConcurrency, logManager, cancellationToken) != (staged.Accounts, staged.Slots))
                     throw new InvalidDataException("Snapshot holds state its preimages do not list.");
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
         }

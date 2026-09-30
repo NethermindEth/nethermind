@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
@@ -382,10 +381,15 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public StateId CurrentState => StateId.PreGenesis;
 
         public ValueHash256 CurrentRoot => default;
-        public Account? GetAccount(in ValueHash256 addressHash) => null;
+        public PbtAccount? GetAccount(in ValueHash256 addressHash) => null;
         public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey) => SlotRun.Empty;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
-        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
+        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
+        {
+            value = default;
+            return false;
+        }
+        public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, PbtAccount>>(((IEnumerable<KeyValuePair<ValueHash256, PbtAccount>>)[]).GetEnumerator());
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(((IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>>)[]).GetEnumerator());
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
         public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => new PbtIterator<PbtStorageNodePath>(((IEnumerable<PbtStorageNodePath>)[]).GetEnumerator());

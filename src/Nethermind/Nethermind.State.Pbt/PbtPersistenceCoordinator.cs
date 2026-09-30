@@ -179,9 +179,14 @@ public class PbtPersistenceCoordinator(
 
         foreach ((ValueHash256 addressHash, bool isNewStorage) in content.SelfDestructedStorageAddresses)
             if (!isNewStorage) batch.ClearStorage(addressHash);
-        foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) batch.SetAccount(addressHash, account);
+        foreach ((ValueHash256 addressHash, PbtAccount? account) in content.Accounts) batch.SetAccount(addressHash, account);
         foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in content.Storages) batch.SetSlotRun(runKey, run);
-        foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
+        foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes)
+        {
+            batch.SetCode(codeHash, code);
+            if (Eip7702Constants.IsDelegatedCode(code.CodeSpan)) continue;
+            foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.CodeLeaves(codeHash, code)) batch.SetCodeLeaf(key, value);
+        }
         foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.AccountNodeGroups) batch.SetNodeGroup(groupKey, payload);
         foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.CodeNodeGroups) batch.SetNodeGroup(groupKey, payload);
         foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.StorageNodeGroups) batch.SetNodeGroup(groupKey, payload);

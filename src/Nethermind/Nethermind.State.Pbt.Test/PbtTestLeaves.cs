@@ -18,7 +18,22 @@ namespace Nethermind.State.Pbt.Test;
 internal static class PbtTestLeaves
 {
     public static Account? ReadAccount(IPbtPersistence.IReader reader, Address address) =>
-        reader.GetAccount(PbtKeyDerivation.AddressKeyHash(address));
+        reader.GetAccount(PbtKeyDerivation.AddressKeyHash(address))?.ToAccount();
+
+    /// <summary>The account's stem without its bytecode: a zero code size under its code-hash leaf.</summary>
+    public static PbtAccount ToPbtAccount(this Account account)
+    {
+        ValueHash256 basicData = default;
+        PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, account.Nonce, account.Balance);
+        return new PbtAccount(basicData, account.CodeHash.ValueHash256, IsDelegation: false);
+    }
+
+    public static byte[] Encoded(this PbtAccount account)
+    {
+        byte[] encoded = new byte[account.EncodedLength];
+        account.Encode(encoded);
+        return encoded;
+    }
 
     public static EvmWord ReadSlot(IPbtPersistence.IReader reader, Address address, in UInt256 slot) =>
         reader.GetSlot(PbtStateKey.Storage(address, slot));
@@ -42,9 +57,12 @@ internal static class PbtTestLeaves
     public static IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(this PbtReadOnlySnapshotBundle bundle)
     {
         SortedDictionary<PbtStorageTreeKey, ValueHash256> leaves = [];
-        foreach ((ValueHash256 addressHash, Account account) in bundle.EnumerateAccounts())
+        foreach ((ValueHash256 addressHash, PbtAccount stem) in bundle.EnumerateAccounts())
+        {
+            Account account = stem.ToAccount();
             foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, account.HasCode ? bundle.GetCode(account.CodeHash.ValueHash256) : null))
                 leaves[(PbtStorageTreeKey)key] = value;
+        }
         foreach ((PbtStorageTreeKey key, EvmWord value) in bundle.EnumerateStorage())
             if (!EvmWordSlot.IsZero(value)) leaves[key] = new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
         return leaves;

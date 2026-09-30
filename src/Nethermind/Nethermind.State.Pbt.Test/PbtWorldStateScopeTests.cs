@@ -438,9 +438,9 @@ public class PbtWorldStateScopeTests
     }
 
     [Test]
-    public async Task Account_reads_are_promoted_into_the_snapshot_and_hints_only_when_enabled([Values] bool promoteHintedAccounts)
+    public async Task Account_reads_are_promoted_into_the_snapshot_and_hints_are_not()
     {
-        await using PbtTestContext ctx = new(config: new PbtConfig { PromoteHintedAccounts = promoteHintedAccounts });
+        await using PbtTestContext ctx = new();
         using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
         Account hinted = Build.An.Account.WithBalance(1).TestObject;
         scope.Get(TestItem.AddressA);
@@ -451,10 +451,10 @@ public class PbtWorldStateScopeTests
         using PbtSnapshot snapshot = scope.Bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(snapshot.Content.Accounts.TryGetValue(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), out Account? readA), Is.True, "a read is promoted");
+            Assert.That(snapshot.Content.Accounts.TryGetValue(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), out PbtAccount? readA), Is.True, "a read is promoted");
             Assert.That(readA, Is.Null, "a later hint never shadows a promoted read");
-            Assert.That(snapshot.Content.Accounts.ContainsKey(PbtKeyDerivation.AddressKeyHash(TestItem.AddressB)), Is.EqualTo(promoteHintedAccounts),
-                "a hint is promoted only when enabled, and a read served by a hint never promotes it");
+            Assert.That(snapshot.Content.Accounts.ContainsKey(PbtKeyDerivation.AddressKeyHash(TestItem.AddressB)), Is.False,
+                "a hint is never promoted, and a read served by a hint never promotes it");
         }
     }
 
@@ -830,10 +830,15 @@ public class PbtWorldStateScopeTests
         public int DisposeCount { get; private set; }
         public StateId CurrentState => new(0, CurrentRoot.ToHash256());
         public ValueHash256 CurrentRoot { get; } = tree.RootHash;
-        public Account? GetAccount(in ValueHash256 addressHash) => null;
+        public PbtAccount? GetAccount(in ValueHash256 addressHash) => null;
         public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey) => SlotRun.Empty;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
-        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
+        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
+        {
+            value = default;
+            return false;
+        }
+        public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, PbtAccount>>(((IEnumerable<KeyValuePair<ValueHash256, PbtAccount>>)[]).GetEnumerator());
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(((IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>>)[]).GetEnumerator());
         public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => new PbtIterator<PbtStorageNodePath>(_store.EnumerateNodeGroupKeys().GetEnumerator());
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>

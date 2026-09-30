@@ -24,7 +24,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     private readonly IPbtPersistence _inner;
     private readonly int _maxEntriesPerKind;
 
-    private readonly ConcurrentDictionary<ValueHash256, Account?> _accounts = new();
+    private readonly ConcurrentDictionary<ValueHash256, PbtAccount?> _accounts = new();
     private readonly ConcurrentDictionary<PbtStorageTreeKey, ISlotRun> _runs = new();
     private int _accountCount;
     private int _runCount;
@@ -72,7 +72,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
 
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
 
-    private void TryCacheAccount(in ValueHash256 addressHash, Account? account, long readerGeneration)
+    private void TryCacheAccount(in ValueHash256 addressHash, PbtAccount? account, long readerGeneration)
     {
         if (_accounts.ContainsKey(addressHash)) return;
         using (_lock.EnterScope())
@@ -132,11 +132,11 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         public StateId CurrentState => inner.CurrentState;
         public ValueHash256 CurrentRoot => inner.CurrentRoot;
 
-        public Account? GetAccount(in ValueHash256 addressHash)
+        public PbtAccount? GetAccount(in ValueHash256 addressHash)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(addressHash, out Account? cached)) return cached;
-            Account? account = inner.GetAccount(addressHash);
+            if (current && parent._accounts.TryGetValue(addressHash, out PbtAccount? cached)) return cached;
+            PbtAccount? account = inner.GetAccount(addressHash);
             if (current) parent.TryCacheAccount(addressHash, account, generation);
             return account;
         }
@@ -151,7 +151,8 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         }
 
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
-        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => inner.EnumerateAccounts();
+        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => inner.TryGetCodeLeaf(key, out value);
+        public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => inner.EnumerateAccounts();
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => inner.EnumerateStorage(addressHash);
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
         public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => inner.EnumerateNodeGroupKeys();
@@ -165,7 +166,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
 
         private bool _clearAll = clearAll;
 
-        public void SetAccount(in ValueHash256 addressHash, Account? account)
+        public void SetAccount(in ValueHash256 addressHash, PbtAccount? account)
         {
             (_writtenAccounts ??= []).Add(addressHash);
             inner.SetAccount(addressHash, account);
@@ -178,6 +179,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         }
 
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
+        public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) => inner.SetCodeLeaf(key, value);
 
         public void ClearStorage(in ValueHash256 addressHash)
         {

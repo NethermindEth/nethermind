@@ -115,7 +115,7 @@ public class PbtDbManagerTests
 
         // The gather retains its leased view after the sweep drops the cached view.
         ctx.Manager.FlushCache(default);
-        Assert.That(first.GetAccount(Address)!.Balance, Is.EqualTo((UInt256)100));
+        Assert.That(first.GetAccount(Address)!.Value.ToAccount().Balance, Is.EqualTo((UInt256)100));
 
         PbtReadOnlySnapshotBundle afterSweep = manager.GatherReadOnlyBundle(state);
         Assert.That(afterSweep, Is.Not.SameAs(first), "the swept view is not handed out again");

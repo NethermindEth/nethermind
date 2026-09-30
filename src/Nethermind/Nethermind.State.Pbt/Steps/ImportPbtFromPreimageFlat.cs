@@ -63,7 +63,7 @@ public class ImportPbtFromPreimageFlat(
     /// <summary>Entries copied before workers publish progress, avoiding an interlocked add per entry.</summary>
     private const int ProgressPublishInterval = 100_000;
 
-    /// <summary>Code hashes already staged, so shared bytecode is fetched and written once.</summary>
+    /// <summary>Code hashes already staged with their stem, so shared bytecode is fetched and written once.</summary>
     private const int StagedCodeCapacity = 1 << 20;
 
     private static readonly TimeSpan CopyLogInterval = TimeSpan.FromSeconds(5);
@@ -78,7 +78,8 @@ public class ImportPbtFromPreimageFlat(
     internal int CopyBatchSize { get; init; } = 10_000;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
-    private readonly LruKeyCache<ValueHash256> _stagedCodes = new(StagedCodeCapacity, nameof(_stagedCodes));
+    private readonly LruCache<ValueHash256, PbtAccount> _stagedCodes = new(StagedCodeCapacity, nameof(_stagedCodes));
+    private readonly Lock[] _codeLocks = Enumerable.Range(0, 256).Select(static _ => new Lock()).ToArray();
 
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -292,14 +293,17 @@ public class ImportPbtFromPreimageFlat(
             Address address = new(accountKey.Bytes[..AddressLength]);
 
             Account account = DecodeAccount(accountIterator.CurrentValue);
-            byte[]? code = account.HasCode && _stagedCodes.Set(account.CodeHash.ValueHash256)
-                ? codeDb.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for {address} (code hash {account.CodeHash}) in the code database.")
-                : null;
+            PbtAccount stem = StageStem(account, address, out CodeInfo? code);
 
             if (account.HasStorage) CopySlots(reader, batch, accountKey, address, ref slots, cancellationToken);
 
-            batch.NextWrite().SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
-            if (code is not null) batch.NextWrite().SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
+            batch.NextWrite().SetAccount(PbtKeyDerivation.AddressKeyHash(address), stem);
+            if (code is not null)
+            {
+                batch.NextWrite().SetCode(account.CodeHash.ValueHash256, code);
+                if (!stem.IsDelegation)
+                    foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.CodeLeaves(account.CodeHash.ValueHash256, code)) batch.NextWrite().SetCodeLeaf(key, value);
+            }
 
             pendingAccounts++;
             if (pendingAccounts >= ProgressPublishInterval)
@@ -570,10 +574,7 @@ public class ImportPbtFromPreimageFlat(
                 while (buffered.Count < EntryChunkSize && view.MoveNext())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    RlpReader accountReader = new(view.CurrentValue);
-                    Account account = AccountDecoder.Slim.Decode(ref accountReader)
-                        ?? throw new InvalidDataException("Invalid staged PBT account.");
-                    buffered.Add(new(new ValueHash256(view.CurrentKey), account));
+                    buffered.Add(new(new ValueHash256(view.CurrentKey), PbtAccount.Decode(view.CurrentValue).ToAccount()));
                 }
                 if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
             }
@@ -597,7 +598,6 @@ public class ImportPbtFromPreimageFlat(
                     await sink.Add(new RebuildEntry((PbtStorageTreeKey)key, value));
                 }
 
-                if (!account.HasStorage) continue;
                 ReadHeaderSlots(storage, addressHash, headerSlots);
                 for (int slot = 0; slot < headerSlots.Count; slot++) await sink.Add(headerSlots[slot]);
                 progress.AddSlots(partition, headerSlots.Count);
@@ -692,6 +692,24 @@ public class ImportPbtFromPreimageFlat(
         public void Dispose()
         {
             if (_owned) _chunk.Dispose();
+        }
+    }
+
+    /// <summary>The stem of <paramref name="account"/>, with the code to stage when this call is the first to see its code hash.</summary>
+    private PbtAccount StageStem(Account account, Address address, out CodeInfo? code)
+    {
+        code = null;
+        if (!account.HasCode) return PbtAccount.From(account, null);
+        ValueHash256 codeHash = account.CodeHash.ValueHash256;
+        // Workers meeting one code hash wait for its first stager, so shared bytecode is fetched once.
+        lock (_codeLocks[codeHash.Bytes[0]])
+        {
+            if (_stagedCodes.TryGet(codeHash, out PbtAccount staged)) return PbtAccount.From(staged, account);
+            code = new CodeInfo(codeDb.Get(codeHash.Bytes)
+                ?? throw new InvalidDataException($"Missing bytecode for {address} (code hash {account.CodeHash}) in the code database."));
+            PbtAccount stem = PbtAccount.From(account, code);
+            _stagedCodes.Set(codeHash, stem);
+            return stem;
         }
     }
 

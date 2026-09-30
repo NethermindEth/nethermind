@@ -7,27 +7,10 @@ public enum PbtColumns
 {
     Metadata,
 
-    /// <summary>Legacy EIP-8297 split leaves, retained for schema detection.</summary>
-    FullLeaves,
-
-    /// <summary>Stem leaf blobs of the account header zone (0x0), keyed by stem.</summary>
-    AccountLeaves,
-
-    /// <summary>Stem leaf blobs of the content-addressed code zone (0x1), keyed by stem.</summary>
+    /// <summary>Code-chunk leaf values of the content-addressed code zone (0x1), keyed by their EIP-8297 tree key; all-zero chunks are absent, as in the tree.</summary>
     CodeLeaves,
 
-    /// <summary>Stem leaf blobs of the storage zones (0x8-0xF), keyed by stem.</summary>
-    StorageLeaves,
-
-    /// <summary>Stem trie nodes of the account header zone (0x0), keyed by (path bits, depth).</summary>
-    AccountTrieNodes,
-
-    /// <summary>Stem trie nodes of the content-addressed code zone (0x1), keyed by (path bits, depth).</summary>
-    CodeTrieNodes,
-
-    /// <summary>Stem trie nodes of the storage zones (0x8-0xF), keyed by (path bits, depth).</summary>
-    StorageTrieNodes,
-    /// <summary>Whole accounts keyed by the PBT address hash.</summary>
+    /// <summary>Whole accounts as their <see cref="PbtAccount"/> stem encoding, keyed by the PBT address hash.</summary>
     Accounts,
 
     /// <summary>Runs of sixteen consecutive storage words (see <see cref="Persistence.SlotRunCodec"/>) keyed by the address hash, zone and remaining bytes of their EIP-8297 storage key with its low four bits cleared.</summary>

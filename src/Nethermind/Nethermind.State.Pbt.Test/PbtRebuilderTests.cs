@@ -45,7 +45,7 @@ public class PbtRebuilderTests
                 ? new Account(nonce, balance).WithChangedCodeHash(Keccak.Compute(code))
                 : new Account(nonce, balance);
             PbtTestLeaves.AddAccount(leaves, address, account, code is { Length: > 0 } ? code : null);
-            stagingBatch.SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
+            stagingBatch.SetAccount(PbtKeyDerivation.AddressKeyHash(address), PbtAccount.From(account, code is { Length: > 0 } ? new CodeInfo(code) : null));
             if (code is { Length: > 0 }) stagingBatch.SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
         }
 
@@ -184,7 +184,7 @@ public class PbtRebuilderTests
         PbtRocksDbPersistence target = new(db, Config);
         using (IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch(WriteFlags.None))
         {
-            stagingBatch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), new Account(1, 100));
+            stagingBatch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), new Account(1, 100).ToPbtAccount());
             stagingBatch.SetSlot(PbtStateKey.Storage(TestItem.AddressA, 0), EvmWordSlot.FromStripped(Bytes.FromHexString("0x01")));
             stagingBatch.Commit();
         }
@@ -221,11 +221,7 @@ public class PbtRebuilderTests
 
         ValueHash256 root = await Rebuild(leaves, 5, new StateId(7, TestItem.KeccakA.ValueHash256), target, windowSize: windowSize);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
-        }
+        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
     }
 
     [Test]

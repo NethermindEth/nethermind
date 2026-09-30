@@ -222,14 +222,14 @@ public class PbtCachedReaderPersistenceTests
         Account value = new(7, 9);
         ctx.Reader.CurrentState.Returns(_committedState);
         ctx.Reader.CurrentRoot.Returns(_committedRoot);
-        ctx.Reader.GetAccount(key).Returns(value);
+        ctx.Reader.GetAccount(key).Returns(value.ToPbtAccount());
 
         await using PbtCachedReaderPersistence persistence = ctx.Build();
         using IPbtPersistence.IReader reader = persistence.CreateReader();
 
         Assert.That(reader.CurrentState, Is.EqualTo(_committedState));
         Assert.That(reader.CurrentRoot, Is.EqualTo(_committedRoot));
-        Assert.That(reader.GetAccount(key), Is.EqualTo(value));
+        Assert.That(reader.GetAccount(key), Is.EqualTo(value.ToPbtAccount()));
     }
 
     [Test]

@@ -91,10 +91,10 @@ public class PbtCarryForwardCachingPersistenceTests
 
         yield return Scenario("unwritten_entries_carried_forward", 1, 1, batch =>
         {
-            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressB), new Account(1, 100));
+            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressB), new Account(1, 100).ToPbtAccount());
             batch.SetSlotRun(Run2, SlotRun.Empty);
         });
-        yield return Scenario("written_account_invalidated", 2, 1, batch => batch.SetAccount(AddressHash, new Account(1, 100)));
+        yield return Scenario("written_account_invalidated", 2, 1, batch => batch.SetAccount(AddressHash, new Account(1, 100).ToPbtAccount()));
         yield return Scenario("written_run_invalidated", 1, 2, batch => batch.SetSlotRun(Run1, SlotRun.Empty));
         yield return Scenario("clear_storage_clears_cache", 2, 2, batch => batch.ClearStorage(PbtKeyDerivation.AddressKeyHash(TestItem.AddressB)));
 
@@ -116,7 +116,7 @@ public class PbtCarryForwardCachingPersistenceTests
         yield return new TestCaseData((Action<PbtCarryForwardCachingPersistence, FakePersistence>)((cache, _) =>
         {
             using IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1, Keccak.EmptyTreeHash, WriteFlags.None);
-            batch.SetAccount(AddressHash, new Account(1, 100));
+            batch.SetAccount(AddressHash, new Account(1, 100).ToPbtAccount());
             batch.SetSlotRun(Run1, SlotRun.Empty);
         }), 1, 1)
         { TestName = "uncommitted_batch_does_not_invalidate" };
@@ -171,10 +171,10 @@ public class PbtCarryForwardCachingPersistenceTests
             public StateId CurrentState => parent.ReaderState;
             public ValueHash256 CurrentRoot => Keccak.EmptyTreeHash;
 
-            public Account? GetAccount(in ValueHash256 addressHash)
+            public PbtAccount? GetAccount(in ValueHash256 addressHash)
             {
                 parent.AccountReads++;
-                return new Account(1, 100);
+                return PbtAccount.From(new Account(1, 100), null);
             }
 
             public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey)
@@ -186,7 +186,8 @@ public class PbtCarryForwardCachingPersistenceTests
             }
 
             public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
-            public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => throw new NotSupportedException();
+            public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => throw new NotSupportedException();
+            public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => throw new NotSupportedException();
             public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => throw new NotSupportedException();
             public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
             public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => throw new NotSupportedException();
@@ -195,9 +196,10 @@ public class PbtCarryForwardCachingPersistenceTests
 
         private sealed class WriteBatch : IPbtPersistence.IWriteBatch
         {
-            public void SetAccount(in ValueHash256 addressHash, Account? account) { }
+            public void SetAccount(in ValueHash256 addressHash, PbtAccount? account) { }
             public void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run) { }
             public void SetCode(in ValueHash256 codeHash, CodeInfo code) { }
+            public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) { }
             public void ClearStorage(in ValueHash256 addressHash) { }
             public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> { }
             public void Commit() { }

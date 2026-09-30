@@ -218,7 +218,7 @@ public class PbtAnchorPublicationTests
         {
             // A crash mid-staging leaves staged rows without a validity marker.
             using IPbtPersistence.IWriteBatch batch = new PbtRocksDbPersistence(harness.Target, config).CreateStagingWriteBatch(WriteFlags.None);
-            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty);
+            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty.ToPbtAccount());
             batch.Commit();
         }
         harness.Reopen();
@@ -356,7 +356,7 @@ public class PbtAnchorPublicationTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reader.GetAccount(PbtKeyDerivation.AddressKeyHash(addresses[index]))?.Nonce, Is.EqualTo((ulong)(index + 1)));
+                Assert.That(reader.GetAccount(PbtKeyDerivation.AddressKeyHash(addresses[index]))?.ToAccount().Nonce, Is.EqualTo((ulong)(index + 1)));
                 Assert.That(reader.GetSlot(PbtStateKey.Storage(addresses[index], 100)),
                     Is.EqualTo(EvmWordSlot.FromStripped(((UInt256)(index + 1)).ToBigEndian())));
             }
@@ -584,7 +584,7 @@ public class PbtAnchorPublicationTests
         {
             Address address = new(property.Name);
             JsonElement expected = property.Value;
-            Account? account = reader.GetAccount(PbtKeyDerivation.AddressKeyHash(address));
+            Account? account = reader.GetAccount(PbtKeyDerivation.AddressKeyHash(address))?.ToAccount();
             Assert.That(account, Is.Not.Null, property.Name);
             byte[] code = expected.TryGetProperty("code", out JsonElement codeJson) ? Bytes.FromHexString(codeJson.GetString()!) : [];
             using (Assert.EnterMultipleScope())
