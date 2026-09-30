@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -111,7 +112,7 @@ public class SampledColumnCustodianTests
             PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
             foreach (Node node in (Node[])[.. supernodes, partial])
             {
-                Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(node.P2P), token), Is.True);
+                Assert.That(await AdmitAsync(peerManager, node, token), Is.True);
             }
 
             client.Config.MaxPeerCount = 1;
@@ -192,6 +193,7 @@ public class SampledColumnCustodianTests
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token), Is.True);
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
             IReadOnlyList<ulong> wantedWhileHealthy = [.. discovery.WantedColumns];
+            Stopwatch parked = Stopwatch.StartNew();
             Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
             bool parkedWhileHealthy = !admission.IsCompleted;
             ReportFailuresShortOfADrop(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(supernode.P2P)));
@@ -202,8 +204,9 @@ public class SampledColumnCustodianTests
                 await peerManager.RunMaintenanceRoundAsync(token);
             }
 
-            // The admission poll interval is far longer than this bound, so only the shortfall can wake the wait in time.
-            bool wokenByShortfall = await Task.WhenAny(admission, Task.Delay(TimeSpan.FromSeconds(5), token)) == admission;
+            // The admission poll interval is 30 s, so a wake well inside that came from the shortfall, however long the rounds took under load.
+            await admission.WaitAsync(token);
+            bool wokenByShortfall = parked.Elapsed < TimeSpan.FromSeconds(25);
             PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
             ulong[] onlySupernodeCustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
 
@@ -428,6 +431,20 @@ public class SampledColumnCustodianTests
                 Assert.That(peerManager.PeerCount, Is.EqualTo(1), "the trim brings the pool back to the ceiling");
             }
         }
+    }
+
+    /// <summary>Admission is not what the caller checks, so a dial whose session the pinned libp2p loses is tried again.</summary>
+    private static async Task<bool> AdmitAsync(PeerManager peerManager, Node node, CancellationToken token)
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            if (await peerManager.TryAddPeerAsync(LoopbackAddress(node.P2P), token))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ReportFailuresUpToTheLimit(IBeaconSyncPeer peer)
