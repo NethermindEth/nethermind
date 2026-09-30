@@ -351,6 +351,28 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_CallMethods_UseBlobBaseFeeOverride(
+        [Values("eth_call", "eth_estimateGas")] string method, [Values] bool explicitLimits)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance), configurer: builder => builder
+            .WithGenesisPostProcessor((block, _) => (block.Header.BlobGasUsed, block.Header.ExcessBlobGas) = (0, 0)));
+        Assert.That(ctx.Test.BlockTree.Genesis!.ExcessBlobGas, Is.EqualTo(0));
+        FrameTransactionForRpc request = FrameGasRequest();
+        if (explicitLimits)
+        {
+            (request.Frames![0].ExecutionGas, request.Frames[0].StateGas) = (50_000, 0);
+            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (50_000, 200_000);
+        }
+        // Revert unless BLOBBASEFEE equals the overridden value.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.Frames![1].Target}}}":{"code":"0x4a600214600a575f5ffd5b00"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>("""{"blobBaseFee":"0x2"}""")!;
+
+        string response = await ctx.Test.TestEthRpc(method, request, "0x0", overrides, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
     public async Task FrameGas_CallMethods_FillWithoutAnRpcGasCap([Values("eth_call", "eth_estimateGas")] string method, [Values] bool withBlockOverride)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));

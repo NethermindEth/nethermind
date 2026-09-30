@@ -253,7 +253,8 @@ namespace Nethermind.Facade
                     return Result<TxFrame[]>.Fail(StateUnavailable(header).Error!);
                 using IDisposable _ = scope;
                 GasEstimator estimator = new(scope.Component.TransactionProcessor, scope.Component.WorldState);
-                return estimator.EstimateFrameGas(tx, PrepareCall(scope.Component.WorldState, executionHeader, tx, blobBaseFeeOverride: null),
+                scope.Component.RequestState.BlobBaseFeeOverride = blockOverride?.BlobBaseFee;
+                return estimator.EstimateFrameGas(tx, PrepareCall(scope.Component.WorldState, executionHeader, tx, blobBaseFeeOverride: blockOverride?.BlobBaseFee),
                     fillExecution, fillState, gasCap, errorMargin, cancellationToken, out executionReverted);
             }
             if (!shareableTxProcessorSource.TryBuild(executionHeader, out IReadOnlyTxProcessingScope? shared))
