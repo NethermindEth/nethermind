@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -62,13 +63,20 @@ public class FrameTxPayerlessFilterTests
     {
         Transaction tx = FrameTx(ExtraVerify(), SelfVerify(), trailingVerify ? OnlyVerify() : Execution());
 
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Invalid));
+        long before = Metrics.PendingTransactionsFrameTxUnrecognizedPrefix;
+        AcceptTxResult result = Accept(tx);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxUnrecognizedPrefix));
+            Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Invalid));
+            Assert.That(Metrics.PendingTransactionsFrameTxUnrecognizedPrefix, Is.EqualTo(before + 1));
+        }
     }
 
     [Test]
     public void Accept_RecognizedPrefixes_AreAccepted([Values] bool expiry, [Values] bool deploy, [Values] bool paymaster)
     {
-        System.Collections.Generic.List<TxFrame> frames = [];
+        List<TxFrame> frames = [];
         if (expiry) frames.Add(Expiry());
         if (deploy) frames.Add(Deploy());
         if (paymaster)
@@ -76,7 +84,10 @@ public class FrameTxPayerlessFilterTests
             frames.Add(OnlyVerify());
             frames.Add(Pay());
         }
-        else frames.Add(SelfVerify());
+        else
+        {
+            frames.Add(SelfVerify());
+        }
         frames.Add(Execution());
 
         Assert.That(Accept(FrameTx(frames.ToArray())), Is.EqualTo(AcceptTxResult.Accepted));

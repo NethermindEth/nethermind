@@ -360,8 +360,8 @@ public static class FrameTxValidation
     /// validated, invalidating the whole transaction. The bound is taken at the first frame permitted to approve
     /// payment, at or before the frame that actually installs the payer, so it errs towards refusing a layout whose
     /// approving frame would not have installed one rather than admitting a frame behind the real prefix.
-    /// Deliberately not restricted to the leading VERIFY run <see cref="GetPrefixPaymaster"/> walks: an approving
-    /// DEFAULT frame, or one behind a SENDER frame, must still bound this scan even though no payer resolves there.
+    /// Prefix-grammar admission is checked separately by the public pool. This scan independently bounds
+    /// unrecognized layouts for callers using the predicate without the pool's admission filters.
     /// </remarks>
     public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
     {
@@ -417,9 +417,9 @@ public static class FrameTxValidation
     /// <summary>The paymaster <paramref name="transaction"/> pays through, or <c>null</c> when it pays without one.</summary>
     /// <remarks>
     /// Walks the leading VERIFY run to the first frame approving payment, where the validation-prefix simulation
-    /// also stops, so a sponsor installed through a layout <see cref="RecognizedPrefixLength"/> does not admit is
-    /// still keyed. Derived from the frame layout alone, never from state. The target is resolved as the processor
-    /// resolves it, so omitting it is not a second, uncapped encoding of the same transaction, and a sender paying
+    /// also stops. It does not enforce the pool's prefix grammar, so sponsors remain keyed for independently
+    /// supplied layouts and persisted pool records. Derived from the frame layout alone, never from state.
+    /// The target is resolved as the processor resolves it, so omitting it is not a second, uncapped encoding of the same transaction, and a sender paying
     /// for itself — the self-relay prefix included — uses no paymaster and is bounded by its own balance instead.
     /// A frameless pool record instead answers from <see cref="Transaction.PersistedPaymaster"/>, which the record
     /// persists; one written before it carried that slot reads <c>null</c> though sponsored, under-counting the cap.

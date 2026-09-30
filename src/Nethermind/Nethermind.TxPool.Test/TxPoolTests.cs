@@ -3576,7 +3576,7 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxUnrecognizedPrefix));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
             }
         }

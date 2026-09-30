@@ -14,17 +14,17 @@ internal sealed class FrameTxPayerlessFilter(ILogger logger) : IIncomingTxFilter
     {
         if (!tx.SupportsFrames) return AcceptTxResult.Accepted;
 
-        if (!FrameTxValidation.HasRecognizedValidationPrefix(tx)
-            && !FrameTxPayerResolver.IsStructurallyPayerless(tx))
-            return AcceptTxResult.Invalid.WithMessage("unrecognized frame transaction validation prefix");
-
-        if (!FrameTxPayerResolver.IsStructurallyPayerless(tx))
+        if (FrameTxPayerResolver.IsStructurallyPayerless(tx))
         {
-            return AcceptTxResult.Accepted;
+            Metrics.PendingTransactionsFrameTxNoPayer++;
+            if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, its validation prefix never approves a payer.");
+            return AcceptTxResult.FrameTxNoPayer;
         }
 
-        Metrics.PendingTransactionsFrameTxNoPayer++;
-        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, its validation prefix never approves a payer.");
-        return AcceptTxResult.FrameTxNoPayer;
+        if (FrameTxValidation.HasRecognizedValidationPrefix(tx)) return AcceptTxResult.Accepted;
+
+        Metrics.PendingTransactionsFrameTxUnrecognizedPrefix++;
+        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, its validation prefix is unrecognized.");
+        return AcceptTxResult.FrameTxUnrecognizedPrefix;
     }
 }

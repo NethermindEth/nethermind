@@ -110,8 +110,8 @@ public class FrameTxValidationPrefixSimulationTests
             .SetName("Simulate_SecondLeadingDeployFrame_EndsThePrefixBeforeAnyPayer");
     }
 
-    // What the prefix loop admits is a leading run of VERIFY frames, which is wider than the layouts
-    // RecognizedPrefixLength names: the trailing VERIFY frame of an admitted one is never simulated.
+    // Direct simulation remains independent of public-pool grammar admission, so standalone callers
+    // still need the conservative trailing-VERIFY predicate for layouts the pool rejects earlier.
     [TestCaseSource(nameof(UnrecognizedPrefixCases))]
     public void Simulate_LayoutOutsideTheRecognizedGrammar_ResolvesAPayerOnlyFromALeadingVerifyRun(TxFrame[] frames, bool expectedPayer)
     {
@@ -126,7 +126,7 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.TransactionExecuted, Is.EqualTo(expectedPayer), result.ErrorDescription);
             Assert.That(tracer.Payer, expectedPayer ? Is.EqualTo(Sender) : Is.Null);
             Assert.That(FrameTxValidation.HasVerifyFrameAfterPrefix(tx), Is.True,
-                "the pool bound must claim the trailing VERIFY frame the simulation never reaches");
+                "the standalone predicate must detect the trailing VERIFY frame the simulation never reaches");
         }
     }
 
