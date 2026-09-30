@@ -13,6 +13,9 @@ namespace Nethermind.Core.Crypto;
 
 public sealed partial class KeccakHash
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output) => false;
+
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
 
@@ -30,6 +33,16 @@ public sealed partial class KeccakHash
         Debug.Assert(!stateBytes.ContainsAnyExcept((byte)0), "the guest arm writes the first block, not XORs it");
 
         return AbsorbFullBlocks(state, stateBytes, input, roundSize);
+    }
+
+    /// <inheritdoc cref="KeccakHash.ComputeHash256" />
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static partial ValueHash256 ComputeHash256(ReadOnlySpan<byte> input)
+    {
+        Unsafe.SkipInit(out ValueHash256 keccak);
+        ComputeHash(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
+        return keccak;
     }
 
     // update the state with given number of rounds
