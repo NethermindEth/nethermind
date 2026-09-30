@@ -114,9 +114,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     /// </param>
     public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, bool usePooledTransactions)
     {
-        Transaction[] transactions = _txDecoder.DecodeNonNullArray(
-            ref ctx, usePooledTransactions ? RlpBehaviors.None : RlpBehaviors.SkipPooledTransactions,
-            limit: TransactionsCountLimit);
+        Transaction[] transactions = DecodeTransactions(ref ctx, usePooledTransactions);
         try
         {
             BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
@@ -136,6 +134,35 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             {
                 foreach (Transaction transaction in transactions)
                     TxDecoder.TxObjectPool.Return(transaction);
+            }
+            throw;
+        }
+    }
+
+    private Transaction[] DecodeTransactions(ref RlpReader ctx, bool usePooledTransactions)
+    {
+        int end = ctx.ReadSequenceLength() + ctx.Position;
+        int count = ctx.PeekNumberOfItemsRemaining(end, TransactionsCountLimit.Limit + 1);
+        ctx.GuardLimit(count, TransactionsCountLimit);
+        Transaction[] transactions = new Transaction[count];
+        int decoded = 0;
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (ctx.PeekByte() == Rlp.EmptyListByte) RlpHelpers.ThrowNullArrayElement(i);
+                Transaction? transaction = usePooledTransactions ? TxDecoder.TxObjectPool.Get() : new Transaction();
+                transactions[decoded++] = transaction;
+                _txDecoder.Decode(ref ctx, ref transaction);
+            }
+            ctx.Check(end);
+            return transactions;
+        }
+        catch
+        {
+            if (usePooledTransactions)
+            {
+                for (int i = 0; i < decoded; i++) TxDecoder.TxObjectPool.Return(transactions[i]);
             }
             throw;
         }
