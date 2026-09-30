@@ -76,21 +76,42 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
             ? ICodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegatedAddress)
             : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
 
-    /// <summary>Finds the override of <paramref name="address"/> while the account still has the code hash it had when the override was set.</summary>
+    /// <summary>Finds the code this repository answers <paramref name="address"/> with, ahead of the inner repository.</summary>
     /// <remarks>
-    /// Destroying the account (a SELFDESTRUCT before Cancun) changes its code in the world state without passing
-    /// through this repository, so an entry is checked against the state rather than removed. The world state
-    /// journals the code hash, so a reverted change brings the override back.
+    /// An override answers while the account still has the code hash it had when the override was set. Destroying
+    /// the account (a SELFDESTRUCT before Cancun) changes its code in the world state without passing through this
+    /// repository, so an entry is checked against the state rather than removed. The world state journals the code
+    /// hash, so a reverted change brings the override back. Where a precompile was moved away from, an ended
+    /// override leaves the world state's code, not the precompile the inner repository would answer with.
     /// </remarks>
     private bool TryGetCodeOverride(Address address, [NotNullWhen(true)] out CodeInfo? codeInfo)
     {
-        if (_codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) entry) && worldState.GetCodeHash(address) == entry.codeHash)
+        if (_codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) entry))
         {
-            codeInfo = entry.codeInfo;
-            return true;
+            if (worldState.GetCodeHash(address) == entry.codeHash)
+            {
+                codeInfo = entry.codeInfo;
+                return true;
+            }
+
+            if (IsMovedPrecompileOrigin(address))
+            {
+                codeInfo = worldState.GetCodeHash(address) == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : new CodeInfo(worldState.GetCode(address));
+                return true;
+            }
         }
 
         codeInfo = null;
+        return false;
+    }
+
+    private bool IsMovedPrecompileOrigin(Address address)
+    {
+        foreach ((CodeInfo _, Address initialAddr) in _precompileOverrides.Values)
+        {
+            if (initialAddr == address) return true;
+        }
+
         return false;
     }
 
