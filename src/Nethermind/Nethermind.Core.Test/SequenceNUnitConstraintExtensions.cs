@@ -38,11 +38,11 @@ public static class SequenceNUnitConstraintExtensions
 }
 
 /// <summary>Element-wise equality for arrays, <see cref="Memory{T}"/>, <see cref="ReadOnlyMemory{T}"/>, spans and any <see cref="IEnumerable{T}"/>.</summary>
-/// <remarks>Compares an array, memory or span actual without copying it; only a mismatch materializes it so <see cref="EqualConstraint"/> can report the differing index.</remarks>
+/// <remarks>Compares an array, memory or span of elements without references in place; a mismatch, or any other element type, goes to <see cref="EqualConstraint"/>, which reports the differing index.</remarks>
 public sealed class SequenceEqualConstraint<T> : Constraint
 {
-    // NUnit compares nested sequences by contents, which an element's own Equals may not.
-    private static readonly bool ElementsCompareByEquals = !typeof(IEnumerable).IsAssignableFrom(typeof(T));
+    // NUnit compares nested sequences by contents, which an element's own Equals may not; plain values cannot hold one.
+    private static readonly bool ElementsCompareByEquals = !RuntimeHelpers.IsReferenceOrContainsReferences<T>() && !typeof(IEnumerable).IsAssignableFrom(typeof(T));
 
     private readonly T[] _expected;
 

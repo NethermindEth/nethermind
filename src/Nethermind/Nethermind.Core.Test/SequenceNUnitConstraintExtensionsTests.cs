@@ -77,8 +77,11 @@ public class SequenceNUnitConstraintExtensionsTests
         AssertFails(TwoOnFirstReadThenOne(), Is.SequenceEqualTo(new byte[] { 1 }));
 
     [Test]
-    public void Nested_sequences_compare_by_contents_even_when_their_Equals_says_otherwise() =>
+    public void Nested_sequences_compare_by_contents_even_when_their_Equals_says_otherwise()
+    {
         AssertFails(new[] { new IdEqualList(1, 1) }, Is.SequenceEqualTo(new[] { new IdEqualList(1, 2) }));
+        AssertFails(new object[] { new IdEqualList(1, 1) }, Is.SequenceEqualTo(new object[] { new IdEqualList(1, 2) }));
+    }
 
     [Test]
     public void Default_array_segment_does_not_match_an_empty_expected() =>
