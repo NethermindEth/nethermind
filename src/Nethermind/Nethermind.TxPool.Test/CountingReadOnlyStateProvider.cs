@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,9 +31,9 @@ internal sealed class CountingReadOnlyStateProvider(IReadOnlyStateProvider inner
 
     public Hash256 StateRoot => inner.StateRoot;
 
-    public byte[]? GetCode(Address address) => inner.GetCode(address);
+    public ReadOnlyMemory<byte> GetCode(Address address) => inner.GetCode(address);
 
-    public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
+    public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
 
     public bool IsContract(Address address) => inner.IsContract(address);
 
