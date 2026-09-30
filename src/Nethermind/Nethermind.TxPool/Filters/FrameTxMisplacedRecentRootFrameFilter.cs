@@ -29,7 +29,7 @@ internal sealed class FrameTxMisplacedRecentRootFrameFilter(ILogger logger, bool
 
         if (blobRecordsDropFrames && tx.CarriesBlobs && FrameTxValidation.TryGetRecentRootTuples(tx, out _))
         {
-            Metrics.PendingTransactionsFrameTxMisplacedRecentRootFrame++;
+            Metrics.PendingTransactionsFrameTxRecentRootWithPersistentBlobs++;
             if (logger.IsTrace) logger.Trace($"Skipped adding blob-carrying frame transaction {tx.Hash}, the persistent blob pool cannot revalidate its recent roots.");
             return AcceptTxResult.FrameTxRecentRootWithPersistentBlobs;
         }
