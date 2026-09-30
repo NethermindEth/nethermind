@@ -22,17 +22,19 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
     /// <summary>An inclusion list retained for a payload that could not yet be validated.</summary>
     private readonly record struct RetainedInclusionList(Hash256 ParentHash, ulong Number, byte[][] Transactions, bool Accepted);
-    private readonly record struct InclusionListAnswer(Hash256 ParentHash, ulong Number, bool Satisfied);
+    private readonly record struct InclusionListAnswer(ulong Number, bool Satisfied);
 
     // EIP-7805 requires retaining ACCEPTED branch tips until they cease to be tips.
     private readonly Dictionary<Hash256, InclusionListAnswer> _inclusionListAnswers = [];
     private readonly Dictionary<Hash256, RetainedInclusionList> _retainedInclusionLists = [];
     private readonly Dictionary<Hash256, int> _inclusionListChildCounts = [];
     // bogota.md mandates retaining ACCEPTED tips; only best-effort SYNCING lists can be evicted.
-    private readonly LinkedList<Hash256> _syncingInclusionListOrder = new();
-    private readonly Dictionary<Hash256, LinkedListNode<Hash256>> _syncingInclusionListNodes = [];
+    private readonly InclusionListInsertionOrder _syncingInclusionListOrder = new();
+    // Answers outlive their list, so finality is their normal bound and this one only catches stalled finality.
+    private readonly InclusionListInsertionOrder _inclusionListAnswerOrder = new();
     private readonly IBlockTree _inclusionListBlockTree = blockTree;
     private const int MaxRetainedSyncingInclusionLists = 64;
+    private const int MaxInclusionListAnswers = 256;
     private ulong _finalizedInclusionListNumber;
     private Hash256? _finalizedInclusionListHash;
 
@@ -178,9 +180,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Cannot evaluate the inclusion list of head {headBlockHash}: {exception}");
-            // Unlike a pruned or healing subtrie, nothing failing here is expected to succeed later, so forget
-            // the list instead of re-throwing and re-logging on every later update to this head.
-            PublishInclusionListAnswer(headBlockHash, retained, null);
+            // bogota.md lets a retained list go only once its payload is no longer a tip, so a failure here
+            // cannot discard one: the entry survives and the next update to this head retries.
             return null;
         }
 
@@ -196,17 +197,16 @@ public partial class EngineRpcModule : IEngineRpcModule
         return answer;
     }
 
-    private void SetInclusionListAnswer(Hash256 blockHash, Hash256 parentHash, ulong number, bool answer)
+    internal void SetInclusionListAnswer(Hash256 blockHash, Hash256 parentHash, ulong number, bool answer)
     {
         lock (_inclusionListLock)
         {
             if (!IsAfterFinalization(blockHash, number)) return;
             RemoveRetainedInclusionList(blockHash);
+            // The parent's list may go once it is no longer a tip, but its answer is still owed to a
+            // forkchoice update that keeps the parent as head (bogota.md forkchoiceUpdatedV5 (2.1)).
             RemoveRetainedInclusionList(parentHash);
-            RemoveInclusionListAnswer(parentHash);
-            RemoveInclusionListAnswer(blockHash);
-            _inclusionListAnswers[blockHash] = new InclusionListAnswer(parentHash, number, answer);
-            TrackInclusionListChild(parentHash);
+            AddInclusionListAnswer(blockHash, number, answer);
         }
     }
 
@@ -216,11 +216,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         {
             RemoveInclusionListAnswer(blockHash);
             if (!IsAfterFinalization(blockHash, number)) return;
-            if (accepted)
-            {
-                RemoveRetainedInclusionList(parentHash);
-                RemoveInclusionListAnswer(parentHash);
-            }
+            if (accepted) RemoveRetainedInclusionList(parentHash);
             // An out-of-order parent is not a branch tip if an unresolved child is already retained.
             if (_inclusionListChildCounts.ContainsKey(blockHash)) return;
             RemoveRetainedInclusionList(blockHash);
@@ -228,9 +224,9 @@ public partial class EngineRpcModule : IEngineRpcModule
             if (accepted) TrackInclusionListChild(parentHash);
             else
             {
-                _syncingInclusionListNodes[blockHash] = _syncingInclusionListOrder.AddLast(blockHash);
-                if (_syncingInclusionListNodes.Count > MaxRetainedSyncingInclusionLists)
-                    RemoveRetainedInclusionList(_syncingInclusionListOrder.First!.Value);
+                _syncingInclusionListOrder.Add(blockHash);
+                if (_syncingInclusionListOrder.Count > MaxRetainedSyncingInclusionLists)
+                    RemoveRetainedInclusionList(_syncingInclusionListOrder.Oldest);
             }
         }
     }
@@ -265,12 +261,8 @@ public partial class EngineRpcModule : IEngineRpcModule
                 if (answer is { } satisfied)
                 {
                     RemoveRetainedInclusionList(current.ParentHash);
-                    RemoveInclusionListAnswer(current.ParentHash);
                     if (IsAfterFinalization(blockHash, current.Number))
-                    {
-                        _inclusionListAnswers[blockHash] = new InclusionListAnswer(current.ParentHash, current.Number, satisfied);
-                        TrackInclusionListChild(current.ParentHash);
-                    }
+                        AddInclusionListAnswer(blockHash, current.Number, satisfied);
                 }
             }
         }
@@ -317,17 +309,42 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         if (!_retainedInclusionLists.Remove(blockHash, out RetainedInclusionList entry)) return;
         if (entry.Accepted) UntrackInclusionListChild(entry.ParentHash);
-        else
-        {
-            _syncingInclusionListOrder.Remove(_syncingInclusionListNodes[blockHash]);
-            _syncingInclusionListNodes.Remove(blockHash);
-        }
+        else _syncingInclusionListOrder.Remove(blockHash);
+    }
+
+    private void AddInclusionListAnswer(Hash256 blockHash, ulong number, bool satisfied)
+    {
+        _inclusionListAnswers[blockHash] = new InclusionListAnswer(number, satisfied);
+        _inclusionListAnswerOrder.Add(blockHash);
+        if (_inclusionListAnswerOrder.Count > MaxInclusionListAnswers)
+            RemoveInclusionListAnswer(_inclusionListAnswerOrder.Oldest);
     }
 
     private void RemoveInclusionListAnswer(Hash256 blockHash)
     {
-        if (_inclusionListAnswers.Remove(blockHash, out InclusionListAnswer entry))
-            UntrackInclusionListChild(entry.ParentHash);
+        if (_inclusionListAnswers.Remove(blockHash)) _inclusionListAnswerOrder.Remove(blockHash);
+    }
+
+    /// <summary>Insertion order of a bounded map's keys, so its oldest entry can be found in O(1).</summary>
+    private sealed class InclusionListInsertionOrder
+    {
+        private readonly LinkedList<Hash256> _order = new();
+        private readonly Dictionary<Hash256, LinkedListNode<Hash256>> _nodes = [];
+
+        public int Count => _nodes.Count;
+
+        public Hash256 Oldest => _order.First!.Value;
+
+        public void Add(Hash256 hash)
+        {
+            Remove(hash);
+            _nodes[hash] = _order.AddLast(hash);
+        }
+
+        public void Remove(Hash256 hash)
+        {
+            if (_nodes.Remove(hash, out LinkedListNode<Hash256>? node)) _order.Remove(node);
+        }
     }
 
     // Mirrors the newPayloadV6 aggregate bound (IExecutionPayloadParams.ValidateInitialParams).

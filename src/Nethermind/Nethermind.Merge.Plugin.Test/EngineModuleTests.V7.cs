@@ -872,6 +872,34 @@ public partial class EngineModuleTests
         }
     }
 
+    // A VALID child frees the parent's retained list, but bogota.md forkchoiceUpdatedV5 (2.1) still owes an
+    // answer if the consensus client keeps the parent as head, e.g. because the child came back unsatisfied.
+    [Test]
+    public async Task ForkchoiceUpdatedV5_answers_a_parent_head_whose_child_was_validated()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 genesis = chain.BlockTree.HeadHash;
+
+        ExecutionPayloadV4 parent = await BuildAndInsertEmptyBlock(rpc, genesis, slot: 2, finalize: false, finalizedHash: genesis);
+
+        // Re-validate the parent against a list it censors, so the answer the child must not drop is false.
+        ResultWrapper<PayloadStatusV2> censored = await rpc.engine_newPayloadV6(
+            parent, [], Keccak.Zero, [], [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+        Assert.That(censored.Data.InclusionListSatisfied, Is.False);
+
+        await BuildAndInsertEmptyBlock(rpc, parent.BlockHash, slot: 3, finalize: false, finalizedHash: genesis);
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(parent.BlockHash, genesis, genesis), payloadAttributes: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.False);
+        }
+    }
+
     [Test]
     public async Task ForkchoiceUpdatedV5_prunes_earlier_syncing_lists_when_a_descendant_is_finalized()
     {
@@ -962,6 +990,29 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task Inclusion_list_cache_limits_answers_without_finality()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" });
+        EngineRpcModule rpc = (EngineRpcModule)chain.EngineRpcModule;
+        Hash256 parentHash = chain.BlockTree.HeadHash;
+        Hash256 oldest = Keccak.Compute(BitConverter.GetBytes(0));
+        Hash256 newest = oldest;
+
+        for (int i = 0; i < 257; i++)
+        {
+            newest = Keccak.Compute(BitConverter.GetBytes(i));
+            rpc.SetInclusionListAnswer(newest, parentHash, (ulong)i + 1, answer: true);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.HasInclusionListAnswer(oldest), Is.False);
+            Assert.That(rpc.HasInclusionListAnswer(newest), Is.True);
+        }
+    }
+
     // A newPayloadV6 landing while forkchoiceUpdatedV5 evaluates the retained list wins: the answer being
     // computed is already stale, so publishing it would shadow the newer list on every later update.
     [Test]
@@ -998,10 +1049,10 @@ public partial class EngineModuleTests
         }
     }
 
-    // An unexpected failure to evaluate a retained list is not retryable the way a healing subtrie is, and
-    // forkchoiceUpdatedV5 runs several times per slot, so the list is forgotten rather than re-evaluated.
+    // bogota.md lets a retained list go only once its payload is no longer a tip, so an evaluation that
+    // threw answers null for that call alone and a later update still gets to answer.
     [Test]
-    public async Task ForkchoiceUpdatedV5_evaluates_a_retained_list_once_when_the_evaluation_throws()
+    public async Task ForkchoiceUpdatedV5_re_evaluates_a_retained_list_after_an_evaluation_threw()
     {
         HeadStateInterceptor headState = new();
         InterleavingEvaluator evaluator = new();
@@ -1014,8 +1065,7 @@ public partial class EngineModuleTests
         int evaluations = 0;
         evaluator.BeforeEvaluate = () =>
         {
-            evaluations++;
-            throw new InvalidOperationException("evaluation failed");
+            if (++evaluations == 1) throw new InvalidOperationException("evaluation failed");
         };
 
         ForkchoiceStateV1 forkchoiceState = new(payload.BlockHash, payload.BlockHash, payload.BlockHash);
@@ -1024,9 +1074,9 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(first.Data.PayloadStatus.InclusionListSatisfied, Is.Null);
-            Assert.That(second.Data.PayloadStatus.InclusionListSatisfied, Is.Null);
-            Assert.That(evaluations, Is.EqualTo(1), "the retained list must not be re-evaluated after it threw");
+            Assert.That(first.Data.PayloadStatus.InclusionListSatisfied, Is.Null, "the failed evaluation cannot answer");
+            Assert.That(second.Data.PayloadStatus.InclusionListSatisfied, Is.False);
+            Assert.That(evaluations, Is.EqualTo(2), "the retained list must survive an evaluation that threw");
         }
     }
 
