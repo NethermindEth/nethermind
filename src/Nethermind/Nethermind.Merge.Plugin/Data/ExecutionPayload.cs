@@ -97,14 +97,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return value;
     }
 
-    /// <summary>
-    /// The JSON key of a field the request omitted or sent as <c>null</c>, or <c>null</c> if every field was bound.
-    /// </summary>
+    /// <summary>Whether the request omitted a required field or sent it as <c>null</c>.</summary>
     /// <remarks>Only payload types that arm presence tracking on deserialization report a field.</remarks>
-    internal string? UnboundFieldName =>
-        _unboundFields == PayloadFields.None
-            ? null
-            : JsonNamingPolicy.CamelCase.ConvertName(((PayloadFields)(1u << BitOperations.TrailingZeroCount((uint)_unboundFields))).ToString());
+    internal bool HasUnboundField => _unboundFields != PayloadFields.None;
+
+    /// <summary>The JSON key of the first unbound field; call only when <see cref="HasUnboundField"/> is <c>true</c>.</summary>
+    internal string UnboundFieldName =>
+        JsonNamingPolicy.CamelCase.ConvertName(((PayloadFields)(1u << BitOperations.TrailingZeroCount((uint)_unboundFields))).ToString());
 
     protected byte[][] _encodedTransactions = [];
 

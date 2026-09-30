@@ -129,7 +129,7 @@ public class ExecutionPayloadV4Tests
 
         ExecutionPayload payload = (ExecutionPayload)json.Deserialize(payloadType, EthereumJsonSerializer.JsonOptions)!;
 
-        Assert.That(payload.UnboundFieldName, Is.EqualTo(expectedUnboundField));
+        Assert.That(payload.HasUnboundField ? payload.UnboundFieldName : null, Is.EqualTo(expectedUnboundField));
     }
 
     private static IEnumerable<TestCaseData> MalformedBlockAccessLists()

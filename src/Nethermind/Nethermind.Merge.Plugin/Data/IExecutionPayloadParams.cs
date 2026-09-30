@@ -246,9 +246,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         }
 
         // Runs after the fork checks above, which also guard payloads not bound from JSON and keep their messages.
-        if (executionPayload.UnboundFieldName is { } unboundField)
+        if (executionPayload.HasUnboundField)
         {
-            error = $"{unboundField} must be set";
+            error = $"{executionPayload.UnboundFieldName} must be set";
             return ValidationResult.Fail;
         }
 
