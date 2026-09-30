@@ -152,9 +152,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
         }
 
-        // Bounded by the processor count like the rest of block processing, and a single worker runs on the
-        // committing thread. Parallel.For, even at one degree, hands the shards to the pool, so which thread ran them
-        // changed between runs.
+        // Parallel.For hands iterations to the pool even at one degree; this keeps a single worker on the calling thread.
         ParallelUnbalancedWork.For(0, ShardCount, ParallelUnbalancedWork.DefaultOptions, (i) =>
         {
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
