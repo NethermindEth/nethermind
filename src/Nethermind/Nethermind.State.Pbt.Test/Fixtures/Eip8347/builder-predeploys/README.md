@@ -9,7 +9,7 @@ All eleven lifecycle states, block/header/transaction/BAL bytes and hashes, MPT/
 Genesis hash: `0x2ff7c7cf2c5f53f4918be60a2bb129731f1a5f4d3baa0cdce75751a718764297`.
 Anchor MPT root: `0x9dcca0bd9470e4838d495eeafd27564053af72ea3ceb5c107fa34b93221d996b`.
 Anchor PBT root: `0x038c17361c0b8c818553c403e35aa7f1184d6ae6a3a40cdb834af116233d3356`.
-Canonical anchor snapshot Keccak: `0x9304544b129403c18fbd22a4aa60fab39306ab94c9234244fa6e7778c805c0a4`.
+Canonical anchor snapshot Keccak: `0xd5cfa3eb6186f58249642a6244e68688bc28112b6e774d977aaac94f86840904`.
 Canonical anchor preimages Keccak: `0x8741e97994a3ed88a6b982c6e0d648d16612f40e30a593152cc3c73ccfb6f223`.
 
 For reproduction follow the parent README, installing this edition's lifecycle collector over the reference `eth/catalyst/eip8347_fixture_export_test.go`, using a separate output directory and setting `EIP8347_BUILDER_PREDEPLOYS=1` for the lifecycle test. Run lifecycle, image and canonical collectors, then repeat into another output and compare bytes. Image/canonical collectors are unchanged from the original edition.
