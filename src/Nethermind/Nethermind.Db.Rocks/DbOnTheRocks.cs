@@ -45,7 +45,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private bool _isDisposing;
     private int _pinnedSlices;
-    private static readonly TimeSpan PinnedSliceDrainTimeout = TimeSpan.FromSeconds(10);
+    private bool _nativeCloseDeferred;
+    private int _nativeClosed;
     private bool _isDisposed;
 
     private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = [];
@@ -1125,36 +1126,47 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         finally
         {
-            if (!pinned) Interlocked.Decrement(ref _pinnedSlices);
+            if (!pinned) ReleasePinnedSlice();
         }
     }
 
     public void DangerousReleaseHandle(nint handle)
     {
         PinnedSlice.DangerousDestroy(handle);
-        if (handle != 0) Interlocked.Decrement(ref _pinnedSlices);
+        if (handle != 0) ReleasePinnedSlice();
+    }
+
+    /// <summary>How long <see cref="Dispose"/> waits for pinned slices before it leaves the native close to the last release.</summary>
+    internal TimeSpan PinnedSliceDrainTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    private void ReleasePinnedSlice()
+    {
+        if (Interlocked.Decrement(ref _pinnedSlices) == 0 && Volatile.Read(ref _nativeCloseDeferred)) CloseNative();
     }
 
     /// <summary>Waits for the slices <see cref="GetNativeSlice(ReadOnlySpan{byte}, IColumnFamilyHandle?, out nint, ReadFlags)"/> handed out to be released.</summary>
+    /// <returns><see langword="false"/> if slices are still pinned after <see cref="PinnedSliceDrainTimeout"/>.</returns>
     /// <remarks>
     /// A pinned slice must be released before its database closes, and a background reader, such as a code read ahead
-    /// of execution, can still hold one when shutdown disposes the database. A slice never released would hang shutdown,
-    /// so the wait gives up after <see cref="PinnedSliceDrainTimeout"/> with a warning.
+    /// of execution, can still hold one when shutdown disposes the database.
     /// </remarks>
-    private void WaitForPinnedSlices()
+    private bool WaitForPinnedSlices()
     {
         long start = Stopwatch.GetTimestamp();
         SpinWait spin = default;
         while (Volatile.Read(ref _pinnedSlices) != 0)
         {
-            if (Stopwatch.GetElapsedTime(start) > PinnedSliceDrainTimeout)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Closing DB {Name} with {Volatile.Read(ref _pinnedSlices)} pinned slices not released");
-                return;
-            }
-
+            if (Stopwatch.GetElapsedTime(start) > PinnedSliceDrainTimeout) return false;
             spin.SpinOnce();
         }
+
+        return true;
+    }
+
+    /// <summary>Closes the native database once, from <see cref="Dispose"/> or from the last pinned slice release.</summary>
+    private void CloseNative()
+    {
+        if (Interlocked.Exchange(ref _nativeClosed, 1) == 0) ReleaseUnmanagedResources();
     }
 
     public void Remove(ReadOnlySpan<byte> key)
@@ -1793,7 +1805,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (Interlocked.CompareExchange(ref _isDisposing, true, false)) return;
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
-        WaitForPinnedSlices();
+        bool drained = WaitForPinnedSlices();
 
         foreach (IDisposable dbMetricsUpdater in _metricsUpdaters)
         {
@@ -1804,7 +1816,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (_perTableDbConfig.FlushOnExit != FlushOnExitMode.None)
             InnerFlush(onlyWal: _perTableDbConfig.FlushOnExit == FlushOnExitMode.WalOnly);
-        ReleaseUnmanagedResources();
+
+        if (drained)
+        {
+            CloseNative();
+        }
+        else
+        {
+            // A slice still pinned would read freed memory, so the last release closes the database.
+            if (_logger.IsWarn) _logger.Warn($"DB {Name} closes when its {Volatile.Read(ref _pinnedSlices)} pinned slices are released");
+            Interlocked.Exchange(ref _nativeCloseDeferred, true);
+            if (Volatile.Read(ref _pinnedSlices) == 0) CloseNative();
+        }
 
         _dbsByPath.Remove(_fullPath!, out _);
 

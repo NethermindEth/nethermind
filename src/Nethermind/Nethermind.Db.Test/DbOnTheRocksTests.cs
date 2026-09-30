@@ -634,6 +634,25 @@ namespace Nethermind.Db.Test
             Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the slice was released");
         }
 
+        // Shutdown cannot wait forever for a slow reader, but closing under its slice frees memory the reader still uses.
+        [Test]
+        public void A_slice_held_past_the_dispose_timeout_keeps_the_db_open_until_it_is_released()
+        {
+            byte[] key = [1, 2, 3];
+            NativeCloseTrackingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance)
+            {
+                PinnedSliceDrainTimeout = TimeSpan.FromMilliseconds(50)
+            };
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
+
+            Assert.That(Task.Run(db.Dispose).Wait(TimeSpan.FromSeconds(10)), "dispose waited past its timeout");
+            Assert.That(db.NativeCloses, Is.Zero, "the database closed under a pinned slice");
+
+            db.DangerousReleaseHandle(handle);
+            Assert.That(db.NativeCloses, Is.EqualTo(1), "the last release must close the database once");
+        }
+
         private static void ReadBy(DbOnTheRocks db, GetPath path, byte[] key, int length)
         {
             IReadOnlyKeyValueStore keyValueStore = db;
@@ -1889,5 +1908,22 @@ namespace Nethermind.Db.Test
         ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
     {
         protected override void FatalShutdown() => onFatalShutdown();
+    }
+
+    class NativeCloseTrackingDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+    {
+        public int NativeCloses { get; private set; }
+
+        protected override void ReleaseUnmanagedResources()
+        {
+            NativeCloses++;
+            base.ReleaseUnmanagedResources();
+        }
     }
 }
