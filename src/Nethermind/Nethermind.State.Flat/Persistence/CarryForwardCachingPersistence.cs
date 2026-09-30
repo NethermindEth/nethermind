@@ -106,8 +106,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     // Sized for the cap up front: a ConcurrentDictionary grows by re-creating every entry, which from the default
     // capacity takes a dozen rounds on the way to the cap, the last ones tens of megabytes on whichever reader adds
     // the entry that crosses a threshold. Clear() would shrink it back to the default, so a wipe swaps in a new one.
+    // One lock: every write already runs under _lock, and a dictionary grows once any one lock passes its share of
+    // the buckets, so with more locks the fullest one would still trigger a growth just short of the cap.
     private ConcurrentDictionary<TKey, TValue> NewCache<TKey, TValue>() where TKey : notnull =>
-        new(Environment.ProcessorCount, _maxEntriesPerKind);
+        new(concurrencyLevel: 1, _maxEntriesPerKind);
 
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
 
