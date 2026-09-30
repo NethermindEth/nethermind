@@ -103,11 +103,30 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
 
+    /// <summary>
+    /// Benchmark switch (<c>NETHERMIND_FLAT_CARRY_FORWARD_PROCESSING_ONLY=1</c>): only the block processing thread fills
+    /// the cache, so its size, and the block where its table grows, follow block processing alone.
+    /// </summary>
+    public static bool ProcessingThreadOnly { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_CARRY_FORWARD_PROCESSING_ONLY") == "1";
+
+    /// <summary>Benchmark diagnostics: entries other threads added (accounts, slots), and the first stacks that did.</summary>
+    public static long OtherThreadAccountInserts;
+    public static long OtherThreadSlotInserts;
+    public static readonly ConcurrentQueue<string> OtherThreadInsertStacks = new();
+
+    private static bool SkipOtherThread(ref long counter)
+    {
+        if (Nethermind.Core.Threading.ProcessingThread.IsBlockProcessingThread) return false;
+        if (Interlocked.Increment(ref counter) <= 4) OtherThreadInsertStacks.Enqueue(Environment.StackTrace);
+        return ProcessingThreadOnly;
+    }
+
     private void TryCacheAccount(Address address, Account? account, long readerGeneration)
     {
         // Another reader can fill the same base miss while this reader is doing I/O.
         // The cache is best-effort, so a racing removal only loses a hint.
         if (_accounts.ContainsKey(address)) return;
+        if (SkipOtherThread(ref OtherThreadAccountInserts)) return;
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
@@ -126,6 +145,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private void TryCacheSlot(in (Address, UInt256) key, in CachedSlot slot, long readerGeneration)
     {
         if (_slots.ContainsKey(key)) return;
+        if (SkipOtherThread(ref OtherThreadSlotInserts)) return;
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;

@@ -185,10 +185,14 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         string host = DiagnosticCounters.Enabled
             ? $" host={HostActivity.Delta(s_pinCpu)}" + (block.Number % 100 == 0 ? $" mem={HostActivity.Memory()}" : string.Empty)
             : string.Empty;
-        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit} cmp={inputs}/{compactedInputs}/{added}{phaseCycles}{host}");
+        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit} cmp={inputs}/{compactedInputs}/{added}{phaseCycles}{host} cfother={Nethermind.State.Flat.Persistence.CarryForwardCachingPersistence.OtherThreadAccountInserts}/{Nethermind.State.Flat.Persistence.CarryForwardCachingPersistence.OtherThreadSlotInserts}");
         if (DiagnosticCounters.Enabled && Interlocked.Exchange(ref s_hostLogged, 1) == 0 && _logger.IsInfo)
             _logger.Info($"EXPB-COUNT host{HostActivity.Facts(s_pinCpu)}");
         LargeAllocationListener.Flush();
+        while (Nethermind.State.Flat.Persistence.CarryForwardCachingPersistence.OtherThreadInsertStacks.TryDequeue(out string? stack))
+        {
+            if (_logger.IsInfo) _logger.Info($"EXPB-COUNT carry-forward insert off the processing thread: {stack.Replace(Environment.NewLine, " | ")}");
+        }
     }
 
     // popsteps: the cache fill's per-node steps summed over the block (see TrieNodeCache.LastAddSteps).
