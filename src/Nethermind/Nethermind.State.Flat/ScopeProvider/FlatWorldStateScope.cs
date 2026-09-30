@@ -119,9 +119,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private void DrainStorageRootBuilder()
     {
         if (_storageRootBuilder is null) return;
+        bool firstDrain = !_storageRootBuilder.IsDrained;
         _storageRootBuilder.CompleteAndJoin();
-        // A faulted builder may have left a trie half-applied; drop them all so the flush rebuilds from the committed parent.
-        if (_storageRootBuilder.IsFaulted) _storages.Clear();
+        // A faulted builder may have left a trie half-applied, and a trie no batch of the first flush took misses the
+        // writes that came after the drain. Both go back to the parent root and the flush rebuilds them. The trees stay:
+        // an earlier flush of this block may have left uncommitted nodes in them.
+        if (_storageRootBuilder.IsFaulted || !firstDrain)
+        {
+            foreach (FlatStorageTree storage in _storages.Values) storage.DropBuilderWrites();
+        }
     }
 
     internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
