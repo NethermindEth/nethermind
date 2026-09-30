@@ -140,7 +140,7 @@ public partial class FrameTxProcessorTests
                 Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
                 Assert.That(result.ErrorDescription, Does.Contain(placeholder
                     ? FrameTxSignatureValidator.InvalidSignatureLength
-                    : options == ExecutionOptions.FrameValidationPrefixOnly ? "validation prefix frame reverted" : "VERIFY frame reverted"));
+                    : options == ExecutionOptions.FrameValidationPrefixOnly ? "validation prefix exceeds MAX_VERIFY_GAS" : "VERIFY frame reverted"));
             }
             if (!succeeds || options.HasFlag(ExecutionOptions.Restore))
             {

@@ -46,6 +46,22 @@ internal class FrameTxVerifyGasFilterTest
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
     }
 
+    [TestCase(100_000ul, true)]
+    [TestCase(100_001ul, false)]
+    public void Accept_DefaultConfigUsesThePublicVerifyGasLimit(ulong gas, bool accepted)
+    {
+        Transaction tx = FrameTx(SelfVerify(gas));
+        FrameTxVerifyGasFilter filter = new(new TxPoolConfig(), LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8141Constants.MaxVerifyGas, Is.EqualTo(100_000ul));
+            Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None),
+                Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxVerifyGasTooHigh));
+        }
+    }
+
     private static TxFrame SelfVerifyWithState(ulong executionGasLimit, ulong stateGasLimit) =>
         new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, default);
 
@@ -102,8 +118,8 @@ internal class FrameTxVerifyGasFilterTest
             .SetName("P256 verification at the fixed MAX_VERIFY_GAS is accepted with the ceiling lifted");
         yield return new TestCaseData(P256AtCeiling + 1, TxFrameSignature.SchemeP256, AcceptTxResult.FrameTxVerifyGasTooHigh)
             .SetName("P256 verification over the fixed MAX_VERIFY_GAS is rejected with the ceiling lifted");
-        yield return new TestCaseData(DecoderSignatureCap, TxFrameSignature.SchemeArbitrary, AcceptTxResult.Accepted)
-            .SetName("a decoder-cap run of arbitrary entries stays under the fixed MAX_VERIFY_GAS with the ceiling lifted");
+        yield return new TestCaseData(DecoderSignatureCap, TxFrameSignature.SchemeArbitrary, AcceptTxResult.FrameTxVerifyGasTooHigh)
+            .SetName("a decoder-cap run of arbitrary entries exceeds the fixed MAX_VERIFY_GAS with the ceiling lifted");
     }
 
     [TestCaseSource(nameof(LiftedCeilingCases))]
