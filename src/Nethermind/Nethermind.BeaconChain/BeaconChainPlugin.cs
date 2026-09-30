@@ -7,6 +7,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Diagnostics;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -45,6 +46,7 @@ public class BeaconChainModule : Module
 
         builder
             .AddSingleton<BeaconChainService>()
+            .AddSingleton<ProcessStallWatchdog>()
             // The network comes from the execution layer's chain id so both sides follow the same chain;
             // only the Gloas schedule can be overridden by config.
             .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig>((specProvider, chainConfig) => BeaconChainSpec.ForChainId(specProvider.ChainId).WithGloasForkOverride(chainConfig.GloasForkEpoch, chainConfig.GloasForkVersion))
