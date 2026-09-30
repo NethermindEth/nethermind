@@ -236,6 +236,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     public IKeyValueStoreSnapshot CreateSnapshot()
     {
         long start = Stopwatch.GetTimestamp();
+        TimeSpan gcPauseBefore = GC.GetTotalPauseDuration();
         LightningTransaction[] pool = new LightningTransaction[SnapshotReaderPoolSize];
         int opened = 0;
         try
@@ -262,7 +263,8 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         double elapsedMs = elapsedTicks * 1000.0 / Stopwatch.Frequency;
         if (elapsedMs >= SlowOperationThresholdMs && _logger.IsWarn)
         {
-            _logger.Warn($"Lmdb '{Name}' CreateSnapshot took {elapsedMs:F1}ms (pool size {pool.Length}) - every concurrent reader on this column was blocked for this duration.");
+            double gcPauseDuringMs = (GC.GetTotalPauseDuration() - gcPauseBefore).TotalMilliseconds;
+            _logger.Warn($"Lmdb '{Name}' CreateSnapshot took {elapsedMs:F1}ms (pool size {pool.Length}, GC pause during: {gcPauseDuringMs:F1}ms) - every concurrent reader on this column was blocked for this duration.");
         }
 
         return new LmdbDbSnapshot(pool, _database);
@@ -370,6 +372,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     private void SubmitWrite(List<(byte[] Key, byte[]? Value)> operations, bool wantsDurability)
     {
         long start = Stopwatch.GetTimestamp();
+        TimeSpan gcPauseBefore = GC.GetTotalPauseDuration();
         PendingWrite write = new(operations, wantsDurability);
         _pendingWrites.Enqueue(write);
         DrainIfLeader();
@@ -380,15 +383,19 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         // against an external symptom (e.g. a consensus client's own logged timestamp for a newPayload
         // timeout) - see PLAN-LMDB.md "Known issues". Debug gives every request (opt-in verbosity, since this
         // fires once per snap-sync write batch - potentially hundreds/sec); Warn gives only the outliers, so a
-        // real stall is visible without needing to raise log verbosity first.
+        // real stall is visible without needing to raise log verbosity first. GC pause is logged alongside
+        // specifically because a handful-of-operations write taking seconds (observed in practice: 6 ops,
+        // ~6.9s) cannot be real B+tree work - the two main candidates are a GC pause freezing the whole process
+        // (this write's own work is trivial either way) or time spent queued behind something else entirely.
         double elapsedMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+        double gcPauseDuringMs = (GC.GetTotalPauseDuration() - gcPauseBefore).TotalMilliseconds;
         if (_logger.IsDebug)
         {
-            _logger.Debug($"Lmdb '{Name}' write request committed: {operations.Count} ops, durable={wantsDurability}, took {elapsedMs:F1}ms.");
+            _logger.Debug($"Lmdb '{Name}' write request committed: {operations.Count} ops, durable={wantsDurability}, took {elapsedMs:F1}ms (GC pause during: {gcPauseDuringMs:F1}ms).");
         }
         else if (elapsedMs >= SlowOperationThresholdMs && _logger.IsWarn)
         {
-            _logger.Warn($"Lmdb '{Name}' write request took {elapsedMs:F1}ms ({operations.Count} ops, durable={wantsDurability}) - unusually slow.");
+            _logger.Warn($"Lmdb '{Name}' write request took {elapsedMs:F1}ms ({operations.Count} ops, durable={wantsDurability}, GC pause during: {gcPauseDuringMs:F1}ms) - unusually slow.");
         }
 
         write.Error?.Throw();
