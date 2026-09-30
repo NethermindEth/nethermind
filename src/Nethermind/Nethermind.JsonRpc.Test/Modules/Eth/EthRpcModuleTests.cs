@@ -2935,7 +2935,7 @@ public partial class EthRpcModuleTests
 
         await test.AddBlock(setCodeTx);
 
-        byte[]? code = test.ReadOnlyState.GetCode(TestItem.AddressB);
+        byte[] code = test.ReadOnlyState.GetCode(TestItem.AddressB).ToArray();
 
         Assert.That(code!.Slice(0, 3), Is.EquivalentTo(Eip7702Constants.DelegationHeader.ToArray()));
 

@@ -382,13 +382,13 @@ namespace Nethermind.State
             return _persistentStorageProvider.GetStorageRoot(address);
         }
 
-        public byte[] GetCode(Address address)
+        public ReadOnlyMemory<byte> GetCode(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.GetCode(address);
         }
 
-        public byte[] GetCode(in ValueHash256 codeHash)
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         {
             DebugGuardInScope();
             return _stateProvider.GetCode(in codeHash);

@@ -613,7 +613,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(authority)), Is.False);
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCodeSpan(authority)), Is.False);
             Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
             Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, authority, block.Header.GasBeneficiary! }));
         }
@@ -753,7 +753,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
             Assert.That(TestState.GetNonce(Recipient), Is.Zero);
-            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(Recipient)), Is.False);
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCodeSpan(Recipient)), Is.False);
         }
     }
 
@@ -803,7 +803,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
             Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.PerAuthBaseState));
-            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(Recipient)), Is.True);
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCodeSpan(Recipient)), Is.True);
         }
     }
 

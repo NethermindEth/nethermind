@@ -2643,7 +2643,7 @@ public class StorageProviderTests(bool useFlat)
         public bool IsTracingStorage => true;
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
-        public void ReportCodeChange(Address address, byte[] before, byte[] after) { }
+        public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
         public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));

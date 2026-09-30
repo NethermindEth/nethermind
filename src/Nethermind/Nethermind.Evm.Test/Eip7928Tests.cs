@@ -1138,7 +1138,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             {
                 Assert.That(TestState.AccountExists(_callTargetAddress), Is.True);
                 Assert.That(TestState.GetBalance(_callTargetAddress), Is.EqualTo(UInt256.Zero));
-                Assert.That(TestState.GetCode(_callTargetAddress), Is.EqualTo(selfdestructCode));
+                Assert.That(TestState.GetCode(_callTargetAddress).ToArray(), Is.EqualTo(selfdestructCode));
             }
             else
             {

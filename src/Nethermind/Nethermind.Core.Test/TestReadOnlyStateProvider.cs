@@ -19,13 +19,13 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
     public bool TryGetAccount(Address address, out AccountStruct account) => _accounts.TryGetValue(address, out account);
 
     public Hash256 StateRoot => throw new NotImplementedException();
-    public byte[]? GetCode(Address address)
+    public ReadOnlyMemory<byte> GetCode(Address address)
     {
         if (TryGetAccount(address, out AccountStruct account)) return _codes[account.CodeHash];
-        return null;
+        return default;
     }
 
-    public byte[]? GetCode(in ValueHash256 codeHash) => _codes[codeHash];
+    public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => _codes[codeHash];
 
     public bool IsContract(Address address) => TryGetAccount(address, out AccountStruct account) && account.IsContract;
 

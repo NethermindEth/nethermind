@@ -139,7 +139,7 @@ public class Eip8141ScenarioTests
 
         Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(_stateProvider.GetCode(smartSender), Is.EqualTo(runtimeCode),
+        Assert.That(_stateProvider.GetCode(smartSender).ToArray(), Is.EqualTo(runtimeCode),
             "the deploy frame must install the smart-account code at the sender address");
         Assert.That(receipt.Payer, Is.EqualTo(smartSender));
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));

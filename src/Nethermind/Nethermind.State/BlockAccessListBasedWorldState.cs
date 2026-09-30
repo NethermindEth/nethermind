@@ -289,19 +289,20 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return ref _parentReader!.GetCodeHash(address);
     }
 
-    public override byte[]? GetCode(Address address)
+    public override ReadOnlyMemory<byte> GetCode(Address address)
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
             ? codeChange.Code
             : _parentReader is WorldState worldState
-                ? ReadParentAccount(worldState, address) is { } account ? _parentReader!.GetCode(account.CodeHash.ValueHash256) : []
+                ? ReadParentAccount(worldState, address) is { } account ? _parentReader!.GetCode(account.CodeHash.ValueHash256) : Array.Empty<byte>()
                 : _parentReader!.GetCode(address);
     }
 
-    public override byte[]? GetCode(in ValueHash256 codeHash)
-        => TryGetDeclaredCode(in codeHash, out byte[]? code) ? code : null;
+    /// <returns>Declared code, or <c>default</c> for code the block does not declare, so callers read by address.</returns>
+    public override ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
+        => TryGetDeclaredCode(in codeHash, out byte[]? code) ? code : default;
 
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
 

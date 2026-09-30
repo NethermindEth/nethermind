@@ -385,7 +385,7 @@ namespace Nethermind.Evm.Test
                 Prepare.EvmCode.StoreDataInMemory(0, fillerOutput).RETURN(0, (UInt256)fillerOutput.Length).Done,
                 SpecProvider.GenesisSpec);
 
-            Assert.That(TestState.GetCode(deployed), Is.EqualTo(runtimeCode), "precondition: the create stores the returned bytes");
+            Assert.That(TestState.GetCode(deployed).ToArray(), Is.EqualTo(runtimeCode), "precondition: the create stores the returned bytes");
 
             ExecuteDirect(Prepare.EvmCode
                 .CALL(100_000, filler, 0, 0, 0, 0, 0).Op(Instruction.POP)
@@ -395,7 +395,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(fillerOutput.Length), "the nested return went through the reusable scratch");
-                Assert.That(TestState.GetCode(deployed), Is.EqualTo(runtimeCode), "later return staging must not rewrite stored code");
+                Assert.That(TestState.GetCode(deployed).ToArray(), Is.EqualTo(runtimeCode), "later return staging must not rewrite stored code");
             }
         }
 

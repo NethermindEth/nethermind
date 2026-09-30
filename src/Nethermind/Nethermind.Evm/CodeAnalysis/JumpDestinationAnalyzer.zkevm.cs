@@ -11,7 +11,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 public sealed partial class JumpDestinationAnalyzer
 {
     // Guest execution is single-threaded; no cross-thread bitmap publication is needed.
-    private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
+    private long[]? _jumpDestinationBitmap = (codeInfo.CodeLength == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     /// <summary>The scan's two comparands, in the order it reads them: <c>JUMPDEST</c> then <c>PUSH1</c>.</summary>
     /// <remarks>

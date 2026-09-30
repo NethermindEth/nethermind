@@ -10,6 +10,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
@@ -121,9 +122,10 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.
         worldState.RecordBytecodeAccess(address);
-        // When executing in parallel must get by address
-        byte[]? code = worldState.GetCode(in codeHash) ?? worldState.GetCode(address);
-        if (code is null)
+        // When executing in parallel must get by address. Null, not empty, means not served: empty code is real.
+        ReadOnlyMemory<byte> code = worldState.GetCode(in codeHash);
+        if (code.IsNull()) code = worldState.GetCode(address);
+        if (code.IsNull())
         {
             MissingCode(in codeHash);
         }

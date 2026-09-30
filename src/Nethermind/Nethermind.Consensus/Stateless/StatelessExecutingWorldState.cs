@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -22,7 +23,7 @@ public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorat
     /// </remarks>
     public override void RecordBytecodeAccess(Address address)
     {
-        if (IsContract(address) && GetCode(address) is null)
+        if (IsContract(address) && GetCode(address).IsNull())
             throw new InvalidOperationException($"Missing bytecode at address {address}");
     }
 }

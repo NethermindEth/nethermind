@@ -169,7 +169,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             AssertStorage(new StorageCell(created, 1), UInt256.Zero);
             if (collision)
             {
-                Assert.That(TestState.GetCode(created), Is.EqualTo(new byte[] { 0x00 }));
+                Assert.That(TestState.GetCode(created).ToArray(), Is.EqualTo(new byte[] { 0x00 }));
                 AssertStorage(new StorageCell(created, 3), (UInt256)42);
             }
         }

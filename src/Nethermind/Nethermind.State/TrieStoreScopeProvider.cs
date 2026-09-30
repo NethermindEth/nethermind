@@ -17,6 +17,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -502,7 +503,25 @@ public class TrieStoreScopeProvider(
         private readonly AssociativeKeyCache<ValueHash256>? _persistedHint
             = isPersistent ? new AssociativeKeyCache<ValueHash256>(1_024) : null;
 
-        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes];
+        /// <remarks>
+        /// Reads a native store's slice straight into executable code memory, the one copy a cache-busting block
+        /// pays per load. Loaded code is cached above as CodeInfo, so a block-cache copy is redundant; a block of
+        /// distinct 64 KiB contracts would otherwise evict on every read.
+        /// </remarks>
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
+        {
+            if (codeDb is not IReadOnlyNativeKeyValueStore native) return codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
+
+            ReadOnlySpan<byte> slice = native.GetNativeSlice(codeHash.Bytes, out nint handle, ReadFlags.HintCacheMiss);
+            try
+            {
+                return slice.IsNull() ? default : ExecutableCodeMemory.Copy(slice);
+            }
+            finally
+            {
+                if (handle != 0) native.DangerousReleaseHandle(handle);
+            }
+        }
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(codeDb.StartWriteBatch());
 

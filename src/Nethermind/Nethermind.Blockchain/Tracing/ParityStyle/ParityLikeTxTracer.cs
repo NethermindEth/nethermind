@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -155,6 +156,8 @@ public partial class ParityLikeTxTracer : TxTracer
     protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
 
     protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[]? before, byte[]? after) => new(before, after);
+
+    private static byte[]? AsArrayOrNull(ReadOnlyMemory<byte> code) => code.IsNull() ? null : code.AsArray();
 
     protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
 
@@ -422,7 +425,7 @@ public partial class ParityLikeTxTracer : TxTracer
         value.Balance = RentNullableUInt256StateChange(before, after);
     }
 
-    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public override void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
         if (_trace.StateChanges is null)
         {
@@ -431,16 +434,17 @@ public partial class ParityLikeTxTracer : TxTracer
 
         ref ParityAccountStateChange? value =
             ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+        byte[]? previous = null;
         if (!exists)
         {
             value = RentAccountStateChange();
         }
         else
         {
-            before = value.Code?.Before ?? before;
+            previous = value.Code?.Before;
         }
 
-        value.Code = RentByteStateChange(before, after);
+        value.Code = RentByteStateChange(previous ?? AsArrayOrNull(before), AsArrayOrNull(after));
     }
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)

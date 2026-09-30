@@ -216,7 +216,9 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
         }
     }
 
-    public byte[]? GetCode(in ValueHash256 codeHash) =>
+    public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => GetCodeArray(in codeHash);
+
+    internal byte[] GetCodeArray(in ValueHash256 codeHash) =>
         codeHash == ValueKeccak.OfAnEmptyString ? [] :
         _pendingCode.TryGetValue(codeHash, out byte[]? code) ? code :
         _db.GetColumnDb(Columns.Code)[codeHash.Bytes] ?? _sourceCode[codeHash.Bytes]

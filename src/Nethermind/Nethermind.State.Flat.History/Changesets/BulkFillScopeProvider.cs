@@ -78,8 +78,8 @@ public sealed class BulkFillScopeProvider(
         session.CreateReader().TryGetSlot(address, index, ref value);
     }
 
-    public byte[]? GetCode(Hash256 codeHash) => session.GetCode(codeHash.ValueHash256);
-    public byte[]? GetCode(in ValueHash256 codeHash) => session.GetCode(codeHash);
+    public byte[]? GetCode(Hash256 codeHash) => session.GetCodeArray(codeHash.ValueHash256);
+    public byte[]? GetCode(in ValueHash256 codeHash) => session.GetCodeArray(codeHash);
     public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
         where TCtx : struct, INodeContext<TCtx> => throw new NotSupportedException("Bulk replay has no trie node store.");
 

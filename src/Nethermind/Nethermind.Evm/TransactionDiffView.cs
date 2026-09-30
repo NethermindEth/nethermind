@@ -136,7 +136,7 @@ internal sealed class TransactionDiffView
     {
         _preTxCodeHashes ??= [];
         ref ValueHash256 hash = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxCodeHashes, address, out bool exists);
-        if (!exists) hash = ValueKeccak.Compute(account.PreTxCode);
+        if (!exists) hash = ValueKeccak.Compute(account.PreTxCode.Span);
         return hash;
     }
 
@@ -185,7 +185,7 @@ internal sealed class TransactionDiffView
     // Spec contracts_deployed: empty code to non-empty, excluding EIP-7702 delegation designators.
     private static bool IsDeployment(AccountChangesAtIndex account)
         => account.CodeChange is { Code: { Length: > 0 } code }
-           && (account.PreTxCode is null || account.PreTxCode.Length == 0)
+           && account.PreTxCode.IsEmpty
            && !Eip7702Constants.IsDelegatedCode(code);
 
     // Ascending uint160: big-endian byte comparison of the 20-byte address matches numeric order.

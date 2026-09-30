@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
@@ -25,7 +26,8 @@ public class AccountChangesAtIndex(Address address)
     public bool? AccountExists { get; internal set; }
 
     public UInt256? PreTxBalance { get; internal set; }
-    public byte[]? PreTxCode { get; internal set; }
+    /// <summary>The code before the transaction, or <see langword="default"/> until a code change records it.</summary>
+    public ReadOnlyMemory<byte> PreTxCode { get; internal set; }
     private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
 
     private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
@@ -85,7 +87,7 @@ public class AccountChangesAtIndex(Address address)
         CodeChange = null;
         AccountExists = null;
         PreTxBalance = null;
-        PreTxCode = null;
+        PreTxCode = default;
         _preTxStorage?.ClearAndTrim();
         _storageChanges.ClearAndTrim();
         _storageReads.ClearAndTrim();

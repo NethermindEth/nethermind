@@ -15,6 +15,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Blockchain;
+using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -45,9 +48,10 @@ public class BlockAccessListBasedWorldStateTests
         Action<IWorldState>? genesisSetup = null,
         Func<IWorldState, IWorldState>? decorateParent = null,
         BalReadCoverage? readCoverage = null,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        IKeyValueStoreWithBatching? codeDb = null)
     {
-        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        IWorldState inner = TestWorldStateFactory.CreateForTest(codeDb: codeDb);
         Hash256 stateRoot;
         using (inner.BeginScope(IWorldState.PreGenesis))
         {
@@ -731,15 +735,17 @@ public class BlockAccessListBasedWorldStateTests
             (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState((uint)index, bal);
             using (scope)
             {
-                Assert.That(bws.GetCode(hash), Is.EqualTo(hasCodeChanges && index > 1 ? code : null));
+                Assert.That(Read(bws.GetCode(hash)), Is.EqualTo(hasCodeChanges && index > 1 ? code : null));
                 bws.Setup(nextBlock);
-                Assert.That(bws.GetCode(hash), Is.Null);
+                Assert.That(bws.GetCode(hash).IsNull(), Is.True);
                 bws.Setup(originalBlock);
-                Assert.That(bws.GetCode(hash), Is.EqualTo(hasCodeChanges && index > 1 ? code : null));
+                Assert.That(Read(bws.GetCode(hash)), Is.EqualTo(hasCodeChanges && index > 1 ? code : null));
                 bws.ClearParentReader();
-                Assert.That(bws.GetCode(hash), Is.Null);
+                Assert.That(bws.GetCode(hash).IsNull(), Is.True);
             }
         });
+
+        static byte[]? Read(ReadOnlyMemory<byte> code) => code.IsNull() ? null : code.ToArray();
     }
 
     [Test]
@@ -859,7 +865,61 @@ public class BlockAccessListBasedWorldStateTests
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            Assert.That(bws.GetCode(TestItem.AddressA), Is.EquivalentTo(priorTxCode));
+            Assert.That(bws.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(priorTxCode));
+        }
+    }
+
+    [TestCase(false, TestName = "Account without code")]
+    [TestCase(true, TestName = "Account with code")]
+    public void GetCode_tells_empty_code_from_code_the_block_does_not_declare(bool hasCode)
+    {
+        // Empty code must stay non-null: a null read by hash is what sends execution to the by-address fallback.
+        byte[] code = [0x60, 0x01];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal, ws =>
+        {
+            ws.CreateAccount(TestItem.AddressA, 0);
+            if (hasCode) ws.InsertCode(TestItem.AddressA, code, Spec);
+        });
+        using (scope)
+        {
+            ReadOnlyMemory<byte> byAddress = bws.GetCode(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(byAddress.IsNull(), Is.False);
+                Assert.That(byAddress.ToArray(), Is.EqualTo(hasCode ? code : Array.Empty<byte>()));
+                Assert.That(bws.GetCode(ValueKeccak.Compute(code)).IsNull(), Is.True, "undeclared code is left to the by-address read");
+            }
+        }
+    }
+
+    [Test]
+    public void Code_deployed_earlier_in_the_same_transaction_is_served_without_a_store_read()
+    {
+        // In parallel execution fresh code exists only in the traced state; reading its hash from the store would
+        // miss (and a healing store would block on the network) on a valid block.
+        NativeTestMemDb codeDb = new();
+        byte[] code = [0x60, 0x03, 0x00];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws => ws.CreateAccount(TestItem.AddressA, 0), codeDb: codeDb);
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new() { Index = 1 });
+            traced.InsertCode(TestItem.AddressA, code, Spec);
+
+            CodeInfo codeInfo = new CodeInfoRepository(traced, new EthereumPrecompileProvider())
+                .GetCachedCodeInfo(TestItem.AddressA, followDelegation: false, Spec, out _);
+
+            Assert.That(codeInfo.CodeSpan.ToArray(), Is.EqualTo(code));
+            codeDb.KeyWasRead(ValueKeccak.Compute(code).ToByteArray(), 0);
         }
     }
 

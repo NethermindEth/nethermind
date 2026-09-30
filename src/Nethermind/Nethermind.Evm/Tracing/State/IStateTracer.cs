@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -33,10 +34,10 @@ public interface IStateTracer
     /// Reports change of code for address
     /// </summary>
     /// <param name="address"></param>
-    /// <param name="before"></param>
-    /// <param name="after"></param>
+    /// <param name="before">The code before, or <see langword="default"/> when the account did not exist.</param>
+    /// <param name="after">The code after, or <see langword="default"/> when the account was deleted.</param>
     /// <remarks>Depends on <see cref="IsTracingState"/></remarks>
-    void ReportCodeChange(Address address, byte[]? before, byte[]? after);
+    void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after);
 
     /// <summary>
     /// Reports change of nonce for address
