@@ -76,7 +76,7 @@ public class PbtPortableCodecTests
         }
         Array.Sort(entries, (left, right) => left.Key.CompareTo(right.Key));
 
-        Assert.That(PbtRightmostGroupStore.CalculateRoot(entries, windowSize, CancellationToken.None).Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+        Assert.That(PbtRightmostGroupStore.CalculateRoot(entries, windowSize, Environment.ProcessorCount, CancellationToken.None).Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
     }
 
     [Test]
@@ -84,7 +84,7 @@ public class PbtPortableCodecTests
     {
         using FileStream source = File.OpenRead(Path.Combine(Fixtures, "canonical", name, "snapshot.pbt"));
         ValueHash256 root = PbtSnapshotCodec.ReadHeader(source);
-        Assert.That(PbtRightmostGroupStore.CalculateRoot(PbtSnapshotCodec.ReadLeaves(source), PbtRightmostGroupStore.DefaultWindowSize, CancellationToken.None), Is.EqualTo(root));
+        Assert.That(PbtRightmostGroupStore.CalculateRoot(PbtSnapshotCodec.ReadLeaves(source), PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None), Is.EqualTo(root));
     }
 
     /// <remarks>Covers every account kind, the integer width limits, header slots at both ends, a full and a partial code

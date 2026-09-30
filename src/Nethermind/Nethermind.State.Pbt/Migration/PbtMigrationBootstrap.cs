@@ -88,7 +88,7 @@ internal sealed class PbtMigrationBootstrap(
             await using FileStream exportedPreimages = new(Path.Combine(directory, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             PbtOfflineSource.WriteArtifacts(lease.OfflineSource, lease.OfflineCode, lease.Anchor,
                 directory, exportedSnapshot, exportedPreimages, logManager,
-                configuration.ExportSortBufferBytes, configuration.ExportConcurrency, cancellationToken);
+                configuration.ExportSortBufferBytes, configuration.ImportConcurrency, cancellationToken);
             exportedSnapshot.Position = 0;
             exportedPreimages.Position = 0;
             await publication.PublishSnapshot(exportedSnapshot, exportedPreimages, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);

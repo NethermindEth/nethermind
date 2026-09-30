@@ -16,14 +16,19 @@ using Nethermind.State.Pbt.Persistence;
 namespace Nethermind.State.Pbt;
 
 /// <summary>Rebuilds a canonical EIP-8297 tree in bounded staging windows, then publishes its state.</summary>
-public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config, ILogManager logManager)
+public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config, int foldConcurrency, ILogManager logManager)
 {
     private const int DefaultWindowSize = 2_000_000;
     /// <summary>The key nibble the zone fold expects each partition batch to be sharded on.</summary>
     private const int PartitionShardNibbleIndex = 2;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
-    private readonly ConcurrencyController _foldQuota = new(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
+    private readonly ConcurrencyController _foldQuota = new(foldConcurrency > 0 ? foldConcurrency : Environment.ProcessorCount);
     private readonly FoldFanOut _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
+
+    public PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config, ILogManager logManager)
+        : this(target, config, config.FoldConcurrency, logManager)
+    {
+    }
 
     /// <summary>Folds leaf records into staged tree groups and publishes the completed root.</summary>
     /// <param name="source">Owned leaf chunks.</param>

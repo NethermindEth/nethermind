@@ -29,7 +29,8 @@ internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDi
     /// <summary>Calculates an EIP-8297 root from strictly ordered image leaves.</summary>
     /// <remarks>The next window is read and batched on another thread while the current one folds.</remarks>
     /// <param name="windowSize">Maximum leaves folded per tree update.</param>
-    internal static ValueHash256 CalculateRoot(IEnumerable<RebuildEntry> entries, int windowSize, CancellationToken cancellationToken)
+    /// <param name="foldConcurrency">Maximum threads, including the calling one, folding a window.</param>
+    internal static ValueHash256 CalculateRoot(IEnumerable<RebuildEntry> entries, int windowSize, int foldConcurrency, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowSize);
         using CancellationTokenSource readCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -38,7 +39,7 @@ internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDi
         try
         {
             using PbtRightmostGroupStore store = new();
-            ConcurrencyController foldQuota = new(Environment.ProcessorCount);
+            ConcurrencyController foldQuota = new(foldConcurrency);
             FoldFanOut fanOut = new(FoldFanOut.DefaultMinOperationsPerWorker, FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker);
             ValueHash256 root = default;
             foreach (PbtPartitionBatches window in windows.GetConsumingEnumerable(cancellationToken))

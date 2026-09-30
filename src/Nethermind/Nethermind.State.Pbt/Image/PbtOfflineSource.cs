@@ -69,7 +69,7 @@ internal static class PbtOfflineSource
             ulong leafCount = 0;
             PbtSnapshotLayout layout = new();
             ulong accountCount = (ulong)totals.Accounts;
-            ValueHash256 root = PbtRightmostGroupStore.CalculateRoot(CountLeaves(), PbtRightmostGroupStore.DefaultWindowSize, cancellationToken);
+            ValueHash256 root = PbtRightmostGroupStore.CalculateRoot(CountLeaves(), PbtRightmostGroupStore.DefaultWindowSize, workers, cancellationToken);
             PbtArtifactWriter.PbtArtifactDigests digests = PbtArtifactWriter.Write(snapshot, preimages, root, layout,
                 Leaves("PBT export snapshot", leafCount), Accounts(), cancellationToken);
             if (logger.IsInfo)
