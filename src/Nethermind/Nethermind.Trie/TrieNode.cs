@@ -896,31 +896,11 @@ namespace Nethermind.Trie
 
             if (_nodeData is BranchData data)
             {
-                for (int i = 0; i < data.Length; i++)
-                {
-                    object? child = data[i];
-                    dataSize += child switch
-                    {
-                        null => 0,
-                        Hash256 => Hash256.MemorySize,
-                        byte[] array => MemorySizes.ArrayOverhead + array.Length,
-                        CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength +
-                                                         MemorySizes.SmallObjectOverhead,
-                        _ => recursive && child is TrieNode node ? node.GetMemorySize(true) : 0
-                    };
-                }
+                for (int i = 0; i < data.Length; i++) dataSize += ChildMemorySize(data[i], recursive);
             }
             else if (_nodeData is ExtensionData extensionData)
             {
-                dataSize += extensionData.Value switch
-                {
-                    null => 0,
-                    Hash256 => Hash256.MemorySize,
-                    byte[] array => MemorySizes.ArrayOverhead + array.Length,
-                    CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength +
-                                                     MemorySizes.SmallObjectOverhead,
-                    _ => recursive && extensionData.Value is TrieNode node ? node.GetMemorySize(true) : 0
-                };
+                dataSize += ChildMemorySize(extensionData.Value, recursive);
             }
 
             long unaligned = keccakSize +
@@ -931,6 +911,18 @@ namespace Nethermind.Trie
 
             return MemorySizes.Align(unaligned);
         }
+
+        // Exact and sealed type tests only: `is byte[]` also admits covariant arrays, so the runtime answers it through
+        // its shared cast cache for every child that is not an array, at a cost that changed from process to process.
+        private static long ChildMemorySize(object? child, bool recursive) => child switch
+        {
+            null => 0,
+            TrieNode node => recursive ? node.GetMemorySize(true) : 0,
+            Hash256 => Hash256.MemorySize,
+            CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength + MemorySizes.SmallObjectOverhead,
+            _ when child.GetType() == typeof(byte[]) => MemorySizes.ArrayOverhead + Unsafe.As<byte[]>(child).Length,
+            _ => 0,
+        };
 
         public TrieNode CloneWithChangedKey(byte[] key)
         {
