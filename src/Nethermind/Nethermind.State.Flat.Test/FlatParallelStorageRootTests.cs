@@ -37,18 +37,23 @@ public class FlatParallelStorageRootTests
     }
 
     // Batch size 1 sends every contract to a background job; the default 128 keeps this small block entirely on the flush path.
-    [TestCase(false, false, 1)]
-    [TestCase(true, false, 1)]
-    [TestCase(false, true, 1)]
-    [TestCase(true, true, 1)]
-    [TestCase(true, true, 128)]
-    public void Parallel_storage_root_matches_serial_flush_and_trie_backend(bool eagerHash, bool viaPrewarmerScope, int batchSize)
+    [TestCase(false, false, 1, true)]
+    [TestCase(true, false, 1, true)]
+    [TestCase(false, true, 1, true)]
+    [TestCase(true, true, 1, true)]
+    [TestCase(true, true, 128, true)]
+    [TestCase(false, false, 1, false)]
+    [TestCase(true, false, 1, false)]
+    [TestCase(false, true, 1, false)]
+    [TestCase(true, true, 1, false)]
+    [TestCase(true, true, 128, false)]
+    public void Parallel_storage_root_matches_serial_flush_and_trie_backend(bool eagerHash, bool viaPrewarmerScope, int batchSize, bool deferStorageTrieCommit)
     {
         Exception? fault = null;
         StorageRootBuilder.OnFaultForTests = e => fault = e;
-        Hash256 serialFlat = ComputeRoot(parallel: false, eagerHash: false, viaPrewarmerScope, batchSize);
+        Hash256 serialFlat = ComputeRoot(parallel: false, eagerHash: false, viaPrewarmerScope, batchSize, deferStorageTrieCommit);
         long builderWritesBefore = Db.Metrics.ParallelStorageRootWrites;
-        Hash256 parallelFlat = ComputeRoot(parallel: true, eagerHash, viaPrewarmerScope, batchSize);
+        Hash256 parallelFlat = ComputeRoot(parallel: true, eagerHash, viaPrewarmerScope, batchSize, deferStorageTrieCommit);
         Hash256 trie = ComputeRootOnTrieBackend();
 
         Assert.That(fault, Is.Null, () => $"the builder faulted: {fault}");
@@ -60,9 +65,9 @@ public class FlatParallelStorageRootTests
     }
 
     [Test]
-    public void Faulted_builder_falls_back_to_the_serial_flush()
+    public void Faulted_builder_falls_back_to_the_serial_flush([Values] bool deferStorageTrieCommit)
     {
-        Hash256 serialFlat = ComputeRoot(parallel: false, eagerHash: false, viaPrewarmerScope: false, batchSize: 1);
+        Hash256 serialFlat = ComputeRoot(parallel: false, eagerHash: false, viaPrewarmerScope: false, batchSize: 1, deferStorageTrieCommit);
 
         // Let the first job apply, then fail the next one: one trie is left half-built and must be rebuilt from the parent.
         int applies = 0;
@@ -70,18 +75,17 @@ public class FlatParallelStorageRootTests
         {
             if (Interlocked.Increment(ref applies) == 2) throw new InvalidOperationException("injected builder fault");
         };
-        Hash256 parallelFlat = ComputeRoot(parallel: true, eagerHash: true, viaPrewarmerScope: false, batchSize: 1);
+        Hash256 parallelFlat = ComputeRoot(parallel: true, eagerHash: true, viaPrewarmerScope: false, batchSize: 1, deferStorageTrieCommit);
 
         Assert.That(applies, Is.GreaterThanOrEqualTo(2), "the fault must actually have been injected");
         Assert.That(parallelFlat, Is.EqualTo(serialFlat));
     }
 
-    [TestCase(1)]
-    [TestCase(128)]
-    public void Repeated_root_flushes_in_one_scope_preserve_later_storage_writes(int batchSize)
+    [Test]
+    public void Repeated_root_flushes_in_one_scope_preserve_later_storage_writes([Values(1, 128)] int batchSize, [Values] bool deferStorageTrieCommit)
     {
-        (Hash256 serialFirst, Hash256 serialSecond) = FlushTwice(parallel: false, batchSize);
-        (Hash256 parallelFirst, Hash256 parallelSecond) = FlushTwice(parallel: true, batchSize);
+        (Hash256 serialFirst, Hash256 serialSecond) = FlushTwice(parallel: false, batchSize, deferStorageTrieCommit);
+        (Hash256 parallelFirst, Hash256 parallelSecond) = FlushTwice(parallel: true, batchSize, deferStorageTrieCommit);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(serialSecond, Is.Not.EqualTo(serialFirst), "the second flush must change the root");
@@ -90,14 +94,11 @@ public class FlatParallelStorageRootTests
         }
     }
 
-    [TestCase(1, false)]
-    [TestCase(128, false)]
-    [TestCase(1, true)]
-    [TestCase(128, true)]
-    public void Builder_jobs_restart_for_each_committed_block(int batchSize, bool faultFirstBlock)
+    [Test]
+    public void Builder_jobs_restart_for_each_committed_block([Values(1, 128)] int batchSize, [Values] bool faultFirstBlock, [Values] bool deferStorageTrieCommit)
     {
-        (Hash256[] serialRoots, _) = CommitAcrossScopes(parallel: false, batchSize, faultFirstBlock);
-        (Hash256[] parallelRoots, int[] jobs) = CommitAcrossScopes(parallel: true, batchSize, faultFirstBlock);
+        (Hash256[] serialRoots, _) = CommitAcrossScopes(parallel: false, batchSize, faultFirstBlock, deferStorageTrieCommit);
+        (Hash256[] parallelRoots, int[] jobs) = CommitAcrossScopes(parallel: true, batchSize, faultFirstBlock, deferStorageTrieCommit);
         TestContext.Out.WriteLine($"Batch {batchSize}: background applies per block = [{string.Join(", ", jobs)}]");
         using (Assert.EnterMultipleScope())
         {
@@ -165,13 +166,14 @@ public class FlatParallelStorageRootTests
         Assert.That(createdBeforeRelease, Is.True, "creating batches must not join builders before the parallel flush starts");
     }
 
-    private static (Hash256[] Roots, int[] Jobs) CommitAcrossScopes(bool parallel, int batchSize, bool faultFirstBlock)
+    private static (Hash256[] Roots, int[] Jobs) CommitAcrossScopes(bool parallel, int batchSize, bool faultFirstBlock, bool deferStorageTrieCommit)
     {
         ConfigProvider config = new();
         IFlatDbConfig flat = config.GetConfig<IFlatDbConfig>();
         flat.Enabled = true;
         flat.ParallelStorageRoot = parallel;
         flat.ParallelStorageRootBatchSize = batchSize;
+        flat.DeferStorageTrieCommit = deferStorageTrieCommit;
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
         IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         using ILifetimeScope processing = container.BeginLifetimeScope(builder => builder.RegisterInstance(provider).As<IWorldStateScopeProvider>());
@@ -227,13 +229,14 @@ public class FlatParallelStorageRootTests
         }
     }
 
-    private static (Hash256 First, Hash256 Second) FlushTwice(bool parallel, int batchSize)
+    private static (Hash256 First, Hash256 Second) FlushTwice(bool parallel, int batchSize, bool deferStorageTrieCommit)
     {
         ConfigProvider config = new();
         IFlatDbConfig flat = config.GetConfig<IFlatDbConfig>();
         flat.Enabled = true;
         flat.ParallelStorageRoot = parallel;
         flat.ParallelStorageRootBatchSize = batchSize;
+        flat.DeferStorageTrieCommit = deferStorageTrieCommit;
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
         IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         using ILifetimeScope processing = container.BeginLifetimeScope(builder => builder.RegisterInstance(provider).As<IWorldStateScopeProvider>());
@@ -252,7 +255,7 @@ public class FlatParallelStorageRootTests
         return (first, state.StateRoot);
     }
 
-    private static Hash256 ComputeRoot(bool parallel, bool eagerHash, bool viaPrewarmerScope, int batchSize)
+    private static Hash256 ComputeRoot(bool parallel, bool eagerHash, bool viaPrewarmerScope, int batchSize, bool deferStorageTrieCommit)
     {
         ConfigProvider configProvider = new();
         IFlatDbConfig flatConfig = configProvider.GetConfig<IFlatDbConfig>();
@@ -261,6 +264,7 @@ public class FlatParallelStorageRootTests
         flatConfig.ParallelStorageRootEagerHash = eagerHash;
         flatConfig.ParallelStorageRootThreads = 3;
         flatConfig.ParallelStorageRootBatchSize = batchSize;
+        flatConfig.DeferStorageTrieCommit = deferStorageTrieCommit;
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(configProvider)).Build();
         IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         if (viaPrewarmerScope)
