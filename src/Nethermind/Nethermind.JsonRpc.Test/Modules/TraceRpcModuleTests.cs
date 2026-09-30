@@ -2494,13 +2494,16 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_rawTransaction_caps_gas_to_gas_cap()
+    public async Task Trace_rawTransaction_preserves_signed_gas_or_rejects_above_cap(
+        [Values(null, 0UL, 50_000UL, 100_000UL, 200_000UL)] ulong? gasCap,
+        [Values] bool streaming)
     {
         Context context = new();
         await context.Build();
-        ulong gasCap = 50_000;
-        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        IJsonRpcConfig config = blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
+        config.EnableTracingStreamMode = streaming;
 
         Transaction transaction = Build.A.Transaction
             .WithTo(TestItem.AddressC)
@@ -2511,10 +2514,26 @@ public class TraceRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        byte[] rlp = TxDecoder.Instance.Encode(transaction).Bytes;
-        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_rawTransaction(rlp, ["trace"]);
-
-        Assert.That(traces.Data.Action!.Gas, Is.LessThan(gasCap));
+        string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
+            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction).Bytes, new[] { "trace" });
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement response = document.RootElement;
+        if (gasCap is > 0 and < 100_000)
+        {
+            Assert.That(response.TryGetProperty("error", out JsonElement error), Is.True, serialized);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ClientLimitExceededError));
+                Assert.That(error.GetProperty("message").GetString(), Does.Contain("gas").And.Contain("cap"));
+                Assert.That(response.TryGetProperty("result", out _), Is.False);
+            }
+        }
+        else
+        {
+            Assert.That(response.TryGetProperty("result", out JsonElement result), Is.True, serialized);
+            Assert.That(result.GetProperty("trace")[0].GetProperty("action").GetProperty("gas").GetString(),
+                Is.EqualTo("0x13498")); // 100,000 signed gas minus 21,000 intrinsic gas.
+        }
     }
 
     [Test]

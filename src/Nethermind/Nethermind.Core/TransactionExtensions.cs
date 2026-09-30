@@ -72,14 +72,6 @@ namespace Nethermind.Core
 
             public ulong GetBlobGas() => (ulong)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
             public int GetBlobCount() => tx.BlobVersionedHashes?.Length ?? 0;
-
-            public void CapGasLimit(ulong? gasCap)
-            {
-                if (gasCap.IsGasCapped())
-                {
-                    tx.GasLimit = ulong.Min(tx.GasLimit, gasCap!.Value);
-                }
-            }
         }
 
         public static bool TryGetByTxType<T>(this T?[] array, TxType txType, [NotNullWhen(true)] out T? item)
