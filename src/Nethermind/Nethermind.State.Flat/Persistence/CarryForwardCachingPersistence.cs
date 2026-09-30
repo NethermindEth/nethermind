@@ -19,13 +19,17 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 {
     private const int DefaultMaxEntriesPerKind = 262144;
 
+    // With 4 ways, sets fill up and replace entries well before the table does. At twice the account cap, a hot working
+    // set with a cold tail hits at least as often as in the 262,144-entry map this replaced, which was wiped at its cap.
+    internal const int DefaultSlotCapacity = 2 * DefaultMaxEntriesPerKind;
+
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
 
     private readonly ConcurrentDictionary<Address, Account?> _accounts = new();
-    private readonly ConcurrentDictionary<(Address, UInt256), CachedSlot> _slots = new();
+    private readonly CarryForwardSlotTable _slots;
     private int _accountCount;
-    private int _slotCount;
+    private int _disposed;
 
     private readonly Lock _lock = new();
     private StateId _basis;
@@ -60,12 +64,18 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     internal bool HasSpareWrittenSlots => Volatile.Read(ref _spareWrittenSlots) is not null;
 
-    public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
+    /// <param name="inner">The persistence to cache reads of.</param>
+    /// <param name="maxEntriesPerKind">The cached-account cap and the per-kind cap on tracked account and slot writes.</param>
+    /// <param name="slotCapacity">
+    /// The slot table's capacity, rounded up to a power of two of at least <see cref="CarryForwardSlotTable.Ways"/>.
+    /// </param>
+    public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind, int slotCapacity = DefaultSlotCapacity)
     {
         _inner = inner;
         _maxEntriesPerKind = maxEntriesPerKind;
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
+        _slots = new CarryForwardSlotTable(slotCapacity);
     }
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
@@ -80,7 +90,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             atBasis = reader.CurrentState == _basis;
             generation = _generation;
         }
-        return atBasis ? new CachingReader(this, reader, generation) : reader;
+        return atBasis && _slots.TryLease() ? new CachingReader(this, reader, generation) : reader;
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
@@ -97,9 +107,20 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _inner.Clear();
     }
 
-    public ValueTask DisposeAsync() => _inner is IAsyncDisposable asyncDisposable
-        ? asyncDisposable.DisposeAsync()
-        : ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        // Readers still holding a lease keep the slot table alive until they are disposed. Commits and clears lease it
+        // while they write it, so those readers, and any created while one is open, still see them.
+        if (Interlocked.Exchange(ref _disposed, 1) == 0) _slots.Dispose();
+
+        return _inner is IAsyncDisposable asyncDisposable
+            ? asyncDisposable.DisposeAsync()
+            : ValueTask.CompletedTask;
+    }
+
+    internal CarryForwardSlotTable SlotTable => _slots;
+
+    internal Lock CacheLock => _lock;
 
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
 
@@ -123,21 +144,28 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
     }
 
-    private void TryCacheSlot(in (Address, UInt256) key, in CachedSlot slot, long readerGeneration)
+    private void TryCacheSlot(ulong hash, Address address, in UInt256 slot, bool found, in UInt256 value, long readerGeneration)
     {
-        if (_slots.ContainsKey(key)) return;
-        using (_lock.EnterScope())
+        if (_slots.TryGet(hash, address, slot, out _, out _)) return;
+        // Best effort: under many threads the reads a full set loses would otherwise queue here, and a skipped insert
+        // only costs a later miss.
+        if (!_lock.TryEnter()) return;
+        try
         {
             if (_generation != readerGeneration) return;
-            if (_slots.ContainsKey(key)) return;
-            if (_slotCount >= _maxEntriesPerKind)
+            switch (_slots.AddNoLock(hash, address, slot, found, value))
             {
-                _slots.Clear();
-                _slotCount = 0;
-                Metrics.IncrementCarryForwardSlotWipes();
+                case CarryForwardSlotTable.AddResult.Added:
+                    Metrics.PublishCarryForwardSlotCount(_slots.Count);
+                    break;
+                case CarryForwardSlotTable.AddResult.Replaced:
+                    Metrics.IncrementCarryForwardSlotEvictions();
+                    break;
             }
-            if (_slots.TryAdd(key, slot)) _slotCount++;
-            Metrics.PublishCarryForwardSlotCount(_slotCount);
+        }
+        finally
+        {
+            _lock.Exit();
         }
     }
 
@@ -163,13 +191,20 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 Metrics.PublishCarryForwardAccountCount(_accountCount);
             }
 
-            if (writtenSlots is not null)
+            if (writtenSlots is not null && _slots.TryLease())
             {
-                foreach ((Address, UInt256) key in writtenSlots)
+                try
                 {
-                    if (_slots.TryRemove(key, out _)) _slotCount--;
+                    foreach ((Address address, UInt256 slot) in writtenSlots)
+                    {
+                        _slots.RemoveNoLock(CarryForwardSlotTable.Hash(address, slot), address, slot);
+                    }
                 }
-                Metrics.PublishCarryForwardSlotCount(_slotCount);
+                finally
+                {
+                    _slots.Dispose();
+                }
+                Metrics.PublishCarryForwardSlotCount(_slots.Count);
             }
         }
     }
@@ -178,16 +213,19 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         _accounts.Clear();
         _accountCount = 0;
-        _slots.Clear();
-        _slotCount = 0;
+        if (_slots.TryLease())
+        {
+            try
+            {
+                _slots.ClearNoLock();
+            }
+            finally
+            {
+                _slots.Dispose();
+            }
+        }
         Metrics.PublishCarryForwardAccountCount(0);
         Metrics.PublishCarryForwardSlotCount(0);
-    }
-
-    private readonly struct CachedSlot(bool found, UInt256 value)
-    {
-        public readonly bool Found = found;
-        public readonly UInt256 Value = value;
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
@@ -197,6 +235,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         // DetailedMetricsEnabled is captured once per reader after normal startup registration to avoid its hot-path
         // cost. Existing readers retain that captured value if the flag later changes.
         private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
+        private int _disposed;
 
         public Account? GetAccount(Address address)
         {
@@ -221,16 +260,16 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
         {
-            (Address, UInt256) key = (address, slot);
+            ulong hash = CarryForwardSlotTable.Hash(address, slot);
             bool current = parent.IsCurrent(generation);
-            if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
+            if (current && parent._slots.TryGet(hash, address, slot, out bool cachedFound, out UInt256 cachedValue))
             {
                 // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
                 if (parent.IsCurrent(generation))
                 {
                     if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
-                    if (cached.Found) outValue = cached.Value;
-                    return cached.Found;
+                    if (cachedFound) outValue = cachedValue;
+                    return cachedFound;
                 }
 
                 current = false;
@@ -238,7 +277,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
             if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardSlotMisses();
             bool found = inner.TryGetSlot(address, slot, ref outValue);
-            if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
+            if (current) parent.TryCacheSlot(hash, address, slot, found, outValue, generation);
             return found;
         }
 
@@ -250,7 +289,23 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => inner.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
         public bool IsPreimageMode => inner.IsPreimageMode;
-        public void Dispose() => inner.Dispose();
+
+        /// <remarks>
+        /// Reading through the reader afterwards is a caller bug, and once the persistence is disposed too it reads freed
+        /// memory.
+        /// </remarks>
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            try
+            {
+                inner.Dispose();
+            }
+            finally
+            {
+                parent._slots.Dispose();
+            }
+        }
     }
 
     private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)

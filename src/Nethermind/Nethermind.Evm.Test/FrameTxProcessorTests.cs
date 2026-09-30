@@ -5088,6 +5088,8 @@ public partial class FrameTxProcessorTests
                 Is.EqualTo(batchFails ? new[] { 0, 0, 0, 1 } : new[] { 0, 2, 0, 1 }));
             Assert.That(result.FrameResults.SelectMany(static frame => frame.Logs).Select(static log => log.LogIndex),
                 Is.EqualTo(result.Logs.Select(static log => log.LogIndex)));
+            Assert.That(result.Logs.Select(static log => log.LogIndex), Is.EqualTo(Enumerable.Range(0, expected.Length).Select(static i => (ulong)i)),
+                "an unrolled frame's logs give their indices back, as in the receipt");
             Assert.That(result.FrameResults.SelectMany(static frame => frame.Logs).Select(static log => log.BlockHash),
                 Has.All.EqualTo(TestItem.KeccakH), "the processed block's hash must reach the per-frame logs");
             Assert.That(result.Logs.Select(static log => $"{log.Address}:{log.Topics[^1]}"),
