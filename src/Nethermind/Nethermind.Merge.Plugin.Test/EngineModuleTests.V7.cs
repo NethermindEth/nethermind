@@ -757,9 +757,14 @@ public partial class EngineModuleTests
     // state) the header reduces them to. The two differ only above the EIP-7825 execution cap: past it a
     // transaction reserves the cap on the execution dimension but its whole gas on the state one, so an entry
     // that fits both dimensions reads as unappendable against the max, and real censorship goes unreported.
-    [TestCase(50, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions")]
-    [TestCase(1, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions_after_the_payload_cache_evicts_it")]
-    public async Task NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions(int newPayloadCacheSize)
+    // Nothing persists the dimensions, so a restart leaves the re-check with the max alone. bogota.md
+    // newPayloadV6 (2.1) requires a VALID response to carry the real compliance answer, and the max would
+    // have this one report the censorship as absent, so the payload is answered SYNCING — (2.2) leaves
+    // `inclusionListSatisfied` null there — and only a safe re-execution can give the answer instead.
+    [TestCase(50, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions")]
+    [TestCase(1, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions_after_the_payload_cache_evicts_it")]
+    [TestCase(1, true, TestName = "NewPayloadV6_declines_to_judge_a_resent_block_once_both_caches_lose_the_gas_dimensions")]
+    public async Task NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions(int newPayloadCacheSize, bool dimensionsLost)
     {
         // Genesis is raised to the production target so the block's remaining gas exceeds the execution cap;
         // the 4M default leaves no room for a transaction big enough to tell the two rules apart.
@@ -801,13 +806,22 @@ public partial class EngineModuleTests
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
         Assert.That(censored.GasLimit, Is.GreaterThan(gasLimit - execution), "the entry must not fit the max");
 
+        // What a restart leaves behind: the payload cache is already past this block at size 1, and a header
+        // read back from disk carries no dimensions. The block is an ancestor of the head, so it cannot be
+        // re-executed to recover them either.
+        if (dimensionsLost)
+        {
+            executed.Header.GasUsedPerDimension = null;
+            chain.BlockTree.FindHeader(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.GasUsedPerDimension = null;
+        }
+
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
             first, [], Keccak.Zero, [], [Rlp.Encode(censored).Bytes]);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(resend.Data.InclusionListSatisfied, Is.False,
+            Assert.That(resend.Data.Status, Is.EqualTo(dimensionsLost ? PayloadStatus.Syncing : PayloadStatus.Valid));
+            Assert.That(resend.Data.InclusionListSatisfied, dimensionsLost ? Is.Null : Is.False,
                 "the entry the block left room for on both dimensions makes the block a censor");
         }
     }

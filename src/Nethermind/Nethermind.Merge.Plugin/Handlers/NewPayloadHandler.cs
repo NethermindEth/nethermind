@@ -247,8 +247,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 if (_stateReader.HasStateForBlock(block.Header)
                     || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
-                    return EvaluateInclusionListFromState(block);
+                    if (EvaluateInclusionListFromState(block) is { } fromState)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                        return fromState;
+                    }
+
+                    // Fall through: only execution recovers the EIP-8037 dimensions this answer needs, and where
+                    // re-executing is unsafe the ancestry check below answers SYNCING — bogota.md newPayloadV6
+                    // (2.2) leaves `inclusionListSatisfied` null there, which (2.1) would not allow for VALID.
                 }
             }
         }
@@ -411,17 +418,21 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <remarks>
     /// EIP-7805 appendability is judged against the state the block committed, which for a canonical block
     /// is readable at its own state root, so the only work left is recovering the list's senders.
+    /// Null when EIP-8037 leaves the answer undecidable from state alone: only execution records the gas
+    /// dimensions appendability is judged on, so the caller must fall through to it rather than guess.
     /// </remarks>
-    private ResultWrapper<PayloadStatusV1> EvaluateInclusionListFromState(Block block)
+    private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-        _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
 
         Hash256 hash = block.GetOrCalculateHash();
-        // A decoded payload has no EIP-8037 dimensions, and the state root does not carry them, so without
-        // what execution recorded this answers on a coarser gas rule than the processing path — the same
-        // block and list could be judged either way.
+        // A decoded payload has no EIP-8037 dimensions, and neither the state root nor the header's
+        // max(execution, state) carries them back, so without what execution recorded this would answer on a
+        // coarser gas rule than the processing path and could report real censorship as absent.
         block.Header.GasUsedPerDimension = RecordedGasDimensions(hash);
+        if (spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null) return null;
+
+        _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
 
         ValidationResult result = InclusionListValidator.IsSatisfied(
             block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
