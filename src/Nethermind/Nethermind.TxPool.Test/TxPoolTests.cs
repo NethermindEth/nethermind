@@ -3542,6 +3542,50 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [TestCase(1UL, 1, TestName = "recent_root_frame_is_not_reread_on_a_head_extending_the_previous_one")]
+        [TestCase(Eip8272Constants.RecentRootLength - 1, 0, TestName = "recent_root_frame_ages_out_on_a_head_extending_the_previous_one")]
+        public async Task Recent_root_frame_transaction_on_an_extending_head_is_checked_for_age_only(ulong slotsAfterWrite, int expectedPending)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            _stateProvider.InsertCode(Eip8272Constants.RecentRootCode.ToArray(), Eip8272Constants.RecentRootAddress);
+            StorageCell cell = RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot);
+            _stateProvider.Set(cell, RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Block head = Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            _stateProvider.Set(cell, UInt256.Zero);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithParent(head).WithSlotNumber(RecentRootSlot + slotsAfterWrite).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
+                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.Not.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        [Test]
+        public async Task Recent_root_frame_transaction_is_evicted_resubmittably_by_a_head_before_activation()
+        {
+            OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
+            _txPool = CreatePool(null, new TestSpecProvider(spec));
+            _stateProvider.InsertCode(Eip8272Constants.RecentRootCode.ToArray(), Eip8272Constants.RecentRootAddress);
+            _stateProvider.Set(RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot),
+                RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            spec.IsEip8272Enabled = false;
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
         [TestCase(true, 1, TestName = "blob_carrying_recent_root_frame_is_retained_while_its_entry_verifies")]
         [TestCase(false, 0, TestName = "blob_carrying_recent_root_frame_is_evicted_when_its_entry_is_missing")]
         public async Task Blob_carrying_recent_root_frame_transaction_is_rechecked_on_new_head(bool committed, int expectedPending)

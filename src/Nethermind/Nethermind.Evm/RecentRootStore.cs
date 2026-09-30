@@ -68,33 +68,6 @@ public static class RecentRootStore
         return stored.ToValueHash() == EntryHash(sourceId, slot, root);
     }
 
-    /// <summary>True if every 72-byte <c>(source_id, slot, root)</c> tuple of <paramref name="tuples"/> is valid at <paramref name="currentSlot"/>.</summary>
-    public static bool AreReferencesValid(IReadOnlyStateProvider state, ReadOnlySpan<byte> tuples, ulong currentSlot)
-    {
-        for (int offset = 0; offset < tuples.Length; offset += Eip8272Constants.RecentRootTupleLength)
-        {
-            (ValueHash256 sourceId, ulong slot, ValueHash256 root) = ReadTuple(tuples.Slice(offset));
-            if (!IsReferenceValid(state, sourceId, slot, root, currentSlot)) return false;
-        }
-
-        return true;
-    }
-
-    /// <summary>True if a tuple of <paramref name="tuples"/> names a slot aged out of the ring buffer at <paramref name="currentSlot"/>,
-    /// <c>current_slot - slot &gt;= RECENT_ROOT_LENGTH</c>, which no later slot can make valid again.</summary>
-    /// <remarks>Treats aging out as final, which holds while <paramref name="currentSlot"/> only grows. A reorg onto a
-    /// sibling head at a lower slot can bring a tuple back inside the window; the pool accepts that rare loss.</remarks>
-    public static bool HasAgedOutReference(ReadOnlySpan<byte> tuples, ulong currentSlot)
-    {
-        for (int offset = 0; offset < tuples.Length; offset += Eip8272Constants.RecentRootTupleLength)
-        {
-            ulong slot = ReadTuple(tuples.Slice(offset)).Slot;
-            if (slot < currentSlot && currentSlot - slot >= Eip8272Constants.RecentRootLength) return true;
-        }
-
-        return false;
-    }
-
     /// <summary>Reads the <c>source_id(32) || slot(8, big-endian) || root(32)</c> tuple at the start of <paramref name="tuple"/>.</summary>
     public static (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) ReadTuple(ReadOnlySpan<byte> tuple) =>
         (new ValueHash256(tuple.Slice(0, HashLength)),

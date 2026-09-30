@@ -11,7 +11,6 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -151,7 +150,7 @@ namespace Nethermind.TxPool
         // Lets the per-head expiry pass skip the pool walk entirely when nothing can expire. Maintained by the
         // Inserted/Removed handlers under Interlocked, so readers need only Volatile.Read for visibility.
         private int _expiringFrameTxCount;
-        private int _recentRootFrameTxCount;
+        private readonly RecentRootDependencyIndex _recentRootDependencies = new();
 
 #if DEBUG
         // Bumped before the bookkeeping either side of a mutation moves, so a half-applied mutation cannot read as drift.
@@ -541,7 +540,7 @@ namespace Nethermind.TxPool
             TrackPoolMutation();
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
-            if (HasRecentRootTuples(args.Value)) Interlocked.Increment(ref _recentRootFrameTxCount);
+            _recentRootDependencies.Add(args.Value);
             IndexFrameTxDependencies(args.Value);
             StageFrameEvictionRetries(args.Value);
         }
@@ -575,7 +574,7 @@ namespace Nethermind.TxPool
                 AssertExpiringFrameTxCountNotNegative(remaining);
             }
 
-            if (HasRecentRootTuples(args.Value)) Interlocked.Decrement(ref _recentRootFrameTxCount);
+            _recentRootDependencies.Remove(args.Value);
             ReleaseFrameTxReservations(args.Value);
             if (args.Value.SupportsFrames)
             {
@@ -630,8 +629,6 @@ namespace Nethermind.TxPool
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
-
-        private static bool HasRecentRootTuples(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetRecentRootTuples(tx, out _);
 
         [Conditional("DEBUG")]
         private void TrackPoolMutation()
@@ -839,13 +836,14 @@ namespace Nethermind.TxPool
                             CollectFrameTxsToRevalidate(changeListIsComplete ? accountChanges : null);
                             DisposeBlockAccountChanges(args.Block);
 
+                            bool extendsPreviousHead = args.PreviousBlock is null && args.Block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == args.Block.Number;
                             _lastBlockNumber = args.Block.Number;
                             _lastBlockHash = args.Block.Hash;
 
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
-                            RemoveUnreferenceableRecentRootTransactions(args.Block);
+                            RemoveUnreferenceableRecentRootTransactions(args.Block, extendsPreviousHead);
                             RevalidateFrameTransactions(args.Block);
 
                             if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
@@ -1128,46 +1126,42 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>EIP-8272: evicts the pending transactions whose <c>recent_root_verify</c> tuples no longer verify at
-        /// the new head's <c>current_slot</c>, its <c>slotNumber + 1</c>, or whose tuples would not run against
-        /// <c>RECENT_ROOT_CODE</c> because the code at <c>RECENT_ROOT_ADDRESS</c> differs.</summary>
-        /// <remarks>Checked against every head rather than through the dependency index: the predeploy's storage moves
-        /// every slot and a reorg can rewrite an entry. A tuple aged out of the ring buffer never verifies again, so
-        /// its hash stays cached; any other failure can reverse with a reorg. The in-memory blob pool keeps full frames
-        /// and is swept too; a persistent blob pool never admits a tuple-carrying record, see
-        /// <see cref="Filters.FrameTxMisplacedRecentRootFrameFilter"/>. Each tuple costs one storage read per head, so a
-        /// pool full of 16-tuple transactions reads that many cells on every head.</remarks>
-        private void RemoveUnreferenceableRecentRootTransactions(Block block)
+        /// the new head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
+        /// <remarks>Every such transaction goes once the head is before activation or the code at <c>RECENT_ROOT_ADDRESS</c>
+        /// is not <c>RECENT_ROOT_CODE</c>. A head extending the previous one only ages tuples out: its block writes the
+        /// ring-buffer cells of its own slot, and a pending tuple naming that slot was admitted against the same write,
+        /// while any other tuple aliasing those cells is already out of the window. Any other head rereads every recorded
+        /// entry, which covers a rollback on the abandoned branch as well as a write on the new one. An aged-out tuple
+        /// never verifies again, so its hash stays cached; any other failure can reverse with a reorg.</remarks>
+        private void RemoveUnreferenceableRecentRootTransactions(Block block, bool extendsPreviousHead)
         {
-            if (Volatile.Read(ref _recentRootFrameTxCount) == 0
-                || block.Header.SlotNumber is not ulong headSlot
-                || !_specProvider.GetSpec(block.Header).IsEip8272Enabled)
+            if (_recentRootDependencies.Count == 0) return;
+
+            IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
+            List<(Hash256 Hash, bool Final)> unreferenceable = [];
+            if (block.Header.SlotNumber is not ulong headSlot
+                || !_specProvider.GetSpec(block.Header).IsEip8272Enabled
+                || state.GetCodeHash(Eip8272Constants.RecentRootAddress) != Eip8272Constants.RecentRootCodeHash)
             {
-                return;
+                _recentRootDependencies.CollectAll(unreferenceable);
+            }
+            else if (extendsPreviousHead)
+            {
+                _recentRootDependencies.CollectExpired(headSlot + 1, unreferenceable);
+            }
+            else
+            {
+                _recentRootDependencies.CollectInvalid(state, headSlot + 1, unreferenceable);
             }
 
-            ulong currentSlot = headSlot + 1;
-            IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
-            bool runsRecentRootCode = state.GetCodeHash(Eip8272Constants.RecentRootAddress) == Eip8272Constants.RecentRootCodeHash;
-            EvictUnreferenceableRecentRootTransactions(_transactions.GetSnapshot(), state, currentSlot, runsRecentRootCode);
-            EvictUnreferenceableRecentRootTransactions(_blobTransactions.GetSnapshot(), state, currentSlot, runsRecentRootCode);
-        }
-
-        private void EvictUnreferenceableRecentRootTransactions(Transaction[] snapshot, IReadOnlyStateProvider state, ulong currentSlot, bool runsRecentRootCode)
-        {
-            foreach (Transaction tx in snapshot)
+            foreach ((Hash256 hash, bool final) in unreferenceable)
             {
-                if (!tx.SupportsFrames
-                    || !FrameTxValidation.TryGetRecentRootTuples(tx, out ReadOnlyMemory<byte> tuples)
-                    || (runsRecentRootCode && RecentRootStore.AreReferencesValid(state, tuples.Span, currentSlot))
-                    || !RemoveTransaction(tx.Hash, out Transaction? pooled))
-                {
-                    continue;
-                }
+                if (!RemoveTransaction(hash, out Transaction? pooled)) continue;
 
                 EvictedPending?.Invoke(this, new TxEventArgs(pooled));
-                if (!RecentRootStore.HasAgedOutReference(tuples.Span, currentSlot)) _hashCache.DeleteFromLongTerm(tx.Hash!);
+                if (!final) _hashCache.DeleteFromLongTerm(hash);
                 Metrics.PendingTransactionsEvicted++;
-                if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {tx.Hash}, its recent roots do not verify at slot {currentSlot}.");
+                if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {hash}, its recent roots do not verify at head {block.Number}.");
             }
         }
 
