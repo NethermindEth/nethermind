@@ -209,7 +209,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
-        if (error == EvmExceptionType.NotEnoughBalance && _log.op?.Value is
+        if (error is EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded && _log.op?.Value is
             Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL)
             return;
         if (_failedBeforeExecution)
