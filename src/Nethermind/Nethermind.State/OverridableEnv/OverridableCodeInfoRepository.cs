@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
@@ -15,7 +16,7 @@ namespace Nethermind.State.OverridableEnv;
 
 public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState) : IOverridableCodeInfoRepository
 {
-    private readonly Dictionary<Address, CodeInfo> _codeOverrides = [];
+    private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = [];
     private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = [];
 
     public bool IsCodeOverridable => true;
@@ -26,7 +27,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         // Moved precompiles are rare, so skip the hash lookup when there are none.
         if (_precompileOverrides.Count != 0 && _precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) precompile)) return precompile.codeInfo;
 
-        if (_codeOverrides.TryGetValue(codeSource, out CodeInfo? result))
+        if (TryGetCodeOverride(codeSource, out CodeInfo? result))
         {
             return !result.IsEmpty &&
                    ICodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegationAddress) &&
@@ -40,7 +41,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         _precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) precompile) ? precompile.codeInfo.Precompile
-        : _codeOverrides.TryGetValue(codeSource, out CodeInfo? result) ? result.Precompile
+        : TryGetCodeOverride(codeSource, out CodeInfo? result) ? result.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
@@ -54,12 +55,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value) => _codeOverrides[key] = value;
+        CodeInfo value) => _codeOverrides[key] = (value, worldState.GetCodeHash(key));
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
         _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
-        _codeOverrides[precompileAddr] = new CodeInfo(worldState.GetCode(precompileAddr));
+        _codeOverrides[precompileAddr] = (new CodeInfo(worldState.GetCode(precompileAddr)), worldState.GetCodeHash(precompileAddr));
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
@@ -71,10 +72,27 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>
-        _codeOverrides.TryGetValue(address, out CodeInfo? result)
+        TryGetCodeOverride(address, out CodeInfo? result)
             ? ICodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegatedAddress)
             : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
 
+    /// <summary>Finds the override of <paramref name="address"/> while the account still has the code hash it had when the override was set.</summary>
+    /// <remarks>
+    /// Destroying the account (a SELFDESTRUCT before Cancun) changes its code in the world state without passing
+    /// through this repository, so an entry is checked against the state rather than removed. The world state
+    /// journals the code hash, so a reverted change brings the override back.
+    /// </remarks>
+    private bool TryGetCodeOverride(Address address, [NotNullWhen(true)] out CodeInfo? codeInfo)
+    {
+        if (_codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) entry) && worldState.GetCodeHash(address) == entry.codeHash)
+        {
+            codeInfo = entry.codeInfo;
+            return true;
+        }
+
+        codeInfo = null;
+        return false;
+    }
 
     public void ResetOverrides()
     {
