@@ -872,6 +872,7 @@ public class TraceRpcModuleTests
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
         Assert.That(traces.Data.Count(), Is.EqualTo(1));
     }
+
     [Test]
     public async Task Trace_filter_with_block_hash_selects_only_that_block()
     {
@@ -898,9 +899,8 @@ public class TraceRpcModuleTests
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(
             new TraceFilterForRpc { BlockHash = TestItem.KeccakA });
 
-        Assert.That(traces.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
-
     [Test]
     public async Task Trace_filter_with_filtering_by_sender()
     {

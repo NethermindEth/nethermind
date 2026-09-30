@@ -457,14 +457,27 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
-    public void trace_filter_returns_from_store_with_the_head_as_a_bound([Values(0, 1, 2)] int parallelization)
+    public void trace_filter_returns_from_store_with_the_head_as_a_bound([Values(0, 1, 2)] int parallelization, [Values] bool byBlockHash)
     {
         TestContext test = new(parallelization);
 
-        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(2), ToBlock = new BlockParameter(2) });
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_filter(byBlockHash
+            ? new TraceFilterForRpc { BlockHash = test.BlockFinder.Head!.Hash }
+            : new TraceFilterForRpc { FromBlock = new BlockParameter(2), ToBlock = new BlockParameter(2) });
         using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> expected = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
 
         Assert.That(JToken.Parse(Serializer.Serialize(result)), Is.EqualTo(JToken.Parse(Serializer.Serialize(expected))).Using(JToken.EqualityComparer));
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void trace_filter_fails_for_an_unknown_block_hash([Values(0, 1, 2)] int parallelization)
+    {
+        TestContext test = new(parallelization);
+
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_filter(new TraceFilterForRpc { BlockHash = TestItem.KeccakH });
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
         test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
     }
 
