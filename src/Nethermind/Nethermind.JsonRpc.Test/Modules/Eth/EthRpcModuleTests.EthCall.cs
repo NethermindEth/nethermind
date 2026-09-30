@@ -813,6 +813,37 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
+    /// <summary>
+    /// A <c>blockOverride.gasLimit</c> above <c>JsonRpc.GasCap</c> is rejected, but <c>GasCap</c> being
+    /// <see langword="null"/> or <c>0</c> means uncapped everywhere else (<see cref="GasCapExtensions"/>):
+    /// a null cap must not throw, and a zero cap must not reject every override as "too large".
+    /// </summary>
+    [TestCase(null, null, null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(null cap, no override)")]
+    [TestCase(0UL, null, null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(zero cap, no override)")]
+    [TestCase(null, "0x2540BE400", null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(null cap, huge override)")]
+    [TestCase(0UL, "0x2540BE400", null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(zero cap, huge override)")]
+    [TestCase(1_000_000UL, "0xF4240", null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(capped, override at cap)")]
+    [TestCase(1_000_000UL, "0xF4241", "GasLimit value is too large, max value 1000000", TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(capped, override above cap)")]
+    public async Task Eth_call_blockOverride_gasLimit_vs_gas_cap(ulong? gasCap, string? gasLimitOverrideHex, string? expectedError)
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"gas\": \"0x5208\"}}")!;
+        object? blockOverride = gasLimitOverrideHex is null
+            ? null
+            : JsonSerializer.Deserialize<object>($$"""{"gasLimit":"{{gasLimitOverrideHex}}"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+        JToken parsed = JToken.Parse(serialized);
+
+        if (expectedError is null)
+            Assert.That(parsed["error"], Is.Null, serialized);
+        else
+            Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError));
+    }
+
     [Test]
     public async Task Eth_call_ignores_invalid_nonce()
     {
@@ -1357,6 +1388,50 @@ public partial class EthRpcModuleTests
         JsonElement txParam = JsonDocument.Parse(txJson).RootElement;
         string serialized = await ctx.Test.TestEthRpc("eth_call", txParam, "latest");
         Assert.That(JToken.Parse(serialized)["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
+    }
+
+    [Test]
+    public async Task Eth_call_null_input_or_data_is_omitted(
+        [Values(
+            """{"data":"0x602a60005260206000f3","input":null}""",
+            """{"input":null,"data":"0x602a60005260206000f3"}""",
+            """{"input":"0x602a60005260206000f3","data":null}""")] string calldata)
+    {
+        using Context ctx = await Context.Create();
+        string from = $"\"from\":\"{TestItem.AddressA}\"";
+        using JsonDocument withNull = JsonDocument.Parse($"{{{from},{calldata[1..]}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{from},\"data\":\"0x602a60005260206000f3\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", withNull.RootElement, "latest");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
+            Assert.That(serialized, Is.EqualTo(await ctx.Test.TestEthRpc("eth_call", omitted.RootElement, "latest")));
+        }
+    }
+
+    // Shaped like trace-interop's field-null-blobVersionedHashes-unpriced and field-null-authorizationList-unpriced probes.
+    [TestCase("blobVersionedHashes", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
+    [TestCase("authorizationList", TxErrorMessages.NotAllowedCreateTransaction)]
+    public async Task Eth_call_null_blob_or_authorization_list_selects_no_type(string list, string typeError)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        string call = $"\"from\":\"{TestItem.AddressA}\",\"data\":\"0x602a60005260206000f3\"";
+        using JsonDocument withNull = JsonDocument.Parse($"{{{call},\"{list}\":null}}");
+        using JsonDocument withList = JsonDocument.Parse($"{{{call},\"{list}\":[]}}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{call}}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", withNull.RootElement, "latest");
+        string typed = await ctx.Test.TestEthRpc("eth_call", withList.RootElement, "latest");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
+            Assert.That(serialized, Is.EqualTo(await ctx.Test.TestEthRpc("eth_call", omitted.RootElement, "latest")));
+            // A non-null list still selects its type, which can't create a contract.
+            Assert.That(JToken.Parse(typed)["error"]?["message"]?.Value<string>(), Does.Contain(typeError), typed);
+        }
     }
 
     [Test]

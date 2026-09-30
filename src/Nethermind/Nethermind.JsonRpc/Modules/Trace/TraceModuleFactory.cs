@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Autofac;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -34,9 +33,7 @@ public class TraceModuleFactory(
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
-            .AddScoped<IBlockValidator>(Always.Valid) // Why?
-
-            .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>(); // TODO: Check, what if this is pre merge?
+            .AddScoped<IBlockValidator>(Always.Valid); // Why?
 
     public override ITraceRpcModule Create()
     {
@@ -45,7 +42,7 @@ public class TraceModuleFactory(
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, static p => new TraceTransactionProcessorAdapter(p), validationBlockProcessingModules)
+            ConfigureCommonBlockProcessing(builder, static p => new UnpricedCallTraceAdapter(p), validationBlockProcessingModules)
                 .AddModule(env));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules)
