@@ -561,7 +561,7 @@ public class BeaconChainServiceStartupTests
         KickEngine engine = new(pubkeyCache);
         BeaconChainConfig config = new() { CheckpointSyncUrl = provider.Url };
         await using IContainer container = KickContainer(engine, pubkeyCache, config: config).AddSingleton(store).Build();
-        using CheckpointSync checkpointSync = new(config, GloasCheckpointFiles.Spec, store, logs) { MaxDownloadAttempts = 1 };
+        using CheckpointSync checkpointSync = new(config, GloasCheckpointFiles.Spec, store, logs) { MaxDownloadAttempts = 1, ReadStallTimeout = CheckpointSyncRetryTests.ReadStall };
         using BeaconChainService service = new(config, GloasCheckpointFiles.Spec, store, pubkeyCache, checkpointSync,
             container.Resolve<BeaconSyncOrchestrator>(), container.Resolve<ExternalClDetector>(), logs)
         {
