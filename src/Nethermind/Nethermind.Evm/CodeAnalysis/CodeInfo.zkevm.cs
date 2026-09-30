@@ -22,6 +22,10 @@ public sealed partial class CodeInfo
 
     public partial ReadOnlyMemory<byte> Code => _code;
 
+    public partial ReadOnlySpan<byte> CodeSpan => _code.Span;
+
+    internal partial int CodeLength => _code.Length;
+
     internal partial ReadOnlySpan<byte> ExecutionCodeSpan => _code.Span;
 
     // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
@@ -33,7 +37,7 @@ public sealed partial class CodeInfo
     /// Sized for the whole code so the shared bit test can index it, but a clear bit only means "not a
     /// destination, or not analyzed yet"; <see cref="AnalyzeJump"/> is what turns that into an answer.
     /// </remarks>
-    internal long[] IncrementalJumpBitmap => _incrementalJumpBitmap ??= JumpDestinationAnalyzer.CreateBitmap(Code.Length);
+    internal long[] IncrementalJumpBitmap => _incrementalJumpBitmap ??= JumpDestinationAnalyzer.CreateBitmap(CodeLength);
 
     /// <summary>Extends the scan far enough to decide <paramref name="destination"/>, and reports whether it is a jump destination.</summary>
     /// <param name="destination">A destination inside the code.</param>

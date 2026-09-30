@@ -52,7 +52,10 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     }
 
     public partial ReadOnlyMemory<byte> Code { get; }
-    public ReadOnlySpan<byte> CodeSpan => Code.Span;
+    public partial ReadOnlySpan<byte> CodeSpan { get; }
+
+    /// <summary>The length of <see cref="Code"/>.</summary>
+    internal partial int CodeLength { get; }
 
     partial void InitializeCode(ReadOnlyMemory<byte> code);
 
@@ -89,7 +92,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     {
         get
         {
-            if (Code.Length != Eip7702Constants.DelegationHeaderLength + Address.Size)
+            if (CodeLength != Eip7702Constants.DelegationHeaderLength + Address.Size)
             {
                 return null;
             }
@@ -100,7 +103,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
                 return delegatedAddress;
             }
 
-            if (!ICodeInfoRepository.TryGetDelegatedAddress(Code.Span, out Address? parsedAddress))
+            if (!ICodeInfoRepository.TryGetDelegatedAddress(CodeSpan, out Address? parsedAddress))
             {
                 return null;
             }

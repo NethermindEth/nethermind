@@ -28,6 +28,21 @@ public sealed partial class CodeInfo
 
     public partial ReadOnlyMemory<byte> Code => ViewOf(_code);
 
+    public partial ReadOnlySpan<byte> CodeSpan
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            object code = Volatile.Read(ref _code);
+            return code.GetType() == typeof(byte[]) ? new(Unsafe.As<byte[]>(code), 0, _codeLength) : BoxedSpan(code);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ReadOnlySpan<byte> BoxedSpan(object code) => Unsafe.Unbox<ReadOnlyMemory<byte>>(code).Span;
+
+    internal partial int CodeLength => _codeLength;
+
     /// <remarks>
     /// The padded copy is built on first execution and replaces the caller's code, so the code is held once;
     /// a view of <see cref="Code"/> taken earlier stays valid.
@@ -38,8 +53,9 @@ public sealed partial class CodeInfo
         get => new(GetExecutionCode(), 0, _codeLength);
     }
 
+    // An exact type test: `is byte[]` also matches sbyte[] through array covariance, so it costs a helper call.
     private ReadOnlyMemory<byte> ViewOf(object code) =>
-        code is byte[] array ? new(array, 0, _codeLength) : Unsafe.Unbox<ReadOnlyMemory<byte>>(code);
+        code.GetType() == typeof(byte[]) ? new(Unsafe.As<byte[]>(code), 0, _codeLength) : Unsafe.Unbox<ReadOnlyMemory<byte>>(code);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte[] GetExecutionCode()

@@ -58,7 +58,7 @@ public sealed class StaticCodeCache : ICodeCache
     public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
     {
         codeInfo.StampCodeHash(in codeHash);
-        TierFor(codeInfo.Code.Length).Set(in codeHash, codeInfo);
+        TierFor(codeInfo.CodeLength).Set(in codeHash, codeInfo);
     }
 
     public void Clear()
