@@ -1128,7 +1128,8 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>EIP-8272: evicts the pending transactions whose <c>recent_root_verify</c> tuples no longer verify at
-        /// the new head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
+        /// the new head's <c>current_slot</c>, its <c>slotNumber + 1</c>, or whose tuples would not run against
+        /// <c>RECENT_ROOT_CODE</c> because the code at <c>RECENT_ROOT_ADDRESS</c> differs.</summary>
         /// <remarks>Checked against every head rather than through the dependency index: the predeploy's storage moves
         /// every slot and a reorg can rewrite an entry. A tuple aged out of the ring buffer never verifies again, so
         /// its hash stays cached; any other failure can reverse with a reorg. The in-memory blob pool keeps full frames
@@ -1146,17 +1147,18 @@ namespace Nethermind.TxPool
 
             ulong currentSlot = headSlot + 1;
             IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
-            EvictUnreferenceableRecentRootTransactions(_transactions.GetSnapshot(), state, currentSlot);
-            EvictUnreferenceableRecentRootTransactions(_blobTransactions.GetSnapshot(), state, currentSlot);
+            bool runsRecentRootCode = state.GetCodeHash(Eip8272Constants.RecentRootAddress) == Eip8272Constants.RecentRootCodeHash;
+            EvictUnreferenceableRecentRootTransactions(_transactions.GetSnapshot(), state, currentSlot, runsRecentRootCode);
+            EvictUnreferenceableRecentRootTransactions(_blobTransactions.GetSnapshot(), state, currentSlot, runsRecentRootCode);
         }
 
-        private void EvictUnreferenceableRecentRootTransactions(Transaction[] snapshot, IReadOnlyStateProvider state, ulong currentSlot)
+        private void EvictUnreferenceableRecentRootTransactions(Transaction[] snapshot, IReadOnlyStateProvider state, ulong currentSlot, bool runsRecentRootCode)
         {
             foreach (Transaction tx in snapshot)
             {
                 if (!tx.SupportsFrames
                     || !FrameTxValidation.TryGetRecentRootTuples(tx, out ReadOnlyMemory<byte> tuples)
-                    || RecentRootStore.AreReferencesValid(state, tuples.Span, currentSlot)
+                    || (runsRecentRootCode && RecentRootStore.AreReferencesValid(state, tuples.Span, currentSlot))
                     || !RemoveTransaction(tx.Hash, out Transaction? pooled))
                 {
                     continue;

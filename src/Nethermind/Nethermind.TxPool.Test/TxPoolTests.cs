@@ -3516,13 +3516,15 @@ namespace Nethermind.TxPool.Test
         private static readonly (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) RecentRootTuple =
             (TestItem.KeccakA.ValueHash256, RecentRootSlot, TestItem.KeccakB.ValueHash256);
 
-        [TestCase(RecentRootSlot, true, 1, false, TestName = "recent_root_frame_is_retained_while_its_entry_verifies")]
-        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 2, true, 1, false, TestName = "recent_root_frame_is_retained_at_the_window_edge")]
-        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 1, true, 0, false, TestName = "recent_root_frame_is_evicted_for_good_once_its_slot_ages_out")]
-        [TestCase(RecentRootSlot, false, 0, true, TestName = "recent_root_frame_is_evicted_resubmittably_when_its_entry_is_missing")]
-        public async Task Recent_root_frame_transaction_is_rechecked_on_new_head(ulong headSlot, bool committed, int expectedPending, bool resubmittable)
+        [TestCase(RecentRootSlot, true, true, 1, false, TestName = "recent_root_frame_is_retained_while_its_entry_verifies")]
+        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 2, true, true, 1, false, TestName = "recent_root_frame_is_retained_at_the_window_edge")]
+        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 1, true, true, 0, false, TestName = "recent_root_frame_is_evicted_for_good_once_its_slot_ages_out")]
+        [TestCase(RecentRootSlot, false, true, 0, true, TestName = "recent_root_frame_is_evicted_resubmittably_when_its_entry_is_missing")]
+        [TestCase(RecentRootSlot, true, false, 0, true, TestName = "recent_root_frame_is_evicted_resubmittably_when_the_predeploy_code_differs")]
+        public async Task Recent_root_frame_transaction_is_rechecked_on_new_head(ulong headSlot, bool committed, bool recentRootCode, int expectedPending, bool resubmittable)
         {
             _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            _stateProvider.InsertCode(recentRootCode ? Eip8272Constants.RecentRootCode.ToArray() : [0x00], Eip8272Constants.RecentRootAddress);
             Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             if (committed)
@@ -3547,6 +3549,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory },
                 new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _stateProvider.InsertCode(Eip8272Constants.RecentRootCode.ToArray(), Eip8272Constants.RecentRootAddress);
             Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, withRecentRoot: true);
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             if (committed)
