@@ -256,7 +256,7 @@ public class PbtAnchorPublicationTests
     }
 
     [Test]
-    public void Offline_export_publishes_verified_bundle_without_native_state([Values("success", "existing", "corrupt")] string mode)
+    public void Offline_export_publishes_verified_bundle_without_native_state([Values("success", "existing", "corrupt")] string mode, [Values] bool includePreimages)
     {
         using Harness harness = new("a5");
         using BootstrapLease lease = new(harness, "a5", offline: true);
@@ -264,13 +264,13 @@ public class PbtAnchorPublicationTests
         if (mode == "existing") Directory.CreateDirectory(output);
         if (mode == "corrupt") harness.Anchor = harness.WithStateRoot(Hash256.Zero);
         void Export() => PbtOfflineExport.Export(lease.OfflineSource!, lease.OfflineCode!, harness.Anchor,
-            output, harness.Scratch.Path, harness.IsAnchorCurrent, sortBufferBytes: 65536, workerCount: 2,
+            output, harness.Scratch.Path, harness.IsAnchorCurrent, includePreimages, sortBufferBytes: 65536, workerCount: 2,
             LimboLogs.Instance, CancellationToken.None);
         if (mode == "existing") Assert.Throws<IOException>(Export);
         else if (mode == "corrupt")
         {
             Assert.Throws<InvalidDataException>(Export);
-            Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(2));
+            Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(includePreimages ? 2 : 1));
         }
         else
         {
@@ -279,7 +279,7 @@ public class PbtAnchorPublicationTests
             using MemoryStream expectedBytes = new();
             expected.CopyTo(expectedBytes);
             Assert.That(File.ReadAllBytes(Path.Combine(output, "snapshot.pbt")), Is.EqualTo(expectedBytes.ToArray()));
-            Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(2));
+            Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(includePreimages ? 2 : 1));
         }
         Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Has.Length.EqualTo(1));
         AssertNoNativeState(harness);

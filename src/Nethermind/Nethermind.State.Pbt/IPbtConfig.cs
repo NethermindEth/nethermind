@@ -58,6 +58,10 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Bytes buffered per export scan worker before the records are sorted and spilled to a temporary run, split between the leaf and preimage spools. Resident sort memory is roughly this times the worker count.", DefaultValue = "268435456", HiddenFromDocs = true)]
     int ExportSortBufferBytes { get; set; }
 
+    /// <summary>Whether the export also writes the EIP-8347 preimage stream beside the snapshot. Defaults to true.</summary>
+    [ConfigItem(Description = "Whether the EIP-8347 export also writes preimages.bin. When false, only snapshot.pbt is written.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool ExportPreimages { get; set; }
+
     /// <summary>Memory for the preimage verifier's bucket tables, in bytes, shared by all its workers. Defaults to 4 GiB.</summary>
     /// <remarks>The preimage reader pauses while the tables are full; the workers sweep them once they are 90% full,
     /// or once the reader is done.</remarks>

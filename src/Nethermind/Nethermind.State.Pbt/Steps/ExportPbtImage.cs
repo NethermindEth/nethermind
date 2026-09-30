@@ -66,7 +66,7 @@ public class ExportPbtImage(
         PbtOfflineExport.Export(source, dbProvider.CodeDb,
             PbtMigrationAnchor.Create(chainSpec, blockTree.Genesis!, header),
             config.MigrationExportPath!, scratch, () => blockTree.IsMainChain(header),
-            config.ExportSortBufferBytes, config.ExportConcurrency, logManager, cancellationToken);
+            config.ExportPreimages, config.ExportSortBufferBytes, config.ExportConcurrency, logManager, cancellationToken);
         exitSource.Exit(0);
     }
 

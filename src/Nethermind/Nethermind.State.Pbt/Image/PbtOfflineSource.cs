@@ -41,11 +41,12 @@ internal static class PbtOfflineSource
     private const string ScanPhase = "PBT export scan";
     private const string PreimagesPhase = "PBT export preimages";
 
+    /// <param name="preimages">Destination of the preimage stream; null skips it and gives the leaf spool the whole sort budget.</param>
     /// <param name="sortBufferBytes">Sort budget per worker, split between the leaf and preimage spools.</param>
     /// <param name="workerCount">Scan workers; zero uses the processor count.</param>
     public static PbtArtifactWriter.PbtArtifactDigests WriteArtifacts(FlatPersistence.IPersistenceReader source,
         IReadOnlyKeyValueStore codeSource, PbtImageAnchor anchor, string scratchDirectory,
-        Stream snapshot, Stream preimages, ILogManager logManager,
+        Stream snapshot, Stream? preimages, ILogManager logManager,
         int sortBufferBytes, int workerCount, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(sortBufferBytes, 1024);
@@ -63,9 +64,10 @@ internal static class PbtOfflineSource
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtSortedSpool leaves = new(directory, sortBufferBytes / 2, workers, logManager, cancellationToken)
+            int spoolBytes = preimages is null ? sortBufferBytes : sortBufferBytes / 2;
+            using PbtSortedSpool leaves = new(directory, spoolBytes, workers, logManager, cancellationToken)
             { FinalMerge = () => LogFinalMerge("leaves"), MaxConcurrentPreMerges = workers };
-            using PbtSortedSpool rawKeys = new(directory, sortBufferBytes / 2, workers, logManager, cancellationToken)
+            using PbtSortedSpool? rawKeys = preimages is null ? null : new(directory, spoolBytes, workers, logManager, cancellationToken)
             { FinalMerge = () => LogFinalMerge("preimages"), MaxConcurrentPreMerges = workers };
             ScanTotals totals = new();
             Scan();
@@ -80,11 +82,11 @@ internal static class PbtOfflineSource
                 ValueHash256 root = PbtRightmostGroupStore.CalculateRoot(CountLeaves(), PbtRightmostGroupStore.DefaultWindowSize, workers, failed.Token);
                 return PbtArtifactWriter.WriteSnapshot(snapshot, root, layout, SnapshotLeaves(), failed.Token);
             });
-            Task<ValueHash256> preimageDigest = StartDrain(() => PbtArtifactWriter.WritePreimages(preimages, Accounts(), failed.Token));
+            Task<ValueHash256>? preimageDigest = preimages is null ? null : StartDrain(() => PbtArtifactWriter.WritePreimages(preimages, Accounts(), failed.Token));
             // Joined without the token for the same reason as the scan workers.
             try
             {
-                Task.WaitAll([snapshotDigest, preimageDigest], CancellationToken.None);
+                Task.WaitAll([snapshotDigest, preimageDigest ?? Task.CompletedTask], CancellationToken.None);
             }
             catch (AggregateException failures)
             {
@@ -92,7 +94,7 @@ internal static class PbtOfflineSource
                 ReadOnlyCollection<Exception> causes = failures.Flatten().InnerExceptions;
                 ExceptionDispatchInfo.Capture(causes.FirstOrDefault(static cause => cause is not OperationCanceledException) ?? causes[0]).Throw();
             }
-            PbtArtifactWriter.PbtArtifactDigests digests = new(snapshotDigest.Result, preimageDigest.Result);
+            PbtArtifactWriter.PbtArtifactDigests digests = new(snapshotDigest.Result, preimageDigest?.Result);
             if (logger.IsInfo)
                 logger.Info($"PBT export wrote {leafCount:N0} leaves for {accountCount:N0} accounts and {totals.Slots:N0} slots in {exporting.Elapsed:hh\\:mm\\:ss}.");
             return digests;
@@ -127,7 +129,7 @@ internal static class PbtOfflineSource
                 void ScanPartitions()
                 {
                     using PbtSortedSpool.Writer leafWriter = leaves.CreateWriter();
-                    using PbtSortedSpool.Writer rawKeyWriter = rawKeys.CreateWriter();
+                    using PbtSortedSpool.Writer? rawKeyWriter = rawKeys?.CreateWriter();
                     ScanWorker worker = new(codeSource, anchor, leafWriter, rawKeyWriter, progress, totals);
                     int partition;
                     while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
@@ -196,7 +198,7 @@ internal static class PbtOfflineSource
                 using ProgressReporter progress = PbtImageProgress.Start(PreimagesPhase, "acc", accountCount, logManager);
                 Func<string> slotCounter = PbtImageProgress.Counter("slot", () => writtenSlots);
                 progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(PreimagesPhase, "acc", p)} | {slotCounter()}");
-                using PbtSortedSpool.Cursor cursor = rawKeys.Read();
+                using PbtSortedSpool.Cursor cursor = rawKeys!.Read();
                 while (cursor.MoveNext())
                 {
                     progress.Update(++written);
@@ -250,7 +252,7 @@ internal static class PbtOfflineSource
         IReadOnlyKeyValueStore codeSource,
         PbtImageAnchor anchor,
         PbtSortedSpool.Writer leaves,
-        PbtSortedSpool.Writer rawKeys,
+        PbtSortedSpool.Writer? rawKeys,
         ProgressReporter progress,
         ScanTotals totals)
     {
@@ -310,20 +312,26 @@ internal static class PbtOfflineSource
                     EvmWord value = EvmWordSlot.FromStripped(slots.CurrentValue);
                     if (EvmWordSlot.IsZero(value)) throw new InvalidDataException("Source contains a zero storage slot.");
                     AddLeaf(PbtStateKey.Storage(address, new UInt256(slot.Bytes, isBigEndian: true)), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
-                    addressHash.Bytes.CopyTo(_preimageKey);
-                    _preimageKey[32] = 1;
-                    ValueKeccak.Compute(slot.Bytes).Bytes.CopyTo(_preimageKey.AsSpan(33));
-                    rawKeys.Add(_preimageKey, slot.Bytes);
+                    if (rawKeys is not null)
+                    {
+                        addressHash.Bytes.CopyTo(_preimageKey);
+                        _preimageKey[32] = 1;
+                        ValueKeccak.Compute(slot.Bytes).Bytes.CopyTo(_preimageKey.AsSpan(33));
+                        rawKeys.Add(_preimageKey, slot.Bytes);
+                    }
                     count = checked(count + 1);
                     _pendingSlots++;
                 }
             }
-            // The zero tag and slot-hash region keep an account ahead of its own slots.
-            Array.Clear(_preimageKey);
-            addressHash.Bytes.CopyTo(_preimageKey);
-            address.Bytes.CopyTo(_accountValue);
-            BinaryPrimitives.WriteUInt32BigEndian(_accountValue.AsSpan(Address.Size), count);
-            rawKeys.Add(_preimageKey, _accountValue);
+            if (rawKeys is not null)
+            {
+                // The zero tag and slot-hash region keep an account ahead of its own slots.
+                Array.Clear(_preimageKey);
+                addressHash.Bytes.CopyTo(_preimageKey);
+                address.Bytes.CopyTo(_accountValue);
+                BinaryPrimitives.WriteUInt32BigEndian(_accountValue.AsSpan(Address.Size), count);
+                rawKeys.Add(_preimageKey, _accountValue);
+            }
 
             _pendingAccounts++;
             if (_pendingAccounts >= ProgressPublishInterval || _pendingSlots >= ProgressPublishInterval) PublishProgress();

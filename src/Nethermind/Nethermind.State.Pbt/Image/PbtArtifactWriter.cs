@@ -12,7 +12,7 @@ internal static class PbtArtifactWriter
 {
     /// <summary>Keccak over each whole stream, as EIP-8347 defines them. They let consumers agree on an
     /// artifact ahead of an expensive download; they are not roots of trust.</summary>
-    internal readonly record struct PbtArtifactDigests(ValueHash256 Snapshot, ValueHash256 Preimages);
+    internal readonly record struct PbtArtifactDigests(ValueHash256 Snapshot, ValueHash256? Preimages);
 
     /// <summary>Writes the snapshot stream and returns its digest.</summary>
     public static ValueHash256 WriteSnapshot(Stream snapshot, ValueHash256 pbtRoot, PbtSnapshotLayout layout,
