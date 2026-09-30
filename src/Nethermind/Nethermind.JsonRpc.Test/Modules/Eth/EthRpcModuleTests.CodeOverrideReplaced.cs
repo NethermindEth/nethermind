@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
@@ -29,8 +31,15 @@ public partial class EthRpcModuleTests
     private static readonly Address OverrideSelfDestructor = new("0xc2000000000000000000000000000000000000b5");
     private static readonly Address OverrideObserver = new("0xc2000000000000000000000000000000000000b6");
     private static readonly Address OverrideReverter = new("0xc2000000000000000000000000000000000000b7");
+    private static readonly Address OverrideMovedPrecompile = new("0xc2000000000000000000000000000000000000b8");
 
     private static byte[] Returning(int value) => Prepare.EvmCode.PushData(value).PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done;
+
+    /// <summary>Code that self-destructs when called with calldata; called without, it jumps to the JUMPDEST at 7 and returns 42.</summary>
+    private static byte[] SelfDestructingOnCalldata() => Prepare.EvmCode
+        .Op(Instruction.CALLDATASIZE).Op(Instruction.ISZERO).PushData(7).Op(Instruction.JUMPI)
+        .Op(Instruction.CALLER).Op(Instruction.SELFDESTRUCT)
+        .Op(Instruction.JUMPDEST).Data(Returning(42)).Done;
 
     [Test]
     public async Task Code_deployed_over_an_empty_code_override_replaces_it()
@@ -132,11 +141,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new TestSpecProvider(eip6780 ? Cancun.Instance : Shanghai.Instance));
 
-        // Called with calldata it self-destructs; called without, it jumps to the JUMPDEST at 7 and returns 42.
-        byte[] selfDestructor = Prepare.EvmCode
-            .Op(Instruction.CALLDATASIZE).Op(Instruction.ISZERO).PushData(7).Op(Instruction.JUMPI)
-            .Op(Instruction.CALLER).Op(Instruction.SELFDESTRUCT)
-            .Op(Instruction.JUMPDEST).Data(Returning(42)).Done;
+        byte[] selfDestructor = SelfDestructingOnCalldata();
         // Returns the size of the self-destructor's code and what a call to it returns.
         byte[] observer = Prepare.EvmCode
             .PushData(OverrideSelfDestructor).Op(Instruction.EXTCODESIZE).PushData(0).Op(Instruction.MSTORE)
@@ -164,5 +169,36 @@ public partial class EthRpcModuleTests
             ? new byte[64]
             : Bytes.Concat(((UInt256)selfDestructor.Length).ToBigEndian(), ((UInt256)42).ToBigEndian());
         Assert.That(JToken.Parse(serialized)["result"]?.Last?["calls"]?.Last?["returnData"]?.Value<string>(), Is.EqualTo(expected.ToHexString(true)), serialized);
+    }
+
+    // The address a precompile was moved away from is an ordinary account, so once the code overriding it
+    // self-destructs before Cancun it has no code left, and the precompile runs only where it was moved to.
+    [Test]
+    public async Task Selfdestruct_of_a_code_override_over_a_moved_precompile_leaves_no_code()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Shanghai.Instance));
+        Address identity = IdentityPrecompile.Address;
+        Dictionary<Address, AccountOverride> stateOverride = new()
+        {
+            [identity] = new() { Code = SelfDestructingOnCalldata(), MovePrecompileToAddress = OverrideMovedPrecompile },
+        };
+        byte[] input = [0xaa, 0xbb];
+        LegacyTransactionForRpc destroy = new() { From = TestItem.AddressA, To = identity, Input = [1], Gas = 200_000, GasPrice = 0 };
+        LegacyTransactionForRpc callOrigin = new() { From = TestItem.AddressA, To = identity, Input = input, Gas = 200_000, GasPrice = 0 };
+        LegacyTransactionForRpc callMoved = new() { From = TestItem.AddressA, To = OverrideMovedPrecompile, Input = input, Gas = 200_000, GasPrice = 0 };
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = [new() { StateOverrides = stateOverride, Calls = [destroy, callOrigin, callMoved] }]
+        };
+
+        string serialized = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
+
+        JToken? calls = JToken.Parse(serialized)["result"]?[0]?["calls"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls?.Select(static call => call["status"]?.Value<string>()), Is.EqualTo(new[] { "0x1", "0x1", "0x1" }), serialized);
+            // The identity precompile echoes its input, so only the call to where it was moved gets the input back.
+            Assert.That(calls?.Select(static call => call["returnData"]?.Value<string>()), Is.EqualTo(new[] { "0x", "0x", input.ToHexString(true) }), serialized);
+        }
     }
 }
