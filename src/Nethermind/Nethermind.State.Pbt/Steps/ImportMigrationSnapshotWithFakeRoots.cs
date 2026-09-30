@@ -18,7 +18,7 @@ namespace Nethermind.State.Pbt.Steps;
 /// Runs before <see cref="ReviewBlockTree"/> so the startup fixer finds the imported state. A restart with the
 /// same snapshot reuses the import.
 /// </remarks>
-[RunnerStepDependencies(dependencies: [typeof(LoadGenesisBlock)], dependents: [typeof(ReviewBlockTree), typeof(InitializeNetwork)])]
+[RunnerStepDependencies(dependencies: [typeof(LoadGenesisBlock), typeof(StartMonitoring)], dependents: [typeof(ReviewBlockTree), typeof(InitializeNetwork)])]
 internal sealed class ImportMigrationSnapshotWithFakeRoots(
     PbtAnchorPublication publication,
     IBlockTree blockTree,

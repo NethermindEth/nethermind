@@ -36,7 +36,7 @@ public class PbtExportTests
         RunnerStepDependenciesAttribute dependencies = (RunnerStepDependenciesAttribute)Attribute.GetCustomAttribute(
             typeof(ExportPbtImage), typeof(RunnerStepDependenciesAttribute))!;
 
-        Assert.That(dependencies.Dependencies, Does.Contain(typeof(InitializeNetwork)),
+        Assert.That(dependencies.Dependencies, Is.SupersetOf(new[] { typeof(InitializeNetwork), typeof(StartMonitoring) }),
             "an anchor ahead of the persisted state is only reachable once the node syncs");
     }
 

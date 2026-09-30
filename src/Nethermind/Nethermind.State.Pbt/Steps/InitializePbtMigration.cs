@@ -9,7 +9,7 @@ namespace Nethermind.State.Pbt.Steps;
 
 /// <summary>Starts seeding the native PBT anchor and the BAL followers before networking, RPC or production.</summary>
 /// <remarks>A configured anchor import runs in the background; the BAL follower starts once it lands.</remarks>
-[RunnerStepDependencies(dependencies: [typeof(LoadGenesisBlock)], dependents: [typeof(InitializeNetwork)])]
+[RunnerStepDependencies(dependencies: [typeof(LoadGenesisBlock), typeof(StartMonitoring)], dependents: [typeof(InitializeNetwork)])]
 internal sealed class InitializePbtMigration(
     PbtMigrationBootstrap bootstrap,
     PbtMigrationImport import,
