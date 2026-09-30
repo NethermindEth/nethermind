@@ -290,6 +290,71 @@ public class ReadOnlySnapshotBundleFilterTests
 
     [Test]
     [NonParallelizable]
+    public void A_filter_the_test_hook_published_is_freed_without_a_key_count_check()
+    {
+        // The hook's filter holds no keys while the snapshots hold three: in a Debug build, checking its count at
+        // cleanup stops the whole test process.
+        Address address = Addresses[0];
+        using LayerStack stack = new();
+        stack.AddInMemory(MakeSnapshot(0, c =>
+        {
+            c.Storages[(address, 1)] = 1;
+            c.Storages[(address, 2)] = 2;
+        }));
+        stack.AddInMemory(MakeSnapshot(1, c => c.Storages[(address, 1)] = 3));
+
+        ReadOnlySnapshotBundle bundle = stack.CreateBundle(RealBitsPerKey, detailedMetrics: false, out _);
+        Bloom filter = Bloom.AlwaysTrue();
+        bundle.PublishSlotFilter(filter);
+        bundle.GetSlotFiltered(-1, (address, (UInt256)1), out UInt256? value);
+        bundle.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo((UInt256?)3));
+            Assert.That(bundle.SlotFilter, Is.Null);
+            Assert.That(() => filter.MightContain(1), Throws.TypeOf<ObjectDisposedException>());
+        }
+    }
+
+    [Test]
+    public void Key_count_check_catches_a_slot_key_gained_after_the_build()
+    {
+        Address address = Addresses[0];
+        SnapshotContent? newest = null;
+        using LayerStack stack = new();
+        stack.AddInMemory(MakeSnapshot(0, c => c.Storages[(address, 1)] = 1));
+        stack.AddInMemory(MakeSnapshot(1, c =>
+        {
+            newest = c;
+            c.Storages[(address, 2)] = 2;
+        }));
+
+        using ReadOnlySnapshotBundle bundle = stack.CreateBundle(RealBitsPerKey, detailedMetrics: false, out _);
+        bool beforeBuild = bundle.SlotFilterMatchesSnapshots;
+        bundle.GetSlotFiltered(-1, (address, (UInt256)1), out _);
+        bool afterBuild = bundle.SlotFilterMatchesSnapshots;
+
+        // No snapshot is written after it is created; this one is, to break the filter.
+        HashedKey<(Address, UInt256)> gained = (address, (UInt256)3);
+        newest!.Storages[gained] = 3;
+        bool afterGain = bundle.SlotFilterMatchesSnapshots;
+
+        // Undone before cleanup, whose Debug.Assert of this check would otherwise stop the test process.
+        newest.Storages.TryRemove(gained, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.SlotFilter, Is.Not.Null);
+            Assert.That(beforeBuild, Is.True, "nothing is built yet");
+            Assert.That(afterBuild, Is.True, "no snapshot changed since the build");
+            Assert.That(afterGain, Is.False, "the filter misses the gained key");
+            Assert.That(bundle.SlotFilterMatchesSnapshots, Is.True);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
     public void Concurrent_reads_racing_the_build_match_the_plain_read()
     {
         const int threads = 8;
@@ -588,6 +653,9 @@ public class ReadOnlySnapshotBundleFilterTests
             }
 
             CheckSnapshotBundle(rng, stack, bundle, mode, errors);
+
+            // What cleanup asserts in a Debug build, checked here in every build.
+            if (!bundle.SlotFilterMatchesSnapshots) errors.Add($"{mode}: the snapshots' slot keys changed after the filter was built");
         }
 
         Assert.That(errors, Is.Empty,
