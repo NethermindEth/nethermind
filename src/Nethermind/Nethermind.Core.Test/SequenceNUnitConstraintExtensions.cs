@@ -16,6 +16,7 @@ public static class SequenceNUnitConstraintExtensions
     {
         public static SequenceEqualConstraint<T> SequenceEqualTo<T>(T[] expected) => new((ReadOnlyMemory<T>)expected);
         public static SequenceEqualConstraint<T> SequenceEqualTo<T>(ReadOnlyMemory<T> expected) => new(expected);
+        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(Memory<T> expected) => new((ReadOnlyMemory<T>)expected);
         public static SequenceEqualConstraint<T> SequenceEqualTo<T>(IEnumerable<T> expected) => new(expected);
 
         /// <remarks>Copies <paramref name="expected"/> once, as a constraint cannot hold a span.</remarks>

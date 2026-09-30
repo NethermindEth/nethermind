@@ -25,6 +25,7 @@ public class SequenceNUnitConstraintExtensionsTests
     {
         Assert.That(actual, Is.SequenceEqualTo(Expected));
         Assert.That(actual, Is.SequenceEqualTo((ReadOnlyMemory<byte>)Expected));
+        Assert.That(actual, Is.SequenceEqualTo((Memory<byte>)Expected));
         Assert.That(actual, Is.SequenceEqualTo(new List<byte>(Expected)));
         Assert.That(actual, Is.SequenceEqualTo("\x01\x02\x03"u8));
     }
