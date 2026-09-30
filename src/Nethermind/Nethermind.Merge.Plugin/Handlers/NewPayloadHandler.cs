@@ -497,7 +497,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         public ReadOnlyMemory<byte> GetCode(Address address)
         {
             TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? ReadOnlyMemory<byte>.Empty : state.GetCode(account.CodeHash);
+            return !account.HasCode ? Array.Empty<byte>() : state.GetCode(account.CodeHash);
         }
 
         /// <inheritdoc/>
