@@ -51,6 +51,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // A peer that answers status and ping but fails sync requests must stay out of selection for longer than a maintenance round.
     internal static readonly TimeSpan RequestFailureDecayInterval = TimeSpan.FromMinutes(1);
 
+    // A peer that just failed a request is offered after the others for this long; it is never withheld, so a lone custodian still serves.
+    internal static readonly TimeSpan RequestFailureCooldown = TimeSpan.FromSeconds(30);
+
     // The admission MetaData request holds the dial slot until it returns, so it must not wait out the full request timeout.
     internal static readonly TimeSpan AdmissionMetadataTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(30);
@@ -387,6 +390,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// A peer at the request-failure limit is not handed out, but it is not dropped for request failures alone either: it can be the
     /// last custodian of a sampled column (fulu/das-core.md), so its columns are sought elsewhere while it stays connected.
     /// A passing health check does not readmit it: it returns once it serves a request or its failures decay (<see cref="RequestFailureDecayInterval"/> each).
+    /// A peer that failed a request within <see cref="RequestFailureCooldown"/> is listed after every peer that did not, whatever its head slot, so a batch that
+    /// chose it once does not choose it again while others exist; it is still listed, and serves when it is the only peer that can.
     /// </remarks>
     public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
     {
@@ -414,8 +419,50 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         if (noStatus + behind + failing > 0 && _logger.IsDebug) _logger.Debug($"Sync peers for head slot {minHeadSlot}: {best.Count} usable; left out {noStatus} without status, {behind} behind, {failing} at the request-failure limit");
 
-        best.Sort(static (a, b) => b.HeadSlot.CompareTo(a.HeadSlot));
-        return best;
+        long now = _timestamper.UtcNowOffset.UtcTicks;
+        return OrderForSelection(best, peer => peer.IsCoolingDown(now), static peer => peer.HeadSlot);
+    }
+
+    /// <summary>Orders peers that did not fail a request recently before those that did, then by head slot, best first.</summary>
+    /// <remarks>Each key is read once per peer before sorting: a failure or status that lands mid-sort would make a live comparator inconsistent, and the sort throws on that.</remarks>
+    internal static T[] OrderForSelection<T>(IReadOnlyList<T> peers, Func<T, bool> isCoolingDown, Func<T, ulong> headSlot)
+    {
+        (bool Cooling, ulong HeadSlot, T Peer)[] keyed = new (bool, ulong, T)[peers.Count];
+        for (int i = 0; i < keyed.Length; i++)
+        {
+            keyed[i] = (isCoolingDown(peers[i]), headSlot(peers[i]), peers[i]);
+        }
+
+        Array.Sort(keyed, static (a, b) =>
+        {
+            int byCooldown = a.Cooling.CompareTo(b.Cooling);
+            return byCooldown != 0 ? byCooldown : b.HeadSlot.CompareTo(a.HeadSlot);
+        });
+
+        T[] ordered = new T[keyed.Length];
+        for (int i = 0; i < ordered.Length; i++)
+        {
+            ordered[i] = keyed[i].Peer;
+        }
+
+        return ordered;
+    }
+
+    /// <summary>
+    /// Records a protocol violation by the requester of an inbound stream against the connected peer with this id, also when selection leaves
+    /// that peer out (at the request-failure limit, or behind a head slot): it is still the one that broke the protocol.
+    /// </summary>
+    /// <returns><c>false</c> when no connected peer has this id.</returns>
+    /// <remarks>Not a failed request of ours, so the peer is not put behind others in <see cref="GetBestPeers"/>.</remarks>
+    internal bool TryReportInboundViolation(PeerId peerId, string detail)
+    {
+        if (!TryFindConnected(peerId.ToString(), out ManagedPeer? connected))
+        {
+            return false;
+        }
+
+        connected!.ReportFailure(PeerFailureReason.ProtocolViolation, detail, ownRequest: false);
+        return true;
     }
 
     /// <summary>
@@ -1286,6 +1333,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     internal static long MessagesSentForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).MessagesSent;
 
+    internal static long FailuresReportedForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).FailuresReported;
+
     /// <summary>Internal so a test can put an address straight into the "dialing" reservation set,
     /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.
     /// <paramref name="enr"/> lets a test also exercise the Beacon API's <c>enr</c> field without a live dial.</summary>
@@ -1315,6 +1364,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private readonly object _requestFailureLock = new();
         private int _requestFailures;
         private DateTimeOffset _requestFailuresDecayFrom;
+        private long _cooldownUntilTicks;
         private int _consecutiveFailures;
         private bool _violatedProtocol;
         private long _messagesSent;
@@ -1354,6 +1404,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         public bool IsAtFailureLimit => RequestFailures >= MaxConsecutiveFailures;
+
+        /// <summary>Whether a request of ours failed within <see cref="RequestFailureCooldown"/> of <paramref name="nowTicks"/>. Unlike <see cref="RequestFailures"/>, a served request does not end it.</summary>
+        public bool IsCoolingDown(long nowTicks) => nowTicks < Volatile.Read(ref _cooldownUntilTicks);
 
         /// <summary>A reply since the last passing health check failed a content check, which a timeout in the same run does not excuse.</summary>
         public bool ViolatedProtocolSinceLastHealthyCheck => Volatile.Read(ref _violatedProtocol);
@@ -1492,9 +1545,16 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return await Served(p2p.RequestExecutionPayloadEnvelopesByRootAsync(Session, roots, token));
         }
 
-        public void ReportFailure(PeerFailureReason reason, string? detail = null)
+        public void ReportFailure(PeerFailureReason reason, string? detail = null) => ReportFailure(reason, detail, ownRequest: true);
+
+        /// <param name="ownRequest">The failure is of a request this node sent, so the peer is offered after others for <see cref="RequestFailureCooldown"/>.</param>
+        public void ReportFailure(PeerFailureReason reason, string? detail, bool ownRequest)
         {
             Interlocked.Increment(ref _failuresReported);
+            if (ownRequest)
+            {
+                Volatile.Write(ref _cooldownUntilTicks, (manager._timestamper.UtcNowOffset + RequestFailureCooldown).UtcTicks);
+            }
 
             // A dead session means every further request would fail, so skip the failure budget and
             // let the next maintenance round (or the dial-loop cooldown) reconnect instead of

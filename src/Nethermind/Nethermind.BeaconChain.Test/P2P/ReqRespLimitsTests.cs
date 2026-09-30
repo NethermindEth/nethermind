@@ -31,37 +31,37 @@ public class ReqRespLimitsTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
     [Test]
-    public void Concurrent_inbound_requests_beyond_the_cap_are_refused()
+    public async Task Concurrent_inbound_requests_beyond_the_cap_are_refused()
     {
         TestReqRespProtocol protocol = new();
         ISessionContext peerA = FakeSessionContext.ForNewPeer();
 
         long before = FailureCount(TestReqRespProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded);
 
-        IDisposable? slot1 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
-        IDisposable? slot2 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
+        IAsyncDisposable? slot1 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
+        IAsyncDisposable? slot2 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
         Assert.That(slot1, Is.Not.Null, "first concurrent request admitted");
         Assert.That(slot2, Is.Not.Null, "second concurrent request admitted (at the cap)");
 
         // A breakage that removed the cap (e.g. always returning a slot) would let this pass too,
         // so the sibling assert below on FailureCount is what actually pins the cap at 2.
-        IDisposable? slot3 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
+        IAsyncDisposable? slot3 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
         Assert.That(slot3, Is.Null, "third concurrent request from the same peer refused");
         Assert.That(FailureCount(TestReqRespProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
 
         // A different peer has its own budget: the cap is per-peer, not global to the protocol.
         ISessionContext peerB = FakeSessionContext.ForNewPeer();
-        IDisposable? otherPeerSlot = protocol.TryEnter(peerB, TestReqRespProtocol.ProtocolId);
+        IAsyncDisposable? otherPeerSlot = protocol.TryEnter(peerB, TestReqRespProtocol.ProtocolId);
         Assert.That(otherPeerSlot, Is.Not.Null, "a different peer is not affected by peer A's cap");
 
         // Releasing a slot frees budget for the same peer to be admitted again.
-        slot1!.Dispose();
-        IDisposable? slot4 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
+        await slot1!.DisposeAsync();
+        IAsyncDisposable? slot4 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
         Assert.That(slot4, Is.Not.Null, "releasing a slot allows another request to be admitted");
 
-        slot2!.Dispose();
-        slot4!.Dispose();
-        otherPeerSlot!.Dispose();
+        await slot2!.DisposeAsync();
+        await slot4!.DisposeAsync();
+        await otherPeerSlot!.DisposeAsync();
     }
 
     [Test]
@@ -188,7 +188,7 @@ public class ReqRespLimitsTests
     {
         public const string ProtocolId = "/test/reqresp-limits/1";
 
-        public IDisposable? TryEnter(ISessionContext context, string protocolId) => TryEnterInbound(context, protocolId);
+        public IAsyncDisposable? TryEnter(ISessionContext context, string protocolId) => TryEnterInbound(context, protocolId);
     }
 
     /// <summary>Exposes the protected chunked-response reader for direct testing.</summary>

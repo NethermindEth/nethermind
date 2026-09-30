@@ -42,7 +42,7 @@ public sealed class GoodbyeProtocol : ReqRespProtocolBase, ISessionProtocol<ulon
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
+        await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
             return;
