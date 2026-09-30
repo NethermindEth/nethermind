@@ -420,9 +420,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Hash256 hash = block.GetOrCalculateHash();
         // A decoded payload has no EIP-8037 dimensions, and the state root does not carry them, so without
         // what execution recorded this answers on a coarser gas rule than the processing path — the same
-        // block and list could be judged either way. An entry cached under a different list still holds them.
-        if (_latestBlocks is not null && _latestBlocks.TryGet(hash, out CachedPayloadResult executed))
-            block.Header.GasUsedPerDimension = executed.GasUsedPerDimension;
+        // block and list could be judged either way.
+        block.Header.GasUsedPerDimension = RecordedGasDimensions(hash);
 
         ValidationResult result = InclusionListValidator.IsSatisfied(
             block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
@@ -434,6 +433,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             ? NewPayloadV1Result.Valid(block.Hash)
             : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
     }
+
+    /// <summary>The EIP-8037 gas dimensions execution recorded for the block <paramref name="hash"/> names.</summary>
+    /// <remarks>Two in-memory copies outlive the payload the dimensions were recorded from — the cached answer,
+    /// which a resend under a different inclusion list misses only once evicted, and the tree's own block, which
+    /// <c>BranchProcessor</c> stamps. Null once neither is left: nothing persists them, and <see cref="BlockHeader.GasUsed"/>
+    /// reduces them to a maximum that cannot be inverted.</remarks>
+    private (ulong Execution, ulong State)? RecordedGasDimensions(Hash256 hash) =>
+        (_latestBlocks is not null && _latestBlocks.TryGet(hash, out CachedPayloadResult cached)
+            ? cached.GasUsedPerDimension
+            : null)
+        ?? _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.GasUsedPerDimension;
 
     // Only a "valid block" outcome short-circuits: never resurrect a stale Invalid/Syncing for a block
     // the tree treats as canonical.

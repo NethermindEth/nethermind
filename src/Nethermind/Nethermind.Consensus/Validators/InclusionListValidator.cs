@@ -111,8 +111,8 @@ public static class InclusionListValidator
     /// <remarks>EIP-8037 admits a transaction only if both its execution and its state reservation fit the
     /// matching dimension, so measuring it against the header's max(execution, state) rejects transactions the
     /// spec judges includable. The dimensions reach a payload through the block it was processed as, so only a
-    /// re-check outliving that — a restart, or the payload cache evicting the block — is left with the max
-    /// alone, and reports the censorship this measures as absent.</remarks>
+    /// re-check outliving every in-memory copy of that block is left with the max alone, and reports the
+    /// censorship this measures as absent.</remarks>
     private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec)
     {
         // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the

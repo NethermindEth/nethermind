@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
@@ -783,6 +784,59 @@ public partial class EngineModuleTests
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
                 "the head's own re-execution is committing, so its list can be judged against the state it restores");
             Assert.That(result.Data.InclusionListSatisfied, Is.False);
+        }
+    }
+
+    // The re-check must judge the resent list on the dimensions execution recorded, not on the max(execution,
+    // state) the header reduces them to. The two differ only above the EIP-7825 execution cap: past it a
+    // transaction reserves the cap on the execution dimension but its whole gas on the state one, so an entry
+    // that fits both dimensions reads as unappendable against the max, and real censorship goes unreported.
+    [TestCase(50, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions")]
+    [TestCase(1, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions_after_the_payload_cache_evicts_it")]
+    public async Task NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions(int newPayloadCacheSize)
+    {
+        // Genesis is raised to the production target so the block's remaining gas exceeds the execution cap;
+        // the 4M default leaves no room for a transaction big enough to tell the two rules apart.
+        const ulong gasLimit = 30_000_000UL;
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = newPayloadCacheSize },
+            configurer: builder => builder.WithGenesisPostProcessor((genesis, _) => genesis.Header.GasLimit = gasLimit));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        // A transaction of its own, so the block's execution dimension outgrows its state dimension.
+        Transaction included = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[][] firstList = [Rlp.Encode(included).Bytes];
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(chain.BlockTree.HeadHash, Keccak.Zero, chain.BlockTree.HeadHash),
+            BuildBogotaPayloadAttributes(firstList, targetGasLimit: gasLimit, timestamp: Timestamper.UnixTime.Seconds + 2, slotNumber: 2));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 first = payloadResult.Data!.ExecutionPayload;
+
+        await rpc.engine_newPayloadV6(first, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, firstList);
+        await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3);
+
+        Block executed = chain.BlockTree.FindBlock(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
+        (ulong execution, ulong state) = executed.Header.GasUsedPerDimension!.Value;
+        Assert.That(execution, Is.GreaterThan(state), "the max must exceed the state dimension for the two rules to differ");
+
+        // Reserves the whole remaining state dimension, and only the execution cap on the execution dimension:
+        // appendable on the recorded dimensions, over budget against max(execution, state).
+        Transaction censored = Build.A.Transaction
+            .WithNonce(0).WithGasLimit(gasLimit - state).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        Assert.That(censored.GasLimit, Is.GreaterThan(gasLimit - execution), "the entry must not fit the max");
+
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
+            first, [], Keccak.Zero, [], [Rlp.Encode(censored).Bytes]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(resend.Data.InclusionListSatisfied, Is.False,
+                "the entry the block left room for on both dimensions makes the block a censor");
         }
     }
 
