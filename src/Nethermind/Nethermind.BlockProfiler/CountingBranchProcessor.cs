@@ -91,6 +91,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
             Nethermind.State.Flat.TrieNodeCache.StepCounter = static () => ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample sample) ? sample.Instructions : 0;
         _blockProcessor = blockProcessor;
         _logger = logManager.GetClassLogger<CountingBranchProcessor>();
+        LargeAllocationListener.StartIfEnabled(logManager);
         _inner.BlocksProcessing += OnBlocksProcessing;
         _inner.BlockProcessing += OnBlockProcessing;
         _inner.BlockProcessed += OnBlockProcessed;
@@ -144,6 +145,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _judgedRead = false;
         t_commitPhasesSeen = 0;
         Nethermind.State.Flat.SnapshotCompactor.LastCompaction = (0, 0, -2);
+        LargeAllocationListener.SetBlock(e.Block.Number, ThreadAffinity.CurrentOsThreadId());
         _block = Window.Start(_blockDiag);
     }
 
@@ -186,6 +188,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}{steps}{popSplit} cmp={inputs}/{compactedInputs}/{added}{phaseCycles}{host}");
         if (DiagnosticCounters.Enabled && Interlocked.Exchange(ref s_hostLogged, 1) == 0 && _logger.IsInfo)
             _logger.Info($"EXPB-COUNT host{HostActivity.Facts(s_pinCpu)}");
+        LargeAllocationListener.Flush();
     }
 
     // popsteps: the cache fill's per-node steps summed over the block (see TrieNodeCache.LastAddSteps).

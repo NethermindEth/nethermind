@@ -44,7 +44,7 @@ internal static unsafe partial class ThreadAffinity
     {
         if (!OperatingSystem.IsLinux() || cpu < 0 || cpu >= MaskWords * 64) return 0;
 
-        int self = (int)syscall(RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 178 : 186);
+        int self = CurrentOsThreadId();
         int moved = 0;
         ulong* mask = stackalloc ulong[MaskWords];
         string[] tasks;
@@ -70,6 +70,10 @@ internal static unsafe partial class ThreadAffinity
         }
         return moved;
     }
+
+    /// <summary>The calling thread's kernel id (gettid), or -1 off Linux.</summary>
+    public static int CurrentOsThreadId() =>
+        OperatingSystem.IsLinux() ? (int)syscall(RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? 178 : 186) : -1;
 
     [LibraryImport("libc", SetLastError = true)]
     private static partial long syscall(long number);
