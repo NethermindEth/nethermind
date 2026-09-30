@@ -26,6 +26,14 @@ namespace Nethermind.Consensus.Tracing
         /// <param name="tracer">Trace to act on block processing events.</param>
         void Execute(Block block, IBlockTracer tracer);
 
+        /// <summary>
+        /// Allows to trace an arbitrarily constructed block of signed transactions, validating each as block inclusion does:
+        /// its signed nonce must be the sender's, its sender must not have deployed code, and its fees are validated and charged.
+        /// </summary>
+        /// <param name="block">Block to trace.</param>
+        /// <param name="tracer">Trace to act on block processing events.</param>
+        void ExecuteSigned(Block block, IBlockTracer tracer);
+
         void Accept<TCtx>(ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>;
     }
 }

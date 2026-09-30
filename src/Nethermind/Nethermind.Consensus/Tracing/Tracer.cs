@@ -32,6 +32,8 @@ namespace Nethermind.Consensus.Tracing
 
         public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeOptions);
 
+        public void ExecuteSigned(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, TraceProcessingOptions.ReadOnlySigned);
+
         public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>
         {
             ArgumentNullException.ThrowIfNull(visitor);

@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
@@ -35,6 +36,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -54,10 +56,14 @@ public class TraceRpcModuleTests
 {
     private class Context
     {
-        public async Task Build(ISpecProvider? specProvider = null, bool isAura = false)
+        public async Task Build(ISpecProvider? specProvider = null, bool isAura = false, Action<ContainerBuilder>? configurer = null)
         {
             JsonRpcConfig = new JsonRpcConfig();
-            Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
+            Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(builder =>
+            {
+                if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+                configurer?.Invoke(builder);
+            });
 
             await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether);
             await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether);
@@ -1666,12 +1672,12 @@ public class TraceRpcModuleTests
         [Values(TxType.Legacy, TxType.EIP1559)] TxType type, [Values] bool otherChain)
     {
         Context context = new();
-        await context.Build();
+        await context.Build(new TestSpecProvider(Prague.Instance));
         using TestRpcBlockchain blockchain = context.Blockchain;
         ulong chainId = blockchain.SpecProvider.ChainId;
         ulong signedChainId = otherChain ? chainId + 1 : chainId;
 
-        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, SignedTransaction(type, signedChainId));
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, SignedTransaction(blockchain, type, signedChainId));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1713,7 +1719,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
-        Transaction transaction = SignedTransaction(TxType.Legacy, blockchain.SpecProvider.ChainId, isEip155Enabled: false);
+        Transaction transaction = SignedTransaction(blockchain, TxType.Legacy, blockchain.SpecProvider.ChainId, isEip155Enabled: false);
 
         ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, transaction);
 
@@ -1731,7 +1737,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
-        Transaction transaction = SignedTransaction(TxType.Legacy, blockchain.SpecProvider.ChainId, isEip155Enabled: false);
+        Transaction transaction = SignedTransaction(blockchain, TxType.Legacy, blockchain.SpecProvider.ChainId, isEip155Enabled: false);
         Signature signature = transaction.Signature!;
         transaction.Signature = new Signature(signature.R.Span, signature.S.Span, signature.V + 2);
 
@@ -1752,7 +1758,7 @@ public class TraceRpcModuleTests
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         ulong chainId = blockchain.SpecProvider.ChainId;
-        Transaction transaction = SignedTransaction(type, otherChain ? chainId + 1 : chainId);
+        Transaction transaction = SignedTransaction(blockchain, type, otherChain ? chainId + 1 : chainId);
         Signature signature = transaction.Signature!;
         UInt256 highS = SecP256k1Curve.N - new UInt256(signature.SAsSpan, isBigEndian: true);
         transaction.Signature = new Signature(new UInt256(signature.RAsSpan, isBigEndian: true), highS, signature.V);
@@ -1777,7 +1783,7 @@ public class TraceRpcModuleTests
         using TestRpcBlockchain blockchain = context.Blockchain;
         ulong chainId = blockchain.SpecProvider.ChainId;
 
-        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, SignedTransaction(type, chainId + 1));
+        ResultWrapper<ParityTxTraceFromReplay> traces = TraceRaw(context, SignedTransaction(blockchain, type, chainId + 1));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1793,8 +1799,9 @@ public class TraceRpcModuleTests
         }
     }
 
-    private static Transaction SignedTransaction(TxType type, ulong chainId, bool isEip155Enabled = true) =>
+    private static Transaction SignedTransaction(TestRpcBlockchain blockchain, TxType type, ulong chainId, bool isEip155Enabled = true) =>
         Build.A.Transaction
+            .WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
             .WithType(type)
             .WithChainId(type == TxType.Legacy ? null : chainId)
             .WithTo(TestItem.AddressC)
@@ -1811,6 +1818,150 @@ public class TraceRpcModuleTests
     {
         Assert.That(traces.Result.ResultType, Is.EqualTo(ResultType.Success), traces.Result.Error);
         Assert.That(traces.Data?.Action?.From, Is.EqualTo(TestItem.AddressA));
+    }
+
+    private static async Task<JToken> TraceRawSerialized(Context context, Transaction transaction) =>
+        JToken.Parse(await RpcTest.TestSerializedRequest(context.TraceRpcModule,
+            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes, new[] { "trace" }));
+
+    private static void AssertRejected(JToken response, string error)
+    {
+        Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.TransactionRejected), response.ToString());
+        Assert.That(response["error"]?["message"]?.Value<string>(), Does.StartWith(error), response.ToString());
+        Assert.That(response["result"], Is.Null, response.ToString());
+    }
+
+    // As in block inclusion, the signed nonce must be the sender's; it is not replaced with the sender's nonce, which for
+    // a CREATE would also change the created address.
+    [Test]
+    public async Task Trace_rawTransaction_rejects_a_nonce_other_than_the_senders(
+        [Values(-1, 0, 1)] int nonceOffset, [Values] bool create)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Assert.That(nonce, Is.GreaterThan(0UL), "precondition: the sender has sent transactions");
+        TransactionBuilder<Transaction> builder = Build.A.Transaction
+            .WithNonce((ulong)((long)nonce + nonceOffset))
+            .WithGasLimit(100_000)
+            .WithGasPrice(0);
+        Transaction transaction = (create ? builder.WithTo(null).WithCode([0x00]) : builder.WithTo(TestItem.AddressC))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        JToken response = await TraceRawSerialized(context, transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (nonceOffset == 0)
+            {
+                JToken? trace = response["result"]?["trace"]?[0];
+                Assert.That(trace?["action"]?["from"]?.Value<string>(), Is.EqualTo(TestItem.AddressA.ToString()), response.ToString());
+                if (create)
+                {
+                    Assert.That(trace?["result"]?["address"]?.Value<string>(),
+                        Is.EqualTo(ContractAddress.From(TestItem.AddressA, nonce).ToString()), response.ToString());
+                }
+            }
+            else
+            {
+                AssertRejected(response, nonceOffset < 0 ? "nonce too low" : "nonce too high");
+            }
+        }
+    }
+
+    public enum RejectedByValidator { TypeNotInFork, PriorityFeeAboveFeeCap, GasAboveCap, NonceAtCap }
+
+    // Block inclusion also applies the node's transaction validator: the fork must enable the type, and the fee, gas limit
+    // and nonce fields must be valid.
+    [Test]
+    public async Task Trace_rawTransaction_rejects_a_transaction_the_transaction_validator_rejects([Values] RejectedByValidator rejected)
+    {
+        Context context = new();
+        // The default test chain is on Berlin, which doesn't enable EIP-1559 transactions; Osaka caps the gas limit (EIP-7825).
+        await context.Build(rejected == RejectedByValidator.TypeNotInFork ? null : new TestSpecProvider(Osaka.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(blockchain.SpecProvider.ChainId)
+            .WithNonce(rejected == RejectedByValidator.NonceAtCap ? ulong.MaxValue : blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithTo(TestItem.AddressC)
+            .WithGasLimit(rejected == RejectedByValidator.GasAboveCap ? Eip7825Constants.DefaultTxGasLimitCap + 1 : 100_000)
+            .WithMaxFeePerGas(0)
+            .WithMaxPriorityFeePerGas(rejected == RejectedByValidator.PriorityFeeAboveFeeCap ? UInt256.One : UInt256.Zero)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        JToken response = await TraceRawSerialized(context, transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertRejected(response, rejected switch
+            {
+                RejectedByValidator.TypeNotInFork => "InvalidTxType",
+                RejectedByValidator.PriorityFeeAboveFeeCap => TxErrorMessages.InvalidMaxPriorityFeePerGas,
+                RejectedByValidator.GasAboveCap => "TxGasLimitCapExceeded",
+                _ => TxErrorMessages.NonceTooHigh,
+            });
+        }
+    }
+
+    // EIP-3607: block inclusion rejects a sender with deployed code, unless the code is an EIP-7702 delegation.
+    [Test]
+    public async Task Trace_rawTransaction_rejects_a_sender_with_code_unless_it_is_a_delegation([Values] bool delegated)
+    {
+        byte[] code = delegated ? [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes] : [0x00];
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }, configurer: builder =>
+            builder.WithGenesisPostProcessor((_, state) =>
+            {
+                state.CreateAccount(TestItem.AddressF, 1.Ether);
+                state.InsertCode(TestItem.AddressF, code, Prague.Instance);
+            }));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(blockchain.SpecProvider.ChainId)
+            .WithTo(TestItem.AddressC)
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(blockchain.BlockTree.Head!.BaseFeePerGas)
+            .WithMaxPriorityFeePerGas(0)
+            .SignedAndResolved(TestItem.PrivateKeyF)
+            .TestObject;
+
+        JToken response = await TraceRawSerialized(context, transaction);
+
+        if (delegated)
+        {
+            Assert.That(response["result"]?["trace"]?[0]?["action"]?["from"]?.Value<string>(), Is.EqualTo(TestItem.AddressF.ToString()), response.ToString());
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                AssertRejected(response, "sender has deployed code");
+            }
+        }
+    }
+
+    // Unlike a signed transaction, a call's nonce is accepted but not validated, as in eth_call.
+    [Test]
+    public async Task Trace_call_and_callMany_accept_any_nonce([Values(-1, 0, 1)] int nonceOffset, [Values] bool many)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong nonce = (ulong)((long)blockchain.ReadOnlyState.GetNonce(TestItem.AddressA) + nonceOffset);
+        string call = $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressC}\",\"nonce\":\"0x{nonce:x}\"}}";
+        using JsonDocument request = JsonDocument.Parse(many ? $"[[{call},[\"trace\"]]]" : call);
+
+        string response = many
+            ? await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", request.RootElement, "latest")
+            : await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", request.RootElement, new[] { "trace" }, "latest");
+
+        JToken? result = JToken.Parse(response)["result"];
+        Assert.That((many ? result?[0] : result)?["trace"]?[0]?["action"]?["from"]?.Value<string>(), Is.EqualTo(TestItem.AddressA.ToString()), response);
     }
 
     [Test]
@@ -2109,8 +2260,10 @@ public class TraceRpcModuleTests
         }
     }
 
+    // As in block inclusion, a signed transaction's fee cap must cover the base fee; one priced at zero doesn't run with a
+    // zero base fee as a call does.
     [Test]
-    public async Task Trace_rawTransaction_sees_a_zero_base_fee_only_when_priced_at_zero([Values] bool priced)
+    public async Task Trace_rawTransaction_sees_the_base_fee_and_rejects_a_price_below_it([Values] bool priced)
     {
         (Context context, Address contract, UInt256 baseFee) = await BuildWithBaseFeeContract();
         using TestRpcBlockchain blockchain = context.Blockchain;
@@ -2123,9 +2276,19 @@ public class TraceRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        ResultWrapper<ParityTxTraceFromReplay> trace = context.TraceRpcModule.trace_rawTransaction(TxDecoder.Instance.Encode(transaction).Bytes, ["trace"]);
+        JToken response = await TraceRawSerialized(context, transaction);
 
-        Assert.That(trace.Data.Output, Is.EqualTo((priced ? baseFee : UInt256.Zero).ToBigEndian()), trace.Result.Error);
+        if (priced)
+        {
+            Assert.That(response["result"]?["output"]?.Value<string>(), Is.EqualTo(Word(baseFee)), response.ToString());
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                AssertRejected(response, "max fee per gas less than block base fee");
+            }
+        }
     }
 
     [Test]
@@ -2506,6 +2669,7 @@ public class TraceRpcModuleTests
         config.EnableTracingStreamMode = streaming;
 
         Transaction transaction = Build.A.Transaction
+            .WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
             .WithTo(TestItem.AddressC)
             .WithGasLimit(100_000)
             .WithValue(0)
@@ -2978,6 +3142,7 @@ public class TraceRpcModuleTests
             new JsonRpcConfig(),
             Substitute.For<IBlockchainBridge>(),
             Substitute.For<ISpecProvider>(),
+            Substitute.For<ITxValidator>(),
             Substitute.For<IBlocksConfig>(),
             NullPrefixStateSeedSource.Instance,
             LimboLogs.Instance);

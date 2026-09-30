@@ -15,6 +15,7 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
@@ -33,7 +34,8 @@ public class ParityStyleTracerTests
     [SetUp]
     public async Task Setup()
     {
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        // trace_rawTransaction validates a transaction as block inclusion does, so the fork must enable an access list.
+        ISpecProvider specProvider = new TestSpecProvider(Berlin.Instance);
 
         _blockTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -70,7 +72,7 @@ public class ParityStyleTracerTests
     public void Can_trace_raw_parity_style_berlin_tx()
     {
         // trace_rawTransaction rejects a transaction for another chain, so it is signed for this one.
-        ulong chainId = MainnetSpecProvider.Instance.ChainId;
+        ulong chainId = _blockTree!.ChainId;
         Transaction transaction = Build.A.Transaction
             .WithType(TxType.AccessList)
             .WithChainId(chainId)
