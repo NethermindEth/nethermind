@@ -19,7 +19,6 @@ internal static class Eip8347FixtureState
 {
     public static void Replay(Stream snapshot, Stream preimages, Action<Address, Account, byte[]> account, Action<Address, UInt256, UInt256> storage)
     {
-        PbtSnapshotCodec.ReadHeader(snapshot);
         Dictionary<PbtStorageTreeKey, ValueHash256> leaves = [];
         foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot)) leaves.Add(entry.Key, entry.Leaf);
         PbtPreimageReader reader = new(preimages);

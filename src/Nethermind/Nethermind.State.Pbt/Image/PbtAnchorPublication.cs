@@ -58,8 +58,7 @@ internal sealed class PbtAnchorPublication(
         if (ImportedEarlier(anchor) is { } imported) return imported;
 
         Directory.CreateDirectory(scratchDirectory);
-        snapshot.Position = 0;
-        ValueHash256 claimedRoot = PbtSnapshotCodec.ReadHeader(snapshot);
+        ValueHash256 claimedRoot = PbtSnapshotCodec.ReadRoot(snapshot);
         if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
         // The snapshot's sections do not share one key order, so its read offset is what measures a pass.
         float snapshotLength = snapshot.Length;
@@ -260,7 +259,6 @@ internal sealed class PbtAnchorPublication(
     private static IEnumerable<RebuildEntry> SnapshotLeaves(Stream snapshot, CancellationToken cancellationToken)
     {
         snapshot.Position = 0;
-        PbtSnapshotCodec.ReadHeader(snapshot);
         foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, cancellationToken)) yield return entry;
     }
 

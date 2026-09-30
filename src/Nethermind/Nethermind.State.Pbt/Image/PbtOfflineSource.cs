@@ -73,15 +73,12 @@ internal static class PbtOfflineSource
             Scan();
 
             ulong leafCount = 0;
-            PbtSnapshotLayout layout = new();
             ulong accountCount = (ulong)totals.Accounts;
             // The preimage stream needs nothing from the leaves, so its spool drains alongside the leaf spool's.
             using CancellationTokenSource failed = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            Task<ValueHash256> snapshotDigest = StartDrain(() =>
-            {
-                ValueHash256 root = PbtRightmostGroupStore.CalculateRoot(CountLeaves(), PbtRightmostGroupStore.DefaultWindowSize, workers, failed.Token);
-                return PbtArtifactWriter.WriteSnapshot(snapshot, root, layout, SnapshotLeaves(), failed.Token);
-            });
+            Task<ValueHash256> snapshotDigest = StartDrain(() => PbtArtifactWriter.WriteSnapshot(snapshot, SnapshotLeaves(),
+                written => PbtRightmostGroupStore.CalculateRoot(written, PbtRightmostGroupStore.DefaultWindowSize, workers, failed.Token),
+                failed.Token));
             Task<ValueHash256>? preimageDigest = preimages is null ? null : StartDrain(() => PbtArtifactWriter.WritePreimages(preimages, Accounts(), failed.Token));
             // Joined without the token for the same reason as the scan workers.
             try
@@ -165,34 +162,19 @@ internal static class PbtOfflineSource
                 }
             }
 
-            IEnumerable<RebuildEntry> CountLeaves()
-            {
-                foreach (RebuildEntry entry in Leaves("PBT export hash", (ulong)totals.Leaves))
-                {
-                    leafCount++;
-                    layout.Add(entry);
-                    yield return entry;
-                }
-            }
-
             IEnumerable<RebuildEntry> SnapshotLeaves()
             {
-                foreach (RebuildEntry entry in Leaves("PBT export snapshot", leafCount)) yield return entry;
-                // The snapshot is the spool's last reader, so its runs need not outlive it while the preimage drain finishes.
-                leaves.Dispose();
-            }
-
-            // The spool is drained once to hash and once to write, so each drain names its own phase.
-            IEnumerable<RebuildEntry> Leaves(string phase, ulong total)
-            {
-                ulong drained = 0;
-                using ProgressReporter progress = PbtImageProgress.Start(phase, "leaf", total, logManager);
-                using PbtSortedSpool.Cursor cursor = leaves.Read();
-                while (cursor.MoveNext())
+                using (ProgressReporter progress = PbtImageProgress.Start("PBT export snapshot", "leaf", (ulong)totals.Leaves, logManager))
+                using (PbtSortedSpool.Cursor cursor = leaves.Read())
                 {
-                    progress.Update(++drained);
-                    yield return new RebuildEntry(new PbtStorageTreeKey(cursor.Key), new ValueHash256(cursor.Value));
+                    while (cursor.MoveNext())
+                    {
+                        progress.Update(++leafCount);
+                        yield return new RebuildEntry(new PbtStorageTreeKey(cursor.Key), new ValueHash256(cursor.Value));
+                    }
                 }
+                // The snapshot is the spool's only reader, so its runs need not outlive it while the preimage drain finishes.
+                leaves.Dispose();
             }
 
             IEnumerable<PbtAccountPreimages> Accounts()

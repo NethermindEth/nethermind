@@ -345,7 +345,7 @@ public class PbtAnchorPublicationTests
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
         ValueHash256 expectedRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         using MemoryStream snapshot = new();
-        PbtSnapshotCodec.Write(snapshot, expectedRoot, PbtSnapshotLayout.Of(leaves), leaves);
+        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(expectedRoot));
         snapshot.Position = 0;
 
         ValueHash256 root = await harness.Publication.PublishSnapshot(snapshot, null, harness.Anchor, harness.Scratch.Path, () => true);
@@ -437,7 +437,6 @@ public class PbtAnchorPublicationTests
     private static (MemoryStream Snapshot, MemoryStream Preimages) Corrupt(string name, string corruption)
     {
         using FileStream original = OpenArtifact(name, "snapshot.pbt");
-        PbtSnapshotCodec.ReadHeader(original);
         List<RebuildEntry> leaves = [.. PbtSnapshotCodec.ReadLeaves(original)];
         using FileStream originalPreimages = OpenArtifact(name, "preimages.bin");
         List<PbtAccountPreimages> accounts = ReadPreimages(originalPreimages);
@@ -498,7 +497,7 @@ public class PbtAnchorPublicationTests
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
         ValueHash256 attackerRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         MemoryStream snapshot = new();
-        PbtSnapshotCodec.Write(snapshot, attackerRoot, PbtSnapshotLayout.Of(leaves), leaves);
+        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(attackerRoot));
         snapshot.Position = 0;
         MemoryStream preimages = new();
         PbtPreimageCodec.Write(preimages, accounts);
@@ -601,7 +600,6 @@ public class PbtAnchorPublicationTests
         }
 
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
-        PbtSnapshotCodec.ReadHeader(snapshot);
         using PbtNodeGroupStore oracle = new();
         List<(byte[] Key, byte[]? Value)> leaves = [];
         foreach (RebuildEntry leaf in PbtSnapshotCodec.ReadLeaves(snapshot)) leaves.Add((leaf.Key.Bytes.ToArray(), leaf.Leaf.ToByteArray()));
