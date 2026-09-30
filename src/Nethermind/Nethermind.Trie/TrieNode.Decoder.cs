@@ -46,6 +46,11 @@ namespace Nethermind.Trie
 
         private class TrieNodeDecoder
         {
+            // Experiment switch for the root-branch parallel pass; see UseParallel in RlpEncodeBranch.
+            private static readonly bool s_parallelOnDirtyChildren =
+                Environment.GetEnvironmentVariable("NETHERMIND_EXP_PARALLEL_ON_DIRTY_CHILDREN") == "1";
+            private const int MinDirtyChildrenForParallel = 3;
+
             private const int HashPairSize = 2;
             private const int MinHashBatchSize = 3;
 
@@ -295,6 +300,22 @@ namespace Nethermind.Trie
                 {
                     if (RuntimeInformation.IsSingleProcessor || !canBeParallel)
                     {
+                        return false;
+                    }
+
+                    // Experiment (#10490): only children still to be hashed give the parallel pass work, so a sparse
+                    // update below a full branch hashes its few dirty children on the calling thread.
+                    if (s_parallelOnDirtyChildren)
+                    {
+                        int toHash = 0;
+                        foreach (object? data in BranchChildren(item))
+                        {
+                            if (data is TrieNode { Keccak: null } && ++toHash >= MinDirtyChildrenForParallel)
+                            {
+                                return true;
+                            }
+                        }
+
                         return false;
                     }
 
