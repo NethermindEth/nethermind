@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -280,11 +281,11 @@ public class DataColumnSidecarsByRangeLoopbackTests
     }
 
     private static BeaconP2P CreateHost(BeaconChainStore store, DataColumnSidecarPool pool, SlotClock? clock = null) =>
-        PeerSessionNodes.Watched(logs => new BeaconP2P(new BeaconChainConfig { P2PPort = 0 }, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), pool, new ExecutionPayloadEnvelopePool(), logs, clock: clock));
+        new(new BeaconChainConfig { P2PPort = 0 }, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance, clock: clock);
 
     /// <summary>A client whose fixed request budget is <see cref="ShortRequestTimeout"/>, far below any scaled by-range budget.</summary>
     private static BeaconP2P CreateShortTimeoutClient() =>
-        PeerSessionNodes.Watched(logs => new BeaconP2P(new BeaconChainConfig { P2PPort = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new BeaconChainStatusHolder(Spec, Timestamper.Default),
-            new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logs)
-        { RequestTimeout = ShortRequestTimeout });
+        new(new BeaconChainConfig { P2PPort = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new BeaconChainStatusHolder(Spec, Timestamper.Default),
+            new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance)
+        { RequestTimeout = ShortRequestTimeout };
 }

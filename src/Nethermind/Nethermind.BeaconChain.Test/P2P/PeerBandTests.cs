@@ -18,7 +18,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
-using Nethermind.Libp2p.Protocols;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -534,7 +533,7 @@ public class PeerBandTests
     [Test]
     [CancelAfter(60_000)]
     public Task A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token) =>
-        PeerSessionNodes.RetryStalledAsync(StatusExchangeFailsAsync, token, TimeSpan.FromSeconds(25));
+        StatusExchangeFailsAsync(token);
 
     private static async Task<bool> StatusExchangeFailsAsync(CancellationToken token)
     {
@@ -554,8 +553,7 @@ public class PeerBandTests
 
             // Both status versions were refused over the open session, so the admission provably threw
             // after the session existed: a count of zero below cannot be the pre-connect zero.
-            await PeerSessionNodes.WaitUntilAsync(() => refusing.Requests >= 2, "the status exchange never reached the remote", token,
-                stallCheck: [local.P2P, remote.P2P]);
+            await PeerSessionNodes.WaitUntilAsync(() => refusing.Requests >= 2, "the status exchange never reached the remote", token);
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
             Assert.That(peerManager.PeerCount, Is.EqualTo(0));
         }
@@ -1028,23 +1026,11 @@ public class PeerBandTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
-        BeaconP2P p2p = PeerSessionNodes.Watched(logs =>
-        {
-            ILogManager hostLogs = logManager is null ? logs : new HostLogs(logs, logManager);
-            return requestTimeout is { } timeout
-                ? new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs) { RequestTimeout = timeout }
-                : new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs);
-        });
+        ILogManager hostLogs = logManager ?? LimboLogs.Instance;
+        BeaconP2P p2p = requestTimeout is { } timeout
+            ? new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs) { RequestTimeout = timeout }
+            : new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs);
         return new Node(p2p, statusHolder, config, store, metadataSource);
-    }
-
-    private sealed class HostLogs(ILogManager transport, ILogManager admission) : ILogManager
-    {
-        public ILogger GetClassLogger<T>() => GetLogger(ILogManager.GetLoggerName(typeof(T)));
-
-        public ILogger GetLogger(string loggerName) => loggerName.EndsWith(nameof(YamuxProtocol), StringComparison.Ordinal)
-            ? transport.GetLogger(loggerName)
-            : admission.GetLogger(loggerName);
     }
 
     /// <summary>

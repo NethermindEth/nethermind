@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -16,6 +15,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
+using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
@@ -42,7 +42,7 @@ public class PeerAdmissionRaceTests
     [CancelAfter(120_000)]
     public Task A_dial_that_fails_hands_back_the_session_the_peer_opened_meanwhile_but_not_after_the_caller_cancels(
         [Values(DialOutcome.DialFails, DialOutcome.CallerCancels)] DialOutcome outcome, CancellationToken token) =>
-        RetryStalledAsync(attemptToken => DialThatFailsAsync(outcome, attemptToken), token, TimeSpan.FromSeconds(30));
+        DialThatFailsAsync(outcome, token);
 
     private static async Task<bool> DialThatFailsAsync(DialOutcome outcome, CancellationToken token)
     {
@@ -62,7 +62,7 @@ public class PeerAdmissionRaceTests
             Task<ISession> dial = local.P2P.DialPeerAsync(Multiaddress.Decode($"/ip4/127.0.0.1/tcp/{port}/p2p/{remote.P2P.LocalPeerId}"), caller.Token);
             using Socket stalled = await blackhole.AcceptSocketAsync(token);
             await DialAsync(remote.P2P, local.P2P, token);
-            await WaitUntilAsync(() => local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out _), "the remote's session never reached the local node", token, stallCheck: [local.P2P, remote.P2P]);
+            await WaitUntilAsync(() => local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out _), "the remote's session never reached the local node", token);
             Assert.That(dial.IsCompleted, Is.False, "fixture: the dial is still in flight");
 
             if (outcome == DialOutcome.DialFails)
@@ -90,7 +90,7 @@ public class PeerAdmissionRaceTests
     [Test]
     [CancelAfter(120_000)]
     public Task A_session_the_peer_opened_during_our_dial_to_it_is_admitted_unless_the_caller_cancelled([Values] DialOutcome outcome, CancellationToken token) =>
-        RetryStalledAsync(attemptToken => SessionOpenedDuringOurDialAsync(outcome, attemptToken), token, TimeSpan.FromSeconds(35));
+        SessionOpenedDuringOurDialAsync(outcome, token);
 
     private static async Task<bool> SessionOpenedDuringOurDialAsync(DialOutcome outcome, CancellationToken token)
     {
@@ -116,7 +116,6 @@ public class PeerAdmissionRaceTests
             await DialAsync(remote.P2P, local.P2P, token);
             if (!eventSeen.Wait(Hold, token))
             {
-                ThrowIfIdentifyStalled(local.P2P, remote.P2P);
                 Assert.Fail("the remote's session never reached the local node");
             }
 
@@ -150,8 +149,7 @@ public class PeerAdmissionRaceTests
                 return true;
             }
 
-            await WaitUntilAsync(() => peerManager.PeerCount == 1, $"the peer's session was left unadmitted ({local.P2P.SessionCountForTest} open)", token, TimeSpan.FromSeconds(5), [local.P2P, remote.P2P]);
-            ThrowIfIdentifyStalledUnlessOneSessionEach(local.P2P, remote.P2P);
+            await WaitUntilAsync(() => peerManager.PeerCount == 1, $"the peer's session was left unadmitted ({local.P2P.SessionCountForTest} open)", token, TimeSpan.FromSeconds(5));
             Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1));
         }
 
@@ -166,7 +164,7 @@ public class PeerAdmissionRaceTests
     [Repeat(8)]
     [CancelAfter(120_000)]
     public Task Peers_dialing_each_other_at_once_end_with_one_session_on_both_sides(CancellationToken token) =>
-        RetryStalledAsync(DialEachOtherAtOnceAsync, token, TimeSpan.FromSeconds(30));
+        DialEachOtherAtOnceAsync(token);
 
     private static async Task<bool> DialEachOtherAtOnceAsync(CancellationToken token)
     {
@@ -196,7 +194,7 @@ public class PeerAdmissionRaceTests
             }
 
             bool Settled() => firstManager.PeerCount == 1 && secondManager.PeerCount == 1 && first.P2P.SessionCountForTest == 1 && second.P2P.SessionCountForTest == 1;
-            await WaitUntilAsync(Settled, $"dials {dialed[0]}/{dialed[1]} left peers {firstManager.PeerCount}/{secondManager.PeerCount}, sessions {first.P2P.SessionCountForTest}/{second.P2P.SessionCountForTest}", token, TimeSpan.FromSeconds(3), [first.P2P, second.P2P]);
+            await WaitUntilAsync(Settled, $"dials {dialed[0]}/{dialed[1]} left peers {firstManager.PeerCount}/{secondManager.PeerCount}, sessions {first.P2P.SessionCountForTest}/{second.P2P.SessionCountForTest}", token, TimeSpan.FromSeconds(3));
             Assert.That(dialed, Has.Some.True, "at least one dial admitted the peer");
         }
 
@@ -210,7 +208,7 @@ public class PeerAdmissionRaceTests
     [Test]
     [CancelAfter(60_000)]
     public Task A_redial_the_peer_refuses_while_it_still_holds_our_old_session_is_admitted_once_that_session_closes(CancellationToken token) =>
-        RetryStalledAsync(RedialRefusedWhileOldSessionLingersAsync, token);
+        RedialRefusedWhileOldSessionLingersAsync(token);
 
     private static async Task<bool> RedialRefusedWhileOldSessionLingersAsync(CancellationToken token)
     {
@@ -218,9 +216,8 @@ public class PeerAdmissionRaceTests
         PeerId lower = PeerIdOf(lowerKey);
         Node local = Create(privateKey: lowerKey);
         Node remote = Create(privateKey: higherKey);
-        YamuxFaultLog oldSessionLog = new();
         await using ServiceProvider services = new ServiceCollection()
-            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(oldSessionLog))
+            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(LimboLogs.Instance))
             .AddLibp2p(static builder => builder)
             .BuildServiceProvider();
         await using ILocalPeer oldSession = services.GetRequiredService<IPeerFactory>().Create(BeaconP2P.IdentityFromStoredKey(lowerKey));
@@ -236,8 +233,8 @@ public class PeerAdmissionRaceTests
             }
 
             // Our identity's lingering session on the peer, as the collapsed simultaneous dial leaves it.
-            await DialFromPlainPeerAsync(oldSession, oldSessionLog, remote.P2P, token);
-            await WaitUntilAsync(() => remote.P2P.TryGetEstablishedSession(lower, out _), "fixture: the old session never reached the peer", token, stallCheck: [remote.P2P]);
+            await DialFromPlainPeerAsync(oldSession, remote.P2P, token);
+            await WaitUntilAsync(() => remote.P2P.TryGetEstablishedSession(lower, out _), "fixture: the old session never reached the peer", token);
 
             await using Relay relay = Relay.Start(PortOf(remote.P2P), closeFirst: 0);
             PeerManager manager = local.CreatePeerManager();
@@ -388,7 +385,7 @@ public class PeerAdmissionRaceTests
     [Test]
     [CancelAfter(120_000)]
     public Task A_slow_teardown_of_a_failed_dial_does_not_hold_the_dial_slot(CancellationToken token) =>
-        RetryStalledAsync(SlowTeardownOfAFailedDialAsync, token, TimeSpan.FromSeconds(35));
+        SlowTeardownOfAFailedDialAsync(token);
 
     private static async Task<bool> SlowTeardownOfAFailedDialAsync(CancellationToken token)
     {
@@ -416,7 +413,7 @@ public class PeerAdmissionRaceTests
             Task<bool> failing = peerManager.TryAddPeerAsync(LoopbackAddressText(refusing.P2P), token);
             try
             {
-                await WaitUntilAsync(() => served.Requests >= 1, "the failing dial never exchanged status", token, stallCheck: [local.P2P, refusing.P2P]);
+                await WaitUntilAsync(() => served.Requests >= 1, "the failing dial never exchanged status", token);
                 Assert.That(local.P2P.TryGetEstablishedSession(refusing.P2P.LocalPeerId!, out ISession? session), Is.True);
                 // Disconnecting cancels this token, which runs its callbacks inline: the teardown takes as long as this one.
                 ((LocalPeer.Session)session!).ConnectionToken.Register(() =>
@@ -428,7 +425,6 @@ public class PeerAdmissionRaceTests
                 Assert.That(teardownEntered.Wait(Hold, token), Is.True, "the failed dial never tore its session down");
 
                 bool added = await peerManager.TryAddPeerAsync(LoopbackAddressText(other.P2P), token);
-                ThrowIfIdentifyStalled(local.P2P, other.P2P);
                 Assert.That(added, Is.True, "the next dial ran while the teardown was still in progress");
             }
             finally

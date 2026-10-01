@@ -287,15 +287,7 @@ public class PeerHealthCheckRoundTests
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, logManager ?? LimboLogs.Instance, timestamper: clock);
         foreach (Node server in servers)
         {
-            // Admission is not what these tests check, so a dial whose session the pinned libp2p loses is tried again.
-            bool admitted = false;
-            for (int attempt = 0; attempt < 3 && !admitted; attempt++)
-            {
-                admitted = await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token);
-                if (!admitted) clock.Add(TimeSpan.FromMinutes(15));
-            }
-
-            Assert.That(admitted, Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
         }
 
         return peerManager;
