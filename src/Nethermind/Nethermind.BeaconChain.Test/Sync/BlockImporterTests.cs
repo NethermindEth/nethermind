@@ -845,6 +845,34 @@ public class BlockImporterTests
         }
     }
 
+    /// <summary>
+    /// Fork choice only ever copies a block state to advance it, so a copy that needed a regeneration must not join the small
+    /// tier that keeps a regenerated parent for the next sibling import: a vote naming old blocks would churn it.
+    /// </summary>
+    [Test]
+    public void Copy_of_a_regenerated_state_is_not_held()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xA1);
+        UnsignedChain.ChainBlock second = chain.Extend(first.Root, slot: 2, payloadHashByte: 0xA2);
+        store.PutBlock(second.Root, second.Block);
+        PostStateCache states = new(store, chain.Spec, lineageRoot: null, lineageState: null,
+            pubkeys: chain.Anchor.Pubkeys, ancestors: root => root == second.Root ? [second.Root, first.Root] : []);
+        states.Retain(first.Root, first.PostState);
+
+        BeaconStateFulu? copy = states.CopyBlockState(second.Root);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy, Is.Not.Null, "fixture bug: the state must be regenerated from the retained parent");
+            Assert.That(SszRoots.HashTreeRoot(copy!), Is.EqualTo(second.Block.Message!.StateRoot));
+            Assert.That(states.GetHeldBlockState(second.Root), Is.Null, "the copy is the caller's alone");
+            Assert.That(states.GetBlockState(second.Root), Is.Not.SameAs(copy), "a later import regenerates its own state");
+        }
+    }
+
     [TestCase("unknown")]
     [TestCase("gloas")]
     [TestCase("ancestor")]
