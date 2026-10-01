@@ -37,6 +37,19 @@ class ProfileValidationTests(unittest.TestCase):
             with self.subTest(data=data), self.assertRaises(ValueError):
                 validate(data)
 
+    def test_required_application_method_cannot_be_replaced_by_framework_counts(self):
+        target = "[App]Probe.Hot(int64)"
+        framework = {"Method": "[CoreLib]Cache.Get()", "InstrumentationData": [
+            {"ILOffset": 0, "InstrumentationKind": "EdgeIntCount", "Data": 10}]}
+        app = {"Method": target, "InstrumentationData": [
+            {"ILOffset": 0, "InstrumentationKind": "EdgeIntCount", "Data": 1}]}
+        self.assertEqual(validate({"Methods": [framework, app]}, ("block-counts",), (target,))["required_methods"], [target])
+        for omitted in (None, {"Method": target}, {"Method": target, "InstrumentationData": [
+                {"ILOffset": 0, "InstrumentationKind": "EdgeIntCount", "Data": 0}]}):
+            methods = [framework] + ([] if omitted is None else [omitted])
+            with self.subTest(omitted=omitted), self.assertRaisesRegex(ValueError, "no positive block/edge counts"):
+                validate({"Methods": methods}, ("block-counts",), (target,))
+
 
 if __name__ == "__main__":
     unittest.main()

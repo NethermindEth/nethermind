@@ -24,12 +24,14 @@ def method_name(record):
     return name
 
 
-def validate(data, required=()):
+def validate(data, required=(), required_methods=()):
+    required_methods = tuple(required_methods)
     methods = data.get("Methods") if isinstance(data, dict) else None
     if not isinstance(methods, list) or not methods:
         raise ValueError("profile dump contains no method records")
     names = Counter()
     kinds = Counter()
+    positive_methods = set()
     calls = exclusive = positive_counts = instrumented_methods = 0
     call_total = exclusive_total = 0
     for method in methods:
@@ -58,7 +60,10 @@ def validate(data, required=()):
             if isinstance(offset, bool) or not isinstance(offset, int):
                 raise ValueError("instrumentation record needs an integer ILOffset")
             if kind in ("BasicBlockIntCount", "BasicBlockLongCount", "EdgeIntCount", "EdgeLongCount"):
-                positive_counts += weight(item.get("Data")) > 0
+                positive = weight(item.get("Data")) > 0
+                positive_counts += positive
+                if positive:
+                    positive_methods.add(method_name(method))
     capabilities = {"methods": True, "instrumentation": bool(instrumented_methods),
                     "block-counts": bool(positive_counts), "callweights": bool(calls and exclusive)}
     report = {"method_records": len(methods), "instrumented_methods": instrumented_methods,
@@ -67,10 +72,14 @@ def validate(data, required=()):
               "methods_with_exclusive_weight": exclusive, "total_exclusive_weight": exclusive_total,
               "duplicate_display_names": {name: count for name, count in names.items() if count > 1},
               "capabilities": capabilities,
+              "required_methods": list(required_methods),
               "identity_note": "Display names do not establish module/MVID identity or compiler consumption."}
     missing = [name for name in required if not capabilities.get(name)]
     if missing:
         raise ValueError(f"missing required profile capabilities: {', '.join(missing)}; report: {json.dumps(report)}")
+    missing_methods = set(required_methods) - positive_methods
+    if missing_methods:
+        raise ValueError(f"required methods have no positive block/edge counts: {', '.join(sorted(missing_methods))}")
     return report
 
 
@@ -78,12 +87,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dump", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--require-method", action="append", default=[],
+                        help="Exact dump display name requiring positive block/edge counts; identity is validated separately.")
     parser.add_argument("--require", action="append", default=[],
                         choices=("methods", "instrumentation", "block-counts", "callweights"))
     args = parser.parse_args()
     raw = args.dump.read_bytes()
     try:
-        report = validate(json.loads(raw), args.require)
+        report = validate(json.loads(raw), args.require, args.require_method)
         report["status"] = "valid"
     except (ValueError, TypeError) as error:
         report = {"status": "failed", "reason": str(error)}
