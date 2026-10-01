@@ -104,7 +104,8 @@ internal sealed class PostStateCache(
     /// <inheritdoc/>
     public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot) ?? Regenerate(blockRoot);
 
-    private BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot)
+    /// <summary>The post-state of <paramref name="blockRoot"/> if it is held, without regenerating it from stored blocks.</summary>
+    internal BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot)
     {
         if (blockRoot == LineageRoot)
         {
