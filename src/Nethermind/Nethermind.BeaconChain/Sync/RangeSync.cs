@@ -137,7 +137,12 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
                 if (_logger.IsDebug) _logger.Debug($"No beacon chain peers with head at or past slot {nextSlot} and earliest available slot at or before {target}; waiting");
                 // phase0/p2p-interface.md Status: a peer's last status can predate blocks it holds, so it is asked again rather than at the periodic refresh.
-                peerPool.RefreshStatusesBehind(nextSlot, $"range sync waits for slot {nextSlot} and no peer's status reaches it");
+                // The wall slot alone is no such evidence: its block may simply not be out yet.
+                if (nextSlot < target)
+                {
+                    peerPool.RefreshStatusesBehind(nextSlot, $"range sync waits for slot {nextSlot}, behind wall slot {target}, and no peer's status reaches it");
+                }
+
                 if (beforeRetry is not null)
                 {
                     await beforeRetry(token);
