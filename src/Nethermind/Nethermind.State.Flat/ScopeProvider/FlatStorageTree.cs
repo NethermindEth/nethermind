@@ -317,7 +317,7 @@ public sealed class FlatStorageTree(
         if (_speculationFailed)
         {
             GetTrees().Tree.RootHash = _speculationBaseRoot;
-            _speculativelyApplied!.Clear();
+            _speculativelyApplied?.Clear();
             _speculationFailed = false;
         }
     }
@@ -593,7 +593,10 @@ public sealed class FlatStorageTree(
             _joined = true;
             storageTree.JoinSpeculation();
             storageTree._speculationFinalized = true;
-            if (storageTree._speculativelyApplied is { Count: > 0 } applied)
+            // Only the block's first batch reconciles the applied writes; a later one finds the trie this one left.
+            Dictionary<UInt256, UInt256>? applied = storageTree._speculativelyApplied;
+            storageTree._speculativelyApplied = null;
+            if (applied is { Count: > 0 })
             {
                 _speculativelyApplied = applied;
                 _unconfirmed = [.. applied.Keys];

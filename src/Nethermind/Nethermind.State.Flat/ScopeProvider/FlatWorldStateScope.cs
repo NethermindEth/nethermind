@@ -989,6 +989,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             Db.Metrics.IncrementSpeculativeAccountRestoredWrites(speculated.Count);
                         }
 
+                        // Only the block's first batch reconciles the applied accounts; a later one finds the trie this one left.
+                        speculated?.Clear();
+
                         if (skipped > 0) Db.Metrics.IncrementSpeculativeAccountSkippedWrites(skipped);
                     }
                 }
