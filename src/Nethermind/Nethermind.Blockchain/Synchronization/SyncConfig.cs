@@ -19,6 +19,8 @@ namespace Nethermind.Blockchain.Synchronization
         public static ISyncConfig WithFastSync { get; } = new SyncConfig { FastSync = true };
         public static ISyncConfig WithEth2Merge { get; } = new SyncConfig { FastSync = false, BlockGossipEnabled = false };
 
+        public bool ReconstructFinalizedStateFromBlockAccessLists { get; set; }
+
         public bool NetworkingEnabled { get; set; } = true;
 
         public bool SynchronizationEnabled

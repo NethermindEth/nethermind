@@ -32,7 +32,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IReceiptsRecovery receiptsRecovery,
         IBlockProcessingQueue blockProcessingQueue,
         ISyncConfig syncConfig,
-        ILogManager logManager)
+        ILogManager logManager,
+        FinalizedBlockAccessListPolicy? finalizedBalPolicy = null)
         : BlockDownloader(
             blockTree,
             blockValidator,
@@ -50,6 +51,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ILogger _logger = logManager.GetClassLogger<MergeBlockDownloader>();
+
+        protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) =>
+            base.ShouldDownloadAccessList(header, shouldProcess) || finalizedBalPolicy?.CanReconstruct(header) == true;
+
+        protected override bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) =>
+            base.ShouldDownloadReceipts(header, shouldProcess, requested)
+            || (shouldProcess && finalizedBalPolicy?.CanReconstruct(header) == true && finalizedBalPolicy.NeedsReceipts(header));
 
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
