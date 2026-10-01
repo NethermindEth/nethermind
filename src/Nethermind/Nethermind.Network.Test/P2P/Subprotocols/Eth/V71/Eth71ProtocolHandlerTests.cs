@@ -174,6 +174,33 @@ public class Eth71ProtocolHandlerTests
         }
     }
 
+    [Test]
+    public void Should_stop_BAL_response_after_soft_limit([Values] bool oversizedFirstEntry)
+    {
+        const int softLimit = 2 * MemorySizes.MiB;
+        Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
+        byte[][] entries = [new byte[oversizedFirstEntry ? softLimit + 1 : softLimit / 2 + 1], new byte[softLimit / 2], new byte[1024]];
+        for (int i = 0; i < entries.Length; i++)
+        {
+            entries[i][0] = 0xc0;
+            _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(ArrayMemoryManager.From(entries[i]));
+        }
+        BlockAccessListsMessage? response = null;
+        _session.When(s => s.DeliverMessage(Arg.Any<BlockAccessListsMessage>())).Do(call => response = (BlockAccessListsMessage)call[0]);
+        HandleIncomingStatusMessage();
+        using GetBlockAccessListsMessage request = new(333, hashes.ToPooledList(hashes.Length));
+
+        HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
+
+        Assert.That(response, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response!.RequestId, Is.EqualTo(333));
+            Assert.That(response.BlockAccessLists, Has.Count.EqualTo(oversizedFirstEntry ? 1 : 2));
+            Assert.That(response.BlockAccessLists[0], Is.EqualTo(entries[0]));
+        }
+    }
+
     [TestCaseSource(nameof(BlockAccessListsRequestCases))]
     public async Task Can_request_and_handle_block_access_lists(bool viaSyncPeerInterface)
     {
