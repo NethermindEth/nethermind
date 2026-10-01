@@ -292,6 +292,8 @@ public class PeerDialPolicyTests
             await manager.RunMaintenanceRoundAsync(token);
             Assert.That(manager.PeerCount, Is.Zero, "a static peer on another fork was admitted");
 
+            // Until the refused session is gone on both sides a dial would be handed that dying session.
+            await PeerSessionNodes.WaitUntilAsync(() => local.P2P.SessionCountForTest == 0 && remote.P2P.SessionCountForTest == 0, "the refused session was not torn down", token);
             served = local.StatusHolder.CurrentStatus;
             // The clock never moves, so only a dial that ignores the backoff of the failed one can connect.
             for (int round = 0; round < 3 && manager.PeerCount == 0; round++)
