@@ -54,7 +54,8 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         int messageEnd = ctx.Position + messageLength;
         ReadOnlySpan<byte> versionBytes = ctx.DecodeByteArraySpan();
         int version = 0;
-        if (versionBytes.Length <= sizeof(int))
+        if (versionBytes.Length < sizeof(int) ||
+            (versionBytes.Length == sizeof(int) && versionBytes[0] < 0x80))
         {
             foreach (byte value in versionBytes)
             {
@@ -85,13 +86,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
 
         while (ctx.Position < messageEnd)
         {
-            int itemLength = ctx.PeekNextRlpLength();
-            if (itemLength > messageEnd - ctx.Position)
-            {
-                throw new RlpException("Ping extra item exceeds its list.");
-            }
-
-            ctx.SkipBytes(itemLength);
+            ctx.SkipItem();
         }
 
         ctx.Check(messageEnd);

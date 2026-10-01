@@ -135,6 +135,11 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
 
     private static bool IsCanonicalMultiByteInteger(RlpReader ctx, int length)
     {
+        if (length >= ctx.Length - ctx.Position)
+        {
+            throw new RlpException("Truncated discovery ENR sequence.");
+        }
+
         byte firstByte = ctx.Peek(1, 1)[0];
         return length == 1 ? firstByte >= 128 : firstByte != 0;
     }
