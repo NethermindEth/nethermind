@@ -565,7 +565,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     /// <summary>
     /// Drops what an exceptional unwind leaves claimed: the cache slots, so the next transaction gets fresh frames
-    /// there, and <see cref="ReturnData"/>, which still holds a staged child frame.
+    /// there, and <see cref="ReturnData"/>, which may still hold a staged child frame.
     /// </summary>
     /// <remarks>
     /// Such a slot holds a child frame that CALL or CREATE staged and the loop never entered - a tracer threw in
