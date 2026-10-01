@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -24,6 +25,34 @@ public class GasEstimatorTests
 {
     private const ulong RequestedGas = 1_000_000;
     private static readonly byte[] CallData = [0x01];
+
+    [Test]
+    public void Estimate_frame_transaction_rejects_an_inactive_fork()
+    {
+        Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(25_000));
+        GasEstimation estimation = Estimate(Substitute.For<ITransactionProcessor>(), tx,
+            CreateStateProvider(UInt256.Zero, false), spec: London.Instance);
+
+        Assert.That(estimation.Error, Is.EqualTo(TxErrorMessages.InvalidTxType(London.Instance.Name)));
+    }
+
+    [TestCase(0ul, false)]
+    [TestCase(50_000ul, true)]
+    [TestCase(100_000ul, false)]
+    public void Estimate_frame_transaction_caps_the_complete_budget(ulong gasCap, bool expectFailure)
+    {
+        Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(25_000), FrameTxTestFrames.Execution(15_000));
+        FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out _, out _, out ulong budget, estimateSignatureBytes: true);
+        GasEstimation estimation = Estimate(Substitute.For<ITransactionProcessor>(), tx,
+            CreateStateProvider(UInt256.Zero, false), spec: Eip8141Prototype.Instance, gasCap: gasCap);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget, Is.GreaterThan(50_000ul));
+            Assert.That(estimation.Error, expectFailure ? Is.EqualTo($"{GasEstimator.GasExceedsAllowanceMsgPrefix} ({gasCap})") : Is.Null);
+            Assert.That(estimation.Gas, Is.EqualTo(expectFailure ? 0ul : budget));
+        }
+    }
 
     [TestCase(100_000ul, 101_510ul, true, TestName = "Gap of 1510 is within 1.5% of the upper bound")]
     [TestCase(100_000ul, 101_522ul, true, TestName = "Gap of 1522 is still within 1.5% of the upper bound")]
