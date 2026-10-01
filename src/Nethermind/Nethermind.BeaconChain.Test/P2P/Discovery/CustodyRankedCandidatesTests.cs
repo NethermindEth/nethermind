@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -9,6 +10,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
 using NUnit.Framework;
@@ -23,6 +25,85 @@ namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 public class CustodyRankedCandidatesTests
 {
     private const int Capacity = 4;
+
+    [Test]
+    public void Dial_failures_back_off_exponentially_and_success_restores_quality()
+    {
+        ManualTimestamper clock = new();
+        PeerDialHistory history = new(clock);
+        for (int failure = 1; failure <= 10; failure++)
+        {
+            history.Record("dead", connected: false);
+            Assert.That(history.CanDial("dead"), Is.False);
+            Assert.That(history.CanDial("other"), Is.True);
+            TimeSpan minimum = TimeSpan.FromTicks(Math.Min(TimeSpan.FromSeconds(30).Ticks << Math.Min(failure - 1, 6), TimeSpan.FromMinutes(15).Ticks));
+            clock.Add(minimum - TimeSpan.FromTicks(1));
+            Assert.That(history.CanDial("dead"), Is.False);
+            clock.Add(TimeSpan.FromTicks(1) + (failure < 6 ? minimum / 5 : TimeSpan.Zero));
+            Assert.That(history.CanDial("dead"), Is.True);
+        }
+
+        history.Record("dead", connected: true);
+        Assert.That(history.CanDial("dead"), Is.True);
+        Assert.That(history.Quality("dead"), Is.GreaterThan(history.Quality("other")));
+        history.Record("dead", connected: false);
+        clock.Add(TimeSpan.FromSeconds(36));
+        Assert.That(history.CanDial("dead"), Is.True);
+    }
+
+    [Test]
+    public void Endpoint_jitter_separates_retries_within_the_backoff_bound()
+    {
+        ManualTimestamper clock = new();
+        PeerDialHistory history = new(clock);
+        for (int i = 0; i < 256; i++) history.Record(i.ToString(), false);
+        clock.Add(TimeSpan.FromSeconds(30));
+        Assert.That(Enumerable.Range(0, 256).Any(i => !history.CanDial(i.ToString())), Is.True);
+        clock.Add(TimeSpan.FromSeconds(6));
+        Assert.That(Enumerable.Range(0, 256).All(i => history.CanDial(i.ToString())), Is.True);
+    }
+
+    [Test]
+    public void Dial_history_is_bounded_and_evicts_the_oldest_outcome()
+    {
+        PeerDialHistory history = new(new ManualTimestamper(), capacity: 2);
+        history.Record("first", false);
+        history.Record("second", false);
+        history.Record("third", false);
+        Assert.That(history.Count, Is.EqualTo(2));
+        Assert.That(history.CanDial("first"), Is.True);
+        Assert.That(history.CanDial("second"), Is.False);
+    }
+
+    [Test]
+    public void Custody_precedes_quality_and_quality_breaks_custody_ties([Values] bool needCustody)
+    {
+        PeerDialHistory history = new(new ManualTimestamper());
+        BeaconPeerCandidate known = Candidate("known", 9);
+        BeaconPeerCandidate failed = Candidate("failed", 9);
+        history.Record(known.Multiaddress, true);
+        history.Record(failed.Multiaddress, false);
+        CustodyRankedCandidates candidates = new(Capacity, c => history.Quality(c.Multiaddress));
+        ulong[] wanted = needCustody ? [1] : [];
+        candidates.Add(failed, wanted);
+        candidates.Add(Candidate("unknown", 9), wanted);
+        candidates.Add(known, wanted);
+        candidates.Add(Candidate("custodian", 1), wanted);
+        Assert.That(TakeAll(candidates, wanted), Is.EqualTo(needCustody
+            ? new[] { "custodian", "known", "unknown", "failed" }
+            : new[] { "known", "unknown", "custodian", "failed" }));
+    }
+
+    [Test]
+    public void Rediscovery_cannot_replace_a_newer_record_with_an_older_record()
+    {
+        CustodyRankedCandidates candidates = new(Capacity);
+        candidates.Add(Candidate("peer", 1) with { EnrSequence = 2 }, [1]);
+        candidates.Add(Candidate("peer", 9), [1]);
+        candidates.TryTake([1], out BeaconPeerCandidate? candidate);
+        Assert.That(candidate!.EnrSequence, Is.EqualTo(2));
+        Assert.That(candidate.Custody.Custodies(1), Is.True);
+    }
 
     [Test]
     public void Candidates_custodying_more_wanted_columns_are_taken_first_and_ties_in_arrival_order()

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
@@ -20,7 +21,7 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 public sealed class BeaconNodeRecordProvider : INodeRecordProvider
 {
     private readonly PrivateKey _key;
-    private readonly IPAddress _externalIp;
+    private readonly IPAddress? _externalIp;
     private readonly int _tcpPort;
     private readonly int _udpPort;
     private readonly ulong _custodyGroupCount;
@@ -30,17 +31,19 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
     private EnrForkId _forkId;
     private byte[] _nextForkDigest;
 
-    public BeaconNodeRecordProvider(PrivateKey key, IPAddress externalIp, int tcpPort, int udpPort, EnrForkId forkId, ulong custodyGroupCount, byte[]? nextForkDigest = null)
+    /// <param name="externalIp">The advertised address, under <c>ip</c>/<c>tcp</c>/<c>udp</c> when IPv4 and <c>ip6</c>/<c>tcp6</c>/<c>udp6</c> when IPv6; <c>null</c> advertises no endpoint.</param>
+    /// <param name="sequence">The sequence of the first record, above any this identity published before.</param>
+    public BeaconNodeRecordProvider(PrivateKey key, IPAddress? externalIp, int tcpPort, int udpPort, EnrForkId forkId, ulong custodyGroupCount, byte[]? nextForkDigest = null, ulong sequence = 1)
     {
         _key = key;
-        _externalIp = externalIp;
+        _externalIp = externalIp is { IsIPv4MappedToIPv6: true } ? externalIp.MapToIPv4() : externalIp;
         _tcpPort = tcpPort;
         _udpPort = udpPort;
         _custodyGroupCount = custodyGroupCount;
         _signer = new NodeRecordSigner(new Ecdsa(), key);
         _forkId = forkId;
         _nextForkDigest = nextForkDigest ?? NfdEntry.NoneScheduled;
-        _current = Build(forkId, _nextForkDigest, sequence: 1);
+        _current = Build(forkId, _nextForkDigest, sequence);
     }
 
     public NodeRecord Current => _current;
@@ -101,9 +104,20 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
     private NodeRecord Build(EnrForkId forkId, byte[] nextForkDigest, ulong sequence)
     {
         NodeRecord record = new();
-        record.SetEntry(new IpEntry(_externalIp));
-        record.SetEntry(new TcpEntry(_tcpPort));
-        record.SetEntry(new UdpEntry(_udpPort));
+        // EIP-778: ip/tcp/udp hold an IPv4 endpoint and ip6/tcp6/udp6 an IPv6 one; an IPv6 address in ip would be read as another IPv4 address.
+        if (_externalIp is { AddressFamily: AddressFamily.InterNetworkV6, IsIPv4MappedToIPv6: false } ipv6)
+        {
+            record.SetEntry(new Ip6Entry(ipv6));
+            record.SetEntry(new Tcp6Entry(_tcpPort));
+            record.SetEntry(new Udp6Entry(_udpPort));
+        }
+        else if (_externalIp is not null)
+        {
+            record.SetEntry(new IpEntry(_externalIp));
+            record.SetEntry(new TcpEntry(_tcpPort));
+            record.SetEntry(new UdpEntry(_udpPort));
+        }
+
         record.SetEntry(new SecP256k1Entry(_key.CompressedPublicKey));
         record.SetEntry(new Eth2Entry(forkId.Encode()));
         record.SetEntry(new CustodyGroupCountEntry(_custodyGroupCount));
