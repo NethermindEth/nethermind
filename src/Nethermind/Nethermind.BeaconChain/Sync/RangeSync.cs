@@ -32,7 +32,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// Every batch is verified by root linkage before anything is yielded: the first block's
 /// <c>parent_root</c> must be the hash tree root of the last yielded block (initially the anchor),
 /// and each subsequent block must link to its predecessor. A mismatching batch is dropped, the
-/// offending peer penalized, and the range re-requested from another peer - starting again from the
+/// peer penalized only when it also supplied the block it fails to link to (or that block is the anchor), and the range re-requested from another peer - starting again from the
 /// slot after the last yielded block, which also recovers from a peer that falsely returned an
 /// empty range. Repeated failures halve the batch size down to a single slot.
 /// </para>
@@ -96,16 +96,22 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <param name="anchorSlot">The slot of the anchor block.</param>
     /// <param name="targetHeadSlot">Re-evaluated each batch, so the target may move while syncing.</param>
     /// <param name="fallback">Marks the anchor as unverified: while no block has linked to it, a first block that does not is not held against its peer, and the run restarts from this one.</param>
+    /// <param name="batchSource">Receives the supplying peer before its blocks are yielded.</param>
+    /// <param name="beforeRetry">Flushes yielded blocks for verification before retrying a failed reply.</param>
     public async IAsyncEnumerable<ForkedSignedBeaconBlock> Run(
         Hash256 anchorRoot,
         ulong anchorSlot,
         Func<ulong> targetHeadSlot,
         [EnumeratorCancellation] CancellationToken token,
-        AnchorFallback? fallback = null)
+        AnchorFallback? fallback = null,
+        Action<IBeaconSyncPeer>? batchSource = null,
+        Func<CancellationToken, Task>? beforeRetry = null)
     {
         Hash256 lastRoot = anchorRoot;
         ulong lastSlot = anchorSlot;
         ulong nextSlot = anchorSlot + 1;
+        // The peer that supplied lastRoot; null while lastRoot is the anchor.
+        string? lastSupplier = null;
         ulong batchSize = DefaultBatchSize;
         int peerCursor = 0;
         int consecutiveFailures = 0;
@@ -117,19 +123,23 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         while (!token.IsCancellationRequested && nextSlot <= targetHeadSlot())
         {
             ulong target = targetHeadSlot();
-            // The fallback window is the default batch, not the shrunk one, so failures cannot exclude a peer that serves from inside the range.
-            IReadOnlyList<IBeaconSyncPeer> offered = ServingFrom(peerPool.GetBestPeers(nextSlot), nextSlot, Math.Min(nextSlot + DefaultBatchSize - 1, target));
+            // BeaconBlocksByRange: linkage checks skipped slots before the earliest retained block.
+            IReadOnlyList<IBeaconSyncPeer> offered = ServingFrom(peerPool.GetBestPeers(nextSlot), nextSlot, target, nearestFallback: true);
             IReadOnlyList<IBeaconSyncPeer> peers = behindTheirWord.Count > 0 ? [.. offered.Where(peer => !behindTheirWord.Contains(peer.Id))] : offered;
             if (peers.Count == 0)
             {
-                // Only peers left out for answering empty are offered: the round ends with what it fetched, and the next round asks them again.
+                // Only contradicted peers remain, so the next round asks them again.
                 if (offered.Count > 0)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Every beacon chain peer offered for slot {nextSlot} answered empty slots that held blocks; ending the range sync round");
                     yield break;
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"No beacon chain peers with head at or past slot {nextSlot} and earliest available slot within the next {DefaultBatchSize} slots; waiting");
+                if (_logger.IsDebug) _logger.Debug($"No beacon chain peers with head at or past slot {nextSlot} and earliest available slot at or before {target}; waiting");
+                if (beforeRetry is not null)
+                {
+                    await beforeRetry(token);
+                }
                 await Task.Delay(RetryDelay, token);
                 continue;
             }
@@ -138,11 +148,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // A peer may answer ResourceUnavailable below its earliest slot (phase0/p2p-interface.md); slots under it are taken as empty and block linkage still checks that.
             ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
             ulong count = Math.Min(batchSize, target - from + 1);
-            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null, token);
-            // An unverified anchor is resolved first: it is the older doubt, and a first block that does not link may be off it rather than past the skipped slots.
+            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || (lastSupplier is not null && lastSupplier != peer.Id), token);
+            // Resolve an unverified anchor before attributing a mismatch to an empty reply.
             if (batch is { Linked: false } && fallback is null && skippedOnWordOf is { } behind)
             {
-                // The skipped slots held blocks: the peer that answered them empty was behind, and the peer asked next is not at fault.
                 if (_logger.IsDebug) _logger.Debug($"Blocks from slot {lastSlot + 1} exist although {behind.Id} answered them empty; asking another peer");
                 behindTheirWord.Add(behind.Id);
                 skippedOnWordOf = null;
@@ -150,11 +159,12 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
-            if (batch is { Linked: false })
+            if (batch is { Linked: false } && fallback is not null)
             {
                 // The first block names another parent: the unverified anchor is off the peers' chain, not the peer at fault.
-                lastRoot = fallback!.Root;
+                lastRoot = fallback.Root;
                 lastSlot = fallback.Slot;
+                lastSupplier = null;
                 nextSlot = lastSlot + 1;
                 fallback.Rejected();
                 fallback = null;
@@ -162,7 +172,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
-            if (batch is null)
+            if (batch is null or { Linked: false })
             {
                 consecutiveFailures++;
                 if (consecutiveFailures % FailuresBeforeBatchShrink == 0 && batchSize > 1)
@@ -175,6 +185,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 // from an earlier batch that falsely came back empty.
                 nextSlot = lastSlot + 1;
                 skippedOnWordOf = null;
+                if (beforeRetry is not null)
+                {
+                    await beforeRetry(token);
+                }
                 await Task.Delay(RetryDelay, token);
                 continue;
             }
@@ -195,6 +209,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             batchSize = DefaultBatchSize;
             await FetchColumnsForBatchAsync(batch.Value.Blocks, batch.Value.Roots, token);
             await FetchGloasColumnsForBatchAsync(batch.Value.Blocks, batch.Value.Roots, token);
+            batchSource?.Invoke(peer);
             foreach (ForkedSignedBeaconBlock block in batch.Value.Blocks)
             {
                 yield return block;
@@ -204,19 +219,21 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             if (batch.Value.Blocks.Count > 0)
             {
                 lastRoot = batch.Value.Roots[^1];
+                lastSupplier = peer.Id;
             }
 
-            nextSlot = from + count;
+            // BeaconBlocksByRange: a limited reply does not prove that its remaining slots are empty.
+            nextSlot = batch.Value.Blocks.Count > 0 ? lastSlot + 1 : from + count;
         }
     }
 
-    /// <returns>The verified batch and the root of each of its blocks, or <c>null</c> when the request failed or the batch did not link up; not <c>Linked</c> when <paramref name="anchorUnverified"/> and the first block does not link to <paramref name="parentRoot"/>.</returns>
+    /// <returns>The verified batch and the root of each of its blocks, or <c>null</c> when the request failed or the batch did not link up; not <c>Linked</c> when <paramref name="allowFirstMismatch"/> and the first block does not link to <paramref name="parentRoot"/>.</returns>
     private async Task<(IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)?> FetchAndVerifyBatchAsync(
         IBeaconSyncPeer peer,
         ulong startSlot,
         ulong count,
         Hash256 parentRoot,
-        bool anchorUnverified,
+        bool allowFirstMismatch,
         CancellationToken token)
     {
         IReadOnlyList<ForkedSignedBeaconBlock> batch;
@@ -244,7 +261,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             ForkedSignedBeaconBlock block = batch[i];
             if (block.ParentRoot != expectedParent)
             {
-                if (anchorUnverified && expectedParent == parentRoot)
+                if (allowFirstMismatch && i == 0)
                 {
                     return (batch, [], false);
                 }
@@ -423,13 +440,22 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// The peers of <paramref name="peers"/> whose Status v2 <c>earliest_available_slot</c> is at or before <paramref name="startSlot"/>, so the range starts inside what they serve;
     /// when none is, those whose earliest slot is at or before <paramref name="endSlot"/>, because the slots below it may be empty and a by-range reply skips empty slots (phase0/p2p-interface.md).
     /// </summary>
-    private IReadOnlyList<IBeaconSyncPeer> ServingFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong startSlot, ulong endSlot)
+    /// <param name="nearestFallback">Narrows the fallback to the peers with the lowest earliest slot, at or before <paramref name="endSlot"/>.</param>
+    private IReadOnlyList<IBeaconSyncPeer> ServingFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong startSlot, ulong endSlot, bool nearestFallback = false)
     {
         IBeaconSyncPeer[] covering = [.. peers.Where(p => p.EarliestAvailableSlot <= startSlot)];
         if (covering.Length > 0)
         {
             if (covering.Length < peers.Count && _logger.IsDebug) _logger.Debug($"Left out {peers.Count - covering.Length} of {peers.Count} sync peers whose earliest available slot is after {startSlot}");
             return covering;
+        }
+
+        if (nearestFallback)
+        {
+            foreach (IBeaconSyncPeer peer in peers)
+            {
+                endSlot = Math.Min(endSlot, peer.EarliestAvailableSlot);
+            }
         }
 
         IBeaconSyncPeer[] overlapping = [.. peers.Where(p => p.EarliestAvailableSlot <= endSlot)];
