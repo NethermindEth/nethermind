@@ -50,6 +50,57 @@ public class GloasBlockProcessingTests
     }
 
     [Test]
+    public void ProcessExecutionPayloadBid_rejects_an_out_of_range_builder_index(
+        [Values(1ul, 1ul << 31, 1ul << 32, ulong.MaxValue - 1)] ulong builderIndex,
+        [Values] bool verifySignature)
+    {
+        BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
+        SignedExecutionPayloadBid bid = ValidBuilderBid(state, builderSk, builderIndex, value: 5 * Gwei);
+        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
+
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain("Builder index").And.Contain("out of range"));
+            Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore));
+        }
+    }
+
+    [Test]
+    public void ProcessBuilderDepositRequest_enforces_the_uint64_balance_limit([Values(1ul, 2ul, ulong.MaxValue)] ulong amount)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        Builder builder = state.Builders![0];
+        builder.Balance = ulong.MaxValue - 1;
+        BuilderDepositRequest request = new()
+        {
+            Pubkey = builder.Pubkey,
+            WithdrawalCredentials = BuilderWithdrawalCredentials(0xC0),
+            Amount = amount,
+        };
+
+        Action process = () => GloasBlockProcessing.ProcessBuilderDepositRequest(state, request);
+
+        if (amount == 1)
+        {
+            Assert.DoesNotThrow(() => process());
+            Assert.That(state.Builders[0].Balance, Is.EqualTo(ulong.MaxValue));
+        }
+        else
+        {
+            BeaconStateException ex = Assert.Throws<BeaconStateException>(() => process())!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ex.Message, Does.Contain("overflow the balance"));
+                Assert.That(state.Builders[0], Is.SameAs(builder));
+                Assert.That(builder.Balance, Is.EqualTo(ulong.MaxValue - 1));
+            }
+        }
+    }
+
+    [Test]
     public void ProcessExecutionPayloadBid_accepts_a_correctly_signed_builder_bid_and_records_its_pending_payment()
     {
         BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
