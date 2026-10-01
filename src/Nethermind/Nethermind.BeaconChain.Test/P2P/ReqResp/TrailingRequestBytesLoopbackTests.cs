@@ -13,10 +13,10 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Logging;
+using Nethermind.Network.Libp2p;
 using NSubstitute;
 using NUnit.Framework;
 
