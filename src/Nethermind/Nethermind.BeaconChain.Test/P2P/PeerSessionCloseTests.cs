@@ -5,10 +5,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
 using NSubstitute;
@@ -69,6 +75,28 @@ public class PeerSessionCloseTests
             }
 
             Assert.CatchAsync<IOException>(() => Task.WhenAll(requests), "the requests that held the slots end as disconnects too");
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_closed_session_puts_no_dial_backoff_on_the_peers_address(CancellationToken token)
+    {
+        Node node = Create();
+        await using BeaconDiscovery discovery = new(node.Config, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
+            new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), new ManualTimestamper(), LimboLogs.Instance);
+        await using (node.P2P)
+        {
+            await node.P2P.StartAsync(token);
+            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, discovery);
+            LocalPeer.Session session = RequestFailureCauseTests.AddWedgedSession(node.P2P);
+            manager.AddPeerForTest(session, PeerAddress, Status);
+
+            await session.DisconnectAsync();
+
+            // The removal writes the disconnect record after any dial outcome.
+            await WaitUntilAsync(() => manager.GetPeerDiagnostics().Any(static peer => peer.DisconnectCount == 1), "the peer's removal never finished", token, ReplacementBound);
+            Assert.That(discovery.DialHistory.Quality(PeerAddress), Is.Zero, "the address is dialed again at once, as for a peer never dialed");
         }
     }
 
