@@ -4915,10 +4915,10 @@ public partial class FrameTxProcessorTests
     /// <summary>EIP-7906 keeps everything up to the validation prefix when a <c>POST_TX</c> frame reverts, so
     /// the prefix's logs stay in the receipt and a trace clearing the whole tree contradicts it.</summary>
     [Test]
-    public void Execute_PostTxRevertsOverALoggingPrefix_TracesTheLogsTheReceiptKeeps()
+    public void Execute_PostTxRevertsOverALoggingPrefix_TracesTheLogsTheReceiptKeeps([Values(1, 3)] int logCount)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, LogEmitter(999));
+        DeployContract(Observer, Enumerable.Range(0, logCount).SelectMany(_ => LogEmitter(999)[..^1]).ToArray());
         DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
 
         // The deploy frame opening the prefix is the one prefix frame that is not static, so it can log.
@@ -4932,8 +4932,11 @@ public partial class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(document.RootElement.GetProperty("error").GetString(), Is.EqualTo("POST_TX frame reverted"));
-            Assert.That(TxFrameReceipt.ConcatLogs(receipts), Has.Length.EqualTo(1),
+            Assert.That(TxFrameReceipt.ConcatLogs(receipts), Has.Length.EqualTo(logCount),
                 "the prefix's log outlives the revert, so the receipt still carries it");
+            Assert.That(document.RootElement.GetProperty("calls")[0].GetProperty("logs").EnumerateArray()
+                .Select(log => HexValue(log, "index")), Is.EqualTo(Enumerable.Range(0, logCount)),
+                "committed prefix logs retain receipt indices despite the transaction-level failure");
             Assert.That(CountLogs(document.RootElement), Is.EqualTo(TxFrameReceipt.ConcatLogs(receipts).Length),
                 "the trace's logs are the receipt's logs through a transaction-level failure too");
         }

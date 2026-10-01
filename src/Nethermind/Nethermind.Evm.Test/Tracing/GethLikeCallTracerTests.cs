@@ -563,7 +563,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
 
     [Test]
-    public void Action_gas_matches_instruction_gas([Values] GasCheckpointCase scenario)
+    public void Action_gas_matches_halt_stage([Values] GasCheckpointCase scenario)
     {
         byte[] childCode = scenario switch
         {
@@ -590,7 +590,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace actual = native.BuildResult();
 
         using NativeCallTracer tracedNative = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
-        GasCheckpointTracer checkpoints = new();
+        GasCheckpointTracer checkpoints = new(scenario is GasCheckpointCase.InvalidDeposit or GasCheckpointCase.DepositOutOfGas);
         using CompositeTxTracer traced = new(tracedNative, checkpoints);
         _processor.CallAndRestore(tx, block.Header, traced);
         using GethLikeTxTrace expected = tracedNative.BuildResult();
@@ -604,7 +604,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-    private sealed class GasCheckpointTracer : TxTracer
+    private sealed class GasCheckpointTracer(bool failsAfterReturn = false) : TxTracer
     {
         private ulong _instructionGas;
         private ulong _actionGas;
@@ -618,7 +618,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         public override void ReportActionError(EvmExceptionType evmExceptionType)
         {
-            GasMatches &= _instructionGas == _actionGas;
+            GasMatches &= failsAfterReturn ? _instructionGas > 0 && _actionGas == 0 : _instructionGas == _actionGas;
             Errors++;
         }
     }

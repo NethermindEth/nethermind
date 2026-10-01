@@ -46,6 +46,100 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Javascript_word_helpers_pad_and_truncate([Values(0, 1, 32, 33, 65)] int length, [Values] bool arrayInput)
+    {
+        byte[] input = Enumerable.Range(0, length).Select(i => (byte)(i + 1)).ToArray();
+        byte[] word = new byte[32];
+        int count = Math.Min(length, word.Length);
+        input.AsSpan(length - count).CopyTo(word.AsSpan(word.Length - count));
+        string hex = "0x" + Convert.ToHexStringLower(input);
+        string argument = arrayInput ? JsonSerializer.Serialize(input.Select(b => (int)b).ToArray()) : JsonSerializer.Serialize(hex);
+        string address = TestItem.AddressA.ToString();
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result:function(){return [toHex(toWord(" + argument + ")),toHex(toContract2('" + address + "','" + hex + "',[]))];}}");
+        object result = tracer.result();
+        string[] expected = ["0x" + Convert.ToHexStringLower(word), ContractAddress.From(TestItem.AddressA, word, []).ToString()];
+        Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(JsonSerializer.Serialize(expected)));
+    }
+
+    [TestCase("", "")]
+    [TestCase("0x", "")]
+    [TestCase("1", "01")]
+    [TestCase("0Xabc", "0abc")]
+    [TestCase("0xzz", "")]
+    [TestCase("xyz", "")]
+    [TestCase("0x12zz34", "12")]
+    [TestCase("0x123z", "12")]
+    [TestCase("0x1zz", "01")]
+    [TestCase("1é", "01")]
+    public void Javascript_string_helpers_keep_decoded_hex_prefix(string input, string decodedHex)
+    {
+        byte[] decoded = Convert.FromHexString(decodedHex);
+        byte[] word = decoded.PadLeft(32);
+        Address address = new(decoded.PadLeft(Address.Size));
+        string argument = JsonSerializer.Serialize(input);
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result:function(){return {word:toHex(toWord(" + argument + "))," +
+            "address:toHex(toAddress(" + argument + ")),contract:toHex(toContract(" + argument + ",0))," +
+            "contract2:toHex(toContract2(" + argument + "," + argument + "," + argument + ")),precompile:isPrecompiled(" + argument + ")};}}");
+        object result = tracer.result();
+        object expected = new
+        {
+            word = "0x" + Convert.ToHexStringLower(word),
+            address = address.ToString(),
+            @contract = ContractAddress.From(address, 0).ToString(),
+            contract2 = ContractAddress.From(address, word, decoded).ToString(),
+            precompile = Shanghai.Instance.IsPrecompile(address)
+        };
+        Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(JsonSerializer.Serialize(expected)));
+    }
+
+    [TestCase(false, 0)]
+    [TestCase(true, 0)]
+    [TestCase(true, 1)]
+    public void Javascript_db_exists_includes_empty_accounts(bool exists, int balance)
+    {
+        Address address = new("0x00000000000000000000000000000000deadbeef");
+        if (exists) TestState.CreateAccount(address, (UInt256)balance);
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Db db = new(TestState);
+        Assert.That(db.exists(address.ToString()), Is.EqualTo(exists));
+    }
+
+    [Test]
+    public void Javascript_callback_helper_interruption_does_not_poison_next_engine()
+    {
+        using (Engine engine = new(Shanghai.Instance))
+        using (GethLikeJavaScriptTxTracer tracer = new(engine,
+            new Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Db(TestState), new Context(), new GethTraceOptions
+            {
+                Tracer = "{fault:function(){},result:function(){try {slice(new Uint8Array([1]),-1,0);} catch(e) {return 'swallowed';}}}"
+            }))
+        {
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<System.IO.InvalidDataException>()
+                .With.Message.StartsWith("Tracer accessed out of bound memory"));
+        }
+        using Engine fresh = new(Shanghai.Instance);
+        dynamic healthy = fresh.CreateTracer("{result:function(){return 7;}}");
+        Assert.That((int)healthy.result(), Is.EqualTo(7));
+    }
+
+    [Test]
+    public void Javascript_callback_host_failure_is_not_a_user_error()
+    {
+        IWorldState state = NSubstitute.Substitute.For<IWorldState>();
+        NSubstitute.SubstituteExtensions.Returns<ulong>(state.GetNonce(NSubstitute.Arg.Any<Address>()),
+            _ => throw new InvalidOperationException("host state failure"));
+        using Engine engine = new(Shanghai.Instance);
+        using GethLikeJavaScriptTxTracer tracer = new(engine,
+            new Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Db(state),
+            new Context(), new GethTraceOptions
+            {
+                Tracer = "{fault:function(){},result:function(ctx,db){return db.getNonce(toAddress('1'));}}"
+            });
+        Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptEngineException>().With.Message.Contains("host state failure"));
+    }
+
+    [Test]
     public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
     {
         const int concurrency = 16;
@@ -1044,7 +1138,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         const string failingTracer = "{ fault: function() { }, result: function() { throw new Error('result failed'); } }";
         using (GethLikeBlockJavaScriptTracer tracer = GetTracer(failingTracer))
         {
-            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.InstanceOf(typeof(IScriptEngineException)));
+            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.TypeOf<System.IO.InvalidDataException>()
+                .With.Message.EqualTo("Error: result failed    in server-side tracer function 'result'"));
         }
 
         const string recoveringTracer = "{ fault: function() { }, result: function() { return toHex(toWord('1')); } }";

@@ -299,6 +299,19 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
                 {
                     ClearFailedLogs(frameCallFrame, parentFailed: false);
                 }
+                if (_logs is not null && _frameReceipts is not null)
+                {
+                    ulong index = LogIndexOffset;
+                    foreach (TxFrameReceipt receipt in _frameReceipts)
+                    {
+                        foreach (LogEntry entry in receipt.Logs)
+                        {
+                            if (_logs.TryGetValue(entry, out NativeCallTracerLogEntry? log)) log.Index = index;
+                            index++;
+                        }
+                    }
+                    _logs.Clear();
+                }
             }
             else
             {

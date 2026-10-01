@@ -1022,6 +1022,61 @@ public partial class DebugRpcModuleTests
             .GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(instance)!;
     }
 
+    [Test]
+    public async Task Debug_traceCall_javascript_callback_errors_are_user_errors(
+        [Values("setup", "result", "step", "postStep", "fault", "enter", "exit")] string callback,
+        [Values("throw", "slice", "null", "caughtslice")] string failure, [Values] bool mux)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        string body = failure switch
+        {
+            "slice" => "slice(new Uint8Array([1]),-1,0);",
+            "null" => "toHex(null);",
+            "caughtslice" => "try { slice(new Uint8Array([1]),-1,0); } catch (e) { return 'swallowed'; }",
+            _ => "throw Error('user failure');"
+        };
+        string tracer = "{step:function(){},fault:function(){},enter:function(){},exit:function(){},result:function(){return {};}," + callback + ":function(){" + body + "}}";
+        string code = callback == "fault" ? "fe" : "6000600060006000600073" + FlatChild[2..] + "61fffff100";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", FlatTransaction(), "latest", new
+        {
+            tracer = mux ? "muxTracer" : tracer,
+            tracerConfig = mux ? new Dictionary<string, object> { [tracer] = new { } } : null,
+            timeout = callback == "setup" ? "bad" : "5s",
+            stateOverrides = ErcOverrides(code)
+        });
+        JToken envelope = JToken.Parse(response);
+        string prefix = failure switch
+        {
+            "slice" or "caughtslice" => "Tracer accessed out of bound memory: available 1, offset -1, size 1",
+            "null" => "TypeError: Cannot convert undefined or null to object at github.com/ethereum/go-ethereum/eth/tracers/js.(*jsTracer).setBuiltinFunctions.func1 (native)",
+            _ => "Error: user failure"
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envelope["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(envelope["error"]!["message"]!.Value<string>(), Is.EqualTo(prefix + "    in server-side tracer function '" + callback + "'"));
+            Assert.That(envelope["error"]!["data"], Is.Null);
+            Assert.That(envelope["result"], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_javascript_null_error_is_catchable([Values] bool mux)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        const string tracer = "{fault:function(){},result:function(){try {toHex(null);} catch(e) {return {value:'swallowed'};}}}";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", FlatTransaction(), "latest", new
+        {
+            tracer = mux ? "muxTracer" : tracer,
+            tracerConfig = mux ? new Dictionary<string, object> { [tracer] = new { } } : null,
+            stateOverrides = ErcOverrides("00")
+        });
+        JToken envelope = JToken.Parse(response);
+        Assert.That(envelope["error"], Is.Null, response);
+        JToken result = mux ? envelope["result"]![tracer]! : envelope["result"]!;
+        Assert.That(result["value"]!.Value<string>(), Is.EqualTo("swallowed"));
+    }
+
     [TestCase(null)]
     [TestCase("0x0")]
     public async Task Debug_traceCall_rejects_prestate_diff_with_include_empty(string? txIndex)

@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using FastEnumUtility;
@@ -25,6 +27,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private readonly dynamic _tracer;
     private readonly Log _log = new();
     private readonly Engine _engine;
+    private readonly CancellationToken _executionToken;
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
@@ -62,7 +65,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _ctx = ctx;
 
         _deadline = options.ExecutionCancellation is null ? new GethTraceDeadline() : null;
-        CancellationToken token = options.ExecutionCancellation ?? _deadline!.Token;
+        CancellationToken token = _executionToken = options.ExecutionCancellation ?? _deadline!.Token;
         try
         {
             _ctsRegistration = token.Register(static e => ((Engine)e!).Interrupt(), engine);
@@ -72,7 +75,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             if (_functions.HasFlag(TracerFunctions.setup))
             {
                 Engine.CurrentEngine = _engine;
-                _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
+                Invoke(TracerFunctions.setup, options.TracerConfig?.ToString() ?? "{}");
             }
             _deadline?.Start(options.Timeout ?? DefaultTimeout);
         }
@@ -90,7 +93,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
         result.TxHash = _ctx.TxHash;
         Engine.CurrentEngine = _engine;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(_tracer.result(_ctx, _db)) };
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(Invoke(TracerFunctions.result)) };
         Dispose();
 
         return result;
@@ -152,7 +155,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 _frame.Gas = gas;
                 _frame.Type = callType.FastToString();
                 Engine.CurrentEngine = _engine;
-                _tracer.enter(_frame);
+                Invoke(TracerFunctions.enter);
                 _frameGas ??= new Stack<ulong>();
                 _frameGas.Push(gas);
             }
@@ -216,7 +219,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         if (_functions.HasFlag(TracerFunctions.postStep))
         {
             Engine.CurrentEngine = _engine;
-            _tracer.postStep(_log, _db);
+            Invoke(TracerFunctions.postStep);
         }
     }
 
@@ -256,7 +259,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
         }
         Engine.CurrentEngine = _engine;
-        _tracer.fault(_log, _db);
+        Invoke(TracerFunctions.fault);
     }
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
@@ -316,7 +319,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             _result.Output = output.ToArray();
             _result.Error = error;
             Engine.CurrentEngine = _engine;
-            _tracer.exit(_result);
+            Invoke(TracerFunctions.exit);
         }
 
         if (_depth == 0) _rootError = error;
@@ -362,7 +365,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         if (_functions.HasFlag(TracerFunctions.step))
         {
             Engine.CurrentEngine = _engine;
-            _tracer.step(_log, _db);
+            Invoke(TracerFunctions.step);
         }
     }
 
@@ -423,6 +426,67 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             {
                 _engine.Dispose();
             }
+        }
+    }
+
+    private object? Invoke(TracerFunctions function, string? config = null)
+    {
+        try
+        {
+            object? result = function switch
+            {
+                TracerFunctions.setup => _tracer.setup(config),
+                TracerFunctions.result => _tracer.result(_ctx, _db),
+                TracerFunctions.enter => _tracer.enter(_frame),
+                TracerFunctions.exit => _tracer.exit(_result),
+                TracerFunctions.step => _tracer.step(_log, _db),
+                TracerFunctions.postStep => _tracer.postStep(_log, _db),
+                TracerFunctions.fault => _tracer.fault(_log, _db),
+                _ => throw new ArgumentOutOfRangeException(nameof(function))
+            };
+            if (_engine.PendingInputError is { } inputError)
+            {
+                _executionToken.ThrowIfCancellationRequested();
+                throw new InvalidDataException($"{inputError}    in server-side tracer function '{function}'");
+            }
+            return result;
+        }
+        catch (ScriptInterruptedException ex) when (!_executionToken.IsCancellationRequested
+            && ex is IScriptEngineException { IsFatal: false } && _engine.PendingInputError is { } message)
+        {
+            throw new InvalidDataException($"{message}    in server-side tracer function '{function}'", ex);
+        }
+        catch (ScriptEngineException ex) when (!_executionToken.IsCancellationRequested && TryGetUserError(ex, out string message))
+        {
+            throw new InvalidDataException($"{message}    in server-side tracer function '{function}'", ex);
+        }
+    }
+
+    private bool TryGetUserError(ScriptEngineException exception, out string message)
+    {
+        message = exception.Message;
+        Exception current = exception;
+        while (true)
+        {
+            if (current is ScriptInterruptedException interrupted)
+            {
+                if (interrupted is not IScriptEngineException { IsFatal: false } || _engine.PendingInputError is not { } inputError) return false;
+                message = inputError;
+                return true;
+            }
+            if (current is JavaScriptInputException input)
+            {
+                message = input.Message;
+                return true;
+            }
+            if (current is ScriptEngineException script)
+            {
+                if (script.IsFatal) return false;
+                if (script.InnerException is null) return script.ScriptExceptionAsObject is not null;
+                current = script.InnerException;
+            }
+            else if (current is TargetInvocationException { InnerException: { } inner }) current = inner;
+            else return false;
         }
     }
 
