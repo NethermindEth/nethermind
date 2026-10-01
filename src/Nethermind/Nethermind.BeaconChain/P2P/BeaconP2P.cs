@@ -8,6 +8,7 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -47,8 +48,7 @@ namespace Nethermind.BeaconChain.P2P;
 /// stable across restarts (and reusable for the discv5 ENR in a later milestone). Gossipsub uses
 /// the eth2 parameters: <c>StrictNoSign</c>, the eth2 message-id function
 /// (<see cref="Eth2MessageId"/>), D=8/D_low=6/D_high=12/D_lazy=6, a 700 ms heartbeat, and a seen
-/// TTL of two epochs (p2p-interface.md, gossipsub parameters). Note that the pinned libp2p preview always signs published messages,
-/// which StrictNoSign peers reject — receiving gossip works, but publishing needs a library fix.
+/// TTL of two epochs (p2p-interface.md, gossipsub parameters).
 /// </remarks>
 public sealed class BeaconP2P : IAsyncDisposable
 {
@@ -125,18 +125,18 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation })
             .AddLibp2p(builder => builder
                 .WithPubsub()
-                .AddAppLayerProtocol<StatusProtocolV1>()
-                .AddAppLayerProtocol<StatusProtocolV2>()
-                .AddAppLayerProtocol<GoodbyeProtocol>()
-                .AddAppLayerProtocol<Eth2PingProtocol>()
-                .AddAppLayerProtocol<MetaDataProtocolV3>()
-                .AddAppLayerProtocol<BeaconBlocksByRangeProtocolV2>()
-                .AddAppLayerProtocol<BeaconBlocksByRootProtocolV2>()
-                .AddAppLayerProtocol<DataColumnSidecarsByRangeProtocol>()
-                .AddAppLayerProtocol<DataColumnSidecarsByRootProtocol>()
-                .AddAppLayerProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
-                .AddAppLayerProtocol<ExecutionPayloadEnvelopesByRootProtocol>()
-                .AddAppLayerProtocol<IdentifyAgentVersionProbe>())
+                .AddProtocol<StatusProtocolV1>()
+                .AddProtocol<StatusProtocolV2>()
+                .AddProtocol<GoodbyeProtocol>()
+                .AddProtocol<Eth2PingProtocol>()
+                .AddProtocol<MetaDataProtocolV3>()
+                .AddProtocol<BeaconBlocksByRangeProtocolV2>()
+                .AddProtocol<BeaconBlocksByRootProtocolV2>()
+                .AddProtocol<DataColumnSidecarsByRangeProtocol>()
+                .AddProtocol<DataColumnSidecarsByRootProtocol>()
+                .AddProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
+                .AddProtocol<ExecutionPayloadEnvelopesByRootProtocol>()
+                .AddProtocol<IdentifyAgentVersionProbe>())
             // One identify instance: the library's own stack slot and the probe's listen fallback
             // both resolve to it, so an inbound identify request is answered the same way whichever
             // of the two same-id protocols multistream picks.
@@ -175,9 +175,49 @@ public sealed class BeaconP2P : IAsyncDisposable
                 mcache_len = 6,
                 mcache_gossip = 3,
                 MessageCacheTtl = checked((int)(spec.SecondsPerSlot * 1000 * spec.SlotsPerEpoch * 2)), // seen_ttl: two epochs, in ms
+                MaxSeenMessageIds = MaxSeenMessageIds(spec),
+                // phase0 p2p "Gossipsub size limits": an encoded RPC, an IWANT answer included, may reach max_message_size().
+                MaxRpcBytes = Eth2MessageId.MaxMessageSize,
+                MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
+                // Peers behind one NAT or on one host share an address; no address penalty applies until attribution is configured.
+                IPColocationFactorWeight = 0,
+                TopicScoreParams = UnweightedTopicScores(spec),
             })
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
+    }
+
+    /// <summary>The seen and limbo cache capacity: every distinct message the subscribed topics can carry within the two-epoch seen_ttl.</summary>
+    /// <remarks>Per slot at most one aggregate per aggregator of every committee, one vote per PTC member, one column per subnet and one block, envelope and slashing.
+    /// A smaller cap evicts ids before seen_ttl ends, so a late duplicate is validated again.</remarks>
+    internal static int MaxSeenMessageIds(BeaconChainSpec spec) =>
+        checked((int)((Presets.MaxCommitteesPerSlot * Presets.TargetAggregatorsPerCommittee + Presets.PtcSize + Eip7594DasConstants.DataColumnSidecarSubnetCount
+            + (ulong)(GossipTopics.SubscribedTopicNames.Length + GossipTopics.GloasTopicNames.Length)) * spec.SlotsPerEpoch * 2));
+
+    /// <summary>Zero-weight score parameters for every topic of every scheduled fork digest, so no gossip delivery moves a peer's score.</summary>
+    /// <remarks>The library applies P1-P4 to a topic without parameters. This node returns <see cref="MessageValidity.Ignored"/> for gossip it consumes,
+    /// so P3 would count each honest mesh peer as under-delivering and prune or graylist it within seconds. The dictionary is filled before the router
+    /// reads it and is never changed.</remarks>
+    internal static Dictionary<string, TopicScoreParams> UnweightedTopicScores(BeaconChainSpec spec)
+    {
+        TopicScoreParams unweighted = new() { TopicWeight = 0 };
+        string[] names =
+        [
+            .. GossipTopics.SubscribedTopicNames,
+            .. GossipTopics.GloasTopicNames,
+            .. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static subnet => GossipTopics.DataColumnSidecarTopicName((ulong)subnet)),
+        ];
+        Dictionary<string, TopicScoreParams> topics = [];
+        foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, 0).Prepend(0UL))
+        {
+            byte[] digest = ForkDigest.Compute(spec, epoch);
+            foreach (string name in names)
+            {
+                topics[GossipTopics.Topic(digest, name)] = unweighted;
+            }
+        }
+
+        return topics;
     }
 
     /// <summary>The logger factory for libp2p's own categories: nothing it logs reaches our log above Trace.</summary>
@@ -321,7 +361,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
 
     /// <summary>Internal so a test can see the validator installed on the started router; without it the node forwards every message unchecked.</summary>
-    internal Func<Libp2p.Protocols.Pubsub.Dto.Message, MessageValidity>? VerifyMessageForTest => _router?.VerifyMessage;
+    internal Func<PeerId, Libp2p.Protocols.Pubsub.Dto.Message, MessageValidity>? VerifyMessageForTest => _router?.VerifyMessage;
 
     /// <summary>Dials the peer, or returns the existing session when one is already established (for example inbound).</summary>
     /// <remarks>
@@ -605,7 +645,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         return identity;
     }
 
-    private Task OnSessionConnected(ISession session)
+    private void OnSessionConnected(ISession session)
     {
         // Runs on the library's continuation after ConnectedTo completed, so the slot is filled by now;
         // a throwing subscriber must not cost the session.
@@ -620,8 +660,6 @@ public sealed class BeaconP2P : IAsyncDisposable
         {
             if (_logger.IsError) _logger.Error($"Session-established handler failed for {session.RemoteAddress}", e);
         }
-
-        return Task.CompletedTask;
     }
 
     private void OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)

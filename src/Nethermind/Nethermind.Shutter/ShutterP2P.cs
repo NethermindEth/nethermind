@@ -91,7 +91,7 @@ public class ShutterP2P : IShutterP2P
         _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
         ITopic topic = _router.GetTopic("decryptionKeys");
 
-        topic.OnMessage += (byte[] msg) =>
+        topic.OnMessage += (_, msg) =>
         {
             _msgQueue.Writer.TryWrite(msg);
             if (_logger.IsTrace) _logger.Trace("Received Shutter P2P message.");

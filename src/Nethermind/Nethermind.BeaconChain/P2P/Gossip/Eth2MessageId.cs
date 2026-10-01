@@ -37,6 +37,9 @@ public static class Eth2MessageId
     /// <summary>phase0 p2p "Gossipsub size limits": a compressed gossip payload must not exceed <c>max_compressed_len(MAX_PAYLOAD_SIZE)</c>.</summary>
     internal static readonly int MaxCompressedGossipSize = MaxCompressedLength(MaxGossipSize);
 
+    /// <summary>phase0 p2p <c>max_message_size()</c>: the bound on an encoded gossipsub RPC, framing and control messages included.</summary>
+    internal static readonly int MaxMessageSize = Math.Max(MaxCompressedGossipSize + 1024, 1024 * 1024);
+
     private const int MessageIdLength = 20;
 
     /// <summary>More than the most a snappy element emits per byte of input: a 3-byte copy of 64 bytes.</summary>

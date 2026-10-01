@@ -354,7 +354,7 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer, YamuxF
         }
 
         ServiceProvider services = collection
-            .AddLibp2p(builder => statusSource is null ? builder : builder.AddAppLayerProtocol<StatusProtocolV2>())
+            .AddLibp2p(builder => statusSource is null ? builder : builder.AddProtocol<StatusProtocolV2>())
             .BuildServiceProvider();
         // Building the factory is what fills the stack settings the peer runs on.
         services.GetRequiredService<IPeerFactory>();

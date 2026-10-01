@@ -118,7 +118,7 @@ public class ReqRespLimitsTests
         {
             try
             {
-                await channel.ReadAsync(0, ReadBlockingMode.DontWait, token);
+                await channel.ReadAsync(0, ReadBlockingMode.DoNotWait, token);
                 await reply.WaitAsync(token);
             }
             finally
@@ -136,11 +136,11 @@ public class ReqRespLimitsTests
         RangeResponder responder = new(response, token);
         await using ServiceProvider serverServices = new ServiceCollection()
             .AddSingleton(responder)
-            .AddLibp2p(static builder => builder.AddAppLayerProtocol<RangeResponder>())
+            .AddLibp2p(static builder => builder.AddProtocol<RangeResponder>())
             .BuildServiceProvider();
         await using ServiceProvider clientServices = new ServiceCollection()
             .AddSingleton<RangeRequester>()
-            .AddLibp2p(static builder => builder.AddAppLayerProtocol<RangeRequester>())
+            .AddLibp2p(static builder => builder.AddProtocol<RangeRequester>())
             .BuildServiceProvider();
         await using ILocalPeer server = serverServices.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1));
         await using ILocalPeer client = clientServices.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1));
@@ -163,7 +163,7 @@ public class ReqRespLimitsTests
             }
 
             await WaitForClosureAsync(requester.Channel!).WaitAsync(token);
-            ReadResult afterRejection = await requester.Channel!.ReadAsync(1, ReadBlockingMode.DontWait, token);
+            ReadResult afterRejection = await requester.Channel!.ReadAsync(1, ReadBlockingMode.DoNotWait, token);
             Assert.That(afterRejection.Result, Is.EqualTo(IOResult.Ended), "the requester closed its read side while the responder remained open");
         }
         finally
@@ -427,6 +427,7 @@ public class ReqRespLimitsTests
 
         public Task DialAsync<TProtocol>() where TProtocol : ISessionProtocol => throw new NotSupportedException();
         public Task DialAsync(ISessionProtocol protocol) => throw new NotSupportedException();
+        public Task<TResponse> DialAsync<TProtocol, TRequest, TResponse>(TRequest request, CancellationToken token = default) where TProtocol : ISessionProtocol<TRequest, TResponse> => throw new NotSupportedException();
         public Task DisconnectAsync() => throw new NotSupportedException();
         public INewSessionContext UpgradeToSession() => throw new NotSupportedException();
         public void ListenerReady(Multiaddress addr) => throw new NotSupportedException();

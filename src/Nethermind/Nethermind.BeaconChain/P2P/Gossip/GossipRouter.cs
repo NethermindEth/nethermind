@@ -19,6 +19,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 
@@ -127,7 +128,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private readonly LruKeyCache<ValueHash256> _seenPayloadAttestationMessages = new(SeenCacheSize, "beacon gossip seen payload attestation messages");
     private readonly long[] _dropCounts = new long[Enum.GetValues<GossipDropReason>().Length];
     private readonly Lock _subscriptionLock = new();
-    private readonly Dictionary<string, List<(ITopic Topic, Action<byte[]> Handler)>> _subscriptions = [];
+    private readonly Dictionary<string, List<(ITopic Topic, Action<PeerId, byte[]> Handler)>> _subscriptions = [];
 
     // Written by the import worker once a block's proposer signature verifies; read on the network thread.
     private readonly LruKeyCache<(ulong Slot, ulong Proposer)> _seenProposals = new(SeenProposalCacheSize, "beacon gossip proposals");
@@ -398,12 +399,13 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             }
 
             bool gloas = IsGloasDigest(forkDigest);
-            List<(ITopic Topic, Action<byte[]> Handler)> subscriptions = [];
+            List<(ITopic Topic, Action<PeerId, byte[]> Handler)> subscriptions = [];
             string[] names = gloas ? [.. GossipTopics.SubscribedTopicNames, .. GossipTopics.GloasTopicNames] : GossipTopics.SubscribedTopicNames;
             foreach (string name in names)
             {
                 ITopic topic = _getTopic(GossipTopics.Topic(forkDigest, name));
-                Action<byte[]> handler = HandlerFor(name, gloas);
+                Action<byte[]> handle = HandlerFor(name, gloas);
+                Action<PeerId, byte[]> handler = (_, message) => handle(message);
                 topic.OnMessage += handler;
                 topic.Subscribe();
                 subscriptions.Add((topic, handler));
@@ -420,12 +422,12 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         lock (_subscriptionLock)
         {
             string key = Convert.ToHexStringLower(forkDigest);
-            if (!_subscriptions.Remove(key, out List<(ITopic Topic, Action<byte[]> Handler)>? subscriptions))
+            if (!_subscriptions.Remove(key, out List<(ITopic Topic, Action<PeerId, byte[]> Handler)>? subscriptions))
             {
                 return;
             }
 
-            foreach ((ITopic topic, Action<byte[]> handler) in subscriptions)
+            foreach ((ITopic topic, Action<PeerId, byte[]> handler) in subscriptions)
             {
                 topic.OnMessage -= handler;
                 topic.Unsubscribe();

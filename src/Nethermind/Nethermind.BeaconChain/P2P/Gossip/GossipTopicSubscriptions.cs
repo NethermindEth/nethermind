@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 
@@ -16,10 +17,10 @@ internal sealed class GossipTopicSubscriptions(PubsubRouter router, Func<Message
     private readonly PubsubRouter _router = router;
     private readonly ConcurrentDictionary<string, byte> _retired = new();
 
-    /// <summary>The pubsub validator: <see cref="MessageValidity.Trottled"/> for a retired topic, else the wrapped validator's verdict.</summary>
-    /// <remarks>The router neither caches nor forwards a <see cref="MessageValidity.Trottled"/> message.</remarks>
-    internal MessageValidity Verify(Message message) =>
-        _retired.ContainsKey(message.Topic) ? MessageValidity.Trottled : verify(message);
+    /// <summary>The pubsub validator: <see cref="MessageValidity.Throttled"/> for a retired topic, else the wrapped validator's verdict.</summary>
+    /// <remarks>The router neither caches nor forwards a <see cref="MessageValidity.Throttled"/> message.</remarks>
+    internal MessageValidity Verify(PeerId source, Message message) =>
+        _retired.ContainsKey(message.Topic) ? MessageValidity.Throttled : verify(message);
 
     /// <summary>Gets and subscribes the topic, clearing any earlier retirement.</summary>
     internal ITopic GetTopic(string topicId)
@@ -35,7 +36,7 @@ internal sealed class GossipTopicSubscriptions(PubsubRouter router, Func<Message
     {
         public bool IsSubscribed => topic.IsSubscribed;
 
-        public event Action<byte[]>? OnMessage
+        public event Action<PeerId, byte[]>? OnMessage
         {
             add => topic.OnMessage += value;
             remove => topic.OnMessage -= value;
