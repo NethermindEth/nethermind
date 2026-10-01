@@ -15,6 +15,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -54,21 +55,21 @@ public class EngineTests
 
         BeaconExecutionPayload payload = new()
         {
-            ParentHash = TestHash,
+            ParentHash = CreateHash(0x11),
             FeeRecipient = Address.SystemUser,
-            StateRoot = TestHash,
-            ReceiptsRoot = TestHash,
-            LogsBloom = Bloom.Empty,
-            PrevRandao = TestHash,
+            StateRoot = CreateHash(0x22),
+            ReceiptsRoot = CreateHash(0x33),
+            LogsBloom = new Bloom(Enumerable.Range(0, 256).Select(static i => (byte)i).ToArray()),
+            PrevRandao = CreateHash(0x44),
             BlockNumber = 123,
             GasLimit = 30_000_000,
             GasUsed = 21_000,
             Timestamp = 1_700_000_000,
             ExtraData = Bytes.FromHexString("0xdeadbeef"),
             BaseFeePerGas = 7,
-            BlockHash = TestHash,
+            BlockHash = CreateHash(0x55),
             Transactions = [new BeaconTransaction { Bytes = Bytes.FromHexString("0x02abcd") }],
-            Withdrawals = [new BeaconWithdrawal { Index = 1, ValidatorIndex = 2, Address = Address.SystemUser, Amount = 3 }],
+            Withdrawals = [new BeaconWithdrawal { Index = 1, ValidatorIndex = 2, Address = new Address("0x2222222222222222222222222222222222222222"), Amount = 3 }],
             BlobGasUsed = 131072,
             ExcessBlobGas = 262144,
         };
@@ -105,10 +106,10 @@ public class EngineTests
             Assert.That(converted.BlockNumber, Is.EqualTo(123));
             Assert.That(converted.GasLimit, Is.EqualTo(30_000_000));
             Assert.That(converted.Timestamp, Is.EqualTo(1_700_000_000));
-            Assert.That(converted.BlockHash, Is.EqualTo(TestHash));
+            AssertAdditionalPayloadFields(converted, payload.GasUsed, payload.ExtraData, payload.BaseFeePerGas, payload.Withdrawals![0]);
             Assert.That(converted.Transactions, Is.EqualTo(new[] { Bytes.FromHexString("0x02abcd") }));
-            Assert.That(converted.Withdrawals![0].AmountInGwei, Is.EqualTo(3ul));
             Assert.That(converted.BlobGasUsed, Is.EqualTo(131072ul));
+            Assert.That(converted.ExcessBlobGas, Is.EqualTo(262144ul));
             Assert.That(versionedHashes.Single()!.Bytes.ToArray(), Is.EqualTo(expectedVersionedHash));
             Assert.That(requests, Has.Length.EqualTo(2));
             Assert.That(requests[0], Is.EqualTo(expectedDeposits));
@@ -193,21 +194,21 @@ public class EngineTests
     {
         ExecutionPayloadGloas payload = new()
         {
-            ParentHash = TestHash,
+            ParentHash = CreateHash(0x11),
             FeeRecipient = Address.SystemUser,
-            StateRoot = TestHash,
-            ReceiptsRoot = TestHash,
-            LogsBloom = Bloom.Empty,
-            PrevRandao = TestHash,
+            StateRoot = CreateHash(0x22),
+            ReceiptsRoot = CreateHash(0x33),
+            LogsBloom = new Bloom(Enumerable.Range(0, 256).Select(static i => (byte)i).ToArray()),
+            PrevRandao = CreateHash(0x44),
             BlockNumber = 321,
             GasLimit = 36_000_000,
             GasUsed = 42_000,
             Timestamp = 1_800_000_000,
             ExtraData = Bytes.FromHexString("0xbeef"),
             BaseFeePerGas = 9,
-            BlockHash = TestHash,
+            BlockHash = CreateHash(0x55),
             Transactions = [new TransactionGloas { Bytes = Bytes.FromHexString("0x04cafe") }],
-            Withdrawals = [new BeaconWithdrawal { Index = 5, ValidatorIndex = 6, Address = Address.SystemUser, Amount = 7 }],
+            Withdrawals = [new BeaconWithdrawal { Index = 5, ValidatorIndex = 6, Address = new Address("0x2222222222222222222222222222222222222222"), Amount = 7 }],
             BlobGasUsed = 262144,
             ExcessBlobGas = 393216,
             BlockAccessList = Bytes.FromHexString("0xc0ffee"),
@@ -249,9 +250,8 @@ public class EngineTests
             Assert.That(converted.BlockNumber, Is.EqualTo(321));
             Assert.That(converted.GasLimit, Is.EqualTo(36_000_000));
             Assert.That(converted.Timestamp, Is.EqualTo(1_800_000_000));
-            Assert.That(converted.BlockHash, Is.EqualTo(TestHash));
+            AssertAdditionalPayloadFields(converted, payload.GasUsed, payload.ExtraData, payload.BaseFeePerGas, payload.Withdrawals![0]);
             Assert.That(converted.Transactions, Is.EqualTo(new[] { Bytes.FromHexString("0x04cafe") }));
-            Assert.That(converted.Withdrawals![0].AmountInGwei, Is.EqualTo(7ul));
             Assert.That(converted.BlobGasUsed, Is.EqualTo(262144ul));
             Assert.That(converted.ExcessBlobGas, Is.EqualTo(393216ul));
             Assert.That(converted.BlockAccessList, Is.EqualTo(Bytes.FromHexString("0xc0ffee")), "the access list bytes must reach the execution layer unchanged");
@@ -481,6 +481,34 @@ public class EngineTests
             return WrapAsync();
             async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> WrapAsync() =>
                 ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadStatus = await task });
+        }
+    }
+
+    private static Hash256 CreateHash(byte value) => new(Enumerable.Repeat(value, Hash256.Size).ToArray());
+
+    private static void AssertAdditionalPayloadFields(ExecutionPayloadV3 actual, ulong gasUsed, byte[]? extraData, UInt256 baseFeePerGas, BeaconWithdrawal withdrawal)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.ParentHash, Is.EqualTo(CreateHash(0x11)));
+            Assert.That(actual.FeeRecipient, Is.EqualTo(Address.SystemUser));
+            Assert.That(actual.StateRoot, Is.EqualTo(CreateHash(0x22)));
+            Assert.That(actual.ReceiptsRoot, Is.EqualTo(CreateHash(0x33)));
+            Assert.That(actual.LogsBloom, Is.EqualTo(new Bloom(Enumerable.Range(0, 256).Select(static i => (byte)i).ToArray())));
+            Assert.That(actual.PrevRandao, Is.EqualTo(CreateHash(0x44)));
+            Assert.That(actual.GasUsed, Is.EqualTo(gasUsed));
+            Assert.That(actual.ExtraData, Is.EqualTo(extraData));
+            Assert.That(actual.BaseFeePerGas, Is.EqualTo(baseFeePerGas));
+            Assert.That(actual.BlockHash, Is.EqualTo(CreateHash(0x55)));
+            Assert.That(actual.Withdrawals, Has.Length.EqualTo(1));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Withdrawals![0].Index, Is.EqualTo(withdrawal.Index));
+            Assert.That(actual.Withdrawals[0].ValidatorIndex, Is.EqualTo(withdrawal.ValidatorIndex));
+            Assert.That(actual.Withdrawals[0].Address, Is.EqualTo(withdrawal.Address));
+            Assert.That(actual.Withdrawals[0].AmountInGwei, Is.EqualTo(withdrawal.Amount));
         }
     }
 
