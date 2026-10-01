@@ -116,6 +116,18 @@ namespace Nethermind.Evm
             return env;
         }
 
+        /// <summary>Empties the slots of <paramref name="cache"/> whose environment is still in use, without disposing it.</summary>
+        internal static void ForgetInUse(ExecutionEnvironment?[] cache)
+        {
+            for (int depth = 0; depth < cache.Length; depth++)
+            {
+                if (cache[depth] is { IsInUse: true })
+                {
+                    cache[depth] = null;
+                }
+            }
+        }
+
         /// <summary>Rented and not yet disposed; <see cref="Dispose"/> clears the account.</summary>
         private bool IsInUse => ExecutingAccount is not null;
 

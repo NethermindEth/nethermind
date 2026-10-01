@@ -541,9 +541,41 @@ public partial class VirtualMachine<TGasPolicy>(
             // Normal exits clear both fields; populated frame state therefore means exceptional unwind.
             if (vm._currentState is not null || vm._stateStack.Count != 0)
             {
-                vm.DisposeActiveFrames(topLevel);
+                vm.UnwindActiveFrames(topLevel);
             }
         }
+    }
+
+    // Out of FrameCleanupScope.Dispose: a try/finally there stops the JIT inlining it into every execution.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void UnwindActiveFrames(VmState<TGasPolicy> topLevel)
+    {
+        try
+        {
+            DisposeActiveFrames(topLevel);
+        }
+        finally
+        {
+            ForgetOrphanedFrames();
+        }
+    }
+
+    /// <summary>
+    /// Empties the cache slots an exceptional unwind leaves claimed, so the next transaction gets fresh frames there.
+    /// </summary>
+    /// <remarks>
+    /// Such a slot holds a child frame that CALL or CREATE staged and the loop never entered - a tracer threw in
+    /// between, as a cancelled <c>CancellationTxTracer</c> does from <c>ReportActionRemainingGas</c> - or its
+    /// environment, or a frame whose disposal threw. Nothing disposes them, and such a frame must not be disposed
+    /// now: the unwind has already restored the access journals to before its snapshot, and the transaction
+    /// processor recycles those journals next, so its restore would throw or undo another transaction's accesses.
+    /// Its environment stays referenced by it, so that is not put back into service either. Emptying the slots
+    /// hands both to the GC instead of keeping their data stack, code and input until the depth is reached again.
+    /// </remarks>
+    private void ForgetOrphanedFrames()
+    {
+        VmState<TGasPolicy>.ForgetUnreleased(FrameCache);
+        ExecutionEnvironment.ForgetInUse(EnvironmentCache);
     }
 
     private void SetPreviousCallOutputWindow(VmState<TGasPolicy> childState)

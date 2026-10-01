@@ -199,6 +199,18 @@ public class VmState<TGasPolicy> : IDisposable
         return state;
     }
 
+    /// <summary>Empties the slots of <paramref name="frameCache"/> whose frame is not released, without disposing it.</summary>
+    internal static void ForgetUnreleased(VmState<TGasPolicy>?[] frameCache)
+    {
+        for (int depth = 0; depth < frameCache.Length; depth++)
+        {
+            if (frameCache[depth] is { IsReleased: false })
+            {
+                frameCache[depth] = null;
+            }
+        }
+    }
+
     private static VmState<TGasPolicy> Rent()
     {
         if (_statePool.TryDequeue(out VmState<TGasPolicy>? state)) return state;

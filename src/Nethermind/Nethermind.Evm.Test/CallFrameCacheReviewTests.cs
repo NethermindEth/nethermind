@@ -233,6 +233,57 @@ public class CallFrameCacheReviewTests(bool amsterdam) : VirtualMachineTestsBase
     }
 
     /// <summary>
+    /// A cancellation thrown after CALL staged a reused cached frame and before the loop entered it unwinds the
+    /// transaction past a frame nothing disposes. The unwind empties that frame's slot and its environment's without
+    /// disposing either, keeps the frames it did dispose, and the next transaction gets a fresh frame at that depth.
+    /// </summary>
+    [Test]
+    public void Frame_orphaned_by_a_cancellation_leaves_the_cache_with_the_transaction([Values] bool traced)
+    {
+        const int orphanDepth = 3;
+        byte[] code = ChainDriver(5);
+        Assert.That(RunAndRestore(code, traced), Is.Not.Null);
+        VmState<EthereumGasPolicy>[] before = Enumerable.Range(1, 6).Select(d => Machine.FrameCache[d]!).ToArray();
+
+        ThrowingTracer cancelling = new(Machine) { CancelWhenStagedAtDepth = orphanDepth, Traced = traced };
+        Assert.Throws<OperationCanceledException>(() => RunAndRestore(code, cancelling));
+        VmState<EthereumGasPolicy> orphan = cancelling.Orphan!;
+        ExecutionEnvironment orphanEnv = cancelling.OrphanEnv!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(orphan, Is.SameAs(before[orphanDepth - 1]), "the cached frame was staged again and orphaned");
+            Assert.That(orphan.DataStack, Is.Not.Null, "with the data stack it kept from its previous use");
+            Assert.That(IsDisposed(orphan), Is.False, "the orphan is not disposed");
+            Assert.That(orphanEnv.ExecutingAccount, Is.EqualTo(Chain), "nor is its environment");
+            Assert.That(Machine.FrameCache[orphanDepth], Is.Null, "the orphan's slot is emptied");
+            Assert.That(Machine.EnvironmentCache[orphanDepth], Is.Null, "and its environment's");
+            foreach (int depth in new[] { 1, 2, 4, 5, 6 })
+            {
+                Assert.That(Machine.FrameCache[depth], Is.SameAs(before[depth - 1]), $"depth {depth} kept");
+                Assert.That(IsDisposed(Machine.FrameCache[depth]!), Is.True, $"depth {depth} released");
+                Assert.That(Machine.EnvironmentCache[depth]!.ExecutingAccount, Is.Null, $"env at depth {depth} released");
+            }
+        }
+
+        ThrowingTracer normal = new(Machine) { Traced = traced };
+        byte[]? output = RunAndRestore(code, normal);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(normal.Error, Is.Null);
+            Assert.That(output, Is.EqualTo(Uncached(() => RunAndRestore(code, traced))));
+            Assert.That(Machine.FrameCache[orphanDepth], Is.Not.Null.And.Not.SameAs(orphan), "a fresh frame takes the depth");
+            Assert.That(Machine.EnvironmentCache[orphanDepth], Is.Not.Null.And.Not.SameAs(orphanEnv));
+            Assert.That(normal.Frames.Where(static f => f.Env.CallDepth == orphanDepth).Select(static f => f.Frame),
+                Is.All.SameAs(Machine.FrameCache[orphanDepth]));
+            foreach (int depth in new[] { 1, 2, 4, 5, 6 })
+            {
+                Assert.That(normal.Frames.Where(f => f.Env.CallDepth == depth).Select(static f => f.Frame), Is.All.SameAs(before[depth - 1]), $"depth {depth}");
+            }
+        }
+    }
+
+    /// <summary>
     /// An <see cref="EvmException"/> thrown after CALL staged a child and before it was entered halts the parent
     /// but not the transaction: the orphan must be replaced when its depth is reached again in the same transaction.
     /// </summary>
@@ -779,9 +830,11 @@ public class CallFrameCacheReviewTests(bool amsterdam) : VirtualMachineTestsBase
         private int _opcodeHits;
         public int ThrowEvmExceptionWhenStagedAtDepth { get; set; } = -1;
         public int ThrowEvmExceptionAtStagedCount { get; init; } = -1;
+        public int CancelWhenStagedAtDepth { get; init; } = -1;
         private int _staged;
 
         public VmState<EthereumGasPolicy>? Orphan { get; private set; }
+        public ExecutionEnvironment? OrphanEnv { get; private set; }
         public List<(VmState<EthereumGasPolicy> Frame, ExecutionEnvironment Env)> Frames { get; } = [];
         public byte[]? ReturnValue { get; private set; }
         public ulong GasSpent { get; private set; }
@@ -811,6 +864,13 @@ public class CallFrameCacheReviewTests(bool amsterdam) : VirtualMachineTestsBase
             if (machine.ReturnData is not VmState<EthereumGasPolicy> staged || IsDisposed(staged) || !ReferenceEquals(staged, LastStaged())) return;
 
             _staged++;
+            if (staged.Env.CallDepth == CancelWhenStagedAtDepth)
+            {
+                Orphan = staged;
+                OrphanEnv = staged.Env;
+                throw new OperationCanceledException("cancelled with a child frame staged");
+            }
+
             if (staged.Env.CallDepth == ThrowEvmExceptionWhenStagedAtDepth || _staged == ThrowEvmExceptionAtStagedCount)
             {
                 ThrowEvmExceptionWhenStagedAtDepth = -1;

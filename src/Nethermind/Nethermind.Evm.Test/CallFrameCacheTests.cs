@@ -227,9 +227,14 @@ public class CallFrameCacheTests : VirtualMachineTestsBase
         // CancellationTxTracer does from ReportActionRemainingGas: nothing disposes the staged frame.
         FrameCaptureTracer throwing = new(Machine, traced: false) { ThrowWhenFrameIsStaged = true };
         Assert.Throws<OperationCanceledException>(() => Run(code, throwing));
-        VmState<EthereumGasPolicy> orphan = Machine.FrameCache[1]!;
-        ExecutionEnvironment orphanEnv = Machine.EnvironmentCache[1]!;
-        Assert.That(IsDisposed(orphan), Is.False, "the staged frame was orphaned");
+        VmState<EthereumGasPolicy> orphan = throwing.Staged!;
+        ExecutionEnvironment orphanEnv = orphan.Env;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IsDisposed(orphan), Is.False, "the staged frame was orphaned");
+            Assert.That(Machine.FrameCache[1], Is.Null, "the unwind empties the orphan's slot");
+            Assert.That(Machine.EnvironmentCache[1], Is.Null, "and its environment's");
+        }
 
         FrameCaptureTracer second = Run(code, traced: false);
         FrameCaptureTracer third = Run(code, traced: false);
@@ -589,6 +594,7 @@ public class CallFrameCacheTests : VirtualMachineTestsBase
         public bool ThrowWhenFrameIsStaged { get; init; }
 
         public List<(int Depth, VmState<EthereumGasPolicy> Frame, ExecutionEnvironment Env)> Frames { get; } = [];
+        public VmState<EthereumGasPolicy>? Staged { get; private set; }
         public byte[]? ReturnValue { get; private set; }
         public ulong GasSpent { get; private set; }
         public string? Error { get; private set; }
@@ -605,8 +611,9 @@ public class CallFrameCacheTests : VirtualMachineTestsBase
 
         public override void ReportActionRemainingGas(ulong gas)
         {
-            if (ThrowWhenFrameIsStaged && machine.ReturnData is VmState<EthereumGasPolicy>)
+            if (ThrowWhenFrameIsStaged && machine.ReturnData is VmState<EthereumGasPolicy> staged)
             {
+                Staged = staged;
                 throw new OperationCanceledException("Cancelled with a child frame staged.");
             }
         }
