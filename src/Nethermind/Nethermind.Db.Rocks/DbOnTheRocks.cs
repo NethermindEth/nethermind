@@ -1570,6 +1570,35 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         InnerFlush(familyHandle);
     }
 
+    public virtual void FlushOrThrow()
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+        try
+        {
+            FlushWal();
+            _db.Flush(_defaultFlushOptions);
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
+    public void FlushWithColumnFamilyOrThrow(IColumnFamilyHandle familyHandle)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+        try
+        {
+            _db.Flush(_defaultFlushOptions, familyHandle);
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
     private const ulong CompactOnDeletionSlidingWindowKeys = 100_000;
     private const ulong CompactOnDeletionTriggerKeys = 50_000;
     private const double CompactOnDeletionFileRatio = 0.3;

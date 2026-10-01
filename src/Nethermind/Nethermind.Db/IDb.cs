@@ -29,6 +29,9 @@ namespace Nethermind.Db
 
         /// <summary>Syncs the write-ahead log to durable storage, throwing on failure (<see cref="Flush"/> swallows).</summary>
         void SyncWal() => Flush(onlyWal: true);
+
+        /// <summary>Flushes the memtable (of this column, for a column store) to durable storage, throwing on failure (<see cref="Flush"/> swallows).</summary>
+        void FlushOrThrow() => Flush();
         void Clear() { }
         void Compact() { }
 

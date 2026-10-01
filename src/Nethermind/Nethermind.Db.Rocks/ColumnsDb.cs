@@ -86,6 +86,15 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
     }
 
+    public override void FlushOrThrow()
+    {
+        base.FlushOrThrow();
+        foreach (T key in ColumnKeys)
+        {
+            _columnDbs[key].FlushOrThrow();
+        }
+    }
+
     private static IReadOnlyList<T> GetEnumKeys(IReadOnlyList<T> keys)
     {
         if (typeof(T).IsEnum && keys.Count == 0)

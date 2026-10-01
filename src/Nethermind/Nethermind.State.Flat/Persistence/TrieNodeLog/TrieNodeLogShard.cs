@@ -360,10 +360,11 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             Span<byte> stored = stackalloc byte[TrieNodeLogBlock.MaxStoredLength];
             Span<byte> raw = stackalloc byte[TrieNodeLogBlock.Size];
 
+            // Resolved once: the RocksDB columns batch allocates a wrapper per GetColumnBatch call. Non-null entries
+            // are the column families this merge wrote and must flush.
+            Core.IWriteBatch?[] columns = new Core.IWriteBatch?[WriteBufferAdjuster.ColumnCount];
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
-                // Resolved once: the RocksDB columns batch allocates a wrapper per GetColumnBatch call.
-                Core.IWriteBatch?[] columns = new Core.IWriteBatch?[WriteBufferAdjuster.ColumnCount];
                 Scanner scanner = new(generation, generation.Frontier);
                 try
                 {
@@ -380,8 +381,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                         }
 
                         Core.IWriteBatch column = columns[header.Column] ??= batch.GetColumnBatch((FlatDbColumns)header.Column);
-                        if (header.Type == TrieNodeLogRecord.Delete) column.Remove(scanner.Key);
-                        else column.PutSpan(scanner.Key, scanner.Value);
+                        if (header.Type == TrieNodeLogRecord.Delete) column.Set(scanner.Key, null, WriteFlags.DisableWAL);
+                        else column.PutSpan(scanner.Key, scanner.Value, WriteFlags.DisableWAL);
                         written += header.KeyLength + header.ValueLength;
                         writtenByColumn[header.Column] += header.KeyLength + header.ValueLength;
                         records++;
@@ -391,13 +392,23 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                 {
                     scanner.Dispose();
                 }
-
-                Span<byte> marker = stackalloc byte[8];
-                BinaryPrimitives.WriteUInt64BigEndian(marker, generation.Number);
-                batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(FlushedGenerationKey, marker);
             }
 
-            _db.SyncWal();
+            // The log file is the WAL of this merge: the data goes in without one, the written column families are
+            // flushed (throwing, so a failure never reaches the marker), and only then is the marker written and
+            // flushed. Marker durable therefore implies data durable; a crash before that replays the file.
+            for (int column = 0; column < columns.Length; column++)
+            {
+                if (columns[column] is not null) _db.GetColumnDb((FlatDbColumns)column).FlushOrThrow();
+            }
+
+            using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
+            {
+                Span<byte> marker = stackalloc byte[8];
+                BinaryPrimitives.WriteUInt64BigEndian(marker, generation.Number);
+                batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(FlushedGenerationKey, marker, WriteFlags.DisableWAL);
+            }
+            _db.GetColumnDb(FlatDbColumns.Metadata).FlushOrThrow();
             for (int column = 0; column < WriteBufferAdjuster.ColumnCount; column++)
             {
                 if (writtenByColumn[column] != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), writtenByColumn[column]);
