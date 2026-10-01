@@ -74,6 +74,7 @@ public class GossipMessageValidatorColumnTests
 
         StringLabel key = new(GossipTopics.DataColumnSidecarTopicName(Subnet));
         long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key);
+        ulong acceptedBefore = Metrics.BeaconChainGossipAccepted;
         ulong droppedBefore = Metrics.BeaconChainGossipDropped;
         StringLabel reasonKey = new(reason?.ToString() ?? "unused");
         long reasonBefore = Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(reasonKey);
@@ -82,6 +83,7 @@ public class GossipMessageValidatorColumnTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key), Is.EqualTo(before + 1));
+            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (consumed ? 1UL : 0UL)), "a consumed sidecar is accepted even when it is not forwarded");
             Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (reason is null ? 0UL : 1UL)));
             Assert.That(Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(reasonKey), Is.EqualTo(reasonBefore + (reason is null ? 0 : 1)));
             Assert.That(validity, Is.EqualTo(expected));

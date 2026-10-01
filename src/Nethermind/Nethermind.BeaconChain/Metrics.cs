@@ -24,6 +24,7 @@ public class Metrics
     internal static ulong GossipAcceptedCount;
     internal static ulong GossipDroppedCount;
     internal static ulong BlocksImportedCount;
+    internal static ulong DialAttemptsCount;
     private static long _headSlotDelay;
     private static int _peerCount;
     private static long _lastBlockImportMs;
@@ -70,7 +71,7 @@ public class Metrics
 
     [CounterMetric]
     [Description("Outbound dials attempted toward discovered beacon chain peers.")]
-    public static ulong BeaconChainDialAttempts { get; set; }
+    public static ulong BeaconChainDialAttempts { get => Volatile.Read(ref DialAttemptsCount); set => Volatile.Write(ref DialAttemptsCount, value); }
 
     [CounterMetric]
     [Description("Beacon blocks imported through the state transition.")]
