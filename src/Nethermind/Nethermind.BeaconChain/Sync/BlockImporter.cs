@@ -281,6 +281,12 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.Invalid;
         }
 
+        // fork-choice.md on_block: a trusted replay must wait before mutating its lineage state in place.
+        if (!verifySignatures && IsBeforeItsSlot(block.Slot, blockRoot))
+        {
+            return BlockImportResult.FutureSlot;
+        }
+
         return block switch
         {
             ForkedSignedBeaconBlock.OfFulu fulu => ImportFulu(fulu.Block, blockRoot, verifySignatures, receivedMs),
@@ -298,7 +304,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <returns>Why the block is refused, or <c>null</c>.</returns>
     /// <remarks>
     /// The current slot is the node's clock, allowing <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> as gossip does, never
-    /// fork-choice time: <see cref="TickToClock"/> advances that to at least the block's own slot before <c>OnBlock</c>.
+    /// fork-choice time: a block within that allowance of its slot's start waits for the slot (<see cref="IsBeforeItsSlot"/>).
     /// </remarks>
     private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot, out bool failedValidation)
     {
@@ -439,6 +445,11 @@ public sealed class BlockImporter : IBlockImporter
 
         // The transition hook already drove engine_newPayload; an INVALID verdict made Apply throw.
         ExecutionStatus executionStatus = verdict.Status;
+        if (IsBeforeItsSlot(block.Slot, blockRoot))
+        {
+            return BlockImportResult.FutureSlot;
+        }
+
         TickToClock(block.Slot, receivedMs);
 
         // Spec Fulu on_block asserts is_data_available before state_transition; reuse that verdict only for this root.
@@ -536,6 +547,11 @@ public sealed class BlockImporter : IBlockImporter
         {
             // Recorded before OnBlock, which needs it: a stored full child was persisted only after passing that gate, so the record holds even if OnBlock now refuses it.
             _runner.OnExecutionPayloadVerified(parentRoot);
+        }
+
+        if (IsBeforeItsSlot(block.Slot, blockRoot))
+        {
+            return BlockImportResult.FutureSlot;
         }
 
         TickToClock(block.Slot, receivedMs);
@@ -718,18 +734,27 @@ public sealed class BlockImporter : IBlockImporter
 
     /// <summary>Advances fork-choice time to the node's clock when the block reached the importer, before <c>on_block</c>, whose proposer boost and <c>record_block_timeliness</c> read <c>store.time</c>.</summary>
     /// <remarks>
-    /// The spec's <c>on_block</c> runs at the <c>store.time</c> of the last tick before it, so the node's own state
-    /// transition and <c>engine_newPayload</c> latency do not count as block lateness. Never below
-    /// <paramref name="blockSlot"/>'s start: a block up to <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> early must still pass the current-slot check.
+    /// fork-choice.md on_block: transition latency does not count as lateness; an early receipt uses its slot start after the clock reaches it.
     /// </remarks>
     private void TickToClock(ulong blockSlot, long receivedMs)
     {
-        ulong now = _runner.GenesisTime + (ulong)Math.Max(0L, receivedMs - _clock.SlotStartMilliseconds(0)) / 1000;
-        ulong time = Math.Max(now, _runner.GenesisTime + blockSlot * _spec.SecondsPerSlot);
+        long slotStartMs = _clock.SlotStartMilliseconds(blockSlot);
+        long tickMs = receivedMs < slotStartMs ? Math.Min(_clock.UnixMilliseconds, slotStartMs) : receivedMs;
+        ulong time = _runner.GenesisTime + (ulong)Math.Max(0L, tickMs - _clock.SlotStartMilliseconds(0)) / 1000;
         if (time > _runner.Time)
         {
             _runner.OnTick(time);
         }
+    }
+
+    /// <summary>Whether neither the node's clock nor fork-choice time has reached <paramref name="slot"/>, so the block must wait for its slot.</summary>
+    /// <remarks>fork-choice.md on_block: future blocks wait until the clock or slot tick reaches their slot.</remarks>
+    private bool IsBeforeItsSlot(ulong slot, Hash256 blockRoot)
+    {
+        if (slot <= _runner.CurrentSlot || _clock.UnixMilliseconds >= _clock.SlotStartMilliseconds(slot)) return false;
+
+        if (_logger.IsDebug) _logger.Debug($"Deferring block {blockRoot} at slot {slot} until its slot starts");
+        return true;
     }
 
     /// <inheritdoc/>
