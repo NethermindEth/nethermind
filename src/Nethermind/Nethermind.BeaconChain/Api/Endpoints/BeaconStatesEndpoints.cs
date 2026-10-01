@@ -24,13 +24,13 @@ internal static class BeaconStatesEndpoints
 {
     public static void Map(WebApplication app, BeaconApiContext ctx)
     {
-        app.MapGet("/eth/v1/beacon/states/{state_id}/fork", (HttpContext c, string state_id) => Fork(c, state_id, ctx));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/root", (HttpContext c, string state_id) => Root(c, state_id, ctx));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/finality_checkpoints", (HttpContext c, string state_id) => FinalityCheckpoints(c, state_id, ctx));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => Validators(c, state_id, ctx));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/validators/{validator_id}", (HttpContext c, string state_id, string validator_id) => ValidatorById(c, state_id, validator_id, ctx));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => ValidatorBalances(c, state_id, ctx));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/committees", (HttpContext c, string state_id) => Committees(c, state_id, ctx));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/fork", (HttpContext c, string state_id) => Fork(c, state_id, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/root", (HttpContext c, string state_id) => Root(c, state_id, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/finality_checkpoints", (HttpContext c, string state_id) => FinalityCheckpoints(c, state_id, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => Validators(c, state_id, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/validators/{validator_id}", (HttpContext c, string state_id, string validator_id) => ValidatorById(c, state_id, validator_id, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => ValidatorBalances(c, state_id, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/committees", (HttpContext c, string state_id) => Committees(c, state_id, ctx.ForRequest()));
     }
 
     private static Task Fork(HttpContext c, string stateId, BeaconApiContext ctx)
