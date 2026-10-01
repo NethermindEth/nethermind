@@ -96,6 +96,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private TransactionResult ExecuteFrameTx<TTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
         where TTracing : struct, IFlag
     {
+        if (!spec.IsEip8141Enabled)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transactions are not enabled");
+        }
+
         // eth_call and the other estimation/tracing entry points reach the processor with validation
         // skipped, so the whole structural constraint set is enforced here and not only in TxValidator.
         if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out string? malformed))

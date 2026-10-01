@@ -118,6 +118,27 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
+    public void FrameTransactions_RequireActivation([Values] bool simulate, [Values] bool enabled)
+    {
+        _spec.IsEip8141Enabled = enabled;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        TransactionResult result = simulate ? CallAndRestore(tx) : Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(enabled));
+        if (!enabled)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+                Assert.That(result.ErrorDescription, Does.Contain("frame transactions are not enabled"));
+                Assert.That(_stateProvider.GetNonce(Sender), Is.Zero);
+            }
+        }
+    }
+
+    [Test]
     public void Execute_NonceHigherThanAccount_ReturnsNonceTooHigh()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));

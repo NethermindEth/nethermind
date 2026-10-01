@@ -43,6 +43,30 @@ public partial class EthRpcModuleTests
     private const string FreshRecipientAddress = "0xc278000000000000000000000000000000000000";
 
     [Test]
+    public async Task EthCall_FrameTransactions_RequireActivation([Values] bool enabled)
+    {
+        IReleaseSpec spec = enabled ? Eip8141Prototype.Instance : Osaka.Instance;
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+
+        string response = await ctx.Test.TestEthRpc("eth_call", UnsignedFrameRequest());
+
+        JToken parsed = JToken.Parse(response);
+        if (enabled)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parsed["error"], Is.Null, response);
+                Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"), response);
+            }
+        }
+        else
+        {
+            Assert.That(parsed["error"], Is.Not.Null, response);
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("frame transactions are not enabled"), response);
+        }
+    }
+
+    [Test]
     public async Task Rpc_discards_unobserved_logs(
         [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
         [Range(0, 4)] int topicCount,
