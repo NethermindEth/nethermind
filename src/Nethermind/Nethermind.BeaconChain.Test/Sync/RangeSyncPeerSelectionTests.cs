@@ -442,32 +442,27 @@ public class RangeSyncPeerSelectionTests
     }
 
     /// <summary>
-    /// At the head, every peer's last status names this node's head while the chain has moved on (phase0/p2p-interface.md Status), so no peer reaches the next slot.
-    /// The periodic refresh comes about once a minute; range sync must ask for the statuses itself, for the slot it waits on, or it stalls until then.
+    /// Every peer's last status names this node's head while the chain has moved on (phase0/p2p-interface.md Status), so no peer reaches the next slot.
+    /// The periodic refresh comes about once a minute, so range sync asks for the statuses itself once the slot it waits on is behind the wall slot;
+    /// while that slot is the wall slot its block may not be out yet, and asking every slot would only load the peers.
     /// </summary>
-    [Test]
+    [TestCase(2UL, true, TestName = "Range sync behind the wall slot whose peers all report its own head refreshes their status instead of waiting")]
+    [TestCase(1UL, false, TestName = "Range sync waiting on the wall slot's block does not refresh peer status")]
     [CancelAfter(30_000)]
-    public async Task Range_sync_whose_peers_all_report_its_own_head_refreshes_their_status_instead_of_waiting(CancellationToken token)
+    public async Task Range_sync_refreshes_stale_peer_status_only_behind_the_wall_slot(ulong wallSlotsPastHead, bool refreshed, CancellationToken token)
     {
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1);
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1, AnchorSlot + 2);
         ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
-        // One slot past its last status, which names this node's head.
-        StubPeer peer = new("ahead", AnchorSlot + 1, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
+        StubPeer peer = new("ahead", AnchorSlot + 2, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
         StaleStatusPool pool = new(peer, AnchorSlot);
         RangeSync sync = new(pool, LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
-        using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
-        bound.CancelAfter(TimeSpan.FromSeconds(10));
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => AnchorSlot + 1, bound.Token))
-        {
-            yielded.Add(block);
-        }
+        (bool ended, int yielded) = await RunBoundedAsync(sync, anchorRoot, AnchorSlot + wallSlotsPastHead, token);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(pool.Refreshes, Is.EqualTo(new[] { AnchorSlot + 1 }), "asked once, for the slot range sync waits on");
-            Assert.That(yielded, Is.EqualTo(chainBlocks));
+            Assert.That(pool.Refreshes, refreshed ? (NUnit.Framework.Constraints.IResolveConstraint)Is.EqualTo(new[] { AnchorSlot + 1 }) : Is.Empty, "asked once, for the slot range sync waits on");
+            Assert.That((ended, yielded), Is.EqualTo(refreshed ? (true, chain.Length) : (false, 0)));
         }
     }
 
