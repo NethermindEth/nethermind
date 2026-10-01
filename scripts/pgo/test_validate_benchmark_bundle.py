@@ -271,6 +271,7 @@ class BenchmarkBundleTests(unittest.TestCase):
     def test_unsafe_or_duplicate_zip_paths_are_rejected(self):
         manifest = (self.collection / "manifest.json").read_bytes()
         for entries in ((('../outside', b'fixture'),), (('sub\\file', b'fixture'),),
+                        (('sub\\', b''),), (('../escape/', b''),), (('/abs/', b''),), (('x/\0y', b'fixture'),),
                         (('manifest.json', manifest), ('manifest.json', manifest))):
             self.replace_archive("pgo-collection-42-1", entries)
             with self.subTest(entries=[name for name, _ in entries]), self.assertRaisesRegex(ValueError, "unsafe or duplicate"):

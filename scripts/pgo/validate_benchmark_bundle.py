@@ -68,15 +68,17 @@ def verify_artifacts(root, run, suffix):
         if digest(archive) != artifact["digest"].removeprefix("sha256:"):
             raise ValueError("artifact archive does not match the GitHub digest")
         checked = set()
+        seen = set()
         with zipfile.ZipFile(archive) as bundle:
             for item in bundle.infolist():
-                if item.is_dir():
-                    continue
                 name_in_archive = item.orig_filename
                 relative = PurePosixPath(name_in_archive)
                 if (relative.is_absolute() or ".." in relative.parts or "\\" in name_in_archive
-                        or "\0" in name_in_archive or name_in_archive in checked):
+                        or "\0" in name_in_archive or name_in_archive in seen):
                     raise ValueError("artifact archive contains an unsafe or duplicate path")
+                seen.add(name_in_archive)
+                if name_in_archive.endswith("/"):
+                    continue
                 path = (root / name / relative).resolve()
                 if not path.is_relative_to(root / name) or not path.is_file():
                     raise ValueError("artifact file is missing or escapes its directory")
