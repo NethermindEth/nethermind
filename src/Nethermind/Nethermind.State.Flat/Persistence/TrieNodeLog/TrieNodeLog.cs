@@ -190,20 +190,22 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     /// <summary>
     /// Called by a write batch after the RocksDB batch that carries its version has been committed: seals every
-    /// generation the batch wrote to except a still-open active one, so a sealed generation only ever holds
-    /// records whose version RocksDB has confirmed.
+    /// generation except a still-open active one, so a sealed generation only ever holds records whose version
+    /// RocksDB has confirmed, and no generation older than a merged one can remain unsealed.
     /// </summary>
-    internal void OnBatchCommitted(List<TrieNodeLogGeneration> touched)
+    internal void OnBatchCommitted()
     {
         using (_lock.EnterScope())
         {
-            foreach (TrieNodeLogGeneration generation in touched)
+            foreach (TrieNodeLogGeneration generation in _generations)
             {
-                if (generation != _active || IsFull(generation, 0, 0))
-                {
-                    generation.IsSealed = true;
-                    if (generation == _active) _active = null;
-                }
+                if (generation != _active) generation.IsSealed = true;
+            }
+
+            if (_active is not null && IsFull(_active, 0, 0))
+            {
+                _active.IsSealed = true;
+                _active = null;
             }
         }
         Volatile.Write(ref _openBatch, 0);

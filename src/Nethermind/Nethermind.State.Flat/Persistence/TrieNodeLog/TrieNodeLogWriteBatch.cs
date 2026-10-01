@@ -182,9 +182,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLog log, ulong version, List
         ArrayPool<byte>.Shared.Return(_buffer);
         if (_committed)
         {
-            List<TrieNodeLogGeneration> touched = new(_touched.Count);
-            foreach ((TrieNodeLogGeneration generation, _) in _touched) touched.Add(generation);
-            log.OnBatchCommitted(touched);
+            log.OnBatchCommitted();
         }
         else
         {
