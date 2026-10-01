@@ -52,6 +52,8 @@ public static class BeaconChainMetadataKeys
 /// opened at schema version <see cref="ChildrenIndexSchemaVersion"/>, and every store and delete after
 /// that goes through the index. A list kept for a block that is not stored is pending, and a first
 /// store of that block completes it.
+/// Beacon API params/index.yaml StateId uses prefix 4 for state-to-block roots and prefix 3 for
+/// block-to-state roots; both are updated with the block, so requests need no database scan.
 /// </para>
 /// <para>
 /// Blocks are read and written in the shape of the fork their slot belongs to, as
@@ -61,10 +63,10 @@ public static class BeaconChainMetadataKeys
 /// </remarks>
 /// <param name="db">The beacon chain columns.</param>
 /// <param name="spec">The network whose fork schedule decides each block's shape; <c>null</c> reads and writes the Fulu shape only.</param>
-public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSpec? spec = null)
+public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSpec? spec = null)
 {
     /// <summary>Layout version of every column; bump it whenever a change needs an existing database migrated or refused.</summary>
-    public const uint CurrentSchemaVersion = StateSlotIndexSchemaVersion;
+    public const uint CurrentSchemaVersion = StateRootIndexSchemaVersion;
 
     /// <summary>The first version whose children index is known to cover every stored block; an older database gets the index rebuilt.</summary>
     private const uint ChildrenIndexSchemaVersion = 2;
@@ -187,6 +189,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         batch.GetColumnBatch(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(ssz));
         IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
+        PutStateRootIndex(index, root, ssz);
 
         Span<byte> summaryKey = stackalloc byte[BlockSummaryKeyLength];
         BlockSummaryKey(root, summaryKey);
@@ -502,6 +505,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         Span<byte> summaryKey = stackalloc byte[BlockSummaryKeyLength];
         BlockSummaryKey(root, summaryKey);
         index.Remove(summaryKey);
+        RemoveStateRootIndex(index, root);
 
         Hash256? parentRoot;
         if (ownEntry is null)
@@ -635,6 +639,17 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
             index.Remove(StateSlotIndexKey(previousSlot, blockRoot));
         }
 
+        IWriteBatch roots = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
+        RemoveStateRootIndex(roots, blockRoot);
+        if (_blocks.Get(blockRoot.Bytes) is { } compressedBlock)
+        {
+            Span<byte> prefix = stackalloc byte[StateRootOffset + Hash256.Size];
+            if (DecompressSnappyPrefix(compressedBlock, prefix, ReqRespFraming.MaxPayloadSize) == prefix.Length)
+            {
+                PutStateRootIndex(roots, blockRoot, prefix);
+            }
+        }
+
         int chunkCount = (sszBytes.Length + StateChunkSize - 1) / StateChunkSize;
         Span<byte> chunkKey = stackalloc byte[Hash256.Size + sizeof(uint)];
         blockRoot.Bytes.CopyTo(chunkKey);
@@ -713,14 +728,14 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         bool slotKnown = TryGetStateSlot(blockRoot, manifest, out ulong slot);
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         IWriteBatch states = batch.GetColumnBatch(BeaconChainDbColumns.States);
-        RemoveState(blockRoot, manifest, states);
+        RemoveState(blockRoot, manifest, states, batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex));
         if (slotKnown)
         {
             batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex).Remove(StateSlotIndexKey(slot, blockRoot));
         }
     }
 
-    private static void RemoveState(Hash256 blockRoot, byte[] manifest, IWriteBatch states)
+    private void RemoveState(Hash256 blockRoot, byte[] manifest, IWriteBatch states, IWriteBatch roots)
     {
         // A malformed manifest names no chunks, so only the manifest goes; chunk keys the manifest does not name are never read.
         uint chunkCount = manifest.Length == StateManifestLength ? BinaryPrimitives.ReadUInt32BigEndian(manifest) : 0;
@@ -733,6 +748,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         }
 
         states.Remove(blockRoot.Bytes);
+        RemoveStateRootIndex(roots, blockRoot);
     }
 
     /// <summary>The slot recorded in the state stored under <paramref name="blockRoot"/>, read from its first chunk without decoding the state.</summary>
@@ -771,7 +787,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
 
     /// <summary>Queues the removal of every stored state at or below <paramref name="throughSlot"/> other than <paramref name="keepRoot"/>.</summary>
     /// <remarks>Only finalized index entries nominate states; a readable state slot must also be finalized before removal (fork-choice.md Store).</remarks>
-    private void RemoveStatesThroughSlot(ulong throughSlot, Hash256 keepRoot, IWriteBatch states, IWriteBatch index)
+    private void RemoveStatesThroughSlot(ulong throughSlot, Hash256 keepRoot, IWriteBatch states, IWriteBatch index, IWriteBatch roots)
     {
         foreach (byte[] indexKey in StateSlotIndexKeysThrough(throughSlot))
         {
@@ -785,7 +801,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
                 && TryGetStateSlot(root, manifest, out ulong slot)
                 && slot <= throughSlot)
             {
-                RemoveState(root, manifest, states);
+                RemoveState(root, manifest, states, roots);
             }
 
             index.Remove(indexKey);
@@ -1735,6 +1751,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// stamp makes a version-2 build, which never prunes that column, refuse the database.
     /// Version 4 rewrites nothing either: the data column table starts empty, and the stamp makes an older build, which never prunes it, refuse the database.
     /// Version 5 indexes every stored state by slot, so a state stored before the index existed is pruned by slot too, and a build that does not maintain the index refuses the database.
+    /// Version 6 indexes each retained block by its state commitment for Beacon API state identifiers.
     /// A newer version may hold key shapes this build does not know, so it is
     /// refused rather than reinterpreted, and left unstamped.
     /// </remarks>
@@ -1755,6 +1772,11 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         if (version < StateSlotIndexSchemaVersion)
         {
             RebuildStateSlotIndex();
+        }
+
+        if (version < StateRootIndexSchemaVersion)
+        {
+            RebuildStateRootIndex();
         }
 
         if (version != CurrentSchemaVersion)
@@ -1950,7 +1972,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
 
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.Anchor), value);
-        RemoveStatesThroughSlot(slot, blockRoot, batch.GetColumnBatch(BeaconChainDbColumns.States), batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex));
+        RemoveStatesThroughSlot(slot, blockRoot, batch.GetColumnBatch(BeaconChainDbColumns.States), batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex), batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex));
     }
 
     public bool TryGetAnchor([NotNullWhen(true)] out Hash256? blockRoot, out ulong slot)

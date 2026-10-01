@@ -13,13 +13,13 @@ using NUnit.Framework;
 namespace Nethermind.BeaconChain.Test.Api;
 
 /// <summary>
-/// <c>/eth/v1/debug/beacon/fork_choice</c> served from the importer's published snapshot: the
+/// <c>/eth/v1/debug/fork_choice</c> served from the importer's published snapshot: the
 /// beacon-api shape field by field, and an honest 503 (never an empty tree) while nothing has been
 /// published, whether the host has no holder at all or an empty one.
 /// </summary>
 public class DebugForkChoiceTests
 {
-    private const string Path = "/eth/v1/debug/beacon/fork_choice";
+    private const string Path = "/eth/v1/debug/fork_choice";
 
     private static readonly Hash256 Anchor = BeaconApiTestHost.TestRoot(0x01);
     private static readonly Hash256 Child = BeaconApiTestHost.TestRoot(0x02);

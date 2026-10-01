@@ -22,6 +22,7 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// </summary>
 internal static class BeaconStatesEndpoints
 {
+    private const int MaxValidatorIds = 64;
     public static void Map(WebApplication app, BeaconApiContext ctx)
     {
         app.MapGet("/eth/v1/beacon/states/{state_id}/fork", (HttpContext c, string state_id) => Fork(c, state_id, ctx.ForRequest()));
@@ -52,7 +53,7 @@ internal static class BeaconStatesEndpoints
             fork.Epoch.ToString());
 
         return BeaconApiJson.WriteEnvelopeAsync(c, dto,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
             c.RequestAborted);
     }
@@ -66,14 +67,14 @@ internal static class BeaconStatesEndpoints
 
         // The state root is the block's own commitment to it; reading that field avoids decoding
         // the (often multi-hundred-MB) state just to re-hash it.
-        if (!BlockIdResolver.TryResolve(ctx, stateId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
+        if (!StateIdResolver.TryResolveBlock(ctx, stateId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
         RootDto dto = new(resolved.StateRoot.ToString());
         return BeaconApiJson.WriteEnvelopeAsync(c, dto,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
             c.RequestAborted);
     }
@@ -96,7 +97,7 @@ internal static class BeaconStatesEndpoints
             ToCheckpointDto(resolved.State.FinalizedCheckpoint!));
 
         return BeaconApiJson.WriteEnvelopeAsync(c, dto,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
             c.RequestAborted);
     }
@@ -111,6 +112,16 @@ internal static class BeaconStatesEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
+        List<string> idFilters = CollectQueryValues(c, "id", MaxValidatorIds + 1);
+        if (idFilters.Count > MaxValidatorIds)
+            return ApiErrors.Write(c, StatusCodes.Status414UriTooLong, "Too many validator IDs in request.", c.RequestAborted);
+        List<string> statusFilters = CollectQueryValues(c, "status");
+        foreach (string filter in statusFilters)
+        {
+            if (!ValidatorStatus.IsValidFilter(filter))
+                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid validator status '{filter}'.", c.RequestAborted);
+        }
+
         if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
@@ -121,11 +132,9 @@ internal static class BeaconStatesEndpoints
         ulong[] balances = state.Balances!;
         ulong epoch = ctx.Spec.GetEpoch(state.Slot);
 
-        List<string> statusFilters = CollectQueryValues(c, "status");
-
         HashSet<int>? indexFilter = null;
         Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
-        foreach (string id in CollectQueryValues(c, "id"))
+        foreach (string id in idFilters)
         {
             ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, ref pubkeyIndex, out int index);
             if (lookup == ValidatorIdStatus.Invalid)
@@ -152,7 +161,7 @@ internal static class BeaconStatesEndpoints
         }
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
@@ -188,7 +197,7 @@ internal static class BeaconStatesEndpoints
         ValidatorEntryDto entry = ToValidatorEntry(index, validator, state.Balances![index], ValidatorStatus.Classify(validator, epoch));
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entry,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
@@ -200,6 +209,10 @@ internal static class BeaconStatesEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
+        List<string> idFilters = CollectQueryValues(c, "id", MaxValidatorIds + 1);
+        if (idFilters.Count > MaxValidatorIds)
+            return ApiErrors.Write(c, StatusCodes.Status414UriTooLong, "Too many validator IDs in request.", c.RequestAborted);
+
         if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
@@ -207,7 +220,6 @@ internal static class BeaconStatesEndpoints
 
         BeaconStateFulu state = resolved.State;
         ulong[] balances = state.Balances!;
-        List<string> idFilters = CollectQueryValues(c, "id");
 
         List<ValidatorBalanceEntryDto> entries = [];
         if (idFilters.Count == 0)
@@ -237,7 +249,7 @@ internal static class BeaconStatesEndpoints
         }
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
@@ -333,7 +345,7 @@ internal static class BeaconStatesEndpoints
         }
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
@@ -428,15 +440,18 @@ internal static class BeaconStatesEndpoints
     }
 
     /// <summary>Collects a repeatable query parameter, splitting comma-joined values the same way multiple <c>key=</c> occurrences would be.</summary>
-    private static List<string> CollectQueryValues(HttpContext c, string key)
+    private static List<string> CollectQueryValues(HttpContext c, string key, int limit = int.MaxValue)
     {
         List<string> values = [];
         foreach (string? raw in c.Request.Query[key])
         {
             if (string.IsNullOrEmpty(raw)) continue;
-            foreach (string part in raw.Split(','))
+            foreach (Range range in raw.AsSpan().Split(','))
             {
-                if (!string.IsNullOrWhiteSpace(part)) values.Add(part.Trim());
+                ReadOnlySpan<char> part = raw.AsSpan()[range].Trim();
+                if (part.IsEmpty) continue;
+                values.Add(part.ToString());
+                if (values.Count == limit) return values;
             }
         }
 

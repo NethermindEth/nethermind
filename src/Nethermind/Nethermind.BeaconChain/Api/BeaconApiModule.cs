@@ -3,6 +3,8 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.BeaconChain.Api.Common;
+using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 
@@ -21,7 +23,11 @@ public class BeaconApiModule : Module
 
         builder
             .AddSingleton<HeadSnapshotHolder>()
-            .AddSingleton<BeaconApiHost>()
+            .AddSingleton<EngineAvailability>()
+            .AddDecorator<IEngineDriver, ObservedEngineDriver>()
             .AddStep(typeof(StartBeaconApi));
+
+        builder.RegisterType<BeaconApiHost>().SingleInstance()
+            .OnActivated(e => e.Instance.EngineAvailability = e.Context.Resolve<EngineAvailability>());
     }
 }

@@ -3,15 +3,19 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Multiformats.Base;
+using Multiformats.Hash;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Libp2p.Core;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
@@ -34,6 +38,14 @@ internal static class NodeEndpoints
 
     private static Task Health(HttpContext c, BeaconApiContext ctx)
     {
+        int syncingStatus = StatusCodes.Status206PartialContent;
+        if (c.Request.Query.TryGetValue("syncing_status", out Microsoft.Extensions.Primitives.StringValues raw)
+            && (!int.TryParse(raw.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out syncingStatus)
+                || syncingStatus is < 100 or > 599))
+        {
+            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Invalid syncing status code.", c.RequestAborted);
+        }
+
         StatusMessageV2 status = ctx.StatusSource.CurrentStatus;
         if (status.HeadRoot == Hash256.Zero)
         {
@@ -43,7 +55,8 @@ internal static class NodeEndpoints
         }
 
         long distance = (long)ctx.SlotClock.CurrentSlot - (long)status.HeadSlot;
-        c.Response.StatusCode = distance > ReadySyncDistance ? StatusCodes.Status206PartialContent : StatusCodes.Status200OK;
+        c.Response.StatusCode = distance > ReadySyncDistance || !ctx.StatusSource.ExecutionInSync || ctx.EngineAvailability?.IsOffline == true
+            ? syncingStatus : StatusCodes.Status200OK;
         return Task.CompletedTask;
     }
 
@@ -112,11 +125,7 @@ internal static class NodeEndpoints
             distance.ToString(),
             distance > ReadySyncDistance,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            // EngineDriver swallows engine-call exceptions and reports SYNCING instead (see
-            // EngineDriver.Unwrap's remarks) - real EL outages and genuine EL sync are
-            // indistinguishable from any signal available here. The one thing this can say
-            // truthfully is whether the engine has ever answered a newPayload call at all.
-            !ctx.Engine.HasAnsweredNewPayload);
+            ctx.EngineAvailability?.IsOffline == true);
 
         return BeaconApiJson.WriteDataAsync(c, dto, c.RequestAborted);
     }
@@ -128,14 +137,18 @@ internal static class NodeEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
-        // This driver's peer manager only ever holds connected, status-exchanged peers: there is no
-        // separate "connecting"/"disconnecting" state machine, so those counts are genuinely zero
-        // rather than unknown.
-        PeerCountDto dto = new(
-            "0",
-            "0",
-            (ctx.PeerManager?.PeerCount ?? 0).ToString(),
-            "0");
+        int disconnected = 0, connecting = 0, connected = 0, disconnecting = 0;
+        foreach (PeerRecord peer in ctx.PeerManager?.Peers ?? [])
+        {
+            switch (peer.State)
+            {
+                case PeerConnectionState.Disconnected: disconnected++; break;
+                case PeerConnectionState.Connecting: connecting++; break;
+                case PeerConnectionState.Connected: connected++; break;
+                case PeerConnectionState.Disconnecting: disconnecting++; break;
+            }
+        }
+        PeerCountDto dto = new(disconnected.ToString(), connecting.ToString(), connected.ToString(), disconnecting.ToString());
 
         return BeaconApiJson.WriteDataAsync(c, dto, c.RequestAborted);
     }
@@ -203,6 +216,14 @@ internal static class NodeEndpoints
         if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
         {
             return ContentNegotiation.WriteNotAcceptable(c);
+        }
+
+        if (peer_id.Length > 64 || !Multihash.TryParse(peer_id, MultibaseEncoding.Base58Btc, out Multihash hash)
+            || (int)hash.Code is not (0 or 18)
+            || ((int)hash.Code == 18 ? hash.Length != 32 : hash.Length is < 1 or > 42)
+            || !new PeerId(peer_id).Bytes.AsSpan().SequenceEqual(hash.ToBytes()))
+        {
+            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid peer ID: {peer_id}", c.RequestAborted);
         }
 
         if (ctx.PeerManager is null || !ctx.PeerManager.TryGetPeer(peer_id, out PeerRecord peer))

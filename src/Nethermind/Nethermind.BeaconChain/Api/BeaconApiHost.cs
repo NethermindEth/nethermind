@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -50,6 +51,8 @@ public sealed class BeaconApiHost(
     private CancellationTokenRegistration _exitRegistration;
     private int _disposed;
 
+    internal EngineAvailability? EngineAvailability { get; set; }
+
     /// <summary>The port actually bound; differs from <see cref="IBeaconApiConfig.Port"/> only when
     /// that config requested an ephemeral port (0), as tests do.</summary>
     public int Port => Volatile.Read(ref _port);
@@ -63,7 +66,7 @@ public sealed class BeaconApiHost(
 
         WebApplication app = builder.Build();
         app.Use(stateLimiter.InvokeAsync);
-        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots);
+        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, EngineAvailability);
         BeaconApiEndpoints.MapAll(app, ctx);
 
         await app.StartAsync(token);
