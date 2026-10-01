@@ -150,7 +150,9 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public async Task Background_storage_overwrites_restore_original_values_without_final_writes()
     {
-        using TestContext ctx = new(config: new FlatDbConfig { BackgroundStorageTrieUpdates = true, VerifyWithTrie = true });
+        // Prepares writes over a trie an earlier flush of the same block wrote, which only works once that flush has
+        // committed the trie's nodes: deferred, they stay in memory until the scope commit.
+        using TestContext ctx = new(config: new FlatDbConfig { BackgroundStorageTrieUpdates = true, VerifyWithTrie = true, DeferStorageTrieCommit = false });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = scope.StartWriteBatch(1))

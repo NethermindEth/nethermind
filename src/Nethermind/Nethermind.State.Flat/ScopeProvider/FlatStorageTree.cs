@@ -108,9 +108,14 @@ public sealed class FlatStorageTree(
     public void HintSet(in UInt256 index) => WarmUpSlot(index);
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The prepared trie loads the block tree's root from the store. With DeferStorageTrieCommit a tree an earlier
+    /// root flush of the block only hashed keeps its nodes in memory until the scope commit, so it takes no background
+    /// batch until then and the flush applies its writes.
+    /// </remarks>
     public IWorldStateScopeProvider.IStorageWriteBatch? StartBackgroundWriteBatch()
     {
-        if (!_scope.BackgroundStorageTrieUpdates) return null;
+        if (!_scope.BackgroundStorageTrieUpdates || HasUncommittedNodes) return null;
         if (_background is null || _background.IsStopped)
         {
             StorageTree current = GetTrees().Tree;
@@ -313,11 +318,12 @@ public sealed class FlatStorageTree(
         StorageTree tree = GetTrees().Tree;
         Dictionary<UInt256, UInt256>? earlyApplied = prepared is null ? AdoptEarlyTree(tree) : null;
         // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported
-        // valid. The hash then goes parallel from the size at which a commit would split the tree across threads.
+        // valid. The hash then goes parallel from the size at which a commit would split the tree across threads. A
+        // prepared trie holds at least a background batch of unhashed writes, so it always hashes in parallel.
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, tree, onRootUpdated, _address,
-            commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel);
+            commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: prepared is null ? MinWritesToHashInParallel : -1);
         return earlyApplied is null
-            ? new StorageTreeBulkWriteBatch(trieBatch, this, prepared, onRootUpdated)
+            ? new StorageTreeBulkWriteBatch(trieBatch, this, prepared)
             : new EarlyAppliedStorageWriteBatch(trieBatch, this, earlyApplied);
     }
 
@@ -399,41 +405,33 @@ public sealed class FlatStorageTree(
         public void Dispose() => GetBatch()?.Dispose();
     }
 
-    // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
+    // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay. A slot the
+    // prepared trie already holds at its final value only updates the flat overlay. The trie batch then hashes or
+    // commits the prepared trie as DeferStorageTrieCommit says, as for any other tree.
     private sealed class StorageTreeBulkWriteBatch(
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
         FlatStorageTree storageTree,
-        BackgroundStorageTrie? prepared,
-        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
+        BackgroundStorageTrie? prepared) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        private bool _needsPreparedCommit = prepared is not null;
-
         public void Set(in UInt256 index, in UInt256 value)
         {
-            if (prepared?.Contains(index, value) != true)
-            {
-                trieBatch.Set(in index, value);
-                _needsPreparedCommit = false;
-            }
+            if (prepared?.Contains(index, value) == true) trieBatch.MarkSet();
+            else trieBatch.Set(in index, value);
             storageTree.Set(index, value);
         }
 
         public void Clear()
         {
             prepared = null;
-            _needsPreparedCommit = false;
             trieBatch.Clear();
             storageTree.ClearStorage();
         }
 
         public void Dispose()
         {
+            // The prepared trie holds the block's writes even when the batch sets no slot, so its root is updated too.
+            if (prepared is not null) trieBatch.MarkSet();
             trieBatch.Dispose();
-            if (_needsPreparedCommit)
-            {
-                storageTree.GetTrees().Tree.Commit();
-                onRootUpdated(storageTree._address, storageTree.RootHash);
-            }
         }
     }
 
