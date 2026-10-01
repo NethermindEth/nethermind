@@ -264,15 +264,25 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
-    /// A gossip vote for an old head names a checkpoint whose block lies a whole epoch before the epoch start. At
-    /// mainnet registry size a full state merkleization takes seconds, so one per skipped slot held the import worker
-    /// for minutes; one incremental hasher must serve every slot root of the advance and still land on the spec's state.
+    /// A vote names a checkpoint whose block lies <paramref name="distance"/> slots before the epoch start. At mainnet registry
+    /// size a full state merkleization takes seconds, so one per skipped slot held the import worker for minutes. The first
+    /// slot's root is the block's own <c>state_root</c>, so a late first block of an epoch costs no merkleization at all, and one
+    /// incremental hasher serves every later slot; the advance must still land on the spec's state.
     /// </summary>
     [Test]
-    public void Checkpoint_state_over_skipped_slots_hashes_every_slot_through_one_incremental_hasher()
+    public void Checkpoint_state_takes_the_first_slot_root_from_the_block_and_hashes_later_slots_through_one_incremental_hasher([Values(1, 2, 32)] int distance)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
-        (ForkChoiceRunner runner, _) = RunnerAt(chain);
+        ulong blockSlot = Presets.SlotsPerEpoch - (ulong)distance;
+        BeaconStateFulu blockState = chain.AnchorState.Clone();
+        if (blockSlot > 0)
+            SlotProcessing.ProcessSlots(blockState, blockSlot, new EpochCache());
+        BeaconBlock anchor = chain.AnchorBlock.Message!;
+        BeaconBlock block = new() { Slot = blockSlot, ProposerIndex = anchor.ProposerIndex, ParentRoot = anchor.ParentRoot, StateRoot = SszRoots.HashTreeRoot(blockState), Body = anchor.Body };
+        Hash256 blockRoot = SszRoots.HashTreeRoot(block);
+        InMemoryStates states = new();
+        states.States[blockRoot] = blockState;
+        ForkChoiceRunner runner = new(chain.Spec, blockState, block, states, chain.Pubkeys);
         IBeaconStateHasher defaultHasher = runner.CheckpointStateHasher();
         List<CountingHasher> made = [];
         runner.CheckpointStateHasher = () =>
@@ -281,9 +291,9 @@ public class ForkChoiceRunnerTests
             made.Add(hasher);
             return hasher;
         };
-        Hash256 anchorStateRoot = SszRoots.HashTreeRoot(chain.AnchorState);
-        CheckpointRef checkpoint = new(1, chain.AnchorRoot);
-        BeaconStateFulu expected = chain.AnchorState.Clone();
+        Hash256 blockStateRoot = SszRoots.HashTreeRoot(blockState);
+        CheckpointRef checkpoint = new(1, blockRoot);
+        BeaconStateFulu expected = blockState.Clone();
         SlotProcessing.ProcessSlots(expected, Presets.SlotsPerEpoch, new EpochCache());
 
         ForkedBeaconState first = runner.GetCheckpointState(checkpoint);
@@ -292,12 +302,11 @@ public class ForkChoiceRunnerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(defaultHasher, Is.TypeOf<CachedBeaconStateHasher>(), "production advances must hash incrementally");
-            Assert.That(chain.AnchorState.Slot, Is.Zero, "fixture bug: the checkpoint block must sit a whole epoch before the epoch start");
             Assert.That(made, Has.Count.EqualTo(1), "one hasher per advance, and none for the cached repeat");
-            Assert.That(made.Single().Calls, Is.EqualTo((int)Presets.SlotsPerEpoch), "every skipped slot's state root comes from that hasher");
+            Assert.That(made.Single().Calls, Is.EqualTo(distance - 1), "every skipped slot's state root but the block's own comes from that hasher");
             Assert.That(repeated, Is.SameAs(first));
             Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)first).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
-            Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot), "the block state must not be advanced in place");
+            Assert.That(SszRoots.HashTreeRoot(blockState), Is.EqualTo(blockStateRoot), "the block state must not be advanced in place");
         }
     }
 
