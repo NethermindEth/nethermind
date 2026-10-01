@@ -58,16 +58,32 @@ internal static class OffSubgroupKeys
 
         Bls.P2 point = new(new long[Bls.P2.Sz]);
         point.Add(outside);
-        point.Mult(SubgroupOrder);
-        if (point.IsInf())
-            throw new InvalidOperationException("fixture bug: the torsion point must be nonzero");
+        point = MultiplyG2(point, SubgroupOrder);
+        if (!point.OnCurve() || point.IsInf() || point.InGroup())
+            throw new InvalidOperationException("fixture bug: the torsion point must be on the curve and outside G2");
+
+        byte[] cofactor = Reversed(Bytes.FromHexString("0x05d543a95414e7f1091d50792876a202cd91de4547085abaa68a205b2e5a7ddfa628f1cb4d9e82ef21537e293a6691ae1616ec6e786f0c70cf1c38e31c7238e5"));
+        if (!MultiplyG2(point, cofactor).IsInf())
+            throw new InvalidOperationException("fixture bug: the torsion point must be killed by the cofactor");
 
         Bls.P2 result = new(new long[Bls.P2.Sz]);
         result.Decode(signature.Bytes);
         result.Add(point.ToAffine());
-        if (result.ToAffine().InGroup())
+        if (!result.OnCurve() || result.ToAffine().InGroup())
             throw new InvalidOperationException("fixture bug: the signature must leave G2");
         return new BlsSignature(result.Compress());
+    }
+
+    private static Bls.P2 MultiplyG2(Bls.P2 point, ReadOnlySpan<byte> scalar)
+    {
+        Bls.P2 result = new(new long[Bls.P2.Sz]);
+        for (int bit = scalar.Length * 8 - 1; bit >= 0; bit--)
+        {
+            result.Dbl();
+            if ((scalar[bit / 8] & (1 << (bit % 8))) != 0)
+                result.Add(point);
+        }
+        return result;
     }
 
     private static byte[] Reversed(byte[] bytes)
