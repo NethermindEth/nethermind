@@ -990,13 +990,14 @@ public sealed class BeaconSyncOrchestrator(
     /// </summary>
     /// <param name="retryingOnColumns">Whether this import was woken by the columns it waited for, so a repeat deferral waits for the slot tick instead of watching and fetching again.</param>
     /// <param name="servedBy">The peer that served a block fetched by root; <c>null</c> otherwise.</param>
-    internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns = false, RangeBlockItem? rangeItem = null, bool fetchedByRoot = false, IBeaconSyncPeer? servedBy = null)
+    /// <param name="otherCopyPending">Whether another signed copy of the block's message still waits to import, so this copy's refusal leaves the held children to it.</param>
+    internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns = false, RangeBlockItem? rangeItem = null, bool fetchedByRoot = false, IBeaconSyncPeer? servedBy = null, bool otherCopyPending = false)
     {
         Hash256 root = block.ComputeMessageRoot();
         long startMs = Environment.TickCount64;
         // Provenance follows the exact signed block: a copy from gossip under the same message root may carry another signature.
         bool isQueued = _pendingRetry.TryGetValue(root, out PendingRetry queued) && IsSameSignedBlock(queued.Block, block);
-        bool otherCopyQueued = !isQueued && _pendingRetry.ContainsKey(root);
+        bool otherCopyQueued = otherCopyPending || (!isQueued && _pendingRetry.ContainsKey(root));
         HeldFetchedBlock? heldFetched = _heldFetched.TryGet(root, out HeldFetchedBlock? held) && IsSameSignedBlock(held.Block, block) ? held : null;
         if (heldFetched is not null)
         {
@@ -1775,14 +1776,23 @@ public sealed class BeaconSyncOrchestrator(
         if (_pendingByParent.Remove(root, out List<ForkedSignedBeaconBlock>? children))
         {
             _pendingCount -= children.Count;
-            foreach (ForkedSignedBeaconBlock child in children)
+            Hash256[] childRoots = [.. children.Select(static child => child.ComputeMessageRoot())];
+            for (int i = 0; i < children.Count; i++)
             {
+                ForkedSignedBeaconBlock child = children[i];
                 if (_heldForPayload.Count > 0)
                 {
-                    _heldForPayload.Remove(child.ComputeMessageRoot());
+                    _heldForPayload.Remove(childRoots[i]);
                 }
 
-                await ImportBlockAsync(child, token);
+                // A forged copy held beside the genuine block must not drop the children that wait on the genuine one.
+                bool otherCopyPending = false;
+                for (int j = i + 1; j < children.Count && !otherCopyPending; j++)
+                {
+                    otherCopyPending = childRoots[j] == childRoots[i] && !IsSameSignedBlock(children[j], child);
+                }
+
+                await ImportBlockAsync(child, token, otherCopyPending: otherCopyPending);
             }
         }
 
