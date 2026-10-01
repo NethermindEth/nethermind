@@ -28,6 +28,7 @@ using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
+using Nethermind.Network.Libp2p;
 using NUnit.Framework;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
