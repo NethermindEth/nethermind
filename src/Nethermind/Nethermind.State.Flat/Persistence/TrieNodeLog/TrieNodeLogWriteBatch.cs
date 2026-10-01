@@ -29,6 +29,9 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
 
     private readonly List<(TrieNodeLogGeneration Generation, long StartFrontier)> _touched = [];
     private readonly Dictionary<ulong, Pending> _pending = pending;
+    // Keys whose 64-bit hash collides with one already in _pending within this batch; each entry's key is
+    // verified against its record, so a collision costs a read but never merges two keys.
+    private readonly List<Pending> _collisions = [];
     private readonly byte[] _buffer = ArrayPool<byte>.Shared.Rent(WriteBufferSize);
     private readonly byte[] _probeBuffer = new byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
     private int _buffered;
@@ -47,7 +50,26 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         ulong prev = 0;
         int slot = NoSlot;
         bool newToGeneration = true;
-        if (_pending.TryGetValue(hash, out Pending pending))
+        bool collided = _pending.TryGetValue(hash, out Pending pending);
+        int collisionIndex = -1;
+        if (collided && IsRecordOf(pending, column, key))
+        {
+            collided = false;
+        }
+        else if (collided)
+        {
+            for (int i = 0; i < _collisions.Count; i++)
+            {
+                if (!IsRecordOf(_collisions[i], column, key)) continue;
+                collisionIndex = i;
+                pending = _collisions[i];
+                break;
+            }
+            // Keys never found in this batch: fall through to the index lookup below.
+            if (collisionIndex < 0) pending = default;
+        }
+
+        if (pending.Generation is not null)
         {
             prev = TrieNodeLogRecord.PackLocation(pending.Generation.Number, pending.Offset);
             if (pending.Generation == generation)
@@ -82,8 +104,31 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         value.CopyTo(destination[(TrieNodeLogRecord.HeaderLength + key.Length)..]);
         _buffered += header.Length;
 
-        _pending[hash] = new Pending(generation, slot, recordOffset);
+        Pending record = new(generation, slot, recordOffset);
+        if (!collided) _pending[hash] = record;
+        else if (collisionIndex >= 0) _collisions[collisionIndex] = record;
+        else _collisions.Add(record);
         _appendedBytesByColumn[column] += key.Length + value.Length;
+    }
+
+    /// <summary>Whether the record <paramref name="pending"/> points at was written for <paramref name="key"/>; it is read from the write buffer while still there.</summary>
+    private bool IsRecordOf(in Pending pending, byte column, ReadOnlySpan<byte> key)
+    {
+        ReadOnlySpan<byte> record;
+        if (pending.Generation == _current && pending.Offset >= _current.WriteFrontier)
+        {
+            record = _buffer.AsSpan((int)(pending.Offset - _current.WriteFrontier), _buffered - (int)(pending.Offset - _current.WriteFrontier));
+        }
+        else
+        {
+            int read = pending.Generation.ReadAt(pending.Offset, _probeBuffer);
+            record = _probeBuffer.AsSpan(0, read);
+        }
+
+        if (record.Length < TrieNodeLogRecord.HeaderLength) return false;
+        TrieNodeLogRecord header = TrieNodeLogRecord.Read(record);
+        return header.Column == column && header.KeyLength == key.Length && record.Length >= TrieNodeLogRecord.HeaderLength + key.Length
+            && record.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key);
     }
 
     private TrieNodeLogGeneration CurrentGeneration()
@@ -158,18 +203,8 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     /// <summary>Points the index slots at the records written by this batch, making them visible to readers whose version includes it.</summary>
     public void Publish()
     {
-        foreach ((ulong hash, Pending pending) in _pending)
-        {
-            TrieNodeLogGeneration generation = pending.Generation;
-            int index = pending.Slot;
-            if (index == NoSlot)
-            {
-                // A key new to the generation: any occupied slot on the probe path holds a different key
-                // (verified when the record was appended, or a sibling of this batch with another hash).
-                for (index = generation.HomeIndex(hash); generation.ReadSlot(index) != 0; index = generation.NextIndex(index)) { }
-            }
-            generation.Publish(index, hash, pending.Offset);
-        }
+        foreach ((ulong hash, Pending pending) in _pending) PublishSlot(hash, pending);
+        foreach (Pending pending in _collisions) PublishSlot(HashOfRecord(pending), pending);
 
         foreach ((TrieNodeLogGeneration generation, _) in _touched) generation.PublishFrontier(generation.WriteFrontier);
 
@@ -178,6 +213,29 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
             if (_appendedBytesByColumn[column] != 0) Metrics.TrieNodeLogAppendedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), _appendedBytesByColumn[column]);
         }
         _committed = true;
+    }
+
+    private static void PublishSlot(ulong hash, in Pending pending)
+    {
+        TrieNodeLogGeneration generation = pending.Generation;
+        int index = pending.Slot;
+        if (index == NoSlot)
+        {
+            // A key new to the generation: any occupied slot on the probe path holds a different key (verified when
+            // the record was appended, or a sibling of this batch, which lands in a free slot of its own even when
+            // the hashes collide).
+            for (index = generation.HomeIndex(hash); generation.ReadSlot(index) != 0; index = generation.NextIndex(index)) { }
+        }
+        generation.Publish(index, hash, pending.Offset);
+    }
+
+    private ulong HashOfRecord(in Pending pending)
+    {
+        int read = pending.Generation.ReadAt(pending.Offset, _probeBuffer);
+        if (read < TrieNodeLogRecord.HeaderLength) throw new IOException($"Short read of trie node log record at {pending.Generation.Path}:{pending.Offset}");
+        TrieNodeLogRecord header = TrieNodeLogRecord.Read(_probeBuffer);
+        if (read < TrieNodeLogRecord.HeaderLength + header.KeyLength) throw new IOException($"Short read of trie node log record at {pending.Generation.Path}:{pending.Offset}");
+        return TrieNodeLogRecord.Hash(header.Column, _probeBuffer.AsSpan(TrieNodeLogRecord.HeaderLength, header.KeyLength));
     }
 
     /// <summary>Puts this batch's version into the metadata column batch, so RocksDB confirms it atomically with the state pointer.</summary>
@@ -197,6 +255,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         foreach ((TrieNodeLogGeneration generation, long startFrontier) in _touched) generation.Truncate(startFrontier);
         _touched.Clear();
         _pending.Clear();
+        _collisions.Clear();
     }
 
     public void Dispose()
