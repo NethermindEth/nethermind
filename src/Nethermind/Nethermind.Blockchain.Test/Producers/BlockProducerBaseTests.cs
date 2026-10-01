@@ -132,15 +132,16 @@ public partial class BlockProducerBaseTests
     {
         IBlockTree blockTree = Build.A.BlockTree().TestObject;
 
-        blockTree.IsBuildingBlock = true;
-        blockTree.IsBuildingBlock = true;
-        blockTree.IsBuildingBlock = false;
+        IDisposable first = blockTree.BeginBlockBuilding();
+        IDisposable second = blockTree.BeginBlockBuilding();
+        first.Dispose();
+        first.Dispose();
         bool raisedWhileOneBuildRuns = blockTree.IsBuildingBlock;
-        blockTree.IsBuildingBlock = false;
+        second.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(raisedWhileOneBuildRuns, Is.True, "the first build to finish must not clear the other's flag");
+            Assert.That(raisedWhileOneBuildRuns, Is.True, "the first build to finish, even disposed twice, must not clear the other's flag");
             Assert.That(blockTree.IsBuildingBlock, Is.False);
         }
     }

@@ -2026,15 +2026,13 @@ namespace Nethermind.Blockchain
 
         private int _buildingBlocks;
 
-        /// <remarks>Counts builds, so producers that share this tree and overlap cannot clear each other's flag.</remarks>
-        public bool IsBuildingBlock
+        /// <remarks>Counts open builds, so producers that share this tree and overlap cannot clear each other's flag.</remarks>
+        public bool IsBuildingBlock => Volatile.Read(ref _buildingBlocks) > 0;
+
+        public IDisposable BeginBlockBuilding()
         {
-            get => Volatile.Read(ref _buildingBlocks) > 0;
-            set
-            {
-                if (value) Interlocked.Increment(ref _buildingBlocks);
-                else Interlocked.Decrement(ref _buildingBlocks);
-            }
+            Interlocked.Increment(ref _buildingBlocks);
+            return new Reactive.AnonymousDisposable(() => Interlocked.Decrement(ref _buildingBlocks));
         }
 
         /// <inheritdoc/>

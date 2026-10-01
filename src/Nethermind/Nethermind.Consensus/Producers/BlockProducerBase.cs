@@ -193,15 +193,8 @@ namespace Nethermind.Consensus.Producers
         /// frame-transaction validation yields to it as it yields to block import.</summary>
         private Block? ProcessBuiltBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
         {
-            BlockTree.IsBuildingBlock = true;
-            try
-            {
-                return ProcessPreparedBlock(block, blockTracer, token);
-            }
-            finally
-            {
-                BlockTree.IsBuildingBlock = false;
-            }
+            using IDisposable building = BlockTree.BeginBlockBuilding();
+            return ProcessPreparedBlock(block, blockTracer, token);
         }
 
         protected virtual Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer,
