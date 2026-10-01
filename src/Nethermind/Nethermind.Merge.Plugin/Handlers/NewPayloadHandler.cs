@@ -130,10 +130,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         NewPayloadTrace.Stamp(NewPayloadTrace.HandleStart);
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
-        // recovers inline whatever it reaches before the background recovery does.
-        StartSenderRecovery(request);
-
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
         {
@@ -142,6 +138,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         Block block = decodingResult.Data;
         NewPayloadTrace.Stamp(NewPayloadTrace.Decoded);
+
+        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
+        // recovers inline whatever it reaches before the background recovery does. Started once the block is
+        // built: recovery fills every pool thread, and the transactions-trie root TryGetBlock joins runs on them.
+        StartSenderRecovery(request);
         NewPayloadTrace.SetBlock((long)block.Number);
 
         string requestStr = $"New Block:  {request}";
