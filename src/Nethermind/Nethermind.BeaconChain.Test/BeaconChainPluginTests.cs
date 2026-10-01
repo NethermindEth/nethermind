@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,8 +10,10 @@ using Autofac;
 using Autofac.Core;
 using Google.Protobuf;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.Config;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -69,6 +73,35 @@ public class BeaconChainPluginTests
         await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
 
         Assert.That(p2p.PubsubSettingsForTest.MessageCacheTtl, Is.EqualTo(768_000));
+    }
+
+    /// <summary>Every topic of every scheduled fork digest, each column subnet included, carries zero score weight before the router starts.</summary>
+    /// <remarks>A topic missing from the table gets the library's default delivery score, which prunes honest peers of a topic this node only consumes.</remarks>
+    [Test]
+    public async Task Gossipsub_scores_no_topic_of_any_scheduled_fork_digest()
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+        Dictionary<string, TopicScoreParams> scores = p2p.PubsubSettingsForTest.TopicScoreParams;
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet;
+        List<string> missing = [];
+        foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, 0).Prepend(0UL))
+        {
+            byte[] digest = ForkDigest.Compute(spec, epoch);
+            string[] names = [.. GossipTopics.SubscribedTopicNames, .. GossipTopics.GloasTopicNames];
+            for (ulong subnet = 0; subnet < Eip7594DasConstants.DataColumnSidecarSubnetCount; subnet++)
+            {
+                names = [.. names, GossipTopics.DataColumnSidecarTopicName(subnet)];
+            }
+
+            missing.AddRange(names.Select(name => GossipTopics.Topic(digest, name)).Where(topic => scores.GetValueOrDefault(topic)?.TopicWeight != 0));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing, Is.Empty);
+            Assert.That(p2p.PubsubSettingsForTest.BehaviorPenaltyWeight, Is.Zero);
+        }
     }
 
     /// <summary>p2p-interface.md "Gossipsub size limits": an encoded RPC may reach max_message_size(), max_compressed_len(10 MiB) + 1024 bytes.</summary>
