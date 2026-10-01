@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -17,6 +18,25 @@ namespace Nethermind.Store.Test;
 
 public class PatriciaTrieWitnessGeneratorTests
 {
+    [Test]
+    public void Nested_witness_walk_shares_and_restores_worker_budget([Values(0, 1, 2)] int budget, [Values] bool parallelize)
+    {
+        Scenario scenario = MakeFuzz(seed: 101, size: 6000);
+        (TestMemDb db, Hash256 root) = BuildTrie(scenario.Existing);
+        HashSet<Hash256AsKey> expected = RunGenerator(db, root, scenario, parallelize: false);
+        using ParallelUnbalancedWork.WorkerScope outer = budget == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(budget);
+        int expectedBudget = budget != 0 ? budget : parallelize ? Core.Cpu.RuntimeInformation.ProcessorCount : 0;
+        CollectingSink sink = new(() => Assert.That(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0, Is.EqualTo(expectedBudget)));
+
+        PatriciaTrieWitnessGenerator.Generate(new RawScopedTrieStore(db), root, BuildEntries(scenario), sink, parallelize);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.Nodes.Keys, Is.EquivalentTo(expected));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer));
+        }
+    }
+
     /// <summary>
     /// The generator must report exactly the pre-state nodes a real execution touches, using a read-capturing store
     /// that replays the reads and deletions as the ground truth.
@@ -277,7 +297,7 @@ public class PatriciaTrieWitnessGeneratorTests
 
     private static Hash256 Hash(string hex) => new(hex.Length >= 64 ? hex[..64] : hex.PadRight(64, '0'));
 
-    private sealed class CollectingSink : PatriciaTrieWitnessGenerator.ISink
+    private sealed class CollectingSink(Action onAdd = null) : PatriciaTrieWitnessGenerator.ISink
     {
         private readonly object _lock = new();
         public Dictionary<Hash256AsKey, byte[]> Nodes { get; } = [];
@@ -285,6 +305,7 @@ public class PatriciaTrieWitnessGeneratorTests
         // Locked for the parallel walk; TryAdd asserts the "each node reported exactly once" contract.
         public void Add(in TreePath path, TrieNode node)
         {
+            onAdd?.Invoke();
             byte[] rlp = node.FullRlp.ToArray();
             lock (_lock)
             {

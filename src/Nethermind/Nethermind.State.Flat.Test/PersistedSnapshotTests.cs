@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -48,6 +49,28 @@ public class PersistedSnapshotTests
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
         TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data);
+
+    [Test]
+    public void Nested_snapshot_sorting_preserves_all_node_buckets([Values(1, 2)] int budget)
+    {
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("scoped-snapshot"));
+        SnapshotContent content = new();
+        for (int i = 0; i < 256; i++)
+        {
+            Hash256 hash = Keccak.Compute(i.ToString());
+            TreePath path = new(hash, (i % 3) switch { 0 => 3, 1 => 8, _ => 20 });
+            content.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
+            content.StorageNodes[(TestItem.KeccakA, path)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
+        }
+        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(budget);
+
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+
+        Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted));
+    }
 
     private static IEnumerable<TestCaseData> RoundTripTestCases()
     {

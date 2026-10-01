@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -81,12 +82,16 @@ internal sealed class HistoricalTrieNodeBuilder
 
     public static void Prefetch(IReadOnlyList<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work, ParallelOptions options)
     {
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(
+            options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount);
         try
         {
-            Parallel.ForEach(work, options, static item =>
+            ParallelUnbalancedWork.For(0, work.Count, options, work, static (i, items) =>
             {
+                (HistoricalTrieNodeBuilder Builder, TreePath Path) item = items[i];
                 byte[]? rlp = item.Builder.ResolveRlp(item.Path, parallelChildren: item.Path.Length == 0 && item.Builder._fanOut > 1, allowRebuild: false);
                 if (rlp is not null) item.Builder._prefetched![item.Path] = rlp;
+                return items;
             });
         }
         catch (AggregateException e)
@@ -213,9 +218,10 @@ internal sealed class HistoricalTrieNodeBuilder
 
     private void RunFanOut(Action<int> child)
     {
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Math.Max(1, _fanOut));
         try
         {
-            Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
+            ParallelUnbalancedWork.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
         }
         catch (AggregateException e)
         {
