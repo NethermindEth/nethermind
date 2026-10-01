@@ -1802,6 +1802,33 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
             Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[] { expected })));
     }
 
+    [Test]
+    public void Depth_rejected_call_emits_balanced_callbacks_without_fault(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction opcode)
+    {
+        Prepare builder = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0);
+        if (opcode is Instruction.CALL or Instruction.CALLCODE) builder = builder.PushData(0);
+        byte[] code = builder.PushData(Recipient).Op(Instruction.GAS).Op(opcode).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx((1UL, 0), 1_000_000_000_000UL, code,
+            blockGasLimit: 1_000_000_000_000UL);
+        const string tracer = """
+            {
+                enters: 0, exits: 0, faults: 0, rejected: [],
+                step: function(log) {},
+                fault: function(log) { this.faults++; },
+                enter: function(frame) { this.enters++; },
+                exit: function(frame) {
+                    this.exits++;
+                    if (frame.getError()) this.rejected.push([frame.getGasUsed(), frame.getError()]);
+                },
+                result: function() { return [this.enters, this.exits, this.faults, this.rejected]; }
+            }
+            """;
+        string result = RunTrace(block, transaction, tracer, out GethLikeTxTrace native);
+        using (native)
+            Assert.That(result, Is.EqualTo("[1025,1025,0,[[0,\"max call depth exceeded\"]]]"));
+    }
+
     private const string ErrorTracer = """
         {
             events: [],
