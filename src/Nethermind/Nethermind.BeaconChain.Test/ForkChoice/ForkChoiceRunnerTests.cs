@@ -11,6 +11,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
@@ -308,6 +309,108 @@ public class ForkChoiceRunnerTests
             Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)first).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
             Assert.That(SszRoots.HashTreeRoot(blockState), Is.EqualTo(blockStateRoot), "the block state must not be advanced in place");
         }
+    }
+
+    /// <summary>
+    /// A gossip aggregate names its target, and the target state is needed before any signature can be checked. Each unsigned
+    /// aggregate naming another known block before the epoch start used to build and keep a whole checkpoint state on the import
+    /// worker. Targets that share a shuffling decision block share committees and domain, so only the first one may cost a build,
+    /// no refused aggregate may leave a checkpoint state cached, and a signed aggregate for yet another such target still counts.
+    /// </summary>
+    [Test]
+    public void Unsigned_aggregates_on_distinct_targets_of_one_shuffling_build_one_state_and_cache_none()
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        int builds = 0;
+        runner.CheckpointStateHasher = () =>
+        {
+            builds++;
+            return new CachedBeaconStateHasher();
+        };
+        ulong epochStart = targetEpoch * Presets.SlotsPerEpoch;
+        TickToSlot(runner, epochStart + 6);
+        // All past the decision slot 31, so the anchor fixes the epoch-2 shuffling of every one of them.
+        List<UnsignedChain.ChainBlock> targets = [];
+        Hash256 parent = chain.AnchorRoot;
+        foreach (ulong slot in (ulong[])[33, 41, 50, 60, 63])
+        {
+            UnsignedChain.ChainBlock block = chain.Extend(parent, slot, payloadHashByte: (byte)slot);
+            ImportWithBodyReplay(runner, block);
+            targets.Add(block);
+            parent = block.Root;
+        }
+
+        BeaconStateFulu atEpochStart = targets[^1].PostState.Clone();
+        SlotProcessing.ProcessSlots(atEpochStart, epochStart, new EpochCache());
+        CommitteeCache committees = new EpochCache().GetCommitteeCache(atEpochStart, targetEpoch);
+        ulong voteSlot = epochStart;
+        while (committees.GetBeaconCommittee(voteSlot, 0).Length == 0)
+            voteSlot++;
+        int member = committees.GetBeaconCommittee(voteSlot, 0)[0];
+        BlsSignature unsigned = new(SignatureSets.G2PointAtInfinity);
+
+        int refused = 0;
+        foreach (UnsignedChain.ChainBlock target in targets.SkipLast(1))
+        {
+            try
+            {
+                runner.OnAggregateAndProof(Aggregate(target.Root, signed: false));
+            }
+            catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+            {
+                refused++;
+            }
+        }
+
+        int buildsAfterFlood = builds;
+        ulong weightBefore = Weight(runner, targets[^1].Root);
+        runner.OnAggregateAndProof(Aggregate(targets[^1].Root, signed: true));
+        ulong weightAfter = Weight(runner, targets[^1].Root);
+        int buildsAfterSignedVote = builds;
+        runner.GetCheckpointState(new CheckpointRef(targetEpoch, targets[0].Root));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(voteSlot, Is.LessThan(epochStart + 6), "fixture bug: the vote must be from a past slot so it applies at once");
+            Assert.That(refused, Is.EqualTo(targets.Count - 1), "every unsigned aggregate is refused");
+            Assert.That(buildsAfterFlood, Is.EqualTo(1), "only the first target of the shuffling costs a checkpoint state");
+            Assert.That(buildsAfterSignedVote, Is.EqualTo(1), "a signed vote on another target of that shuffling needs no state of its own");
+            Assert.That(weightAfter - weightBefore, Is.EqualTo(EffectiveBalance), "the signed aggregate's vote counts");
+            Assert.That(builds, Is.EqualTo(2), "the refused aggregate's state was not cached as its target's checkpoint state");
+        }
+
+        SignedAggregateAndProof Aggregate(Hash256 target, bool signed)
+        {
+            BitArray committeeBits = new(Presets.MaxCommitteesPerSlot) { [0] = true };
+            AttestationData data = new()
+            {
+                Slot = voteSlot,
+                Index = 0,
+                BeaconBlockRoot = target,
+                Source = chain.Anchor.AnchorState.CurrentJustifiedCheckpoint,
+                Target = new Checkpoint { Epoch = targetEpoch, Root = target },
+            };
+            byte[] slotRoot = new byte[32];
+            BitConverter.TryWriteBytes(slotRoot, voteSlot);
+            AggregateAndProof message = new()
+            {
+                AggregatorIndex = (ulong)member,
+                Aggregate = new Attestation
+                {
+                    AggregationBits = new BitArray(1, true),
+                    Data = data,
+                    Signature = signed ? SignAs(SszRoots.HashTreeRoot(data), DomainType.BeaconAttester) : unsigned,
+                    CommitteeBits = committeeBits,
+                },
+                SelectionProof = signed ? SignAs(new Hash256(slotRoot), DomainType.SelectionProof) : unsigned,
+            };
+            return new SignedAggregateAndProof { Message = message, Signature = signed ? SignAs(SszRoots.HashTreeRoot(message), DomainType.AggregateAndProof) : unsigned };
+        }
+
+        BlsSignature SignAs(Hash256 root, ReadOnlySpan<byte> domainType) =>
+            ImportableBlobBlock.SignAs((ulong)member, root, atEpochStart.GetDomain(domainType, targetEpoch));
     }
 
     /// <summary>
