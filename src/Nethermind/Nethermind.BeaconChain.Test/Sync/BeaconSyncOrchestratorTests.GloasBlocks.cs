@@ -450,8 +450,8 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
         harness.Importer.RegenerationRefused.Add(parentRoot);
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(first, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAsync(second, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(first, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(second, CancellationToken.None);
         int held = harness.Orchestrator.PendingGossipBlockCount;
         harness.Importer.RegenerationRefused.Remove(parentRoot);
         await harness.Orchestrator.ProcessSlotAsync(anchorSlot + 4, CancellationToken.None);
@@ -544,7 +544,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             asGossip = await orchestrator.ImportBlockAsync(fetched.Forked, CancellationToken.None);
             peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([fetched.Forked]));
-            await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+            await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child.Forked, CancellationToken.None);
         }
 
         using (Assert.EnterMultipleScope())
@@ -599,7 +599,7 @@ public partial class BeaconSyncOrchestratorTests
 
         foreach ((_, SignedGloasChain.Block child) in pairs)
         {
-            await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+            await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child.Forked, CancellationToken.None);
         }
 
         bool refusedThisSlot = !importer.IsKnown(pairs[2].Parent.Root);
