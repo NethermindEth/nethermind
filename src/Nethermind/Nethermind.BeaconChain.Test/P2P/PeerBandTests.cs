@@ -18,6 +18,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -549,7 +550,14 @@ public class PeerBandTests
             await local.P2P.StartAsync(token);
             PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
 
-            await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            try
+            {
+                await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            }
+            catch (PeerConnectionException)
+            {
+                // The dial ends after the remote's own identify, so the local node can already have closed the session it refused.
+            }
 
             // Both status versions were refused over the open session, so the admission provably threw
             // after the session existed: a count of zero below cannot be the pre-connect zero.
