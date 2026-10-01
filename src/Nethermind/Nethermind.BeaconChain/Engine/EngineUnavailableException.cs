@@ -16,5 +16,5 @@ namespace Nethermind.BeaconChain.Engine;
 /// not a <c>BeaconStateException</c>: the block is not invalid, it is unevaluated, and must be
 /// retried once the engine answers again.
 /// </remarks>
-public sealed class EngineUnavailableException(string method, string? error)
-    : Exception($"In-process engine_{method} call returned no verdict: {error}");
+public sealed class EngineUnavailableException(string method, string? error, Exception? innerException = null)
+    : Exception($"In-process engine_{method} call returned no verdict: {error}", innerException);

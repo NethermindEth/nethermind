@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.Engine;
@@ -20,6 +21,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using NSubstitute;
+using NSubstitute.Extensions;
 using NUnit.Framework;
 using BeaconExecutionPayload = Nethermind.BeaconChain.Types.ExecutionPayload;
 using BeaconTransaction = Nethermind.BeaconChain.Types.Transaction;
@@ -298,9 +300,12 @@ public class EngineTests
     public void Engine_driver_refuses_to_turn_a_failed_newPayloadV5_call_into_a_verdict()
     {
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        engine.engine_newPayloadV5(default!, default!, default, default)
-            .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Fail("engine unavailable")));
+        ConfigureEngine(engine, () => Task.FromResult(PayloadStatusV1.Syncing));
         EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _));
+        driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas());
+        Assert.That(driver.IsAvailable, Is.True);
+        engine.Configure().engine_newPayloadV5(default!, default!, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Fail("engine unavailable")));
 
         Assert.Multiple(() =>
         {
@@ -308,6 +313,7 @@ public class EngineTests
                 Throws.TypeOf<EngineUnavailableException>(),
                 "a failed call is not a verdict; reporting it as SYNCING made the caller accept the block");
             Assert.That(driver.HasAnsweredNewPayload, Is.True, "a failed call still drove the newPayload path");
+            Assert.That(driver.IsAvailable, Is.False);
         });
     }
 
@@ -318,7 +324,7 @@ public class EngineTests
     [TestCase(0, TestName = "Failure result")]
     [TestCase(1, TestName = "Success with no data")]
     [TestCase(2, TestName = "Success with no payload status")]
-    public void Engine_driver_refuses_to_turn_a_failed_forkchoiceUpdated_call_into_a_status(int shape)
+    public async Task Engine_driver_refuses_to_turn_a_failed_forkchoiceUpdated_call_into_a_status(int shape)
     {
         ResultWrapper<ForkchoiceUpdatedV1Result> answer = shape switch
         {
@@ -327,15 +333,19 @@ public class EngineTests
             _ => ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadStatus = null! }),
         };
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        engine.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(Task.FromResult(answer));
+        ConfigureEngine(engine, () => Task.FromResult(PayloadStatusV1.Syncing));
         EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _));
+        await driver.ForkchoiceUpdated(TestHash, TestHash, TestHash);
+        Assert.That(driver.IsAvailable, Is.True);
+        engine.Configure().engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(Task.FromResult(answer));
 
         Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash));
 
         Assert.Multiple(() =>
         {
-            Assert.That(driver.LastForkchoiceStatus, Is.Null, "a failed call must not overwrite the last status");
+            Assert.That(driver.LastForkchoiceStatus, Is.SameAs(PayloadStatusV1.Syncing), "a failed call must not overwrite the last status");
             Assert.That(driver.HasAnsweredNewPayload, Is.False, "forkchoiceUpdated says nothing about whether a payload was ever submitted");
+            Assert.That(driver.IsAvailable, Is.False);
         });
     }
 
@@ -352,6 +362,126 @@ public class EngineTests
         Assert.That(() => INewPayloadNotifier.RequireEnvelopeSupport(driver), Throws.Nothing);
         Assert.That(() => INewPayloadNotifier.RequireEnvelopeSupport(new BodyOnlyNotifier()),
             Throws.TypeOf<InvalidOperationException>().With.Message.Contains(nameof(BodyOnlyNotifier)).And.Message.Contains("Gloas execution payload envelopes"));
+    }
+
+    [Test]
+    public async Task Engine_faults_are_unavailable_and_a_later_call_recovers(
+        [Values(0, 1, 2, 3)] int method, [Values] bool synchronous, [Values] bool cancellation)
+    {
+        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
+        Exception cause = cancellation ? new OperationCanceledException("engine budget") : new InvalidOperationException("storage failure");
+        ConfigureEngine(engine, () => Task.FromResult(PayloadStatusV1.Syncing));
+        EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _),
+            method == 1 ? TestEngineDriver.Spec.GloasForkEpoch * TestEngineDriver.Spec.SlotsPerEpoch : 0);
+
+        await InvokeEngine(driver, method);
+        Assert.That(driver.IsAvailable, Is.True);
+        ConfigureEngine(engine, synchronous ? () => throw cause : () => Task.FromException<PayloadStatusV1>(cause));
+        EngineUnavailableException? failure = Assert.ThrowsAsync<EngineUnavailableException>(() => InvokeEngine(driver, method));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure!.InnerException, cancellation ? Is.InstanceOf<OperationCanceledException>() : Is.SameAs(cause));
+            Assert.That(driver.IsAvailable, Is.False);
+        }
+
+        ConfigureEngine(engine, () => Task.FromResult(PayloadStatusV1.Syncing));
+        await InvokeEngine(driver, method);
+        Assert.That(driver.IsAvailable, Is.True);
+    }
+
+    [Test]
+    public async Task External_takeover_blocks_every_embedded_engine_method(
+        [Values(0, 1, 2, 3)] int method, [Values] bool disableOnExternalCl)
+    {
+        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
+        ConfigureEngine(engine, () => Task.FromResult(PayloadStatusV1.Syncing));
+        ExternalClDetector detector = new(new BeaconChainConfig { DisableOnExternalCl = disableOnExternalCl },
+            new Lazy<IEngineRpcModule>(engine), LimboLogs.Instance);
+        detector.SetInner(engine);
+        EngineDriver driver = TestEngineDriver.Create(detector,
+            method == 1 ? TestEngineDriver.Spec.GloasForkEpoch * TestEngineDriver.Spec.SlotsPerEpoch : 0);
+        detector.OnExternalEngineCall();
+        engine.ClearReceivedCalls();
+
+        if (disableOnExternalCl)
+            Assert.ThrowsAsync<OperationCanceledException>(() => InvokeEngine(driver, method));
+        else
+            await InvokeEngine(driver, method);
+
+        Assert.That(engine.ReceivedCalls().Count(), Is.EqualTo(disableOnExternalCl ? 0 : 1));
+    }
+
+    [Test]
+    public async Task Forkchoice_deadline_releases_the_caller_without_overlapping_calls([Values] bool synchronous)
+    {
+        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource returned = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim release = new();
+        ConfigureEngine(engine, () =>
+        {
+            entered.TrySetResult();
+            if (synchronous) release.Wait();
+            returned.TrySetResult();
+            return answer.Task;
+        });
+        EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _), forkchoiceTimeout: TimeSpan.FromMilliseconds(50));
+        Task<PayloadStatusV1> call = driver.ForkchoiceUpdated(TestHash, TestHash, TestHash);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            EngineUnavailableException? timeout = Assert.ThrowsAsync<EngineUnavailableException>(() => call.WaitAsync(TimeSpan.FromSeconds(2)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(timeout!.InnerException, Is.InstanceOf<TimeoutException>());
+                Assert.That(driver.IsAvailable, Is.False);
+            }
+
+            Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash).WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.ThrowsAsync<EngineUnavailableException>(() => Task.Run(() => driver.NewPayload(CreateBlock())).WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.That(engine.ReceivedCalls().Count(), Is.EqualTo(1));
+        }
+        finally
+        {
+            answer.TrySetResult(PayloadStatusV1.Syncing);
+            release.Set();
+            if (entered.Task.IsCompleted) await returned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    private static Task<PayloadStatusV1> InvokeEngine(EngineDriver driver, int method) => method switch
+    {
+        0 or 1 => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash),
+        2 => driver.NewPayload(CreateBlock()),
+        _ => driver.NewPayload(GloasPayload(5), [], TestHash, new ExecutionRequestsGloas()),
+    };
+
+    private static void ConfigureEngine(IEngineRpcModule engine, Func<Task<PayloadStatusV1>> response)
+    {
+        engine.Configure().engine_newPayloadV4(default!, default!, default, default)
+            .ReturnsForAnyArgs(_ => PayloadResult());
+        engine.Configure().engine_newPayloadV5(default!, default!, default, default)
+            .ReturnsForAnyArgs(_ => PayloadResult());
+        engine.Configure().engine_forkchoiceUpdatedV3(default!, default)
+            .ReturnsForAnyArgs(_ => ForkchoiceResult());
+        engine.Configure().engine_forkchoiceUpdatedV4(default!, default, default)
+            .ReturnsForAnyArgs(_ => ForkchoiceResult());
+
+        Task<ResultWrapper<PayloadStatusV1>> PayloadResult()
+        {
+            Task<PayloadStatusV1> task = response();
+            return WrapAsync();
+            async Task<ResultWrapper<PayloadStatusV1>> WrapAsync() => ResultWrapper<PayloadStatusV1>.Success(await task);
+        }
+
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceResult()
+        {
+            Task<PayloadStatusV1> task = response();
+            return WrapAsync();
+            async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> WrapAsync() =>
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadStatus = await task });
+        }
     }
 
     private static ExecutionPayloadGloas GloasPayload(ulong slotNumber) => new()

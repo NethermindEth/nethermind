@@ -17,8 +17,8 @@ internal static class TestEngineDriver
     public static readonly BeaconChainSpec Spec = BeaconChainSpec.Sepolia;
 
     /// <summary>A driver whose clock stands at <paramref name="slot"/> and whose node identity is <paramref name="custody"/>.</summary>
-    public static EngineDriver Create(ExternalClDetector detector, ulong slot = 0, NodeColumnCustody? custody = null, ILogManager? logManager = null) =>
-        new(detector, logManager ?? LimboLogs.Instance, ClockAt(slot), Spec, new FixedCustodySource(custody));
+    public static EngineDriver Create(ExternalClDetector detector, ulong slot = 0, NodeColumnCustody? custody = null, ILogManager? logManager = null, TimeSpan? forkchoiceTimeout = null) =>
+        new(detector, logManager ?? LimboLogs.Instance, ClockAt(slot), Spec, new FixedCustodySource(custody)) { ForkchoiceTimeout = forkchoiceTimeout ?? TimeSpan.FromSeconds(8) };
 
     private static SlotClock ClockAt(ulong slot) =>
         new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + slot * Spec.SecondsPerSlot)).UtcDateTime));
