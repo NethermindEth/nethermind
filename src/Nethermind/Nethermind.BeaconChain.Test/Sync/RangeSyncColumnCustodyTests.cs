@@ -370,6 +370,55 @@ public class RangeSyncColumnCustodyTests
         }
     }
 
+    /// <summary>
+    /// The preference for custodians reaching the missing slot is per column: a column only a custodian reaching just the batch start holds is asked for in the same round
+    /// as the columns the others hold, not left to a later one, which <see cref="RangeSync"/> may not have.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_later_round_asks_a_column_no_custodian_reaching_the_missing_slot_holds_in_the_same_round_from_one_reaching_the_batch_start(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        BeaconBlock first = fixture.Chain.Block.Message!;
+        (SignedBeaconBlock second, Hash256 secondRoot, DataColumnSidecar[] secondColumns) = ImportableBlobBlock.BlobBlockAt(first.Slot + 1, fixture.Chain.BlockRoot);
+        ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), new ForkedSignedBeaconBlock.OfFulu(second)];
+        ulong reachedColumn = fixture.Sampled[0];
+        ulong behindColumn = fixture.Sampled[1];
+        foreach (ulong column in fixture.Sampled)
+        {
+            fixture.SidecarPool.Add(fixture.Chain.BlockRoot, first.Slot, fixture.Chain.Columns[(int)column]);
+            if (column != reachedColumn && column != behindColumn)
+            {
+                fixture.SidecarPool.Add(secondRoot, second.Message!.Slot, secondColumns[(int)column]);
+            }
+        }
+
+        Func<ulong, ulong, ulong[], DataColumnSidecar[]> serveSecond = (_, _, columns) => [.. columns.Select(c => secondColumns[(int)c])];
+        StubPeer blockSource = new("blocks", second.Message!.Slot, (_, _) => blocks, custody: PeerColumnCustody.None);
+        // The only advertised custodian, so round 0 gives it both columns; it leaves them unserved and is not asked again.
+        StubPeer unserving = new("unserving", second.Message.Slot, (_, _) => blocks, static (_, _, _) => [], custody: StubPeer.AllColumns);
+        StubPeer reaching = new("reaching", second.Message.Slot, (_, _) => blocks, serveSecond, custody: new PeerColumnCustody([reachedColumn], isAdvertised: false));
+        bool? reachedColumnHeldWhenStaleAsked = null;
+        StubPeer stale = new("stale", first.Slot, (_, _) => blocks, (start, count, columns) =>
+        {
+            reachedColumnHeldWhenStaleAsked = fixture.SidecarPool.TryGet(secondRoot, reachedColumn, out _);
+            return serveSecond(start, count, columns);
+        }, custody: new PeerColumnCustody([behindColumn], isAdvertised: false));
+
+        await foreach (ForkedSignedBeaconBlock _ in fixture.CreateRangeSync([blockSource, unserving, reaching, stale]).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Message.Slot, token))
+        {
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unserving.ColumnRequests, Is.EqualTo(1), "fixture: round 0 asked the advertised custodian for both columns");
+            Assert.That((reaching.ColumnRequests, stale.ColumnRequests), Is.EqualTo((1, 1)));
+            // Replies are pooled once the whole round has answered, so a column still missing shows the two were asked in one round.
+            Assert.That(reachedColumnHeldWhenStaleAsked, Is.False);
+            Assert.That(fixture.SidecarPool.TryGet(secondRoot, reachedColumn, out _) && fixture.SidecarPool.TryGet(secondRoot, behindColumn, out _), Is.True);
+        }
+    }
+
     /// <summary>A reply repeating one invalid (root, index) is verified and penalized once, not once per copy: each copy would cost a KZG verification.</summary>
     [Test]
     [CancelAfter(30_000)]
