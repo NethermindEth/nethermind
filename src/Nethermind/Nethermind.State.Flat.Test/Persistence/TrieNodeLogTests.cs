@@ -276,6 +276,9 @@ public class TrieNodeLogTests
     [Test]
     public void Merge_lag_skips_keys_rewritten_in_newer_generations()
     {
+        _config.TrieNodeLogMergeLag = 1;
+        Reopen().GetAwaiter().GetResult();
+
         // 3000-byte values: two per 4 KiB generation, so every second batch seals one.
         static byte[] Value(byte fill)
         {
