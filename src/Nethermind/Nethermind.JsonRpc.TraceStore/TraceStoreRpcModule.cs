@@ -46,7 +46,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     {
         { ParityTraceTypes.Trace, FilterTrace },
         { ParityTraceTypes.StateDiff , FilterStateDiff },
-        { ParityTraceTypes.VmTrace | ParityTraceTypes.Trace, FilterStateVmTrace }
+        { ParityTraceTypes.VmTrace, FilterVmTrace }
     };
 
     private static IEnumerable<ParityTxTraceFromStore> FlattenStoreItems(List<List<ParityLikeTxTrace>> blockTraces) =>
@@ -407,21 +407,11 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     }
 
 
-    // VmTrace uses flags IsTracingCode, IsTracingInstructions
-    private static void FilterStateVmTrace(ParityLikeTxTrace trace) => trace.VmTrace = null;
+    // VmTrace uses flags IsTracingCode, IsTracingInstructions; the latter also records each operation's ex.store.
+    private static void FilterVmTrace(ParityLikeTxTrace trace) => trace.VmTrace = null;
 
     // StateDiff uses flags IsTracingState, IsTracingStorage
-    private static void FilterStateDiff(ParityLikeTxTrace trace)
-    {
-        trace.StateChanges = null;
-        if (trace.VmTrace is not null)
-        {
-            for (int i = 0; i < trace.VmTrace.Operations.Count; i++)
-            {
-                trace.VmTrace.Operations[i].Store = null!;
-            }
-        }
-    }
+    private static void FilterStateDiff(ParityLikeTxTrace trace) => trace.StateChanges = null;
 
     // A reward entry survives FilterRewards only when rewards are requested; its action is the reward itself, as in live replay.
     private static void FilterTrace(ParityLikeTxTrace trace)
