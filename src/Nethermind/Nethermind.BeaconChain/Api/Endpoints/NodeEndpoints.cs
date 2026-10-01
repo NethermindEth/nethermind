@@ -23,10 +23,10 @@ internal static class NodeEndpoints
 
     public static void Map(WebApplication app, BeaconApiContext ctx)
     {
-        app.MapGet("/eth/v1/node/health", c => Health(c, ctx));
+        app.MapGet("/eth/v1/node/health", c => Health(c, ctx.ForRequest()));
         app.MapGet("/eth/v1/node/version", c => Version(c));
         app.MapGet("/eth/v1/node/identity", c => Identity(c, ctx));
-        app.MapGet("/eth/v1/node/syncing", c => Syncing(c, ctx));
+        app.MapGet("/eth/v1/node/syncing", c => Syncing(c, ctx.ForRequest()));
         app.MapGet("/eth/v1/node/peer_count", c => PeerCount(c, ctx));
         app.MapGet("/eth/v1/node/peers", c => Peers(c, ctx));
         app.MapGet("/eth/v1/node/peers/{peer_id}", (HttpContext c, string peer_id) => PeerById(c, peer_id, ctx));

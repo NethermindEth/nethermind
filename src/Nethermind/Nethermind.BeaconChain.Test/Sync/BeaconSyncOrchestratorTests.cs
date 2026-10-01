@@ -782,7 +782,8 @@ public partial class BeaconSyncOrchestratorTests
         ILogManager? logManager = null,
         BeaconP2P? p2p = null,
         PeerManager? peerManager = null,
-        bool filterPoolByHead = false)
+        bool filterPoolByHead = false,
+        HeadSnapshotHolder? headSnapshots = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot).AddSeconds(6);
         ManualTimestamper timestamper = new(now);
@@ -811,7 +812,8 @@ public partial class BeaconSyncOrchestratorTests
             peerManager: peerManager,
             discovery: discovery,
             columnPool: sidecarPool,
-            envelopePool: envelopePool);
+            envelopePool: envelopePool,
+            headSnapshots: headSnapshots);
 
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
         orchestrator.PtcReader = (_, slot) => importer.Ptc(slot);

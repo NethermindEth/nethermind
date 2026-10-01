@@ -1,0 +1,67 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Autofac;
+using Autofac.Core.Resolving.Pipeline;
+using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Sync;
+using Nethermind.Config;
+using Nethermind.Core;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.BeaconChain.Test.Api;
+
+/// <summary>Every API response describes one published get_head view (fork-choice.md).</summary>
+public class BeaconApiHeadSnapshotDiTests
+{
+    [Test]
+    public void Orchestrator_and_the_beacon_api_share_the_one_registered_head_snapshot_holder()
+    {
+        List<(Type Consumer, object? Instance)> resolved = [];
+        Stack<Type> activating = new();
+        ContainerBuilder builder = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia)
+            .AddModule(new BeaconApiModule())
+            .AddSingleton<IBeaconApiConfig>(new BeaconApiConfig())
+            .AddSingleton(Substitute.For<IProcessExitSource>());
+        builder.ComponentRegistryBuilder.Registered += (_, registered) => registered.ComponentRegistration.PipelineBuilding += (_, pipeline) =>
+            pipeline.Use(PipelinePhase.RegistrationPipelineStart, (context, next) =>
+            {
+                activating.Push(context.Registration.Activator.LimitType);
+                try
+                {
+                    next(context);
+                }
+                finally
+                {
+                    activating.Pop();
+                }
+            });
+        using IContainer container = builder.Build();
+        container.ResolveOperationBeginning += (_, operation) => operation.ResolveOperation.ResolveRequestBeginning += (_, request) =>
+        {
+            if (request.RequestContext.Registration.Activator.LimitType == typeof(HeadSnapshotHolder) && activating.TryPeek(out Type? consumer))
+            {
+                request.RequestContext.RequestCompleting += (_, completing) => resolved.Add((consumer, completing.RequestContext.Instance));
+            }
+        };
+
+        container.Resolve<BeaconSyncOrchestrator>();
+        container.Resolve<BeaconApiHost>();
+        HeadSnapshotHolder registered = container.Resolve<HeadSnapshotHolder>();
+
+        object?[] orchestratorHolders = [.. resolved.Where(static r => r.Consumer == typeof(BeaconSyncOrchestrator)).Select(static r => r.Instance)];
+        object?[] apiHolders = [.. resolved.Where(static r => r.Consumer == typeof(BeaconApiHost)).Select(static r => r.Instance)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(orchestratorHolders, Has.Length.EqualTo(1), "the orchestrator asks the container for the holder");
+            Assert.That(orchestratorHolders, Is.All.SameAs(registered), "the orchestrator publishes to the registered holder");
+            Assert.That(apiHolders, Has.Length.EqualTo(1), "the API asks the container for the holder");
+            Assert.That(apiHolders, Is.All.SameAs(registered), "the API reads the registered holder");
+        }
+    }
+}

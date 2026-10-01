@@ -26,10 +26,10 @@ internal static class BeaconEndpoints
     public static void Map(WebApplication app, BeaconApiContext ctx)
     {
         app.MapGet("/eth/v1/beacon/genesis", c => Genesis(c, ctx));
-        app.MapGet("/eth/v1/beacon/headers", c => HeaderList(c, ctx));
-        app.MapGet("/eth/v1/beacon/headers/{block_id}", (HttpContext c, string block_id) => HeaderById(c, block_id, ctx));
-        app.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (HttpContext c, string block_id) => BlockRoot(c, block_id, ctx));
-        app.MapGet("/eth/v2/beacon/blocks/{block_id}", (HttpContext c, string block_id) => BlockContent(c, block_id, ctx));
+        app.MapGet("/eth/v1/beacon/headers", c => HeaderList(c, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/headers/{block_id}", (HttpContext c, string block_id) => HeaderById(c, block_id, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (HttpContext c, string block_id) => BlockRoot(c, block_id, ctx.ForRequest()));
+        app.MapGet("/eth/v2/beacon/blocks/{block_id}", (HttpContext c, string block_id) => BlockContent(c, block_id, ctx.ForRequest()));
     }
 
     private static Task Genesis(HttpContext c, BeaconApiContext ctx)

@@ -66,12 +66,13 @@ internal static class EventsEndpoint
         {
             while (!c.RequestAborted.IsCancellationRequested)
             {
-                StatusMessageV2 status = ctx.StatusSource.CurrentStatus;
+                IBeaconChainStatusSource head = ctx.CaptureHead();
+                StatusMessageV2 status = head.CurrentStatus;
                 if (wantsHead && status.HeadRoot != Hash256.Zero && status.HeadRoot != lastHead)
                 {
                     lastHead = status.HeadRoot;
                     await WriteEventAsync(c, "head",
-                        new HeadEventDto(status.HeadSlot.ToString(), status.HeadRoot!.ToString(), ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource)));
+                        new HeadEventDto(status.HeadSlot.ToString(), status.HeadRoot!.ToString(), ResponseEnvelope.ExecutionOptimistic(head)));
                 }
 
                 if (wantsFinalized && status.FinalizedRoot != Hash256.Zero && status.FinalizedEpoch != lastFinalizedEpoch)
