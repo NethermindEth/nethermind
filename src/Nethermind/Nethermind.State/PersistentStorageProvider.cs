@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
@@ -39,6 +40,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // Handed back by a detached write-back once it is done with the map it took.
     private Dictionary<AddressAsKey, PerContractState>? _spareStorages;
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
+    // Set between BeginEarlyRootWork and the flush that joins it.
+    private EarlyRootWork? _earlyRootWork;
 
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
@@ -63,6 +66,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <summary>Detects cached storage that would shadow an overlay, since contract reads consult local changes before the backend.</summary>
     internal bool HasCachedStorage(IStateReadOverlay overlay)
     {
+        JoinEarlyRootWork();
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
             if ((storage.Value.EstimatedChanges != 0 || storage.Value.HasJournalledWrites) && overlay.HasStorage(storage.Key.Value)) return true;
         return false;
@@ -101,6 +105,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _destroyedThisRound.ClearAndTrim();
         if (resetBlockChanges)
         {
+            AbandonEarlyRootWork();
             _storages.ResetAndClear();
             InvalidateStorageMemo();
             _toUpdateRoots.Clear();
@@ -410,12 +415,126 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
+        JoinEarlyRootWork();
         if (_toUpdateRoots.Count == 0)
             return;
 
         UpdateRootHashes(writeBatch);
 
         _toUpdateRoots.Clear();
+    }
+
+    /// <summary>Whether a contract other than <paramref name="lateStorageWriters"/> has storage changes to flush.</summary>
+    internal bool HasEarlyRootWork(IReadOnlySet<AddressAsKey> lateStorageWriters)
+    {
+        foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
+        {
+            if (kv.Value && !lateStorageWriters.Contains(kv.Key)) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Starts flushing every contract with storage changes, except <paramref name="lateStorageWriters"/>, into
+    /// <paramref name="writeBatch"/> in the background.
+    /// </summary>
+    /// <remarks>
+    /// The shared maps are only touched here, on the block thread. The background work owns the per-contract states it
+    /// took until it is joined, so any later use of one of those contracts joins it first; the flush that follows
+    /// treats a contract written again after that like any contract flushed twice in a block.
+    /// </remarks>
+    internal void BeginEarlyRootWork(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, IReadOnlySet<AddressAsKey> lateStorageWriters)
+    {
+        JoinEarlyRootWork();
+
+        ArrayPoolList<(PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = new(_toUpdateRoots.Count);
+        HashSet<AddressAsKey> contracts = new(_toUpdateRoots.Count);
+        try
+        {
+            foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
+            {
+                if (!kv.Value || lateStorageWriters.Contains(kv.Key)) continue;
+                if (!_storages.TryGetValue(kv.Key, out PerContractState? contractState))
+                {
+                    Debug.Fail($"Storage root marked changed for {kv.Key} but no contract state is present");
+                    continue;
+                }
+
+                storages.Add((contractState, writeBatch.CreateStorageWriteBatch(kv.Key, contractState.EstimatedChanges)));
+                contracts.Add(kv.Key);
+            }
+        }
+        catch
+        {
+            storages.Dispose();
+            throw;
+        }
+
+        foreach (AddressAsKey contract in contracts) _toUpdateRoots.Remove(contract);
+        // A read served by the memo would never ask whether its contract was taken.
+        InvalidateStorageMemo();
+
+        // Larger changes first, to balance the work.
+        storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
+        ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, storages.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+            i =>
+            {
+                (PerContractState contractState, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch) = storages[i];
+                (int writes, int skipped) = contractState.ProcessStorageChanges(storageWriteBatch);
+                ReportMetrics(writes, skipped);
+            });
+        _earlyRootWork = new EarlyRootWork(contracts, storages, work);
+        Db.Metrics.IncrementEarlyStorageRootContracts(storages.Count);
+    }
+
+    /// <summary>Waits for the background flush started by <see cref="BeginEarlyRootWork"/> and rethrows its failure.</summary>
+    internal void JoinEarlyRootWork()
+    {
+        if (_earlyRootWork is not { } work) return;
+        _earlyRootWork = null;
+        work.Join();
+    }
+
+    /// <summary>Stops the background flush without reporting its failure, for a block that is being dropped.</summary>
+    internal void AbandonEarlyRootWork()
+    {
+        if (_earlyRootWork is not { } work) return;
+        _earlyRootWork = null;
+        work.Dispose();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void JoinEarlyRootWorkFor(Address address)
+    {
+        if (_earlyRootWork is { } work && work.Contracts.Contains(address)) JoinEarlyRootWork();
+    }
+
+    // Owns the per-contract states and storage write batches it was given until it is joined or disposed.
+    private sealed class EarlyRootWork(
+        HashSet<AddressAsKey> contracts,
+        ArrayPoolList<(PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages,
+        ParallelUnbalancedWork.BackgroundWork work) : IDisposable
+    {
+        public HashSet<AddressAsKey> Contracts { get; } = contracts;
+
+        public void Join()
+        {
+            try
+            {
+                work.WaitForCompletion();
+            }
+            finally
+            {
+                Dispose();
+            }
+        }
+
+        public void Dispose()
+        {
+            work.Dispose();
+            storages.Dispose();
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -467,6 +586,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public void ClearStorageMap()
     {
         if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
+        JoinEarlyRootWork();
         EndOriginalsRound();
         _storages.ResetAndClear();
         InvalidateStorageMemo();
@@ -485,6 +605,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     internal IWorldStateScopeProvider.IBlockChangeSnapshot DetachBlockChanges()
     {
         if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
+        JoinEarlyRootWork();
         EndOriginalsRound();
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
@@ -598,6 +719,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return _lastStorage;
         }
 
+        JoinEarlyRootWorkFor(address);
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
         PerContractState storage = value ?? ThrowNoStorageState(address);
@@ -798,6 +920,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// address with original values or journal entries, even when no slots are currently cached.</param>
     private bool HasStorageToClear(Address address, out PerContractState? contractState)
     {
+        JoinEarlyRootWorkFor(address);
         if (_storages.TryGetValue(address, out contractState))
         {
             return true;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
@@ -119,6 +120,19 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void MarkStorageDestroyed(Address address) => ClearStorage(address);
 
     void RecalculateStateRoot();
+
+    /// <summary>
+    /// Starts computing, in the background, the storage roots of every contract with committed storage changes except
+    /// <paramref name="lateStorageWriters"/>. The next commit that computes roots waits for them and applies them to
+    /// the accounts.
+    /// </summary>
+    /// <remarks>
+    /// Call once the block's transactions are committed. <paramref name="lateStorageWriters"/> should hold every
+    /// contract whose storage may still be written before that commit: touching any other contract's storage first
+    /// waits for the background work, which is correct but gives up the overlap. A no-op unless the scope
+    /// <see cref="IWorldStateScopeProvider.IScope.ComputesStorageRootsEarly"/>.
+    /// </remarks>
+    void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> lateStorageWriters) { }
 
     void DeleteAccount(Address address);
 

@@ -28,6 +28,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
+    private readonly bool _computesStorageRootsEarly;
 
     private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
@@ -94,14 +95,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+        _computesStorageRootsEarly = configuration.EarlyStorageRoots && !isReadOnly && !_trieless && !configuration.VerifyWithTrie;
 
+        // The early storage roots take the committed writes instead, so the two never run together.
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
-            && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
+            && !configuration.EarlyStorageRoots && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>With <see cref="IFlatDbConfig.EarlyStorageRoots"/>, so never with the early apply.</remarks>
+    public bool ComputesStorageRootsEarly => _computesStorageRootsEarly;
 
     internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
 

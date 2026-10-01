@@ -42,6 +42,8 @@ namespace Nethermind.State
         private readonly ILogger _logger;
         private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated> _onAccountUpdated;
         private readonly Func<IWorldStateScopeProvider.IBlockChangeSnapshot> _takeBlockChangeSnapshot;
+        // Opened by BeginEarlyStorageRoots and finished by the next commit that computes roots.
+        private IWorldStateScopeProvider.IWorldStateWriteBatch? _earlyWriteBatch;
 
         public Hash256 StateRoot
         {
@@ -155,6 +157,7 @@ namespace Nethermind.State
         public void Reset(bool resetBlockChanges = true)
         {
             DebugGuardInScope();
+            if (resetBlockChanges) AbandonEarlyStorageRoots();
             _stateProvider.Reset(resetBlockChanges);
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
@@ -255,6 +258,7 @@ namespace Nethermind.State
         public void CommitTree(ulong blockNumber)
         {
             GuardInScope();
+            if (_earlyWriteBatch is not null) ThrowEarlyStorageRootsNotCommitted();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
             // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
@@ -422,6 +426,28 @@ namespace Nethermind.State
 
         public bool HasStateForBlock(BlockHeader? header) => ScopeProvider.HasRoot(header);
 
+        public void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> lateStorageWriters)
+        {
+            GuardInScope();
+            if (_earlyWriteBatch is not null || !_currentScope.ComputesStorageRootsEarly
+                || !_persistentStorageProvider.HasEarlyRootWork(lateStorageWriters)) return;
+
+            _earlyWriteBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+            _persistentStorageProvider.BeginEarlyRootWork(_earlyWriteBatch, lateStorageWriters);
+        }
+
+        // Nothing of the batch reaches the state trie before it is disposed, so a dropped block just lets it go.
+        private void AbandonEarlyStorageRoots()
+        {
+            if (_earlyWriteBatch is null) return;
+            _earlyWriteBatch = null;
+            _persistentStorageProvider.AbandonEarlyRootWork();
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowEarlyStorageRootsNotCommitted() =>
+            throw new InvalidOperationException("The early storage roots were never committed with the block's roots.");
+
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             GuardInScope();
@@ -431,7 +457,10 @@ namespace Nethermind.State
 
             if (commitRoots)
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                // The early storage roots are finished by the flush below, which joins them before it adds the rest.
+                IWorldStateScopeProvider.IWorldStateWriteBatch? earlyWriteBatch = _earlyWriteBatch;
+                _earlyWriteBatch = null;
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = earlyWriteBatch ?? _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
                 writeBatch.OnAccountUpdated += _onAccountUpdated;
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);

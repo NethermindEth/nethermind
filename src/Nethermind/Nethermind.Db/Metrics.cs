@@ -153,6 +153,12 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _storageCleared;
         internal static void IncrementStorageCleared() => Interlocked.Increment(ref _storageCleared.Value);
 
+        [CounterMetric]
+        [Description("Contracts whose storage roots were computed in the background between the block's transactions and its block-end commit.")]
+        public static long EarlyStorageRootContracts => _earlyStorageRootContracts.Value;
+        private static CacheLinePaddedLong _earlyStorageRootContracts;
+        internal static void IncrementEarlyStorageRootContracts(long value) => Interlocked.Add(ref _earlyStorageRootContracts.Value, value);
+
         [GaugeMetric]
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }

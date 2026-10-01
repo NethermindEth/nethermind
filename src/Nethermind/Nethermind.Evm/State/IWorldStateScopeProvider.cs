@@ -55,6 +55,12 @@ public interface IWorldStateScopeProvider
 
         bool StorageRootsAreAuthoritative => true;
 
+        /// <summary>
+        /// Whether the world state starts the block's storage roots once its transactions are committed, on a write
+        /// batch that the block-end commit then finishes.
+        /// </summary>
+        bool ComputesStorageRootsEarly => false;
+
         void UpdateRootHash();
 
         /// <summary>

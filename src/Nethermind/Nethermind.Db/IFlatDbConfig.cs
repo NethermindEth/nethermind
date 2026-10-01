@@ -142,8 +142,11 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Only hash the storage tries before a block is reported valid, and write their nodes when the block commits, as the state trie already does. `false` writes each storage trie's nodes before the block is reported valid.", DefaultValue = "true")]
     bool DeferStorageTrieCommit { get; set; }
 
-    [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
+    [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie or EarlyStorageRoots.", DefaultValue = "true")]
     bool ApplyStorageWritesOnIdleThread { get; set; }
+
+    [ConfigItem(Description = "Start computing the storage roots of the contracts the block's transactions wrote as soon as the transactions are committed, on background threads while the block-end rewards, withdrawals and system calls run. The block-end commit then handles only the system contracts written after that point. When on, ApplyStorageWritesOnIdleThread is ignored. Ignored with VerifyWithTrie.", DefaultValue = "false")]
+    bool EarlyStorageRoots { get; set; }
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }

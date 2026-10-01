@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -62,6 +63,8 @@ public partial class BlockProcessor(
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, stateProvider));
     private ISystemContractHandler _systemContractHandler;
+    private IReleaseSpec? _lateStorageWritersSpec;
+    private IReadOnlySet<AddressAsKey> _lateStorageWriters = new HashSet<AddressAsKey>();
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -205,6 +208,10 @@ public partial class BlockProcessor(
 
         CommitState(spec);
 
+        // The transactions' storage is final here: only the block-end system calls below write storage again, so the
+        // other contracts' storage roots can be computed while those run.
+        if (TComputesCommitments.IsActive) _stateProvider.BeginEarlyStorageRoots(GetLateStorageWriters(spec));
+
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
@@ -260,6 +267,25 @@ public partial class BlockProcessor(
         }
 
         return receipts;
+    }
+
+    /// <summary>The contracts whose storage the execution request system calls write after the transactions.</summary>
+    private IReadOnlySet<AddressAsKey> GetLateStorageWriters(IReleaseSpec spec)
+    {
+        if (ReferenceEquals(spec, _lateStorageWritersSpec)) return _lateStorageWriters;
+
+        HashSet<AddressAsKey> writers = [];
+        if (spec.WithdrawalRequestsEnabled && spec.Eip7002ContractAddress is not null) writers.Add(spec.Eip7002ContractAddress);
+        if (spec.ConsolidationRequestsEnabled && spec.Eip7251ContractAddress is not null) writers.Add(spec.Eip7251ContractAddress);
+        if (spec.BuilderRequestsEnabled)
+        {
+            writers.Add(Eip8282Constants.BuilderDepositRequestPredeployAddress);
+            writers.Add(Eip8282Constants.BuilderExitRequestPredeployAddress);
+        }
+
+        _lateStorageWriters = writers;
+        _lateStorageWritersSpec = spec;
+        return writers;
     }
 
     private void CommitState(IReleaseSpec spec)
