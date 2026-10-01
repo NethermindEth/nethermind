@@ -9,6 +9,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -17,14 +18,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Processing;
 
+[TestFixture(false)]
+[TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
-public class BlockAccessListStateReconstructorTests
+public class BlockAccessListStateReconstructorTests(bool useFlatDb)
 {
     [Test]
     public void Applies_last_values_and_clears_storage()
     {
-        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule())
-            .Map<IWorldStateScopeProvider, IWorldStateManager>(manager => manager.GlobalWorldState).Build();
+        using IContainer container = CreateContainer();
         IWorldState state = container.Resolve<IWorldState>();
         using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
         state.CreateAccount(TestItem.AddressA, 100, 1);
@@ -57,8 +59,7 @@ public class BlockAccessListStateReconstructorTests
     [Test]
     public void Read_only_accounts_do_not_create_or_prune_accounts()
     {
-        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule())
-            .Map<IWorldStateScopeProvider, IWorldStateManager>(manager => manager.GlobalWorldState).Build();
+        using IContainer container = CreateContainer();
         IWorldState state = container.Resolve<IWorldState>();
         using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
         state.CreateAccount(TestItem.AddressA, 100);
@@ -82,8 +83,7 @@ public class BlockAccessListStateReconstructorTests
     [Test]
     public void Creates_accounts_and_prunes_explicitly_emptied_accounts()
     {
-        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule())
-            .Map<IWorldStateScopeProvider, IWorldStateManager>(manager => manager.GlobalWorldState).Build();
+        using IContainer container = CreateContainer();
         IWorldState state = container.Resolve<IWorldState>();
         using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
         state.CreateAccount(TestItem.AddressA, 100, 1);
@@ -102,4 +102,9 @@ public class BlockAccessListStateReconstructorTests
             Assert.That(state.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)20));
         }
     }
+    private IContainer CreateContainer() => new ContainerBuilder()
+        .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = useFlatDb }))
+        .Map<IWorldStateScopeProvider, IWorldStateManager>(manager => manager.GlobalWorldState)
+        .Build();
+
 }

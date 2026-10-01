@@ -37,7 +37,7 @@ public static class BlockAccessListStateReconstructor
             }
 
             if (account.NonceChanges.Length > 0)
-                state.SetNonce(address, checked((ulong)account.NonceChanges[^1].Value));
+                state.SetNonce(address, account.NonceChanges[^1].Value);
 
             if (account.CodeChanges.Length > 0)
             {
