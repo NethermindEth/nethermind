@@ -297,7 +297,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mibc_file="${RUNNER_TEMP}/nethermind.mibc"
+          validation_dir="${RUNNER_TEMP}/pgo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/profile-validation"
+          mkdir -p "${validation_dir}"
+          mibc_file="${validation_dir}/nethermind.mibc"
           pgo_dir="${RUNNER_TEMP}/pgo-data"
 
           if [[ ! -d "${pgo_dir}" ]] || [[ -z "$(ls -A "${pgo_dir}" 2>/dev/null)" ]]; then
@@ -323,7 +325,7 @@ jobs:
           fi
 
           echo "Converting ${trace_file} to .mibc..."
-          trace_mibc="${RUNNER_TEMP}/trace.mibc"
+          trace_mibc="${validation_dir}/trace.mibc"
           create_mibc_args=(
             --trace "${trace_file}"
             --output "${trace_mibc}"
@@ -334,6 +336,10 @@ jobs:
             done
           fi
           dotnet-pgo create-mibc "${create_mibc_args[@]}"
+          dotnet-pgo dump --input "${trace_mibc}" --output "${validation_dir}/dump.json"
+          python3 scripts/pgo/validate_profile.py \
+            --dump "${validation_dir}/dump.json" --output "${validation_dir}/validation.json" \
+            --require instrumentation --require block-counts
 
           cp "${trace_mibc}" "${mibc_file}"
 
@@ -354,6 +360,15 @@ jobs:
           else
             echo "No .jit file found — skipping edge profiling trim."
           fi
+
+      - name: Upload profile validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pgo-profile-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/profile-validation/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Upload .mibc artifact
         if: always()
