@@ -101,8 +101,11 @@ public class StatusFallbackTests
         Hash256 head = Keccak.Compute("head");
         holder.Publish(new StatusMessageV2
         {
-            ForkDigest = ForkDigest.Compute(spec, epoch - 1), HeadRoot = head, HeadSlot = 42,
-            FinalizedRoot = Hash256.Zero, EarliestAvailableSlot = 10,
+            ForkDigest = ForkDigest.Compute(spec, epoch - 1),
+            HeadRoot = head,
+            HeadSlot = 42,
+            FinalizedRoot = Hash256.Zero,
+            EarliestAvailableSlot = 10,
         }, head);
         if (earliestSource) holder.EarliestAvailableSlotSource = () => 11;
         Assert.That(holder.CurrentStatus.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch - 1)));
