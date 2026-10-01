@@ -10,6 +10,6 @@ public class Constants
     public const string DEFAULT_ARCHIVE_NAME = "fixtures.tar.gz";
 
     // EIP-7805 fixtures ship as a separate archive from the default release.
-    public const string FOCIL_ARCHIVE_VERSION = "tests-focil-devnet@v0.2.0";
+    public const string FOCIL_ARCHIVE_VERSION = "tests-focil-devnet@v0.3.0";
     public const string FOCIL_ARCHIVE_NAME = "fixtures_focil-devnet.tar.gz";
 }

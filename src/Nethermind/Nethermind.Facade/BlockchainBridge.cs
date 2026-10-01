@@ -14,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -532,16 +531,10 @@ namespace Nethermind.Facade
             return new BlockExecutionContext(callHeader, releaseSpec, blobBaseFee);
         }
 
-        /// <summary>
-        /// The rejection of a priced call whose priority fee exceeds its fee cap, before any gas is bought; the
-        /// processor checks only the fee cap against the base fee when validation is skipped.
-        /// </summary>
+        /// <summary>Wraps <see cref="TransactionExtensions.GetTipAboveFeeCapError"/> as a <see cref="TransactionResult"/>.</summary>
         private static TransactionResult? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
-            spec.IsEip1559Enabled
-            && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero)
-            && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas
-                ? TransactionResult.ErrorType.MalformedTransaction.WithDetail(
-                    $"{TxErrorMessages.TipAboveFeeCap}: address {tx.SenderAddress!.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tx.MaxPriorityFeePerGas}, maxFeePerGas: {tx.MaxFeePerGas}")
+            tx.GetTipAboveFeeCapError(spec) is { } error
+                ? TransactionResult.ErrorType.MalformedTransaction.WithDetail(error)
                 : null;
 
         public ulong GetChainId() => blockTree.ChainId;
@@ -709,7 +702,7 @@ namespace Nethermind.Facade
         }
 
         // One env per invocation — independent _worldScopeCloser and decorator chain so concurrent renters share no mutable state.
-        private IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
+        internal IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
         {
             IOverridableEnv env = envFactory.Create();
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
@@ -717,6 +710,11 @@ namespace Nethermind.Facade
                 .AddScoped<SingleCallRequestState>()
                 .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+                // Resolved code is remembered across the restored re-runs of estimateGas and createAccessList; the
+                // processor decorator drops it after any transaction that keeps its changes.
+                .AddScoped<ResolvedCodeMemo>()
+                .AddDecorator<ICodeInfoRepository, MemoizingCodeInfoRepository>()
+                .AddDecorator<ITransactionProcessor, ResolvedCodeClearingTransactionProcessor>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Pool owns the scope. Registering with rootLifetimeScope.Disposer would retain every created env until shutdown
@@ -727,6 +725,7 @@ namespace Nethermind.Facade
                 inner,
                 overridableScopeLifetime,
                 overridableScopeLifetime.Resolve<IOverridableCodeInfoRepository>(),
+                overridableScopeLifetime.Resolve<ResolvedCodeMemo>(),
                 overridableScopeLifetime.Resolve<ISpecProvider>());
         }
 
@@ -734,6 +733,7 @@ namespace Nethermind.Facade
             IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner,
             IDisposable scope,
             IOverridableCodeInfoRepository codeInfoRepository,
+            ResolvedCodeMemo resolvedCode,
             ISpecProvider specProvider) : IOverridableEnv<BlockchainBridge.BlockProcessingComponents>, IDisposable
         {
             /// <inheritdoc/>
@@ -757,6 +757,7 @@ namespace Nethermind.Facade
                 // the overridden block number, which the overridden header relies on to resolve.
                 if (!inner.TryBuildAndOverride(header, stateOverride: null, specOverride, blockOverride, out scope)) return false;
 
+                scope = ClearResolvedCodeOnDispose(scope);
                 if (stateOverride is null || header is null) return true;
                 ApplyUnmerkleizedStateOverride(scope, stateOverride, header);
                 return true;
@@ -768,6 +769,7 @@ namespace Nethermind.Facade
             {
                 if (!inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride: null, specOverride, out scope)) return false;
 
+                scope = ClearResolvedCodeOnDispose(scope);
                 if (stateOverride is null) return true;
                 ApplyUnmerkleizedStateOverride(scope, stateOverride, targetBlock);
                 return true;
@@ -789,7 +791,20 @@ namespace Nethermind.Facade
                 }
             }
 
+            // The next renter of this pooled env must not be answered with code this scope resolved.
+            private Scope<BlockchainBridge.BlockProcessingComponents> ClearResolvedCodeOnDispose(Scope<BlockchainBridge.BlockProcessingComponents> scope) =>
+                new(scope.Component, new ResolvedCodeClearingCloser(scope, resolvedCode));
+
             public void Dispose() => scope.Dispose();
+
+            private sealed class ResolvedCodeClearingCloser(IDisposable scope, ResolvedCodeMemo resolvedCode) : IDisposable
+            {
+                public void Dispose()
+                {
+                    resolvedCode.Clear();
+                    scope.Dispose();
+                }
+            }
         }
     }
 }

@@ -31,6 +31,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Stats;
@@ -3373,7 +3374,7 @@ namespace Nethermind.TxPool.Test
         {
             const int budget = 2;
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = budget }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
@@ -4546,7 +4547,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(result, Is.EqualTo(shortcut ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(shortcut ? 1 : 0));
                 Assert.That(tx.PayerAddress, shortcut ? Is.EqualTo(TestItem.PrivateKeyA.Address) : Is.Null);
-                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
             }
         }
 
@@ -4566,7 +4567,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(result, Is.EqualTo(shortcut ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(shortcut ? 1 : 0));
                 Assert.That(tx.PayerAddress, shortcut ? Is.EqualTo(TestItem.PrivateKeyA.Address) : Is.Null);
-                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
             }
         }
 
@@ -4828,7 +4829,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the verifier is not a tracked dependency");
-                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
             }
         }
 
@@ -4854,7 +4855,7 @@ namespace Nethermind.TxPool.Test
             second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
             await RaiseBlockAddedToMainAndWaitForNewHead(second);
 
-            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
         }
 
         [Test]
@@ -4912,7 +4913,7 @@ namespace Nethermind.TxPool.Test
                 await RaiseBlockAddedToMainAndWaitForNewHead(head);
             }
 
-            simulator.Received(expectedSimulations).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            simulator.Received(expectedSimulations).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
                 "an exhausted deferral budget leaves the transaction pending and unjudged, it does not evict");
         }
@@ -4947,7 +4948,7 @@ namespace Nethermind.TxPool.Test
 
             // Heads 1 and 2, then the budget is spent; heads 4 and 5 again once head 4 re-armed it. A budget
             // counted over the transaction's whole residency instead would have stopped at three.
-            simulator.Received(4).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            simulator.Received(4).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
         }
 
@@ -4998,7 +4999,7 @@ namespace Nethermind.TxPool.Test
             // inside the simulation. Re-indexing the accepted result would leave a dependency entry behind a
             // transaction the pool no longer holds, and no later head removes it.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
@@ -5008,7 +5009,7 @@ namespace Nethermind.TxPool.Test
 
             // Stands in for the concurrent eviction, pinned to the one interleaving that matters: it lands
             // after the sweep read the transaction and before the accepted result is indexed.
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
                 .Returns(_ =>
                 {
                     _txPool.EvictTransaction(tx);
@@ -5020,6 +5021,35 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the eviction must have taken, or nothing was raced");
                 Assert.That(TrackedFrameTxDependencies(), Is.Zero, "the finished simulation must not recreate the removed entry");
+            }
+        }
+
+        [TestCase(true, true, 2)]
+        [TestCase(true, false, 1)]
+        [TestCase(false, true, 1)]
+        public void Gossiped_frame_tx_whose_simulation_yielded_is_refetchable_once_per_request(bool yielded, bool announced, int expectedSimulations)
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(yielded
+                ? FrameTxSimulationResult.RejectYielded("validation-prefix simulation preempted")
+                : FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            if (announced) Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+            Assert.That(_txPool.IsKnown(tx.Hash), Is.EqualTo(!(yielded && announced)));
+            for (int resend = 0; resend < 3; resend++)
+            {
+                _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(expectedSimulations));
+                Assert.That(_txPool.IsKnown(tx.Hash), Is.True);
+                Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.Delayed));
             }
         }
 
@@ -5112,7 +5142,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
             }
         }
 
@@ -5222,7 +5252,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction doomed = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
                 .Returns(call =>
                 {
                     if (((Transaction)call[0]).Hash != doomed.Hash) return FrameTxSimulationResult.Accept(sponsor);
@@ -5297,7 +5327,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                simulator.Received(1).Simulate(tx, signaturesPreValidated: true, local: Arg.Any<bool>(), token: Arg.Any<CancellationToken>());
+                simulator.Received(1).Simulate(tx, signaturesPreValidated: true, local: Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>());
             }
         }
 
@@ -5730,6 +5760,76 @@ namespace Nethermind.TxPool.Test
             // The bucket's tie-break decides whether a keyed entry sorting at a plain nonce is seen before or after
             // it, so a run the keyed entry only interrupts must come out the same either way.
             Assert.That(_txPool.GetLatestPendingNonce(sender), Is.EqualTo(expectedPendingNonce));
+        }
+
+        /// <remarks>A keyed frame transaction can make a bucket ready for the full snapshot while providing
+        /// nothing the inclusion-list builder can use.</remarks>
+        [TestCase(false, TestName = "sender holding only a keyed frame transaction")]
+        [TestCase(true, TestName = "sender holding a keyed frame transaction and an ordinary one")]
+        public void Non_frame_snapshot_keeps_only_senders_with_an_ordinary_ready_transaction(bool hasOrdinaryTx)
+        {
+            const ulong accountNonce = 3;
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            _stateProvider.CreateAccount(sender, 100.Ether, accountNonce);
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            if (hasOrdinaryTx)
+            {
+                Transaction plain = Build.A.Transaction
+                    .WithNonce(accountNonce)
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .WithGasLimit(21_000)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Assert.That(_txPool.GetPendingTransactionsBySender(true, UInt256.Zero), Does.ContainKey(new AddressAsKey(sender)));
+
+            IDictionary<AddressAsKey, Transaction[]> nonFrame = _txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256.Zero);
+
+            Assert.That(nonFrame.ContainsKey(sender), Is.EqualTo(hasOrdinaryTx));
+            if (hasOrdinaryTx)
+            {
+                Assert.That(nonFrame[sender], Has.Length.EqualTo(2), "kept buckets include their frame transactions");
+            }
+        }
+
+        /// <remarks>A frame-only bucket should need no account read; a mixed bucket should need one.</remarks>
+        [TestCase(false, 0, TestName = "a frame-only bucket is judged without an account read")]
+        [TestCase(true, 1, TestName = "a bucket with an ordinary transaction pays for one")]
+        public void Non_frame_snapshot_reads_an_account_only_for_a_non_frame_entry(bool hasOrdinaryTx, int expectedReads)
+        {
+            ISpecProvider specProvider = KeyedNonceSpecProvider();
+            CountingReadOnlyStateProvider counting = new(_stateProvider);
+            _txPool = CreatePool(null, specProvider,
+                new ChainHeadInfoProvider(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, counting));
+            Address sender = TestItem.PrivateKeyA.Address;
+            _stateProvider.CreateAccount(sender, 100.Ether);
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            if (hasOrdinaryTx)
+            {
+                Transaction plain = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .WithGasLimit(21_000)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            _txPool.ResetAddress(sender);
+            counting.ResetCounts();
+
+            _txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256.Zero);
+
+            Assert.That(counting.AccountReads(sender), Is.EqualTo(expectedReads));
         }
 
         /// <remarks>Admission sums a sender's keyed and account-domain liabilities against one balance; the
@@ -6472,7 +6572,7 @@ namespace Nethermind.TxPool.Test
         }
 
         private static void SimulatesAs(IFrameTxPrefixSimulator simulator, FrameTxSimulationResult result) =>
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(result);
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>()).Returns(result);
 
         private TxPool CreatePool(
             ITxPoolConfig config = null,
