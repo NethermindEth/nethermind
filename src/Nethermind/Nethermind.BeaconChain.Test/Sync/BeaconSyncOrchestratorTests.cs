@@ -865,6 +865,27 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>The head step after a worker pass reads the justified balances and can hold the worker as long as an import, so it is timed the same way.</summary>
+    [Test]
+    public async Task Head_step_that_holds_the_worker_past_the_threshold_is_logged([Values] bool pastThreshold)
+    {
+        Nethermind.Core.Test.TestLogger logger = new();
+        Harness harness = CreateHarness(logManager: new OneLoggerLogManager(new ILogger(logger)));
+        harness.Orchestrator.SlowWorkItemThreshold = pastThreshold ? TimeSpan.Zero : TimeSpan.FromHours(1);
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101);
+        harness.Importer.Known.Add(anchorRoot);
+
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0])));
+        harness.Orchestrator.WorkWriter.Complete();
+        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(1), "fixture: one head step ends the pass");
+            Assert.That(logger.LogList.Where(static l => l.StartsWith("Import worker spent") && l.EndsWith(" ms on the head step")).ToArray(), Has.Length.EqualTo(pastThreshold ? 1 : 0));
+        }
+    }
+
     [Test]
     public async Task Slot_tick_releases_a_gossip_block_held_for_its_slot()
     {

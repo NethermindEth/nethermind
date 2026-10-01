@@ -673,7 +673,9 @@ public sealed class BeaconSyncOrchestrator(
 
         if (_importedSinceHeadStep)
         {
+            long startMs = Environment.TickCount64;
             await RunHeadStepAsync(token);
+            if (IsSlowForDebug(startMs, out long elapsedMs)) _logger.Debug($"Import worker spent {elapsedMs} ms on the head step");
         }
     }
 
@@ -814,8 +816,13 @@ public sealed class BeaconSyncOrchestrator(
                 break;
         }
 
-        long elapsedMs = Environment.TickCount64 - startMs;
-        if (elapsedMs >= SlowWorkItemThreshold.TotalMilliseconds && _logger.IsDebug) _logger.Debug($"Import worker spent {elapsedMs} ms on {DescribeWorkItem(item)}");
+        if (IsSlowForDebug(startMs, out long elapsedMs)) _logger.Debug($"Import worker spent {elapsedMs} ms on {DescribeWorkItem(item)}");
+    }
+
+    private bool IsSlowForDebug(long startMs, out long elapsedMs)
+    {
+        elapsedMs = Environment.TickCount64 - startMs;
+        return elapsedMs >= SlowWorkItemThreshold.TotalMilliseconds && _logger.IsDebug;
     }
 
     private static string DescribeWorkItem(WorkItem item) => item switch
