@@ -1246,10 +1246,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
 
             _peers[address] = peer;
+            Metrics.BeaconChainPeerCount = _peers.Count;
         }
 
-        Metrics.BeaconChainPeersConnected++;
-        Metrics.BeaconChainPeerCount = _peers.Count;
+        Interlocked.Increment(ref Metrics.PeersConnectedCount);
         if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
         await RefreshCustodyAsync(peer, token, AdmissionMetadataTimeout);
         PeerAdmitted?.Invoke(peer);
@@ -1583,6 +1583,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             else
             {
                 removed = _peers.TryRemove(peer.Id, out _);
+                Metrics.BeaconChainPeerCount = _peers.Count;
             }
         }
 
@@ -1593,9 +1594,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         if (_logger.IsInfo) _logger.Info($"Dropping beacon chain peer {peer.Id}: {detail}");
-        Metrics.BeaconChainPeersDropped++;
+        Interlocked.Increment(ref Metrics.PeersDroppedCount);
         Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(GoodbyeReasonName(reason)));
-        Metrics.BeaconChainPeerCount = _peers.Count;
         if (removed) _dialHistory.Record(peer.Id, connected: false);
         RecordDisconnect(peer, reason, detail, unresponsive);
         await _p2p.GoodbyeAsync(peer.Session, reason, token);

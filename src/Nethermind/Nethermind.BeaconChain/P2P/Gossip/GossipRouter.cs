@@ -15,7 +15,6 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -541,7 +540,6 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     {
         seenMessages ??= _seenMessages;
         ReleaseDueMessages();
-        Metrics.BeaconChainGossipReceivedByTopic.Increment(new StringLabel(name));
 
         // phase0 p2p "Gossipsub size limits": the compressed payload is bounded by max_compressed_len(MAX_PAYLOAD_SIZE); the type bound caps only the uncompressed size.
         if (message.Length > Eth2MessageId.MaxCompressedGossipSize)
@@ -592,7 +590,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return Defer(slot, () => raise(value)) ? MessageValidity.Ignored : Drop(name, GossipDropReason.FutureSlot, MessageValidity.Ignored);
         }
 
-        Metrics.BeaconChainGossipAccepted++;
+        Interlocked.Increment(ref Metrics.GossipAcceptedCount);
         raise(value);
         return MessageValidity.Ignored;
     }
@@ -1060,7 +1058,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
         foreach (Action raise in due ?? [])
         {
-            Metrics.BeaconChainGossipAccepted++;
+            Interlocked.Increment(ref Metrics.GossipAcceptedCount);
             raise();
         }
     }
@@ -1102,7 +1100,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>Counts a message on the topic <paramref name="name"/> dropped before it reached a typed event.</summary>
     internal void Drop(string name, GossipDropReason reason)
     {
-        Metrics.BeaconChainGossipDropped++;
+        Interlocked.Increment(ref Metrics.GossipDroppedCount);
         Metrics.BeaconChainGossipRejectedByTopic.Increment(new GossipRejectKey(name, reason));
         Interlocked.Increment(ref _dropCounts[(int)reason]);
         if (_logger.IsTrace) _logger.Trace($"Dropped {name} gossip message: {reason}");

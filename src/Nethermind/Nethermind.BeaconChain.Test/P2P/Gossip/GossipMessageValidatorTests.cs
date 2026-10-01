@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -13,6 +14,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
@@ -109,15 +111,29 @@ public class GossipMessageValidatorTests
         yield return Case("payload attestation message for a pre-Gloas slot", Topic(GloasDigest, GossipTopics.PayloadAttestationMessage), Encode(PtcVote(FuluSlot)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
     }
 
+    [Test]
+    public void Metrics_concurrent_gossip_drops_preserve_every_increment()
+    {
+        (_, GossipRouter router, _) = Create();
+        ulong before = Metrics.BeaconChainGossipDropped;
+        Parallel.For(0, 100_000, _ => router.Drop("unhandled", GossipDropReason.UnknownTopic));
+        Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(before + 100_000));
+    }
+
     [TestCaseSource(nameof(Cases))]
-    public void Verdict_and_consumption_follow_the_gossip_rules(string topic, byte[] data, bool signed, MessageValidity expected, Type? consumedAs, GossipDropReason? reason)
+    public void Metrics_verdict_and_consumption_follow_the_gossip_rules(string topic, byte[] data, bool signed, MessageValidity expected, Type? consumedAs, GossipDropReason? reason)
     {
         (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create();
 
+        string label = GossipTopics.TryParse(topic, out _, out string? name)
+            && (Array.IndexOf(GossipTopics.SubscribedTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.GloasTopicNames, name) >= 0) ? name! : "unhandled";
+        StringLabel key = new(label);
+        long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key);
         MessageValidity validity = validator.Verify(Message(topic, data, signed));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key), Is.EqualTo(before + 1));
             Assert.That(validity, Is.EqualTo(expected), "validity");
             Assert.That(raised.Select(static e => e.GetType()), consumedAs is null ? Is.Empty : Is.EqualTo(new[] { consumedAs }), "typed event");
             Assert.That(Enum.GetValues<GossipDropReason>().Select(router.GetDropCount).Sum(), Is.EqualTo(reason is null ? 0 : 1), "one drop at most");
