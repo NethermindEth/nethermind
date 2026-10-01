@@ -39,7 +39,6 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     private int _pendingInsertsInCurrent;
     private bool _committed;
     private long _storedBytes;
-    private long _appendedBytes;
 
     public void Append(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete)
     {
@@ -110,7 +109,6 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         if (!collided) _pending[hash] = record;
         else if (collisionIndex >= 0) _collisions[collisionIndex] = record;
         else _collisions.Add(record);
-        _appendedBytes += key.Length + value.Length;
     }
 
     /// <summary>Whether the record <paramref name="pending"/> points at was written for <paramref name="key"/>; it is read from the write buffer while still there.</summary>
@@ -211,8 +209,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
 
         foreach ((TrieNodeLogGeneration generation, _) in _touched) generation.PublishFrontier(generation.WriteFrontier);
 
-        if (_appendedBytes != 0) Metrics.TrieNodeLogAppendedBytes.AddBy(TrieNodeLogLabel.Column((byte)shard.Column), _appendedBytes);
-        Metrics.AddTrieNodeLogStoredBytes(_storedBytes);
+        if (_storedBytes != 0) Metrics.TrieNodeLogStoredBytes.AddBy(TrieNodeLogLabel.Column((byte)shard.Column), _storedBytes);
         _committed = true;
     }
 

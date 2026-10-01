@@ -74,7 +74,6 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGe
                 if (bytesRead < TrieNodeLogRecord.HeaderLength + key.Length || header.KeyLength != key.Length
                     || !buffer.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key))
                 {
-                    Metrics.RecordTrieNodeLogChainKeyMismatch();
                     throw new InvalidOperationException($"Trie node log record at {generation.Path}:{offset} is linked as a previous version of a different key");
                 }
                 walked = true;

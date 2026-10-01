@@ -118,7 +118,6 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
             if (header.KeyLength == key.Length && bytesRead >= TrieNodeLogRecord.HeaderLength + key.Length
                 && buffer.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key))
                 return true;
-            Metrics.RecordTrieNodeLogIndexFalseMatch();
         }
 
         header = default;

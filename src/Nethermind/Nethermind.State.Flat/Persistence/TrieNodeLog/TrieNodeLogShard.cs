@@ -346,7 +346,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     {
         long sw = Stopwatch.GetTimestamp();
         long written = 0;
-        long skipped = 0;
         int records = 0;
         IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
         if (!BasePersistence.ReadWipedForSync(metadata))
@@ -368,11 +367,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                         if (header.IsCommit) continue;
                         ulong hash = TrieNodeLogRecord.Hash(scanner.Key);
                         if (!generation.IsLatest(hash, scanner.Offset)) continue;
-                        if (HasCommittedNewerRecord(newer, hash, scanner.Key, probeBuffer, committedVersion))
-                        {
-                            skipped += header.KeyLength + header.ValueLength;
-                            continue;
-                        }
+                        if (HasCommittedNewerRecord(newer, hash, scanner.Key, probeBuffer, committedVersion)) continue;
 
                         if (header.Type == TrieNodeLogRecord.Delete) column.Set(scanner.Key, null, WriteFlags.DisableWAL);
                         else column.PutSpan(scanner.Key, scanner.Value, WriteFlags.DisableWAL);
@@ -399,7 +394,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             }
             _db.GetColumnDb(FlatDbColumns.Metadata).FlushOrThrow();
             if (written != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(TrieNodeLogLabel.Column((byte)Column), written);
-            if (skipped != 0) Metrics.TrieNodeLogSkippedBytes.AddBy(TrieNodeLogLabel.Column((byte)Column), skipped);
             Metrics.TrieNodeLogFlushedGeneration[_label] = (long)generation.Number;
         }
 
@@ -449,7 +443,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
         Metrics.TrieNodeLogGenerationCount[TrieNodeLogLabel.MergedPinned] = TrieNodeLogGeneration.AliveCount - listCountTotal;
         Metrics.TrieNodeLogIndexBytes = TrieNodeLogGeneration.AliveIndexBytes;
-        Metrics.TrieNodeLogActiveOccupancyPercent[_label] = _active is null ? 0 : _active.Occupied * 100L / _active.Capacity;
     }
 
     private void Recover()

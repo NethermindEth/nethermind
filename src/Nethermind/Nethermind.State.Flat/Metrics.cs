@@ -417,60 +417,19 @@ public static class Metrics
     public static long FlatHistoryPrunePassesYielded { get; set; }
 
     [CounterMetric]
-    [Description("Key and value bytes appended to the trie node log, by column")]
-    [KeyIsLabel("column")]
-    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogAppendedBytes { get; } = new();
-
-    [CounterMetric]
     [Description("Key and value bytes merged from the trie node log into RocksDB (the latest record per key of each generation), by column")]
     [KeyIsLabel("column")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedBytes { get; } = new();
-
-    [CounterMetric]
-    [Description("Key and value bytes a trie node log merge skipped because a newer committed record exists in a later generation, by column")]
-    [KeyIsLabel("column")]
-    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogSkippedBytes { get; } = new();
 
     [CounterMetric]
     [Description("Trie node reads answered by the trie node log: hit (served from the log), chain (served after walking to an older version), miss (fell through to RocksDB)")]
     [KeyIsLabel("outcome")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogReads { get; } = new();
 
-    private static long _trieNodeLogStoredBytes;
-
     [CounterMetric]
-    [Description("Bytes written to trie node log files: records with their headers")]
-    public static long TrieNodeLogStoredBytes
-    {
-        get => Volatile.Read(ref _trieNodeLogStoredBytes);
-        set => Interlocked.Exchange(ref _trieNodeLogStoredBytes, value);
-    }
-
-    public static void AddTrieNodeLogStoredBytes(long bytes) => Interlocked.Add(ref _trieNodeLogStoredBytes, bytes);
-
-    private static long _trieNodeLogIndexFalseMatches;
-
-    [CounterMetric]
-    [Description("Trie node log index probes whose 24-bit tag matched but whose record held a different key, so the record was read for nothing")]
-    public static long TrieNodeLogIndexFalseMatches
-    {
-        get => Volatile.Read(ref _trieNodeLogIndexFalseMatches);
-        set => Interlocked.Exchange(ref _trieNodeLogIndexFalseMatches, value);
-    }
-
-    public static void RecordTrieNodeLogIndexFalseMatch() => Interlocked.Increment(ref _trieNodeLogIndexFalseMatches);
-
-    private static long _trieNodeLogChainKeyMismatches;
-
-    [CounterMetric]
-    [Description("Trie node log reads that followed a record's prev link to a record of a different key; the read fails rather than serve it, and a non-zero count means a corrupt link")]
-    public static long TrieNodeLogChainKeyMismatches
-    {
-        get => Volatile.Read(ref _trieNodeLogChainKeyMismatches);
-        set => Interlocked.Exchange(ref _trieNodeLogChainKeyMismatches, value);
-    }
-
-    public static void RecordTrieNodeLogChainKeyMismatch() => Interlocked.Increment(ref _trieNodeLogChainKeyMismatches);
+    [Description("Bytes written to trie node log files (records with their headers), by column")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogStoredBytes { get; } = new();
 
     [DetailedMetric]
     [Description("Time to merge one trie node log generation into RocksDB")]
@@ -507,11 +466,6 @@ public static class Metrics
     [GaugeMetric]
     [Description("Native memory held by trie node log generation indexes, including merged generations still pinned by readers")]
     public static long TrieNodeLogIndexBytes { get; set; }
-
-    [GaugeMetric]
-    [Description("Index load of the active trie node log generation in percent, by shard; it is sealed at 75")]
-    [KeyIsLabel("shard")]
-    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogActiveOccupancyPercent { get; } = new();
 
     [GaugeMetric]
     [Description("Version of the last batch committed to the trie node log, by shard")]
