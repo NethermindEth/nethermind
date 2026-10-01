@@ -48,5 +48,13 @@ public class NodePeersSchemaTests
             Assert.That(count.ValueKind, Is.EqualTo(JsonValueKind.Number), "meta.count is type: number, not a quoted Uint64");
             Assert.That(count.GetInt32(), Is.EqualTo(1));
         }
+
+        using HttpResponseMessage countsResponse = await host.Client.GetAsync("/eth/v1/node/peer_count");
+        using JsonDocument counts = await BeaconApiTestHost.ReadJsonAsync(countsResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counts.RootElement.GetProperty("data").GetProperty("connecting").GetString(), Is.EqualTo("1"));
+            Assert.That(counts.RootElement.GetProperty("data").GetProperty("connected").GetString(), Is.EqualTo("0"));
+        }
     }
 }

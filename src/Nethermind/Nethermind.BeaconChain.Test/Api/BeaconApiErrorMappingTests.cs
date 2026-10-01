@@ -163,8 +163,9 @@ public class BeaconApiErrorMappingTests
         ulong gloasSlot = Spec.GloasForkEpoch * Presets.SlotsPerEpoch;
         Hash256 root = TestRoot(21);
         _store.PutState(root, StateBytesForSlot(gloasSlot));
+        _store.SetCanonicalRoot(gloasSlot, root);
 
-        HttpResponseMessage response = await _client.GetAsync(string.Format(routeTemplate, root));
+        HttpResponseMessage response = await _client.GetAsync(string.Format(routeTemplate, gloasSlot));
         string raw = await response.Content.ReadAsStringAsync();
 
         // Only ApiStateDecoding turns the codec's refusal into the API-owned UnsupportedForkException the

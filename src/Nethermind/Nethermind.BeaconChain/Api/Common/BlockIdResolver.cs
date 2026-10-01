@@ -13,6 +13,13 @@ internal readonly record struct ResolvedBlock(Hash256 Root, ForkedSignedBeaconBl
 {
     public ulong Slot => Block.Slot;
 
+    public Hash256 ParentRoot => Block switch
+    {
+        ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.ParentRoot!,
+        ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message!.ParentRoot!,
+        _ => throw UnknownShape(),
+    };
+
     public Hash256 StateRoot => Block switch
     {
         ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.StateRoot!,

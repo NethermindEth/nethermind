@@ -380,7 +380,8 @@ public class BeaconChainStoreChildrenIndexTests
     [TestCase(0, false)]
     [TestCase(100, false)]
     [TestCase(147, false)]
-    [TestCase(148, true)]
+    [TestCase(148, false)]
+    [TestCase(180, true)]
     public void Rebuilding_refuses_a_record_too_short_to_hold_a_parent_root(int decompressedLength, bool accepted)
     {
         Hash256 root = BlockRoot(1);
@@ -393,6 +394,10 @@ public class BeaconChainStoreChildrenIndexTests
             reopened.EnsureSchemaVersion();
             Assert.That(reopened.TryGetChildren(Hash256.Zero, out Hash256[] children, out _), Is.True, "the parent root is the last byte range of the 148-byte prefix");
             Assert.That(children, Is.EqualTo(new[] { root }));
+        }
+        else if (decompressedLength == 148)
+        {
+            Assert.That(reopened.EnsureSchemaVersion, Throws.InstanceOf<System.IO.InvalidDataException>());
         }
         else
         {

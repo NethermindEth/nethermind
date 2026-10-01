@@ -9,7 +9,11 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Api.Common;
+using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -19,7 +23,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
@@ -86,6 +92,7 @@ public class BeaconApiHostTests
     public async Task Health_reports_200_when_caught_up_and_206_when_behind()
     {
         Hash256 root = TestRoot(1);
+        _statusHolder.ExecutionInSync = true;
         _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = _slotClock.CurrentSlot };
         HttpResponseMessage caughtUp = await _client.GetAsync("/eth/v1/node/health");
         Assert.That(caughtUp.StatusCode, Is.EqualTo(HttpStatusCode.OK), "distance 0 is ready");
@@ -117,11 +124,11 @@ public class BeaconApiHostTests
     }
 
     [Test]
-    public async Task Syncing_reports_el_offline_true_until_the_engine_has_ever_answered()
+    public async Task Syncing_does_not_infer_offline_from_missing_payload_calls()
     {
         HttpResponseMessage before = await _client.GetAsync("/eth/v1/node/syncing");
         JsonDocument beforeBody = await ReadJsonAsync(before);
-        Assert.That(beforeBody.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.True);
+        Assert.That(beforeBody.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.False);
 
         _engine.HasAnsweredNewPayload = true;
         HttpResponseMessage after = await _client.GetAsync("/eth/v1/node/syncing");
@@ -162,9 +169,9 @@ public class BeaconApiHostTests
     }
 
     [Test]
-    public async Task PeerById_is_404_for_any_id_when_no_peer_manager_is_registered()
+    public async Task PeerById_is_404_for_a_valid_id_when_no_peer_manager_is_registered()
     {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/peers/16Uiu2HAmNoSuchPeer");
+        HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/peers/QmT78zSuBmuS4z925WZfrqQ1EFh5GHW9V4FjHkSBu7Q5yJ");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
     }
 
@@ -248,14 +255,14 @@ public class BeaconApiHostTests
         (BeaconApiHost host, HttpClient client, PeerManager peerManager) = await StartHostWithPeerManagerAsync();
         try
         {
-            peerManager.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAmTestPeerLookup", "enr:-lookup-test");
+            peerManager.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/QmYwAPJzv5CZsnAzt8auVZRnG4QuDTMnU8XcFzQpzPeN7o", "enr:-lookup-test");
 
-            HttpResponseMessage found = await client.GetAsync("/eth/v1/node/peers/16Uiu2HAmTestPeerLookup");
+            HttpResponseMessage found = await client.GetAsync("/eth/v1/node/peers/QmYwAPJzv5CZsnAzt8auVZRnG4QuDTMnU8XcFzQpzPeN7o");
             Assert.That(found.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             JsonDocument foundBody = await ReadJsonAsync(found);
-            Assert.That(foundBody.RootElement.GetProperty("data").GetProperty("peer_id").GetString(), Is.EqualTo("16Uiu2HAmTestPeerLookup"));
+            Assert.That(foundBody.RootElement.GetProperty("data").GetProperty("peer_id").GetString(), Is.EqualTo("QmYwAPJzv5CZsnAzt8auVZRnG4QuDTMnU8XcFzQpzPeN7o"));
 
-            HttpResponseMessage missing = await client.GetAsync("/eth/v1/node/peers/16Uiu2HAmNoSuchPeer");
+            HttpResponseMessage missing = await client.GetAsync("/eth/v1/node/peers/QmT78zSuBmuS4z925WZfrqQ1EFh5GHW9V4FjHkSBu7Q5yJ");
             Assert.That(missing.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
         }
         finally
@@ -274,21 +281,32 @@ public class BeaconApiHostTests
         Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("non-attesting"));
     }
 
+    /// <summary>apis/debug/state.v2.yaml returns 404 for missing states; unset driver checkpoints remain unavailable.</summary>
     [Test]
-    public async Task Debug_state_ssz_is_503_before_any_state_is_persisted_and_serves_exact_bytes_once_it_is()
+    public async Task Debug_state_ssz_is_404_before_any_state_is_persisted_and_serves_exact_bytes_once_it_is([Values("head", "finalized", "13200000")] string id)
     {
-        Hash256 root = TestRoot(2);
-        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = 5 };
+        const ulong slot = 13_200_000;
+        if (id != slot.ToString())
+        {
+            using HttpResponseMessage uninitialized = await _client.GetAsync($"/eth/v2/debug/beacon/states/{id}");
+            Assert.That(uninitialized.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
+        }
 
-        HttpRequestMessage missing = new(HttpMethod.Get, "/eth/v2/debug/beacon/states/head");
+        Hash256 root = TestRoot(2);
+        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = slot };
+        _store.DeleteState(root);
+        _store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
+        _store.SetCanonicalRoot(slot, root);
+
+        HttpRequestMessage missing = new(HttpMethod.Get, $"/eth/v2/debug/beacon/states/{id}");
         missing.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ContentTypeOctet));
         HttpResponseMessage missingResponse = await _client.SendAsync(missing);
-        Assert.That(missingResponse.StatusCode, Is.EqualTo((HttpStatusCode)503), "no state stored for that root yet");
+        Assert.That(missingResponse.StatusCode, Is.EqualTo(HttpStatusCode.NotFound), "no state stored for that root yet");
 
         byte[] stateBytes = [1, 2, 3, 4, 5, 6, 7, 8, 9];
         _store.PutState(root, stateBytes);
 
-        HttpRequestMessage present = new(HttpMethod.Get, "/eth/v2/debug/beacon/states/head");
+        HttpRequestMessage present = new(HttpMethod.Get, $"/eth/v2/debug/beacon/states/{id}");
         present.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ContentTypeOctet));
         HttpResponseMessage presentResponse = await _client.SendAsync(present);
         Assert.That(presentResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
@@ -378,10 +396,11 @@ public class BeaconApiHostTests
     }
 
     [Test]
-    public async Task Accept_header_with_only_a_rejected_quality_value_is_406()
+    public async Task Accept_explicit_zero_quality_is_406(
+        [Values("application/json;q=0", "application/json;q=0, */*", "application/json;q=0, application/*;q=1", "application/*;q=0, */*")] string accept)
     {
         HttpRequestMessage request = new(HttpMethod.Get, "/eth/v1/node/version");
-        request.Headers.TryAddWithoutValidation("Accept", "application/json;q=0");
+        request.Headers.TryAddWithoutValidation("Accept", accept);
         HttpResponseMessage response = await _client.SendAsync(request);
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)406));
     }
@@ -417,6 +436,85 @@ public class BeaconApiHostTests
     }
 
     private const string ContentTypeOctet = "application/octet-stream";
+
+    /// <summary>apis/node/health.yaml requires syncing responses for optimism and validates the override.</summary>
+    [TestCase("", 206)]
+    [TestCase("?syncing_status=299", 299)]
+    [TestCase("?syncing_status=599", 599)]
+    [TestCase("?syncing_status=99", 400)]
+    [TestCase("?syncing_status=600", 400)]
+    [TestCase("?syncing_status=abc", 400)]
+    [TestCase("?syncing_status=206.0", 400)]
+    [TestCase("?syncing_status=206&syncing_status=207", 400)]
+    public async Task Health_checks_optimism_and_the_requested_syncing_status(string query, int expected)
+    {
+        Hash256 root = TestRoot(40);
+        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], HeadRoot = root, HeadSlot = _slotClock.CurrentSlot };
+        using HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/health" + query);
+        Assert.That((int)response.StatusCode, Is.EqualTo(expected));
+    }
+
+    /// <summary>apis/node/peer.yaml requires 400 for unparseable peer identifiers.</summary>
+    [Test]
+    public async Task Malformed_peer_id_is_bad_request([Values("localhost", "0invalid", "16Uiu2HAmNoSuchPeer", "11", "11111111111111111111111111111111111111111111111111111111111111111")] string peerId)
+    {
+        using HttpResponseMessage response = await _client.GetAsync($"/eth/v1/node/peers/{peerId}");
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+    }
+
+    /// <summary>apis/node/syncing.yaml el_offline follows failure and recovery of each engine call kind.</summary>
+    [Test]
+    public async Task Most_recent_engine_call_controls_offline([Values(0, 1, 2)] int kind)
+    {
+        bool unavailable = false;
+        IEngineDriver inner = Substitute.For<IEngineDriver>();
+        inner.ForkchoiceUpdated(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<Hash256>()).Returns(_ => unavailable
+            ? Task.FromException<PayloadStatusV1>(new EngineUnavailableException("test", "offline"))
+            : Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Syncing }));
+        inner.NotifyNewPayload(Arg.Any<BeaconBlockBody>()).Returns(_ => unavailable
+            ? throw new EngineUnavailableException("test", "offline") : ExecutionStatus.Optimistic);
+        inner.NotifyNewPayload(Arg.Any<ExecutionPayloadGloas>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256>(), Arg.Any<ExecutionRequestsGloas>()).Returns(_ => unavailable
+            ? throw new EngineUnavailableException("test", "offline") : ExecutionStatus.Optimistic);
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(inner).As<IEngineDriver>();
+        builder.RegisterModule<BeaconApiModule>();
+        using IContainer container = builder.Build();
+        IEngineDriver engine = container.Resolve<IEngineDriver>();
+        Assert.That(engine, Is.InstanceOf<ObservedEngineDriver>());
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(Spec, engine: engine,
+            engineAvailability: container.Resolve<EngineAvailability>());
+        host.SetStatus(TestRoot(41), Hash256.Zero, 0);
+        host.StatusHolder.ExecutionInSync = true;
+
+        Task Call()
+        {
+            if (kind == 0) return engine.ForkchoiceUpdated(Hash256.Zero, Hash256.Zero, Hash256.Zero);
+            if (kind == 1) engine.NotifyNewPayload(new BeaconBlockBody());
+            else engine.NotifyNewPayload(new ExecutionPayloadGloas(), [], Hash256.Zero, new ExecutionRequestsGloas());
+            return Task.CompletedTask;
+        }
+
+        await Call();
+        await AssertOffline(false);
+        unavailable = true;
+        Assert.ThrowsAsync<EngineUnavailableException>(async () => await Call());
+        await AssertOffline(true);
+        unavailable = false;
+        await Call();
+        await AssertOffline(false);
+
+        async Task AssertOffline(bool expected)
+        {
+            using HttpResponseMessage response = await host.Client.GetAsync("/eth/v1/node/syncing");
+            using JsonDocument body = await ReadJsonAsync(response);
+            using HttpResponseMessage health = await host.Client.GetAsync("/eth/v1/node/health");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(body.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.EqualTo(expected));
+                Assert.That((int)health.StatusCode, Is.EqualTo(expected ? 206 : 200));
+            }
+        }
+    }
 
     private static Hash256 TestRoot(byte marker)
     {

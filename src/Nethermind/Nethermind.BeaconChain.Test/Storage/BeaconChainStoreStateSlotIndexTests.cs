@@ -5,6 +5,8 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Test.Api;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using NUnit.Framework;
@@ -102,7 +104,7 @@ public class BeaconChainStoreStateSlotIndexTests
         }
 
         legacy.PutState(Root(count), [9]);
-        legacy.SetSchemaVersion(BeaconChainStore.CurrentSchemaVersion - 1);
+        legacy.SetSchemaVersion(4);
         Assert.That(IndexKeyCount(db.Index), Is.Zero, "fixture bug: the states must look like a build without the index wrote them");
 
         BeaconChainStore upgraded = new(db);
@@ -161,6 +163,71 @@ public class BeaconChainStoreStateSlotIndexTests
         store.DeleteState(Root(1));
 
         Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void State_root_and_slot_indexes_follow_state_rewrites_and_removal([Values] bool prune)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        Hash256 blockRoot = Root(1);
+        Hash256 stateRoot = Root(11);
+        SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(10);
+        block.Message!.StateRoot = stateRoot;
+        store.PutBlock(blockRoot, block);
+        store.PutState(blockRoot, StateAt(10));
+        if (prune) store.SetAnchor(Root(2), 10);
+        else store.DeleteState(blockRoot);
+
+        byte[] forward = [4, .. stateRoot.Bytes.ToArray()];
+        byte[] reverse = [3, .. blockRoot.Bytes.ToArray()];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.HasBlock(blockRoot), Is.True);
+            Assert.That(store.TryGetBlockSlot(blockRoot, out ulong blockSlot) ? blockSlot : ulong.MaxValue, Is.EqualTo(10ul));
+            Assert.That(db.GetColumnDb(BeaconChainDbColumns.BlockIndex).KeyExists(forward), Is.False);
+            Assert.That(db.GetColumnDb(BeaconChainDbColumns.BlockIndex).KeyExists(reverse), Is.False);
+            Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.Zero);
+        }
+
+        store.PutState(blockRoot, StateAt(20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetBlockRootByStateRoot(stateRoot, out Hash256? restored), Is.True);
+            Assert.That(restored, Is.EqualTo(blockRoot));
+            Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Both_indexes_are_migrated_from_the_prior_layout([Values(4u, 5u)] uint version)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        Hash256 blockRoot = Root(1);
+        Hash256 stateRoot = Root(11);
+        SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(10);
+        block.Message!.StateRoot = stateRoot;
+        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(blockRoot.Bytes, Snappier.Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
+        store.PutState(blockRoot, StateAt(10));
+        db.GetColumnDb(BeaconChainDbColumns.BlockIndex).Remove([4, .. stateRoot.Bytes.ToArray()]);
+        db.GetColumnDb(BeaconChainDbColumns.BlockIndex).Remove([3, .. blockRoot.Bytes.ToArray()]);
+        if (version == 4)
+        {
+            foreach (byte[] key in db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex).GetAllKeys().ToArray())
+                db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex).Remove(key);
+        }
+        store.SetSchemaVersion(version);
+
+        store.EnsureSchemaVersion();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetBlockRootByStateRoot(stateRoot, out Hash256? found), Is.True);
+            Assert.That(found, Is.EqualTo(blockRoot));
+            Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(1));
+            Assert.That(store.TryGetSchemaVersion(out uint migrated) ? migrated : 0, Is.EqualTo(6u));
+        }
     }
 
     [Test]

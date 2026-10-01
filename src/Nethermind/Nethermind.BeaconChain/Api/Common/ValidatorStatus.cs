@@ -14,6 +14,11 @@ namespace Nethermind.BeaconChain.Api.Common;
 /// </summary>
 internal static class ValidatorStatus
 {
+    public static bool IsValidFilter(string filter) => filter is
+        "pending_initialized" or "pending_queued" or "active_ongoing" or "active_exiting" or "active_slashed"
+        or "exited_unslashed" or "exited_slashed" or "withdrawal_possible" or "withdrawal_done"
+        or "active" or "pending" or "exited" or "withdrawal";
+
     public static string Classify(Validator validator, ulong epoch)
     {
         if (validator.ActivationEpoch > epoch)
