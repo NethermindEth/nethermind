@@ -454,6 +454,15 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     public void Usable_tracer_is_accepted_on_construction(string tracer) =>
         Assert.That(() => GetTracer(tracer).Dispose(), Throws.Nothing);
 
+    [TestCase("CreateUint8ArrayCode")]
+    [TestCase("_bigInteger")]
+    public void Unknown_expression_does_not_shadow_runtime_helpers(string selector)
+    {
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(selector);
+        Assert.That(() => ExecuteBlock(tracer, MStore(), MainnetSpecProvider.CancunActivation),
+            Throws.TypeOf<System.IO.InvalidDataException>().With.Message.StartWith($"ReferenceError: {selector} is not defined"));
+    }
+
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
 

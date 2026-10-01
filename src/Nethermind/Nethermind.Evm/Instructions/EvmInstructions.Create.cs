@@ -131,7 +131,7 @@ public static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth)
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
-                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, EvmExceptionType.CallDepthExceeded);
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, salt, EvmExceptionType.CallDepthExceeded);
 
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
@@ -146,7 +146,7 @@ public static partial class EvmInstructions
         if (value > balance)
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
-                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, EvmExceptionType.NotEnoughBalance);
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, salt, EvmExceptionType.NotEnoughBalance);
 
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
@@ -156,6 +156,9 @@ public static partial class EvmInstructions
         ulong accountNonce = state.GetNonce(env.ExecutingAccount);
         if (accountNonce >= ulong.MaxValue)
         {
+            if (!TEip8037.IsActive && vm.IsTracingActions)
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, salt, EvmExceptionType.NonceOverflow);
+
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
@@ -274,6 +277,7 @@ public static partial class EvmInstructions
         in UInt256 value,
         in UInt256 initCodePosition,
         in UInt256 initCodeLength,
+        ReadOnlySpan<byte> salt,
         EvmExceptionType error)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
@@ -282,7 +286,11 @@ public static partial class EvmInstructions
         TSpec.TryReserveChildGas<TGasPolicy>(ref gas, vm.Spec, out ulong callGas);
         // The creation already paid to expand memory over its init code.
         vm.VmState.Memory.TryLoad(in initCodePosition, in initCodeLength, out ReadOnlyMemory<byte> initCode);
-        vm.TxTracer.ReportRejectedAction(callGas, callGas, value, vm.VmState.Env.ExecutingAccount, null, initCode, TOpCreate.ExecutionType, error);
+        Address from = vm.VmState.Env.ExecutingAccount;
+        Address to = typeof(TOpCreate) == typeof(OpCreate)
+            ? ContractAddress.From(from, vm.WorldState.GetNonce(from))
+            : ContractAddress.From(from, salt, initCode.Span);
+        vm.TxTracer.ReportRejectedAction(callGas, callGas, value, from, to, initCode, TOpCreate.ExecutionType, error);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

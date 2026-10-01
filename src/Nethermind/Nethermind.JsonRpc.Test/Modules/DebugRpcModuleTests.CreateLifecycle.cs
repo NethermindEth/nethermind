@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -92,8 +95,118 @@ public partial class DebugRpcModuleTests
             Assert.That(result[tracer]!["steps"]!.Count(), Is.EqualTo(1));
             Assert.That(result[tracer]!["steps"]![0]!.Value<string>() == "0", Is.EqualTo(!funded));
             Assert.That(result[tracer]!["error"]!.Type, Is.EqualTo(JTokenType.Null));
-            Assert.That(result["callTracer"]!["calls"]?.Count() ?? 0, Is.EqualTo(funded ? 1 : 0));
+            Assert.That(result["callTracer"]!["calls"]?.Count() ?? 0, Is.EqualTo(1));
+            Assert.That(result["callTracer"]!["calls"]![0]!["error"]?.Value<string>(), Is.EqualTo(funded ? null : "insufficient balance for transfer"));
         }
+    }
+
+    private const string RejectedCreateCallbacks = "{events:[],step:function(){},fault:function(){},enter:function(f){this.events.push({kind:\"enter\",type:f.getType(),from:toHex(f.getFrom()),to:toHex(f.getTo()),gas:f.getGas(),value:f.getValue().toString(),input:toHex(f.getInput())});},exit:function(f){this.events.push({kind:\"exit\",gasUsed:f.getGasUsed(),error:f.getError()||null,output:toHex(f.getOutput())});},result:function(ctx){return {events:this.events,error:ctx.error||null};}}";
+
+    [Test]
+    public async Task Debug_traceCall_create_lifecycle_rejected_frames(
+        [Values("f0", "f5")] string opcode, [Values("balance", "nonce", "collision")] string reason,
+        [Values] bool amsterdam, [Values] bool failParent)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(amsterdam ? (IReleaseSpec)Amsterdam.Instance : Cancun.Instance));
+        string code = (opcode == "f5" ? "6000" : "") + "60006000" + (reason == "balance" ? "6001" : "6000") + opcode + (failParent ? "fe" : "00");
+        string address = opcode == "f5" ? "0xa7c70de27f8ee63a9ae009c97fe3237578f46fdd" : "0x3817e247023b4f489352758397040b1fd33b300a";
+        Dictionary<string, object> overrides = CreateLifecycleOverrides(code);
+        overrides[FlatTarget] = new { code = "0x" + code, balance = "0x0", nonce = reason == "nonce" ? "0xffffffffffffffff" : "0x0" };
+        if (reason == "collision") overrides[address] = new { code = "0x00", nonce = "0x1" };
+        JToken result = await TraceRejectedCreate(ctx, overrides);
+        string? parentError = failParent ? "invalid opcode: INVALID" : null;
+        Assert.That(result["callTracer"]!["error"]?.Value<string>(), Is.EqualTo(parentError));
+        Assert.That(result[RejectedCreateCallbacks]!["error"]!.Value<string>(), Is.EqualTo(parentError));
+        if (amsterdam && reason != "collision")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result["callTracer"]!["calls"], Is.Null);
+                Assert.That(result["erc7562Tracer"]!["calls"], Is.Null);
+                Assert.That(result[RejectedCreateCallbacks]!["events"]!.Count(), Is.Zero);
+            }
+            return;
+        }
+        string error = reason switch { "balance" => "insufficient balance for transfer", "nonce" => "nonce uint64 overflow", _ => "contract address collision" };
+        string createType = opcode == "f5" ? "CREATE2" : "CREATE";
+        string expectedTo = reason == "nonce" && opcode == "f0" ? "0x7d0390bb588a6c6c4b9c11bef8891e8ac9a33126" : address;
+        JToken call = result["callTracer"]!["calls"]![0]!;
+        JToken erc = result["erc7562Tracer"]!["calls"]![0]!;
+        JToken events = result[RejectedCreateCallbacks]!["events"]!;
+        ulong gas = Convert.ToUInt64(call["gas"]!.Value<string>()![2..], 16);
+        string gasUsed = reason == "collision" ? call["gas"]!.Value<string>()! : "0x0";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call["type"]!.Value<string>(), Is.EqualTo(createType));
+            Assert.That(call["from"]!.Value<string>(), Is.EqualTo(FlatTarget));
+            Assert.That(call["to"], Is.Null);
+            Assert.That(call["input"]!.Value<string>(), Is.EqualTo("0x"));
+            Assert.That(call["value"]!.Value<string>(), Is.EqualTo(reason == "balance" ? "0x1" : "0x0"));
+            Assert.That(call["error"]!.Value<string>(), Is.EqualTo(error));
+            Assert.That(call["gasUsed"]!.Value<string>(), Is.EqualTo(gasUsed));
+            Assert.That(erc["to"], Is.Null);
+            Assert.That(erc["error"]!.Value<string>(), Is.EqualTo(error));
+            Assert.That(erc["usedOpcodes"]!.Count(), Is.Zero);
+            Assert.That(events.Count(), Is.EqualTo(2));
+            Assert.That(events[0]!["type"]!.Value<string>(), Is.EqualTo(createType));
+            Assert.That(events[0]!["to"]!.Value<string>(), Is.EqualTo(expectedTo));
+            Assert.That(events[0]!["gas"]!.Value<ulong>(), Is.EqualTo(gas));
+            Assert.That(events[1]!["gasUsed"]!.Value<ulong>(), Is.EqualTo(reason == "collision" ? gas : 0));
+            Assert.That(events[1]!["error"]!.Value<string>(), Is.EqualTo(error));
+            if (!amsterdam)
+            {
+                Assert.That(gas, Is.EqualTo(opcode == "f5" ? 46254UL : 46257UL));
+                if (!failParent)
+                    Assert.That(result["callTracer"]!["gasUsed"]!.Value<string>(), Is.EqualTo(reason == "collision" ? "0x183c2" : opcode == "f5" ? "0xcf14" : "0xcf11"));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_create_lifecycle_depth_rejection()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Homestead.Instance));
+        string call = "6000600060006000600073" + FlatTarget[2..] + "60645a03f1";
+        string code = call + "1560" + (call.Length / 2 + 5).ToString("x2") + "57005b600060006000f000";
+        JToken result = await TraceRejectedCreate(ctx, CreateLifecycleOverrides(code), "0xf4240");
+        JToken frame = result["callTracer"]!;
+        int depth = 1;
+        while (frame["calls"] is JArray { Count: 1 } children)
+        {
+            frame = children[0];
+            depth++;
+        }
+        Assert.That(depth, Is.EqualTo(1025));
+        JToken create = frame["calls"]![1]!;
+        JArray events = (JArray)result[RejectedCreateCallbacks]!["events"]!;
+        JToken enter = events.Single(e => e["type"]?.Value<string>() == "CREATE");
+        JToken exit = events[events.IndexOf(enter) + 1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(create["type"]!.Value<string>(), Is.EqualTo("CREATE"));
+            Assert.That(create["error"]!.Value<string>(), Is.EqualTo("max call depth exceeded"));
+            Assert.That(create["to"], Is.Null);
+            Assert.That(create["gasUsed"]!.Value<string>(), Is.EqualTo("0x0"));
+            Assert.That(exit["error"]!.Value<string>(), Is.EqualTo("max call depth exceeded"));
+            Assert.That(exit["gasUsed"]!.Value<ulong>(), Is.Zero);
+            Assert.That(result["callTracer"]!["error"], Is.Null);
+            Assert.That(result[RejectedCreateCallbacks]!["error"]!.Type, Is.EqualTo(JTokenType.Null));
+        }
+    }
+
+    private static async Task<JToken> TraceRejectedCreate(Context ctx, Dictionary<string, object> overrides, string gas = "0x186a0")
+    {
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", new { from = FlatSender, to = FlatTarget, gas }, "latest", new
+        {
+            tracer = "muxTracer",
+            tracerConfig = new Dictionary<string, object> { ["callTracer"] = new { }, ["erc7562Tracer"] = new { }, [RejectedCreateCallbacks] = new { } },
+            stateOverrides = overrides
+        });
+        using StringReader text = new(response);
+        using JsonTextReader reader = new(text) { MaxDepth = 4096 };
+        JToken envelope = JToken.ReadFrom(reader);
+        Assert.That(envelope["error"], Is.Null, response);
+        return envelope["result"]!;
     }
 
     [TestCase("6000ff", "0x1", 32600)]
