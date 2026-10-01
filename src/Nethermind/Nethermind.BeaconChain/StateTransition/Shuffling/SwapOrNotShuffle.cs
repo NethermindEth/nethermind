@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
 
 namespace Nethermind.BeaconChain.StateTransition.Shuffling;
@@ -25,6 +26,8 @@ public static class SwapOrNotShuffle
 
     /// <summary>The spec's <c>int_to_bytes4(position // 256)</c> limits list sizes to 2^24.</summary>
     private const int MaxListSize = 1 << 24;
+
+    private const int ParallelChunk = 1 << 15;
 
     /// <summary>Returns <c>compute_shuffled_index(index)</c>: the shuffled position of <paramref name="index"/>.</summary>
     /// <param name="seed">A 32-byte shuffling seed.</param>
@@ -104,7 +107,32 @@ public static class SwapOrNotShuffle
     /// Swaps <c>input[lo + k]</c> with <c>input[hi - k]</c> for <c>k in [0, count)</c> whenever the
     /// decision bit for position <c>hi - k</c> is set, fetching a new hash per 256 positions.
     /// </summary>
-    private static void SwapOrNotRange(Span<int> input, Span<byte> buf, Span<byte> source, int hi, int count, int lo)
+    private static unsafe void SwapOrNotRange(Span<int> input, Span<byte> buf, Span<byte> source, int hi, int count, int lo)
+    {
+        if (count < 2 * ParallelChunk)
+        {
+            SwapOrNotChunk(input, buf, source, hi, count, lo);
+            return;
+        }
+
+        // Spec compute_shuffled_index: swap pairs are disjoint within a round. Parallel.For joins before the pin ends.
+        byte[] template = buf.ToArray();
+        int length = input.Length;
+        fixed (int* pinned = input)
+        {
+            nint address = (nint)pinned;
+            Parallel.For(0, (count + ParallelChunk - 1) / ParallelChunk, chunk =>
+            {
+                int start = chunk * ParallelChunk;
+                Span<byte> chunkBuf = stackalloc byte[TotalSize];
+                Span<byte> chunkSource = stackalloc byte[SeedSize];
+                template.CopyTo(chunkBuf);
+                SwapOrNotChunk(new Span<int>((int*)address, length), chunkBuf, chunkSource, hi - start, Math.Min(ParallelChunk, count - start), lo + start);
+            });
+        }
+    }
+
+    private static void SwapOrNotChunk(Span<int> input, Span<byte> buf, Span<byte> source, int hi, int count, int lo)
     {
         MixInPosition(buf, hi >> 8);
         SHA256.HashData(buf, source);

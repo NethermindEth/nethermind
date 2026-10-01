@@ -316,10 +316,6 @@ public static class GloasStateAccessors
         state.InactivityScores = [.. state.InactivityScores!, 0UL];
     }
 
-    /// <summary>Spec <c>get_base_reward</c> (Altair, unmodified in Gloas).</summary>
-    public static ulong GetBaseReward(this BeaconStateGloas state, int index, EpochCache cache) =>
-        state.Validators![index].EffectiveBalance / Presets.EffectiveBalanceIncrement * state.GetBaseRewardPerIncrement(cache);
-
     /// <summary>
     /// Returns the validator indices attesting in a Gloas (EIP-7549 shape) aggregate, in ascending
     /// order, validating the committee/aggregation bit structure as in <c>process_attestation</c>.
