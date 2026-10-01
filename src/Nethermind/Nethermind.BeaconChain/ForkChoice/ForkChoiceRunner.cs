@@ -61,8 +61,14 @@ public sealed class ForkChoiceRunner
     /// <summary>Most recent last: a target checkpoint state a vote verified against, per shuffling of the current and previous epochs.</summary>
     private readonly List<(ShufflingKey Key, ForkedBeaconState State)> _voteStates = [];
 
-    /// <summary>The head <see cref="GetHeadNode"/> last returned, which gossip aggregates are checked against.</summary>
+    /// <summary>The head <see cref="GetHeadNode"/> last returned, which gossip aggregates are checked against; cleared when a tick or a block may move it.</summary>
     private Hash256? _lastHeadRoot;
+
+    /// <summary>The store epoch <see cref="_offHeadBuilds"/> counts in.</summary>
+    private ulong _offHeadBuildEpoch;
+
+    /// <summary>Target states built this epoch for gossip aggregates of another shuffling than the head's.</summary>
+    private int _offHeadBuilds;
 
     /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attestation and PTC deadlines, keyed by block root.</summary>
     private readonly Dictionary<Hash256, BlockTimeliness> _blockTimeliness = [];
@@ -111,6 +117,9 @@ public sealed class ForkChoiceRunner
 
     /// <summary>Two epochs of the canonical shuffling plus a few forks; each entry is a whole checkpoint state.</summary>
     private const int MaxVoteStates = 8;
+
+    /// <summary>A sibling of a decision block can carry the same RANDAO reveal and so the same committees; such a target is rare, and each costs a whole state.</summary>
+    private const int MaxOffHeadBuildsPerEpoch = 2;
 
     /// <summary>A <c>store.block_timeliness</c> entry: its <c>ATTESTATION_TIMELINESS_INDEX</c> and <c>PTC_TIMELINESS_INDEX</c> flags.</summary>
     private readonly record struct BlockTimeliness(bool Attestation, bool Ptc);
@@ -388,6 +397,7 @@ public sealed class ForkChoiceRunner
         _store.OnTick((time - GenesisTime) / _spec.SecondsPerSlot);
         DequeueAttestations();
         PruneVoteStates();
+        _lastHeadRoot = null;
     }
 
     /// <summary>
@@ -731,6 +741,7 @@ public sealed class ForkChoiceRunner
         if (isBoosted)
             _store.ProposerBoostRoot = blockRoot;
         _blockProposers[blockRoot] = new BlockProposer(slot, proposerIndex);
+        _lastHeadRoot = null;
     }
 
     /// <summary>
@@ -830,17 +841,14 @@ public sealed class ForkChoiceRunner
         if (aggregator is not null && !_protoArray.IsFinalizedCheckpointOrDescendant(beaconBlockRoot, _store.FinalizedCheckpoint))
             throw new ForkChoiceException($"Aggregate head block {beaconBlockRoot} does not descend from the finalized checkpoint {_store.FinalizedCheckpoint}");
 
-        ForkedBeaconState targetState = GetVoteTargetState(target, gossip: aggregator is not null, out ShufflingKey? key, out bool unheld);
-        ulong[] attestingIndices = targetState switch
-        {
-            ForkedBeaconState.OfFulu fulu => fulu.State.GetAttestingIndices(
-                new Attestation { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits },
-                _committees.GetCommitteeCache(fulu.State, target.Epoch)),
-            ForkedBeaconState.OfGloas gloas => gloas.State.GetAttestingIndices(
-                new AttestationGloas { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits },
-                _committees.GetCommitteeCache(gloas.State, target.Epoch)),
-            _ => throw new NotSupportedException($"Unhandled checkpoint state {targetState.GetType().Name}"),
-        };
+        ShufflingKey? key = GetShufflingKey(target);
+        ForkedBeaconState? targetState = HeldVoteState(target, key);
+        if (targetState is null && aggregator is { } gossipProof)
+            targetState = GetGossipTargetState(target, key, data, aggregationBits, committeeBits, signature, gossipProof);
+
+        bool unheld = targetState is null;
+        targetState ??= ComputeCheckpointState(target);
+        ulong[] attestingIndices = AttestingIndices(targetState, target.Epoch, data, aggregationBits, committeeBits, signature);
         if (gloasContainer)
             ThrowIfOverGloasIndexedAttestationBound(attestingIndices, "Attestation");
         IndexedVote vote = new(attestingIndices, data, signature);
@@ -1571,38 +1579,54 @@ public sealed class ForkChoiceRunner
         return state;
     }
 
-    /// <summary>The target state <c>on_attestation</c> checks a vote against, without building one for a target whose shuffling a held state already has.</summary>
+    /// <summary>
+    /// The target state a gossip aggregate is checked against when no state of its shuffling is held: the head's own target state,
+    /// or, for a target of another shuffling, <c>null</c> once the aggregate authenticated with that head state, so the caller builds its own.
+    /// </summary>
     /// <remarks>
     /// specs/phase0/fork-choice.md on_attestation reads only the committees, the signing domain and the registry size from
     /// <c>store_target_checkpoint_state</c>. The committees and the fork of a target epoch are fixed by its shuffling decision
     /// block (<see cref="BeaconStateAccessors.GetShufflingDecisionRoot(BeaconStateFulu, ulong)"/>), and every index the vote names
-    /// comes from those committees, so a state of another target with the same decision block gives the same verdict.
-    /// A gossip aggregate is only checked against the shuffling of the head's own target: p2p-interface.md
-    /// validate_beacon_aggregate_and_proof_gossip verifies it with the head state, where an aggregate of another shuffling
-    /// never verifies, so no state a peer chose is ever built for one.
+    /// comes from those committees, so the head target's state stands in for every target with the same decision block.
+    /// p2p-interface.md validate_beacon_aggregate_and_proof_gossip authenticates an aggregate with the head state, so a target of another
+    /// shuffling costs a state only for an aggregate a selected aggregator signed, and at most <see cref="MaxOffHeadBuildsPerEpoch"/> per epoch.
     /// </remarks>
-    /// <param name="key">The target's shuffling, for <see cref="RegisterVoteState"/> once the vote verifies.</param>
-    /// <param name="unheld">Whether the state was built for this call and is held nowhere yet.</param>
-    /// <exception cref="ForkChoiceException">A gossip aggregate's target has another shuffling than the head's target.</exception>
-    private ForkedBeaconState GetVoteTargetState(CheckpointRef target, bool gossip, out ShufflingKey? key, out bool unheld)
+    /// <exception cref="ForkChoiceException">The aggregate does not authenticate with the head state, or the epoch's builds for other shufflings are spent.</exception>
+    private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, ShufflingKey? key, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof)
     {
-        unheld = false;
-        key = GetShufflingKey(target);
-        if (gossip)
-        {
-            CheckpointRef headTarget = new(target.Epoch, GetCheckpointBlock(_lastHeadRoot ?? GetHead(), target.Epoch));
-            if (target != headTarget && (key is null || key != GetShufflingKey(headTarget)))
-                throw new ForkChoiceException($"Aggregate target {target} has another shuffling than the head's target {headTarget}");
+        CheckpointRef headTarget = new(target.Epoch, GetCheckpointBlock(_lastHeadRoot ?? GetHead(), target.Epoch));
+        ShufflingKey? headKey = GetShufflingKey(headTarget);
+        ForkedBeaconState headState = HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
+        if (target == headTarget || (key is not null && key == headKey))
+            return headState;
 
-            return HeldVoteState(target, key) ?? GetCheckpointState(headTarget);
+        ulong[] headIndices = AttestingIndices(headState, target.Epoch, data, aggregationBits, committeeBits, signature);
+        VerifyAggregator(headState, target.Epoch, data.Slot, committeeBits, proof, new IndexedVote(headIndices, data, signature));
+
+        ulong epoch = _store.CurrentEpoch;
+        if (epoch != _offHeadBuildEpoch)
+        {
+            _offHeadBuildEpoch = epoch;
+            _offHeadBuilds = 0;
         }
 
-        if (HeldVoteState(target, key) is { } held)
-            return held;
+        if (_offHeadBuilds == MaxOffHeadBuildsPerEpoch)
+            throw new ForkChoiceException($"Aggregate target {target} has another shuffling than the head's target {headTarget}, and this epoch's builds for those are spent");
 
-        unheld = true;
-        return ComputeCheckpointState(target);
+        _offHeadBuilds++;
+        return null;
     }
+
+    private ulong[] AttestingIndices(ForkedBeaconState state, ulong targetEpoch, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature) => state switch
+    {
+        ForkedBeaconState.OfFulu fulu => fulu.State.GetAttestingIndices(
+            new Attestation { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits },
+            _committees.GetCommitteeCache(fulu.State, targetEpoch)),
+        ForkedBeaconState.OfGloas gloas => gloas.State.GetAttestingIndices(
+            new AttestationGloas { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits },
+            _committees.GetCommitteeCache(gloas.State, targetEpoch)),
+        _ => throw new NotSupportedException($"Unhandled checkpoint state {state.GetType().Name}"),
+    };
 
     private ForkedBeaconState? HeldVoteState(CheckpointRef target, ShufflingKey? key)
     {
