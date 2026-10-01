@@ -54,6 +54,7 @@ public class ShutterP2P : IShutterP2P
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
         DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
 
+        PubsubPeerDiscoverySettings discoverySettings = new() { Interval = 300 };
         IServiceCollection serviceCollection = new ServiceCollection()
             .AddLibp2p(builder => builder.WithPubsub())
             .AddSingleton(new IdentifyProtocolSettings
@@ -61,16 +62,7 @@ public class ShutterP2P : IShutterP2P
                 ProtocolVersion = _cfg.P2PProtocolVersion,
                 AgentVersion = ProductInfo.ClientId
             })
-            .AddSingleton(new PubsubSettings()
-            {
-                ReconnectionAttempts = int.MaxValue,
-                Degree = 3,
-                LowestDegree = 2,
-                HighestDegree = 6,
-                LazyDegree = 3,
-                // Nethermind.Libp2p scores topics by default; its delivery-rate penalty would prune honest peers between keys.
-                TopicScoreParams = { [DecryptionKeysTopic] = new TopicScoreParams { TopicWeight = 0 } },
-            });
+            .AddSingleton(CreatePubsubSettings(discoverySettings));
 
         if (_cfg.P2PLogsEnabled)
         {
@@ -92,7 +84,7 @@ public class ShutterP2P : IShutterP2P
         Identity identity = GetPeerIdentity(fileSystem, _cfg, keyStoreConfig);
         _peer = peerFactory.Create(identity);
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
-        _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
+        _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, discoverySettings, _peer);
         ITopic topic = _router.GetTopic(DecryptionKeysTopic);
 
         topic.OnMessage += (_, msg) =>
@@ -101,6 +93,16 @@ public class ShutterP2P : IShutterP2P
             if (_logger.IsTrace) _logger.Trace("Received Shutter P2P message.");
         };
     }
+
+    /// <summary>The gossipsub parameters of the key topic and the peer discovery topics of <paramref name="discovery"/>, unscored.</summary>
+    internal static PubsubSettings CreatePubsubSettings(PubsubPeerDiscoverySettings discovery) => UnscoredGossip.Configure(new PubsubSettings
+    {
+        ReconnectionAttempts = int.MaxValue,
+        Degree = 3,
+        LowestDegree = 2,
+        HighestDegree = 6,
+        LazyDegree = 3,
+    }, [DecryptionKeysTopic, .. discovery.Topics]);
 
     public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken)
     {

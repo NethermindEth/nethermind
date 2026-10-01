@@ -107,11 +107,12 @@ public partial class GossipRouterTests
         Assert.That(verified, Is.EqualTo(1), "retired messages do not enter the seen cache, and rejoining restores validation");
     }
 
-    /// <summary>A mesh peer whose gossip this node consumes without accepting keeps its mesh place and is not graylisted.</summary>
-    /// <remarks>The node returns Ignored for consumed gossip, which libp2p does not count as a mesh delivery; its default P3 would prune the peer.</remarks>
+    /// <summary>A mesh peer whose gossip this node consumes without accepting, and whose advertised id this node never receives, keeps its mesh place and is not graylisted.</summary>
+    /// <remarks>The node returns Ignored for consumed gossip, which libp2p does not count as a mesh delivery, and an unanswered IWANT costs a behaviour
+    /// penalty; with the library's default scores either one prunes the peer, and a process pause leaves several promises unanswered at once.</remarks>
     [Test]
     [CancelAfter(30_000)]
-    public async Task Mesh_peer_that_delivers_no_accepted_message_stays_in_the_mesh(CancellationToken token)
+    public async Task Mesh_peer_that_delivers_no_accepted_message_and_breaks_a_promise_stays_in_the_mesh(CancellationToken token)
     {
         using IContainer container = BeaconChainTestContainer.Builder().Build();
         await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
@@ -123,8 +124,11 @@ public partial class GossipRouterTests
         (PeerId peer, _, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topicId);
         await pubsub.Heartbeat();
         Assert.That(((IRoutingStateContainer)pubsub).Mesh[topicId], Does.Contain(peer), "the heartbeat grafts the subscribed peer");
+        Rpc ihave = new() { Control = new ControlMessage() };
+        ihave.Control.Ihave.Add(new ControlIHave { TopicID = topicId, MessageIDs = { ByteString.CopyFrom(new byte[20]) } });
+        receive(ihave);
 
-        // The library's default MeshMessageDeliveriesActivation is 5 s of mesh time.
+        // Past the library's default MeshMessageDeliveriesActivation of 5 s and IWantFollowupTime of 3 s.
         await Task.Delay(TimeSpan.FromSeconds(6), token);
         await pubsub.Heartbeat();
         Rpc publish = new();
@@ -133,7 +137,7 @@ public partial class GossipRouterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(((IRoutingStateContainer)pubsub).Mesh[topicId], Does.Contain(peer), "no delivery score prunes the peer");
+            Assert.That(((IRoutingStateContainer)pubsub).Mesh[topicId], Does.Contain(peer), "no delivery score or broken promise prunes the peer");
             Assert.That(verified, Is.EqualTo(1), "the peer's messages still reach the validator");
         }
     }
