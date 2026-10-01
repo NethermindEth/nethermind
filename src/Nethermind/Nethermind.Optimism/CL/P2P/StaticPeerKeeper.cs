@@ -16,13 +16,13 @@ namespace Nethermind.Optimism.CL.P2P;
 /// <summary>Dials every static peer the gossip router holds no connection to and opens gossipsub on the session.</summary>
 /// <remarks>The router redials a peer only while its reconnection is not suppressed, and a peer it disconnected for an invalid RPC stays
 /// suppressed; discovering a known peer again does nothing, so a lost static peer such as the sequencer is dialed here.</remarks>
-/// <param name="openGossip">Opens gossipsub on a session and completes when that stream ends; gossipsub v1.1 when omitted.</param>
+/// <param name="openGossip">Opens gossipsub on a session and completes when that channel ends; gossipsub v1.1 when omitted.</param>
 internal sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContainer router, IReadOnlyList<Multiaddress> staticPeers, ILogger logger,
     Func<ISession, CancellationToken, Task>? openGossip = null) : IDisposable
 {
     private readonly Func<ISession, CancellationToken, Task> _openGossip = openGossip ?? (static (session, token) => session.DialAsync<GossipsubProtocolV11>(token));
 
-    // At most one gossip dial per peer: it is the live stream once connected, and is abandoned if the next check still finds the peer unconnected.
+    // At most one gossip dial per peer: it is the live channel once connected, and is abandoned if the next check still finds the peer unconnected.
     private readonly Dictionary<PeerId, CancellationTokenSource> _gossipDials = [];
 
     /// <summary>Runs one check; calls must not overlap.</summary>
@@ -39,7 +39,7 @@ internal sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContai
             try
             {
                 ISession session = await localPeer.DialAsync(address, token);
-                // A second gossip stream to one peer can leave the router a stale entry, so a connect the router made meanwhile wins.
+                // A second gossip channel to one peer can leave the router a stale entry, so a connect the router made meanwhile wins.
                 if (router.ConnectedPeers.Contains(peerId))
                 {
                     continue;
@@ -47,7 +47,7 @@ internal sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContai
 
                 CancellationTokenSource dial = CancellationTokenSource.CreateLinkedTokenSource(token);
                 _gossipDials[peerId] = dial;
-                // The gossip stream lives as long as the connection, so its end is only observed.
+                // The gossip channel lives as long as the connection, so its end is only observed.
                 _ = _openGossip(session, dial.Token).ContinueWith(
                     static (t, state) => { if (t.IsFaulted && ((ILogger)state!).IsDebug) ((ILogger)state!).Debug($"Static peer gossip ended: {t.Exception!.InnerException?.Message}"); },
                     logger, TaskScheduler.Default);
@@ -63,7 +63,7 @@ internal sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContai
     {
         if (_gossipDials.Remove(peerId, out CancellationTokenSource? dial))
         {
-            // Cancelling the dial closes its stream, whether it stalled in negotiation or ended with the connection.
+            // Cancelling the dial closes its channel, whether it stalled in negotiation or ended with the connection.
             dial.Cancel();
             dial.Dispose();
         }

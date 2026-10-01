@@ -7,7 +7,7 @@ using Nethermind.Libp2p.Core;
 
 namespace Nethermind.Network.Libp2p;
 
-/// <summary>Sits between yamux and multistream on every stream and hands each received chunk upward as one contiguous segment.</summary>
+/// <summary>Sits between yamux and multistream on every yamux channel and hands each received chunk upward as one contiguous segment.</summary>
 /// <remarks>
 /// Nethermind.Libp2p 1.0.0 <c>Channel.ReadAsync</c> keeps only the first segment of every chunk after the first when it gathers an exact
 /// length, and a yamux frame read from Noise arrives as several segments, so a gossip RPC spanning frames reached pubsub truncated and
@@ -23,8 +23,8 @@ public sealed class ContiguousChunkProtocol : IConnectionProtocol
     public Task DialAsync(IChannel downChannel, IConnectionContext context) => RelayAsync(downChannel, context.Upgrade());
 
     /// <summary>Relays both directions between <paramref name="lower"/> (yamux) and <paramref name="upper"/> (multistream) until both have ended.</summary>
-    /// <remarks>Each direction forwards its end of stream on its own, so a half-closed request keeps receiving its response. A full close of
-    /// either side closes the other, so a stream the protocol above abandons does not stay open below while the peer keeps it open.</remarks>
+    /// <remarks>Each direction forwards its end of data on its own, so a half-closed request keeps receiving its response. A full close of
+    /// either side closes the other, so a channel the protocol above abandons does not stay open below while the peer keeps it open.</remarks>
     internal static async Task RelayAsync(IChannel lower, IChannel upper)
     {
         Task pumps = Task.WhenAll(PumpAsync(lower, upper, contiguous: true), PumpAsync(upper, lower, contiguous: false));
