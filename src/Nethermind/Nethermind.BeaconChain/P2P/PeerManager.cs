@@ -62,6 +62,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // A peer that just failed a request is offered after the others for this long; it is never withheld, so a lone custodian still serves.
     internal static readonly TimeSpan RequestFailureCooldown = TimeSpan.FromSeconds(30);
 
+    // With every peer at the request-failure limit, this many of the least-failed are still offered so sync does not wait out the decay.
+    private const int MaxPeersOfferedAtFailureLimit = 2;
+
     // The admission MetaData request holds the dial slot until it returns, so it must not wait out the full request timeout.
     internal static readonly TimeSpan AdmissionMetadataTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(30);
@@ -506,18 +509,22 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A peer at the request-failure limit is not handed out, but it is not dropped for request failures alone either: it can be the
+    /// A peer at the request-failure limit is not handed out while another peer is, but it is not dropped for request failures alone either: it can be the
     /// last custodian of a sampled column (fulu/das-core.md), so its columns are sought elsewhere while it stays connected.
     /// A passing health check does not readmit it: it returns once it serves a request or its failures decay (<see cref="RequestFailureDecayInterval"/> each).
     /// A peer that failed a request within <see cref="RequestFailureCooldown"/> is listed after every peer that did not, whatever its head slot, so a batch that
     /// chose it once does not choose it again while others exist; it is still listed, and serves when it is the only peer that can.
     /// When no peer qualifies and <see cref="RefreshStatusesBehind"/> reported the chain at or past <paramref name="minHeadSlot"/>, the peers whose status
     /// predates that report and could not be refreshed since are listed instead, whatever their head slot.
+    /// When neither leaves a peer, at most <see cref="MaxPeersOfferedAtFailureLimit"/> of the least-failed peers at the limit are listed, by the same head rules,
+    /// so sync does not wait for a failure to decay; a peer with invalid data in its penalty, held out of selection or with a closed session is never listed.
     /// </remarks>
     public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
     {
         List<ManagedPeer> best = [];
         List<ManagedPeer> stale = [];
+        List<ManagedPeer> atLimit = [];
+        List<ManagedPeer> staleAtLimit = [];
         int noStatus = 0, behind = 0, failing = 0;
         ChainAhead? ahead = Volatile.Read(ref _chainAhead);
         foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
@@ -528,18 +535,27 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
             else if (peer.Value.HeadSlot < minHeadSlot)
             {
-                if (ahead is not null && ahead.Slot >= minHeadSlot && peer.Value.IsStatusStaleSince(ahead.SinceTicks) && !peer.Value.IsAtFailureLimit)
+                bool staleStatus = ahead is not null && ahead.Slot >= minHeadSlot && peer.Value.IsStatusStaleSince(ahead.SinceTicks);
+                if (staleStatus && !peer.Value.IsAtFailureLimit)
                 {
                     stale.Add(peer.Value);
                 }
                 else
                 {
                     behind++;
+                    if (staleStatus && peer.Value.IsOfferableAtFailureLimit)
+                    {
+                        staleAtLimit.Add(peer.Value);
+                    }
                 }
             }
             else if (peer.Value.IsAtFailureLimit)
             {
                 failing++;
+                if (peer.Value.IsOfferableAtFailureLimit)
+                {
+                    atLimit.Add(peer.Value);
+                }
             }
             else
             {
@@ -554,13 +570,54 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             behind += stale.Count;
         }
 
-        if (noStatus + behind + failing + (offerStale ? stale.Count : 0) > 0 && _logger.IsDebug) _logger.Debug($"Sync peers for head slot {minHeadSlot}: {best.Count} usable; left out {noStatus} without status, {behind} behind, {failing} at the request-failure limit{(offerStale ? $"; offering {stale.Count} whose status predates slot {ahead!.Slot}" : "")}");
+        List<ManagedPeer> leastFailed = best.Count == 0 && stale.Count == 0 ? LeastFailed(atLimit.Count > 0 ? atLimit : staleAtLimit, now) : [];
+        if (noStatus + behind + failing + (offerStale ? stale.Count : 0) > 0 && _logger.IsDebug) _logger.Debug($"Sync peers for head slot {minHeadSlot}: {best.Count} usable; left out {noStatus} without status, {behind} behind, {failing} at the request-failure limit{(offerStale ? $"; offering {stale.Count} whose status predates slot {ahead!.Slot}" : "")}{(leastFailed.Count > 0 ? $"; offering the {leastFailed.Count} least-failed at the request-failure limit" : "")}");
         if (offerStale)
         {
             return OrderForSelection(stale, peer => peer.IsCoolingDown(now), static peer => peer.RequestsInFlight, static peer => peer.HeadSlot);
         }
 
-        return OrderForSelection(best, peer => peer.IsCoolingDown(now), static peer => peer.RequestsInFlight, static peer => peer.HeadSlot);
+        return OrderForSelection(best.Count > 0 ? best : leastFailed, peer => peer.IsCoolingDown(now), static peer => peer.RequestsInFlight, static peer => peer.HeadSlot);
+    }
+
+    /// <summary>The <see cref="MaxPeersOfferedAtFailureLimit"/> peers of <paramref name="peers"/> with the fewest request failures, then the fewest consecutive failures,
+    /// then first in <see cref="OrderForSelection{T}"/>.</summary>
+    /// <remarks>Request failures are held at the limit, so the consecutive count, which a passing health check clears, separates peers at the limit.</remarks>
+    private static List<ManagedPeer> LeastFailed(List<ManagedPeer> peers, long now)
+    {
+        if (peers.Count == 0)
+        {
+            return peers;
+        }
+
+        ManagedPeer[] ordered = OrderForSelection(peers, peer => peer.IsCoolingDown(now), static peer => peer.RequestsInFlight, static peer => peer.HeadSlot);
+        // Read once per peer: a failure that lands mid-sort would make a live comparator inconsistent.
+        (int RequestFailures, int ConsecutiveFailures, int Rank, ManagedPeer Peer)[] keyed = new (int, int, int, ManagedPeer)[ordered.Length];
+        for (int i = 0; i < keyed.Length; i++)
+        {
+            keyed[i] = (ordered[i].RequestFailures, ordered[i].ConsecutiveFailures, i, ordered[i]);
+        }
+
+        Array.Sort(keyed, static (a, b) =>
+        {
+            int byRequestFailures = a.RequestFailures.CompareTo(b.RequestFailures);
+            if (byRequestFailures != 0)
+            {
+                return byRequestFailures;
+            }
+
+            int byConsecutiveFailures = a.ConsecutiveFailures.CompareTo(b.ConsecutiveFailures);
+            return byConsecutiveFailures != 0 ? byConsecutiveFailures : a.Rank.CompareTo(b.Rank);
+        });
+
+        int count = Math.Min(MaxPeersOfferedAtFailureLimit, keyed.Length);
+        List<ManagedPeer> least = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            least.Add(keyed[i].Peer);
+        }
+
+        return least;
     }
 
     /// <summary>Orders peers that did not fail a request recently before those that did, then the least busy first, then by head slot, best first.</summary>
@@ -1739,6 +1796,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private int _unblamedInARow;
         private volatile bool _heldOutOfSelection;
         private int _requestFailures;
+        // Set by a protocol violation and kept until the request failures it added are all forgiven, which a passing health check does not do.
+        private bool _requestFailuresIncludeViolation;
         private DateTimeOffset _requestFailuresDecayFrom;
         private long _cooldownUntilTicks;
         private int _consecutiveFailures;
@@ -1831,6 +1890,24 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public bool IsAtFailureLimit => _heldOutOfSelection || RequestFailures >= MaxConsecutiveFailures;
 
+        /// <summary>Whether the peer may still be offered while every peer is at the request-failure limit: not held out of selection, its session open, and no invalid data behind its penalty.</summary>
+        public bool IsOfferableAtFailureLimit
+        {
+            get
+            {
+                if (_heldOutOfSelection || ViolatedProtocolSinceLastHealthyCheck || p2p.SessionClosedToken(Session).IsCancellationRequested)
+                {
+                    return false;
+                }
+
+                lock (_requestFailureLock)
+                {
+                    DecayRequestFailures();
+                    return !_requestFailuresIncludeViolation;
+                }
+            }
+        }
+
         /// <summary>Keeps a peer that failed its health checks out of selection until one passes, when it is not dropped (see <see cref="IsKeptAtPeerFloor"/>).</summary>
         public void HoldOutOfSelection() => _heldOutOfSelection = true;
 
@@ -1865,6 +1942,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 else if (_requestFailures > 0)
                 {
                     _requestFailures--;
+                    _requestFailuresIncludeViolation &= _requestFailures > 0;
                 }
             }
         }
@@ -1886,11 +1964,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         public void ResetTimeoutFailures() => Interlocked.Exchange(ref _timeoutFailures, 0);
         public int RecordTimeoutFailure() => Interlocked.Increment(ref _timeoutFailures);
 
-        private void AddRequestFailures(int failures)
+        private void AddRequestFailures(int failures, bool violation = false)
         {
             lock (_requestFailureLock)
             {
                 DecayRequestFailures();
+                _requestFailuresIncludeViolation |= violation;
                 _requestFailuresDecayFrom = manager._timestamper.UtcNowOffset;
                 _requestFailures = Math.Min(MaxConsecutiveFailures, _requestFailures + failures);
                 _healthTimeoutFailures = Math.Min(_healthTimeoutFailures, MaxConsecutiveFailures - _requestFailures);
@@ -1911,6 +1990,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 long healthForgiven = Math.Min(_healthTimeoutFailures, forgiven);
                 _healthTimeoutFailures -= (int)healthForgiven;
                 _requestFailures = (int)Math.Max(0, _requestFailures - (forgiven - healthForgiven));
+                _requestFailuresIncludeViolation &= _requestFailures > 0;
                 _requestFailuresDecayFrom += TimeSpan.FromTicks(forgiven * RequestFailureDecayInterval.Ticks);
             }
         }
@@ -2122,7 +2202,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 }
 
                 // A violation takes back the credit the reply that carried it just earned.
-                AddRequestFailures(reason == PeerFailureReason.ProtocolViolation ? 2 : 1);
+                AddRequestFailures(reason == PeerFailureReason.ProtocolViolation ? 2 : 1, violation: reason == PeerFailureReason.ProtocolViolation);
             }
 
             Metrics.BeaconChainPeerFailuresByReason.Increment(new StringLabel(reason.ToString()));

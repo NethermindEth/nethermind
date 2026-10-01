@@ -38,6 +38,8 @@ public class RequestFailureCauseTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private const string PeerAddress = "/ip4/10.0.0.1/tcp/9000/p2p/16Uiu2HAmPeer";
+    // Stays under the request-failure limit, so the limit takes the peer under test out of selection.
+    private const string UsablePeerAddress = "/ip4/10.0.0.2/tcp/9000/p2p/16Uiu2HAmUsable";
 
     [Test]
     [CancelAfter(30_000)]
@@ -666,12 +668,13 @@ public class RequestFailureCauseTests
         {
             PeerManager manager = node.CreatePeerManager();
             IBeaconSyncPeer peer = manager.AddPeerForTest(Substitute.For<ISession>(), PeerAddress, Status);
+            manager.AddPeerForTest(Substitute.For<ISession>(), UsablePeerAddress, Status);
             for (int i = 0; i < syncFailures; i++) peer.ReportFailure(PeerFailureReason.RequestFailed);
             for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
-            Assert.That(manager.GetBestPeers(0), Is.Empty);
+            Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
             typeof(PeerManager).GetNestedType("ManagedPeer", BindingFlags.NonPublic)!
                 .GetMethod("ResetHealthCheckFailures")!.Invoke(peer, null);
-            Assert.That(manager.GetBestPeers(0).Count, Is.EqualTo(syncFailures < 8 ? 1 : 0));
+            Assert.That(manager.GetBestPeers(0).Contains(peer), Is.EqualTo(syncFailures < 8));
         }
     }
 
@@ -685,8 +688,9 @@ public class RequestFailureCauseTests
             PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
             HeldSession held = new();
             IBeaconSyncPeer peer = manager.AddPeerForTest(held.Session, PeerAddress, Status);
+            manager.AddPeerForTest(Substitute.For<ISession>(), UsablePeerAddress, Status);
             for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
-            Assert.That(manager.GetBestPeers(0), Is.Empty);
+            Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
             if (served)
             {
                 held.BlockDial.SetResult([]);
@@ -697,9 +701,9 @@ public class RequestFailureCauseTests
                 clock.Add(PeerManager.RequestFailureDecayInterval);
             }
 
-            Assert.That(manager.GetBestPeers(0), Has.Count.EqualTo(1));
+            Assert.That(manager.GetBestPeers(0), Does.Contain(peer));
             await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
-            Assert.That(manager.GetBestPeers(0), Is.Empty);
+            Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
         }
     }
 
