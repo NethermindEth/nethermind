@@ -64,6 +64,9 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGe
                     return false;
                 }
 
+                // prev links cross generations: a key's newer record points at its record in whichever older generation
+                // held it. That generation is pinned, as the pins are the contiguous set above the merged marker and
+                // a prev at or below the marker was sent to RocksDB above.
                 generation = Pinned(TrieNodeLogRecord.LocationGeneration(previous));
                 offset = TrieNodeLogRecord.LocationOffset(previous);
                 bytesRead = generation.ReadAt(offset, buffer);
