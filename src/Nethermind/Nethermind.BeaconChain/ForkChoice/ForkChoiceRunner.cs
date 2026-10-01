@@ -71,8 +71,9 @@ public sealed class ForkChoiceRunner
     /// <summary>Target states built this epoch for gossip aggregates of another shuffling than the head's.</summary>
     private int _offHeadBuilds;
 
-    /// <summary>The aggregators whose aggregates cost one of <see cref="_offHeadBuilds"/>, so one selected aggregator cannot spend them all.</summary>
-    private readonly HashSet<ulong> _offHeadAggregators = [];
+    /// <summary>The target epoch and aggregator of each aggregate that cost one of <see cref="_offHeadBuilds"/>, so one selected aggregator cannot spend them all.</summary>
+    /// <remarks>Keyed as p2p-interface.md keys its first-aggregate-per-aggregator rule, so a previous-epoch duty does not use up a current-epoch one.</remarks>
+    private readonly HashSet<(ulong TargetEpoch, ulong AggregatorIndex)> _offHeadAggregators = [];
 
     /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attestation and PTC deadlines, keyed by block root.</summary>
     private readonly Dictionary<Hash256, BlockTimeliness> _blockTimeliness = [];
@@ -848,7 +849,7 @@ public sealed class ForkChoiceRunner
         ShufflingKey? key = GetShufflingKey(target);
         ForkedBeaconState? targetState = HeldVoteState(target, key);
         if (targetState is null && aggregator is { } gossipProof)
-            targetState = GetGossipTargetState(target, key, data, aggregationBits, committeeBits, signature, gossipProof);
+            targetState = GetGossipTargetState(target, data, aggregationBits, committeeBits, signature, gossipProof);
 
         bool unheld = targetState is null;
         targetState ??= ComputeCheckpointState(target);
@@ -1604,12 +1605,12 @@ public sealed class ForkChoiceRunner
     /// are another shuffling's and a vote for it is ignored without a build.
     /// </remarks>
     /// <exception cref="ForkChoiceException">The target is such an ancestor, the aggregate does not authenticate with the head state, or the builds for other shufflings are spent.</exception>
-    private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, ShufflingKey? key, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof)
+    private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof)
     {
         Hash256 head = _lastHeadRoot ?? GetHead();
         CheckpointRef headTarget = new(target.Epoch, GetCheckpointBlock(head, target.Epoch));
         ShufflingKey? headKey = GetShufflingKey(headTarget);
-        if (target == headTarget || (key is not null && key == headKey))
+        if (target == headTarget || HasShufflingOf(head, target))
             return HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
 
         if (_protoArray.IsDescendant(target.Root, head))
@@ -1627,7 +1628,7 @@ public sealed class ForkChoiceRunner
             _offHeadAggregators.Clear();
         }
 
-        if (_offHeadBuilds == MaxOffHeadBuildsPerEpoch || !_offHeadAggregators.Add(proof.AggregatorIndex))
+        if (_offHeadBuilds == MaxOffHeadBuildsPerEpoch || !_offHeadAggregators.Add((target.Epoch, proof.AggregatorIndex)))
             throw new ForkChoiceException($"Aggregate target {target} has another shuffling than the head's target {headTarget}, and this epoch's builds for those are spent");
 
         _offHeadBuilds++;
