@@ -616,7 +616,14 @@ public class GloasBlockImporterTests
                 Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
             }
 
-            Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot), "the replay crosses the fork on a copy of the held Fulu state");
+            if (heldBase == HeldBase.FuluAnchor)
+            {
+                Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot), "the replay crosses the fork on a copy of the held Fulu state");
+            }
+            else
+            {
+                Assert.That(SszRoots.HashTreeRoot(states.GetGloasBlockState(first.Root)!), Is.EqualTo(first.Signed.Message!.StateRoot), "the replay runs on a copy of the held Gloas state");
+            }
             Assert.That(logger.LogList, Has.None.Contains("no longer retained"));
             Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
         }
