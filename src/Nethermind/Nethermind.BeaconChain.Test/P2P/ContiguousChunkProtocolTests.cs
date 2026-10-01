@@ -43,6 +43,28 @@ public class ContiguousChunkProtocolTests
         Assert.That((await lower.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended));
     }
 
+    /// <summary>A response the protocol above writes just before a full close reaches the peer before the channel below closes.</summary>
+    /// <remarks>The relay can hold the response between its read above and its write below when the close arrives, so the check repeats.</remarks>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_response_written_just_before_a_full_close_reaches_the_peer(CancellationToken token)
+    {
+        for (int attempt = 0; attempt < 5_000; attempt++)
+        {
+            Channel lower = new();
+            Channel upper = new();
+            Task relay = ContiguousChunkProtocol.RelayAsync(lower.Reverse, upper);
+            Task<ReadResult> received = lower.ReadAsync(3, ReadBlockingMode.WaitAll, token).AsTask();
+
+            await upper.Reverse.WriteAsync(new ReadOnlySequence<byte>([1, 2, 3]), token);
+            await upper.Reverse.CloseAsync();
+            await relay.WaitAsync(token);
+
+            ReadResult read = await received;
+            Assert.That(read.Result == IOResult.Ok ? read.Data.ToArray() : [], Is.EqualTo(new byte[] { 1, 2, 3 }), $"attempt {attempt}");
+        }
+    }
+
     /// <summary>A request the protocol above half-closes still receives its response from below.</summary>
     [Test]
     [CancelAfter(10_000)]

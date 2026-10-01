@@ -24,12 +24,19 @@ public sealed class ContiguousChunkProtocol : IConnectionProtocol
 
     /// <summary>Relays both directions between <paramref name="lower"/> (yamux) and <paramref name="upper"/> (multistream) until both have ended.</summary>
     /// <remarks>Each direction forwards its end of data on its own, so a half-closed request keeps receiving its response. A full close of
-    /// either side closes the other, so a channel the protocol above abandons does not stay open below while the peer keeps it open.</remarks>
+    /// either side closes the other, so a channel the protocol above abandons does not stay open below while the peer keeps it open. The data the
+    /// closed side wrote before its close is passed on first.</remarks>
     internal static async Task RelayAsync(IChannel lower, IChannel upper)
     {
-        Task pumps = Task.WhenAll(PumpAsync(lower, upper, contiguous: true), PumpAsync(upper, lower, contiguous: false));
-        if (await Task.WhenAny(pumps, ClosedAsync(lower), ClosedAsync(upper)) != pumps)
+        Task upward = PumpAsync(lower, upper, contiguous: true);
+        Task downward = PumpAsync(upper, lower, contiguous: false);
+        Task pumps = Task.WhenAll(upward, downward);
+        Task lowerClosed = ClosedAsync(lower);
+        Task upperClosed = ClosedAsync(upper);
+        Task first = await Task.WhenAny(pumps, lowerClosed, upperClosed);
+        if (first != pumps)
         {
+            await (first == upperClosed ? downward : upward);
             await lower.CloseAsync();
             await upper.CloseAsync();
         }
