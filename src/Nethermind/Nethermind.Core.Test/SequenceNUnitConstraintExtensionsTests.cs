@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -18,6 +19,7 @@ public class SequenceNUnitConstraintExtensionsTests
         yield return new TestCaseData((Memory<byte>)new byte[] { 1, 2, 3 }).SetName("Memory");
         yield return new TestCaseData(new ArraySegment<byte>([0, 1, 2, 3, 4], 1, 3)).SetName("ArraySegment");
         yield return new TestCaseData(new List<byte> { 1, 2, 3 }).SetName("List");
+        yield return new TestCaseData(Expected.Select(static b => b)).SetName("lazy sequence");
     }
 
     [TestCaseSource(nameof(EqualActuals))]
@@ -27,6 +29,7 @@ public class SequenceNUnitConstraintExtensionsTests
         Assert.That(actual, Is.SequenceEqualTo((ReadOnlyMemory<byte>)Expected));
         Assert.That(actual, Is.SequenceEqualTo((Memory<byte>)Expected));
         Assert.That(actual, Is.SequenceEqualTo(new List<byte>(Expected)));
+        Assert.That(actual, Is.SequenceEqualTo(Expected.Select(static b => b)));
         Assert.That(actual, Is.SequenceEqualTo("\x01\x02\x03"u8));
     }
 
@@ -51,6 +54,10 @@ public class SequenceNUnitConstraintExtensionsTests
         AssertFails((ReadOnlyMemory<byte>)actual, Is.SequenceEqualTo(new List<byte>(Expected)));
         AssertFails(new List<byte>(actual), Is.SequenceEqualTo(new List<byte>(Expected)));
         Assert.Throws<AssertionException>(() => Assert.That(new ReadOnlySpan<byte>(actual), Is.SequenceEqualTo(new List<byte>(Expected))));
+        AssertFails(actual, Is.SequenceEqualTo(Expected.Select(static b => b)));
+        AssertFails(actual.Select(static b => b), Is.SequenceEqualTo(Expected));
+        AssertFails(actual.Select(static b => b), Is.SequenceEqualTo(Expected.Select(static b => b)));
+        Assert.Throws<AssertionException>(() => Assert.That(new ReadOnlySpan<byte>(actual), Is.SequenceEqualTo(Expected.Select(static b => b))));
     }
 
     [Test]
@@ -59,6 +66,28 @@ public class SequenceNUnitConstraintExtensionsTests
         string message = AssertFails((ReadOnlyMemory<byte>)new byte[] { 1, 9, 3 }, Is.SequenceEqualTo(Expected));
 
         Assert.That(message, Does.Contain("Values differ at index [1]").And.Not.Contain("ReadOnlyMemory"));
+    }
+
+    [Test]
+    public void Lazy_sequence_mismatch_reports_the_differing_index_from_what_was_read()
+    {
+        Assert.That(AssertFails(new byte[] { 1, 9, 3 }, Is.SequenceEqualTo(Expected.Select(static b => b))), Does.Contain("Values differ at index [1]"));
+        Assert.That(AssertFails(new byte[] { 1, 9, 3 }.Select(static b => b), Is.SequenceEqualTo(Expected)), Does.Contain("Values differ at index [1]"));
+    }
+
+    [Test]
+    public void Passing_assert_copies_neither_the_actual_nor_the_expected()
+    {
+        byte[] buffer = new byte[2 * 1024 * 1024];
+        ReadOnlyMemory<byte> expected = buffer.AsMemory(1, 1024 * 1024);
+        ReadOnlyMemory<byte> actual = buffer.AsMemory(1, 1024 * 1024);
+        Assert.That(actual, Is.SequenceEqualTo(expected));
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.That(actual, Is.SequenceEqualTo(expected));
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(allocated, Is.LessThan(64 * 1024));
     }
 
     [Test]
