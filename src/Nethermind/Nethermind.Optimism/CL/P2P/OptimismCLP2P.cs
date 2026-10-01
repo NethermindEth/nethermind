@@ -78,7 +78,7 @@ public class OptimismCLP2P : IDisposable
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
             .AddSingleton(new PayloadByNumberProtocol(chainId, PayloadDecoder.Instance, logManager))
-            .AddLibp2p(builder => builder.WithPubsub().AddAppLayerProtocol<PayloadByNumberProtocol>())
+            .AddLibp2p(builder => builder.WithPubsub().AddProtocol<PayloadByNumberProtocol>())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "",
@@ -327,7 +327,7 @@ public class OptimismCLP2P : IDisposable
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
-        _blocksV2Topic.OnMessage += msg => OnMessage(msg, token);
+        _blocksV2Topic.OnMessage += (_, msg) => OnMessage(msg, token);
         try
         {
             await _localPeer.StartListenAsync([address], token);

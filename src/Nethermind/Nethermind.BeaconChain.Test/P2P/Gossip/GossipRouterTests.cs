@@ -6,7 +6,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Google.Protobuf;
 using Multiformats.Address;
 using Nethermind.BeaconChain.ForkChoice;
@@ -65,15 +67,7 @@ public partial class GossipRouterTests
 
         string topicId = GossipTopics.Topic(digest, column ? GossipTopics.DataColumnSidecarTopicName(0) : GossipTopics.BeaconBlock);
         ITopic topic = subscriptions.GetTopic(topicId);
-        PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
-        List<Rpc> sent = [];
-        TaskCompletionSource dial = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        typeof(PubsubRouter).GetMethod("OutboundConnection", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pubsub,
-            [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), "/meshsub/1.1.0", dial.Task, (Action<Rpc>)sent.Add]);
-        MethodInfo receive = typeof(PubsubRouter).GetMethod("OnRpc", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Rpc subscribe = new();
-        subscribe.Subscriptions.Add(new Rpc.Types.SubOpts { Topicid = topicId, Subscribe = true });
-        receive.Invoke(pubsub, [peer, subscribe]);
+        (PeerId peer, List<Rpc> sent, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topicId);
         ((IRoutingStateContainer)pubsub).Mesh[topicId].Add(peer);
         sent.Clear();
 
@@ -88,8 +82,8 @@ public partial class GossipRouterTests
 
         Rpc publish = new();
         publish.Publish.Add(new Message { Topic = topicId, Data = ByteString.CopyFrom([1]) });
-        receive.Invoke(pubsub, [peer, publish]);
-        receive.Invoke(pubsub, [peer, publish]);
+        receive(publish);
+        receive(publish);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topic.IsSubscribed, Is.False);
@@ -108,8 +102,56 @@ public partial class GossipRouterTests
         }
 
         Assert.That(topic.IsSubscribed, Is.True);
-        receive.Invoke(pubsub, [peer, publish]);
+        receive(publish);
         Assert.That(verified, Is.EqualTo(1), "retired messages do not enter the seen cache, and rejoining restores validation");
+    }
+
+    /// <summary>A mesh peer whose gossip this node consumes without accepting keeps its mesh place and is not graylisted.</summary>
+    /// <remarks>The node returns Ignored for consumed gossip, which libp2p does not count as a mesh delivery; its default P3 would prune the peer.</remarks>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Mesh_peer_that_delivers_no_accepted_message_stays_in_the_mesh(CancellationToken token)
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+        using PubsubRouter pubsub = new(new PeerStore(), p2p.PubsubSettingsForTest);
+        int verified = 0;
+        pubsub.VerifyMessage = (_, _) => { verified++; return MessageValidity.Ignored; };
+        string topicId = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
+        pubsub.GetTopic(topicId);
+        (PeerId peer, _, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topicId);
+        await pubsub.Heartbeat();
+        Assert.That(((IRoutingStateContainer)pubsub).Mesh[topicId], Does.Contain(peer), "the heartbeat grafts the subscribed peer");
+
+        // The library's default MeshMessageDeliveriesActivation is 5 s of mesh time.
+        await Task.Delay(TimeSpan.FromSeconds(6), token);
+        await pubsub.Heartbeat();
+        Rpc publish = new();
+        publish.Publish.Add(new Message { Topic = topicId, Data = ByteString.CopyFrom([1]) });
+        receive(publish);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((IRoutingStateContainer)pubsub).Mesh[topicId], Does.Contain(peer), "no delivery score prunes the peer");
+            Assert.That(verified, Is.EqualTo(1), "the peer's messages still reach the validator");
+        }
+    }
+
+    /// <summary>Registers a connected peer subscribed to <paramref name="topicId"/> with <paramref name="pubsub"/>.</summary>
+    /// <returns>The peer, the RPCs the router sends it, and a callback that hands the router an RPC from it.</returns>
+    private static (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) ConnectSubscribedPeer(PubsubRouter pubsub, string topicId)
+    {
+        PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+        List<Rpc> sent = [];
+        TaskCompletionSource dial = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        typeof(PubsubRouter).GetMethod("OutboundConnection", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pubsub,
+            [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), "/meshsub/1.1.0", dial.Task, (Action<Rpc>)sent.Add]);
+        MethodInfo onRpc = typeof(PubsubRouter).GetMethod("OnRpc", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        void Receive(Rpc rpc) => onRpc.Invoke(pubsub, [peer, rpc, null, true]);
+        Rpc subscribe = new();
+        subscribe.Subscriptions.Add(new Rpc.Types.SubOpts { Topicid = topicId, Subscribe = true });
+        Receive(subscribe);
+        return (peer, sent, Receive);
     }
 
     /// <summary>The router's RPC handler changes the peer sets under its monitor while unsubscribing enumerates them.</summary>
@@ -675,7 +717,9 @@ public partial class GossipRouterTests
 
     private sealed class FakeTopic : ITopic
     {
-        public event Action<byte[]>? OnMessage;
+        private static readonly PeerId DeliveringPeer = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+
+        public event Action<PeerId, byte[]>? OnMessage;
 
         public bool IsSubscribed { get; private set; }
 
@@ -689,6 +733,6 @@ public partial class GossipRouterTests
 
         public void Publish(IMessage value) { }
 
-        public void Deliver(byte[] message) => OnMessage?.Invoke(message);
+        public void Deliver(byte[] message) => OnMessage?.Invoke(DeliveringPeer, message);
     }
 }

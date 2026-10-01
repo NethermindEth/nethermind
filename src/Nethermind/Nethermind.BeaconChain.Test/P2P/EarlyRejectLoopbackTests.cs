@@ -134,7 +134,7 @@ public class EarlyRejectLoopbackTests
         ServiceProvider services = new ServiceCollection()
             .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(requesterLog))
             .AddSingleton<RawRequestProtocol>()
-            .AddLibp2p(static builder => builder.AddAppLayerProtocol<RawRequestProtocol>())
+            .AddLibp2p(static builder => builder.AddProtocol<RawRequestProtocol>())
             .BuildServiceProvider();
         await using (services)
         await using (ILocalPeer requester = services.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1)))
