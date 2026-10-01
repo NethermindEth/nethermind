@@ -45,32 +45,7 @@ public class CheckpointSyncHttpTests
     public async Task An_advanced_checkpoint_uses_its_blocks_post_state(
         [Values] AdvancedCheckpoint advancedCheckpoint, [Values] bool fromFile, [Values] bool invalidPostState, [Values(null, false, true)] bool? conflictingCheckpoint)
     {
-        ForkCrossingChain chain = ForkCrossingChain.Instance;
-        ForkedSignedBeaconBlock block;
-        byte[] postState;
-        byte[] advancedState;
-        Hash256 stateRoot;
-        if (advancedCheckpoint == AdvancedCheckpoint.PastAnEmptyGloasEpochStart)
-        {
-            BeaconStateGloas advanced = chain.First.PostState.Clone();
-            GloasSlotProcessing.ProcessSlots(advanced, 2 * Presets.SlotsPerEpoch, new EpochCache());
-            block = new ForkedSignedBeaconBlock.OfGloas(chain.First.Block);
-            postState = BeaconStateGloas.Encode(chain.First.PostState);
-            advancedState = BeaconStateGloas.Encode(advanced);
-            stateRoot = chain.First.Block.Message!.StateRoot!;
-        }
-        else
-        {
-            BeaconStateFulu advanced = chain.AnchorState.Clone();
-            SlotProcessing.ProcessSlots(advanced, advancedCheckpoint == AdvancedCheckpoint.AcrossTheGloasUpgrade ? GloasTestFixtures.BoundarySlot : 1, new EpochCache());
-            advancedState = advancedCheckpoint == AdvancedCheckpoint.AcrossTheGloasUpgrade
-                ? BeaconStateGloas.Encode(GloasForkTransition.UpgradeToGloas(advanced, GloasCheckpointFiles.Spec))
-                : BeaconStateFulu.Encode(advanced);
-            block = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain.AnchorBlock, Signature = new BlsSignature(new byte[BlsSignature.Length]) });
-            postState = BeaconStateFulu.Encode(chain.AnchorState);
-            stateRoot = chain.AnchorBlock.StateRoot!;
-        }
-
+        (byte[] advancedState, ForkedSignedBeaconBlock block, byte[] postState, Hash256 stateRoot, _) = BuildAdvancedCheckpoint(advancedCheckpoint);
         Hash256 root = block.ComputeMessageRoot();
         await using WebApplication provider = await StartProviderAsync(null, advancedState, block, stateRoot, invalidPostState ? advancedState : postState);
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(advancedState, block);
@@ -101,6 +76,52 @@ public class CheckpointSyncHttpTests
             Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), conflictingCheckpoint is null ? Is.Null : Is.Not.Null);
         }
         sync.ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(anchor.State, anchor.BlockRoot);
+    }
+
+    public enum ConfiguredCheckpoint
+    {
+        ProvenByTheReceivedState,
+        LaterEpoch,
+        OtherRoot,
+    }
+
+    /// <summary>
+    /// The anchor of an advanced checkpoint is its block's post-state from an epoch before the checkpoint's, so after a restart the
+    /// checkpoint the received state proved must still be accepted, and one it did not prove must be refused with the failed condition.
+    /// </summary>
+    [Test]
+    public async Task A_checkpoint_the_advanced_state_proved_is_accepted_after_restart(
+        [Values(AdvancedCheckpoint.AcrossTheGloasUpgrade, AdvancedCheckpoint.PastAnEmptyGloasEpochStart)] AdvancedCheckpoint advancedCheckpoint,
+        [Values] ConfiguredCheckpoint configured)
+    {
+        (byte[] advancedState, ForkedSignedBeaconBlock block, byte[] postState, Hash256 stateRoot, ulong advancedSlot) = BuildAdvancedCheckpoint(advancedCheckpoint);
+        Hash256 root = block.ComputeMessageRoot();
+        await using WebApplication provider = await StartProviderAsync(null, advancedState, block, stateRoot, postState);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        CheckpointAnchor anchor;
+        using (CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Urls.First() }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance))
+        {
+            anchor = await sync.RunAsync(CancellationToken.None);
+        }
+
+        ulong epoch = GloasCheckpointFiles.Spec.GetEpoch(advancedSlot) + (configured == ConfiguredCheckpoint.LaterEpoch ? 1UL : 0UL);
+        string checkpoint = $"{(configured == ConfiguredCheckpoint.OtherRoot ? GloasTestFixtures.Hash(0x5A) : root)}:{epoch}";
+        using CheckpointSync restarted = new(new BeaconChainConfig { WeakSubjectivityCheckpoint = checkpoint }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+        Assert.That(restarted.ProvesCheckpoint(anchor.State, anchor.BlockRoot, CheckpointSync.ParseWeakSubjectivityCheckpoint(checkpoint)!), Is.False,
+            "fixture: the stored post-state alone does not prove the checkpoint");
+
+        if (configured == ConfiguredCheckpoint.ProvenByTheReceivedState)
+        {
+            restarted.ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(anchor.State, anchor.BlockRoot);
+            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Not.Null, "the accepted checkpoint is recorded");
+            return;
+        }
+
+        System.IO.InvalidDataException refusal = Assert.Throws<System.IO.InvalidDataException>(() => restarted.ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(anchor.State, anchor.BlockRoot))!;
+        Assert.That(refusal.Message, Does.Contain(configured == ConfiguredCheckpoint.LaterEpoch
+            ? $"checkpoint sync anchor has its state at slot {advancedSlot}, before epoch {epoch}"
+            : $"checkpoint sync anchor has block {root}, not the checkpoint block"));
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
     }
 
     [Test]
@@ -157,6 +178,27 @@ public class CheckpointSyncHttpTests
 
         Assert.That(ex.Message, Does.Contain("'heze'"));
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+    }
+
+    /// <summary>A checkpoint state advanced past its block, that block, the block's post-state and state root, and the advanced state's slot.</summary>
+    private static (byte[] AdvancedState, ForkedSignedBeaconBlock Block, byte[] PostState, Hash256 StateRoot, ulong AdvancedSlot) BuildAdvancedCheckpoint(AdvancedCheckpoint advancedCheckpoint)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        if (advancedCheckpoint == AdvancedCheckpoint.PastAnEmptyGloasEpochStart)
+        {
+            BeaconStateGloas advanced = chain.First.PostState.Clone();
+            GloasSlotProcessing.ProcessSlots(advanced, 2 * Presets.SlotsPerEpoch, new EpochCache());
+            return (BeaconStateGloas.Encode(advanced), new ForkedSignedBeaconBlock.OfGloas(chain.First.Block), BeaconStateGloas.Encode(chain.First.PostState),
+                chain.First.Block.Message!.StateRoot!, advanced.Slot);
+        }
+
+        BeaconStateFulu advancedFulu = chain.AnchorState.Clone();
+        SlotProcessing.ProcessSlots(advancedFulu, advancedCheckpoint == AdvancedCheckpoint.AcrossTheGloasUpgrade ? GloasTestFixtures.BoundarySlot : 1, new EpochCache());
+        byte[] advancedState = advancedCheckpoint == AdvancedCheckpoint.AcrossTheGloasUpgrade
+            ? BeaconStateGloas.Encode(GloasForkTransition.UpgradeToGloas(advancedFulu, GloasCheckpointFiles.Spec))
+            : BeaconStateFulu.Encode(advancedFulu);
+        return (advancedState, new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain.AnchorBlock, Signature = new BlsSignature(new byte[BlsSignature.Length]) }),
+            BeaconStateFulu.Encode(chain.AnchorState), chain.AnchorBlock.StateRoot!, advancedFulu.Slot);
     }
 
     /// <summary>A beacon API serving <see cref="ForkCrossingChain.First"/> as the finalized state and its block by root.</summary>
