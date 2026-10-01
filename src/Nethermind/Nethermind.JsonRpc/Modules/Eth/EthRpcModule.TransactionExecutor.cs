@@ -42,8 +42,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// <summary>Whether a fee cap below the priority fee is rejected as input rather than left to execution.</summary>
             protected virtual bool ValidatesFeeCapOrder => true;
 
+            /// <summary>
+            /// Whether a zero blob fee cap is taken as an omitted one, as a call takes it, rather than rejected, as for a
+            /// transaction to send.
+            /// </summary>
+            protected virtual bool AcceptsZeroBlobFeeCap => true;
+
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
+                if (AcceptsZeroBlobFeeCap)
+                    call = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call);
+
                 IReleaseSpec spec = GetSpec(header);
                 Result<Transaction> result = ValidatesFeeCapOrder
                     ? call.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
@@ -210,6 +219,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private BigInteger? _feeCapBeyond256Bits;
 
             protected override bool ValidatesFeeCapOrder => false;
+
+            // The fee fields follow the defaults of a transaction about to be sent, as in Geth.
+            protected override bool AcceptsZeroBlobFeeCap => false;
 
             /// <remarks>
             /// The fee fields follow the defaults a transaction about to be sent gets, so a malformed pair is reported
