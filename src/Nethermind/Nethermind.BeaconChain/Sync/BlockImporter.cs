@@ -124,8 +124,8 @@ public sealed class BlockImporter : IBlockImporter
 
     private int _regenerationsThisSlot;
 
-    /// <summary>The (slot, proposer) pairs a gossip block has spent a regeneration for, above the finalized slot.</summary>
-    private readonly HashSet<(ulong Slot, ulong ProposerIndex)> _regenerationProposals = [];
+    /// <summary>The block that spent a regeneration for each (slot, proposer) from gossip, above the finalized slot.</summary>
+    private readonly Dictionary<(ulong Slot, ulong ProposerIndex), Hash256> _regenerationProposals = [];
 
     /// <summary>Whether the import running now is of a block this node requested, which the regeneration budget does not charge.</summary>
     private bool _importingRequested;
@@ -716,10 +716,17 @@ public sealed class BlockImporter : IBlockImporter
             _regenerationsThisSlot = 0;
             // on_block refuses a block at or below the finalized epoch's start slot, so no later block repeats its (slot, proposer).
             ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(_runner.FinalizedCheckpoint.Epoch);
-            _regenerationProposals.RemoveWhere(proposal => proposal.Slot <= finalizedSlot);
+            foreach ((ulong Slot, ulong ProposerIndex) proposal in _regenerationProposals.Keys)
+            {
+                if (proposal.Slot <= finalizedSlot)
+                {
+                    _regenerationProposals.Remove(proposal);
+                }
+            }
         }
 
-        string? refusal = _regenerationProposals.Contains((slot, proposerIndex)) ? $"a block of proposer {proposerIndex} at this slot already cost one"
+        // A retry of the same block, deferred after its first regeneration, is no repeat proposal.
+        string? refusal = _regenerationProposals.TryGetValue((slot, proposerIndex), out Hash256? first) && first != blockRoot ? $"another block of proposer {proposerIndex} at this slot already cost one"
             : _regenerationsThisSlot >= MaxUntrustedRegenerationsPerSlot ? $"this slot's {MaxUntrustedRegenerationsPerSlot} regenerations are spent"
             : null;
         if (refusal is not null)
@@ -729,7 +736,7 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.UnknownParent;
         }
 
-        _regenerationProposals.Add((slot, proposerIndex));
+        _regenerationProposals[(slot, proposerIndex)] = blockRoot;
         _regenerationsThisSlot++;
         return null;
     }
