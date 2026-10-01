@@ -45,11 +45,6 @@
     "hash": "sha256-8JH/zKtNA5k+Zgus4ndlmnne4JcvVNfx9L1G1oCWYkE="
   },
   {
-    "pname": "Certes",
-    "version": "3.0.4",
-    "hash": "sha256-1Hzw8aMxNiQGnN+J6qnIv5TfY7WHm72i9G57kGYXSuY="
-  },
-  {
     "pname": "Ckzg.Bindings",
     "version": "2.1.8.1641",
     "hash": "sha256-VDXIFWSgRTiYlolZFqfC2VZ0dZ/KUQZqOFR64WPpmjs="
@@ -73,11 +68,6 @@
     "pname": "CommunityToolkit.HighPerformance",
     "version": "8.4.2",
     "hash": "sha256-IgDfOixA81NSrmXaFwx9jAb4jCOQ3s+hsC8qulV/AB0="
-  },
-  {
-    "pname": "Concentus",
-    "version": "2.2.2",
-    "hash": "sha256-9If4kL72V1evHOz0IONX8ASIy/rAtAm6RhzLzu+BSB8="
   },
   {
     "pname": "ConcurrentHashSet",
@@ -168,11 +158,6 @@
     "pname": "KubernetesClient",
     "version": "19.0.2",
     "hash": "sha256-iUZ+b/6mTa4e7/0VanstUfFbKe+/HwQ6/zbAxEZCEm8="
-  },
-  {
-    "pname": "Libp2p.Protocols.KadDht",
-    "version": "1.0.0",
-    "hash": "sha256-yQi0QjFmMgtVAE4UP+RmbQLDRB5+Usw0mFVVp6d1YFw="
   },
   {
     "pname": "libsodium",
@@ -720,19 +705,9 @@
     "hash": "sha256-jY+p+Pg3PcZqMBDHG691dvNBNX0K3GuUg7mvFtnmQn8="
   },
   {
-    "pname": "Nethermind.Libp2p",
-    "version": "1.0.0",
-    "hash": "sha256-Vg4MARR7exxc+vfqKze/gwVz8gMUNxUJ7tW8O5UXNcI="
-  },
-  {
     "pname": "Nethermind.Libp2p.Core",
     "version": "1.0.0",
     "hash": "sha256-L3gIdXpBvHHUBqL1FNY55vU1U1sn8MRFF3haCKlELN4="
-  },
-  {
-    "pname": "Nethermind.Libp2p.Protocols.AutoTls",
-    "version": "1.0.0",
-    "hash": "sha256-H12M19BnqCWT/bWUiBkXRtFk8lJ1Xa/KylHdJ5s63IM="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Identify",
@@ -743,11 +718,6 @@
     "pname": "Nethermind.Libp2p.Protocols.IpTcp",
     "version": "1.0.0",
     "hash": "sha256-FMpI9BD/LoYnulBvwWsNzLoVfs6XFfnzVUoPp+XvsH4="
-  },
-  {
-    "pname": "Nethermind.Libp2p.Protocols.MDns",
-    "version": "1.0.0",
-    "hash": "sha256-STPUd4UgagRwhU7wD1rsC0/CA6UyE+pXbpkOq6tFmns="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Multistream",
@@ -765,11 +735,6 @@
     "hash": "sha256-v8axNv00afPj4EXZ2aYf22o7Au1Ja6vrVS/NzTO0/QM="
   },
   {
-    "pname": "Nethermind.Libp2p.Protocols.Plaintext",
-    "version": "1.0.0",
-    "hash": "sha256-UyWQGIYOK5uFJ5aUGNhIVxujF02YtH6htpLxxgC3HBM="
-  },
-  {
     "pname": "Nethermind.Libp2p.Protocols.Pubsub",
     "version": "1.0.0",
     "hash": "sha256-aqUNehngp+ZWPiYNR3VXecPNEtnNfKuS5NIVYgKshDk="
@@ -778,36 +743,6 @@
     "pname": "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery",
     "version": "1.0.0",
     "hash": "sha256-y41fagMrMvp07N5PHjh2yxTD9QaOiXoyI+aUBd36Mv0="
-  },
-  {
-    "pname": "Nethermind.Libp2p.Protocols.Quic",
-    "version": "1.0.0",
-    "hash": "sha256-8E+3tgi/NRwa4prPK70aNnufvVB7fUorG3q7qozyRVc="
-  },
-  {
-    "pname": "Nethermind.Libp2p.Protocols.Relay",
-    "version": "1.0.0",
-    "hash": "sha256-nZwtiqAugKXrXqyPWmsbGeSjDnPGn7Oh9w525qILNz0="
-  },
-  {
-    "pname": "Nethermind.Libp2p.Protocols.RequestResponse",
-    "version": "1.0.0",
-    "hash": "sha256-vkL7ZDuHe9vRXAmMU+Fobu2JUQn4DW0K3h4FL1TkL2c="
-  },
-  {
-    "pname": "Nethermind.Libp2p.Protocols.Tls",
-    "version": "1.0.0",
-    "hash": "sha256-g0RQatr0dQSL84M8MtNtZf17XIckxoP3x+8I1SxI/cA="
-  },
-  {
-    "pname": "Nethermind.Libp2p.Protocols.WebRtc",
-    "version": "1.0.0",
-    "hash": "sha256-2gWOR96IT/AoCNZ2jLliU4XMwNXzUksHDPlAOWkNn00="
-  },
-  {
-    "pname": "Nethermind.Libp2p.Protocols.WebSockets",
-    "version": "1.0.0",
-    "hash": "sha256-maA78EINE8E74x7ST/rTF/CGsr99Ge0JsWTeiH8Rt14="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Yamux",
@@ -905,11 +840,6 @@
     "hash": "sha256-1AT4Xym9hn2Awgul9WErwXk2bBPN58P9XfRExrIPItg="
   },
   {
-    "pname": "Portable.BouncyCastle",
-    "version": "1.9.0",
-    "hash": "sha256-GOXM4TdTTodWlGzEfbMForTfTQI/ObJGnFZMSD6X8E4="
-  },
-  {
     "pname": "prometheus-net",
     "version": "8.2.1",
     "hash": "sha256-NxHeXd4fwwc4MMsT6mrfX81czjHnq2GMStWTabZxMDw="
@@ -943,21 +873,6 @@
     "pname": "SimpleBase",
     "version": "4.0.2",
     "hash": "sha256-bk+G35Fqs4jJRYU9rTxbBUQIXatcrTykKf/v5YxTaH0="
-  },
-  {
-    "pname": "SIPSorcery",
-    "version": "10.0.14",
-    "hash": "sha256-kITaFt49CN/M+4MGH8ACZs+PHu2wNcQ/gQnNZbKMO7Q="
-  },
-  {
-    "pname": "SIPSorcery.WebSocketSharp",
-    "version": "0.0.1",
-    "hash": "sha256-Gz5/YXuzH5q0DfAlcqjUG2uPc7cvg2u8en1YOwVrODQ="
-  },
-  {
-    "pname": "SIPSorceryMedia.Abstractions",
-    "version": "10.0.14",
-    "hash": "sha256-cS8XDfoF0Y81Y8Pk2VqgZ9izgfoCHEaknx3+Jp2eP7Y="
   },
   {
     "pname": "Snappier",

@@ -28,8 +28,8 @@ using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Network;
 using Snappier;
-using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core.Discovery;
+using Nethermind.Network.Libp2p;
 using Channel = System.Threading.Channels.Channel;
 
 namespace Nethermind.Optimism.CL.P2P;
