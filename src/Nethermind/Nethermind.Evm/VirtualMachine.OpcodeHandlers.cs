@@ -189,13 +189,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             // APPROVE ends the frame on every path, so it never continues the dispatch chain.
             lookup[(int)Instruction.APPROVE] = TerminatingOpcodeHandler<ApproveOpcode, TTracingInst, TCancelable>();
-            lookup[(int)Instruction.TXPARAM] = (spec.IsEip8250Enabled, spec.IsEip8272Enabled) switch
-            {
-                (true, true) => OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag, OnFlag>, TTracingInst, TCancelable>(),
-                (true, false) => OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag, OffFlag>, TTracingInst, TCancelable>(),
-                (false, true) => OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag, OnFlag>, TTracingInst, TCancelable>(),
-                _ => OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag, OffFlag>, TTracingInst, TCancelable>(),
-            };
+            lookup[(int)Instruction.TXPARAM] = spec.IsEip8250Enabled
+                ? OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag>, TTracingInst, TCancelable>()
+                : OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.FRAMEDATALOAD] = OpcodeHandler<FrameDataLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.FRAMEDATACOPY] = OpcodeHandler<FrameDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.FRAMEPARAM] = OpcodeHandler<FrameParamOpcode<TTracingInst>, TTracingInst, TCancelable>();
@@ -1158,13 +1154,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [SkipLocalsInit]
-    private readonly struct TxParamOpcode<TTracingInst, TEip8250, TEip8272> : IOpcodeBody
+    private readonly struct TxParamOpcode<TTracingInst, TEip8250> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where TEip8250 : struct, IFlag
-        where TEip8272 : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(ref stack, ref gas, vm);
+            EvmInstructions.InstructionTxParam<TGasPolicy, TTracingInst, TEip8250>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
