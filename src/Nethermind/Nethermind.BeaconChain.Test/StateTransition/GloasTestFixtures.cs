@@ -439,7 +439,8 @@ internal static class GloasTestFixtures
     });
 
     /// <summary>A builder-signed envelope for the block whose post-state is <paramref name="state"/>, consistent with <paramref name="bid"/>.</summary>
-    public static SignedExecutionPayloadEnvelope ValidEnvelope(BeaconStateGloas state, ExecutionPayloadBid bid, Bls.SecretKey builderSk, ulong builderIndex)
+    /// <param name="blockRoot">That block's root when the caller has it; otherwise <see cref="BlockRootOf"/> hashes the whole state.</param>
+    public static SignedExecutionPayloadEnvelope ValidEnvelope(BeaconStateGloas state, ExecutionPayloadBid bid, Bls.SecretKey builderSk, ulong builderIndex, Hash256? blockRoot = null)
     {
         ExecutionPayloadEnvelope message = new()
         {
@@ -460,7 +461,7 @@ internal static class GloasTestFixtures
             },
             ExecutionRequests = new ExecutionRequestsGloas(),
             BuilderIndex = builderIndex,
-            BeaconBlockRoot = BlockRootOf(state),
+            BeaconBlockRoot = blockRoot ?? BlockRootOf(state),
             ParentBeaconBlockRoot = state.LatestBlockHeader!.ParentRoot,
         };
         Hash256 domain = state.GetDomain(DomainType.BeaconBuilder);

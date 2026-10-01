@@ -301,7 +301,7 @@ public class PeerHealthCheckRoundTests
         return peerManager;
     }
 
-    private sealed class AdvancingTimestamper : ITimestamper
+    internal sealed class AdvancingTimestamper : ITimestamper
     {
         private readonly ManualTimestamper _clock = new();
         private readonly Stopwatch _elapsed = Stopwatch.StartNew();
