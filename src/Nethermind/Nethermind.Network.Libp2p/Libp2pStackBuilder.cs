@@ -16,7 +16,7 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 namespace Nethermind.Network.Libp2p;
 
 /// <summary>The libp2p stack the node's libp2p hosts run on: TCP, Noise, yamux, identify, ping and optionally gossipsub.</summary>
-/// <remarks>Every yamux stream passes through <see cref="ContiguousChunkProtocol"/> before multistream. Built from the component packages, so the node ships none of the transports the meta package adds (WebRTC, WebSockets, relay, QUIC, TLS) or their dependencies.</remarks>
+/// <remarks>Every yamux channel passes through <see cref="ContiguousChunkProtocol"/> before multistream. Built from the component packages, so the node ships none of the transports the meta package adds (WebRTC, WebSockets, relay, QUIC, TLS) or their dependencies.</remarks>
 public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     : PeerFactoryBuilderBase<Libp2pStackBuilder, Libp2pStackPeerFactory>(serviceProvider)
 {

@@ -24,7 +24,7 @@ public class OptimismGossipLoopbackTests
     private const string BlocksTopic = "/optimism/10/2/blocks";
 
     /// <summary>rollup-node-p2p.md: block gossip may carry up to 10 MiB, so a block of any legal size crosses a real session whole.</summary>
-    /// <remarks>An RPC over the receiver's bound, or one truncated below the stream, ends the read loop and disconnects the peer.</remarks>
+    /// <remarks>An RPC over the receiver's bound, or one truncated in the yamux channel, ends the read loop and disconnects the peer.</remarks>
     [TestCase(64, TestName = "A small block message reaches the other host")]
     [TestCase(280 * 1024, TestName = "A block message over one yamux window reaches the other host")]
     [TestCase(1024 * 1024 + 4096, TestName = "A block message over one mebibyte reaches the other host")]
@@ -84,7 +84,7 @@ public class OptimismGossipLoopbackTests
     }
 
     /// <summary>A gossip dial that has not connected the peer by the next check is cancelled before another starts, so a peer that stalls
-    /// in negotiation holds one stream, not one per check.</summary>
+    /// in negotiation holds one gossip channel, not one per check.</summary>
     [Test]
     public async Task A_stalled_gossip_dial_is_cancelled_before_the_next_check_dials_again()
     {
