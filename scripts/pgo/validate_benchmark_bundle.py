@@ -2,12 +2,18 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-"""Validate strict Fusaka training inputs before building benchmark images."""
+"""Validate strict Fusaka training inputs (Python 3.11+).
+
+The caller must obtain run/artifact metadata from the authenticated GitHub API.
+Keep the original artifact archives under .artifact-archives/<artifact-id>.zip.
+"""
 import argparse
+from datetime import datetime
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
+import zipfile
 
 from validate_collection import validate as validate_replay
 
@@ -31,6 +37,53 @@ def validate_run(run, source_sha):
     return f"{run['id']}-{run['run_attempt']}"
 
 
+def verify_artifacts(root, run, suffix):
+    root = Path(root).resolve(strict=True)
+    metadata = json.loads((root / "artifact-api.json").read_text(encoding="utf-8"))
+    names = (f"pgo-collection-{suffix}", f"pgo-app-references-{suffix}",
+             "nethermind-pgo-profile", "nethermind-pgo-raw-data")
+    identities = {}
+    for name in names:
+        candidates = [item for item in metadata["artifacts"] if item["name"] == name]
+        if len(candidates) != 1:
+            raise ValueError("required artifact identity is missing or ambiguous")
+        artifact = candidates[0]
+        identity = artifact["workflow_run"]
+        if (identity["id"] != run["id"] or identity["head_sha"] != run["head_sha"]
+                or identity["repository_id"] != run["repository"]["id"]
+                or identity["head_repository_id"] != run["head_repository"]["id"]
+                or artifact["expired"]
+                or datetime.fromisoformat(artifact["created_at"]) < datetime.fromisoformat(run["run_started_at"])
+                or datetime.fromisoformat(artifact["created_at"]) > datetime.fromisoformat(run["updated_at"])
+                or type(artifact["id"]) is not int or artifact["id"] < 1
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", artifact["digest"]) is None):
+            raise ValueError("artifact is not from the declared run attempt")
+        archive = root / ".artifact-archives" / f"{artifact['id']}.zip"
+        if digest(archive) != artifact["digest"].removeprefix("sha256:"):
+            raise ValueError("artifact archive does not match the GitHub digest")
+        checked = set()
+        with zipfile.ZipFile(archive) as bundle:
+            for item in bundle.infolist():
+                if item.is_dir():
+                    continue
+                relative = PurePosixPath(item.filename)
+                if relative.is_absolute() or ".." in relative.parts or "\\" in item.filename or item.filename in checked:
+                    raise ValueError("artifact archive contains an unsafe or duplicate path")
+                path = (root / name / relative).resolve(strict=True)
+                if not path.is_relative_to(root / name) or not path.is_file():
+                    raise ValueError("artifact file escapes its directory")
+                with bundle.open(item) as stream:
+                    expected = hashlib.file_digest(stream, "sha256").hexdigest()
+                if digest(path) != expected:
+                    raise ValueError("downloaded file does not match the authenticated artifact")
+                checked.add(item.filename)
+        actual = {path.relative_to(root / name).as_posix() for path in (root / name).rglob("*") if path.is_file()}
+        if not checked or actual != checked:
+            raise ValueError("extracted artifact inventory does not match its archive")
+        identities[name] = {"id": artifact["id"], "digest": artifact["digest"]}
+    return identities
+
+
 def verify_references(root, manifest):
     root = Path(root).resolve(strict=True)
     verified = {}
@@ -48,7 +101,7 @@ def verify_references(root, manifest):
                 or item["path"] in verified):
             raise ValueError("reference hash, size or uniqueness check failed")
         verified[item["path"]] = item["sha256"]
-    actual = {path.relative_to(root).as_posix() for path in root.rglob("*.dll")}
+    actual = {path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file() and path.suffix.lower() == ".dll"}
     if actual != set(verified) or not any(name.startswith("app/") for name in verified):
         raise ValueError("reference inventory is incomplete")
     return verified
@@ -57,6 +110,7 @@ def verify_references(root, manifest):
 def validate_bundle(root, run, source_sha):
     suffix = validate_run(run, source_sha)
     root = Path(root)
+    artifacts = verify_artifacts(root, run, suffix)
     collection = root / f"pgo-collection-{suffix}"
     manifest_path = collection / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -69,9 +123,12 @@ def validate_bundle(root, run, source_sha):
             or window["training_first_number"] != 25490001
             or window["training_last_number"] != 25491000):
         raise ValueError("training bundle is not the required Fusaka Flat window")
+    if ([header["index"] for header in window["headers"]] != list(range(1011))
+            or [header["number"] for header in window["headers"]] != list(range(25489990, 25491001))):
+        raise ValueError("training headers do not match the declared block window")
     replay = validate_replay(collection / "expb.log", 1000, 0, manifest_path)
     recorded = json.loads((collection / "execution-validation.json").read_text(encoding="utf-8"))
-    if replay["status"] != "valid" or replay != recorded:
+    if replay["status"] != "valid" or json.loads(json.dumps(replay)) != recorded:
         raise ValueError("independent strict replay validation failed")
     references = root / f"pgo-app-references-{suffix}"
     reference_manifest = json.loads((references / "manifest.json").read_text(encoding="utf-8"))
@@ -87,14 +144,15 @@ def validate_bundle(root, run, source_sha):
             "image": manifest["image"], "engine_api_results": replay["engine_api_results"],
             "measured_payloads": 1000, "reference_files": len(files),
             "profile_sha256": digest(profile), "trace_sha256": digest(trace),
-            "reference_manifest_sha256": digest(references / "manifest.json")}
+            "reference_manifest_sha256": digest(references / "manifest.json"), "artifacts": artifacts}
 
 
 def compare_rebuilt(references, manifest, rebuilt):
     expected = verify_references(references, manifest)
     expected = {name.removeprefix("app/"): sha for name, sha in expected.items() if name.startswith("app/")}
     rebuilt = Path(rebuilt)
-    actual = {path.relative_to(rebuilt).as_posix(): digest(path) for path in rebuilt.rglob("*.dll")}
+    actual = {path.relative_to(rebuilt).as_posix(): digest(path) for path in rebuilt.rglob("*")
+              if path.is_file() and path.suffix.lower() == ".dll"}
     if not actual or actual != expected:
         raise ValueError("rebuilt application DLLs do not match collected inputs")
     return {"matched_application_dlls": len(actual)}
