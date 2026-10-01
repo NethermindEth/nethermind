@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Ethereum.Ssz.Test;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
@@ -30,8 +31,9 @@ namespace Ethereum.ConsensusSpec.Test;
 /// <remarks>
 /// <see cref="GossipRouter"/> raises a message that passes its synchronous checks and returns Ignored; the signature and
 /// state rules run later in the import pipeline. The router reads blocks from a store seeded with the vector's <c>blocks</c>
-/// (see <see cref="SeedStore"/>). Each message's <see cref="RouterVerdict"/> is observed from the router's
-/// events and drop counters, and every verdict other than raised must match a row of <see cref="SynchronousVerdicts"/>.
+/// (see <see cref="SeedStore"/>) and the roots of those marked <c>failed</c> (see <see cref="SeedFailedBlocks"/>).
+/// Each message's <see cref="RouterVerdict"/> is observed from the router's events and drop counters, and every verdict
+/// other than raised must match a row of <see cref="SynchronousVerdicts"/>.
 /// An expected <c>valid</c> must be raised, an expected <c>ignore</c> must never be Rejected, and an expected <c>reject</c>
 /// must be Rejected. An expected reject the router raises or only drops makes the vector not-implemented, named by its reason.
 /// The minimal preset is not enumerated: the containers and limits here are mainnet-preset-shaped.
@@ -109,6 +111,7 @@ public class GossipValidationTests
                 ("aggregate slot is from a future slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("aggregate epoch is not current or previous epoch", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("already seen aggregate for this data", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("already seen aggregate for this epoch and aggregator", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
                 // REJECTs needing no state that the spec orders after store checks; gossip_validation.md lets them run in any order.
                 ("attestation epoch does not match target epoch", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("aggregate has no participants", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
@@ -124,10 +127,11 @@ public class GossipValidationTests
                 ("invalid indexed attestation 1", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("invalid indexed attestation 2", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
             ],
-            // An envelope whose block is not held is raised, so "envelope's block has not been seen" and, as the store holds only
-            // accepted blocks, "envelope's block failed validation" have no row; neither has the signature, which needs the state.
+            // An envelope whose block is not held is raised, so "envelope's block has not been seen" has no row; neither has the
+            // signature, which needs the state.
             [GossipTopics.ExecutionPayload] =
             [
+                ("envelope's block failed validation", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 // gloas/p2p-interface.md: verify_execution_requests_limits on the envelope.
                 ("too many builder deposit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("too many builder exit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
@@ -149,8 +153,7 @@ public class GossipValidationTests
                 ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.FutureSlot)),
                 ("payload attestation's block has not been seen", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
-                // The store holds only blocks fork choice accepted, so a block that failed validation reads as not seen.
-                ("payload attestation's block failed validation", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
+                ("payload attestation's block failed validation", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("payload attestation's block is not at the assigned slot", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
             ],
         };
@@ -317,11 +320,21 @@ public class GossipValidationTests
                 HeadRoot = Hash256.Zero,
             },
         };
-        GossipRouter router = new(spec, new SlotClock(spec, timestamper), LimboLogs.Instance, SeedStore(testCase.CasePath, spec, gloas), status);
+        GossipRouter router = new(spec, new SlotClock(spec, timestamper), LimboLogs.Instance, SeedStore(testCase.CasePath, spec, gloas), status,
+            SeedFailedBlocks(testCase.CasePath, spec, gloas));
         int raised = 0;
+        Action? markVerified = null;
         router.BeaconBlockReceived += _ => raised++;
-        router.AggregateAndProofReceived += _ => raised++;
-        router.GloasAggregateAndProofReceived += _ => raised++;
+        router.AggregateAndProofReceived += a =>
+        {
+            raised++;
+            markVerified = () => router.MarkAggregateSeen(a.Message!.Aggregate!.Data!, a.Message.Aggregate.CommitteeBits!, a.Message.Aggregate.AggregationBits!, a.Message.AggregatorIndex);
+        };
+        router.GloasAggregateAndProofReceived += a =>
+        {
+            raised++;
+            markVerified = () => router.MarkAggregateSeen(a.Message!.Aggregate!.Data!, a.Message.Aggregate.CommitteeBits!, a.Message.Aggregate.AggregationBits!, a.Message.AggregatorIndex);
+        };
         router.AttesterSlashingReceived += _ => raised++;
         router.GloasAttesterSlashingReceived += _ => raised++;
         router.ExecutionPayloadEnvelopeReceived += _ => raised++;
@@ -335,6 +348,7 @@ public class GossipValidationTests
             string label = $"message {i} ({message.Name}) expected {message.Expected}{(message.Reason is null ? "" : $" ({message.Reason})")}";
             long[] dropsBefore = [.. DropReasons.Select(router.GetDropCount)];
             int raisedBefore = raised;
+            markVerified = null;
 
             timestamper.UtcNow = genesis.AddMilliseconds(message.TimeMs);
             MessageValidity validity = router.Handle(meta.Topic, gloas, File.ReadAllBytes(Path.Combine(testCase.CasePath, message.Name + ".ssz_snappy")));
@@ -357,6 +371,10 @@ public class GossipValidationTests
             }
 
             observations?.Add(new Observation(meta.Topic, message.Expected, message.Reason, actual));
+            // The import pipeline marks the aggregate seen sets once a raised aggregate verifies, as one the vector expects valid would.
+            if (actual == RouterVerdict.Raised && message.Expected == "valid")
+                markVerified?.Invoke();
+
             if (actual != RouterVerdict.Raised && (message.Reason is null || !IsSynchronousVerdict(meta.Topic, message.Reason, actual)))
                 failures.Add($"{label} but the router's verdict {actual} has no row in {nameof(SynchronousVerdicts)}");
 
@@ -419,6 +437,28 @@ public class GossipValidationTests
         }
 
         return store;
+    }
+
+    /// <summary>The blocks meta.yaml marks <c>failed</c>, as the importer records the ones it refuses.</summary>
+    /// <inheritdoc cref="SeedStore" path="/param"/>
+    internal static FailedBlockRoots SeedFailedBlocks(string casePath, BeaconChainSpec spec, bool gloas = false)
+    {
+        FailedBlockRoots failedBlocks = new();
+        foreach (VectorBlock block in VectorMeta.Load(casePath).Blocks)
+        {
+            if (!block.Failed)
+                continue;
+
+            byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy"));
+            // A block whose shape is not its slot's fork never reaches the importer.
+            if (gloas && SignedBeaconBlockCodec.TryReadSlot(ssz, out ulong slot) && !SignedBeaconBlockCodec.IsGloasSlot(slot, spec))
+                continue;
+
+            ForkedSignedBeaconBlock decoded = SignedBeaconBlockCodec.Decode(ssz, spec);
+            failedBlocks.Add(decoded.ComputeMessageRoot(), decoded.Slot);
+        }
+
+        return failedBlocks;
     }
 
     private static bool IsSynchronousVerdict(string topic, string reason, RouterVerdict verdict) =>

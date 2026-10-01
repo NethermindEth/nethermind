@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.BeaconChain.Crypto;
@@ -11,6 +12,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.ForkChoice;
 
@@ -83,6 +85,9 @@ public sealed class ForkChoiceRunner
 
     /// <summary>The fields an indexed attestation carries in both the Fulu and the Gloas container.</summary>
     private readonly record struct IndexedVote(ulong[] AttestingIndices, AttestationData Data, BlsSignature Signature);
+
+    /// <summary>The fields a <c>SignedAggregateAndProof</c> adds around its aggregate, with <c>hash_tree_root</c> of the container it came in.</summary>
+    private readonly record struct AggregatorProof(ulong AggregatorIndex, BlsSignature SelectionProof, Hash256 MessageRoot, BlsSignature Signature);
 
     private readonly record struct BlockProposer(ulong Slot, ulong ProposerIndex);
 
@@ -749,7 +754,27 @@ public sealed class ForkChoiceRunner
     public void OnAttestation(AttestationGloas attestation, bool isFromBlock = false, bool verifySignature = true) =>
         OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock, verifySignature, gloasContainer: true);
 
-    private void OnAttestation(AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, bool isFromBlock, bool verifySignature, bool gloasContainer)
+    /// <summary>Applies an aggregate after authenticating its wrapper under p2p-interface.md beacon_aggregate_and_proof.</summary>
+    /// <remarks>The target checkpoint state supplies the vote's committee and domains; all three signatures verify together.</remarks>
+    internal void OnAggregateAndProof(SignedAggregateAndProof signed)
+    {
+        AggregateAndProof message = signed.Message!;
+        Attestation aggregate = message.Aggregate!;
+        OnAttestation(aggregate.Data!, aggregate.AggregationBits!, aggregate.CommitteeBits!, aggregate.Signature, isFromBlock: false, verifySignature: true, gloasContainer: false,
+            new AggregatorProof(message.AggregatorIndex, message.SelectionProof, SszRoots.HashTreeRoot(message), signed.Signature));
+    }
+
+    /// <inheritdoc cref="OnAggregateAndProof(SignedAggregateAndProof)"/>
+    internal void OnAggregateAndProof(SignedAggregateAndProofGloas signed)
+    {
+        AggregateAndProofGloas message = signed.Message!;
+        AttestationGloas aggregate = message.Aggregate!;
+        OnAttestation(aggregate.Data!, aggregate.AggregationBits!, aggregate.CommitteeBits!, aggregate.Signature, isFromBlock: false, verifySignature: true, gloasContainer: true,
+            new AggregatorProof(message.AggregatorIndex, message.SelectionProof, SszRoots.HashTreeRoot(message), signed.Signature));
+    }
+
+    private void OnAttestation(AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, bool isFromBlock, bool verifySignature, bool gloasContainer,
+        AggregatorProof? aggregator = null)
     {
         CheckpointRef target = CheckpointRef.From(data.Target!);
         Hash256 beaconBlockRoot = data.BeaconBlockRoot!;
@@ -792,7 +817,10 @@ public sealed class ForkChoiceRunner
         };
         if (gloasContainer)
             ThrowIfOverGloasIndexedAttestationBound(attestingIndices, "Attestation");
-        if (!IsValidIndexedAttestation(targetState, new IndexedVote(attestingIndices, data, signature), verifySignature))
+        IndexedVote vote = new(attestingIndices, data, signature);
+        if (aggregator is { } proof)
+            VerifyAggregator(targetState, target.Epoch, data.Slot, committeeBits, proof, vote);
+        else if (!IsValidIndexedAttestation(targetState, vote, verifySignature))
             throw new ForkChoiceException("Attestation indices or aggregate signature are invalid");
 
         // specs/gloas/fork-choice.md update_latest_messages: payload_present = data.index == 1; a pre-Gloas slot has no payload vote.
@@ -808,6 +836,51 @@ public sealed class ForkChoiceRunner
 
         ApplyVotes(attestingIndices, beaconBlockRoot, data.Slot, target.Epoch, payloadPresent);
     }
+
+    // p2p-interface.md beacon_aggregate_and_proof: authenticate committee membership and all three signatures before applying votes.
+    private void VerifyAggregator(ForkedBeaconState state, ulong targetEpoch, ulong slot, BitArray committeeBits, AggregatorProof proof, IndexedVote vote)
+    {
+        // get_attesting_indices has already refused committee bits naming no committee or one out of range.
+        int committeeIndex = 0;
+        while (!committeeBits[committeeIndex])
+            committeeIndex++;
+
+        CommitteeCache committees = state switch
+        {
+            ForkedBeaconState.OfFulu fulu => _committees.GetCommitteeCache(fulu.State, targetEpoch),
+            ForkedBeaconState.OfGloas gloas => _committees.GetCommitteeCache(gloas.State, targetEpoch),
+            _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
+        };
+        ReadOnlySpan<int> committee = committees.GetBeaconCommittee(slot, committeeIndex);
+        if (!BeaconStateAccessors.IsAggregator(committee.Length, proof.SelectionProof))
+            throw new ForkChoiceException($"Validator {proof.AggregatorIndex} is not selected as an aggregator for slot {slot}");
+        if (proof.AggregatorIndex > int.MaxValue || !committee.Contains((int)proof.AggregatorIndex))
+            throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} is not a member of committee {committeeIndex} at slot {slot}");
+        if (!SignatureSets.TryGetValidatorKey(_pubkeys, proof.AggregatorIndex, out G1Affine key))
+            throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} has no valid public key");
+
+        // compute_signing_root(slot, domain): hash_tree_root of a uint64 is its little-endian chunk.
+        Span<byte> slotRoot = stackalloc byte[32];
+        slotRoot.Clear();
+        BinaryPrimitives.WriteUInt64LittleEndian(slotRoot, slot);
+        Hash256 selectionRoot = Domains.ComputeSigningRoot(new Hash256(slotRoot), GetDomain(state, DomainType.SelectionProof, targetEpoch));
+        Hash256 aggregatorRoot = Domains.ComputeSigningRoot(proof.MessageRoot, GetDomain(state, DomainType.AggregateAndProof, targetEpoch));
+
+        BlockSignatureBatch batch = new();
+        if (!BlockSignatureBatch.Verify(key, proof.SelectionProof, selectionRoot, batch.Defer("Aggregate selection proof is invalid"))
+            || !BlockSignatureBatch.Verify(key, proof.Signature, aggregatorRoot, batch.Defer("Aggregator signature is invalid"))
+            || !IsValidIndexedAttestation(state, vote, verifySignature: true, batch.Defer("Aggregate signature is invalid")))
+            throw new ForkChoiceException("Aggregate indices or signatures are invalid");
+
+        batch.Verify();
+    }
+
+    private static Hash256 GetDomain(ForkedBeaconState state, ReadOnlySpan<byte> domainType, ulong epoch) => state switch
+    {
+        ForkedBeaconState.OfFulu fulu => fulu.State.GetDomain(domainType, epoch),
+        ForkedBeaconState.OfGloas gloas => gloas.State.GetDomain(domainType, epoch),
+        _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
+    };
 
     /// <summary>
     /// The Gloas <c>validate_on_attestation</c> rules on <c>data.index</c>, which votes for the head block's
@@ -894,18 +967,20 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>The spec's <c>is_valid_indexed_attestation</c> of <paramref name="state"/>'s fork, over the vote in that fork's container.</summary>
-    private bool IsValidIndexedAttestation(ForkedBeaconState state, IndexedVote vote, bool verifySignature) => state switch
+    private bool IsValidIndexedAttestation(ForkedBeaconState state, IndexedVote vote, bool verifySignature, BlockSignatureBatch.Deferral? deferral = null) => state switch
     {
         ForkedBeaconState.OfFulu fulu => BlockProcessing.IsValidIndexedAttestation(
             fulu.State,
             new IndexedAttestation { AttestingIndices = vote.AttestingIndices, Data = vote.Data, Signature = vote.Signature },
             _pubkeys,
-            verifySignature),
+            verifySignature,
+            deferral),
         ForkedBeaconState.OfGloas gloas => GloasBlockProcessing.IsValidIndexedAttestation(
             gloas.State,
             new IndexedAttestationGloas { AttestingIndices = vote.AttestingIndices, Data = vote.Data, Signature = vote.Signature },
             _pubkeys,
-            verifySignature),
+            verifySignature,
+            deferral),
         _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
     };
 

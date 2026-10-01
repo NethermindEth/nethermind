@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Google.Protobuf;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
@@ -75,8 +76,6 @@ public partial class GossipRouterTests
             .SetName("payload that is not a valid SSZ block");
         yield return new TestCaseData(BlockMessage(CurrentSlot + 2), GossipDropReason.FutureSlot)
             .SetName("slot two ahead of the wall clock");
-        yield return new TestCaseData(BlockMessage(CurrentSlot - Spec.SlotsPerEpoch - 1), GossipDropReason.StaleSlot)
-            .SetName("block older than one epoch");
     }
 
     [TestCaseSource(nameof(DroppedBlockMessageCases))]
@@ -93,6 +92,23 @@ public partial class GossipRouterTests
             Assert.That(received, Is.Zero, "no event for a dropped message");
             Assert.That(router.GetDropCount(reason), Is.EqualTo(1), "the drop is counted under its reason");
         }
+    }
+
+    [Test]
+    public void Block_older_than_one_epoch_above_finality_is_raised()
+    {
+        ManualTimestamper time = new(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot));
+        BeaconChainStatusHolder status = new(Spec, time)
+        {
+            CurrentStatus = new StatusMessageV2 { FinalizedEpoch = Spec.GetEpoch(CurrentSlot) - 2, FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero },
+        };
+        GossipRouter router = new(Spec, new SlotClock(Spec, time), LimboLogs.Instance, status: status);
+        int received = 0;
+        router.BeaconBlockReceived += _ => received++;
+
+        router.HandleBeaconBlock(BlockMessage(CurrentSlot - Spec.SlotsPerEpoch - 1));
+
+        Assert.That(received, Is.EqualTo(1));
     }
 
     [Test]
@@ -228,6 +244,7 @@ public partial class GossipRouterTests
         PreGloasSlotForHeldGloasBlock,
         PreGloasSlotBeforeFinalized,
         BlockNotHeld,
+        BlockFailedValidation,
         NoStore,
         BlockNotGloas,
         StoredBlockUnreadable,
@@ -252,6 +269,7 @@ public partial class GossipRouterTests
     [TestCase(EnvelopeCase.PreGloasSlotForHeldGloasBlock, MessageValidity.Rejected, GossipDropReason.InvalidField, false)]
     [TestCase(EnvelopeCase.PreGloasSlotBeforeFinalized, MessageValidity.Ignored, GossipDropReason.BeforeFinalized, false)]
     [TestCase(EnvelopeCase.BlockNotHeld, MessageValidity.Ignored, null, true)]
+    [TestCase(EnvelopeCase.BlockFailedValidation, MessageValidity.Rejected, GossipDropReason.InvalidField, false)]
     [TestCase(EnvelopeCase.NoStore, MessageValidity.Ignored, null, true)]
     [TestCase(EnvelopeCase.BlockNotGloas, MessageValidity.Ignored, GossipDropReason.InvalidField, false)]
     [TestCase(EnvelopeCase.StoredBlockUnreadable, MessageValidity.Ignored, GossipDropReason.InvalidField, false)]
@@ -296,6 +314,10 @@ public partial class GossipRouterTests
                 break;
             case EnvelopeCase.BlockNotHeld:
                 message.BeaconBlockRoot = Keccak.OfAnEmptyString;
+                break;
+            case EnvelopeCase.BlockFailedValidation:
+                message.BeaconBlockRoot = Keccak.OfAnEmptyString;
+                fixture.FailedBlocks.Add(message.BeaconBlockRoot, message.Payload!.SlotNumber);
                 break;
             case EnvelopeCase.BlockNotGloas:
                 message.BeaconBlockRoot = fixture.FuluRoot;
@@ -444,11 +466,12 @@ public partial class GossipRouterTests
             SignedBeaconBlock fulu = CreateMinimalBlock(FirstGloasSlot - 1);
             FuluRoot = SszRoots.HashTreeRoot(fulu.Message!);
             Store.PutBlock(FuluRoot, fulu);
-            Router = new GossipRouter(Sepolia, new SlotClock(Sepolia, Timestamper), LimboLogs.Instance, withStore ? Store : null, status);
+            Router = new GossipRouter(Sepolia, new SlotClock(Sepolia, Timestamper), LimboLogs.Instance, withStore ? Store : null, status, FailedBlocks);
             Router.ExecutionPayloadEnvelopeReceived += _ => Raised++;
         }
 
         public GossipRouter Router { get; }
+        public FailedBlockRoots FailedBlocks { get; } = new();
         public BeaconChainStore Store { get; }
         public ManualTimestamper Timestamper { get; }
         public Hash256 BlockRoot { get; }

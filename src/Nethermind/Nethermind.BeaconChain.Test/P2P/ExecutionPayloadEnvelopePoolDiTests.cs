@@ -3,6 +3,7 @@
 
 using System.Linq;
 using Autofac;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
@@ -82,5 +83,34 @@ public class ExecutionPayloadEnvelopePoolDiTests
         MessageValidity validity = router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true, Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)));
 
         Assert.That(validity, Is.EqualTo(MessageValidity.Rejected), "without the store the block is not held and the envelope is consumed");
+    }
+
+    // gloas/p2p-interface.md execution_payload: [REJECT] the envelope's block passes validation, read from the roots the importer records.
+    [Test]
+    public void Router_from_the_module_rejects_envelopes_for_the_failed_blocks_the_module_registers([Values] bool failed)
+    {
+        using IContainer container = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia).Build();
+        GossipRouter router = container.Resolve<GossipRouter>();
+        Hash256 root = Keccak.Compute("block that failed validation");
+        if (failed)
+        {
+            container.Resolve<FailedBlockRoots>().Add(root, FirstGloasSlot + 1);
+        }
+
+        SignedExecutionPayloadEnvelope envelope = new()
+        {
+            Message = new ExecutionPayloadEnvelope
+            {
+                Payload = new ExecutionPayloadGloas { SlotNumber = FirstGloasSlot + 1, Withdrawals = [] },
+                ExecutionRequests = new ExecutionRequestsGloas(),
+                BeaconBlockRoot = root,
+                ParentBeaconBlockRoot = Hash256.Zero,
+            },
+            Signature = new BlsSignature(new byte[BlsSignature.Length]),
+        };
+
+        MessageValidity validity = router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true, Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)));
+
+        Assert.That(validity, Is.EqualTo(failed ? MessageValidity.Rejected : MessageValidity.Ignored));
     }
 }
