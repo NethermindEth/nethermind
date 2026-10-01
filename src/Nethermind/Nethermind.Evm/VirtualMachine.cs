@@ -561,7 +561,8 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     /// <summary>
-    /// Empties the cache slots an exceptional unwind leaves claimed, so the next transaction gets fresh frames there.
+    /// Drops what an exceptional unwind leaves claimed: the cache slots, so the next transaction gets fresh frames
+    /// there, and <see cref="ReturnData"/>, which still holds a staged child frame.
     /// </summary>
     /// <remarks>
     /// Such a slot holds a child frame that CALL or CREATE staged and the loop never entered - a tracer threw in
@@ -569,11 +570,13 @@ public partial class VirtualMachine<TGasPolicy>(
     /// environment, or a frame whose disposal threw. Nothing disposes them, and such a frame must not be disposed
     /// now: the unwind has already restored the access journals to before its snapshot, and the transaction
     /// processor recycles those journals next, so its restore would throw or undo another transaction's accesses.
-    /// Its environment stays referenced by it, so that is not put back into service either. Emptying the slots
-    /// hands both to the GC instead of keeping their data stack, code and input until the depth is reached again.
+    /// Its environment stays referenced by it, so that is not put back into service either. Once the slots and
+    /// <see cref="ReturnData"/> are cleared, this VM holds no reference to the frame or its environment, so the GC
+    /// collects both, with their data stack, code and input, instead of the VM keeping them until it runs again.
     /// </remarks>
     private void ForgetOrphanedFrames()
     {
+        ReturnData = null;
         VmState<TGasPolicy>.ForgetUnreleased(FrameCache);
         ExecutionEnvironment.ForgetInUse(EnvironmentCache);
     }

@@ -266,6 +266,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             Assert.That(IsDisposed(orphan), Is.False, "the staged frame was orphaned");
             Assert.That(Machine.FrameCache[1], Is.Null, "the unwind empties the orphan's slot");
             Assert.That(Machine.EnvironmentCache[1], Is.Null, "and its environment's");
+            Assert.That(Machine.ReturnData, Is.Not.SameAs(orphan), "and drops the staged frame from the return data");
         }
 
         RecordingTracer second = Run(code, traced: false);
@@ -599,6 +600,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             Assert.That(orphanEnv.ExecutingAccount, Is.EqualTo(Chain), "nor is its environment");
             Assert.That(Machine.FrameCache[orphanDepth], Is.Null, "the orphan's slot is emptied");
             Assert.That(Machine.EnvironmentCache[orphanDepth], Is.Null, "and its environment's");
+            Assert.That(Machine.ReturnData, Is.Not.SameAs(orphan), "the VM no longer holds the staged frame");
             foreach (int depth in new[] { 1, 2, 4, 5, 6 })
             {
                 Assert.That(Machine.FrameCache[depth], Is.SameAs(before[depth - 1]), $"depth {depth} kept");
