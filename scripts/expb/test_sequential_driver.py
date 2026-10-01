@@ -15,6 +15,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -108,6 +109,12 @@ class ParsingTests(unittest.TestCase):
         for rejected in ("0", "-1", "1.5", "1000 ", "ten"):
             with self.subTest(rejected=rejected), self.assertRaises(ValueError):
                 driver.parse_amount(rejected)
+
+    def test_malformed_environment_error_does_not_include_input(self) -> None:
+        for rejected in ("PRIVATE KEY=private-value-sentinel", "1PRIVATE=private-value-sentinel", "private-value-sentinel"):
+            with self.subTest(rejected=rejected), self.assertRaises(ValueError) as error:
+                driver.parse_pairs(rejected)
+            self.assertNotIn("private-value-sentinel", str(error.exception))
 
 
 class MetricStatsTests(unittest.TestCase):
@@ -371,6 +378,18 @@ class RenderTests(unittest.TestCase):
 
 
 class SamplePrivacyTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "Exercises the Linux runner shell")
+    def test_single_image_malformed_environment_warning_does_not_echo_value(self) -> None:
+        text = (ROOT / ".github/workflows/run-expb-reproducible-benchmarks.yml").read_text(encoding="utf-8")
+        start = text.index("          # Export caller-provided expb env tuning")
+        end = text.index('          if [[ "${MEASUREMENT_MODE}" == "compute-warm" ]]; then', start)
+        env = {**os.environ, "EXPB_ENV_PASSTHROUGH": "PRIVATE KEY=private-value-sentinel"}
+        result = subprocess.run(["bash", "-c", "set -euo pipefail\n" + text[start:end]],
+                                env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Skipping invalid expb_env entry", result.stdout)
+        self.assertNotIn("private-value-sentinel", result.stdout + result.stderr)
+
     def test_only_private_execution_copy_contains_config_on_success_and_failure(self) -> None:
         base = {"scenarios": {"nethermind": {"image": "placeholder", "extra_env": {
                     "PRIVATE_SETTING": "private-non-export-setting"}}},
@@ -536,6 +555,8 @@ class CampaignScopeTests(unittest.TestCase):
             ('[{"id":"a b","image":"repo:tag"}]', {}),
             (valid_images, {"CLIENT_ENV": "FOO"}),
             (valid_images, {"EXPB_ENV_PASSTHROUGH": "bad-key=1"}),
+            (valid_images, {"CLIENT_ENV": "PRIVATE KEY=private-value-sentinel"}),
+            (valid_images, {"EXPB_ENV_PASSTHROUGH": "PRIVATE KEY=private-value-sentinel"}),
             (valid_images, {"AMOUNT": "0"}),
             (valid_images, {"MEASUREMENT_MODE": "compute-warm", "ADDITIONAL_EXTRA_FLAGS": "--JsonRpc.GasCap=100"}),
         ):
@@ -549,6 +570,7 @@ class CampaignScopeTests(unittest.TestCase):
                     self.assertEqual(driver.main(), 1)
                 campaign = json.loads((self.directory / "rejected" / "campaign.json").read_text(encoding="utf-8"))
                 self.assertEqual(campaign["status"], "failed")
+                self.assertNotIn("private-value-sentinel", json.dumps(campaign))
 
 
 class SummaryTests(unittest.TestCase):

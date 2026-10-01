@@ -1437,7 +1437,7 @@ jobs:
                 export "${_kv}"
                 echo "Exported expb env: ${_kv%%=*}=<value>"
               else
-                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
+                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE)."
               fi
             done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
           fi

@@ -49,7 +49,7 @@ def parse_pairs(value: str) -> dict[str, str]:
             continue
         key, separator, item_value = item.partition("=")
         if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
-            raise ValueError(f"environment entry must use a valid KEY=VALUE pair: {item!r}")
+            raise ValueError("environment entry must use a valid KEY=VALUE pair")
         result[key] = item_value
     return result
 
