@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -531,6 +532,216 @@ public class GloasBlockImporterTests
             Assert.That(importer.ImportEnvelope(lastBeforeSkip.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the checkpoint block of the epoch whose first slot was skipped");
             Assert.That(importer.ImportEnvelope(middle.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "a block that is no checkpoint ages out");
             Assert.That(importer.ImportEnvelope(lastOfEpoch!.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "the parent of the next epoch's first block is no checkpoint and ages out");
+        }
+    }
+
+    public enum EvictedParent
+    {
+        Empty,
+        FullVerified,
+        FullUnverified,
+    }
+
+    public enum HeldBase
+    {
+        GloasCheckpoint,
+        FuluAnchor,
+        GloasAnchor,
+    }
+
+    /// <summary>
+    /// specs/gloas/fork-choice.md <c>on_block</c> copies <c>store.block_states[block.parent_root]</c> for any known parent, the
+    /// same state whether the child builds on its full or its empty payload: the child applies the parent's payload itself
+    /// (specs/gloas/beacon-chain.md <c>process_parent_execution_payload</c>). So a sibling on a parent whose state left every
+    /// tier imports on a state regenerated from stored blocks alone, and a full sibling whose parent's payload is unverified is
+    /// deferred on that state. With no Gloas block at the fork slot, the nearest held state is the Fulu anchor's and the replay
+    /// crosses the fork on a copy of it; from a Gloas anchor it is the pinned anchor state. The held-only getter that gossip
+    /// reads never regenerates.
+    /// </summary>
+    [Test]
+    public void Sibling_on_an_evicted_gloas_parent_imports_on_a_regenerated_state([Values] EvictedParent parentKind, [Values] HeldBase heldBase)
+    {
+        SignedGloasChain chain = new();
+        TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        Hash256 anchorStateRoot = SszRoots.HashTreeRoot(chain.AnchorState);
+        SignedGloasChain.Block first = chain.Next(null, heldBase == HeldBase.FuluAnchor ? ForkSlot + 1 : ForkSlot, full: false, 0xE1);
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)),
+            gloasAnchor: heldBase == HeldBase.GloasAnchor ? first : null);
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        if (heldBase != HeldBase.GloasAnchor)
+        {
+            Import(importer, first);
+            Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture");
+        }
+
+        ulong parentSlot = first.Signed.Message!.Slot + 1;
+        // Built on the first block's full payload where it was imported, so regenerating it replays a parent payload's effects.
+        SignedGloasChain.Block parent = chain.Next(first, parentSlot, full: heldBase != HeldBase.GloasAnchor, 0xE2);
+        Import(importer, parent);
+        if (parentKind == EvictedParent.FullVerified)
+        {
+            Assert.That(importer.ImportEnvelope(parent.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture");
+        }
+
+        // The per-block tier holds two epochs of blocks; a longer branch on the parent pushes its state out.
+        SignedGloasChain.Block tip = parent;
+        for (ulong slot = parentSlot + 1; slot <= parentSlot + 2 * ForkSlot + 1; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            Import(importer, tip);
+        }
+
+        BeaconStateGloas? heldBefore = states.GetGloasBlockState(parent.Root);
+        SignedGloasChain.Block sibling = chain.Next(parent, parentSlot + 1, full: parentKind != EvictedParent.Empty, 0xE3);
+        BlockImportResult result = importer.Import(sibling.Forked, sibling.Root, verifySignatures: true);
+        ExecutionPayloadEnvelopeImportResult? envelope = null;
+        BlockImportResult? afterEnvelope = null;
+        if (parentKind == EvictedParent.FullUnverified)
+        {
+            envelope = importer.ImportEnvelope(parent.Envelope);
+            afterEnvelope = importer.Import(sibling.Forked, sibling.Root, verifySignatures: true);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldBefore, Is.Null, "fixture: the parent's state left every tier, and the gossip getter does not regenerate it");
+            if (parentKind == EvictedParent.FullUnverified)
+            {
+                Assert.That(result, Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
+                Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the regenerated parent state verifies the parent's envelope");
+                Assert.That(afterEnvelope, Is.EqualTo(BlockImportResult.Imported));
+            }
+            else
+            {
+                Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+            }
+
+            Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot), "the replay crosses the fork on a copy of the held Fulu state");
+            Assert.That(logger.LogList, Has.None.Contains("no longer retained"));
+            Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
+        }
+    }
+
+    /// <summary>
+    /// A first Gloas block that skips the fork slot makes its Fulu parent the checkpoint block of the fork epoch
+    /// (specs/gloas/fork-choice.md <c>get_checkpoint_block</c>). That Fulu state must outlive fork branch churn, or a Gloas
+    /// parent a few slots past the fork regenerates only from a state more than one epoch below it, and is refused.
+    /// </summary>
+    [Test]
+    public void Fulu_parent_of_a_first_gloas_block_that_skips_the_fork_slot_stays_a_regeneration_base()
+    {
+        SignedGloasChain chain = new();
+        TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
+        List<BlockImportResult> fixture = [];
+        void ImportFulu(SignedGloasChain.FuluBlock block) => fixture.Add(importer.Import(block.Forked, block.Root, verifySignatures: true));
+
+        // The lineage leaves the anchor, so the dense Fulu run is a fork branch whose states only the LRU holds.
+        ImportFulu(chain.NextFulu(2, blockHashFill: 0xD0));
+        SignedGloasChain.FuluBlock? lastFulu = null;
+        for (ulong slot = 1; slot < ForkSlot; slot++)
+        {
+            lastFulu = chain.NextFulu(slot, lastFulu, (byte)slot);
+            ImportFulu(lastFulu);
+        }
+
+        SignedGloasChain.Block first = chain.NextOnFulu(lastFulu!, ForkSlot + 1, full: false, 0xE1);
+        SignedGloasChain.Block parent = chain.Next(first, ForkSlot + 2, full: false, 0xE2);
+        Import(importer, first, parent);
+
+        // Fulu fork branch imports push the dense run's states out of the LRU, and a long Gloas branch the Gloas states.
+        for (ulong slot = 3; slot < 12; slot++)
+        {
+            ImportFulu(chain.NextFulu(slot, blockHashFill: (byte)(0x80 + slot)));
+        }
+
+        SignedGloasChain.Block tip = parent;
+        for (ulong slot = ForkSlot + 3; slot <= 3 * ForkSlot + 3; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            Import(importer, tip);
+        }
+
+        SignedGloasChain.Block sibling = chain.Next(parent, ForkSlot + 3, full: false, 0xE3);
+        BlockImportResult result = importer.Import(sibling.Forked, sibling.Root, verifySignatures: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
+        }
+    }
+
+    /// <summary>
+    /// The Fulu checkpoint parent of a first Gloas block is retained from the live lineage as a copy: a trusted Fulu block
+    /// imported on the lineage afterwards advances the lineage state in place and must not change the retained one.
+    /// </summary>
+    [Test]
+    public void Fulu_checkpoint_parent_retained_from_the_lineage_is_a_copy()
+    {
+        SignedGloasChain chain = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.FuluBlock lineage = chain.NextFulu(ForkSlot - 2);
+        SignedGloasChain.FuluBlock late = chain.NextFulu(ForkSlot - 1, lineage, 0xD1);
+        SignedGloasChain.Block first = chain.NextOnFulu(lineage, ForkSlot + 1, full: false, 0xE1);
+        SignedGloasChain.Block sibling = chain.NextOnFulu(lineage, ForkSlot + 2, full: false, 0xE2);
+
+        BlockImportResult[] fixture =
+        [
+            importer.Import(lineage.Forked, lineage.Root, verifySignatures: true),
+            importer.Import(first.Forked, first.Root, verifySignatures: true),
+            importer.Import(late.Forked, late.Root, verifySignatures: false),
+        ];
+        BlockImportResult result = importer.Import(sibling.Forked, sibling.Root, verifySignatures: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        }
+    }
+
+    /// <summary>
+    /// A Gloas replay is bounded like a Fulu one: one epoch of stored blocks above the nearest held state, here the Fulu
+    /// anchor's, so the replay crosses the fork, builds on full and empty parents, and leaves the Fulu state unchanged.
+    /// One block more is refused with a warning before any replay.
+    /// </summary>
+    [Test]
+    public void Gloas_regeneration_crosses_the_fork_and_replays_at_most_one_epoch([Values] bool beyondBound)
+    {
+        SignedGloasChain chain = new();
+        BeaconChainStore store = chain.CreateStore();
+        int count = (int)chain.Spec.SlotsPerEpoch + (beyondBound ? 1 : 0);
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (int i = 0; i < count; i++)
+        {
+            tip = chain.Next(tip, ForkSlot + (ulong)i, full: i % 2 == 1, (byte)(0x40 + i));
+            store.PutForkedBlock(tip.Root, tip.Forked);
+            blocks.Add(tip);
+        }
+
+        Hash256[] ancestry = [.. blocks.Select(static b => b.Root).Reverse(), chain.AnchorRoot];
+        HashSet<Hash256> gloasRoots = [.. blocks.Select(static b => b.Root)];
+        PubkeyCache pubkeys = new();
+        pubkeys.Build(chain.AnchorState.Validators!);
+        TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        PostStateCache states = new(store, chain.Spec, chain.AnchorRoot, chain.AnchorState, isGloasBlock: gloasRoots.Contains, logManager: new OneLoggerLogManager(new ILogger(logger)),
+            pubkeys: pubkeys, ancestors: root => ancestry.SkipWhile(r => r != root));
+        Hash256 anchorStateRoot = SszRoots.HashTreeRoot(chain.AnchorState);
+
+        long started = Stopwatch.GetTimestamp();
+        BeaconStateGloas? regenerated = states.GetOrRegenerateGloasBlockState(blocks[^1].Root);
+        double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        if (!beyondBound) TestContext.Out.WriteLine($"Gloas regeneration across the fork: {count} blocks in {elapsedMs:F1} ms, {elapsedMs / count:F2} ms per block, {chain.AnchorState.Validators!.Length} validators");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(regenerated is null ? null : SszRoots.HashTreeRoot(regenerated), Is.EqualTo(beyondBound ? null : blocks[^1].Signed.Message!.StateRoot));
+            Assert.That(states.GetGloasBlockState(blocks[^1].Root), Is.SameAs(regenerated), "a regenerated state is retained, so the next import naming it replays nothing");
+            Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot));
+            Assert.That(logger.LogList, beyondBound ? Has.One.Contains($"no ancestor state is held within {chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
         }
     }
 
