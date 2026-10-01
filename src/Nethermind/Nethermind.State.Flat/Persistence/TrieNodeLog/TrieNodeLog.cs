@@ -62,7 +62,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             for (int shard = 0; shard < shardCount; shard++)
             {
                 string name = $"{partitionName}-{shard}";
-                shards.Add(new TrieNodeLogShard(name, Path.Combine(basePath, name), db, budget / shardCount, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, logManager));
+                shards.Add(new TrieNodeLogShard(name, Path.Combine(basePath, name), db, budget / shardCount, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, config.TrieNodeLogCompression, logManager));
             }
         }
         _shards = shards.ToArray();

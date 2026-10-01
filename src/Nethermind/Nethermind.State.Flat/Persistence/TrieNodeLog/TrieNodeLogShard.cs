@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -69,7 +70,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     /// <param name="mergeLimiter">Caps concurrent merges across every shard of the log.</param>
     /// <param name="backlogMargin">Sealed generations allowed beyond <paramref name="mergeLag"/> before a roll waits for a merge.</param>
-    public TrieNodeLogShard(string name, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
+    public TrieNodeLogShard(string name, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, bool compress, ILogManager logManager)
     {
         Name = name;
         VersionKey = Keccak.Compute($"TrieNodeLogVersion:{name}").BytesToArray();
@@ -81,6 +82,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _mergeLag = mergeLag;
         _maxBacklog = mergeLag + backlogMargin;
         _mergeLimiter = mergeLimiter;
+        Compress = compress;
         _label = new TrieNodeLogLabel(name);
 
         Directory.CreateDirectory(basePath);
@@ -89,6 +91,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     }
 
     public string Name { get; }
+
+    /// <summary>Whether new blocks are LZ4-compressed; blocks are read according to their own header either way.</summary>
+    public bool Compress { get; }
 
     internal byte[] VersionKey { get; }
 
@@ -338,6 +343,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
     }
 
+    [SkipLocalsInit]
     private void FlushGeneration(TrieNodeLogGeneration generation, List<TrieNodeLogGeneration> newer)
     {
         long sw = Stopwatch.GetTimestamp();
@@ -351,7 +357,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             // A key with a newer record in a later generation is skipped, but only if that record's batch has reached
             // RocksDB: the index is published before the RocksDB commit, and a crash in between drops the record.
             ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
-            Span<byte> probeBuffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
+            Span<byte> stored = stackalloc byte[TrieNodeLogBlock.MaxStoredLength];
+            Span<byte> raw = stackalloc byte[TrieNodeLogBlock.Size];
 
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
@@ -363,10 +370,10 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                     while (scanner.MoveNext())
                     {
                         TrieNodeLogRecord header = scanner.Header;
-                        if (header.IsCommit) continue;
+                        if (header.Type is not (TrieNodeLogRecord.Put or TrieNodeLogRecord.Delete)) continue;
                         ulong hash = TrieNodeLogRecord.Hash(header.Column, scanner.Key);
-                        if (!generation.IsLatest(hash, scanner.Offset)) continue;
-                        if (HasCommittedNewerRecord(newer, hash, header.Column, scanner.Key, probeBuffer, committedVersion))
+                        if (!generation.IsLatest(hash, scanner.BlockOffset)) continue;
+                        if (HasCommittedNewerRecord(newer, hash, header.Column, scanner.Key, stored, raw, committedVersion))
                         {
                             skippedByColumn[header.Column] += header.KeyLength + header.ValueLength;
                             continue;
@@ -411,12 +418,12 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         if (_logger.IsDebug) _logger.Debug($"Merged trie node log {Name} generation {generation.Number}: {records} records, {written / (double)MemorySizes.MiB:F1} MiB of {generation.Frontier / (double)MemorySizes.MiB:F1} MiB in {Stopwatch.GetElapsedTime(sw).TotalMilliseconds:F0} ms");
     }
 
-    private static bool HasCommittedNewerRecord(List<TrieNodeLogGeneration> newer, ulong hash, byte column, ReadOnlySpan<byte> key, Span<byte> probeBuffer, ulong committedVersion)
+    private static bool HasCommittedNewerRecord(List<TrieNodeLogGeneration> newer, ulong hash, byte column, ReadOnlySpan<byte> key, Span<byte> stored, Span<byte> raw, ulong committedVersion)
     {
         foreach (TrieNodeLogGeneration generation in newer)
         {
-            if (generation.TryLocate(hash, column, key, probeBuffer, out TrieNodeLogRecord header, out _, out _, out _))
-                return header.Version <= committedVersion;
+            if (generation.TryLocate(hash, column, key, stored, raw, out _, out TrieNodeLogGeneration.BlockHit hit))
+                return hit.Header.Version <= committedVersion;
         }
         return false;
     }
@@ -489,33 +496,35 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
     }
 
+    [SkipLocalsInit]
     private TrieNodeLogGeneration RecoverGeneration(ulong number, string path, ulong committedVersion)
     {
         long fileLength = new FileInfo(path).Length;
         TrieNodeLogGeneration generation = new(number, path, Math.Max(TrieNodeLogGeneration.CapacityFor(_generationBytes), TrieNodeLogGeneration.CapacityFor(fileLength)));
 
-        // First pass: the frontier is the end of the last commit record the metadata column confirms.
+        // First pass: the frontier is the end of the block holding the last commit record the metadata column confirms.
         long frontier = 0;
         using (Scanner scanner = new(generation, fileLength))
         {
             while (scanner.MoveNext() && scanner.Header.Version <= committedVersion)
             {
-                if (scanner.Header.IsCommit) frontier = scanner.Offset + scanner.Header.Length;
+                if (scanner.Header.IsCommit) frontier = scanner.BlockEnd;
             }
         }
 
         generation.Truncate(frontier);
 
         // Second pass: index the surviving records; a later record of the same key replaces the earlier slot.
-        Span<byte> buffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
+        Span<byte> stored = stackalloc byte[TrieNodeLogBlock.MaxStoredLength];
+        Span<byte> raw = stackalloc byte[TrieNodeLogBlock.Size];
         using (Scanner scanner = new(generation, frontier))
         {
             while (scanner.MoveNext())
             {
-                if (scanner.Header.IsCommit) continue;
+                if (scanner.Header.Type is not (TrieNodeLogRecord.Put or TrieNodeLogRecord.Delete)) continue;
                 ulong hash = TrieNodeLogRecord.Hash(scanner.Header.Column, scanner.Key);
-                generation.TryLocate(hash, scanner.Header.Column, scanner.Key, buffer, out _, out int index, out _, out _);
-                generation.Publish(index, hash, scanner.Offset);
+                generation.TryLocate(hash, scanner.Header.Column, scanner.Key, stored, raw, out int index, out _);
+                generation.Publish(index, hash, scanner.BlockOffset);
             }
         }
 
@@ -524,53 +533,78 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     private static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
 
-    /// <summary>Sequential record reader over <c>[0, end)</c> of a generation file; stops at the first implausible header.</summary>
+    /// <summary>Sequential record reader over the blocks in <c>[0, end)</c> of a generation file; stops at the first implausible block.</summary>
     private sealed class Scanner(TrieNodeLogGeneration generation, long end) : IDisposable
     {
-        private byte[] _buffer = ArrayPool<byte>.Shared.Rent(ScanBufferSize);
+        private readonly byte[] _buffer = ArrayPool<byte>.Shared.Rent(ScanBufferSize);
+        private readonly byte[] _raw = ArrayPool<byte>.Shared.Rent(TrieNodeLogBlock.Size);
         private long _bufferOffset; // file offset of _buffer[0]
         private int _buffered;
-        private long _next;
+        private long _next; // file offset of the next block
+        private int _blockStart; // position of the current block in _buffer
+        private int _rawLength;
+        private int _position; // position of the next record in _raw
         private int _recordStart;
 
-        public long Offset { get; private set; }
+        /// <summary>File offset of the block holding the current record.</summary>
+        public long BlockOffset { get; private set; }
+
+        /// <summary>File offset just past the block holding the current record.</summary>
+        public long BlockEnd { get; private set; }
+
         public TrieNodeLogRecord Header { get; private set; }
-        public ReadOnlySpan<byte> Key => _buffer.AsSpan(_recordStart + TrieNodeLogRecord.HeaderLength, Header.KeyLength);
-        public ReadOnlySpan<byte> Value => _buffer.AsSpan(_recordStart + TrieNodeLogRecord.HeaderLength + Header.KeyLength, Header.ValueLength);
+        public ReadOnlySpan<byte> Key => _raw.AsSpan(_recordStart + TrieNodeLogRecord.HeaderLength, Header.KeyLength);
+        public ReadOnlySpan<byte> Value => _raw.AsSpan(_recordStart + TrieNodeLogRecord.HeaderLength + Header.KeyLength, Header.ValueLength);
 
         public bool MoveNext()
         {
-            if (_next + TrieNodeLogRecord.HeaderLength > end) return false;
-            if (!Ensure(TrieNodeLogRecord.HeaderLength)) return false;
-            TrieNodeLogRecord header = TrieNodeLogRecord.Read(_buffer.AsSpan(_recordStart));
-            if (!header.IsPlausible || _next + header.Length > end || !Ensure(header.Length)) return false;
-            Offset = _next;
-            Header = header;
-            _next += header.Length;
-            return true;
+            while (true)
+            {
+                if (_position < _rawLength)
+                {
+                    if (!TrieNodeLogBlock.TryReadRecord(_raw.AsSpan(0, _rawLength), _position, out TrieNodeLogRecord header))
+                    {
+                        _position = _rawLength; // the rest of the block is not readable; move on to the next
+                        continue;
+                    }
+
+                    Header = header;
+                    _recordStart = _position;
+                    _position += header.Length;
+                    return true;
+                }
+
+                if (_next + TrieNodeLogBlock.HeaderLength > end || !Ensure(TrieNodeLogBlock.HeaderLength)) return false;
+                int total = TrieNodeLogBlock.StoredLength(_buffer.AsSpan(_blockStart, TrieNodeLogBlock.HeaderLength));
+                if (total < 0 || _next + total > end || !Ensure(total)) return false;
+                _rawLength = TrieNodeLogBlock.Read(_buffer.AsSpan(_blockStart, total), _raw);
+                if (_rawLength < 0) return false;
+                BlockOffset = _next;
+                BlockEnd = _next + total;
+                _next += total;
+                _position = 0;
+            }
         }
 
-        /// <summary>Makes <paramref name="length"/> bytes from <see cref="_next"/> available at <see cref="_recordStart"/>.</summary>
+        /// <summary>Makes <paramref name="length"/> bytes from <see cref="_next"/> available at <see cref="_blockStart"/>.</summary>
         private bool Ensure(int length)
         {
             if (_next >= _bufferOffset && _next + length <= _bufferOffset + _buffered)
             {
-                _recordStart = (int)(_next - _bufferOffset);
+                _blockStart = (int)(_next - _bufferOffset);
                 return true;
-            }
-
-            if (length > _buffer.Length)
-            {
-                ArrayPool<byte>.Shared.Return(_buffer);
-                _buffer = ArrayPool<byte>.Shared.Rent(length);
             }
 
             _bufferOffset = _next;
             _buffered = generation.ReadAt(_next, _buffer.AsSpan(0, (int)Math.Min(_buffer.Length, end - _next)));
-            _recordStart = 0;
+            _blockStart = 0;
             return _buffered >= length;
         }
 
-        public void Dispose() => ArrayPool<byte>.Shared.Return(_buffer);
+        public void Dispose()
+        {
+            ArrayPool<byte>.Shared.Return(_buffer);
+            ArrayPool<byte>.Shared.Return(_raw);
+        }
     }
 }

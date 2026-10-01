@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 
@@ -13,9 +14,6 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// </summary>
 internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGeneration> pinned) : IDisposable
 {
-    // Header, the longest key and a full trie node (a branch is ~530 bytes) fit in one read.
-    private const int ReadBufferSize = 1024;
-
     private ulong _version;
     private ulong _flushedGeneration;
     private long _hits;
@@ -44,19 +42,23 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGe
     }
 
     /// <summary>Whether the shard holds the value for <paramref name="key"/> at this view's version; <paramref name="value"/> is null for a tombstone.</summary>
+    [SkipLocalsInit]
     public bool TryGet(byte column, ReadOnlySpan<byte> key, out byte[]? value)
     {
         ulong hash = TrieNodeLogRecord.Hash(column, key);
-        Span<byte> buffer = stackalloc byte[ReadBufferSize];
+        Span<byte> stored = stackalloc byte[TrieNodeLogBlock.MaxStoredLength];
+        Span<byte> raw = stackalloc byte[TrieNodeLogBlock.Size];
         for (int i = pinned.Count - 1; i >= 0; i--)
         {
             TrieNodeLogGeneration generation = pinned[i];
-            if (!generation.TryLocate(hash, column, key, buffer, out TrieNodeLogRecord header, out _, out long offset, out int bytesRead)) continue;
+            if (!generation.TryLocate(hash, column, key, stored, raw, out _, out TrieNodeLogGeneration.BlockHit hit)) continue;
 
+            // A block holds one batch, so the record found has the block's version; an older version is in the
+            // block its prev link names, where the key again has exactly one live record.
             bool walked = false;
-            while (header.Version > _version)
+            while (hit.Header.Version > _version)
             {
-                ulong previous = header.Prev;
+                ulong previous = hit.Header.Prev;
                 if (previous == 0 || TrieNodeLogRecord.LocationGeneration(previous) <= _flushedGeneration)
                 {
                     Interlocked.Increment(ref _misses);
@@ -65,20 +67,24 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGe
                 }
 
                 generation = Pinned(TrieNodeLogRecord.LocationGeneration(previous));
-                offset = TrieNodeLogRecord.LocationOffset(previous);
-                bytesRead = generation.ReadAt(offset, buffer);
-                header = TrieNodeLogRecord.Read(buffer);
-                if (bytesRead < TrieNodeLogRecord.HeaderLength + key.Length || header.Column != column || header.KeyLength != key.Length
-                    || !buffer.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key))
+                long blockOffset = TrieNodeLogRecord.LocationOffset(previous);
+                int rawLength = generation.ReadBlock(blockOffset, stored, raw);
+                TrieNodeLogRecord header = default;
+                int start = rawLength < 0 ? -1 : TrieNodeLogBlock.FindRecord(raw[..rawLength], column, key, out header);
+                if (start < 0)
                 {
                     Metrics.RecordTrieNodeLogChainKeyMismatch();
-                    throw new InvalidOperationException($"Trie node log record at {generation.Path}:{offset} is linked as a previous version of a different key");
+                    throw new InvalidOperationException($"Trie node log block at {generation.Path}:{blockOffset} is linked as holding a previous version of a key it does not contain");
                 }
+
+                hit = new TrieNodeLogGeneration.BlockHit(blockOffset, rawLength, start, header);
                 walked = true;
             }
 
             Interlocked.Increment(ref walked ? ref _chainHits : ref _hits);
-            value = header.Type == TrieNodeLogRecord.Delete ? null : generation.ReadValue(offset, header, buffer, bytesRead);
+            value = hit.Header.Type == TrieNodeLogRecord.Delete
+                ? null
+                : raw.Slice(hit.RecordStart + TrieNodeLogRecord.HeaderLength + hit.Header.KeyLength, hit.Header.ValueLength).ToArray();
             return true;
         }
 

@@ -9,7 +9,7 @@ using Nethermind.Core.Utils;
 namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
 /// <summary>
-/// One log file plus its open-addressing index (key hash → latest record offset in this file).
+/// One log file plus its open-addressing index (key hash → offset of the block holding the key's latest record).
 /// </summary>
 /// <remarks>
 /// The index has a fixed capacity and is only mutated by the single writer through <see cref="Publish"/>; each
@@ -30,6 +30,9 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     private readonly int _mask;
     private int _preserve;
 
+    /// <summary>A record located through the index: the block it is in (decoded into the caller's buffer) and where it starts.</summary>
+    public readonly record struct BlockHit(long BlockOffset, int RawLength, int RecordStart, TrieNodeLogRecord Header);
+
     public ulong Number { get; }
     public string Path { get; }
     public SafeFileHandle Handle { get; }
@@ -38,10 +41,10 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     /// <summary>Number of occupied index slots.</summary>
     public int Occupied { get; private set; }
 
-    /// <summary>End of the committed, reader-visible records.</summary>
+    /// <summary>End of the committed, reader-visible blocks.</summary>
     public long Frontier { get; private set; }
 
-    /// <summary>End of the appended records including the open batch's; writer-only.</summary>
+    /// <summary>End of the appended blocks including the open batch's; writer-only.</summary>
     public long WriteFrontier { get; set; }
 
     public bool IsSealed { get; set; }
@@ -80,30 +83,30 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 
     public ulong ReadSlot(int index) => Volatile.Read(ref _slots[index]);
 
-    /// <summary>Points slot <paramref name="index"/> (empty, or already holding this key) at the record at <paramref name="offset"/>.</summary>
-    public void Publish(int index, ulong hash, long offset)
+    /// <summary>Points slot <paramref name="index"/> (empty, or already holding this key) at the block at <paramref name="blockOffset"/>.</summary>
+    public void Publish(int index, ulong hash, long blockOffset)
     {
         if (_slots[index] == 0) Occupied++;
-        Volatile.Write(ref _slots[index], TrieNodeLogRecord.PackSlot(hash, offset));
+        Volatile.Write(ref _slots[index], TrieNodeLogRecord.PackSlot(hash, blockOffset));
     }
 
-    /// <summary>Finds the slot that references the record at <paramref name="offset"/>, i.e. whether it is the latest for its key.</summary>
-    public bool IsLatest(ulong hash, long offset)
+    /// <summary>Whether the index points the key with <paramref name="hash"/> at the block at <paramref name="blockOffset"/>, i.e. the key's record there is its latest in this generation.</summary>
+    public bool IsLatest(ulong hash, long blockOffset)
     {
         for (int index = HomeIndex(hash); ; index = NextIndex(index))
         {
             ulong slot = ReadSlot(index);
             if (slot == 0) return false;
-            if (TrieNodeLogRecord.SlotOffset(slot) == offset) return true;
+            if (TrieNodeLogRecord.SlotOffset(slot) == blockOffset) return true;
         }
     }
 
     /// <summary>
-    /// Probes for <paramref name="key"/>. On a hit, <paramref name="buffer"/> holds the start of the record (header,
-    /// key and as much of the value as fit), <paramref name="header"/> its header and <paramref name="index"/> its slot.
-    /// On a miss <paramref name="index"/> is the first empty slot on the probe path.
+    /// Probes for <paramref name="key"/>. On a hit, <paramref name="raw"/> holds the decoded block and <paramref name="hit"/>
+    /// locates the record in it; <paramref name="index"/> is its slot. On a miss <paramref name="index"/> is the first
+    /// empty slot on the probe path.
     /// </summary>
-    public bool TryLocate(ulong hash, byte column, ReadOnlySpan<byte> key, Span<byte> buffer, out TrieNodeLogRecord header, out int index, out long offset, out int bytesRead)
+    public bool TryLocate(ulong hash, byte column, ReadOnlySpan<byte> key, Span<byte> stored, Span<byte> raw, out int index, out BlockHit hit)
     {
         for (index = HomeIndex(hash); ; index = NextIndex(index))
         {
@@ -111,21 +114,24 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
             if (slot == 0) break;
             if (!TrieNodeLogRecord.SlotTagMatches(slot, hash)) continue;
 
-            offset = TrieNodeLogRecord.SlotOffset(slot);
-            bytesRead = ReadAt(offset, buffer);
-            if (bytesRead < TrieNodeLogRecord.HeaderLength) continue;
-            header = TrieNodeLogRecord.Read(buffer);
-            if (header.Column == column && header.KeyLength == key.Length && bytesRead >= TrieNodeLogRecord.HeaderLength + key.Length
-                && buffer.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key))
+            long blockOffset = TrieNodeLogRecord.SlotOffset(slot);
+            int rawLength = ReadBlock(blockOffset, stored, raw);
+            TrieNodeLogRecord header = default;
+            int start = rawLength < 0 ? -1 : TrieNodeLogBlock.FindRecord(raw[..rawLength], column, key, out header);
+            if (start >= 0)
+            {
+                hit = new BlockHit(blockOffset, rawLength, start, header);
                 return true;
+            }
             Metrics.RecordTrieNodeLogIndexFalseMatch();
         }
 
-        header = default;
-        offset = -1;
-        bytesRead = 0;
+        hit = default;
         return false;
     }
+
+    /// <summary>Reads and decodes the block at <paramref name="offset"/> into <paramref name="raw"/>; returns the raw length, or -1 when there is no valid block there.</summary>
+    public int ReadBlock(long offset, Span<byte> stored, Span<byte> raw) => TrieNodeLogBlock.Read(stored[..ReadAt(offset, stored)], raw);
 
     public int ReadAt(long offset, Span<byte> destination)
     {
@@ -137,18 +143,6 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
             total += read;
         }
         return total;
-    }
-
-    /// <summary>Materializes the value of the record at <paramref name="offset"/> whose first <paramref name="bytesRead"/> bytes are in <paramref name="buffer"/>.</summary>
-    public byte[] ReadValue(long offset, in TrieNodeLogRecord header, ReadOnlySpan<byte> buffer, int bytesRead)
-    {
-        int valueStart = TrieNodeLogRecord.HeaderLength + header.KeyLength;
-        byte[] value = new byte[header.ValueLength];
-        int available = Math.Min(header.ValueLength, Math.Max(0, bytesRead - valueStart));
-        buffer.Slice(valueStart, available).CopyTo(value);
-        if (available < header.ValueLength && ReadAt(offset + valueStart + available, value.AsSpan(available)) != header.ValueLength - available)
-            throw new IOException($"Short read of trie node log record at {Path}:{offset}");
-        return value;
     }
 
     public void Write(long offset, ReadOnlySpan<byte> data) => RandomAccess.Write(Handle, data, offset);

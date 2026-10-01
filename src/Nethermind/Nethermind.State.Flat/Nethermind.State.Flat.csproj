@@ -17,6 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Collections.Pooled" />
+    <PackageReference Include="K4os.Compression.LZ4" />
     <PackageReference Include="System.IO.Hashing" />
   </ItemGroup>
 

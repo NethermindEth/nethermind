@@ -18,7 +18,9 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Persistence;
 
-public class TrieNodeLogTests
+[TestFixture(false)]
+[TestFixture(true)]
+public class TrieNodeLogTests(bool compression)
 {
     private static readonly TreePath TopPath = TreePath.FromHexString("12345"); // StateTopNodes
     private static readonly TreePath MediumPath = TreePath.FromHexString("123456789abc"); // StateNodes
@@ -39,7 +41,7 @@ public class TrieNodeLogTests
         _directory = TempPath.GetTempDirectory();
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // Two shards per partition, so every shard gets a 4 KiB generation.
-        _config = new FlatDbConfig { TrieNodeLogScope = TrieNodeLogScope.All, TrieNodeLogStateTopBytes = 8192, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
+        _config = new FlatDbConfig { TrieNodeLogScope = TrieNodeLogScope.All, TrieNodeLogStateTopBytes = 8192, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192, TrieNodeLogCompression = compression };
         Open();
     }
 
@@ -87,6 +89,14 @@ public class TrieNodeLogTests
         _db.GetColumnDb(FlatDbColumns.FallbackNodes));
 
     private string[] LogFiles() => Directory.GetFiles(_directory.Path, "*.log", SearchOption.AllDirectories);
+
+    /// <summary>Random, hence incompressible, bytes so generations fill by bytes with compression on as well.</summary>
+    private static byte[] Value(byte seed, int length)
+    {
+        byte[] value = new byte[length];
+        new Random(seed).NextBytes(value);
+        return value;
+    }
 
     private static long FlushedBytes(FlatDbColumns column) =>
         Metrics.TrieNodeLogFlushedBytes.TryGetValue(TrieNodeLogLabel.Column((byte)column), out long bytes) ? bytes : 0;
@@ -214,8 +224,7 @@ public class TrieNodeLogTests
     public async Task Restart_keeps_committed_records_and_drops_the_rest()
     {
         // Values larger than a generation's byte budget force a roll inside the batch, so the batch spans two files.
-        byte[] large = new byte[5000];
-        Array.Fill(large, (byte)7);
+        byte[] large = Value(7, 5000);
         WriteTop(0, 1, Rlp1);
         using (IPersistence.IWriteBatch batch = Batch(1, 2))
         {
@@ -280,12 +289,7 @@ public class TrieNodeLogTests
         Reopen().GetAwaiter().GetResult();
 
         // 3000-byte values: two per 4 KiB generation, so every second batch seals one.
-        static byte[] Value(byte fill)
-        {
-            byte[] value = new byte[3000];
-            Array.Fill(value, fill);
-            return value;
-        }
+        static byte[] Value(byte seed) => TrieNodeLogTests.Value(seed, 3000);
 
         TreePath coldPath = TreePath.FromHexString("1234"); // same partition and shard as TopPath, written once
         using (IPersistence.IWriteBatch batch = Batch(0, 1))
@@ -348,10 +352,10 @@ public class TrieNodeLogTests
         _config.TrieNodeLogMergeBacklogMargin = 1;
         Reopen().GetAwaiter().GetResult();
 
-        byte[] value = new byte[3000];
+        byte[] value = [];
         for (ulong block = 0; block < 24; block++)
         {
-            value[0] = (byte)block;
+            value = Value((byte)block, 3000);
             WriteTop(block, block + 1, value);
             Assert.That(ReadTop(), Is.EqualTo(value));
         }
