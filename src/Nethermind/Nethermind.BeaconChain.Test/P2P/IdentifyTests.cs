@@ -96,24 +96,26 @@ public class IdentifyTests
         return true;
     }
 
-    /// <summary>Every identify answer costs the peer a stream and the admission a round trip, so a session asks once.</summary>
     [Test]
     [CancelAfter(60_000)]
-    public Task A_session_reads_the_agent_version_from_one_identify_exchange(CancellationToken token) =>
-        PeerSessionNodes.RetryStalledAsync(A_session_reads_the_agent_version_from_one_identify_exchangeAsync, token);
+    public Task A_session_reads_the_agent_version_from_one_identify_exchange([Values] bool nodeDials, CancellationToken token) =>
+        PeerSessionNodes.RetryStalledAsync(t => A_session_reads_the_agent_version_from_one_identify_exchangeAsync(nodeDials, t), token);
 
-    private static async Task<bool> A_session_reads_the_agent_version_from_one_identify_exchangeAsync(CancellationToken token)
+    private static async Task<bool> A_session_reads_the_agent_version_from_one_identify_exchangeAsync(bool nodeDials, CancellationToken token)
     {
         CountingStackSettings? answers = null;
-        await using ServiceProvider services = new ServiceCollection()
-            .AddSingleton(new IdentifyProtocolSettings { AgentVersion = ServerAgent })
-            .AddSingleton(sp => new IdentifyProtocol(answers = new CountingStackSettings(sp.GetRequiredService<IProtocolStackSettings>()),
-                sp.GetRequiredService<IdentifyProtocolSettings>(), sp.GetRequiredService<PeerStore>()))
-            .AddLibp2p(static builder => builder)
-            .BuildServiceProvider();
-        await using ILocalPeer server = services.GetRequiredService<IPeerFactory>().Create(SigningIdentity());
-        await server.StartListenAsync([Multiaddress.Decode("/ip4/127.0.0.1/tcp/0")], token);
-        Multiaddress address = server.ListenAddresses.First();
+        int holdAnswer = 0;
+        TaskCompletionSource answerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseAnswer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using PlainPeer server = await PlainPeer.StartAsync(settings => new CountingIdentifyProtocol(answers = new CountingStackSettings(settings), async () =>
+        {
+            if (Volatile.Read(ref holdAnswer) != 0)
+            {
+                answerStarted.TrySetResult();
+                await releaseAnswer.Task.WaitAsync(token);
+            }
+        }), token, pingOnDial: true, identity: SigningIdentity());
+        Multiaddress address = server.Address;
 
         // The library's own peer identifies exactly once, which fixes what one answer costs the counter.
         await using ServiceProvider plainServices = new ServiceCollection().AddLibp2p(static builder => builder).BuildServiceProvider();
@@ -125,7 +127,32 @@ public class IdentifyTests
         int oneAnswer = answers!.Reads;
         await using BeaconP2P client = PeerSessionNodes.Create().P2P;
         await client.StartAsync(token);
-        ISession session = await client.DialPeerAsync(address, token);
+        Volatile.Write(ref holdAnswer, 1);
+        Task<ISession> dial = nodeDials
+            ? client.DialPeerAsync(address, token)
+            : PeerSessionNodes.DialFromPlainPeerAsync(server.Peer, server.Log, client, token);
+        try
+        {
+            await answerStarted.Task.WaitAsync(token);
+            Assert.That(client.TryGetEstablishedSession(server.Peer.Identity.PeerId, out ISession? pending), Is.True);
+            Assert.That(client.GetSessionInfoAsync(pending!, token).IsCompleted, Is.False, "session information waits for identify in either direction");
+            if (nodeDials)
+            {
+                Assert.That(dial.IsCompleted, Is.False, "a working session is handed back only after identify completes");
+            }
+        }
+        finally
+        {
+            releaseAnswer.TrySetResult();
+        }
+
+        ISession session = await dial;
+        if (!nodeDials)
+        {
+            Assert.That(client.TryGetEstablishedSession(server.Peer.Identity.PeerId, out ISession? inbound), Is.True);
+            session = inbound!;
+        }
+
         BeaconP2P.SessionInfo info = await client.GetSessionInfoAsync(session, token);
 
         using (Assert.EnterMultipleScope())
@@ -133,7 +160,7 @@ public class IdentifyTests
             Assert.That(oneAnswer, Is.Positive, "fixture: an identify answer reads the advertised protocols");
             Assert.That(info.AgentVersion, Is.EqualTo(ServerAgent));
             Assert.That(answers.Reads - oneAnswer, Is.EqualTo(oneAnswer), "the session asked for identify once");
-            Assert.That(client.PeerInfoForTest(server.Identity.PeerId).SupportedProtocols, Does.Contain(IdentifyProtocolId), "the answer is recorded in the peer store");
+            Assert.That(client.PeerInfoForTest(server.Peer.Identity.PeerId).SupportedProtocols, Does.Contain(IdentifyProtocolId), "the answer is recorded in the peer store");
         }
 
         return true;
@@ -363,6 +390,16 @@ public class IdentifyTests
     {
         public new async Task ListenAsync(IChannel downChannel, ISessionContext context) =>
             await downChannel.WriteSizeAndProtobufAsync(AnswerOf(SigningIdentity(), null, 0, IdentifyProtocolId));
+    }
+
+    private sealed class CountingIdentifyProtocol(IProtocolStackSettings settings, Func<Task> beforeAnswer)
+        : IdentifyProtocol(settings, new IdentifyProtocolSettings { AgentVersion = ServerAgent }, new PeerStore()), ISessionListenerProtocol
+    {
+        public new async Task ListenAsync(IChannel downChannel, ISessionContext context)
+        {
+            await beforeAnswer();
+            await base.ListenAsync(downChannel, context);
+        }
     }
 
     /// <summary>The live stack settings, counting how often identify reads the protocols it advertises.</summary>
