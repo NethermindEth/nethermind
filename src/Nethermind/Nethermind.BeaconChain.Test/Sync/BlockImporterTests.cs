@@ -17,6 +17,7 @@ using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
@@ -623,7 +624,8 @@ public class BlockImporterTests
     [Test]
     public void Body_attester_slashing_moves_the_head_off_the_equivocators_branch()
     {
-        UnsignedChain chain = UnsignedChain.Create();
+        // Sealed by the full hasher, so each import checks the importer's incremental root against an independent one.
+        UnsignedChain chain = UnsignedChain.Create(hasher: new FullBeaconStateHasher());
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
         // Past every block's slot, so none is timely and no proposer boost confounds the weights.
         importer.OnSlotTick(8);
@@ -700,7 +702,8 @@ public class BlockImporterTests
     [Test]
     public void Head_falling_back_to_an_ancestor_after_invalidation_moves_the_lineage_to_it()
     {
-        UnsignedChain chain = UnsignedChain.Create();
+        // Sealed by the full hasher, so each import checks the importer's incremental root against an independent one.
+        UnsignedChain chain = UnsignedChain.Create(hasher: new FullBeaconStateHasher());
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(),
             engine: new ScriptedPayloadEngine(ExecutionStatus.Optimistic, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic));
         UnsignedChain.ChainBlock ancestor = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x70);

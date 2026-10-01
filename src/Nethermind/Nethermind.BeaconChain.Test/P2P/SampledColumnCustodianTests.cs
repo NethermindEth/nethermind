@@ -242,7 +242,8 @@ public class SampledColumnCustodianTests
         SetMatchingStatus(failing, partial, replacement, client);
         client.Config.TargetPeerCount = 2;
         client.Config.MaxPeerCount = 4;
-        await using BeaconDiscovery discovery = CreateDiscovery();
+        PeerHealthCheckRoundTests.AdvancingTimestamper dialClock = new();
+        await using BeaconDiscovery discovery = CreateDiscovery(timestamper: dialClock);
 
         await using (client.P2P)
         await using (failing.P2P)
@@ -251,8 +252,8 @@ public class SampledColumnCustodianTests
         {
             await StartAsync(token, failing, partial, replacement, client);
             PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
+            Assert.That(await AdmitAsync(peerManager, dialClock, failing, token), Is.True);
+            Assert.That(await AdmitAsync(peerManager, dialClock, partial, token), Is.True);
             IReadOnlyList<ulong> uncustodiedWhileHealthy = peerManager.UncustodiedSampledColumns();
             ReportFailuresUpToTheLimit(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P)));
 

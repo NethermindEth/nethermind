@@ -33,10 +33,12 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// each with its own signed envelope, so the importer can run them with signature verification on. A block
 /// builds full on its parent (its bid's <c>parent_block_hash</c> is the parent bid's <c>block_hash</c>) or empty.
 /// </summary>
-internal sealed class SignedGloasChain
+/// <param name="hasher">Seals the blocks' state roots and hashes slots; one incremental hasher by default, as every state descends from the anchor
+/// and a full root of a mainnet-preset state costs ~15 ms per slot.</param>
+internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
 {
-    // Every state here descends from the anchor, so one incremental hasher serves them all; a full root of a mainnet-preset state costs ~15 ms per slot.
-    private readonly CachedBeaconStateHasher _hasher = new();
+    // The importer hashes incrementally, so a test of its roots passes a full hasher to compare against.
+    private readonly IBeaconStateHasher _hasher = hasher ?? new CachedBeaconStateHasher();
 
     public BeaconChainSpec Spec => ForkCrossingChain.Instance.Spec;
 
