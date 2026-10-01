@@ -9,8 +9,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -22,7 +20,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
-using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
@@ -84,20 +81,23 @@ public class OptimismCLP2P : IDisposable
                 ProtocolVersion = "",
                 AgentVersion = "optimism"
             })
-            .AddSingleton(new PubsubSettings()
-            {
-                ReconnectionAttempts = int.MaxValue,
-                Degree = 3,
-                LowestDegree = 2,
-                HighestDegree = 6,
-                LazyDegree = 3,
-                DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
-                GetMessageId = CalculateMessageId,
-                // Nethermind.Libp2p scores topics by default; its delivery-rate penalty would prune honest peers between blocks.
-                TopicScoreParams = { [_blocksV2TopicId] = new TopicScoreParams { TopicWeight = 0 } },
-            })
+            .AddSingleton(CreatePubsubSettings(_blocksV2TopicId))
             .BuildServiceProvider();
     }
+
+    /// <summary>The gossipsub parameters of the OP Stack block gossip on <paramref name="blocksTopicId"/>, unscored.</summary>
+    /// <remarks>OP Stack rollup-node-p2p.md "Message ID computation" takes the L1 message id; op-node p2p/gossip.go BuildMsgIdFn
+    /// hashes it in its Altair form, topic included, which is the id the network's IHAVE lists carry.</remarks>
+    internal static PubsubSettings CreatePubsubSettings(string blocksTopicId) => UnscoredGossip.Configure(new PubsubSettings
+    {
+        ReconnectionAttempts = int.MaxValue,
+        Degree = 3,
+        LowestDegree = 2,
+        HighestDegree = 6,
+        LazyDegree = 3,
+        DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
+        GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
+    }, [blocksTopicId]);
 
     private void OnMessage(byte[] msg, CancellationToken token)
     {
@@ -350,15 +350,6 @@ public class OptimismCLP2P : IDisposable
 
         if (_logger.IsInfo) _logger.Info("CL P2P is started");
         await MainLoop(token);
-    }
-
-    private MessageId CalculateMessageId(Message message)
-    {
-        IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        sha256.AppendData(BitConverter.GetBytes((ulong)message.Topic.Length));
-        sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
-        sha256.AppendData(message.Data.Span);
-        return new MessageId(sha256.GetHashAndReset());
     }
 
     public void Reset(ulong headNumber) => _headNumber = headNumber;

@@ -164,7 +164,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 AgentVersion = ClientAgentVersion,
             })
             // The eth2 gossipsub parameters (consensus-specs p2p-interface "The gossip domain: gossipsub").
-            .AddSingleton(new PubsubSettings
+            .AddSingleton(UnscoredGossip.Configure(new PubsubSettings
             {
                 DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
                 GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
@@ -181,10 +181,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 // phase0 p2p "Gossipsub size limits": an encoded RPC, an IWANT answer included, may reach max_message_size().
                 MaxRpcBytes = Eth2MessageId.MaxMessageSize,
                 MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
-                // Peers behind one NAT or on one host share an address; no address penalty applies until attribution is configured.
-                IPColocationFactorWeight = 0,
-                TopicScoreParams = UnweightedTopicScores(spec),
-            })
+            }, ScheduledTopics(spec)))
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
     }
@@ -197,30 +194,25 @@ public sealed class BeaconP2P : IAsyncDisposable
         checked((int)((Presets.MaxCommitteesPerSlot * Presets.TargetAggregatorsPerCommittee + Presets.PtcSize + Eip7594DasConstants.DataColumnSidecarSubnetCount
             + (ulong)(GossipTopics.SubscribedTopicNames.Length + GossipTopics.GloasTopicNames.Length)) * spec.SlotsPerEpoch * 2));
 
-    /// <summary>Zero-weight score parameters for every topic of every scheduled fork digest, so no gossip delivery moves a peer's score.</summary>
-    /// <remarks>The library applies P1-P4 to a topic without parameters. This node returns <see cref="MessageValidity.Ignored"/> for gossip it consumes,
-    /// so P3 would count each honest mesh peer as under-delivering and prune or graylist it within seconds. The dictionary is filled before the router
-    /// reads it and is never changed.</remarks>
-    internal static Dictionary<string, TopicScoreParams> UnweightedTopicScores(BeaconChainSpec spec)
+    /// <summary>Every topic this node can subscribe, of every scheduled fork digest.</summary>
+    /// <remarks>This node returns <see cref="MessageValidity.Ignored"/> for gossip it consumes, so a delivery score would count each honest mesh peer
+    /// as under-delivering; <see cref="UnscoredGossip"/> gives these topics zero weight before the router starts.</remarks>
+    internal static IEnumerable<string> ScheduledTopics(BeaconChainSpec spec)
     {
-        TopicScoreParams unweighted = new() { TopicWeight = 0 };
         string[] names =
         [
             .. GossipTopics.SubscribedTopicNames,
             .. GossipTopics.GloasTopicNames,
             .. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static subnet => GossipTopics.DataColumnSidecarTopicName((ulong)subnet)),
         ];
-        Dictionary<string, TopicScoreParams> topics = [];
         foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, 0).Prepend(0UL))
         {
             byte[] digest = ForkDigest.Compute(spec, epoch);
             foreach (string name in names)
             {
-                topics[GossipTopics.Topic(digest, name)] = unweighted;
+                yield return GossipTopics.Topic(digest, name);
             }
         }
-
-        return topics;
     }
 
     /// <summary>The logger factory for libp2p's own categories: nothing it logs reaches our log above Trace.</summary>
