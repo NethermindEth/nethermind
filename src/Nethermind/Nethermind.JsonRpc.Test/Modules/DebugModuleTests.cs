@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -34,6 +35,7 @@ using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
+using Testably.Abstractions.Testing;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -48,6 +50,7 @@ public class DebugModuleTests
     private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
+    private readonly MockFileSystem _fileSystem = new();
 
     private DebugRpcModule CreateModule() => new(
         LimboLogs.Instance,
@@ -57,7 +60,8 @@ public class DebugModuleTests
         _blockchainBridge,
         new BlocksConfig(),
         _blockFinder,
-        new BlockForRpcFactory());
+        new BlockForRpcFactory(),
+        _fileSystem);
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
@@ -459,12 +463,113 @@ public class DebugModuleTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
-        ResultWrapper<IEnumerable<BadBlock>> blocks = CreateModule().debug_getBadBlocks();
-        Assert.That(blocks.Data.Count(), Is.EqualTo(1));
+        ResultWrapper<IEnumerable<BadBlock>?> blocks = CreateModule().debug_getBadBlocks();
+        Assert.That(blocks.Data!.Count(), Is.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
-            Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+            Assert.That(blocks.Data!.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
+            Assert.That(blocks.Data!.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task DebugGetBadBlocks_WithoutFile_ReturnsList(bool passNull)
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+
+        string response = passNull
+            ? await SerializedRequest("debug_getBadBlocks", [null])
+            : await SerializedRequest("debug_getBadBlocks");
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+    }
+
+    private const string BadBlocksFile = "bad-blocks.json";
+
+    [Test]
+    public async Task DebugGetBadBlocks_WithFile_WritesListAndReturnsNull()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _debugBridge.GetBadBlocks().Returns([block]);
+
+        string response = await SerializedRequest("debug_getBadBlocks", BadBlocksFile);
+
+        using JsonDocument written = JsonDocument.Parse(_fileSystem.File.ReadAllText(BadBlocksFile));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+            Assert.That(written.RootElement.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(written.RootElement[0].GetProperty("hash").GetString(), Is.EqualTo(block.Hash!.ToString()));
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WithExistingFile_FailsAndKeepsFile()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        _fileSystem.File.WriteAllText(BadBlocksFile, "keep");
+
+        string response = await SerializedRequest("debug_getBadBlocks", BadBlocksFile);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"location would overwrite an existing file\"},\"id\":67}"));
+            Assert.That(_fileSystem.File.ReadAllText(BadBlocksFile), Is.EqualTo("keep"));
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WithExistingDirectory_FailsAsExistingLocation()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        _fileSystem.Directory.CreateDirectory("bad-blocks");
+
+        string response = await SerializedRequest("debug_getBadBlocks", "bad-blocks");
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"location would overwrite an existing file\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WithPathInMissingDirectory_Fails()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+
+        string response = await SerializedRequest("debug_getBadBlocks", _fileSystem.Path.Combine("missing", BadBlocksFile));
+
+        Assert.That(response, Does.StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Cannot write bad blocks to "));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenWriteFailsAfterCreate_DeletesFileAndReportsWriteError()
+    {
+        const string message = "No space left on device";
+        _debugBridge.GetBadBlocks().Returns([]);
+        // The file is created first; only writing its content fails, as on a full disk.
+        _fileSystem.Intercept.Event(
+            _ => throw new IOException(message),
+            change => change.ChangeType == WatcherChangeTypes.Changed && change.Path == _fileSystem.Path.GetFullPath(BadBlocksFile));
+
+        string response = await SerializedRequest("debug_getBadBlocks", BadBlocksFile);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"Cannot write bad blocks to {BadBlocksFile}: {message}\"}},\"id\":67}}"));
+            Assert.That(_fileSystem.File.Exists(BadBlocksFile), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WithExtraArgument_ReturnsInvalidParams()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+
+        string response = await SerializedRequest("debug_getBadBlocks", BadBlocksFile, "extra");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Does.Contain("\"code\":-32602"));
+            Assert.That(_fileSystem.File.Exists(BadBlocksFile), Is.False);
         }
     }
 

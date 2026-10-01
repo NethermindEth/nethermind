@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
@@ -54,7 +55,8 @@ public class DebugModuleTests
         _blockchainBridge,
         new BlocksConfig(),
         _blockFinder,
-        new BlockForRpcFactory());
+        new BlockForRpcFactory(),
+        Substitute.For<IFileSystem>());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);

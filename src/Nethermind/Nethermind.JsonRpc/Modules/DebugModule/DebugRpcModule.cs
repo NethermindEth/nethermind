@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers;
+using System.IO;
+using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -19,6 +21,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
@@ -44,7 +47,8 @@ public class DebugRpcModule(
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
-    IBlockForRpcFactory blockForRpcFactory)
+    IBlockForRpcFactory blockForRpcFactory,
+    IFileSystem fileSystem)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
@@ -680,10 +684,53 @@ public class DebugRpcModule(
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
-    public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
+    public ResultWrapper<IEnumerable<BadBlock>?> debug_getBadBlocks(string? file = null)
     {
-        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
-        return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
+        BadBlock[] badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory)).ToArray();
+        if (file is null)
+        {
+            return ResultWrapper<IEnumerable<BadBlock>?>.Success(badBlocks);
+        }
+
+        // Serializing first means a serialization failure never leaves a file behind.
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(badBlocks, EthereumJsonSerializer.JsonOptions);
+        Stream stream;
+        try
+        {
+            stream = fileSystem.FileStream.New(file, FileMode.CreateNew, FileAccess.Write);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException && (fileSystem.File.Exists(file) || fileSystem.Directory.Exists(file)))
+        {
+            return ResultWrapper<IEnumerable<BadBlock>?>.Fail("location would overwrite an existing file", ErrorCodes.Default);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return ResultWrapper<IEnumerable<BadBlock>?>.Fail($"Cannot write bad blocks to {file}: {e.Message}", ErrorCodes.Default);
+        }
+
+        try
+        {
+            // Disposing flushes, so a failed flush is caught here too.
+            using (stream)
+            {
+                stream.Write(json);
+            }
+        }
+        catch (IOException e)
+        {
+            // The file is ours: remove the partial write rather than leave a truncated list.
+            try
+            {
+                fileSystem.File.Delete(file);
+            }
+            catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot remove partially written bad-block file {file}: {cleanupError.Message}");
+            }
+            return ResultWrapper<IEnumerable<BadBlock>?>.Fail($"Cannot write bad blocks to {file}: {e.Message}", ErrorCodes.Default);
+        }
+
+        return ResultWrapper<IEnumerable<BadBlock>?>.Success(null);
     }
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
