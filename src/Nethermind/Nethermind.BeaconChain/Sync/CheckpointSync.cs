@@ -30,11 +30,7 @@ using Nethermind.Logging;
 namespace Nethermind.BeaconChain.Sync;
 
 /// <summary>The verified finalized checkpoint the driver bootstraps from.</summary>
-/// <param name="Block">
-/// <c>null</c> only when bootstrapping from a local state file without a sibling block file, in
-/// which case the anchor is synthesized from <c>state.LatestBlockHeader</c> — a testing-only mode.
-/// </param>
-public record CheckpointAnchor(ForkedBeaconState State, ForkedSignedBeaconBlock? Block, Hash256 BlockRoot, Hash256 StateRoot);
+public record CheckpointAnchor(ForkedBeaconState State, ForkedSignedBeaconBlock Block, Hash256 BlockRoot, Hash256 StateRoot);
 
 /// <summary>Bootstraps the beacon chain from a finalized checkpoint state and block.</summary>
 /// <remarks>
@@ -144,7 +140,30 @@ public class CheckpointSync(
                 throw new InvalidDataException($"The anchor at slot {state.Slot} is not BeaconChain.WeakSubjectivityCheckpoint {config.WeakSubjectivityCheckpoint}: the anchor block must be the checkpoint's block at the start of epoch {weakSubjectivityCheckpoint.Epoch}. Supply the checkpoint's state with BeaconChain.CheckpointStateFile or a source serving it as finalized, or correct the checkpoint.");
             }
 
-            ForkedSignedBeaconBlock? block = await GetAnchorBlockAsync(state, blockRoot, stateRoot, cancellationToken);
+            Hash256 blockStateRoot = latestBlockHeader.StateRoot == Hash256.Zero ? stateRoot : latestBlockHeader.StateRoot!;
+            ForkedSignedBeaconBlock block = await GetAnchorBlockAsync(state, blockRoot, blockStateRoot, cancellationToken);
+
+            if (state.Slot > latestBlockHeader.Slot)
+            {
+                // specs/gloas/fork-choice.md get_forkchoice_store asserts anchor_block.state_root == hash_tree_root(anchor_state).
+                (byte[] postState, int postLength) = await RetryTransientAsync("anchor post-state download", async token =>
+                {
+                    using HttpResponseMessage response = await GetOctetStreamAsync($"/eth/v2/debug/beacon/states/{blockStateRoot}", token);
+                    return await ReadResponseBodyAsync(response, DefaultStateBufferSize, token);
+                }, cancellationToken);
+                BufferPool.Return(buffer);
+                buffer = postState;
+                length = postLength;
+                state = DecodeState(buffer.AsSpan(0, length));
+                ThrowIfWrongNetwork(state, spec);
+                ThrowIfInvalidSyncCommitteeKeys(state);
+                stateRoot = HashTreeRoot(state);
+                if (state.Slot != block.Slot || stateRoot != blockStateRoot
+                    || ComputeAnchorBlockRoot(LatestBlockHeader(state), stateRoot) != blockRoot)
+                {
+                    throw new InvalidDataException($"Anchor post-state does not match block {blockRoot} at slot {block.Slot}.");
+                }
+            }
 
             CheckpointAnchor anchor = new(state, block, blockRoot, stateRoot);
             Persist(anchor, buffer.AsSpan(0, length), weakSubjectivityCheckpoint);
@@ -302,7 +321,7 @@ public class CheckpointSync(
     private ForkedBeaconState DecodeState(ReadOnlySpan<byte> sszBytes)
     {
         ForkedBeaconState state = BeaconStateCodec.DecodeForked(sszBytes, spec);
-        ThrowIfUnsupportedFork(state);
+        ThrowIfUnsupportedFork(state, spec);
         return state;
     }
 
@@ -310,7 +329,7 @@ public class CheckpointSync(
     /// Maps the state's fork version onto the spec schedule, refuses anything before Fulu, and refuses a
     /// version whose fork is not the one the state's slot selected its layout by.
     /// </summary>
-    private void ThrowIfUnsupportedFork(ForkedBeaconState state)
+    internal static void ThrowIfUnsupportedFork(ForkedBeaconState state, BeaconChainSpec spec)
     {
         byte[] currentVersion = state switch
         {
@@ -336,14 +355,14 @@ public class CheckpointSync(
                 BeaconFork versionFork = currentVersion.AsSpan().SequenceEqual(spec.GloasForkVersion) ? BeaconFork.Gloas : BeaconFork.Fulu;
                 if (versionFork != state.Fork)
                 {
-                    throw new InvalidDataException($"Checkpoint state at slot {state.Slot} carries the {versionFork} fork version {currentVersion.ToHexString(true)}, but its slot belongs to the {state.Fork} fork.");
+                    throw new InvalidDataException($"Checkpoint state at slot {state.Slot} carries the {versionFork} fork version {currentVersion.ToHexString(true)}, but its slot belongs to the {state.Fork} fork. Fix the fork configuration or delete the beaconChain database to checkpoint-sync again.");
                 }
 
                 return;
             }
         }
 
-        throw new NotSupportedException($"Checkpoint state has unknown fork version {currentVersion.ToHexString(true)}.");
+        throw new NotSupportedException($"Checkpoint state has unknown fork version {currentVersion.ToHexString(true)}. Fix the fork configuration or delete the beaconChain database to checkpoint-sync again.");
     }
 
     /// <summary>Refuses an anchor state whose current or next sync committee holds a pubkey that fails BLS <c>KeyValidate</c>, or an <c>aggregate_pubkey</c> that is not the aggregate of its pubkeys.</summary>
@@ -417,8 +436,7 @@ public class CheckpointSync(
     }
 
     /// <summary>
-    /// Derives the anchor block root from the state's latest block header, whose
-    /// <c>state_root</c> is zeroed in the state and must be patched in first.
+    /// Derives the anchor block root, filling only an unset header state root (consensus-specs beacon-chain.md process_slot).
     /// </summary>
     private static Hash256 ComputeAnchorBlockRoot(BeaconBlockHeader latestBlockHeader, Hash256 stateRoot)
     {
@@ -427,13 +445,13 @@ public class CheckpointSync(
             Slot = latestBlockHeader.Slot,
             ProposerIndex = latestBlockHeader.ProposerIndex,
             ParentRoot = latestBlockHeader.ParentRoot,
-            StateRoot = stateRoot,
+            StateRoot = latestBlockHeader.StateRoot == Hash256.Zero ? stateRoot : latestBlockHeader.StateRoot,
             BodyRoot = latestBlockHeader.BodyRoot,
         }, out UInt256 root);
         return new Hash256(root.ToLittleEndian());
     }
 
-    private async Task<ForkedSignedBeaconBlock?> GetAnchorBlockAsync(ForkedBeaconState state, Hash256 blockRoot, Hash256 stateRoot, CancellationToken cancellationToken)
+    private async Task<ForkedSignedBeaconBlock> GetAnchorBlockAsync(ForkedBeaconState state, Hash256 blockRoot, Hash256 stateRoot, CancellationToken cancellationToken)
     {
         byte[] blockSsz;
         if (config.CheckpointStateFile is { } stateFile)
@@ -441,7 +459,7 @@ public class CheckpointSync(
             string blockFile = Path.ChangeExtension(stateFile, ".block.ssz");
             if (!File.Exists(blockFile))
             {
-                return null;
+                throw new InvalidDataException($"Checkpoint anchor block file is missing: {blockFile}.");
             }
 
             blockSsz = await File.ReadAllBytesAsync(blockFile, cancellationToken);
@@ -466,8 +484,8 @@ public class CheckpointSync(
         ForkedSignedBeaconBlock block = SignedBeaconBlockCodec.Decode(blockSsz, spec);
         (Hash256 actualBlockRoot, Hash256 blockStateRoot) = block switch
         {
-            // get_forkchoice_store asserts anchor_block.state_root == hash_tree_root(anchor_state), so a block of another fork can never anchor this state.
-            ForkedSignedBeaconBlock.OfFulu fulu when state is ForkedBeaconState.OfFulu => (SszRoots.HashTreeRoot(fulu.Block.Message!), fulu.Block.Message!.StateRoot!),
+            // specs/gloas/fork.md upgrade_to_gloas keeps latest_block_header, so a state advanced past the upgrade still names its Fulu block.
+            ForkedSignedBeaconBlock.OfFulu fulu when state is ForkedBeaconState.OfFulu || state.Slot > LatestBlockHeader(state).Slot => (SszRoots.HashTreeRoot(fulu.Block.Message!), fulu.Block.Message!.StateRoot!),
             ForkedSignedBeaconBlock.OfGloas gloas when state is ForkedBeaconState.OfGloas => (SszRoots.HashTreeRoot(gloas.Block.Message!), gloas.Block.Message!.StateRoot!),
             _ => throw new InvalidDataException($"Anchor block at slot {block.Slot} does not have the {state.Fork} shape of the checkpoint state at slot {state.Slot}."),
         };
@@ -506,10 +524,7 @@ public class CheckpointSync(
     private void Persist(CheckpointAnchor anchor, ReadOnlySpan<byte> stateSsz, Checkpoint? weakSubjectivityCheckpoint)
     {
         store.PutState(anchor.BlockRoot, stateSsz);
-        if (anchor.Block is not null)
-        {
-            store.PutForkedBlock(anchor.BlockRoot, anchor.Block);
-        }
+        store.PutForkedBlock(anchor.BlockRoot, anchor.Block);
 
         // The anchor entry is written after the state and block: its presence marks a fully persisted checkpoint.
         store.SetAnchor(anchor.BlockRoot, LatestBlockHeader(anchor.State).Slot);

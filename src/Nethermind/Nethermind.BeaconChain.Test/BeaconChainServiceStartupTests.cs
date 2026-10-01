@@ -35,6 +35,56 @@ namespace Nethermind.BeaconChain.Test;
 [HardTimeout(60_000)]
 public class BeaconChainServiceStartupTests
 {
+    [Test]
+    public void A_resumed_anchor_with_a_version_outside_its_configured_fork_fails_startup([Values] bool gloas, [Values] bool unknownVersion)
+    {
+        using IContainer container = KickContainer(new KickEngine(new PubkeyCache()), new PubkeyCache()).Build();
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        SeedAnchor(store, gloas, nextCommittee: false, key: null);
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        byte[] version = unknownVersion ? [0xFE, 0, 0, 0] : gloas ? chain.AnchorState.Fork!.CurrentVersion! : GloasCheckpointFiles.Spec.GloasForkVersion;
+        if (gloas)
+        {
+            BeaconStateGloas state = chain.First.PostState.Clone();
+            state.Fork = new Fork { PreviousVersion = state.Fork!.PreviousVersion, CurrentVersion = version, Epoch = state.Fork.Epoch };
+            store.PutState(chain.First.Root, BeaconStateGloas.Encode(state));
+        }
+        else
+        {
+            BeaconStateFulu state = chain.AnchorState.Clone();
+            state.Fork = new Fork { PreviousVersion = state.Fork!.PreviousVersion, CurrentVersion = version, Epoch = state.Fork.Epoch };
+            store.PutState(chain.AnchorRoot, BeaconStateFulu.Encode(state));
+        }
+
+        Exception refusal = Assert.Catch(() => container.Resolve<BeaconChainService>().Start())!;
+        Assert.That(refusal, unknownVersion ? Is.TypeOf<NotSupportedException>() : Is.TypeOf<InvalidDataException>());
+        Assert.That(refusal.Message, Does.Contain("Fix the fork configuration or delete the beaconChain database"));
+    }
+
+    [Test]
+    public void A_nonpositive_snapshot_interval_fails_startup([Values(0, -1, int.MinValue)] int interval)
+    {
+        using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { StateSnapshotIntervalEpochs = interval }).Build();
+        container.Resolve<BeaconChainStore>().SetAnchor(TestItem.KeccakA, 0);
+        Assert.That(() => container.Resolve<BeaconChainService>().Start(),
+            Throws.TypeOf<ArgumentOutOfRangeException>().With.Message.Contains(nameof(IBeaconChainConfig.StateSnapshotIntervalEpochs)));
+        Assert.That(container.Resolve<BeaconChainStore>().TryGetSchemaVersion(out _), Is.False);
+    }
+
+    [Test]
+    public async Task A_failed_driver_run_cancels_its_component_token()
+    {
+        using IContainer container = KickContainer(new KickEngine(new PubkeyCache()), new PubkeyCache()).Build();
+        SeedAnchor(container.Resolve<BeaconChainStore>(), gloas: false, nextCommittee: false, key: null, blockStateRoot: GloasTestFixtures.Hash(0x5A));
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+        CancellationTokenSource source = (CancellationTokenSource)typeof(BeaconChainService)
+            .GetField("_cancellationTokenSource", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(service)!;
+
+        await service.Start();
+
+        Assert.That(source.IsCancellationRequested, Is.True);
+    }
+
     /// <summary>
     /// A database written by a newer schema cannot be read, and a node that keeps running without its driver leaves the
     /// execution layer unfollowed; the refusal must fail the startup step, not only the background run.
@@ -152,7 +202,7 @@ public class BeaconChainServiceStartupTests
     {
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, new AnchorFailingMemDb()), GloasCheckpointFiles.Spec);
         ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;
-        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(first.PostState, null);
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(first.PostState, new ForkedSignedBeaconBlock.OfGloas(first.Block));
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile, WeakSubjectivityCheckpoint = $"{first.Root}:1" },
             GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
 
@@ -421,9 +471,8 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    /// <summary>The bootstrap of an anchor without a block has no engine kick to stop at, so a stop after the anchor is loaded must itself stop the cache build.</summary>
     [Test]
-    public async Task A_state_file_only_bootstrap_stopped_before_the_cache_build_builds_and_persists_no_pubkey_cache()
+    public async Task A_resumed_blockless_anchor_fails_startup_before_the_cache_build([Values] bool independentCheckpoint)
     {
         TestErrorLogManager logManager = new();
         PubkeyCache pubkeyCache = new();
@@ -434,14 +483,14 @@ public class BeaconChainServiceStartupTests
         byte[] stateSsz = SyncCommitteeKeyAnchors.EncodeState(gloas: false, nextCommittee: false, key: null, out Hash256 blockRoot);
         store.PutState(blockRoot, stateSsz);
         store.SetAnchor(blockRoot, 0);
+        container.Resolve<IBeaconChainConfig>().WeakSubjectivityCheckpoint = independentCheckpoint ? $"{blockRoot}:0" : null;
         BeaconChainService service = container.Resolve<BeaconChainService>();
-        blocks.OnRead = service.Stop;
-
-        await service.Start();
+        Assert.That(() => service.Start(), Throws.InvalidOperationException.With.Message.Contains("anchor block").And.Message.Contains("delete the beaconChain database"));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pubkeyCache.Count, Is.Zero, "no build");
+            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null, "no proof is recorded for a blockless anchor");
             Assert.That(new PubkeyCache().TryLoad(store, ForkCrossingChain.Instance.AnchorState.Validators!), Is.False, "nothing persisted");
             Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
         }
@@ -516,9 +565,8 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    /// <summary>A state-file checkpoint without a block cannot start the orchestrator, but its cache is still built and persisted for the next restart.</summary>
     [Test]
-    public async Task A_state_file_checkpoint_without_a_block_builds_and_persists_the_pubkey_cache_and_sends_no_forkchoice_updated()
+    public async Task A_state_file_checkpoint_without_a_block_persists_no_anchor_or_pubkey_cache()
     {
         BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState;
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, null);
@@ -531,8 +579,9 @@ public class BeaconChainServiceStartupTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(engine.PubkeysHeldAtCall, Is.Empty, "no forkchoiceUpdated");
-            Assert.That(pubkeyCache.Count, Is.EqualTo(state.Validators!.Length));
-            Assert.That(new PubkeyCache().TryLoad(container.Resolve<BeaconChainStore>(), state.Validators), Is.True, "persisted for the next start");
+            Assert.That(pubkeyCache.Count, Is.Zero);
+            Assert.That(new PubkeyCache().TryLoad(container.Resolve<BeaconChainStore>(), state.Validators!), Is.False);
+            Assert.That(container.Resolve<BeaconChainStore>().TryGetAnchor(out _, out _), Is.False);
         }
     }
 

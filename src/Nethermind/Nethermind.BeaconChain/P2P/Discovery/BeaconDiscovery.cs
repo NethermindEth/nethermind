@@ -151,36 +151,51 @@ public sealed class BeaconDiscovery(
             throw new InvalidOperationException($"{nameof(BeaconDiscovery)} is already started.");
         }
 
-        _runCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        IIPResolver.NethermindIp ip = await ipResolver.Resolve(token);
-        IPAddress? advertised = AdvertisedAddress(ip);
-        if (advertised is null && _logger.IsWarn) _logger.Warn("No external IPv4 address is known, so the beacon chain ENR advertises no endpoint and peers cannot dial this node.");
-        NettyDiscoveryV5Handler handler = CreateDiscv5Services(advertised);
-
-        _group = new MultithreadEventLoopGroup(1);
-        Bootstrap bootstrap = new Bootstrap()
-            .Group(_group)
-            .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
-            .Option(ChannelOption.RcvbufAllocator, new FixedRecvByteBufAllocator(2048 * 2));
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        try
         {
-            bootstrap.ChannelFactory(static () => new SocketDatagramChannel(AddressFamily.InterNetwork));
+            _runCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            IIPResolver.NethermindIp ip = await ipResolver.Resolve(token);
+            IPAddress? advertised = AdvertisedAddress(ip);
+            if (advertised is null && _logger.IsWarn) _logger.Warn("No external IPv4 address is known, so the beacon chain ENR advertises no endpoint and peers cannot dial this node.");
+            NettyDiscoveryV5Handler handler = CreateDiscv5Services(advertised);
+
+            _group = new MultithreadEventLoopGroup(1);
+            Bootstrap bootstrap = new Bootstrap()
+                .Group(_group)
+                .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
+                .Option(ChannelOption.RcvbufAllocator, new FixedRecvByteBufAllocator(2048 * 2));
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                bootstrap.ChannelFactory(static () => new SocketDatagramChannel(AddressFamily.InterNetwork));
+            }
+            else
+            {
+                bootstrap.Channel<SocketDatagramChannel>();
+            }
+
+            bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(channel =>
+            {
+                handler.InitializeChannel(channel);
+                channel.Pipeline.AddLast(handler);
+            }));
+
+            _channel = await bootstrap.BindAsync(config.Discv5Port);
+            _runTask = RunDiscovery(_runCts.Token);
+            if (_logger.IsInfo) _logger.Info($"Beacon chain discv5 listening on UDP port {config.Discv5Port}, local ENR: {LocalNodeRecord}");
         }
-        else
+        catch
         {
-            bootstrap.Channel<SocketDatagramChannel>();
+            await DisposeAsync();
+            _runCts = null;
+            _discv5Services = null;
+            _adapter = null;
+            _handler = null;
+            _channel = null;
+            _group = null;
+            _stopped = false;
+            throw;
         }
-
-        bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(channel =>
-        {
-            handler.InitializeChannel(channel);
-            channel.Pipeline.AddLast(handler);
-        }));
-
-        _channel = await bootstrap.BindAsync(config.Discv5Port);
-        _runTask = RunDiscovery(_runCts.Token);
-        if (_logger.IsInfo) _logger.Info($"Beacon chain discv5 listening on UDP port {config.Discv5Port}, local ENR: {LocalNodeRecord}");
     }
 
     /// <summary>

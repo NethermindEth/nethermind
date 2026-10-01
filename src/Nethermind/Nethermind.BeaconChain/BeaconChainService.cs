@@ -60,11 +60,12 @@ public sealed class BeaconChainService(
 
     /// <summary>Checks the database schema version and any persisted anchor, then runs the driver in the background.</summary>
     /// <remarks>Does nothing, not even the schema check, once an external consensus client has been detected.</remarks>
-    /// <exception cref="InvalidOperationException">The database cannot be brought to the current schema version (see <see cref="BeaconChainStore.EnsureSchemaVersion"/>), or its anchor state is missing; thrown before the run starts, so node startup fails.</exception>
-    /// <exception cref="InvalidDataException">The persisted anchor state holds an invalid sync committee key or a malformed body, its block is of another fork, or it does not prove the configured weak subjectivity checkpoint.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><see cref="IBeaconChainConfig.StateSnapshotIntervalEpochs"/> is below 1.</exception>
+    /// <exception cref="InvalidOperationException">The database cannot be brought to the current schema version (see <see cref="BeaconChainStore.EnsureSchemaVersion"/>), or its anchor state or block is missing; thrown before the run starts, so node startup fails.</exception>
+    /// <exception cref="InvalidDataException">The persisted anchor state holds an invalid sync committee key or a malformed body, carries the fork version of another fork than its slot's, or its block is of another fork, or it does not prove the configured weak subjectivity checkpoint.</exception>
     /// <exception cref="InvalidConfigurationException">The configured weak subjectivity checkpoint is malformed.</exception>
     /// <exception cref="BeaconStateException">The persisted anchor state or block record is too short or not of its slot's shape.</exception>
-    /// <exception cref="NotSupportedException">The persisted anchor state is at a slot before Electra.</exception>
+    /// <exception cref="NotSupportedException">The persisted anchor state is at a slot before Electra, or carries a fork version the configured schedule does not have.</exception>
     public Task Start()
     {
         watchdog?.Start();
@@ -75,6 +76,8 @@ public sealed class BeaconChainService(
             Stop();
             return _runTask = Task.CompletedTask;
         }
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(config.StateSnapshotIntervalEpochs, 1, nameof(IBeaconChainConfig.StateSnapshotIntervalEpochs));
 
         // A database or resumed anchor this build refuses leaves the execution layer without a driver, so it fails startup instead of the background run.
         _ = CheckpointSync.ParseWeakSubjectivityCheckpoint(config.WeakSubjectivityCheckpoint);
@@ -90,7 +93,7 @@ public sealed class BeaconChainService(
             ? Math.Max(anchorSlot, store.GetCanonicalIndexTopSlot() ?? 0)
             : store.GetCanonicalIndexTopSlot(), _cancellationTokenSource.Token) ?? Task.CompletedTask;
 
-    private async Task RunAsync((ForkedBeaconState State, ForkedSignedBeaconBlock? Block, Hash256 BlockRoot)? persistedAnchor)
+    private async Task RunAsync((ForkedBeaconState State, ForkedSignedBeaconBlock Block, Hash256 BlockRoot)? persistedAnchor)
     {
         CancellationToken token = _cancellationTokenSource.Token;
         using CancellationTokenSource warmUpSource = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -99,20 +102,13 @@ public sealed class BeaconChainService(
         try
         {
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.EffectiveCheckpointSyncUrl}");
-            (ForkedBeaconState state, ForkedSignedBeaconBlock? block, Hash256 blockRoot) = persistedAnchor ?? await CheckpointSyncAsync(token);
+            (ForkedBeaconState state, ForkedSignedBeaconBlock block, Hash256 blockRoot) = persistedAnchor ?? await CheckpointSyncAsync(token);
             Validator[] validators = state switch
             {
                 ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
                 ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
                 _ => throw new NotSupportedException($"Unhandled anchor state {state.GetType().Name}"),
             };
-            if (block is null)
-            {
-                InitializePubkeyCache(validators, token);
-                if (_logger.IsWarn) _logger.Warn("Anchor block is unavailable (state-file-only bootstrap); the sync orchestrator cannot start.");
-                return;
-            }
-
             // The cache build runs behind the first forkchoiceUpdated so the execution layer does not wait for it.
             // The subgroup checks are warmed off the orchestrator worker, so the first epoch of imports does not pay for them.
             await orchestrator.RunAsync(state, block, blockRoot, token, () =>
@@ -134,6 +130,9 @@ public sealed class BeaconChainService(
         }
         finally
         {
+            // A failed run must not leave the networking components it started running without their loops.
+            Stop();
+            // Awaited so StopAsync returns only after the warm-up has left the cache.
             await warmUpSource.CancelAsync();
             await warmUp;
             await backfill;
@@ -158,7 +157,7 @@ public sealed class BeaconChainService(
     }
 
     /// <returns>The anchor a previous run persisted, or <c>null</c> for a database that has none.</returns>
-    private (ForkedBeaconState State, ForkedSignedBeaconBlock? Block, Hash256 BlockRoot)? LoadPersistedAnchor()
+    private (ForkedBeaconState State, ForkedSignedBeaconBlock Block, Hash256 BlockRoot)? LoadPersistedAnchor()
     {
         if (!store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot))
         {
@@ -173,9 +172,13 @@ public sealed class BeaconChainService(
 
         ForkedBeaconState state = BeaconStateCodec.DecodeForked(stateSsz, spec);
         CheckpointSync.ThrowIfWrongNetwork(state, spec);
+        CheckpointSync.ThrowIfUnsupportedFork(state, spec);
         CheckpointSync.ThrowIfInvalidSyncCommitteeKeys(state);
-        store.TryGetForkedBlock(anchorRoot, out ForkedSignedBeaconBlock? block);
-        if (block is not null && (state, block) is not ((ForkedBeaconState.OfFulu, ForkedSignedBeaconBlock.OfFulu) or (ForkedBeaconState.OfGloas, ForkedSignedBeaconBlock.OfGloas)))
+        if (!store.TryGetForkedBlock(anchorRoot, out ForkedSignedBeaconBlock? block))
+        {
+            throw new InvalidOperationException($"Persisted anchor block {anchorRoot} is missing; delete the beaconChain database to checkpoint-sync again.");
+        }
+        if ((state, block) is not ((ForkedBeaconState.OfFulu, ForkedSignedBeaconBlock.OfFulu) or (ForkedBeaconState.OfGloas, ForkedSignedBeaconBlock.OfGloas)))
         {
             // The importer takes only an anchor state and block of the same fork; checkpoint sync refuses such a pair before it is persisted.
             BeaconFork blockFork = block is ForkedSignedBeaconBlock.OfGloas ? BeaconFork.Gloas : BeaconFork.Fulu;
@@ -186,7 +189,7 @@ public sealed class BeaconChainService(
         return (state, block, anchorRoot);
     }
 
-    private async Task<(ForkedBeaconState State, ForkedSignedBeaconBlock? Block, Hash256 BlockRoot)> CheckpointSyncAsync(CancellationToken cancellationToken)
+    private async Task<(ForkedBeaconState State, ForkedSignedBeaconBlock Block, Hash256 BlockRoot)> CheckpointSyncAsync(CancellationToken cancellationToken)
     {
         while (true)
         {

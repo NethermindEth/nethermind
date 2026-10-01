@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
@@ -108,6 +109,27 @@ public class BeaconP2PLoopbackTests
         {
             await lifetime.CancelAsync();
         }
+    }
+
+    [Test]
+    public async Task A_failed_p2p_listener_bind_can_be_started_again()
+    {
+        using TcpListener occupied = new(IPAddress.Any, 0) { ExclusiveAddressUse = true };
+        occupied.Start();
+        await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig
+        {
+            P2PPort = ((IPEndPoint)occupied.LocalEndpoint).Port,
+        }).Build();
+        BeaconP2P p2p = container.Resolve<BeaconP2P>();
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(20));
+
+        Assert.CatchAsync<Exception>(() => p2p.StartAsync(timeout.Token));
+        Assert.That(p2p.ListenAddresses, Is.Empty);
+        Assert.That(p2p.LocalPeerForTest, Is.Null, "a failed bind disposes the peer before retrying");
+        occupied.Stop();
+        await p2p.StartAsync(timeout.Token);
+
+        Assert.That(p2p.ListenAddresses, Is.Not.Empty);
     }
 
     [Test]
