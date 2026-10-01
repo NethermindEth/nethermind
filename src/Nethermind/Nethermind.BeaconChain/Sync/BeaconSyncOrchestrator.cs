@@ -1069,7 +1069,8 @@ public sealed class BeaconSyncOrchestrator(
             bool wasRetried = isQueued && _pendingRetry.Remove(root);
             // The block has the root this node asked for, so the peer served an invalid block; one at or below this node's
             // finalized slot is refused by local admission only (fork-choice.md on_block), which says nothing of its data.
-            if (result == BlockImportResult.Invalid && origin == ImportOrigin.ByRoot && block.Slot > FinalizedSlot)
+            // Imports since the last head step can have moved finality, so the importer's own view counts too.
+            if (result == BlockImportResult.Invalid && origin == ImportOrigin.ByRoot && block.Slot > Math.Max(FinalizedSlot, _importer!.FinalizedSlot))
             {
                 servedBy?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Blocks-by-root for {root} returned an invalid block");
             }
