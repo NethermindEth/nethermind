@@ -457,8 +457,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             bool ownsTimeout = true;
             try
             {
-                BlockParameter fromBlock = traceFilterForRpc.FromBlock ?? BlockParameter.Latest;
-                BlockParameter toBlock = traceFilterForRpc.ToBlock ?? BlockParameter.Latest;
+                (BlockParameter fromBlock, BlockParameter toBlock) = traceFilterForRpc.GetBlockRange();
                 if (IsPending(fromBlock) || IsPending(toBlock))
                 {
                     return PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
