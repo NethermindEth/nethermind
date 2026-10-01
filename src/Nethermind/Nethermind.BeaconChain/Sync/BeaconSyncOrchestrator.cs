@@ -406,10 +406,11 @@ public sealed class BeaconSyncOrchestrator(
         token.ThrowIfCancellationRequested();
         afterEngineKick?.Invoke();
 
-        await ReplayStoredBlocksAsync(token);
-
+        // Inbound peers connect and discovery fills while the replay runs; dials and range sync wait for the loops below.
         await StartComponentAsync(p2p.StartAsync, token);
         await StartComponentAsync(discovery.Start, token);
+
+        await ReplayStoredBlocksAsync(token);
 
         // The loops only stop on cancellation, so a fault in any of them stops all the others
         // before it is propagated to the caller.
@@ -2186,7 +2187,7 @@ public sealed class BeaconSyncOrchestrator(
             gossipRouter.SetPtc(slot, PtcReader is { } reader ? reader(head.HeadRoot, slot) : (importer as BlockImporter)?.GetPtc(head.HeadRoot, slot));
         }
 
-        // A replay near the wall clock runs before the libp2p host starts, and topics exist only once it has.
+        // Topics exist only once the libp2p host has started.
         if (!GossipStarted && p2p?.LocalPeerId is not null && head.HeadSlot + GossipStartDistanceSlots >= slotClock.CurrentSlot)
         {
             StartGossip();
