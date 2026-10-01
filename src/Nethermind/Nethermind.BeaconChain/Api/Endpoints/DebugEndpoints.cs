@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -104,12 +105,25 @@ internal static class DebugEndpoints
             return StateJson(c, stateId, resolved, ctx);
         }
 
-        // The raw path never decodes the state; the block it belongs to is the cheap source of its
-        // slot for the version header. Without that block the header is omitted, never guessed.
+        ulong slot;
         if (ctx.Store.TryGetForkedBlock(resolved.Root, out ForkedSignedBeaconBlock? block))
         {
-            ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, block.Slot);
+            slot = block.Slot;
         }
+        else
+        {
+            // consensus-specs v1.7.0-beta.2, Electra/Fulu BeaconState: slot follows the 40-byte genesis fields.
+            const int slotOffset = 40;
+            if (resolved.Ssz.Length < slotOffset + sizeof(ulong))
+            {
+                return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
+                    $"The state persisted for '{stateId}' ({resolved.Root}) is not decodable: SSZ is too short to contain a slot.", c.RequestAborted);
+            }
+
+            slot = BinaryPrimitives.ReadUInt64LittleEndian(resolved.Ssz.AsSpan(slotOffset));
+        }
+
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, slot);
 
         c.Response.ContentType = ContentNegotiation.OctetStream;
         return c.Response.Body.WriteAsync(resolved.Ssz, c.RequestAborted).AsTask();

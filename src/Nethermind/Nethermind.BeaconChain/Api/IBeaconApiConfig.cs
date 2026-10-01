@@ -33,6 +33,6 @@ public interface IBeaconApiConfig : IConfig
     [ConfigItem(Description = "The most time, in seconds, one state request may take in total, however steadily its response is written. When it passes, the response is aborted and the request's permits are released. Set it generously: a slow but steady download of a large state must finish inside it. Must be between 1 and 4294967.", DefaultValue = "3600")]
     int StateResponseTimeoutSeconds { get; set; }
 
-    [ConfigItem(Description = "The most time, in seconds, a state request may go without its response being written: counted between written chunks (256 KiB at most) once the first chunk is written; loading a state before that is bounded only by `StateResponseTimeoutSeconds`. When it passes, the response is aborted and the request's permits are released, so a client that stopped reading cannot hold a state request slot. Must be between 1 and 4294967.", DefaultValue = "120")]
+    [ConfigItem(Description = "The most time, in seconds, a state request may go without its response being written: counted between written chunks (64 KiB at most) once the first chunk is written; loading a state before that is bounded only by `StateResponseTimeoutSeconds`. When it passes, the response is aborted and the request's permits are released, so a client that stopped reading cannot hold a state request slot. Must be between 1 and 4294967.", DefaultValue = "120")]
     int StateResponseIdleTimeoutSeconds { get; set; }
 }

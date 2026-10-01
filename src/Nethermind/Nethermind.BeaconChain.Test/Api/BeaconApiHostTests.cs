@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -283,50 +284,61 @@ public class BeaconApiHostTests
 
     /// <summary>apis/debug/state.v2.yaml returns 404 for missing states; unset driver checkpoints remain unavailable.</summary>
     [Test]
-    public async Task Debug_state_ssz_is_404_before_any_state_is_persisted_and_serves_exact_bytes_once_it_is([Values("head", "finalized", "13200000")] string id)
+    public async Task Debug_state_ssz_is_404_before_any_state_is_persisted_and_serves_exact_bytes_once_it_is(
+        [Values("head", "finalized", "13200000", "root")] string stateId, [Values] bool fulu)
     {
-        const ulong slot = 13_200_000;
-        if (id != slot.ToString())
+        const ulong canonicalSlot = 13_200_000;
+        ulong stateSlot = (fulu ? Spec.FuluForkEpoch : Spec.ElectraForkEpoch) * Spec.SlotsPerEpoch;
+        if (stateId is "head" or "finalized")
         {
-            using HttpResponseMessage uninitialized = await _client.GetAsync($"/eth/v2/debug/beacon/states/{id}");
+            using HttpResponseMessage uninitialized = await _client.GetAsync($"/eth/v2/debug/beacon/states/{stateId}");
             Assert.That(uninitialized.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
         }
 
         Hash256 root = TestRoot(2);
-        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = slot };
+        Hash256 stateRoot = TestRoot(20);
+        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = canonicalSlot };
         _store.DeleteState(root);
-        _store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
-        _store.SetCanonicalRoot(slot, root);
+        _store.SetCanonicalRoot(canonicalSlot, root);
+        if (stateId == "root")
+        {
+            SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(stateSlot);
+            block.Message!.StateRoot = stateRoot;
+            _store.PutBlock(root, block);
+        }
 
-        HttpRequestMessage missing = new(HttpMethod.Get, $"/eth/v2/debug/beacon/states/{id}");
+        string path = $"/eth/v2/debug/beacon/states/{(stateId == "root" ? stateRoot.ToString() : stateId)}";
+        HttpRequestMessage missing = new(HttpMethod.Get, path);
         missing.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ContentTypeOctet));
         HttpResponseMessage missingResponse = await _client.SendAsync(missing);
         Assert.That(missingResponse.StatusCode, Is.EqualTo(HttpStatusCode.NotFound), "no state stored for that root yet");
 
-        byte[] stateBytes = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        byte[] stateBytes = new byte[48];
+        BinaryPrimitives.WriteUInt64LittleEndian(stateBytes, Spec.GenesisTime);
+        BinaryPrimitives.WriteUInt64LittleEndian(stateBytes.AsSpan(40), stateSlot);
         _store.PutState(root, stateBytes);
 
-        HttpRequestMessage present = new(HttpMethod.Get, $"/eth/v2/debug/beacon/states/{id}");
+        HttpRequestMessage present = new(HttpMethod.Get, path);
         present.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ContentTypeOctet));
         HttpResponseMessage presentResponse = await _client.SendAsync(present);
         Assert.That(presentResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         Assert.That(presentResponse.Content.Headers.ContentType?.MediaType, Is.EqualTo(ContentTypeOctet));
         byte[] received = await presentResponse.Content.ReadAsByteArrayAsync();
         Assert.That(received, Is.EqualTo(stateBytes), "checkpoint-provider path must serve the exact stored bytes");
+        Assert.That(presentResponse.Headers.GetValues("Eth-Consensus-Version"), Is.EqualTo(new[] { fulu ? "fulu" : "electra" }));
     }
 
     [Test]
-    public async Task Debug_state_json_for_undecodable_stored_bytes_is_an_error_not_a_best_effort_partial_body()
+    public async Task Debug_state_for_undecodable_stored_bytes_is_an_error_not_a_best_effort_partial_body(
+        [Values] bool ssz, [Values(1, 47)] int length)
     {
         Hash256 root = TestRoot(3);
         _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = 5 };
-        _store.PutState(root, [9]);
+        _store.PutState(root, new byte[length]);
 
         HttpRequestMessage request = new(HttpMethod.Get, "/eth/v2/debug/beacon/states/head");
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ssz ? ContentTypeOctet : "application/json"));
         HttpResponseMessage response = await _client.SendAsync(request);
-        // Nine bytes cannot be a state; the JSON path decodes and must say so (BeaconJsonBodiesTests
-        // covers the real body), never emit a Fulu-shaped object built from garbage.
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError));
         JsonDocument body = await ReadJsonAsync(response);
         Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("not decodable"));
