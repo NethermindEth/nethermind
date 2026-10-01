@@ -32,8 +32,8 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     public readonly bool IsCold(in StorageCell storageCell) => _trackingState.IsCold(in storageCell);
 
-    public readonly bool WarmUp(Address address)
-        => _trackingState.AccessedAddresses.Add(address);
+    /// <returns><see langword="true"/> when the address was cold.</returns>
+    public readonly bool WarmUp(Address address) => _trackingState.WarmUp(address);
 
     /// <returns><see langword="true"/> when the cell was cold.</returns>
     public readonly bool WarmUp(in StorageCell storageCell) => _trackingState.WarmUp(in storageCell);
@@ -112,12 +112,28 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;
+        private Address? _lastWarmAddress;
+
+        /// <remarks>
+        /// The address counterpart of <see cref="WarmUp(in StorageCell)"/>'s remembered cell. Back-to-back accesses to one
+        /// account are common: a pre-0.8.10 Solidity call checks EXTCODESIZE of its target right before the CALL, and a
+        /// loop calls the same contract over and over. Each paid a hash and a probe of the address set.
+        /// </remarks>
+        public bool WarmUp(Address address)
+        {
+            if (address.Equals(_lastWarmAddress)) return false;
+
+            bool wasCold = AccessedAddresses.Add(address);
+            _lastWarmAddress = address;
+            return wasCold;
+        }
 
         /// <remarks>
         /// A loop reading one slot asks this of the same cell every iteration, and the set probe costs about as
         /// much as the storage read that follows it. Remembering the last cell found warm answers the repeat
         /// from an inlined compare. Only <see cref="StackAccessTracker.Restore"/> and the pooled reset can take a cell back out of
-        /// the set, and both forget it; adding never invalidates, so a remembered cell cannot go stale warm.
+        /// the set, and both forget it, as they forget the remembered address; adding never invalidates, so neither
+        /// can go stale warm.
         /// </remarks>
         public bool IsCold(in StorageCell storageCell)
         {
@@ -149,7 +165,11 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             _hasLastWarmCell = true;
         }
 
-        public void ForgetWarm() => _hasLastWarmCell = false;
+        public void ForgetWarm()
+        {
+            _hasLastWarmCell = false;
+            _lastWarmAddress = null;
+        }
 
         private void Clear()
         {

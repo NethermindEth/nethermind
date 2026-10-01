@@ -87,6 +87,90 @@ public class EthereumGasPolicyTests
         }
     }
 
+    /// <summary>An address warmed after a snapshot must be cold again once that snapshot is restored.</summary>
+    /// <remarks>
+    /// <see cref="StackAccessTracker.WarmUp(Address)"/> remembers the last address it warmed, so a repeat answers
+    /// without probing the set. A restore must drop it, or a CALL to an account warmed only in a reverted sub call
+    /// would be charged warm gas instead of cold.
+    /// </remarks>
+    [Test]
+    public void Reverted_address_warm_up_is_cold_again()
+    {
+        using StackAccessTracker tracker = new();
+        tracker.WarmUp(TestItem.AddressB);
+
+        tracker.TakeSnapshot();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "first access is cold");
+            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "the repeat is served from the memo");
+        }
+
+        tracker.Restore();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.IsCold(TestItem.AddressA), Is.True, "the warm-up was reverted");
+            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "and is charged cold again");
+            Assert.That(tracker.WarmUp(TestItem.AddressB), Is.False, "the access before the snapshot stays warm");
+        }
+    }
+
+    /// <summary>A sub call's restore must not leave the parent's remembered address stale either.</summary>
+    /// <remarks>Each frame holds its own copy of the tracker over one shared state, as the VM's frames do.</remarks>
+    [Test]
+    public void Child_frame_restore_forgets_the_address_it_warmed()
+    {
+        using StackAccessTracker parent = new();
+        parent.TakeSnapshot();
+        parent.WarmUp(TestItem.AddressA);
+
+        StackAccessTracker child = parent;
+        child.TakeSnapshot();
+        Assert.That(child.WarmUp(TestItem.AddressB), Is.True);
+        Assert.That(child.WarmUp(TestItem.AddressB), Is.False);
+        child.Restore();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parent.WarmUp(TestItem.AddressB), Is.True, "warmed only in the reverted child");
+            Assert.That(parent.WarmUp(TestItem.AddressA), Is.False, "warmed by the parent before the child");
+        }
+    }
+
+    /// <summary>Returning a tracker to the pool must drop the remembered address, as it drops the remembered cell.</summary>
+    [Test]
+    public void Pooled_reset_drops_the_remembered_address()
+    {
+        object returnedState;
+        using (StackAccessTracker first = new())
+        {
+            returnedState = first.AccessedAddresses;
+            first.WarmUp(TestItem.AddressA);
+            Assert.That(first.WarmUp(TestItem.AddressA), Is.False, "sets the memo");
+        }
+
+        using StackAccessTracker second = new();
+        Assert.That(second.AccessedAddresses, Is.SameAs(returnedState), "precondition: the pool reused the state");
+        Assert.That(second.WarmUp(TestItem.AddressA), Is.True, "a pooled reset must forget the warm address");
+    }
+
+    /// <summary>The memo compares by value and answers only for the address it remembers.</summary>
+    [Test]
+    public void Remembered_address_matches_by_value_and_only_itself()
+    {
+        using StackAccessTracker tracker = new();
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.WarmUp(new Address(TestItem.AddressA.Bytes)), Is.False, "an equal instance is warm");
+            Assert.That(tracker.WarmUp(TestItem.AddressB), Is.True, "another address is still cold");
+            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "and the first stays warm behind the memo");
+            Assert.That(tracker.AccessedAddresses, Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        }
+    }
+
     [Test]
     public void Memory_cost_preserves_preexpanded_range_and_full_width_validation(
         [Values(0UL, 1UL, 31UL, 32UL, 33UL, ulong.MaxValue)] ulong offset,
