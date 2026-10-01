@@ -51,6 +51,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private ulong _nextGeneration;
     private ulong _version;
     private int _openBatch;
+    private int _poisoned;
     private int _disposed;
 
     // One batch is open per shard at a time; its pending-key map is kept across batches so its entry arrays
@@ -109,12 +110,39 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     public TrieNodeLogWriteBatch StartWriteBatch()
     {
-        if (Interlocked.CompareExchange(ref _openBatch, 1, 0) != 0)
-            throw new InvalidOperationException($"A trie node log write batch is already open on shard {Name}");
+        EnterExclusive();
+        try
+        {
+            Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending = Interlocked.Exchange(ref _pendingPool, null) ?? [];
+            using Lock.Scope _ = _lock.EnterScope();
+            return new TrieNodeLogWriteBatch(this, ++_version, new ArrayPoolList<TrieNodeLogGeneration>(2), pending);
+        }
+        catch
+        {
+            ExitExclusive();
+            throw;
+        }
+    }
 
-        Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending = Interlocked.Exchange(ref _pendingPool, null) ?? [];
-        using Lock.Scope _ = _lock.EnterScope();
-        return new TrieNodeLogWriteBatch(this, ++_version, new ArrayPoolList<TrieNodeLogGeneration>(2), pending);
+    /// <summary>
+    /// Takes the batch gate: held by an open log-backed batch, and by <see cref="DrainExclusive"/> and
+    /// <see cref="ClearExclusive"/> so neither runs under an open batch nor has a batch open under it.
+    /// </summary>
+    internal void EnterExclusive()
+    {
+        if (Volatile.Read(ref _poisoned) != 0)
+            throw new InvalidOperationException($"Trie node log shard {Name} holds records RocksDB never confirmed; restart the node to recover");
+        if (Interlocked.CompareExchange(ref _openBatch, 1, 0) != 0)
+            throw new InvalidOperationException($"A trie node log write batch is open on shard {Name}");
+    }
+
+    internal void ExitExclusive() => Volatile.Write(ref _openBatch, 0);
+
+    /// <summary>Refuses every further batch, drain and clear until a restart; see <see cref="ITrieNodeLog.IWriteBatch.Confirm"/>.</summary>
+    internal void Poison()
+    {
+        Volatile.Write(ref _poisoned, 1);
+        if (_logger.IsError) _logger.Error($"Trie node log shard {Name} holds records RocksDB never confirmed; it takes no more writes until the node is restarted");
     }
 
     internal void ReturnPending(Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending)
@@ -126,7 +154,20 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// <summary>Merges every generation into RocksDB synchronously.</summary>
     public void Drain()
     {
-        ThrowIfBatchOpen();
+        EnterExclusive();
+        try
+        {
+            DrainExclusive();
+        }
+        finally
+        {
+            ExitExclusive();
+        }
+    }
+
+    /// <summary><see cref="Drain"/> for a caller holding the gate through <see cref="EnterExclusive"/>.</summary>
+    internal void DrainExclusive()
+    {
         SealActive();
         FlushSealedGenerations(mergeLag: 0);
     }
@@ -134,7 +175,20 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// <summary>Discards every generation without merging it.</summary>
     public void Clear()
     {
-        ThrowIfBatchOpen();
+        EnterExclusive();
+        try
+        {
+            ClearExclusive();
+        }
+        finally
+        {
+            ExitExclusive();
+        }
+    }
+
+    /// <summary><see cref="Clear"/> for a caller holding the gate through <see cref="EnterExclusive"/>.</summary>
+    internal void ClearExclusive()
+    {
         using SemaphoreSlimExtensions.Scope _ = _flushLock.EnterScope();
         using Lock.Scope __ = _lock.EnterScope();
         foreach (TrieNodeLogGeneration generation in _generations)
@@ -165,11 +219,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
         _cancellation.Dispose();
         _merged.Dispose();
-    }
-
-    internal void ThrowIfBatchOpen()
-    {
-        if (Volatile.Read(ref _openBatch) != 0) throw new InvalidOperationException($"A trie node log write batch is open on shard {Name}");
     }
 
     private ArrayPoolList<TrieNodeLogGeneration> PinAllNoLock()
@@ -422,12 +471,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         return false;
     }
 
-    internal void RefreshGauges()
-    {
-        using Lock.Scope _ = _lock.EnterScope();
-        RefreshGaugesNoLock();
-    }
-
     private void RefreshGaugesNoLock()
     {
         long bytes = 0;
@@ -467,8 +510,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
         foreach ((ulong number, string path) in files)
         {
-            // An empty file is one whose creation did not get as far as its header.
-            if (wiped || number <= flushedGeneration || new FileInfo(path).Length == 0)
+            // A file without a complete header is one whose creation was cut short before anything in it was
+            // confirmed.
+            if (wiped || number <= flushedGeneration || !TrieNodeLogGeneration.HasFileHeader(path))
             {
                 File.Delete(path);
                 continue;
@@ -494,7 +538,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     {
         long fileLength = new FileInfo(path).Length;
         TrieNodeLogGeneration generation = new(number, path, Math.Max(TrieNodeLogGeneration.CapacityFor(_generationBytes), TrieNodeLogGeneration.CapacityFor(fileLength)));
-        generation.ValidateFileHeader();
 
         // First pass: the frontier is the end of the last commit record the metadata column confirms.
         long frontier = TrieNodeLogGeneration.FileHeaderLength;

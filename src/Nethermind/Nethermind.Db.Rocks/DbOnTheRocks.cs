@@ -1570,21 +1570,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         InnerFlush(familyHandle);
     }
 
-    public virtual void FlushOrThrow()
-    {
-        ObjectDisposedException.ThrowIf(_isDisposing, this);
-        try
-        {
-            FlushWal();
-            _db.Flush(_defaultFlushOptions);
-        }
-        catch (RocksDbException e)
-        {
-            HandleFatalDbError(e);
-            throw;
-        }
-    }
-
     public void FlushWithColumnFamilyOrThrow(IColumnFamilyHandle familyHandle)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);

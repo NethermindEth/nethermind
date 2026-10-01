@@ -87,15 +87,22 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         Frontier = FileHeaderLength;
     }
 
-    /// <summary>Checks the file header of a recovered generation, throwing when the file was written by another format.</summary>
-    public void ValidateFileHeader()
+    /// <summary>
+    /// Whether the file at <paramref name="path"/> carries this format's header. A short or zero-filled header (a
+    /// creation cut short before its first commit) yields false; a header of another format throws.
+    /// </summary>
+    public static bool HasFileHeader(string path)
     {
+        using SafeFileHandle handle = File.OpenHandle(path);
         Span<byte> header = stackalloc byte[FileHeaderLength];
-        if (ReadAt(0, header) != FileHeaderLength || !header[..Magic.Length].SequenceEqual(Magic))
-            throw new InvalidDataException($"{Path} is not a trie node log generation file");
+        int read = RandomAccess.Read(handle, header, 0);
+        if (read < FileHeaderLength || !header.ContainsAnyExcept((byte)0)) return false;
+        if (!header[..Magic.Length].SequenceEqual(Magic))
+            throw new InvalidDataException($"{path} is not a trie node log generation file");
         uint version = BinaryPrimitives.ReadUInt32LittleEndian(header[Magic.Length..]);
         if (version != FormatVersion)
-            throw new InvalidDataException($"{Path} uses trie node log format {version}, this build writes format {FormatVersion}; merge it with the build that wrote it or delete it");
+            throw new InvalidDataException($"{path} uses trie node log format {version}, this build writes format {FormatVersion}; merge it with the build that wrote it or delete it");
+        return true;
     }
 
     public bool TryAcquire() => TryAcquireLease();

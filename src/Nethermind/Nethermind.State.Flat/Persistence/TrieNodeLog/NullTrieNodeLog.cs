@@ -20,6 +20,7 @@ public sealed class NullTrieNodeLog : ITrieNodeLog, ITrieNodeLog.IWriteBatch
 
     public IWriteBatch Wrap(FlatDbColumns column, IWriteBatch inner) => inner;
     public void Commit() { }
+    public void Confirm() { }
 
     public void Dispose() { }
 

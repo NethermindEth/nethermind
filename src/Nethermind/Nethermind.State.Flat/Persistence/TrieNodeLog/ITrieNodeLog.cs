@@ -65,5 +65,13 @@ public interface ITrieNodeLog
         /// batch is disposed after it.
         /// </summary>
         void Commit();
+
+        /// <summary>
+        /// Called once the RocksDB batch has been written and its WAL flushed, i.e. once RocksDB confirms the version
+        /// <see cref="Commit"/> put into it. A batch disposed after <see cref="Commit"/> without this call leaves records
+        /// RocksDB never confirmed in the log; the log then refuses further batches until a restart, whose recovery
+        /// discards them.
+        /// </summary>
+        void Confirm();
     }
 }

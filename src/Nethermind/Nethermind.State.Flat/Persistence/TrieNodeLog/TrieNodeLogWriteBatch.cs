@@ -38,6 +38,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     private TrieNodeLogGeneration? _current; // the generation the buffer appends to
     private int _pendingInsertsInCurrent;
     private bool _committed;
+    private bool _poisoned;
     private long _storedBytes;
 
     public void Append(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete)
@@ -249,10 +250,17 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         _collisions.Clear();
     }
 
+    /// <summary>Marks the batch as published but never confirmed by RocksDB; disposing it then poisons the shard instead of sealing.</summary>
+    public void Poison() => _poisoned = true;
+
     public void Dispose()
     {
         ArrayPool<byte>.Shared.Return(_buffer);
-        if (_committed)
+        if (_poisoned)
+        {
+            shard.Poison();
+        }
+        else if (_committed)
         {
             shard.OnBatchCommitted();
         }

@@ -413,6 +413,45 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public async Task A_batch_RocksDB_never_confirmed_poisons_the_log_until_restart()
+    {
+        byte[] key = Bytes.FromHexString("0x123450"); // a StateTopNodes column key
+        using (IColumnsWriteBatch<FlatDbColumns> rocksDbBatch = _db.StartWriteBatch())
+        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(rocksDbBatch, bypass: false))
+        {
+            logBatch.Wrap(FlatDbColumns.StateTopNodes, rocksDbBatch.GetColumnBatch(FlatDbColumns.StateTopNodes)).PutSpan(key, Rlp1);
+            logBatch.Commit();
+            rocksDbBatch.Clear(); // the RocksDB write "failed": nothing of this batch, its version included, reaches RocksDB
+        }
+
+        Assert.That(() => Batch(0, 1), Throws.InvalidOperationException.With.Message.Contains("restart"));
+
+        await Reopen();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_db.GetColumnDb(FlatDbColumns.StateTopNodes).Get(key), Is.Null);
+            Assert.That(() => Batch(0, 1).Dispose(), Throws.Nothing);
+        }
+    }
+
+    [Test]
+    public async Task A_generation_file_cut_short_before_its_header_is_dropped()
+    {
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+        string directory = Path.GetDirectoryName(LogFiles().Single(static file => file.Contains("state_top")))!;
+        string stub = Path.Combine(directory, "gen-00000099.log");
+        File.WriteAllBytes(stub, Bytes.FromHexString("0x544e"));
+
+        Open();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(stub), Is.False);
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1));
+        }
+    }
+
+    [Test]
     public void Only_one_log_backed_batch_may_be_open()
     {
         using IPersistence.IWriteBatch open = Batch(0, 1);

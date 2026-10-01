@@ -186,13 +186,44 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     public void Drain()
     {
-        foreach (TrieNodeLogShard shard in _shards) shard.ThrowIfBatchOpen();
-        Parallel.ForEach(_shards, static shard => shard.Drain());
+        int gated = EnterExclusive();
+        try
+        {
+            Parallel.ForEach(_shards, static shard => shard.DrainExclusive());
+        }
+        finally
+        {
+            for (int i = 0; i < gated; i++) _shards[i].ExitExclusive();
+        }
     }
 
     public void Clear()
     {
-        foreach (TrieNodeLogShard shard in _shards) shard.Clear();
+        int gated = EnterExclusive();
+        try
+        {
+            foreach (TrieNodeLogShard shard in _shards) shard.ClearExclusive();
+        }
+        finally
+        {
+            for (int i = 0; i < gated; i++) _shards[i].ExitExclusive();
+        }
+    }
+
+    /// <summary>Takes every shard's batch gate, so no log-backed batch is open or can open; returns how many were taken.</summary>
+    private int EnterExclusive()
+    {
+        int gated = 0;
+        try
+        {
+            for (; gated < _shards.Length; gated++) _shards[gated].EnterExclusive();
+        }
+        catch
+        {
+            for (int i = 0; i < gated; i++) _shards[i].ExitExclusive();
+            throw;
+        }
+        return gated;
     }
 
     public async ValueTask DisposeAsync()
@@ -236,6 +267,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         private readonly ArrayPoolList<TrieNodeLogWriteBatch> _batches;
         private readonly ArrayPoolList<ShardWriter> _writers;
         private bool _committed;
+        private bool _confirmed;
 
         public WriteBatch(TrieNodeLog log, IColumnsWriteBatch<FlatDbColumns> rocksDbBatch, ArrayPoolList<TrieNodeLogWriteBatch> batches)
         {
@@ -273,12 +305,20 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             Metrics.TrieNodeLogCommitTime.Observe(Stopwatch.GetTimestamp() - sw);
         }
 
+        public void Confirm() => _confirmed = _committed;
+
         public void Dispose()
         {
             _writers.DisposeRecursive();
             if (!_committed)
             {
                 foreach (TrieNodeLogWriteBatch batch in _batches) batch.Abort();
+            }
+            else if (!_confirmed)
+            {
+                // Published, fsynced records whose RocksDB write failed: they cannot be unpublished under readers, and a
+                // later confirmed version would vouch for them, so the shards stop taking batches until a restart.
+                foreach (TrieNodeLogWriteBatch batch in _batches) batch.Poison();
             }
             _batches.DisposeRecursive();
         }

@@ -121,21 +121,28 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
-                // The log is made durable and its version put into this batch's metadata before RocksDB commits,
-                // and the log only seals generations once RocksDB has.
-                logBatch.Commit();
-                if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
-                    BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
-                if (_rlpWrapSlots)
-                    BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
-                batch.Dispose();
-                dbSnap.Dispose();
-                _adjuster.OnBatchDisposed();
-                if (!flags.HasFlag(WriteFlags.DisableWAL))
+                // The log is made durable and its version put into this batch's metadata before RocksDB commits, and
+                // confirmed to the log only once RocksDB has committed and flushed its WAL.
+                try
                 {
-                    db.Flush(onlyWal: true);
+                    logBatch.Commit();
+                    if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
+                        BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
+                    if (_rlpWrapSlots)
+                        BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
+                    batch.Dispose();
+                    if (!flags.HasFlag(WriteFlags.DisableWAL))
+                    {
+                        db.Flush(onlyWal: true);
+                    }
+                    logBatch.Confirm();
                 }
-                logBatch.Dispose();
+                finally
+                {
+                    dbSnap.Dispose();
+                    _adjuster.OnBatchDisposed();
+                    logBatch.Dispose();
+                }
             })
         );
     }
