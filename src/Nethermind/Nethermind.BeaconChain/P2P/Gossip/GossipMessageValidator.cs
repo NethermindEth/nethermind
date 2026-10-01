@@ -43,8 +43,8 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
         bool parsed = GossipTopics.TryParse(message.Topic, out byte[]? digest, out string? name);
         string label = parsed && IsHandledName(name!) ? name! : UnhandledTopicLabel;
 
-        // StrictNoSign: the library checks this only after the validator runs.
-        if (!message.Signature.IsEmpty)
+        // p2p-interface.md "Topics and messages": StrictNoSign requires all four optional fields to be absent.
+        if (message.HasFrom || message.HasSeqno || message.HasSignature || message.HasKey)
         {
             return Drop(label, GossipDropReason.SignedMessage, MessageValidity.Rejected);
         }

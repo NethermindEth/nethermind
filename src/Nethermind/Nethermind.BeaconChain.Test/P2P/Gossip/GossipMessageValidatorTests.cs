@@ -128,6 +128,30 @@ public class GossipMessageValidatorTests
         }
     }
 
+    [Test]
+    public void StrictNoSign_rejects_present_fields([Values("from", "seqno", "signature", "key")] string field, [Values] bool empty)
+    {
+        (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create();
+        Message message = Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock()), signed: false);
+        ByteString value = empty ? ByteString.Empty : ByteString.CopyFrom([1]);
+        switch (field)
+        {
+            case "from": message.From = value; break;
+            case "seqno": message.Seqno = value; break;
+            case "signature": message.Signature = value; break;
+            case "key": message.Key = value; break;
+        }
+
+        MessageValidity validity = validator.Verify(Nethermind.Libp2p.Protocols.Pubsub.Dto.Message.Parser.ParseFrom(message.ToByteArray()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+            Assert.That(raised, Is.Empty);
+            Assert.That(router.GetDropCount(GossipDropReason.SignedMessage), Is.EqualTo(1));
+        }
+    }
+
     // altair p2p "Transitioning the gossip": a digest is handled from one epoch before it takes effect until two epochs after its last epoch.
     [TestCase(-1, true, MessageValidity.Rejected, GossipDropReason.InvalidSnappy, TestName = "next-fork digest one epoch before it takes effect")]
     [TestCase(-2, true, MessageValidity.Ignored, GossipDropReason.UnknownTopic, TestName = "next-fork digest two epochs before it takes effect")]
@@ -274,12 +298,16 @@ public class GossipMessageValidatorTests
     private static TestCaseData Case(string name, string topic, byte[] data, MessageValidity expected, Type? consumedAs, GossipDropReason? reason, bool signed = false) =>
         new TestCaseData(topic, data, signed, expected, consumedAs, reason).SetName(name);
 
-    private static Message Message(string topic, byte[] data, bool signed) => new()
+    private static Message Message(string topic, byte[] data, bool signed)
     {
-        Topic = topic,
-        Data = ByteString.CopyFrom(data),
-        Signature = signed ? ByteString.CopyFrom([1]) : ByteString.Empty,
-    };
+        Message message = new() { Topic = topic, Data = ByteString.CopyFrom(data) };
+        if (signed)
+        {
+            message.Signature = ByteString.CopyFrom([1]);
+        }
+
+        return message;
+    }
 
     private static string Topic(byte[] digest, string name) => GossipTopics.Topic(digest, name);
 
