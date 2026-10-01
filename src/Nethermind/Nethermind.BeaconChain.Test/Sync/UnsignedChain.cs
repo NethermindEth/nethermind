@@ -17,11 +17,8 @@ using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransiti
 namespace Nethermind.BeaconChain.Test.Sync;
 
 /// <summary>
-/// Hand-built blocks over the <see cref="ImportableBlobBlock"/> anchor, carrying whatever body
-/// attestations and attester slashings a test wants fork choice to see. Nothing is signed: every
-/// consumer runs the transition and the fork-choice replay with signature verification off, the
-/// way trusted store replays and the transition-verified body replay do. No mainnet fork-choice
-/// vector carries a body attester slashing, so this is what exercises that replay path.
+/// Builds blocks over the <see cref="ImportableBlobBlock"/> anchor, optionally signing proposer and RANDAO messages.
+/// Body attestations and slashings remain unsigned and require trusted replay.
 /// </summary>
 internal sealed class UnsignedChain : IForkChoiceStateProvider
 {
@@ -61,7 +58,8 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
     /// post-state this chain must hold. The body carries only what is passed in.
     /// </summary>
     /// <param name="payloadHashByte">Fills the execution block hash; distinct per block so no two blocks share a payload.</param>
-    public ChainBlock Extend(Hash256 parentRoot, ulong slot, byte payloadHashByte, Attestation[]? attestations = null, AttesterSlashing[]? attesterSlashings = null)
+    /// <param name="signed">Whether the proposer signs the block and its RANDAO reveal, so it also imports with signature verification on; the body operations stay unsigned.</param>
+    public ChainBlock Extend(Hash256 parentRoot, ulong slot, byte payloadHashByte, Attestation[]? attestations = null, AttesterSlashing[]? attesterSlashings = null, bool signed = false)
     {
         BeaconStateFulu parentState = _postStates[parentRoot];
         BeaconBlock block = TestChain.CreateBlock(slot, parentRoot).Message!;
@@ -70,7 +68,13 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
         SlotProcessing.ProcessSlots(atSlot, slot, new EpochCache());
         block.ProposerIndex = atSlot.GetBeaconProposerIndex();
         BeaconBlockBody body = block.Body!;
+        ulong epoch = atSlot.GetCurrentEpoch();
         body.RandaoReveal = Unsigned;
+        if (signed)
+        {
+            body.RandaoReveal = ImportableBlobBlock.SignAs(block.ProposerIndex, ImportableBlobBlock.EpochRoot(epoch), atSlot.GetDomain(DomainType.Randao, epoch));
+            body.SyncAggregate!.SyncCommitteeSignature = Unsigned;
+        }
         body.Attestations = attestations ?? [];
         body.AttesterSlashings = attesterSlashings ?? [];
         ExecutionPayload payload = body.ExecutionPayload!;
@@ -85,6 +89,11 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
         FuluStateTransition.Apply(postState, signedBlock, new EpochCache(), Anchor.Pubkeys, new AcceptingNotifier(), Spec, validateResult: false, verifySignatures: false);
         block.StateRoot = SszRoots.HashTreeRoot(postState);
         Hash256 root = SszRoots.HashTreeRoot(block);
+        if (signed)
+        {
+            signedBlock = new SignedBeaconBlock { Message = block, Signature = ImportableBlobBlock.SignAs(block.ProposerIndex, root, atSlot.GetDomain(DomainType.BeaconProposer, epoch)) };
+        }
+
         _postStates[root] = postState;
         return new ChainBlock(signedBlock, root, postState);
     }

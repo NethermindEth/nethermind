@@ -149,7 +149,7 @@ public sealed class BlockImporter : IBlockImporter
         switch (anchorState, anchorBlock)
         {
             case (ForkedBeaconState.OfFulu { State: BeaconStateFulu fuluState }, ForkedSignedBeaconBlock.OfFulu { Block: SignedBeaconBlock fuluBlock }):
-                _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized);
+                _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
                 _runner = new ForkChoiceRunner(spec, fuluState, fuluBlock.Message!, _states, pubkeys, _states);
                 _lastSnapshotEpoch = fuluState.GetCurrentEpoch();
                 break;
@@ -181,6 +181,14 @@ public sealed class BlockImporter : IBlockImporter
     private bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
 
     private Hash256 GetJustifiedRoot() => _runner.JustifiedCheckpoint.Root;
+
+    private IEnumerable<Hash256> AncestorRoots(Hash256 blockRoot)
+    {
+        foreach (ProtoNode node in _runner.EnumerateAncestors(blockRoot))
+        {
+            yield return node.Root;
+        }
+    }
 
     private bool IsAboveFinalized(Hash256 blockRoot) => IsAboveFinalized(_runner, blockRoot);
 
