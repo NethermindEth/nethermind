@@ -802,6 +802,34 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// A vote that holds the worker for minutes left no line at all, so the stall could not be told from a dead node.
+    /// One that crosses the threshold names its slot and target checkpoint; a quick one stays silent.
+    /// </summary>
+    [Test]
+    public async Task Gossip_aggregate_that_holds_the_worker_past_the_threshold_is_logged_with_its_target([Values] bool pastThreshold)
+    {
+        Nethermind.Core.Test.TestLogger logger = new();
+        Harness harness = CreateHarness(logManager: new OneLoggerLogManager(new ILogger(logger)));
+        harness.Orchestrator.SlowWorkItemThreshold = pastThreshold ? TimeSpan.Zero : TimeSpan.FromHours(1);
+        harness.Orchestrator.RouteGossipEvents();
+        SignedAggregateAndProofGloas aggregate = GossipMessageValidatorTests.GloasAggregate(slot: WallSlot);
+        Checkpoint target = aggregate.Message!.Aggregate!.Data!.Target!;
+
+        harness.Router.Handle(GossipTopics.BeaconAggregateAndProof, gloasTopic: true, GossipMessageValidatorTests.Encode(aggregate));
+        harness.Orchestrator.WorkWriter.Complete();
+        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+
+        string[] lines = [.. logger.LogList.Where(static l => l.StartsWith("Import worker spent") && l.Contains(" on a gossip aggregate"))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(1), "fixture: the aggregate reaches fork choice");
+            Assert.That(lines, Has.Length.EqualTo(pastThreshold ? 1 : 0));
+            if (pastThreshold)
+                Assert.That(lines[0], Does.EndWith($" ms on a gossip aggregate for slot {WallSlot} with target epoch {target.Epoch} root {target.Root}"));
+        }
+    }
+
     [Test]
     public async Task Slot_tick_releases_a_gossip_block_held_for_its_slot()
     {
