@@ -1009,11 +1009,15 @@ public sealed class BeaconSyncOrchestrator(
             : isQueued ? queued.Origin
             : ImportOrigin.Gossip;
         servedBy ??= isQueued ? queued.ServedBy : heldFetched?.ServedBy;
-        BlockImportResult result = await _importThread.RunAsync(() => origin == ImportOrigin.Gossip
-            ? _importer!.Import(block, root, verifySignatures: true)
-            : _importer!.ImportRequested(block, root, fetchedByRoot: origin == ImportOrigin.ByRoot));
-        // A block fetched by root whose known parent's state this slot's budget could not regenerate waits for the next slot.
-        bool regenerationDeferred = origin == ImportOrigin.ByRoot && result == BlockImportResult.UnknownParent && _importer!.IsKnown(block.ParentRoot);
+        (BlockImportResult result, ImportRefusal refusal) = await _importThread.RunAsync(() =>
+        {
+            BlockImportResult imported = origin == ImportOrigin.Gossip
+                ? _importer!.Import(block, root, verifySignatures: true)
+                : _importer!.ImportRequested(block, root, fetchedByRoot: origin == ImportOrigin.ByRoot);
+            return (imported, _importer!.LastRefusal);
+        });
+        // Only a spent budget waits for the next slot; a missing key or a state that cannot be regenerated stays refused.
+        bool regenerationDeferred = origin == ImportOrigin.ByRoot && result == BlockImportResult.UnknownParent && refusal == ImportRefusal.RegenerationBudget;
 
         // These results come after the importer verified the proposer signature.
         if (result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified or BlockImportResult.FutureSlot)
@@ -1068,10 +1072,9 @@ public sealed class BeaconSyncOrchestrator(
             // A retried block answers UnknownParent once its parent's state is gone, so it never imports.
             // Only the queued signed block itself leaves the retry set; an invalid copy under its root does not.
             bool wasRetried = isQueued && _pendingRetry.Remove(root);
-            // The block has the root this node asked for, so the peer served an invalid block; one at or below this node's
-            // finalized slot is refused by local admission only (fork-choice.md on_block), which says nothing of its data.
-            // Imports since the last head step can have moved finality, so the importer's own view counts too.
-            if (result == BlockImportResult.Invalid && origin == ImportOrigin.ByRoot && block.Slot > Math.Max(FinalizedSlot, _importer!.FinalizedSlot))
+            // The block has the root this node asked for, so the peer served an invalid block, unless only this node's own
+            // fork-choice admission refused it (fork-choice.md on_block), which says nothing of the block's data.
+            if (result == BlockImportResult.Invalid && origin == ImportOrigin.ByRoot && refusal != ImportRefusal.LocalAdmission)
             {
                 servedBy?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Blocks-by-root for {root} returned an invalid block");
             }
@@ -2035,10 +2038,12 @@ public sealed class BeaconSyncOrchestrator(
 
             if (i > 0 && result == BlockImportResult.UnknownParent && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
             {
-                // The ancestor waits for the next slot's regeneration budget; its descendants import after it, the fetched ones as fetched.
+                // The ancestor waits for the next slot's regeneration budget; its descendants import after it, the fetched ones as
+                // fetched, held under the evicting cap a refused backfill has, so no fetched chain can fill the shared queue.
                 for (int j = i - 1; j >= 0; j--)
                 {
-                    if (QueuePendingGossipBlock(chain[j]) && j > 0)
+                    HoldRefusedBackfill(chain[j]);
+                    if (j > 0)
                     {
                         _heldFetched.Set(chain[j].ComputeMessageRoot(), new HeldFetchedBlock(chain[j], sources[j]));
                     }
