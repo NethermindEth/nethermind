@@ -63,6 +63,8 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
     public TrieNodeLogScope TrieNodeLogScope { get; set; } = TrieNodeLogScope.None;
-    public long TrieNodeLogGenerationBytes { get; set; } = 1.GiB;
+    public long TrieNodeLogStateBytes { get; set; } = 500.MiB;
+    public long TrieNodeLogStorageBytes { get; set; } = 500.MiB;
+    public int TrieNodeLogShardCount { get; set; } = 2;
     public int TrieNodeLogMergeLag { get; set; } = 1;
 }

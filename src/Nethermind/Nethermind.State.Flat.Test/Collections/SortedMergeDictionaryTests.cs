@@ -143,6 +143,17 @@ public class SortedMergeDictionaryTests
             Assert.That(typed.ToArray(), Is.EqualTo(merged.ToArray()));
         }
 
+        // The hash merge yields the same entries, in arrival rather than key order.
+        using SortedMergeDictionary<int, int> hashed = new();
+        if (filter) hashed.BuildFromHashMerge(sources.Select(static source => source.AsRun()).ToArray(), default(RandomizedKeep));
+        else hashed.BuildFromHashMerge(sources.Select(static source => source.AsRun()).ToArray(), default(KeepAll<int>));
+        Assert.That(hashed.ToArray(), Is.EquivalentTo(merged.ToArray()));
+        foreach (KeyValuePair<int, int> kv in reference)
+        {
+            Assert.That(hashed.TryGetValue(kv.Key, out int hashedValue), Is.True, $"hash merge missing key {kv.Key}");
+            Assert.That(hashedValue, Is.EqualTo(kv.Value), $"hash merge wrong priority for key {kv.Key}");
+        }
+
         Assert.That(merged.Count, Is.EqualTo(reference.Count));
         List<int> keys = merged.Select(static kv => kv.Key).ToList();
         Assert.That(keys, Is.Ordered);

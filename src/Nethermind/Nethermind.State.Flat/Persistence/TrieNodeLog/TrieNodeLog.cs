@@ -4,74 +4,64 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Numerics;
+using System.Threading.Channels;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
 /// <summary>
-/// <see cref="ITrieNodeLog"/> backed by generation files in <c>basePath</c>. See the type's remarks for the
-/// consistency protocol shared with <see cref="TrieNodeLogView"/> and <see cref="TrieNodeLogWriteBatch"/>.
+/// <see cref="ITrieNodeLog"/> made of independent <see cref="TrieNodeLogShard"/>s: a state partition
+/// (<c>StateTopNodes</c>, <c>StateNodes</c>, state entries of <c>FallbackNodes</c>) and, with
+/// <see cref="TrieNodeLogScope.All"/>, a storage partition (<c>StorageNodes</c>, storage entries of
+/// <c>FallbackNodes</c>), each split into <see cref="IFlatDbConfig.TrieNodeLogShardCount"/> shards by the first
+/// byte of the column key. A batch's records are staged per shard and appended by one worker per shard, and the
+/// shards are made durable and merged in parallel.
 /// </summary>
-/// <remarks>
-/// <para>Every log-backed batch gets a version <c>V</c> and stores it in the flat DB metadata column inside the
-/// same RocksDB batch as the state pointer, so a RocksDB snapshot pins the log version a reader must see; the
-/// view serves only records with <c>version &lt;= V</c> and follows each record's <c>prev</c> link back to an
-/// older version when needed. A metadata marker <c>N</c> records the newest generation whose latest record per
-/// key is in RocksDB; a view does not pin generations at or below the <c>N</c> of its snapshot.</para>
-/// <para>Recovery keeps, per surviving file, the prefix up to the last commit record whose version the metadata
-/// column confirms; records of a batch whose RocksDB write did not happen are discarded, files at or below
-/// <c>N</c> are deleted.</para>
-/// </remarks>
 public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 {
-    internal static readonly byte[] VersionKey = Keccak.Compute("TrieNodeLogVersion").BytesToArray();
-    internal static readonly byte[] FlushedGenerationKey = Keccak.Compute("TrieNodeLogFlushedGeneration").BytesToArray();
+    private const int StagingChunkSize = 1024 * 1024;
+    private const int StagingQueueDepth = 4;
+    private const int StagedRecordHeaderLength = 1 + 1 + 1 + 4; // column, delete flag, key length, value length
 
-    private const string FilePrefix = "gen-";
-    private const string FileExtension = ".log";
-    private const int ScanBufferSize = 4 * 1024 * 1024;
-
-    private readonly string _basePath;
-    private readonly IColumnsDb<FlatDbColumns> _db;
-    private readonly ILogger _logger;
     private readonly TrieNodeLogScope _scope;
-    private readonly long _generationBytes;
-    private readonly int _mergeLag;
-
-    private readonly Lock _lock = new();
-    private readonly List<TrieNodeLogGeneration> _generations = []; // oldest first; every generation still in memory
-    private TrieNodeLogGeneration? _active;
-    private ulong _nextGeneration;
-    private ulong _version;
-    private int _openBatch;
-
-    private readonly SemaphoreSlim _flushLock = new(1, 1);
-    private readonly SemaphoreSlim _flushSignal = new(0);
-    private readonly CancellationTokenSource _cancellation = new();
-    private readonly Task _flushWorker;
+    private readonly int _shardCount;
+    private readonly int _shardBits;
+    private readonly TrieNodeLogShard[] _shards; // state shards first, then storage shards
+    private readonly ILogger _logger;
 
     public TrieNodeLog(string basePath, IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
     {
-        _basePath = basePath;
-        _db = db;
-        _logger = logManager.GetClassLogger<TrieNodeLog>();
         _scope = config.TrieNodeLogScope;
-        _generationBytes = config.TrieNodeLogGenerationBytes;
-        _mergeLag = config.TrieNodeLogMergeLag;
+        _shardCount = config.TrieNodeLogShardCount;
+        if (_shardCount < 1 || !BitOperations.IsPow2(_shardCount))
+            throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogShardCount)} must be a power of two, got {_shardCount}", -1);
+        _shardBits = BitOperations.Log2((uint)_shardCount);
+        _logger = logManager.GetClassLogger<TrieNodeLog>();
 
-        Directory.CreateDirectory(basePath);
+        int partitions = _scope == TrieNodeLogScope.All ? 2 : 1;
+        _shards = new TrieNodeLogShard[partitions * _shardCount];
+        for (int partition = 0; partition < partitions; partition++)
+        {
+            string partitionName = partition == 0 ? "state" : "storage";
+            long budget = partition == 0 ? config.TrieNodeLogStateBytes : config.TrieNodeLogStorageBytes;
+            for (int shard = 0; shard < _shardCount; shard++)
+            {
+                string name = $"{partitionName}-{shard}";
+                _shards[partition * _shardCount + shard] = new TrieNodeLogShard(name, Path.Combine(basePath, name), db, budget / _shardCount, config.TrieNodeLogMergeLag, logManager);
+            }
+        }
+
         foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
         {
             if (Covers(column)) db.GetColumnDb(column).SetWriteBuffer(WriteBufferAdjuster.MaxWriteBufferSize(column));
         }
-
-        Recover();
-        _flushWorker = Task.Run(FlushWorker);
     }
+
+    internal IReadOnlyList<TrieNodeLogShard> Shards => _shards;
 
     internal bool Covers(FlatDbColumns column) => column switch
     {
@@ -81,12 +71,36 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _ => false,
     };
 
-    internal long GenerationBytes => _generationBytes;
+    /// <summary>Shard of a column key: its partition, then the top bits of its first byte (after the fallback column's partition prefix).</summary>
+    internal int ShardIndex(byte column, ReadOnlySpan<byte> key)
+    {
+        bool storage;
+        int shardByte;
+        switch ((FlatDbColumns)column)
+        {
+            case FlatDbColumns.FallbackNodes:
+                // BaseTriePersistence prefixes fallback keys with 0 for state and 1 for storage nodes.
+                storage = key[0] == 1;
+                shardByte = key[1];
+                break;
+            case FlatDbColumns.StorageNodes:
+                storage = true;
+                shardByte = key[0];
+                break;
+            default:
+                storage = false;
+                shardByte = key[0];
+                break;
+        }
+
+        return (storage ? _shardCount : 0) + (shardByte >> (8 - _shardBits));
+    }
 
     public ITrieNodeLog.IView PinLiveGenerations()
     {
-        using Lock.Scope _ = _lock.EnterScope();
-        return new TrieNodeLogView(this, PinAllNoLock());
+        TrieNodeLogView[] views = new TrieNodeLogView[_shards.Length];
+        for (int i = 0; i < views.Length; i++) views[i] = _shards[i].PinLiveGenerations();
+        return new View(this, views);
     }
 
     public ITrieNodeLog.IWriteBatch StartWriteBatch(bool bypass)
@@ -97,413 +111,220 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             return NullTrieNodeLog.Instance;
         }
 
-        if (Interlocked.CompareExchange(ref _openBatch, 1, 0) != 0)
-            throw new InvalidOperationException("A trie node log write batch is already open");
+        TrieNodeLogWriteBatch[] batches = new TrieNodeLogWriteBatch[_shards.Length];
+        try
+        {
+            for (int i = 0; i < batches.Length; i++) batches[i] = _shards[i].StartWriteBatch();
+        }
+        catch
+        {
+            foreach (TrieNodeLogWriteBatch? batch in batches) batch?.Dispose();
+            throw;
+        }
 
-        using Lock.Scope _ = _lock.EnterScope();
-        return new TrieNodeLogWriteBatch(this, ++_version, PinAllNoLock());
+        return new WriteBatch(this, batches);
     }
 
     public void Drain()
     {
-        ThrowIfBatchOpen();
-        SealActive();
-        FlushSealedGenerations(mergeLag: 0);
+        foreach (TrieNodeLogShard shard in _shards) shard.ThrowIfBatchOpen();
+        Parallel.ForEach(_shards, static shard => shard.Drain());
     }
 
     public void Clear()
     {
-        ThrowIfBatchOpen();
-        using SemaphoreSlimExtensions.Scope _ = _flushLock.EnterScope();
-        using Lock.Scope __ = _lock.EnterScope();
-        foreach (TrieNodeLogGeneration generation in _generations)
-        {
-            generation.IsFlushed = true;
-            generation.Dispose();
-        }
-        _generations.Clear();
-        _active = null;
-        RefreshGaugesNoLock();
+        foreach (TrieNodeLogShard shard in _shards) shard.Clear();
     }
 
     public async ValueTask DisposeAsync()
     {
-        await _cancellation.CancelAsync();
-        try { await _flushWorker; }
-        catch (OperationCanceledException) { }
-        using (_lock.EnterScope())
+        foreach (TrieNodeLogShard shard in _shards) await shard.DisposeAsync();
+    }
+
+    private sealed class View(TrieNodeLog log, TrieNodeLogView[] views) : ITrieNodeLog.IView
+    {
+        public void Bind(IReadOnlyKeyValueStore metadata)
         {
-            foreach (TrieNodeLogGeneration generation in _generations)
-            {
-                if (!generation.IsFlushed) generation.PreserveOnDispose();
-                generation.Dispose();
-            }
-            _generations.Clear();
-            _active = null;
+            foreach (TrieNodeLogView view in views) view.Bind(metadata);
         }
-        _cancellation.Dispose();
-    }
 
-    private void ThrowIfBatchOpen()
-    {
-        if (Volatile.Read(ref _openBatch) != 0) throw new InvalidOperationException("A trie node log write batch is open");
-    }
+        public IReadOnlyKeyValueStore Wrap(FlatDbColumns column, IReadOnlyKeyValueStore inner) =>
+            log.Covers(column) ? new Column(log, views, (byte)column, inner) : inner;
 
-    private List<TrieNodeLogGeneration> PinAllNoLock()
-    {
-        List<TrieNodeLogGeneration> pinned = new(_generations.Count);
-        foreach (TrieNodeLogGeneration generation in _generations)
+        public void Dispose()
         {
-            if (generation.TryAcquire()) pinned.Add(generation);
+            foreach (TrieNodeLogView view in views) view.Dispose();
         }
-        return pinned;
-    }
 
-    /// <summary>Pins generations added since <paramref name="alreadyPinned"/> was taken (a roll that raced the RocksDB snapshot).</summary>
-    internal void PinNewer(List<TrieNodeLogGeneration> alreadyPinned)
-    {
-        ulong newest = alreadyPinned.Count == 0 ? 0 : alreadyPinned[^1].Number;
-        using Lock.Scope _ = _lock.EnterScope();
-        foreach (TrieNodeLogGeneration generation in _generations)
+        private sealed class Column(TrieNodeLog log, TrieNodeLogView[] views, byte column, IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore
         {
-            if (generation.Number > newest && generation.TryAcquire()) alreadyPinned.Add(generation);
+            public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+                views[log.ShardIndex(column, key)].TryGet(column, key, out byte[]? value) ? value : inner.Get(key, flags);
+
+            public bool KeyExists(ReadOnlySpan<byte> key) =>
+                views[log.ShardIndex(column, key)].TryGet(column, key, out byte[]? value) ? value is not null : inner.KeyExists(key);
         }
     }
-
-    internal TrieNodeLogGeneration? Active => _active;
 
     /// <summary>
-    /// Starts a new active generation. The previous one is not sealed here: the open batch may still hold
-    /// unpublished records for it, so it is sealed by <see cref="OnBatchCommitted"/>.
+    /// Stages each record into a per-shard chunk and hands full chunks to that shard's append worker, so the
+    /// hashing, index probing and file writes of the shards proceed in parallel with the caller.
     /// </summary>
-    internal TrieNodeLogGeneration Roll()
+    private sealed class WriteBatch : ITrieNodeLog.IWriteBatch
     {
-        using Lock.Scope _ = _lock.EnterScope();
-        TrieNodeLogGeneration generation = new(_nextGeneration, System.IO.Path.Combine(_basePath, $"{FilePrefix}{_nextGeneration:D8}{FileExtension}"), TrieNodeLogGeneration.CapacityFor(_generationBytes));
-        _nextGeneration++;
-        _generations.Add(generation);
-        _active = generation;
-        RefreshGaugesNoLock();
-        return generation;
-    }
+        private readonly TrieNodeLog _log;
+        private readonly TrieNodeLogWriteBatch[] _batches;
+        private readonly ShardWriter[] _writers;
+        private bool _committed;
 
-    internal bool IsFull(TrieNodeLogGeneration generation, int pendingInserts, long pendingBytes) =>
-        generation.WriteFrontier + pendingBytes >= _generationBytes || generation.Occupied + pendingInserts >= generation.Capacity / 4 * 3;
-
-    /// <summary>
-    /// Called by a write batch after the RocksDB batch that carries its version has been committed: seals every
-    /// generation except a still-open active one, so a sealed generation only ever holds records whose version
-    /// RocksDB has confirmed, and no generation older than a merged one can remain unsealed.
-    /// </summary>
-    internal void OnBatchCommitted()
-    {
-        using (_lock.EnterScope())
+        public WriteBatch(TrieNodeLog log, TrieNodeLogWriteBatch[] batches)
         {
-            foreach (TrieNodeLogGeneration generation in _generations)
-            {
-                if (generation != _active) generation.IsSealed = true;
-            }
-
-            if (_active is not null && IsFull(_active, 0, 0))
-            {
-                _active.IsSealed = true;
-                _active = null;
-            }
-            RefreshGaugesNoLock();
+            _log = log;
+            _batches = batches;
+            _writers = new ShardWriter[batches.Length];
+            for (int i = 0; i < batches.Length; i++) _writers[i] = new ShardWriter(batches[i]);
         }
-        Volatile.Write(ref _openBatch, 0);
-        _flushSignal.Release();
-    }
 
-    internal void OnBatchAborted() => Volatile.Write(ref _openBatch, 0);
+        public IWriteBatch Wrap(FlatDbColumns column, IWriteBatch inner) => _log.Covers(column) ? new Column(this, (byte)column) : inner;
 
-    private void SealActive()
-    {
-        using Lock.Scope _ = _lock.EnterScope();
-        if (_active is null) return;
-        _active.IsSealed = true;
-        _active = null;
-    }
+        private void Stage(byte column, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete) =>
+            _writers[_log.ShardIndex(column, key)].Stage(column, key, value, delete);
 
-    private async Task FlushWorker()
-    {
-        while (true)
+        public void Commit(IWriteOnlyKeyValueStore metadataBatch)
         {
-            await _flushSignal.WaitAsync(_cancellation.Token);
+            long sw = Stopwatch.GetTimestamp();
             try
             {
-                FlushSealedGenerations(_mergeLag);
+                foreach (ShardWriter writer in _writers) writer.Complete();
+                Parallel.ForEach(_batches, static batch => batch.MakeDurable());
             }
-            catch (Exception e) when (e is not OperationCanceledException)
+            catch
             {
-                if (_logger.IsError) _logger.Error("Trie node log flush failed", e);
+                foreach (TrieNodeLogWriteBatch batch in _batches) batch.Abort();
+                throw;
             }
+
+            Parallel.ForEach(_batches, static batch => batch.Publish());
+            // The RocksDB batch is not thread-safe.
+            foreach (TrieNodeLogWriteBatch batch in _batches) batch.WriteVersion(metadataBatch);
+            _committed = true;
+            Metrics.TrieNodeLogCommitTime.Observe(Stopwatch.GetTimestamp() - sw);
+        }
+
+        public void Dispose()
+        {
+            foreach (ShardWriter writer in _writers) writer.Dispose(_log._logger);
+            if (!_committed)
+            {
+                foreach (TrieNodeLogWriteBatch batch in _batches) batch.Abort();
+            }
+            foreach (TrieNodeLogWriteBatch batch in _batches) batch.Dispose();
+        }
+
+        private sealed class Column(WriteBatch batch, byte column) : IWriteBatch
+        {
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                if (value is null) Remove(key);
+                else batch.Stage(column, key, value, delete: false);
+            }
+
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => batch.Stage(column, key, value, delete: false);
+
+            public void Remove(ReadOnlySpan<byte> key) => batch.Stage(column, key, default, delete: true);
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException();
+
+            public void Clear() => throw new NotSupportedException();
+
+            // The owning persistence batch drives commit and disposal.
+            public void Dispose() { }
         }
     }
 
-    /// <summary>
-    /// Merges sealed generations oldest-first, each only once <paramref name="mergeLag"/> newer sealed generations
-    /// exist, so keys rewritten within that window are merged from the newest generation only.
-    /// </summary>
-    private void FlushSealedGenerations(int mergeLag)
+    /// <summary>Staging chunks of one shard and the worker that appends them to the shard's batch, in order.</summary>
+    private sealed class ShardWriter(TrieNodeLogWriteBatch batch)
     {
-        using SemaphoreSlimExtensions.Scope _ = _flushLock.EnterScope();
-        while (true)
+        private readonly Channel<(byte[] Buffer, int Length)> _chunks = Channel.CreateBounded<(byte[], int)>(new BoundedChannelOptions(StagingQueueDepth) { SingleReader = true, SingleWriter = true });
+        private Task? _worker;
+        private byte[]? _chunk;
+        private int _chunkLength;
+
+        public void Stage(byte column, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete)
         {
-            TrieNodeLogGeneration? generation = null;
-            List<TrieNodeLogGeneration> newer = []; // every later generation, the active one included
-            int newerSealed = 0;
-            using (_lock.EnterScope())
-            {
-                foreach (TrieNodeLogGeneration candidate in _generations)
-                {
-                    if (generation is null)
-                    {
-                        if (candidate.IsSealed && !candidate.IsFlushed) generation = candidate;
-                        continue;
-                    }
+            int length = StagedRecordHeaderLength + key.Length + value.Length;
+            if (_chunk is not null && _chunkLength + length > _chunk.Length) Dispatch();
+            _chunk ??= ArrayPool<byte>.Shared.Rent(Math.Max(StagingChunkSize, length));
 
-                    newer.Add(candidate);
-                    if (candidate.IsSealed) newerSealed++;
-                }
-            }
+            Span<byte> destination = _chunk.AsSpan(_chunkLength, length);
+            destination[0] = column;
+            destination[1] = delete ? (byte)1 : (byte)0;
+            destination[2] = (byte)key.Length;
+            BinaryPrimitives.WriteInt32LittleEndian(destination[3..], value.Length);
+            key.CopyTo(destination[StagedRecordHeaderLength..]);
+            value.CopyTo(destination[(StagedRecordHeaderLength + key.Length)..]);
+            _chunkLength += length;
+        }
 
-            if (generation is null || newerSealed < mergeLag) return;
-            if (!generation.TryAcquire()) throw new InvalidOperationException($"Trie node log generation {generation.Number} was released before being merged");
+        private void Dispatch()
+        {
+            _worker ??= Task.Run(Append);
+            (byte[] Buffer, int Length) chunk = (_chunk!, _chunkLength);
+            _chunk = null;
+            _chunkLength = 0;
+            if (!_chunks.Writer.TryWrite(chunk)) _chunks.Writer.WriteAsync(chunk).AsTask().GetAwaiter().GetResult();
+        }
+
+        /// <summary>Hands over the last chunk and waits for the worker; a worker failure is thrown here.</summary>
+        public void Complete()
+        {
+            if (_chunkLength > 0) Dispatch();
+            _chunks.Writer.TryComplete();
+            _worker?.GetAwaiter().GetResult();
+        }
+
+        private async Task Append()
+        {
             try
             {
-                FlushGeneration(generation, newer);
-            }
-            finally
-            {
-                generation.Dispose();
-            }
-        }
-    }
-
-    private void FlushGeneration(TrieNodeLogGeneration generation, List<TrieNodeLogGeneration> newer)
-    {
-        long sw = Stopwatch.GetTimestamp();
-        long written = 0;
-        int records = 0;
-        long[] writtenByColumn = new long[WriteBufferAdjuster.ColumnCount];
-        long[] skippedByColumn = new long[WriteBufferAdjuster.ColumnCount];
-        IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
-        if (!BasePersistence.ReadWipedForSync(metadata))
-        {
-            // A key with a newer record in a later generation is skipped, but only if that record's batch has reached
-            // RocksDB: the index is published before the RocksDB commit, and a crash in between drops the record.
-            ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
-            Span<byte> probeBuffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
-
-            using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
-            {
-                Scanner scanner = new(generation, generation.Frontier);
-                try
+                await foreach ((byte[] buffer, int length) in _chunks.Reader.ReadAllAsync())
                 {
-                    while (scanner.MoveNext())
+                    int position = 0;
+                    while (position < length)
                     {
-                        TrieNodeLogRecord header = scanner.Header;
-                        if (header.IsCommit) continue;
-                        ulong hash = TrieNodeLogRecord.Hash(header.Column, scanner.Key);
-                        if (!generation.IsLatest(hash, scanner.Offset)) continue;
-                        if (HasCommittedNewerRecord(newer, hash, header.Column, scanner.Key, probeBuffer, committedVersion))
-                        {
-                            skippedByColumn[header.Column] += header.KeyLength + header.ValueLength;
-                            continue;
-                        }
-
-                        Core.IWriteBatch column = batch.GetColumnBatch((FlatDbColumns)header.Column);
-                        if (header.Type == TrieNodeLogRecord.Delete) column.Remove(scanner.Key);
-                        else column.PutSpan(scanner.Key, scanner.Value);
-                        written += header.KeyLength + header.ValueLength;
-                        writtenByColumn[header.Column] += header.KeyLength + header.ValueLength;
-                        records++;
+                        ReadOnlySpan<byte> record = buffer.AsSpan(position);
+                        int keyLength = record[2];
+                        int valueLength = BinaryPrimitives.ReadInt32LittleEndian(record[3..]);
+                        batch.Append(record[0], record.Slice(StagedRecordHeaderLength, keyLength), record.Slice(StagedRecordHeaderLength + keyLength, valueLength), delete: record[1] == 1);
+                        position += StagedRecordHeaderLength + keyLength + valueLength;
                     }
+                    ArrayPool<byte>.Shared.Return(buffer);
                 }
-                finally
-                {
-                    scanner.Dispose();
-                }
-
-                Span<byte> marker = stackalloc byte[8];
-                BinaryPrimitives.WriteUInt64BigEndian(marker, generation.Number);
-                batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(FlushedGenerationKey, marker);
             }
-
-            _db.SyncWal();
-            for (int column = 0; column < WriteBufferAdjuster.ColumnCount; column++)
+            catch (Exception e)
             {
-                if (writtenByColumn[column] != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), writtenByColumn[column]);
-                if (skippedByColumn[column] != 0) Metrics.TrieNodeLogSkippedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), skippedByColumn[column]);
+                // Unblocks a producer waiting for queue space; the failure surfaces again in Complete.
+                _chunks.Writer.TryComplete(e);
+                throw;
             }
-            Metrics.TrieNodeLogFlushedGeneration = (long)generation.Number;
         }
 
-        using (_lock.EnterScope())
+        public void Dispose(ILogger logger)
         {
-            generation.IsFlushed = true;
-            _generations.Remove(generation);
-            RefreshGaugesNoLock();
-        }
-        generation.Dispose(); // the log's own lease
-        Metrics.TrieNodeLogMergeTime.Observe(Stopwatch.GetTimestamp() - sw);
-
-        if (_logger.IsDebug) _logger.Debug($"Merged trie node log generation {generation.Number}: {records} records, {written / (double)MemorySizes.MiB:F1} MiB of {generation.Frontier / (double)MemorySizes.MiB:F1} MiB in {Stopwatch.GetElapsedTime(sw).TotalMilliseconds:F0} ms");
-    }
-
-    private static bool HasCommittedNewerRecord(List<TrieNodeLogGeneration> newer, ulong hash, byte column, ReadOnlySpan<byte> key, Span<byte> probeBuffer, ulong committedVersion)
-    {
-        foreach (TrieNodeLogGeneration generation in newer)
-        {
-            if (generation.TryLocate(hash, column, key, probeBuffer, out TrieNodeLogRecord header, out _, out _, out _))
-                return header.Version <= committedVersion;
-        }
-        return false;
-    }
-
-    internal void RefreshGauges()
-    {
-        using Lock.Scope _ = _lock.EnterScope();
-        RefreshGaugesNoLock();
-    }
-
-    private void RefreshGaugesNoLock()
-    {
-        long bytes = 0;
-        foreach (TrieNodeLogGeneration generation in _generations) bytes += generation.WriteFrontier;
-        int active = _active is null ? 0 : 1;
-        Metrics.TrieNodeLogGenerationCount[TrieNodeLogLabel.Active] = active;
-        Metrics.TrieNodeLogGenerationCount[TrieNodeLogLabel.Sealed] = _generations.Count - active;
-        Metrics.TrieNodeLogGenerationCount[TrieNodeLogLabel.MergedPinned] = TrieNodeLogGeneration.AliveCount - _generations.Count;
-        Metrics.TrieNodeLogBytes = bytes;
-        Metrics.TrieNodeLogIndexBytes = TrieNodeLogGeneration.AliveIndexBytes;
-        Metrics.TrieNodeLogActiveOccupancyPercent = _active is null ? 0 : _active.Occupied * 100L / _active.Capacity;
-    }
-
-    private void Recover()
-    {
-        IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
-        ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
-        ulong flushedGeneration = ReadUInt64(metadata.Get(FlushedGenerationKey));
-        bool wiped = BasePersistence.ReadWipedForSync(metadata);
-        _version = committedVersion;
-        _nextGeneration = flushedGeneration + 1;
-
-        List<(ulong Number, string Path)> files = [];
-        foreach (string path in Directory.GetFiles(_basePath, $"{FilePrefix}*{FileExtension}"))
-        {
-            string name = System.IO.Path.GetFileNameWithoutExtension(path);
-            if (ulong.TryParse(name.AsSpan(FilePrefix.Length), out ulong number)) files.Add((number, path));
-        }
-        files.Sort();
-
-        foreach ((ulong number, string path) in files)
-        {
-            if (wiped || number <= flushedGeneration)
+            _chunks.Writer.TryComplete();
+            try
             {
-                File.Delete(path);
-                continue;
+                _worker?.GetAwaiter().GetResult();
             }
-
-            TrieNodeLogGeneration generation = RecoverGeneration(number, path, committedVersion);
-            generation.IsSealed = true;
-            _generations.Add(generation);
-            _nextGeneration = Math.Max(_nextGeneration, number + 1);
-        }
-
-        Metrics.TrieNodeLogVersion = (long)committedVersion;
-        Metrics.TrieNodeLogFlushedGeneration = (long)flushedGeneration;
-        RefreshGaugesNoLock();
-        if (_generations.Count > 0)
-        {
-            if (_logger.IsInfo) _logger.Info($"Recovered {_generations.Count} trie node log generation(s) up to version {committedVersion}");
-            _flushSignal.Release();
-        }
-    }
-
-    private TrieNodeLogGeneration RecoverGeneration(ulong number, string path, ulong committedVersion)
-    {
-        long fileLength = new FileInfo(path).Length;
-        TrieNodeLogGeneration generation = new(number, path, Math.Max(TrieNodeLogGeneration.CapacityFor(_generationBytes), TrieNodeLogGeneration.CapacityFor(fileLength)));
-
-        // First pass: the frontier is the end of the last commit record the metadata column confirms.
-        long frontier = 0;
-        using (Scanner scanner = new(generation, fileLength))
-        {
-            while (scanner.MoveNext() && scanner.Header.Version <= committedVersion)
+            catch (Exception e)
             {
-                if (scanner.Header.IsCommit) frontier = scanner.Offset + scanner.Header.Length;
-            }
-        }
-
-        generation.Truncate(frontier);
-
-        // Second pass: index the surviving records; a later record of the same key replaces the earlier slot.
-        Span<byte> buffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
-        using (Scanner scanner = new(generation, frontier))
-        {
-            while (scanner.MoveNext())
-            {
-                if (scanner.Header.IsCommit) continue;
-                ulong hash = TrieNodeLogRecord.Hash(scanner.Header.Column, scanner.Key);
-                generation.TryLocate(hash, scanner.Header.Column, scanner.Key, buffer, out _, out int index, out _, out _);
-                generation.Publish(index, hash, scanner.Offset);
-            }
-        }
-
-        return generation;
-    }
-
-    private static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
-
-    /// <summary>Sequential record reader over <c>[0, end)</c> of a generation file; stops at the first implausible header.</summary>
-    private sealed class Scanner(TrieNodeLogGeneration generation, long end) : IDisposable
-    {
-        private byte[] _buffer = ArrayPool<byte>.Shared.Rent(ScanBufferSize);
-        private long _bufferOffset; // file offset of _buffer[0]
-        private int _buffered;
-        private long _next;
-        private int _recordStart;
-
-        public long Offset { get; private set; }
-        public TrieNodeLogRecord Header { get; private set; }
-        public ReadOnlySpan<byte> Key => _buffer.AsSpan(_recordStart + TrieNodeLogRecord.HeaderLength, Header.KeyLength);
-        public ReadOnlySpan<byte> Value => _buffer.AsSpan(_recordStart + TrieNodeLogRecord.HeaderLength + Header.KeyLength, Header.ValueLength);
-
-        public bool MoveNext()
-        {
-            if (_next + TrieNodeLogRecord.HeaderLength > end) return false;
-            if (!Ensure(TrieNodeLogRecord.HeaderLength)) return false;
-            TrieNodeLogRecord header = TrieNodeLogRecord.Read(_buffer.AsSpan(_recordStart));
-            if (!header.IsPlausible || _next + header.Length > end || !Ensure(header.Length)) return false;
-            Offset = _next;
-            Header = header;
-            _next += header.Length;
-            return true;
-        }
-
-        /// <summary>Makes <paramref name="length"/> bytes from <see cref="_next"/> available at <see cref="_recordStart"/>.</summary>
-        private bool Ensure(int length)
-        {
-            if (_next >= _bufferOffset && _next + length <= _bufferOffset + _buffered)
-            {
-                _recordStart = (int)(_next - _bufferOffset);
-                return true;
+                // Already thrown from Complete when the batch was committed; a batch abandoned before that only logs.
+                if (logger.IsDebug) logger.Debug($"Trie node log append worker failed: {e}");
             }
 
-            if (length > _buffer.Length)
-            {
-                ArrayPool<byte>.Shared.Return(_buffer);
-                _buffer = ArrayPool<byte>.Shared.Rent(length);
-            }
-
-            _bufferOffset = _next;
-            _buffered = generation.ReadAt(_next, _buffer.AsSpan(0, (int)Math.Min(_buffer.Length, end - _next)));
-            _recordStart = 0;
-            return _buffered >= length;
+            while (_chunks.Reader.TryRead(out (byte[] Buffer, int Length) chunk)) ArrayPool<byte>.Shared.Return(chunk.Buffer);
+            if (_chunk is not null) ArrayPool<byte>.Shared.Return(_chunk);
+            _chunk = null;
         }
-
-        public void Dispose() => ArrayPool<byte>.Shared.Return(_buffer);
     }
 }

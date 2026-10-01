@@ -451,23 +451,34 @@ public static class Metrics
     [KeyIsLabel("state")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogGenerationCount { get; } = new();
 
+    private static long _trieNodeLogBytes;
+
     [GaugeMetric]
     [Description("Bytes of trie node log generation files not yet merged into RocksDB")]
-    public static long TrieNodeLogBytes { get; set; }
+    public static long TrieNodeLogBytes
+    {
+        get => Volatile.Read(ref _trieNodeLogBytes);
+        set => Interlocked.Exchange(ref _trieNodeLogBytes, value);
+    }
+
+    public static void AddTrieNodeLogBytes(long delta) => Interlocked.Add(ref _trieNodeLogBytes, delta);
 
     [GaugeMetric]
     [Description("Native memory held by trie node log generation indexes, including merged generations still pinned by readers")]
     public static long TrieNodeLogIndexBytes { get; set; }
 
     [GaugeMetric]
-    [Description("Index load of the active trie node log generation in percent; it is sealed at 75")]
-    public static long TrieNodeLogActiveOccupancyPercent { get; set; }
+    [Description("Index load of the active trie node log generation in percent, by shard; it is sealed at 75")]
+    [KeyIsLabel("shard")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogActiveOccupancyPercent { get; } = new();
 
     [GaugeMetric]
-    [Description("Version of the last batch committed to the trie node log")]
-    public static long TrieNodeLogVersion { get; set; }
+    [Description("Version of the last batch committed to the trie node log, by shard")]
+    [KeyIsLabel("shard")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogVersion { get; } = new();
 
     [GaugeMetric]
-    [Description("Newest trie node log generation merged into RocksDB")]
-    public static long TrieNodeLogFlushedGeneration { get; set; }
+    [Description("Newest trie node log generation merged into RocksDB, by shard")]
+    [KeyIsLabel("shard")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedGeneration { get; } = new();
 }

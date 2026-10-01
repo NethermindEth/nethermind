@@ -38,7 +38,8 @@ public class TrieNodeLogTests
     {
         _directory = TempPath.GetTempDirectory();
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _config = new FlatDbConfig { TrieNodeLogScope = TrieNodeLogScope.All, TrieNodeLogGenerationBytes = 4096 };
+        // Two shards per partition, so every shard gets a 4 KiB generation.
+        _config = new FlatDbConfig { TrieNodeLogScope = TrieNodeLogScope.All, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
         Open();
     }
 
@@ -85,7 +86,7 @@ public class TrieNodeLogTests
         _db.GetColumnDb(FlatDbColumns.StorageNodes),
         _db.GetColumnDb(FlatDbColumns.FallbackNodes));
 
-    private string[] LogFiles() => Directory.GetFiles(_directory.Path);
+    private string[] LogFiles() => Directory.GetFiles(_directory.Path, "*.log", SearchOption.AllDirectories);
 
     private static long FlushedBytes(FlatDbColumns column) =>
         Metrics.TrieNodeLogFlushedBytes.TryGetValue(TrieNodeLogLabel.Column((byte)column), out long bytes) ? bytes : 0;
@@ -226,9 +227,12 @@ public class TrieNodeLogTests
         // A torn tail plus a batch whose RocksDB write never happened: roll the confirmed version back by one.
         await _log.DisposeAsync();
         foreach (string file in LogFiles()) File.AppendAllText(file, "torn tail garbage");
-        byte[] version = _db.GetColumnDb(FlatDbColumns.Metadata).Get(TrieNodeLog.VersionKey)!;
-        version[^1]--;
-        _db.GetColumnDb(FlatDbColumns.Metadata).Set(TrieNodeLog.VersionKey, version);
+        foreach (TrieNodeLogShard shard in _log.Shards)
+        {
+            byte[] version = _db.GetColumnDb(FlatDbColumns.Metadata).Get(shard.VersionKey)!;
+            version[^1]--;
+            _db.GetColumnDb(FlatDbColumns.Metadata).Set(shard.VersionKey, version);
+        }
         Open();
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
@@ -301,6 +305,33 @@ public class TrieNodeLogTests
 
         _log.Drain();
         Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)));
+    }
+
+    [Test]
+    public void Keys_are_sharded_by_their_first_byte()
+    {
+        TreePath highPath = TreePath.FromHexString("f1234"); // first key byte 0xf1 lands in the second of two shards
+        using (IPersistence.IWriteBatch batch = Batch(0, 1))
+        {
+            batch.SetStateTrieNode(TopPath, Rlp1);
+            batch.SetStateTrieNode(highPath, Rlp2);
+        }
+
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-0")), Is.Not.Empty);
+            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-1")), Is.Not.Empty);
+            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(reader.TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+        }
+
+        _log.Drain();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+        }
     }
 
     [Test]

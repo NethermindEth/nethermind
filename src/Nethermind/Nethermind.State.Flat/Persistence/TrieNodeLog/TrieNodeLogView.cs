@@ -8,10 +8,10 @@ using Nethermind.Core.Collections;
 namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
 /// <summary>
-/// Reader-side view of the log at the version of one RocksDB snapshot: the pinned generations, the version
-/// <c>V</c> the snapshot confirms and the flushed marker <c>N</c> below which the snapshot already holds the log's content.
+/// Reader-side view of one shard at the version of one RocksDB snapshot: the pinned generations, the version
+/// <c>V</c> the snapshot confirms and the flushed marker <c>N</c> below which the snapshot already holds the shard's content.
 /// </summary>
-internal sealed class TrieNodeLogView(TrieNodeLog log, List<TrieNodeLogGeneration> pinned) : ITrieNodeLog.IView
+internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGeneration> pinned) : IDisposable
 {
     // Header, the longest key and a full trie node (a branch is ~530 bytes) fit in one read.
     private const int ReadBufferSize = 1024;
@@ -24,17 +24,14 @@ internal sealed class TrieNodeLogView(TrieNodeLog log, List<TrieNodeLogGeneratio
 
     public void Bind(IReadOnlyKeyValueStore metadata)
     {
-        _version = ReadUInt64(metadata.Get(TrieNodeLog.VersionKey));
-        _flushedGeneration = ReadUInt64(metadata.Get(TrieNodeLog.FlushedGenerationKey));
-        log.PinNewer(pinned);
+        _version = ReadUInt64(metadata.Get(shard.VersionKey));
+        _flushedGeneration = ReadUInt64(metadata.Get(shard.FlushedGenerationKey));
+        shard.PinNewer(pinned);
 
         int flushed = 0;
         while (flushed < pinned.Count && pinned[flushed].Number <= _flushedGeneration) pinned[flushed++].Dispose();
         pinned.RemoveRange(0, flushed);
     }
-
-    public IReadOnlyKeyValueStore Wrap(FlatDbColumns column, IReadOnlyKeyValueStore inner) =>
-        log.Covers(column) ? new Column(this, (byte)column, inner) : inner;
 
     public void Dispose()
     {
@@ -43,11 +40,11 @@ internal sealed class TrieNodeLogView(TrieNodeLog log, List<TrieNodeLogGeneratio
         if (_hits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Hit, _hits);
         if (_chainHits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Chain, _chainHits);
         if (_misses != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Miss, _misses);
-        log.RefreshGauges();
+        shard.RefreshGauges();
     }
 
-    /// <summary>Whether the log holds the value for <paramref name="key"/> at this view's version; <paramref name="value"/> is null for a tombstone.</summary>
-    private bool TryGet(byte column, ReadOnlySpan<byte> key, out byte[]? value)
+    /// <summary>Whether the shard holds the value for <paramref name="key"/> at this view's version; <paramref name="value"/> is null for a tombstone.</summary>
+    public bool TryGet(byte column, ReadOnlySpan<byte> key, out byte[]? value)
     {
         ulong hash = TrieNodeLogRecord.Hash(column, key);
         Span<byte> buffer = stackalloc byte[ReadBufferSize];
@@ -92,13 +89,4 @@ internal sealed class TrieNodeLogView(TrieNodeLog log, List<TrieNodeLogGeneratio
     }
 
     private static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
-
-    private sealed class Column(TrieNodeLogView view, byte column, IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore
-    {
-        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
-            view.TryGet(column, key, out byte[]? value) ? value : inner.Get(key, flags);
-
-        public bool KeyExists(ReadOnlySpan<byte> key) =>
-            view.TryGet(column, key, out byte[]? value) ? value is not null : inner.KeyExists(key);
-    }
 }

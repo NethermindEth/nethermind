@@ -22,6 +22,8 @@ public class SnapshotCompactor(
     ILogManager logManager) : ISnapshotCompactor
 {
     private readonly ulong _compactSize = config.CompactSize;
+    // With the trie node log, RocksDB no longer receives the nodes in key order, so sorting them buys nothing.
+    private readonly bool _sortTrieNodes = config.TrieNodeLogScope == TrieNodeLogScope.None;
     private readonly ICompactionSchedule _schedule = schedule;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotCompactor>();
     private readonly IResourcePool _resourcePool = resourcePool;
@@ -151,15 +153,15 @@ public class SnapshotCompactor(
             try
             {
                 compactTask.Add(Task.Run(() => MergeInto(
-                    content.SortedAccounts, snapshots, default(AddressKeyComparer), static m => m.SortedAccounts, static c => c.Accounts)));
+                    content.SortedAccounts, snapshots, default(AddressKeyComparer), static m => m.SortedAccounts, static c => c.Accounts, default(KeepAll<HashedKey<Address>>), sort: true)));
                 compactTask.Add(Task.Run(() => MergeInto(
                     content.SortedStorages, snapshots, default(StorageKeyComparer), static m => m.SortedStorages, static c => c.Storages,
-                    new StorageBoundaryKeep<Address, UInt256>(slotClearBoundary))));
+                    new StorageBoundaryKeep<Address, UInt256>(slotClearBoundary), sort: true)));
                 compactTask.Add(Task.Run(() => MergeInto(
-                    content.SortedStateNodes, snapshots, default(StateNodeKeyComparer), static m => m.SortedStateNodes, static c => c.StateNodes)));
+                    content.SortedStateNodes, snapshots, default(StateNodeKeyComparer), static m => m.SortedStateNodes, static c => c.StateNodes, default(KeepAll<HashedKey<TreePath>>), _sortTrieNodes)));
                 compactTask.Add(Task.Run(() => MergeInto(
                     content.SortedStorageNodes, snapshots, default(StorageNodeKeyComparer), static m => m.SortedStorageNodes, static c => c.StorageNodes,
-                    new StorageBoundaryKeep<Hash256, TreePath>(nodeClearBoundary))));
+                    new StorageBoundaryKeep<Hash256, TreePath>(nodeClearBoundary), _sortTrieNodes)));
 
                 content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, default(AddressKeyComparer));
             }
@@ -177,23 +179,14 @@ public class SnapshotCompactor(
         return new Snapshot(from, to, content, _resourcePool, usage);
     }
 
-    private static void MergeInto<TKey, TValue, TComparer>(
-        SortedMergeDictionary<TKey, TValue> target,
-        SnapshotPooledList snapshots,
-        TComparer comparer,
-        Func<SortedSnapshotContent, SortedMergeDictionary<TKey, TValue>> fromSorted,
-        Func<SnapshotContent, IReadOnlyCollection<KeyValuePair<TKey, TValue>>> fromMutable)
-        where TKey : IEquatable<TKey>
-        where TComparer : IComparer<TKey>
-        => MergeInto(target, snapshots, comparer, fromSorted, fromMutable, default(KeepAll<TKey>));
-
     private static void MergeInto<TKey, TValue, TComparer, TKeep>(
         SortedMergeDictionary<TKey, TValue> target,
         SnapshotPooledList snapshots,
         TComparer comparer,
         Func<SortedSnapshotContent, SortedMergeDictionary<TKey, TValue>> fromSorted,
         Func<SnapshotContent, IReadOnlyCollection<KeyValuePair<TKey, TValue>>> fromMutable,
-        TKeep keep)
+        TKeep keep,
+        bool sort)
         where TKey : IEquatable<TKey>
         where TComparer : IComparer<TKey>
         where TKeep : struct, IMergeKeep<TKey>
@@ -201,7 +194,8 @@ public class SnapshotCompactor(
         int count = snapshots.Count;
         SortedMergeDictionary<TKey, TValue>.Run[] sources = new SortedMergeDictionary<TKey, TValue>.Run[count];
 
-        // Mutable inputs are sorted into transients that are disposed once the merge has copied them.
+        // Mutable inputs are copied (and sorted, for a sorted merge) into transients that are disposed once the
+        // merge has copied them.
         List<SortedMergeDictionary<TKey, TValue>.PooledRun>? transients = null;
         try
         {
@@ -214,14 +208,16 @@ public class SnapshotCompactor(
                 }
                 else
                 {
-                    SortedMergeDictionary<TKey, TValue>.PooledRun transient =
-                        SortedMergeDictionary<TKey, TValue>.BuildRunFromUnsorted(fromMutable(source.Content), comparer);
+                    SortedMergeDictionary<TKey, TValue>.PooledRun transient = sort
+                        ? SortedMergeDictionary<TKey, TValue>.BuildRunFromUnsorted(fromMutable(source.Content), comparer)
+                        : SortedMergeDictionary<TKey, TValue>.BuildRunUnsorted(fromMutable(source.Content));
                     sources[i] = transient.AsRun();
                     (transients ??= []).Add(transient);
                 }
             }
 
-            target.BuildFromMerge(sources, comparer, keep);
+            if (sort) target.BuildFromMerge(sources, comparer, keep);
+            else target.BuildFromHashMerge(sources, keep);
         }
         finally
         {
