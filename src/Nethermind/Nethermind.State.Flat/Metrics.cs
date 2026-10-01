@@ -448,6 +448,18 @@ public static class Metrics
 
     public static void RecordTrieNodeLogIndexFalseMatch() => Interlocked.Increment(ref _trieNodeLogIndexFalseMatches);
 
+    private static long _trieNodeLogChainKeyMismatches;
+
+    [CounterMetric]
+    [Description("Trie node log reads that followed a record's prev link to a record of a different key; the read fails rather than serve it, and a non-zero count means a corrupt link")]
+    public static long TrieNodeLogChainKeyMismatches
+    {
+        get => Volatile.Read(ref _trieNodeLogChainKeyMismatches);
+        set => Interlocked.Exchange(ref _trieNodeLogChainKeyMismatches, value);
+    }
+
+    public static void RecordTrieNodeLogChainKeyMismatch() => Interlocked.Increment(ref _trieNodeLogChainKeyMismatches);
+
     [DetailedMetric]
     [Description("Time to merge one trie node log generation into RocksDB")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
