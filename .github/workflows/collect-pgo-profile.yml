@@ -64,78 +64,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Trigger publish-docker.yml with Dockerfile.pgo
-        uses: benc-uk/workflow-dispatch@v1
+      - name: Build run-specific x64 collection image
+        uses: ./.github/actions/publish-docker
         with:
-          workflow: publish-docker.yml
-          ref: ${{ github.ref }}
-          token: ${{ github.token }}
-          inputs: '{
-            "image-name": "nethermind",
-            "tag": "${{ env.PGO_TAG }}",
-            "dockerfile": "Dockerfile.pgo",
-            "build-config": "release"
-            }'
-
-      - name: Wait for publish-docker.yml to complete
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Waiting for publish-docker.yml to start and complete..."
-
-          max_discovery=300
-          poll=15
-          max_completion=7200
-          elapsed=0
-          run_id=""
-
-          # Phase 1: discover the run (filter by head_sha to avoid matching unrelated runs)
-          head_sha="${{ github.sha }}"
-          while [[ -z "${run_id}" ]]; do
-            response=$(gh api "repos/${{ github.repository }}/actions/workflows/publish-docker.yml/runs?per_page=5&branch=${{ github.ref_name }}&head_sha=${head_sha}" 2>/dev/null || echo '{"workflow_runs":[]}')
-            run_id=$(echo "${response}" | jq -r '.workflow_runs[0].id // empty')
-
-            if [[ -n "${run_id}" ]]; then
-              echo "Found publish-docker run: ${run_id}"
-              break
-            fi
-
-            elapsed=$((elapsed + poll))
-            if [[ "${elapsed}" -ge "${max_discovery}" ]]; then
-              echo "No publish-docker.yml run found within ${max_discovery}s."
-              exit 1
-            fi
-            echo "Waiting for run to appear... (${elapsed}/${max_discovery}s)"
-            sleep "${poll}"
-          done
-
-          # Phase 2: wait for completion
-          elapsed=0
-          while true; do
-            run_data=$(gh api "repos/${{ github.repository }}/actions/runs/${run_id}" 2>/dev/null || echo '{}')
-            status=$(echo "${run_data}" | jq -r '.status // "unknown"')
-            conclusion=$(echo "${run_data}" | jq -r '.conclusion // empty')
-
-            if [[ "${status}" == "completed" ]]; then
-              if [[ "${conclusion}" == "success" ]]; then
-                echo "publish-docker.yml completed successfully."
-                exit 0
-              else
-                echo "publish-docker.yml finished with conclusion: ${conclusion}"
-                exit 1
-              fi
-            fi
-
-            elapsed=$((elapsed + poll))
-            if [[ "${elapsed}" -ge "${max_completion}" ]]; then
-              echo "Timeout waiting for publish-docker.yml (${max_completion}s)."
-              exit 1
-            fi
-            echo "Status: ${status} — waiting... (${elapsed}/${max_completion}s)"
-            sleep "${poll}"
-          done
+          image-name: nethermind
+          tag: ${{ env.PGO_TAG }}
+          dockerfile: Dockerfile.pgo
+          build-config: release
+          platforms: linux/amd64
+          add-master-tag: "false"
+          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          docker-hub-password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
   collect:
     name: Collect PGO profile via EXPB
