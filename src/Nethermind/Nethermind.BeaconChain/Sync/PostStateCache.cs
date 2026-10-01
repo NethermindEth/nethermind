@@ -67,6 +67,9 @@ internal sealed class PostStateCache(
 
     private const int RetainedStateCount = 8;
 
+    // A regenerated state is asked for again by its siblings or votes, but must not push a checkpoint candidate out of the LRU above.
+    private const int RegeneratedStateCount = 2;
+
     /// <summary>Byte offset of <c>slot</c> in a persisted state, the same in the Fulu and Gloas layouts: <c>genesis_time</c> (8) plus <c>genesis_validators_root</c> (32).</summary>
     private const int StateSlotOffset = 40;
 
@@ -75,6 +78,7 @@ internal sealed class PostStateCache(
     private const int RetainedGloasStateCount = 2 * (int)Presets.SlotsPerEpoch;
 
     private readonly LruCache<Hash256, BeaconStateFulu> _retained = new(RetainedStateCount, nameof(PostStateCache));
+    private readonly LruCache<Hash256, BeaconStateFulu> _regenerated = new(RegeneratedStateCount, nameof(PostStateCache) + "Regenerated");
     private readonly LruCache<Hash256, BeaconStateGloas> _retainedGloas = new(RetainedGloasStateCount, nameof(PostStateCache) + "Gloas");
     private readonly GloasBoundaryTier _retainedGloasBoundaries = new(store, isAboveFinalized, (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>());
 
@@ -108,7 +112,7 @@ internal sealed class PostStateCache(
     /// <remarks>A retained copy of the lineage root comes first: a trusted import advances the lineage state to its child before fork choice replays the child's body votes.</remarks>
     internal BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot)
     {
-        if (_retained.TryGet(blockRoot, out BeaconStateFulu? retained))
+        if (_retained.TryGet(blockRoot, out BeaconStateFulu? retained) || _regenerated.TryGet(blockRoot, out retained))
         {
             return retained;
         }
@@ -177,7 +181,7 @@ internal sealed class PostStateCache(
             return null;
         }
 
-        _retained.Set(blockRoot, state);
+        _regenerated.Set(blockRoot, state);
         if (_logger.IsDebug) _logger.Debug($"Regenerated the post-state of {blockRoot} at slot {state.Slot} by replaying {replay.Count} stored blocks");
         return state;
     }

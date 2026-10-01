@@ -809,6 +809,42 @@ public class BlockImporterTests
         Assert.That(regenerated!.Slot, Is.EqualTo(third.PostState.Slot));
     }
 
+    /// <summary>
+    /// A peer's vote can name an old fork block whose state must be regenerated; that state must not push a retained
+    /// epoch-boundary or justified state out, or the next import or finalization needing it finds it gone.
+    /// </summary>
+    [Test]
+    public void Regenerated_state_does_not_evict_a_retained_state()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x91);
+        UnsignedChain.ChainBlock second = chain.Extend(first.Root, slot: 2, payloadHashByte: 0x92);
+        store.PutBlock(second.Root, second.Block);
+        PostStateCache states = new(store, chain.Spec, lineageRoot: null, lineageState: null,
+            pubkeys: chain.Anchor.Pubkeys, ancestors: root => root == second.Root ? [second.Root, first.Root] : []);
+        states.Retain(first.Root, first.PostState);
+        const int RetainedStateCount = 8;
+        List<Hash256> filler = [];
+        for (int i = 1; i < RetainedStateCount; i++)
+        {
+            Hash256 root = Keccak.Compute([(byte)i]);
+            states.Retain(root, chain.Anchor.AnchorState);
+            filler.Add(root);
+        }
+
+        BeaconStateFulu? regenerated = states.GetBlockState(second.Root);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(regenerated, Is.Not.Null, "fixture bug: the state must be regenerated from the retained parent");
+            Assert.That(states.GetHeldBlockState(first.Root), Is.SameAs(first.PostState), "the least recently used retained state survives");
+            Assert.That(filler.Select(states.GetHeldBlockState), Has.All.SameAs(chain.Anchor.AnchorState));
+            Assert.That(states.GetHeldBlockState(second.Root), Is.SameAs(regenerated), "the regenerated state is still held for the next request");
+        }
+    }
+
     [TestCase("unknown")]
     [TestCase("gloas")]
     [TestCase("ancestor")]
