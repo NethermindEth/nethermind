@@ -40,7 +40,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "StorageReadCycle", "StorageReadCold", "TransientRead", "BalanceRead", "BalanceReadCycle", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -180,6 +180,17 @@ public class OpcodeChainBenchmarks
             {
                 code.AddRange([(byte)Instruction.DUP2, (byte)Instruction.DUP2, (byte)opcode]);
                 if (i + 1 != BodyOpcodeCount / 4) code.Add((byte)Instruction.POP);
+            }
+        }
+        else if (Chain is "StorageReadCycle" or "StorageReadCold" or "BalanceReadCycle")
+        {
+            // Cycle: a few slots or accounts in turn, so every read after the first round is warm but never the one
+            // read just before. Cold: a new slot every read.
+            for (int i = 0; i < BodyOpcodeCount / 3; i++)
+            {
+                int key = Chain == "StorageReadCold" ? i : Chain == "StorageReadCycle" ? i % 4 : 0x1000 + i % 4;
+                code.AddRange([(byte)Instruction.PUSH2, (byte)(key >> 8), (byte)key,
+                    (byte)(Chain == "BalanceReadCycle" ? Instruction.BALANCE : Instruction.SLOAD), (byte)Instruction.POP]);
             }
         }
         else if (Chain is "JumpTaken" or "JumpUntaken" or "JumpAlternating")
