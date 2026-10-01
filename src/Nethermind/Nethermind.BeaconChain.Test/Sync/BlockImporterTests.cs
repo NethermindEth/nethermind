@@ -681,6 +681,115 @@ public class BlockImporterTests
         }
     }
 
+    // consensus-specs v1.7.0-beta.2 fork choice on_block requires the parent post-state even after its other child takes the lineage.
+    [Test]
+    public void Branch_built_on_a_mid_epoch_parent_imports_and_takes_the_head([Values] bool gossip, [Values] bool stateEvicted)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch);
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        store.PutState(chain.AnchorRoot, BeaconStateFulu.Encode(chain.Anchor.AnchorState));
+        WarningCapture warnings = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, importClock: new SlotClock(chain.Spec, timestamper), store: store);
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x81, signed: gossip);
+        UnsignedChain.ChainBlock parent = chain.Extend(first.Root, slot: 2, payloadHashByte: 0x82, signed: gossip);
+        UnsignedChain.ChainBlock late = chain.Extend(parent.Root, slot: 3, payloadHashByte: 0x83, signed: gossip);
+        UnsignedChain.ChainBlock b1 = chain.Extend(parent.Root, slot: 4, payloadHashByte: 0x84, signed: gossip);
+        UnsignedChain.ChainBlock[] siblings = stateEvicted
+            ? [.. Enumerable.Range(0, 8).Select(i => chain.Extend(parent.Root, slot: 4, payloadHashByte: (byte)(0x90 + i), signed: gossip))]
+            : [];
+        UnsignedChain.ChainBlock b2 = chain.Extend(b1.Root, slot: 5, payloadHashByte: 0x85, signed: gossip);
+        UnsignedChain.ChainBlock b3 = chain.Extend(b2.Root, slot: 6, payloadHashByte: 0x86, signed: gossip);
+
+        BlockImportResult ImportAt(UnsignedChain.ChainBlock block, long msIntoSlot)
+        {
+            timestamper.Set(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + block.Block.Message!.Slot * chain.Spec.SecondsPerSlot).AddMilliseconds(msIntoSlot));
+            return importer.Import(block.Block, block.Root, verifySignatures: gossip);
+        }
+
+        Assert.That(new[] { first, parent, late }.Select(b => ImportAt(b, 1000)), Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+        Assert.That((importer.ComputeHead().HeadRoot, importer.LineageRoot), Is.EqualTo((late.Root, (Hash256?)late.Root)), "fixture bug");
+
+        BlockImportResult b1Imported = ImportAt(b1, 1000);
+        BlockImportResult[] siblingsImported = [.. siblings.Select(s => ImportAt(s, 5000))];
+        Hash256 headAfterB1 = importer.ComputeHead().HeadRoot;
+        Hash256? lineageAfterB1 = importer.LineageRoot;
+        BlockImportResult[] restImported = [ImportAt(b2, 1000), ImportAt(b3, 1000)];
+        Hash256 headAfterB3 = importer.ComputeHead().HeadRoot;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(b1Imported, Is.EqualTo(BlockImportResult.Imported), "the parent's post-state must outlive the lineage moving to its other child");
+            Assert.That(siblingsImported, Is.All.EqualTo(BlockImportResult.Imported));
+            Assert.That((headAfterB1, lineageAfterB1), Is.EqualTo((b1.Root, (Hash256?)b1.Root)), "the boosted block is the head, and the lineage follows it");
+            Assert.That(restImported, Is.All.EqualTo(BlockImportResult.Imported));
+            Assert.That((headAfterB3, importer.LineageRoot), Is.EqualTo((b3.Root, (Hash256?)b3.Root)));
+            Assert.That(warnings.Warnings, Has.None.Contains("is no longer retained"), "no block may be refused for a parent post-state fork choice still needs");
+        }
+    }
+
+    [Test]
+    public void Regeneration_uses_nearest_held_ancestor_without_mutating_it_and_retains_result([Values] bool persisted)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x81);
+        UnsignedChain.ChainBlock second = chain.Extend(first.Root, slot: 2, payloadHashByte: 0x82);
+        UnsignedChain.ChainBlock third = chain.Extend(second.Root, slot: 3, payloadHashByte: 0x83);
+        store.PutBlock(second.Root, second.Block);
+        store.PutBlock(third.Root, third.Block);
+        PostStateCache states = new(store, chain.Spec, chain.AnchorRoot, chain.Anchor.AnchorState,
+            pubkeys: chain.Anchor.Pubkeys, ancestors: root => root == third.Root ? [third.Root, second.Root, first.Root, chain.AnchorRoot] : []);
+        if (persisted)
+        {
+            store.PutState(first.Root, BeaconStateFulu.Encode(first.PostState));
+        }
+        else
+        {
+            states.Retain(first.Root, first.PostState);
+        }
+
+        BeaconStateFulu? regenerated = states.GetBlockState(third.Root);
+        Assert.That(regenerated, Is.Not.Null);
+        Assert.That(SszRoots.HashTreeRoot(regenerated!), Is.EqualTo(third.Block.Message!.StateRoot));
+        Assert.That(SszRoots.HashTreeRoot(first.PostState), Is.EqualTo(first.Block.Message!.StateRoot));
+        Assert.That(SszRoots.HashTreeRoot(chain.Anchor.AnchorState), Is.EqualTo(chain.Anchor.AnchorBlock.Message!.StateRoot));
+        store.DeleteBlock(second.Root);
+        store.DeleteBlock(third.Root);
+        Assert.That(states.GetBlockState(third.Root), Is.SameAs(regenerated));
+        BeaconStateFulu copy = states.CopyBlockState(third.Root)!;
+        Assert.That(copy, Is.Not.SameAs(regenerated));
+        copy.Slot++;
+        Assert.That(regenerated!.Slot, Is.EqualTo(third.PostState.Slot));
+    }
+
+    [TestCase("unknown")]
+    [TestCase("gloas")]
+    [TestCase("ancestor")]
+    [TestCase("block")]
+    [TestCase("stateRoot")]
+    public void Regeneration_refuses_unresolvable_or_invalid_replay_without_retaining_partial_state(string missing)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x81);
+        UnsignedChain.ChainBlock second = chain.Extend(first.Root, slot: 2, payloadHashByte: 0x82);
+        Hash256 expectedAnchor = SszRoots.HashTreeRoot(chain.Anchor.AnchorState);
+        store.PutBlock(first.Root, first.Block);
+        if (missing == "stateRoot") second.Block.Message!.StateRoot = UnknownBlockRoot;
+        if (missing != "block") store.PutBlock(second.Root, second.Block);
+        PostStateCache states = new(store, chain.Spec, missing == "ancestor" ? null : chain.AnchorRoot, chain.Anchor.AnchorState,
+            isGloasBlock: _ => missing == "gloas", pubkeys: chain.Anchor.Pubkeys,
+            ancestors: root => missing == "unknown" ? [] : [second.Root, first.Root, chain.AnchorRoot]);
+
+        Assert.That(states.GetBlockState(second.Root), Is.Null);
+        Assert.That(states.GetBlockState(second.Root), Is.Null);
+        Assert.That(SszRoots.HashTreeRoot(chain.Anchor.AnchorState), Is.EqualTo(expectedAnchor));
+    }
+
     /// <summary>
     /// A body attestation the transition accepts but fork choice refuses (its head is a block this
     /// node never saw) must neither sink the block nor vanish: the refusal is counted.
@@ -1148,10 +1257,10 @@ public class BlockImporterTests
     private static long RefusedByForkChoice(string operation) =>
         Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
-    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null, FailedBlockRoots? failedBlocks = null, IDataAvailabilityRule? availability = null) =>
+    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null, FailedBlockRoots? failedBlocks = null, IDataAvailabilityRule? availability = null, BeaconChainStore? store = null) =>
         new(
             chain.Spec,
-            new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
+            store ?? new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
             chain.Pubkeys,
             engine ?? new ValidPayloadEngine(),
             new BeaconChainConfig(),
