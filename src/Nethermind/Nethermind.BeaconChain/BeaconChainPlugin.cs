@@ -67,6 +67,7 @@ public class BeaconChainModule : Module
             .AddSingleton<PeerManager>()
             .Bind<IBeaconSyncPeerPool, PeerManager>()
             .AddSingleton<RangeSync>()
+            .AddSingleton<ColumnBackfill>()
             .AddSingleton<BeaconSyncOrchestrator>()
             .AddSingleton<ForkChoiceSnapshotHolder>()
             .AddSingleton<ProposerLookaheadHolder>()

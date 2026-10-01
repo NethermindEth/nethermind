@@ -581,6 +581,15 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return written == result.Length ? result : result[..written];
     }
 
+    private long _backfilledBlockFloor = long.MaxValue;
+
+    /// <summary>The earliest block range verified by backfill in this process (fulu/p2p-interface.md).</summary>
+    internal ulong? BackfilledBlockFloor
+    {
+        get => Volatile.Read(ref _backfilledBlockFloor) is long floor && floor != long.MaxValue ? (ulong)floor : null;
+        set => Volatile.Write(ref _backfilledBlockFloor, value is { } floor ? (long)floor : long.MaxValue);
+    }
+
     public void SetCanonicalRoot(ulong slot, Hash256 root)
     {
         Span<byte> key = stackalloc byte[sizeof(ulong)];
@@ -1444,6 +1453,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
     }
 
+    internal ulong GetDataColumnRetentionFloor(ulong currentEpoch) => DataAvailabilityBoundary.ComputeStartSlot(currentEpoch,
+        spec ?? throw new InvalidOperationException($"A store without a {nameof(BeaconChainSpec)} knows no retention window to prune data column sidecars by"));
+
     /// <summary>Deletes every stored data column sidecar below the DataColumnSidecarsByRange/ByRoot retention window as of <paramref name="currentEpoch"/>, then the ones of blocks that are not canonical below <paramref name="finalizedSlot"/>.</summary>
     /// <remarks>
     /// The window is <see cref="DataAvailabilityBoundary.ComputeStartSlot"/> (fulu/p2p-interface.md). The floor is raised to the window start before
@@ -1457,8 +1469,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <exception cref="InvalidOperationException">This store has no spec, so it knows no window.</exception>
     public void PruneDataColumnSidecars(ulong currentEpoch, ulong finalizedSlot)
     {
-        BeaconChainSpec networkSpec = spec ?? throw new InvalidOperationException($"A store without a {nameof(BeaconChainSpec)} knows no retention window to prune data column sidecars by");
-        ulong keepFrom = DataAvailabilityBoundary.ComputeStartSlot(currentEpoch, networkSpec);
+        ulong keepFrom = GetDataColumnRetentionFloor(currentEpoch);
         if (TryGetDataColumnFloor(out _))
         {
             RaiseDataColumnFloor(keepFrom);

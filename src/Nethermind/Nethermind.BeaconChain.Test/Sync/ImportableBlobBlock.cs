@@ -141,6 +141,36 @@ internal sealed class ImportableBlobBlock
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
         BlsSignature signature = Sign(proposerKey, blockRoot, anchorState.GetDomain(DomainType.BeaconProposer, 0));
 
+        DataColumnSidecar[] columns = BuildColumns(block, signature, blobs, commitments);
+
+        return new ImportableBlobBlock
+        {
+            AnchorState = anchorState,
+            AnchorBlock = anchorBlock,
+            AnchorRoot = anchorRoot,
+            Pubkeys = pubkeyCache,
+            Block = new SignedBeaconBlock { Message = block, Signature = signature },
+            BlockRoot = blockRoot,
+            Columns = columns,
+        };
+    }
+
+    /// <summary>Builds matching blocks and sidecars for verification (fulu/p2p-interface.md), without a valid state transition.</summary>
+    public static (SignedBeaconBlock Block, Hash256 Root, DataColumnSidecar[] Columns) BlobBlockAt(ulong slot, Hash256 parentRoot, int blobCount = 1)
+    {
+        DataColumnKzgFixture.BlobFixture[] blobs = [.. Enumerable.Range(0, blobCount).Select(i => DataColumnKzgFixture.BuildBlob((byte)(0x10 * (i + 1))))];
+        SszKzgCommitment[] commitments = [.. blobs.Select(DataColumnKzgFixture.CommitmentOf)];
+        SignedBeaconBlock signed = TestChain.CreateBlock(slot, parentRoot);
+        signed.Message!.Body!.RandaoReveal = new BlsSignature(SignatureSets.G2PointAtInfinity);
+        signed.Message.Body.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(SignatureSets.G2PointAtInfinity);
+        signed.Message.Body.BlobKzgCommitments = commitments;
+        signed.Signature = new BlsSignature(SignatureSets.G2PointAtInfinity);
+        return (signed, SszRoots.HashTreeRoot(signed.Message), BuildColumns(signed.Message, signed.Signature, blobs, commitments));
+    }
+
+    private static DataColumnSidecar[] BuildColumns(BeaconBlock block, BlsSignature signature, DataColumnKzgFixture.BlobFixture[] blobs, SszKzgCommitment[] commitments)
+    {
+        BeaconBlockBody body = block.Body!;
         Hash256[] inclusionProof = KzgCommitmentsInclusionProof(body);
         DataColumnSidecar[] columns = new DataColumnSidecar[Eip7594DasConstants.NumberOfColumns];
         for (int column = 0; column < columns.Length; column++)
@@ -167,16 +197,7 @@ internal sealed class ImportableBlobBlock
             };
         }
 
-        return new ImportableBlobBlock
-        {
-            AnchorState = anchorState,
-            AnchorBlock = anchorBlock,
-            AnchorRoot = anchorRoot,
-            Pubkeys = pubkeyCache,
-            Block = new SignedBeaconBlock { Message = block, Signature = signature },
-            BlockRoot = blockRoot,
-            Columns = columns,
-        };
+        return columns;
     }
 
     /// <summary>A block at slot 1 with no blob commitments, otherwise identical in validity to <see cref="Block"/>.</summary>

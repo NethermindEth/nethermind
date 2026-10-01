@@ -675,7 +675,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Data-column-sidecars-by-root for {blockRoot} failed: {e.Message}");
+            peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Data-column-sidecars-by-root for {blockRoot} failed: {PeerManager.DescribeFailure(e)}");
             return null;
         }
     }

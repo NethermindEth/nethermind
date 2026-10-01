@@ -53,8 +53,11 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     private ulong? _firstGivenSlot;
     private ulong _seededFloor;
     private ulong _writeFailedBelow;
+    private long _writeFailureVersion;
     private ulong _writeFailedPersisted;
     private ulong _storedRangeUncheckedBelow;
+    private ulong? _backfilledFrom;
+    private ulong _prunedFloor;
     private int _storeReadFaultReported;
     private ulong? _storedFloor = store is not null && store.TryGetDataColumnFloor(out ulong storedFloor) ? storedFloor : null;
     private long _lastPrunedEpoch = -1;
@@ -94,7 +97,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     /// </summary>
     /// <remarks>
     /// A lower slot either lost or was refused a sidecar, or is below the slot of the first sidecar this process received,
-    /// so its columns cannot be assumed complete. The temporary start-up floor is released only after the stored range is checked. A block that carried no blobs has no sidecars, so its
+    /// so its columns cannot be assumed complete. The start-up floor is released after the stored range is checked; verified backfill can lower it (fulu/p2p-interface.md).
+    /// A block that carried no blobs has no sidecars, so its
     /// slot never counts against this. With a store, memory eviction loses nothing, so the floor is the one the store recorded
     /// when the first sidecar was given, raised by pruning and by a failed write, and it survives a restart.
     /// </remarks>
@@ -107,7 +111,30 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
                 ulong held = store is null
                     ? Math.Max(_firstGivenSlot ?? ulong.MaxValue, Math.Max(_byRootAndColumn.IncompleteBelow, _gloasByRootAndColumn.IncompleteBelow))
                     : _storedFloor ?? ulong.MaxValue;
-                return Math.Max(held, Math.Max(Math.Max(_seededFloor, _writeFailedBelow), _storedRangeUncheckedBelow));
+                ulong floor = Math.Max(held, Math.Max(_seededFloor, _writeFailedBelow));
+                ulong completed = _backfilledFrom is { } backfilled ? Math.Min(backfilled, floor) : floor;
+                ulong retained = store is null ? Math.Max(_byRootAndColumn.IncompleteBelow, _gloasByRootAndColumn.IncompleteBelow)
+                    : _prunedFloor;
+                return Math.Max(completed, Math.Max(retained, Math.Max(_writeFailedBelow, _storedRangeUncheckedBelow)));
+            }
+        }
+    }
+
+    internal long WriteFailureVersion
+    {
+        get { lock (_servedLock) return _writeFailureVersion; }
+    }
+
+    // Only a verified range can clear old write failures; a concurrent failure retains its floor (fulu/p2p-interface.md).
+    internal void LowerCompletelyServableFloor(ulong slot, ulong? verifiedThrough = null, long? failureVersion = null)
+    {
+        lock (_servedLock)
+        {
+            _backfilledFrom = _backfilledFrom is { } known ? Math.Min(known, slot) : slot;
+            if (failureVersion == _writeFailureVersion && verifiedThrough is { } through
+                && _writeFailedBelow > slot && _writeFailedBelow - 1 <= through)
+            {
+                _writeFailedBelow = 0;
             }
         }
     }
@@ -293,7 +320,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     {
         if (Interlocked.Exchange(ref _storeReadFaultReported, 1) == 0 && _logger.IsError)
         {
-            _logger.Error("Reading stored data column sidecars failed; the affected ones are not served until the store recovers", e);
+            _logger.Error($"Reading stored data column sidecars failed; the affected ones are not served until the store recovers: {PeerManager.DescribeFailure(e)}");
         }
     }
 
@@ -551,10 +578,11 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            if (_logger.IsError) _logger.Error($"Could not store data column sidecar {blockRoot} index {column}; slots up to {slot} are no longer served as complete", e);
+            if (_logger.IsError) _logger.Error($"Could not store data column sidecar {blockRoot} index {column}; slots up to {slot} are no longer served as complete: {PeerManager.DescribeFailure(e)}");
             lock (_servedLock)
             {
                 _writeFailedBelow = Math.Max(_writeFailedBelow, slot == ulong.MaxValue ? slot : slot + 1);
+                _writeFailureVersion++;
             }
         }
 
@@ -589,7 +617,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            if (_logger.IsError) _logger.Error($"Could not record that slots up to {failedBelow} lost a data column sidecar; retried after the next one", e);
+            if (_logger.IsError) _logger.Error($"Could not record that slots up to {failedBelow} lost a data column sidecar; retried after the next one: {PeerManager.DescribeFailure(e)}");
         }
     }
 
@@ -625,6 +653,12 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
 
         try
         {
+            ulong retainedFrom = store.GetDataColumnRetentionFloor((ulong)epoch);
+            lock (_servedLock)
+            {
+                _prunedFloor = Math.Max(_prunedFloor, retainedFrom);
+            }
+
             store.PruneDataColumnSidecars((ulong)epoch, status is null ? 0 : BeaconStateAccessors.ComputeStartSlotAtEpoch(status.CurrentStatus.FinalizedEpoch));
             if (store.TryGetDataColumnFloor(out ulong floor))
             {
@@ -636,7 +670,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            if (_logger.IsError) _logger.Error("Pruning the stored data column sidecars failed; they are pruned again next epoch", e);
+            if (_logger.IsError) _logger.Error($"Pruning the stored data column sidecars failed; they are pruned again next epoch: {PeerManager.DescribeFailure(e)}");
         }
     }
 
