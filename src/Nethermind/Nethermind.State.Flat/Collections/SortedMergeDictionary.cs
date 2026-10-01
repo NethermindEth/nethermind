@@ -200,6 +200,11 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     /// by key hash: sources are walked newest first and a key is taken the first time <paramref name="keep"/>
     /// accepts it. Lookups work as usual; enumeration order is arrival order, not key order.
     /// </summary>
+    /// <remarks>
+    /// The sorted merge exists so a compacted snapshot hands its nodes to RocksDB in key order. With the trie node
+    /// log enabled the nodes go to an append log instead, where order buys nothing, so compaction uses this merge
+    /// and skips the sort; the result is the same set of entries with the same priorities.
+    /// </remarks>
     [SkipLocalsInit]
     internal void BuildFromHashMerge<TKeep>(ReadOnlySpan<Run> sources, TKeep keep)
         where TKeep : struct, IMergeKeep<TKey>
