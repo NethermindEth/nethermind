@@ -82,6 +82,39 @@ public class PeerStatusRefreshTests
         }
     }
 
+    // A refresh asked without evidence the chain reached the slot (it may be empty) must not offer a peer past its last head when its status cannot be refreshed.
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_peer_whose_status_refresh_fails_is_not_offered_past_its_head_when_the_chain_was_not_claimed_past_it(CancellationToken token)
+    {
+        (Node client, StatusMessageV2 status) = CreateClient();
+        ulong head = status.HeadSlot;
+        ScriptedStatusSource source = new(n => n == 1 ? status : throw new Eth2ReqRespException("status refused for the test"));
+        Node server = CreateNode(source);
+        try
+        {
+            PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token);
+            peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
+            int admissionRequests = source.Requests;
+
+            Pool(peerManager).RefreshStatusesBelow(head + ChainAheadBy, Reason);
+            await WaitUntilAsync(() => source.Requests > admissionRequests, token, "fixture: the peer's status was not asked again");
+
+            // The failure is recorded just after the refused reply, so the peer is watched for a while rather than checked once.
+            using CancellationTokenSource watch = CancellationTokenSource.CreateLinkedTokenSource(token);
+            watch.CancelAfter(TimeSpan.FromSeconds(1));
+            while (!watch.IsCancellationRequested)
+            {
+                Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty);
+                await Task.Delay(20, CancellationToken.None);
+            }
+        }
+        finally
+        {
+            await PeerHealthCheckRoundTests.DisposeAsync(client, [server]);
+        }
+    }
+
     // Silence never counts toward a ban (the health check's rule), and a refused refresh is the same request asked outside it.
     [Test]
     [CancelAfter(120_000)]

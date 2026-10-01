@@ -463,6 +463,7 @@ public class RangeSyncPeerSelectionTests
         {
             Assert.That(pool.Refreshes, refreshed ? (NUnit.Framework.Constraints.IResolveConstraint)Is.EqualTo(new[] { AnchorSlot + 1 }) : Is.Empty, "asked once, for the slot range sync waits on");
             Assert.That((ended, yielded), Is.EqualTo(refreshed ? (true, chain.Length) : (false, 0)));
+            Assert.That(pool.ChainClaims, Is.Empty, "a slot behind the wall slot may be empty, so it is no evidence the chain reached it");
         }
     }
 
@@ -499,12 +500,21 @@ public class RangeSyncPeerSelectionTests
 
         public List<ulong> Refreshes { get; } = [];
 
+        /// <summary>The slots claimed reached, which would let a pool offer peers past their last head.</summary>
+        public List<ulong> ChainClaims { get; } = [];
+
         public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => _statusHeadSlot >= minHeadSlot ? [peer] : [];
 
-        public void RefreshStatusesBehind(ulong slot, string reason)
+        public void RefreshStatusesBelow(ulong slot, string reason)
         {
             Refreshes.Add(slot);
             _statusHeadSlot = peer.HeadSlot;
+        }
+
+        public void RefreshStatusesBehind(ulong slot, string reason)
+        {
+            ChainClaims.Add(slot);
+            RefreshStatusesBelow(slot, reason);
         }
     }
 
