@@ -166,7 +166,8 @@ public class DbConfig : IDbConfig
         "write_buffer_size=4000000;";
     public string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong? CodeDbRowCacheSize { get; set; } = 16UL.MiB;
+    // Off: code is cached above as CodeInfo, and every row-cache insert copies the value, up to 64 KiB.
+    public ulong? CodeDbRowCacheSize { get; set; }
     public string CodeDbRocksDbOptions { get; set; } =
         // Snappy decodes byte runs in 64-byte copies; LZ4 reads large repetitive code about twice as fast
         "compression=kLZ4Compression;" +

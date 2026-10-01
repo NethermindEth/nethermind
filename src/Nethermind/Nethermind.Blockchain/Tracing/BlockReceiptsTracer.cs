@@ -147,6 +147,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         if (!parallel)
         {
             Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeBlockGas, cumulativeBlockStateGas);
+            Block.Header.GasUsedPerDimension = (cumulativeBlockGas, cumulativeBlockStateGas);
         }
 
         // Track cumulative receipt gas (post-refund)
@@ -260,7 +261,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) =>
         _currentTxTracer.ReportBalanceChange(address, before, after);
 
-    public void ReportCodeChange(Address address, byte[]? before, byte[]? after) =>
+    public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after) =>
         _currentTxTracer.ReportCodeChange(address, before, after);
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after) =>
@@ -389,6 +390,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         // Restore block gas from tracking: max(cumulative_execution, cumulative_state) for EIP-8037
         (ulong cumulativeExecution, ulong cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
         Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeExecution, cumulativeState);
+        Block.Header.GasUsedPerDimension = (cumulativeExecution, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;

@@ -9,6 +9,9 @@ import requests
 CONFIGS_PATH = './src/Nethermind/Nethermind.Runner/configs'
 APPLICATION_JSON = { 'Content-type': 'application/json' }
 SUPERCHAIN_CHAINS = ["op-mainnet", "op-sepolia", "worldchain-mainnet", "worldchain-sepolia"]
+# Configs that must keep another config's pivot: they take the pivot it was just given instead of fetching their own,
+# so a block landing between two fetches can't leave them on different pivots.
+PIVOT_FOLLOWERS = {"mainnet": ["mainnet_aztec"]}
 
 configs = {
     # fast sync section
@@ -120,6 +123,11 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
     pivotTotalDifficulty = int(pivot['result'].get('totalDifficulty', '0x0'), 16)
 
     print(configuration + ' LatestBlock: ' + str(latestBlock))
+    writePivot(configuration, baseBlock, pivotHash, pivotTotalDifficulty, isPoS)
+    for follower in PIVOT_FOLLOWERS.get(configuration, []):
+        writePivot(follower, baseBlock, pivotHash, pivotTotalDifficulty, isPoS)
+
+def writePivot(configuration, baseBlock, pivotHash, pivotTotalDifficulty, isPoS):
     print(configuration + ' PivotNumber: ' + str(baseBlock))
     print(configuration + ' PivotHash: ' + str(pivotHash))
     if not isPoS:

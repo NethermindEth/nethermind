@@ -264,6 +264,19 @@ public class BlockAccessListJournalTests
         Assert.That(slice.GetAccountChanges(TestItem.AddressA), Is.Null);
     }
 
+    // Code set and then removed within one transaction is no change, even when the code before it was not given.
+    [Test]
+    public void AddCodeChange_back_to_no_code_cancels_a_change_from_absent_code()
+    {
+        BlockAccessListAtIndex slice = new() { Index = 0 };
+        byte[] code = [0x60];
+
+        slice.AddCodeChange(TestItem.AddressA, default, code);
+        slice.AddCodeChange(TestItem.AddressA, code, Array.Empty<byte>());
+
+        Assert.That(slice.GetAccountChanges(TestItem.AddressA)!.CodeChange, Is.Null);
+    }
+
     [Test]
     public void Restore_reinstates_previous_values_for_interleaved_change_types()
     {
@@ -306,7 +319,7 @@ public class BlockAccessListJournalTests
         BlockAccessListAtIndex slice = new() { Index = 1 };
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 50);
         slice.AddNonceChange(TestItem.AddressA, 3);
-        slice.AddCodeChange(TestItem.AddressA, before: [], after: new byte[] { 0x60, 0x01 });
+        slice.AddCodeChange(TestItem.AddressA, before: Array.Empty<byte>(), after: new byte[] { 0x60, 0x01 });
         slice.AddStorageRead(TestItem.AddressA, 999);
         for (int i = 0; i < slotCount; i++)
             slice.AddStorageChange(TestItem.AddressA, (UInt256)i, before: 0, after: (UInt256)(77 + i));
