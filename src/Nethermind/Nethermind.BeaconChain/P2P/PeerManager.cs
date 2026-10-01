@@ -580,7 +580,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         List<ManagedPeer> leastFailed = best.Count == 0 && stale.Count == 0 ? LeastFailed(atLimit.Count > 0 ? atLimit : staleAtLimit, now) : [];
-        if (noStatus + behind + failing + (offerStale ? stale.Count : 0) > 0 && _logger.IsDebug) _logger.Debug($"Sync peers for head slot {minHeadSlot}: {best.Count} usable; left out {noStatus} without status, {behind} behind, {failing} at the request-failure limit{(offerStale ? $"; offering {stale.Count} whose status predates slot {ahead!.Slot}" : "")}{(leastFailed.Count > 0 ? $"; offering the {leastFailed.Count} least-failed at the request-failure limit" : "")}");
+        if (noStatus + behind + failing + (offerStale ? stale.Count : 0) > 0 && _logger.IsDebug) _logger.Debug($"Sync peers for {(minHeadSlot == 0 ? "any head" : $"head slot {minHeadSlot}")}: {best.Count} usable; left out {noStatus} without status, {behind} behind, {failing} at the request-failure limit{(offerStale ? $"; offering {stale.Count} whose status predates slot {ahead!.Slot}" : "")}{(leastFailed.Count > 0 ? $"; offering the {leastFailed.Count} least-failed at the request-failure limit" : "")}");
         if (offerStale)
         {
             return OrderForSelection(stale, peer => peer.IsCoolingDown(now), static peer => peer.RequestsInFlight, static peer => peer.HeadSlot);
