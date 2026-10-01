@@ -30,6 +30,9 @@ public static class Presets
     /// <summary><c>JUSTIFICATION_BITS_LENGTH</c> (specs/phase0/beacon-chain.md).</summary>
     public const int JustificationBitsLength = 4;
 
+    /// <summary><c>TARGET_AGGREGATORS_PER_COMMITTEE</c> (validator.md is_aggregator).</summary>
+    public const ulong TargetAggregatorsPerCommittee = 16;
+
     // Phase0 — gwei values
     public const ulong MinDepositAmount = 1_000_000_000;
     public const ulong MaxEffectiveBalance = 32_000_000_000;

@@ -88,9 +88,9 @@ internal sealed class ImportableBlobBlock
     public SlotClock ClockAtSlot(ulong slot) =>
         new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + slot * Spec.SecondsPerSlot)).UtcDateTime));
 
-    public static ImportableBlobBlock Create(int blobCount = 2)
+    public static ImportableBlobBlock Create(int blobCount = 2, int validatorCount = ValidatorCount)
     {
-        BlsPublicKey[] pubkeys = new BlsPublicKey[ValidatorCount];
+        BlsPublicKey[] pubkeys = new BlsPublicKey[validatorCount];
         for (int i = 0; i < pubkeys.Length; i++)
         {
             pubkeys[i] = new BlsPublicKey(new Bls.P1(DeriveKey(i)).Compress());
@@ -203,9 +203,9 @@ internal sealed class ImportableBlobBlock
     /// <summary>A block at slot 1 with no blob commitments, otherwise identical in validity to <see cref="Block"/>.</summary>
     public static ImportableBlobBlock CreateWithoutBlobs() => Create(blobCount: 0);
 
-    private static Bls.SecretKey DeriveKey(int index) => new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)index));
+    internal static Bls.SecretKey DeriveKey(int index) => new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)index));
 
-    private static BlsSignature Sign(Bls.SecretKey key, Hash256 objectRoot, Hash256 domain) =>
+    internal static BlsSignature Sign(Bls.SecretKey key, Hash256 objectRoot, Hash256 domain) =>
         new(BlsSigner.Sign(key, Domains.ComputeSigningRoot(objectRoot, domain).Bytes).Bytes);
 
     internal static BlsSignature SignAs(ulong validatorIndex, Hash256 objectRoot, Hash256 domain) => Sign(DeriveKey((int)validatorIndex), objectRoot, domain);

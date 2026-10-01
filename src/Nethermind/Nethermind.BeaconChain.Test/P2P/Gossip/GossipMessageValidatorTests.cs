@@ -173,6 +173,66 @@ public class GossipMessageValidatorTests
         }
     }
 
+    public enum SeenAggregateCase
+    {
+        NothingSeen,
+        SameBits,
+        SubsetOfSeenBits,
+        StrictSupersetOfSeenBits,
+        IncomparableBits,
+        OtherCommittee,
+        SameAggregatorOtherData,
+    }
+
+    // p2p-interface.md beacon_aggregate_and_proof: IGNORE bits a valid aggregate for the same data and committee
+    // already covers, and a second aggregate from one aggregator for its target epoch.
+    [TestCase(SeenAggregateCase.NothingSeen, false)]
+    [TestCase(SeenAggregateCase.SameBits, true)]
+    [TestCase(SeenAggregateCase.SubsetOfSeenBits, true)]
+    [TestCase(SeenAggregateCase.StrictSupersetOfSeenBits, false)]
+    [TestCase(SeenAggregateCase.IncomparableBits, false)]
+    [TestCase(SeenAggregateCase.OtherCommittee, false)]
+    [TestCase(SeenAggregateCase.SameAggregatorOtherData, true)]
+    public void Aggregate_covered_by_a_valid_one_is_ignored(SeenAggregateCase seenCase, bool ignored)
+    {
+        (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create();
+        AttestationGloas seen = GloasAggregate(participants: 2).Message!.Aggregate!;
+        if (seenCase != SeenAggregateCase.NothingSeen)
+        {
+            router.MarkAggregateSeen(seen.Data!, seen.CommitteeBits!, seen.AggregationBits!, aggregatorIndex: 7);
+        }
+
+        SignedAggregateAndProofGloas candidate = GloasAggregate(participants: seenCase switch
+        {
+            SeenAggregateCase.SameBits => 2,
+            SeenAggregateCase.StrictSupersetOfSeenBits or SeenAggregateCase.SameAggregatorOtherData => 3,
+            _ => 1,
+        });
+        AttestationGloas aggregate = candidate.Message!.Aggregate!;
+        candidate.Message.AggregatorIndex = seenCase == SeenAggregateCase.SameAggregatorOtherData ? 7UL : 8UL;
+        switch (seenCase)
+        {
+            case SeenAggregateCase.IncomparableBits:
+                aggregate.AggregationBits = new BitArray(8) { [2] = true };
+                break;
+            case SeenAggregateCase.OtherCommittee:
+                aggregate.CommitteeBits = new BitArray(64) { [1] = true };
+                break;
+            case SeenAggregateCase.SameAggregatorOtherData:
+                aggregate.Data!.BeaconBlockRoot = Keccak.Compute("another head vote");
+                break;
+        }
+
+        MessageValidity validity = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(candidate), signed: false));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
+            Assert.That(raised, Has.Count.EqualTo(ignored ? 0 : 1));
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(ignored ? 1 : 0));
+        }
+    }
+
     [Test]
     public void Early_next_slot_block_is_held_and_consumed_once_its_slot_starts()
     {

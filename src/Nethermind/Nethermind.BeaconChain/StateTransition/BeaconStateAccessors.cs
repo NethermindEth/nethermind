@@ -29,6 +29,15 @@ public static class BeaconStateAccessors
 
     public static ulong ComputeEpochAtSlot(ulong slot) => slot / Presets.SlotsPerEpoch;
 
+    /// <summary>The spec's <c>is_aggregator</c> (validator.md) for a committee of <paramref name="committeeSize"/> members.</summary>
+    internal static bool IsAggregator(int committeeSize, BlsSignature selectionProof)
+    {
+        ulong modulo = Math.Max(1, (ulong)committeeSize / Presets.TargetAggregatorsPerCommittee);
+        Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+        SHA256.HashData(selectionProof.Bytes, hash);
+        return BinaryPrimitives.ReadUInt64LittleEndian(hash) % modulo == 0;
+    }
+
     public static ulong ComputeStartSlotAtEpoch(ulong epoch) => epoch * Presets.SlotsPerEpoch;
 
     /// <summary>Returns the epoch at which an activation or exit triggered in <paramref name="epoch"/> takes effect.</summary>

@@ -9,6 +9,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -63,13 +64,14 @@ public enum GossipDropReason
 /// Validation here is intentionally limited to what needs no beacon state: snappy decompression
 /// within the type's size bound, SSZ decoding as the topic fork's type, duplicate suppression, slot
 /// sanity against the wall clock and the finalized checkpoint, and the stateless field and limit
-/// rules of each topic. Proposer signature and shuffling, parent-block checks and aggregator
-/// selection require the head state and belong to the orchestrator import pipeline consuming these
-/// events. A block or aggregate for the next slot that arrives early is held and raised once its slot starts.
+/// rules of each topic. Proposer signature and shuffling, parent-block checks and the aggregator's selection proof and
+/// signatures need the head state and run in the import pipeline consuming these events.
+/// A block or aggregate for the next slot that arrives early is held and raised once its slot starts.
 /// </remarks>
 /// <param name="store">Where a block's parent and an execution payload envelope's block and bid are read from; <c>null</c> holds no block, so every envelope passing the stateless rules is consumed unchecked.</param>
 /// <param name="status">Where the finalized checkpoint is read from; <c>null</c> applies no finalized-slot rule.</param>
-public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILogManager logManager, BeaconChainStore? store = null, IBeaconChainStatusSource? status = null)
+/// <param name="failedBlocks">Roots known to have failed block validation; <c>null</c> applies no failed-root rule.</param>
+public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILogManager logManager, BeaconChainStore? store = null, IBeaconChainStatusSource? status = null, FailedBlockRoots? failedBlocks = null)
 {
     /// <summary>The spec <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>.</summary>
     public const long MaximumGossipClockDisparityMs = 500;
@@ -86,6 +88,13 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private const int SeenEnvelopeCacheSize = 1024;
     private const int EnvelopeBlockCacheSize = 1024;
     private const int SeenSlashedIndexCacheSize = 8192;
+
+    // p2p-interface.md Seen: retain two epochs of TARGET_AGGREGATORS_PER_COMMITTEE aggregators per committee and slot.
+    private const int SeenAggregatorCacheSize = 2 * (int)Presets.SlotsPerEpoch * Presets.MaxCommitteesPerSlot * (int)Presets.TargetAggregatorsPerCommittee;
+
+    // p2p-interface.md Seen: retain two epochs of two distinct votes per committee; eviction only permits repeat verification.
+    private const int SeenAggregateDataCacheSize = 4 * (int)Presets.SlotsPerEpoch * Presets.MaxCommitteesPerSlot;
+    private const int SeenAggregateBitsPerData = (int)Presets.TargetAggregatorsPerCommittee;
 
     /// <summary>The most payload attestations raised for fork choice to verify per (slot, validator) pair while none has verified.</summary>
     internal const int PayloadAttestationVerifyAttempts = 3;
@@ -125,6 +134,11 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     // Written by the import worker once an envelope verifies; read on the network thread.
     private readonly LruKeyCache<(Hash256 Root, ulong BuilderIndex)> _seenEnvelopes = new(SeenEnvelopeCacheSize, "beacon gossip envelopes");
+
+    // Written by the import worker once an aggregate verifies, its aggregator included; read on the network thread.
+    private readonly LruKeyCache<(ulong TargetEpoch, ulong AggregatorIndex)> _seenAggregators = new(SeenAggregatorCacheSize, "beacon gossip aggregators");
+    private readonly Lock _seenAggregateBitsLock = new();
+    private readonly LruCache<(ValueHash256 DataRoot, int CommitteeIndex), List<BitArray>> _seenAggregateBits = new(SeenAggregateDataCacheSize, "beacon gossip aggregate bits");
 
     // Written once an attester slashing verifies; read on the network thread. An evicted index only makes a later slashing consumed again.
     private readonly LruKeyCache<ulong> _seenSlashedIndices = new(SeenSlashedIndexCacheSize, "beacon gossip slashed indices");
@@ -175,6 +189,88 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>Records that an envelope for <paramref name="blockRoot"/> from <paramref name="builderIndex"/> passed every gossip check, its signature included.</summary>
     /// <remarks>The spec IGNOREs later envelopes for the pair only once a valid one is seen, so an unverified envelope must never mark it.</remarks>
     internal void MarkEnvelopeSeen(Hash256 blockRoot, ulong builderIndex) => _seenEnvelopes.Set((blockRoot, builderIndex));
+
+    /// <summary>Whether p2p-interface.md Seen covers this aggregate by its epoch/aggregator or its data, committee and bits.</summary>
+    internal bool IsAggregateSeen(AttestationData data, BitArray committeeBits, BitArray aggregationBits, ulong aggregatorIndex)
+    {
+        if (_seenAggregators.Get((data.Target!.Epoch, aggregatorIndex)))
+        {
+            return true;
+        }
+
+        (ValueHash256, int) key = AggregateDataKey(data, committeeBits);
+        lock (_seenAggregateBitsLock)
+        {
+            if (_seenAggregateBits.TryGet(key, out List<BitArray>? seen))
+            {
+                foreach (BitArray prior in seen)
+                {
+                    if (IsNonStrictSuperset(prior, aggregationBits))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Records an aggregate that passed every gossip check, its selection proof and aggregator signature included.</summary>
+    /// <remarks>The spec IGNOREs later aggregates by these sets only once a valid one is seen, so an unverified aggregate must never mark them.</remarks>
+    internal void MarkAggregateSeen(AttestationData data, BitArray committeeBits, BitArray aggregationBits, ulong aggregatorIndex)
+    {
+        _seenAggregators.Set((data.Target!.Epoch, aggregatorIndex));
+        (ValueHash256, int) key = AggregateDataKey(data, committeeBits);
+        lock (_seenAggregateBitsLock)
+        {
+            if (!_seenAggregateBits.TryGet(key, out List<BitArray>? seen))
+            {
+                seen = [];
+                _seenAggregateBits.Set(key, seen);
+            }
+
+            // p2p-interface.md is_non_strict_superset: a set the new one covers answers no additional lookup.
+            seen.RemoveAll(prior => IsNonStrictSuperset(aggregationBits, prior));
+            if (seen.Count == SeenAggregateBitsPerData)
+            {
+                seen.RemoveAt(0);
+            }
+
+            seen.Add(new BitArray(aggregationBits));
+        }
+    }
+
+    // is_non_strict_superset (p2p-interface.md) compares bits of one committee; bits of another length cover nothing.
+    private static bool IsNonStrictSuperset(BitArray prior, BitArray bits)
+    {
+        if (prior.Length != bits.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < bits.Length; i++)
+        {
+            if (bits[i] && !prior[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // p2p-interface.md beacon_aggregate_and_proof: aggregate_cache_key is (hash_tree_root(aggregate.data), committee index).
+    private static (ValueHash256 DataRoot, int CommitteeIndex) AggregateDataKey(AttestationData data, BitArray committeeBits)
+    {
+        int committeeIndex = 0;
+        while (committeeIndex < committeeBits.Length && !committeeBits[committeeIndex])
+        {
+            committeeIndex++;
+        }
+
+        return (SszRoots.HashTreeRoot(data).ValueHash256, committeeIndex);
+    }
 
     /// <summary>Whether a payload attestation must come from a member of its slot's PTC, as told by <see cref="SetPtc"/>; unset, every validator index is tracked.</summary>
     internal bool RequiresPtc { get; set; }
@@ -383,13 +479,13 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private MessageValidity HandleFuluAggregateAndProof(byte[] message) =>
         Handle(GossipTopics.BeaconAggregateAndProof, message,
             static payload => { SignedAggregateAndProof.Decode(payload, out SignedAggregateAndProof aggregate); return aggregate; },
-            aggregate => ValidateAggregate(aggregate.Message!.Aggregate!.Data!, aggregate.Message.Aggregate.CommitteeBits!, aggregate.Message.Aggregate.AggregationBits!, gloas: false),
+            aggregate => ValidateAggregate(aggregate.Message!.Aggregate!.Data!, aggregate.Message.Aggregate.CommitteeBits!, aggregate.Message.Aggregate.AggregationBits!, aggregate.Message.AggregatorIndex, gloas: false),
             aggregate => AggregateAndProofReceived?.Invoke(aggregate));
 
     private MessageValidity HandleGloasAggregateAndProof(byte[] message) =>
         Handle(GossipTopics.BeaconAggregateAndProof, message,
             static payload => { SignedAggregateAndProofGloas.Decode(payload, out SignedAggregateAndProofGloas aggregate); return aggregate; },
-            aggregate => ValidateAggregate(aggregate.Message!.Aggregate!.Data!, aggregate.Message.Aggregate.CommitteeBits!, aggregate.Message.Aggregate.AggregationBits!, gloas: true),
+            aggregate => ValidateAggregate(aggregate.Message!.Aggregate!.Data!, aggregate.Message.Aggregate.CommitteeBits!, aggregate.Message.Aggregate.AggregationBits!, aggregate.Message.AggregatorIndex, gloas: true),
             aggregate => GloasAggregateAndProofReceived?.Invoke(aggregate),
             MaxSignedAggregateAndProofSizeGloas);
 
@@ -522,12 +618,6 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return Verdict.Ignore(GossipDropReason.BeforeFinalized);
         }
 
-        ulong currentSlot = slotClock.CurrentSlot;
-        if (currentSlot > spec.SlotsPerEpoch && slot < currentSlot - spec.SlotsPerEpoch)
-        {
-            return Verdict.Ignore(GossipDropReason.StaleSlot);
-        }
-
         if (SignedBeaconBlockCodec.IsGloasSlot(slot, spec) != gloasTopic)
         {
             return Verdict.Ignore(GossipDropReason.InvalidField);
@@ -599,9 +689,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         return new ForkedSignedBeaconBlock.OfFulu(fulu);
     }
 
-    // validate_beacon_aggregate_and_proof_gossip: the index and committee-bit REJECTs come first. The target-epoch and
-    // participant REJECTs need no state (no set bit means no participant), so they follow only the clock IGNOREs.
-    private Verdict? ValidateAggregate(AttestationData data, BitArray committeeBits, BitArray aggregationBits, bool gloas)
+    // validate_beacon_aggregate_and_proof_gossip: the index and committee-bit REJECTs come first, then the two seen-set IGNOREs.
+    // The target-epoch and participant REJECTs need no state (no set bit means no participant), so they follow only the clock IGNOREs.
+    private Verdict? ValidateAggregate(AttestationData data, BitArray committeeBits, BitArray aggregationBits, ulong aggregatorIndex, bool gloas)
     {
         if (gloas ? data.Index > 1 : data.Index != 0)
         {
@@ -611,6 +701,11 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         if (CountSetBits(committeeBits) != 1)
         {
             return Verdict.Reject(GossipDropReason.InvalidField);
+        }
+
+        if (IsAggregateSeen(data, committeeBits, aggregationBits, aggregatorIndex))
+        {
+            return Verdict.Ignore(GossipDropReason.Duplicate);
         }
 
         Verdict? timing = CheckNotFromFuture(data.Slot);
@@ -691,8 +786,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     }
 
     // validate_execution_payload_envelope_gossip (gloas/p2p-interface.md). verify_execution_requests_limits MAY run at
-    // deserialization, so it rejects first. The store holds only blocks fork choice accepted, so a held block stands in for
-    // both "seen" and "passes validation"; an unheld one MAY be queued until it is retrieved, so the envelope is consumed.
+    // deserialization, so it rejects first. Known invalid blocks reject; other unheld roots MAY be queued until retrieved.
     private Verdict? ValidateEnvelope(SignedExecutionPayloadEnvelope envelope)
     {
         ExecutionPayloadEnvelope message = envelope.Message!;
@@ -713,6 +807,11 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         }
 
         ExecutionPayloadGloas payload = message.Payload!;
+        if (failedBlocks?.Contains(blockRoot) == true)
+        {
+            return Verdict.Reject(GossipDropReason.InvalidField);
+        }
+
         switch (ReadEnvelopeBlock(blockRoot, payload.SlotNumber, out EnvelopeBlock? block))
         {
             // Handle does not pass this topic's fork, so an unheld envelope for a pre-Gloas slot is dropped by its payload slot
@@ -744,8 +843,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         return (payload.Withdrawals?.Length ?? 0) > Presets.MaxWithdrawalsPerPayload ? Verdict.Reject(GossipDropReason.LimitExceeded) : null;
     }
 
-    // validate_payload_attestation_message_gossip (gloas/p2p-interface.md). The store holds only blocks fork choice accepted, so
-    // a held block stands in for both "seen" and "passes validation". A block slot the budget cannot read is checked by fork choice.
+    // gloas/p2p-interface.md validate_payload_attestation_message_gossip: known invalid blocks reject after the prior IGNOREs.
     private Verdict? ValidatePayloadAttestation(PayloadAttestationMessage vote)
     {
         PayloadAttestationData data = vote.Data!;
@@ -754,9 +852,19 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return Verdict.Reject(GossipDropReason.InvalidField);
         }
 
+        if (IsPayloadAttestationVerified(vote))
+        {
+            return Verdict.Ignore(GossipDropReason.Duplicate);
+        }
+
         if (CheckCurrentSlot(data.Slot) is { } timing)
         {
             return timing;
+        }
+
+        if (failedBlocks?.Contains(data.BeaconBlockRoot!) == true)
+        {
+            return Verdict.Reject(GossipDropReason.InvalidField);
         }
 
         if (store is null)

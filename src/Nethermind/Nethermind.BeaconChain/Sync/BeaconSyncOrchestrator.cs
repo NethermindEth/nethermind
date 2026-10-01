@@ -641,11 +641,19 @@ public sealed class BeaconSyncOrchestrator(
             case GossipBlockItem gossip:
                 await ProcessGossipBlockAsync(gossip.Block, token);
                 break;
-            case GossipAggregateItem aggregate:
-                _importer!.OnGossipAggregate(aggregate.Aggregate);
+            case GossipAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate }:
+                if (!gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) && _importer!.OnGossipAggregate(aggregate))
+                {
+                    gossipRouter.MarkAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex);
+                }
+
                 break;
-            case GossipGloasAggregateItem aggregate:
-                _importer!.OnGossipAggregate(aggregate.Aggregate);
+            case GossipGloasAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate }:
+                if (!gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) && _importer!.OnGossipAggregate(aggregate))
+                {
+                    gossipRouter.MarkAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex);
+                }
+
                 break;
             case GossipAttesterSlashingItem { Slashing: AttesterSlashing slashing }:
                 if (_importer!.OnGossipAttesterSlashing(slashing))
