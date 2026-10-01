@@ -23,8 +23,10 @@ namespace Nethermind.Store.Test;
 
 public class PatriciaTreeBulkSetterTests
 {
+    public enum ParallelTrieOperation { BulkSet, UpdateRootHash, ResolveKey }
+
     [Test]
-    public void Parallel_trie_operations_share_and_restore_worker_budget([Values] bool bulkSet, [Values(0, 1, 2)] int concurrency)
+    public void Parallel_trie_operations_share_and_restore_worker_budget([Values] ParallelTrieOperation operation, [Values(0, 1, 2)] int concurrency)
     {
         if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires parallel trie work.");
 
@@ -39,7 +41,9 @@ public class PatriciaTreeBulkSetterTests
         bool observing = false;
         void RecordBudget()
         {
-            if (observing) observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0);
+            if (!observing) return;
+            int budget = ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0;
+            if (operation != ParallelTrieOperation.UpdateRootHash || budget != 0) observedBudgets.Add(budget);
         }
 
         IScopedTrieStore store = Substitute.For<IScopedTrieStore>();
@@ -47,13 +51,13 @@ public class PatriciaTreeBulkSetterTests
             .Returns(call => new TrieNode(NodeType.Unknown, call.Arg<Hash256>()));
         store.LoadRlp(Arg.Any<TreePath>(), Arg.Any<Hash256>(), Arg.Any<ReadFlags>()).Returns(call =>
         {
-            if (bulkSet) RecordBudget();
+            if (operation == ParallelTrieOperation.BulkSet) RecordBudget();
             return backing.LoadRlp(call.Arg<TreePath>(), call.Arg<Hash256>(), call.Arg<ReadFlags>());
         });
         ICappedArrayPool pool = Substitute.For<ICappedArrayPool>();
         pool.Rent(Arg.Any<int>()).Returns(call =>
         {
-            if (!bulkSet) RecordBudget();
+            if (operation != ParallelTrieOperation.BulkSet) RecordBudget();
             return new CappedArray<byte>(new byte[call.Arg<int>()]);
         });
         PatriciaTree tree = new(store, initial.RootHash, true, LimboLogs.Instance, pool);
@@ -61,18 +65,48 @@ public class PatriciaTreeBulkSetterTests
         foreach ((Hash256 key, _) in items)
         {
             entries.Add(new PatriciaTree.BulkSetEntry(key, [42]));
-            if (!bulkSet) tree.Set(key.Bytes, [42]);
+            if (operation != ParallelTrieOperation.BulkSet) tree.Set(key.Bytes, [42]);
         }
 
         using ParallelUnbalancedWork.WorkerScope outer = concurrency == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(concurrency);
         observing = true;
-        if (bulkSet) tree.BulkSet(entries);
-        else tree.UpdateRootHash();
+        if (operation == ParallelTrieOperation.BulkSet) tree.BulkSet(entries);
+        else if (operation == ParallelTrieOperation.UpdateRootHash) tree.UpdateRootHash();
+        else
+        {
+            TreePath path = TreePath.Empty;
+            tree.RootRef!.ResolveKey(store, ref path, bufferPool: pool, canBeParallel: true);
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(observedBudgets, Is.Not.Empty);
             Assert.That(observedBudgets, Is.All.EqualTo(concurrency == 0 ? Core.Cpu.RuntimeInformation.ProcessorCount : concurrency));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer));
+        }
+    }
+
+    [Test]
+    public void Serial_root_hashing_preserves_the_callers_worker_scope([Values] bool canBeParallel, [Values] bool inheritedScope)
+    {
+        using MemDb db = new();
+        ConcurrentBag<ParallelUnbalancedWork.WorkerScope> observedScopes = [];
+        ICappedArrayPool pool = Substitute.For<ICappedArrayPool>();
+        pool.Rent(Arg.Any<int>()).Returns(call =>
+        {
+            observedScopes.Add(ParallelUnbalancedWork.WorkerScope.Current);
+            return new CappedArray<byte>(new byte[call.Arg<int>()]);
+        });
+        PatriciaTree tree = new(new RawScopedTrieStore(db), Keccak.EmptyTreeHash, true, LimboLogs.Instance, pool);
+        tree.Set(Keccak.EmptyTreeHash.Bytes, [42]);
+        using ParallelUnbalancedWork.WorkerScope outer = inheritedScope ? ParallelUnbalancedWork.BeginWorkerScope(2) : null;
+
+        tree.UpdateRootHash(canBeParallel);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observedScopes, Is.Not.Empty);
+            Assert.That(observedScopes, Is.All.SameAs(outer));
             Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer));
         }
     }

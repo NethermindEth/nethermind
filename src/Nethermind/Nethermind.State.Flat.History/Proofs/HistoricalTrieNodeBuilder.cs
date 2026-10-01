@@ -84,20 +84,13 @@ internal sealed class HistoricalTrieNodeBuilder
     {
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(
             options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount);
-        try
+        ParallelUnbalancedWork.For(0, work.Count, options, work, static (i, items) =>
         {
-            ParallelUnbalancedWork.For(0, work.Count, options, work, static (i, items) =>
-            {
-                (HistoricalTrieNodeBuilder Builder, TreePath Path) item = items[i];
-                byte[]? rlp = item.Builder.ResolveRlp(item.Path, parallelChildren: item.Path.Length == 0 && item.Builder._fanOut > 1, allowRebuild: false);
-                if (rlp is not null) item.Builder._prefetched![item.Path] = rlp;
-                return items;
-            });
-        }
-        catch (AggregateException e)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.Flatten().InnerExceptions[0]).Throw();
-        }
+            (HistoricalTrieNodeBuilder Builder, TreePath Path) item = items[i];
+            byte[]? rlp = item.Builder.ResolveRlp(item.Path, parallelChildren: item.Path.Length == 0 && item.Builder._fanOut > 1, allowRebuild: false);
+            if (rlp is not null) item.Builder._prefetched![item.Path] = rlp;
+            return items;
+        });
     }
 
     private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, bool allowRebuild = true) => ResolveRlp(path, parallelChildren, out _, allowRebuild);
@@ -219,14 +212,7 @@ internal sealed class HistoricalTrieNodeBuilder
     private void RunFanOut(Action<int> child)
     {
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Math.Max(1, _fanOut));
-        try
-        {
-            ParallelUnbalancedWork.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
-        }
-        catch (AggregateException e)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.Flatten().InnerExceptions[0]).Throw();
-        }
+        ParallelUnbalancedWork.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
     }
 
     private byte[]? Compose(in TreePath path, bool parallelChildren, bool allowRebuild)
