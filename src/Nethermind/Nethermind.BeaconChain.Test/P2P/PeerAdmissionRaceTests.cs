@@ -61,7 +61,7 @@ public class PeerAdmissionRaceTests
             // The address names the remote but leads to a socket that never speaks, so the dial is stuck past its pre-check.
             Task<ISession> dial = local.P2P.DialPeerAsync(Multiaddress.Decode($"/ip4/127.0.0.1/tcp/{port}/p2p/{remote.P2P.LocalPeerId}"), caller.Token);
             using Socket stalled = await blackhole.AcceptSocketAsync(token);
-            await remote.P2P.DialPeerAsync(LoopbackAddress(local.P2P), token);
+            await DialAsync(remote.P2P, local.P2P, token);
             await WaitUntilAsync(() => local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out _), "the remote's session never reached the local node", token, stallCheck: [local.P2P, remote.P2P]);
             Assert.That(dial.IsCompleted, Is.False, "fixture: the dial is still in flight");
 
@@ -113,7 +113,7 @@ public class PeerAdmissionRaceTests
 
             Task<bool> dial = peerManager.TryAddPeerAsync($"/ip4/127.0.0.1/tcp/{port}/p2p/{remote.P2P.LocalPeerId}", caller.Token);
             using Socket stalled = await blackhole.AcceptSocketAsync(token);
-            await remote.P2P.DialPeerAsync(LoopbackAddress(local.P2P), token);
+            await DialAsync(remote.P2P, local.P2P, token);
             if (!eventSeen.Wait(Hold, token))
             {
                 ThrowIfIdentifyStalled(local.P2P, remote.P2P);
@@ -218,7 +218,11 @@ public class PeerAdmissionRaceTests
         PeerId lower = PeerIdOf(lowerKey);
         Node local = Create(privateKey: lowerKey);
         Node remote = Create(privateKey: higherKey);
-        await using ServiceProvider services = new ServiceCollection().AddLibp2p(static builder => builder).BuildServiceProvider();
+        YamuxFaultLog oldSessionLog = new();
+        await using ServiceProvider services = new ServiceCollection()
+            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(oldSessionLog))
+            .AddLibp2p(static builder => builder)
+            .BuildServiceProvider();
         await using ILocalPeer oldSession = services.GetRequiredService<IPeerFactory>().Create(BeaconP2P.IdentityFromStoredKey(lowerKey));
         await using (local.P2P)
         await using (remote.P2P)
@@ -232,7 +236,7 @@ public class PeerAdmissionRaceTests
             }
 
             // Our identity's lingering session on the peer, as the collapsed simultaneous dial leaves it.
-            await oldSession.DialAsync(LoopbackAddress(remote.P2P), token).WaitAsync(token);
+            await DialFromPlainPeerAsync(oldSession, oldSessionLog, remote.P2P, token);
             await WaitUntilAsync(() => remote.P2P.TryGetEstablishedSession(lower, out _), "fixture: the old session never reached the peer", token, stallCheck: [remote.P2P]);
 
             await using Relay relay = Relay.Start(PortOf(remote.P2P), closeFirst: 0);

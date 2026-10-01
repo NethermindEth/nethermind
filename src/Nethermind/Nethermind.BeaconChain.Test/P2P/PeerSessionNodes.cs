@@ -332,16 +332,21 @@ internal sealed class ScriptedStatusSource(Func<int, StatusMessageV2> answer) : 
 }
 
 /// <summary>A plain libp2p peer on loopback that never identifies its own sessions and answers identify with the given protocol.</summary>
-internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsyncDisposable
+internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer, YamuxFaultLog log) : IAsyncDisposable
 {
     public LocalPeer Peer => peer;
+
+    public YamuxFaultLog Log => log;
 
     public Multiaddress Address => peer.ListenAddresses.First();
 
     /// <param name="statusSource">When given, the peer also answers <c>status</c> v2 from it, and nothing else of the eth2 protocols.</param>
-    public static async Task<PlainPeer> StartAsync(Func<IProtocolStackSettings, IdentifyProtocol> identify, CancellationToken token, IBeaconChainStatusSource? statusSource = null)
+    public static async Task<PlainPeer> StartAsync(Func<IProtocolStackSettings, IdentifyProtocol> identify, CancellationToken token, IBeaconChainStatusSource? statusSource = null,
+        bool pingOnDial = false, Identity? identity = null)
     {
         ServiceCollection collection = new();
+        YamuxFaultLog log = new();
+        collection.AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(log));
         collection.AddSingleton(sp => identify(sp.GetRequiredService<IProtocolStackSettings>()));
         if (statusSource is not null)
         {
@@ -353,7 +358,7 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
             .BuildServiceProvider();
         // Building the factory is what fills the stack settings the peer runs on.
         services.GetRequiredService<IPeerFactory>();
-        PlainPeer plain = new(services, new NonIdentifyingPeer(services.GetRequiredService<PeerStore>(), services.GetRequiredService<IProtocolStackSettings>()));
+        PlainPeer plain = new(services, new NonIdentifyingPeer(services.GetRequiredService<PeerStore>(), services.GetRequiredService<IProtocolStackSettings>(), log, pingOnDial, identity), log);
         await plain.Peer.StartListenAsync([Multiaddress.Decode("/ip4/127.0.0.1/tcp/0")], token);
         return plain;
     }
@@ -364,9 +369,11 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
         await services.DisposeAsync();
     }
 
-    private sealed class NonIdentifyingPeer(PeerStore peerStore, IProtocolStackSettings settings)
-        : LocalPeer(new Identity(privateKey: null, KeyType.Secp256K1), peerStore, settings)
+    private sealed class NonIdentifyingPeer(PeerStore peerStore, IProtocolStackSettings settings, YamuxFaultLog log, bool pingOnDial, Identity? identity)
+        : LocalPeer(identity ?? new Identity(privateKey: null, KeyType.Secp256K1), peerStore, settings, loggerFactory: BeaconP2P.CreateLibp2pLoggerFactory(log))
     {
-        protected override Task ConnectedTo(ISession session, bool isDialer) => Task.CompletedTask;
+        protected override Task ConnectedTo(ISession session, bool isDialer) => pingOnDial && isDialer
+            ? session.DialAsync<PingProtocol>()
+            : Task.CompletedTask;
     }
 }
