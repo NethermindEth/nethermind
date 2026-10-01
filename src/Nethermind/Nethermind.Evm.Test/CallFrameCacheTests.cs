@@ -7,11 +7,13 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Autofac;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -19,6 +21,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -28,7 +31,8 @@ namespace Nethermind.Evm.Test;
 /// environment are reused at the same depth, and a reused frame observes exactly what a fresh one would - nothing of
 /// its previous user's memory, stack, refunds, access-list warmth, static or continuation flag, or EIP-8037
 /// bookkeeping. A frame still in use is never shared: frames unwound by an exception are disposed and kept, frames
-/// orphaned by one are replaced. Call-heavy and seeded random programs match the uncached path.
+/// orphaned by one are replaced. Call-heavy and seeded random programs match the uncached path. Disposing the VM hands
+/// the kept data stacks back to the pool.
 /// </summary>
 [TestFixture(false)]
 [TestFixture(true)]
@@ -838,6 +842,90 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>
+    /// Disposing the VM hands the data stacks of its released cached frames to the shared tier of the stack pool, where
+    /// another thread rents them, and only once. A frame that is not released - here one orphaned by an
+    /// <see cref="EvmException"/>, left in its slot - keeps its stack. The disposed VM keeps no slot and still runs.
+    /// </summary>
+    [Test, NonParallelizable]
+    public void Disposal_returns_the_stacks_of_released_frames_to_the_shared_pool_once()
+    {
+        byte[] code = Prepare.EvmCode
+            .MSTORE(0, ((UInt256)2).ToBigEndian())
+            .CALL(CallGas * 5, Chain, 0, 0, 32, 0, 0).Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        byte[]? expected = RunAndRestore(code, traced: false);
+        RecordingTracer orphaning = new(Machine) { ThrowEvmExceptionWhenStagedAtDepth = 3 };
+        RunAndRestore(code, orphaning);
+        VmState<EthereumGasPolicy>?[] frames = Machine.FrameCache;
+        Assert.That(orphaning.Orphan, Is.SameAs(frames[3]), "the reused depth-3 frame was orphaned and kept its slot");
+        byte[]?[] stacks = [frames[1]?.DataStack, frames[2]?.DataStack, frames[3]?.DataStack];
+        Assert.That(stacks, Has.None.Null, "every cached frame holds a data stack");
+
+        DrainSharedStacks(SharedStackCount());
+        EvmObjectPoolTests.RunOnNewThread(Machine.Dispose);
+        int returned = SharedStackCount();
+        EvmObjectPoolTests.RunOnNewThread(Machine.Dispose);
+        int returnedAgain = SharedStackCount();
+        byte[][] rented = DrainSharedStacks(returned);
+        byte[]? output = RunAndRestore(code, traced: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(returned, Is.EqualTo(2), "the two released frames handed their stacks to the shared tier");
+            Assert.That(returnedAgain, Is.EqualTo(returned), "a second disposal returns nothing");
+            Assert.That(rented.Count(s => ReferenceEquals(s, stacks[0])), Is.EqualTo(1), "depth 1's stack, once");
+            Assert.That(rented.Count(s => ReferenceEquals(s, stacks[1])), Is.EqualTo(1), "depth 2's stack, once");
+            Assert.That(new[] { frames[1]!.DataStack, frames[2]!.DataStack }, Is.All.Null, "the released frames gave their stacks up");
+            Assert.That(frames[3]!.DataStack, Is.SameAs(stacks[2]), "the orphan keeps its stack");
+            Assert.That(output, Is.EqualTo(expected), "a disposed VM still runs, from the pools");
+            Assert.That(Machine.FrameCache, Is.Empty, "the frame slots are dropped and not refilled");
+            Assert.That(Machine.EnvironmentCache, Is.Empty, "and the environment slots");
+        }
+    }
+
+    /// <summary>
+    /// A disposal that finds a transaction running hands no stack back, as the transaction may still enter a cached
+    /// frame it read before the swap. The transaction finishes on the pools and the frames keep their stacks.
+    /// </summary>
+    [Test]
+    public void Disposal_during_a_transaction_returns_no_stack()
+    {
+        byte[] code = ChainDriver(5);
+        byte[]? expected = RunAndRestore(code, traced: false);
+        VmState<EthereumGasPolicy>[] frames = Enumerable.Range(1, 6).Select(d => Machine.FrameCache[d]!).ToArray();
+        Assert.That(frames, Has.None.Null, "the first run cached a frame at every depth");
+
+        RecordingTracer disposing = new(Machine) { DisposeMachineAtActionDepth = 3 };
+        byte[]? output = RunAndRestore(code, disposing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposing.Error, Is.Null);
+            Assert.That(output, Is.EqualTo(expected));
+            Assert.That(frames.Select(static f => f.DataStack), Has.None.Null, "every cached frame keeps its stack");
+            Assert.That(disposing.Frames.Where(static f => f.Depth > 3).Select(static f => f.Frame).Intersect(frames), Is.Empty,
+                "the frames entered after the disposal come from the pools");
+            Assert.That(Machine.FrameCache, Is.Empty, "the slots are dropped all the same");
+        }
+    }
+
+    [Test]
+    public void Ending_the_scope_that_resolved_the_machine_disposes_it()
+    {
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        VirtualMachine<EthereumGasPolicy> machine;
+        using (ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState)))
+        {
+            machine = (VirtualMachine<EthereumGasPolicy>)scope.Resolve<IVirtualMachine>();
+            Assert.That(machine.FrameCache, Is.Not.Empty);
+        }
+
+        Assert.That(machine.FrameCache, Is.Empty, "the scope disposed the machine");
+    }
+
     private static IEnumerable<TestCaseData> Seeds()
     {
         for (int seed = 1; seed <= 48; seed++)
@@ -1001,21 +1089,37 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
     /// <summary>Runs <paramref name="run"/> with the frame and environment caches swapped for empty ones.</summary>
     private T Uncached<T>(Func<T> run)
     {
-        FieldInfo frames = typeof(VirtualMachine<EthereumGasPolicy>).GetField(nameof(VirtualMachine<EthereumGasPolicy>.FrameCache), BindingFlags.Instance | BindingFlags.NonPublic)!;
-        FieldInfo envs = typeof(VirtualMachine<EthereumGasPolicy>).GetField(nameof(VirtualMachine<EthereumGasPolicy>.EnvironmentCache), BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object cachedFrames = frames.GetValue(Machine)!;
-        object cachedEnvs = envs.GetValue(Machine)!;
+        VmState<EthereumGasPolicy>?[] cachedFrames = Machine.FrameCache;
+        ExecutionEnvironment?[] cachedEnvs = Machine.EnvironmentCache;
         try
         {
-            frames.SetValue(Machine, Array.Empty<VmState<EthereumGasPolicy>?>());
-            envs.SetValue(Machine, Array.Empty<ExecutionEnvironment?>());
+            Machine.FrameCache = [];
+            Machine.EnvironmentCache = [];
             return run();
         }
         finally
         {
-            frames.SetValue(Machine, cachedFrames);
-            envs.SetValue(Machine, cachedEnvs);
+            Machine.FrameCache = cachedFrames;
+            Machine.EnvironmentCache = cachedEnvs;
         }
+    }
+
+    /// <summary>The number of data stacks in the shared tier of <see cref="StackPool"/>.</summary>
+    private static int SharedStackCount()
+    {
+        object pool = typeof(StackPool).GetField("_stackPool", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        return (int)pool.GetType().GetField("_sharedCount", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(pool)!;
+    }
+
+    /// <summary>Rents <paramref name="count"/> data stacks on a new thread, whose own tier is empty, so all from the shared tier.</summary>
+    private static byte[][] DrainSharedStacks(int count)
+    {
+        byte[][] stacks = new byte[count][];
+        EvmObjectPoolTests.RunOnNewThread(() =>
+        {
+            for (int i = 0; i < count; i++) stacks[i] = StackPool.RentStacks();
+        });
+        return stacks;
     }
 
     private void Deploy(Address address, byte[] code)
@@ -1242,7 +1346,8 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
     /// <summary>
     /// Records the frames entered (with their depth on entry) and the result. On request it throws: a cancellation
     /// when a frame at a given depth is entered, at an opcode, or once a child is staged; or an
-    /// <see cref="EvmException"/> once a child is staged, which orphans that child.
+    /// <see cref="EvmException"/> once a child is staged, which orphans that child. It can also dispose the machine
+    /// when a frame at a given depth is entered.
     /// </summary>
     private sealed class RecordingTracer(EthereumVirtualMachine machine) : TxTracer
     {
@@ -1260,6 +1365,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         public int ThrowEvmExceptionWhenStagedAtDepth { get; set; } = -1;
         public int ThrowEvmExceptionAtStagedCount { get; init; } = -1;
         public int CancelWhenStagedAtDepth { get; init; } = -1;
+        public int DisposeMachineAtActionDepth { get; init; } = -1;
         private int _staged;
 
         public VmState<EthereumGasPolicy>? Orphan { get; private set; }
@@ -1278,6 +1384,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             if (callType == ExecutionType.TRANSACTION) return;
             VmState<EthereumGasPolicy> frame = machine.VmState;
             Frames.Add((frame.Env.CallDepth, frame, frame.Env));
+            if (frame.Env.CallDepth == DisposeMachineAtActionDepth) machine.Dispose();
             if (frame.Env.CallDepth == ThrowAtActionDepth) throw new OperationCanceledException("cancelled in an entered frame");
         }
 

@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -12,7 +15,9 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -29,12 +34,13 @@ public class BlockAccessListManagerTests
         public IWorldState WorldState { get; } = Substitute.For<IWorldState>();
         public BlockAccessListManager Manager { get; }
 
-        public Harness() => Manager = new BlockAccessListManager(
+        public Harness(BlocksConfig? blocksConfig = null, ITransactionProcessorFactory? transactionProcessorFactory = null) => Manager = new BlockAccessListManager(
             WorldState,
             LimboLogs.Instance,
-            new BlocksConfig(), // ParallelExecution / ParallelExecutionBatchRead default to true
+            blocksConfig ?? new BlocksConfig(), // ParallelExecution / ParallelExecutionBatchRead default to true
             Substitute.For<IWithdrawalProcessorFactory>(),
-            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance,
+                transactionProcessorFactory: transactionProcessorFactory),
             // Enables parallel execution (and thus BAL read warmup), mirroring the production DI path.
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
@@ -43,7 +49,7 @@ public class BlockAccessListManagerTests
         /// <see cref="BlockAccessListManager.PrepareForProcessing"/> with prerequisites met so
         /// the hint gets tracked. Subsequent calls re-stub and re-prepare for a new block.
         /// </summary>
-        public void IssueHint(Task hint)
+        public Block IssueHint(Task hint)
         {
             WorldState.IsInScope.Returns(true);
             WorldState.HintBal(Arg.Any<ReadOnlyBlockAccessList>()).Returns(hint);
@@ -57,6 +63,20 @@ public class BlockAccessListManagerTests
                 .TestObject;
 
             Manager.PrepareForProcessing(block, spec, ProcessingOptions.None);
+            return block;
+        }
+    }
+
+    /// <summary>Hands out substitute processors and keeps the virtual machine each was built over.</summary>
+    private sealed class MachineCapturingFactory : ITransactionProcessorFactory
+    {
+        public ConcurrentQueue<IVirtualMachine> Machines { get; } = new();
+
+        public ITransactionProcessor Create(ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator, ISpecProvider specProvider,
+            IWorldState worldState, IVirtualMachine virtualMachine, ICodeInfoRepository codeInfoRepository, ILogManager logManager, bool parallel)
+        {
+            Machines.Enqueue(virtualMachine);
+            return Substitute.For<ITransactionProcessor>();
         }
     }
 
@@ -98,6 +118,33 @@ public class BlockAccessListManagerTests
         hint.SetResult();
         Assert.That(drain.Wait(DrainTimeout), Is.True);
     }
+
+    /// <summary>
+    /// The manager owns the virtual machines it builds for its tx processors: disposing it disposes them, which hands
+    /// back the data stacks their call-frame caches keep.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Dispose_disposes_the_virtual_machines_of_its_tx_processors(bool parallel)
+    {
+        MachineCapturingFactory factory = new();
+        Harness h = new(new BlocksConfig { ParallelExecution = parallel }, factory);
+        Block block = h.IssueHint(Task.CompletedTask);
+        h.Manager.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Substitute.For<IReleaseSpec>()));
+        h.Manager.Setup(block);
+        Assert.That(h.Manager.ParallelExecutionEnabled, Is.EqualTo(parallel));
+        Assert.That(factory.Machines, Is.Not.Empty, "the manager built its tx processors");
+        Assert.That(factory.Machines.Select(FrameCacheLength), Is.All.Positive);
+
+        h.Manager.Dispose();
+
+        Assert.That(factory.Machines.Select(FrameCacheLength), Is.All.Zero, "every virtual machine was disposed");
+    }
+
+    private static int FrameCacheLength(IVirtualMachine machine) =>
+        ((Array)typeof(VirtualMachine<EthereumGasPolicy>)
+            .GetField("FrameCache", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(machine)!).Length;
 
     [Test]
     public void PrepareForProcessing_drops_hint_tracked_for_previous_block()

@@ -211,6 +211,22 @@ public class VmState<TGasPolicy> : IDisposable
         }
     }
 
+    /// <summary>
+    /// Hands the data stacks of the released frames in <paramref name="frameCache"/> to the shared tier of the stack
+    /// pool. A frame that is not released keeps its stack and goes to the GC with it.
+    /// </summary>
+    internal static void ReturnCachedStacks(VmState<TGasPolicy>?[] frameCache)
+    {
+        foreach (VmState<TGasPolicy>? frame in frameCache)
+        {
+            if (frame is { IsReleased: true, DataStack: { } dataStack })
+            {
+                frame.DataStack = null;
+                StackPool.ReturnStacksShared(dataStack);
+            }
+        }
+    }
+
     private static VmState<TGasPolicy> Rent()
     {
         if (_statePool.TryDequeue(out VmState<TGasPolicy>? state)) return state;
