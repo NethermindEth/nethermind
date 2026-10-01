@@ -110,7 +110,7 @@ jobs:
           echo "rendered_config_file=${root}/config.yaml" >> "${GITHUB_OUTPUT}"
           cat "${root}/manifest.json"
 
-      - name: Install or upgrade expb
+      - name: Prepare isolated EXPB with strict Engine API validation
         shell: bash
         run: |
           set -euo pipefail
@@ -118,8 +118,14 @@ jobs:
             echo "uv is required but not found in PATH."
             exit 1
           fi
-          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks@56f83b112a93436a66468b863ed9e47bcd5feba6" expb
-          uv tool dir --bin >> "${GITHUB_PATH}"
+          environment="${COLLECTION_ROOT}/expb-env"
+          uv venv "${environment}" --python 3.12
+          uv pip install --python "${environment}/bin/python" \
+            "git+https://github.com/NethermindEth/execution-payloads-benchmarks@56f83b112a93436a66468b863ed9e47bcd5feba6"
+          template=$("${environment}/bin/python" -c 'import expb; from pathlib import Path; print(Path(expb.__file__).parent / "payloads/executor/services/templates/k6-script.js.j2")')
+          python3 scripts/pgo/prepare_expb_validation.py --template "${template}" \
+            --environment "${environment}" --manifest "${COLLECTION_ROOT}/expb-validation-tool.json"
+          echo "${environment}/bin" >> "${GITHUB_PATH}"
 
       - name: Run EXPB for PGO collection
         id: run-expb
@@ -141,6 +147,7 @@ jobs:
           fi
           python3 "${GITHUB_WORKSPACE}/scripts/pgo/validate_collection.py" \
             --log "${COLLECTION_ROOT}/expb.log" --amount "${TRAINING_AMOUNT}" \
+            --manifest "${COLLECTION_ROOT}/manifest.json" \
             --exit-code "${statuses[0]}" --output "${COLLECTION_ROOT}/execution-validation.json"
 
       - name: Check run-owned raw trace
@@ -165,6 +172,7 @@ jobs:
             ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/manifest.json
             ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/expb.log
             ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/execution-validation.json
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/expb-validation-tool.json
             ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/pgo/
           if-no-files-found: error
           retention-days: 90

@@ -6,13 +6,14 @@
 import argparse
 import json
 from pathlib import Path
+import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "expb"))
 from sequential_driver import collect_metrics
 
 
-def validate(log_path, amount, exit_code):
+def validate(log_path, amount, exit_code, manifest=None):
     metrics, diagnostics = collect_metrics(log_path)
     reasons = []
     if exit_code:
@@ -26,8 +27,34 @@ def validate(log_path, amount, exit_code):
         reasons.append("Nethermind shutdown marker is missing")
     if not metrics["cleanup"]:
         reasons.append("EXPB cleanup marker is missing")
+    results = {}
+    if manifest is None:
+        reasons.append("replay manifest is required for Engine API validation")
+    else:
+        window = json.loads(Path(manifest).read_text(encoding="utf-8"))["replay_window"]
+        expected = {(header["index"], kind): (header["index"] < window["warmup"], header["hash"].lower())
+                    for header in window["headers"] for kind in ("newPayload", "forkchoiceUpdated")}
+        pattern = re.compile(r"EXPB_ENGINE_RESULT idx=(\d+) warmup=([01]) kind=(newPayload|forkchoiceUpdated) "
+                             r"status=VALID latest_valid_hash=(0x[0-9a-f]{64})")
+        for line in Path(log_path).read_text(encoding="utf-8", errors="replace").splitlines():
+            if "EXPB_ENGINE_RESULT" not in line:
+                continue
+            match = pattern.search(line)
+            if match is None:
+                reasons.append("malformed Engine API validation evidence")
+                continue
+            key = (int(match[1]), match[3])
+            value = (match[2] == "1", match[4])
+            if key in results:
+                reasons.append("duplicate Engine API validation evidence")
+            results[key] = value
+        if window["amount"] != amount or results != expected or len(expected) != 2 * (window["warmup"] + amount):
+            reasons.append("Engine API response evidence does not match the declared replay window")
+        measured = {header["index"] for header in window["headers"] if header["index"] >= window["warmup"]}
+        if set(metrics["payload_indices"]) != measured:
+            reasons.append("delivery IDs do not match the declared replay window")
     return {"status": "failed" if reasons else "valid", "reasons": reasons,
-            "metrics": metrics, "diagnostics": diagnostics}
+            "metrics": metrics, "diagnostics": diagnostics, "engine_api_results": len(results)}
 
 
 def main():
@@ -36,8 +63,9 @@ def main():
     parser.add_argument("--amount", type=int, required=True)
     parser.add_argument("--exit-code", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args()
-    report = validate(args.log, args.amount, args.exit_code)
+    report = validate(args.log, args.amount, args.exit_code, args.manifest)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     if report["status"] != "valid":
         raise SystemExit(json.dumps({"reasons": report["reasons"], "diagnostics": report["diagnostics"]}))
