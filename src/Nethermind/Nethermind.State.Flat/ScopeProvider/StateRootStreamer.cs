@@ -205,6 +205,7 @@ public sealed class StateRootStreamer : IDisposable
             _feed.Clear();
             HashRound(parallel: true, stopWhenClosed: false);
             _streamedRoot = _stateTree.RootRef?.Keccak ?? Keccak.EmptyTreeHash;
+            Metrics.RecordStateRootStreamedBlock();
         }
         catch (Exception exception)
         {

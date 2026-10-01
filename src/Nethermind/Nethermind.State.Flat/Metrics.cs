@@ -48,6 +48,18 @@ public static class Metrics
 
     public static void RecordStateRootStreamFallback() => Interlocked.Increment(ref _stateRootStreamFallbacks);
 
+    private static long _stateRootStreamedBlocks;
+
+    [CounterMetric]
+    [Description("Blocks whose state root the stream finished, leaving the end-of-block write batch only what changed last.")]
+    public static long StateRootStreamedBlocks
+    {
+        get => Volatile.Read(ref _stateRootStreamedBlocks);
+        set => Interlocked.Exchange(ref _stateRootStreamedBlocks, value);
+    }
+
+    public static void RecordStateRootStreamedBlock() => Interlocked.Increment(ref _stateRootStreamedBlocks);
+
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
