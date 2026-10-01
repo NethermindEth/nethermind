@@ -490,7 +490,7 @@ public sealed class ColumnGossipRouter(
     private MessageValidity ConsumeVerified(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot, ulong proposerIndex) =>
         // [IGNORE] the first sidecar for (slot, proposer_index, index) with a valid header signature, inclusion proof and KZG proofs.
         _seenSidecars.Set((slot, proposerIndex, sidecar.Index)) && TryConsume(sidecar, blockRoot, slot)
-            ? Accept()
+            ? Accept(MessageValidity.Accepted)
             : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
 
     /// <summary>
@@ -506,7 +506,7 @@ public sealed class ColumnGossipRouter(
             && MemoryMarshal.AsBytes<SszBlobCell>(held.Column).SequenceEqual(MemoryMarshal.AsBytes<SszBlobCell>(sidecar.Column))
             && MemoryMarshal.AsBytes<SszKzgCommitment>(held.KzgProofs).SequenceEqual(MemoryMarshal.AsBytes<SszKzgCommitment>(sidecar.KzgProofs))
             && _seenSidecars.Set((slot, proposerIndex, sidecar.Index))
-            ? Accept()
+            ? Accept(MessageValidity.Accepted)
             : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
 
     /// <summary>The spec checks for a sidecar whose header is not a block fork choice holds with known finalized ancestry.</summary>
@@ -616,7 +616,7 @@ public sealed class ColumnGossipRouter(
         }
 
         return TryConsume(sidecar, blockRoot, slot)
-            ? MessageValidity.Ignored
+            ? Accept(MessageValidity.Ignored)
             : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
     }
 
@@ -1014,7 +1014,7 @@ public sealed class ColumnGossipRouter(
         }
 
         pool?.AddGloas(sidecar);
-        return Accept();
+        return Accept(MessageValidity.Accepted);
     }
 
     /// <summary>
@@ -1222,10 +1222,13 @@ public sealed class ColumnGossipRouter(
     [ThreadStatic]
     private static bool _retrying;
 
-    private static MessageValidity Accept()
+    private static readonly StringLabel[] DropReasonLabels = Array.ConvertAll(Enum.GetValues<ColumnGossipDropReason>(), static reason => new StringLabel(reason.ToString()));
+
+    /// <summary>Counts a consumed sidecar as accepted, whether it is forwarded or, unverified, only consumed.</summary>
+    private static MessageValidity Accept(MessageValidity validity)
     {
         if (!_retrying) Interlocked.Increment(ref Metrics.GossipAcceptedCount);
-        return MessageValidity.Accepted;
+        return validity;
     }
 
     private MessageValidity Drop(ColumnGossipDropReason reason, MessageValidity validity)
@@ -1234,7 +1237,7 @@ public sealed class ColumnGossipRouter(
         if (!_retrying)
         {
             Interlocked.Increment(ref Metrics.GossipDroppedCount);
-            Metrics.BeaconChainColumnGossipDroppedByReason.Increment(new StringLabel(reason.ToString()));
+            Metrics.BeaconChainColumnGossipDroppedByReason.Increment(DropReasonLabels[(int)reason]);
         }
 
         if (_logger.IsTrace) _logger.Trace($"Dropped data column sidecar gossip message: {reason}");
