@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,6 +30,16 @@ public enum ReqRespFailureReason
     PeerError,
 }
 
+/// <summary>An outbound request cut by one of its bounds; the message names the bound and what the request was waiting for.</summary>
+internal sealed class ReqRespTimeoutException(string message, Exception? cause = null) : TimeoutException(message, cause)
+{
+    /// <summary>The session never opened the request's channel, so the request never reached the peer.</summary>
+    public bool ChannelNeverOpened { get; init; }
+
+    /// <summary>No request of ours to any peer was answered while this one waited, so the silence is not held against the peer.</summary>
+    public bool NotBlamed { get; set; }
+}
+
 /// <summary>Label key for <see cref="Metrics.BeaconChainReqRespFailures"/>: protocol id plus failure reason.</summary>
 public readonly record struct ReqRespFailureKey(string ProtocolId, ReqRespFailureReason Reason) : IMetricLabels
 {
@@ -45,7 +56,8 @@ public abstract class ReqRespProtocolBase
     protected static readonly TimeSpan RespTimeout = TimeSpan.FromSeconds(10);
 
     /// <summary>The spec <c>MAX_CONCURRENT_REQUESTS</c>: max concurrent inbound streams per peer for one protocol id.</summary>
-    protected const int MaxConcurrentRequests = 2;
+    /// <remarks>Consensus-specs v1.7.0-beta.2 req/resp requesting side: it MUST NOT make more concurrent requests than this with the same protocol ID.</remarks>
+    protected internal const int MaxConcurrentRequests = 2;
 
     // Per protocol-id (one dictionary per singleton protocol instance), counts inbound streams
     // currently being served for a given remote peer, to enforce MaxConcurrentRequests.
@@ -69,9 +81,18 @@ public abstract class ReqRespProtocolBase
     protected static CancellationTokenSource StartTimeout(TimeSpan timeout) => new(timeout);
 
     /// <summary>A per-chunk timeout (re-armed like <see cref="StartTimeout"/>'s result) additionally bounded by an overall ceiling that is never re-armed.</summary>
-    protected readonly struct BoundedTimeout(CancellationTokenSource cts, CancellationTokenSource overall) : IDisposable
+    protected readonly struct BoundedTimeout(CancellationTokenSource cts, CancellationTokenSource overall, TimeSpan initial, TimeSpan ceiling) : IDisposable
     {
         public CancellationTokenSource Cts { get; } = cts;
+
+        /// <summary>The failure of a read that this timeout cut, naming the bound that fired.</summary>
+        /// <param name="chunksRead">The chunks read before the cut: none means the first-chunk bound, otherwise the bound between chunks.</param>
+        /// <param name="cause">The cancellation the cut raised.</param>
+        public TimeoutException Expired(int chunksRead, Exception cause) => new ReqRespTimeoutException(
+            overall.IsCancellationRequested ? $"timed out after {Seconds(ceiling)}, the bound for the whole response, with {chunksRead} chunks read"
+            : chunksRead == 0 ? $"timed out after {Seconds(initial)} waiting for the first chunk"
+            : $"timed out after {Seconds(RespTimeout)} reading chunk {chunksRead + 1}",
+            cause);
 
         public void Dispose()
         {
@@ -94,7 +115,24 @@ public abstract class ReqRespProtocolBase
         CancellationTokenSource overall = new(overallCeiling);
         CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(overall.Token);
         cts.CancelAfter(initial);
-        return new BoundedTimeout(cts, overall);
+        return new BoundedTimeout(cts, overall, initial, overallCeiling);
+    }
+
+    internal static string Seconds(TimeSpan duration) => $"{duration.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture)} s";
+
+    /// <summary>Writes the request and half-closes the channel within <paramref name="bound"/>.</summary>
+    /// <exception cref="ReqRespTimeoutException">The bound fired, named in the message.</exception>
+    protected static async Task WriteRequestAndEofAsync(IChannel channel, Stream output, ReadOnlyMemory<byte> ssz, TimeSpan bound)
+    {
+        using CancellationTokenSource cts = StartTimeout(bound);
+        try
+        {
+            await WriteRequestAndEofAsync(channel, output, ssz, cts.Token);
+        }
+        catch (Exception e) when (e is not Eth2ReqRespException && cts.IsCancellationRequested)
+        {
+            throw new ReqRespTimeoutException($"timed out after {Seconds(bound)} writing the request", e);
+        }
     }
 
     protected static async Task WriteRequestAndEofAsync(IChannel channel, Stream stream, ReadOnlyMemory<byte> ssz, CancellationToken token)
@@ -373,11 +411,23 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
 
     public async Task<TResponse> DialAsync(IChannel downChannel, ISessionContext context, TRequest request)
     {
+        using RequestTiming.Exchange exchange = RequestTiming.Open(request);
+        RequestTiming? timing = exchange.Timing;
         Stream stream = new ChannelStreamAdapter(downChannel);
         using CancellationTokenSource cts = StartTimeout(TtfbTimeout + RespTimeout);
-        await WriteRequestAndEofAsync(downChannel, stream, EncodeRequest(request), cts.Token);
-        ResponseChunk chunk = await ReqRespFraming.ReadResponseChunkAsync(stream, 0, MaxResponseSize, cts.Token)
-            ?? throw new Eth2ReqRespException("Peer closed the stream without responding");
+        ResponseChunk? read;
+        try
+        {
+            await WriteRequestAndEofAsync(downChannel, stream, EncodeRequest(request), cts.Token);
+            read = await ReqRespFraming.ReadResponseChunkAsync(stream, 0, MaxResponseSize, cts.Token);
+        }
+        catch (Exception e) when (e is not Eth2ReqRespException && cts.IsCancellationRequested)
+        {
+            throw new ReqRespTimeoutException($"timed out after {Seconds(TtfbTimeout + RespTimeout)} waiting for the response", e);
+        }
+
+        ResponseChunk chunk = read ?? throw new Eth2ReqRespException("Peer closed the channel without responding");
+        timing?.ChunkRead();
         if (chunk.Result == ReqRespFraming.ResponseCode.Success)
         {
             return DecodeResponse(chunk.Payload);

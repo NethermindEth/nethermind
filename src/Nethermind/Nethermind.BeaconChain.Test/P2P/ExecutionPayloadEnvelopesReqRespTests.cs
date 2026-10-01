@@ -263,7 +263,12 @@ public class ExecutionPayloadEnvelopesReqRespTests
     {
         public const string ProtocolId = "/test/execution-payload-envelopes-limits/1";
 
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> ReadEnvelopesAsync(Stream stream, int maxEnvelopes) =>
-            ReadEnvelopeChunksAsync(stream, maxEnvelopes, ProtocolId);
+        public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> ReadEnvelopesAsync(Stream response, int maxEnvelopes)
+        {
+            RequestTiming timing = new();
+            IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes = await ReadEnvelopeChunksAsync(response, maxEnvelopes, ProtocolId, timing: timing);
+            Assert.That(timing.Chunks, Is.EqualTo(envelopes.Count));
+            return envelopes;
+        }
     }
 }

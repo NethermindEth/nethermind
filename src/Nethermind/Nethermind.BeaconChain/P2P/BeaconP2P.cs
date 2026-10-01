@@ -5,7 +5,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,7 +53,6 @@ namespace Nethermind.BeaconChain.P2P;
 public sealed class BeaconP2P : IAsyncDisposable
 {
     private const string IdentityMetadataKey = "p2pIdentityKey";
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
 
     private readonly IBeaconChainConfig _config;
     private readonly LocalMetadataSource _metadataSource;
@@ -69,6 +70,9 @@ public sealed class BeaconP2P : IAsyncDisposable
     // library drops the session. It is a slot and not a value because a dial returns as soon as the
     // identify dial completes, before the slot is filled.
     private readonly ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> _sessionInfo = new();
+
+    // Cancelled when the library drops the session, so a request on it ends then instead of at its timeout.
+    private readonly ConcurrentDictionary<ISession, SessionLifetime> _sessionClosed = new();
     private int _identifyTimeouts;
 
     private LocalPeer? _localPeer;
@@ -304,6 +308,9 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>Internal so a test can observe a refused inbound session being torn down, not just never admitted.</summary>
     internal int SessionCountForTest => _localPeer?.Sessions.Count ?? 0;
 
+    /// <summary>The fixed part of every request's budget; internal so a test need not wait out the production value.</summary>
+    internal TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(15);
+
     /// <summary>Internal so a test can tell a session closed for an unanswered identify from a failure of the code under test.</summary>
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
 
@@ -357,44 +364,45 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered
     /// within the request timeout, which is how the pinned multistream surfaces a protocol the peer does not support;
     /// any other failure is not a reason to try v1 and propagates.</remarks>
-    public async Task<StatusMessageV2> RequestStatusAsync(ISession session, CancellationToken token)
+    public async Task<StatusMessageV2> RequestStatusAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
     {
         try
         {
-            using CancellationTokenSource cts = Timeout(token);
-            return await session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(_statusSource.CurrentStatus, cts.Token);
+            using CancellationTokenSource cts = Timeout(session, token);
+            return await ExchangeAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(session, Tracked(timing, CopyOf(_statusSource.CurrentStatus)), cts, token, timing);
         }
-        catch (Exception e) when (IsExchangeFailure(e) || e is OperationCanceledException && !token.IsCancellationRequested)
+        catch (Exception e) when (IsExchangeFailure(e) || e is TimeoutException || e is OperationCanceledException && !token.IsCancellationRequested)
         {
             if (_logger.IsTrace) _logger.Trace($"Status v2 with {session.RemoteAddress} failed ({e.Message}), falling back to v1");
-            using CancellationTokenSource cts = Timeout(token);
-            return await session.DialAsync<StatusProtocolV1, StatusMessageV2, StatusMessageV2>(_statusSource.CurrentStatus, cts.Token);
+            timing?.Restart();
+            using CancellationTokenSource cts = Timeout(session, token);
+            return await ExchangeAsync<StatusProtocolV1, StatusMessageV2, StatusMessageV2>(session, Tracked(timing, CopyOf(_statusSource.CurrentStatus)), cts, token, timing);
         }
     }
 
-    public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ISession session, ulong startSlot, ulong count, CancellationToken token)
+    public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ISession session, ulong startSlot, ulong count, CancellationToken token, RequestTiming? timing = null)
     {
-        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(count));
-        return await session.DialAsync<BeaconBlocksByRangeProtocolV2, BeaconBlocksByRangeRequest, IReadOnlyList<ForkedSignedBeaconBlock>>(
-            new BeaconBlocksByRangeRequest { StartSlot = startSlot, Count = count, Step = 1 }, cts.Token);
+        using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(count));
+        return await ExchangeAsync<BeaconBlocksByRangeProtocolV2, BeaconBlocksByRangeRequest, IReadOnlyList<ForkedSignedBeaconBlock>>(
+            session, Tracked(timing, new BeaconBlocksByRangeRequest { StartSlot = startSlot, Count = count, Step = 1 }), cts, token, timing);
     }
 
-    public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(ISession session, Hash256[] roots, CancellationToken token)
+    public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(ISession session, Hash256[] roots, CancellationToken token, RequestTiming? timing = null)
     {
-        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
-        return await session.DialAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(roots, cts.Token);
+        using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
+        return await ExchangeAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(session, TrackedCopy(timing, roots), cts, token, timing);
     }
 
-    public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
+    public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token, RequestTiming? timing = null)
     {
         ConcurrentQueue<DataColumnSidecar> received = new();
         // A wedged stream open is cut at the fixed bound; only a peer that has delivered a chunk earns the scaled budget.
-        using CancellationTokenSource cts = Timeout(token);
+        using CancellationTokenSource cts = Timeout(session, token);
         TimeSpan budget = DataColumnSidecarsByRangeProtocol.ResponseBudget(count, columns.Length);
         try
         {
-            ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
-                new(new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, Gloas: false, sidecar =>
+            ForkedDataColumnSidecars sidecars = await ExchangeAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
+                session, new DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>(Tracked(timing, new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }), Gloas: false, sidecar =>
                 {
                     if (received.IsEmpty)
                     {
@@ -409,7 +417,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                     }
 
                     received.Enqueue(sidecar);
-                }), cts.Token);
+                }), cts, token, timing);
             return sidecars.Fulu;
         }
         catch (Exception e) when (!token.IsCancellationRequested && !received.IsEmpty)
@@ -418,66 +426,66 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
     }
 
-    public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+    public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token, RequestTiming? timing = null)
     {
         if (identifiers.Length == 0) return [];
 
-        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
-        ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRootProtocol, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>, ForkedDataColumnSidecars>(
-            new(identifiers, Gloas: false), cts.Token);
+        using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
+        ForkedDataColumnSidecars sidecars = await ExchangeAsync<DataColumnSidecarsByRootProtocol, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>, ForkedDataColumnSidecars>(
+            session, new DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>(TrackedCopy(timing, identifiers), Gloas: false), cts, token, timing);
         return sidecars.Fulu;
     }
 
     /// <summary>The window must lie wholly in Gloas epochs.</summary>
-    public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
+    public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token, RequestTiming? timing = null)
     {
-        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(count));
-        ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
-            new(new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, Gloas: true), cts.Token);
+        using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(count));
+        ForkedDataColumnSidecars sidecars = await ExchangeAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
+            session, new DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>(Tracked(timing, new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }), Gloas: true), cts, token, timing);
         return sidecars.Gloas;
     }
 
-    public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+    public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token, RequestTiming? timing = null)
     {
         if (identifiers.Length == 0) return [];
 
-        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
-        ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRootProtocol, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>, ForkedDataColumnSidecars>(
-            new(identifiers, Gloas: true), cts.Token);
+        using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
+        ForkedDataColumnSidecars sidecars = await ExchangeAsync<DataColumnSidecarsByRootProtocol, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>, ForkedDataColumnSidecars>(
+            session, new DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>(TrackedCopy(timing, identifiers), Gloas: true), cts, token, timing);
         return sidecars.Gloas;
     }
 
-    public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ISession session, ulong startSlot, ulong count, CancellationToken token)
+    public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ISession session, ulong startSlot, ulong count, CancellationToken token, RequestTiming? timing = null)
     {
-        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(count));
-        return await session.DialAsync<ExecutionPayloadEnvelopesByRangeProtocol, ExecutionPayloadEnvelopesByRangeRequest, IReadOnlyList<SignedExecutionPayloadEnvelope>>(
-            new ExecutionPayloadEnvelopesByRangeRequest { StartSlot = startSlot, Count = count }, cts.Token);
+        using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(count));
+        return await ExchangeAsync<ExecutionPayloadEnvelopesByRangeProtocol, ExecutionPayloadEnvelopesByRangeRequest, IReadOnlyList<SignedExecutionPayloadEnvelope>>(
+            session, Tracked(timing, new ExecutionPayloadEnvelopesByRangeRequest { StartSlot = startSlot, Count = count }), cts, token, timing);
     }
 
-    public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(ISession session, Hash256[] roots, CancellationToken token)
+    public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(ISession session, Hash256[] roots, CancellationToken token, RequestTiming? timing = null)
     {
-        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
-        return await session.DialAsync<ExecutionPayloadEnvelopesByRootProtocol, Hash256[], IReadOnlyList<SignedExecutionPayloadEnvelope>>(roots, cts.Token);
+        using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
+        return await ExchangeAsync<ExecutionPayloadEnvelopesByRootProtocol, Hash256[], IReadOnlyList<SignedExecutionPayloadEnvelope>>(session, TrackedCopy(timing, roots), cts, token, timing);
     }
 
     /// <summary>Pings the peer with our metadata sequence number; returns theirs.</summary>
     public async Task<ulong> PingAsync(ISession session, CancellationToken token)
     {
-        using CancellationTokenSource cts = Timeout(token);
-        return await session.DialAsync<Eth2PingProtocol, ulong, ulong>(_metadataSource.Current.SeqNumber, cts.Token);
+        using CancellationTokenSource cts = Timeout(session, token);
+        return await ExchangeAsync<Eth2PingProtocol, ulong, ulong>(session, _metadataSource.Current.SeqNumber, cts, token, timing: null);
     }
 
     /// <param name="timeout">Bounds the request; the request timeout when omitted.</param>
     public async Task<MetaDataV3> RequestMetaDataAsync(ISession session, CancellationToken token, TimeSpan? timeout = null)
     {
-        using CancellationTokenSource cts = Timeout(token, timeout);
-        return await session.DialAsync<MetaDataProtocolV3, ulong, MetaDataV3>(0, cts.Token);
+        using CancellationTokenSource cts = Timeout(session, token, timeout);
+        return await ExchangeAsync<MetaDataProtocolV3, ulong, MetaDataV3>(session, 0, cts, token, timing: null);
     }
 
     /// <summary>Sends <c>goodbye</c> best-effort; failures are ignored since the peer is being dropped anyway.</summary>
     public async Task GoodbyeAsync(ISession session, ulong reason, CancellationToken token)
     {
-        using CancellationTokenSource cts = Timeout(token);
+        using CancellationTokenSource cts = Timeout(token, RequestTimeout);
         try
         {
             await session.DialAsync<GoodbyeProtocol, ulong, ulong>(reason, cts.Token);
@@ -492,12 +500,83 @@ public sealed class BeaconP2P : IAsyncDisposable
     private static bool IsExchangeFailure(Exception e) =>
         e is Eth2ReqRespException || (e as AggregateException)?.Flatten().InnerException is Eth2ReqRespException;
 
-    private static CancellationTokenSource Timeout(CancellationToken token, TimeSpan? timeout = null)
+    private static CancellationTokenSource Timeout(CancellationToken token, TimeSpan timeout)
     {
         CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        cts.CancelAfter(timeout);
+        return cts;
+    }
+
+    /// <summary>The caller's token, the session's end and the budget in one source; the request timeout when <paramref name="timeout"/> is omitted.</summary>
+    private CancellationTokenSource Timeout(ISession session, CancellationToken token, TimeSpan? timeout = null)
+    {
+        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token, SessionClosedToken(session));
         cts.CancelAfter(timeout ?? RequestTimeout);
         return cts;
     }
+
+    /// <summary>Cancelled once the library has dropped <paramref name="session"/>, already when it is gone; never for a session it does not own.</summary>
+    internal CancellationToken SessionClosedToken(ISession session) =>
+        _sessionClosed.TryGetValue(session, out SessionLifetime? closed) ? closed.Token
+        : session is LocalPeer.Session ? new CancellationToken(canceled: true)
+        : CancellationToken.None;
+
+    /// <summary>Runs one exchange under <paramref name="cts"/> (see <see cref="Timeout(ISession, CancellationToken, TimeSpan?)"/>) and names why it failed.</summary>
+    /// <remarks>Networking req/resp requesting side distinguishes a local cancellation, a disconnected peer and an unanswered request.</remarks>
+    private async Task<TResponse> ExchangeAsync<TProtocol, TRequest, TResponse>(ISession session, TRequest request, CancellationTokenSource cts, CancellationToken token, RequestTiming? timing)
+        where TProtocol : ISessionProtocol<TRequest, TResponse>
+    {
+        long startedAt = Stopwatch.GetTimestamp();
+        try
+        {
+            return await session.DialAsync<TProtocol, TRequest, TResponse>(request, cts.Token);
+        }
+        catch (Exception e) when (!token.IsCancellationRequested && NameFailure(e, session, cts, timing, Stopwatch.GetElapsedTime(startedAt)) is { } named)
+        {
+            throw named;
+        }
+    }
+
+    /// <returns>The failure to throw in place of <paramref name="e"/>, or <c>null</c> when <paramref name="e"/> already says what happened.</returns>
+    private Exception? NameFailure(Exception e, ISession session, CancellationTokenSource cts, RequestTiming? timing, TimeSpan elapsed)
+    {
+        string waitingFor = timing?.WaitingFor is { Length: > 0 } what ? $" {what}" : "";
+        string after = $"after {ReqRespProtocolBase.Seconds(elapsed)}";
+        if (SessionClosedToken(session).IsCancellationRequested && !IsExchangeFailure(e))
+        {
+            return new IOException($"peer disconnected {after}{waitingFor}: its libp2p session closed", e);
+        }
+
+        if ((e as AggregateException)?.Flatten().InnerException is TimeoutException protocolBound)
+        {
+            return protocolBound;
+        }
+
+        return e is OperationCanceledException
+            ? new ReqRespTimeoutException(cts.IsCancellationRequested
+                ? $"timed out {after}{waitingFor}: the request budget ran out"
+                : $"ended {after}{waitingFor} without an answer: the libp2p layer cancelled the exchange", e)
+            {
+                ChannelNeverOpened = timing?.ChannelOpened == false,
+            }
+            : null;
+    }
+
+    private static T Tracked<T>(RequestTiming? timing, T request) where T : class => timing?.Track(request) ?? request;
+
+    // The caller may pass the same array to requests running at once, and a timing must follow one request only.
+    private static T[] TrackedCopy<T>(RequestTiming? timing, T[] request) => timing is null ? request : timing.Track<T[]>([.. request]);
+
+    // The status source can hand the same object to requests running at once.
+    private static StatusMessageV2 CopyOf(StatusMessageV2 status) => new()
+    {
+        ForkDigest = status.ForkDigest,
+        FinalizedRoot = status.FinalizedRoot,
+        FinalizedEpoch = status.FinalizedEpoch,
+        HeadRoot = status.HeadRoot,
+        HeadSlot = status.HeadSlot,
+        EarliestAvailableSlot = status.EarliestAvailableSlot,
+    };
 
     /// <summary>Loads a stored secp256k1 private key as the libp2p identity whose public key discovery derives from the same bytes.</summary>
     /// <remarks>The pinned libp2p reads the key as a signed big-endian integer, so a key with the top bit set would load as a different key and change the peer id away from the ENR's.</remarks>
@@ -551,6 +630,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                     if (added is ISession session)
                     {
                         _sessionInfo.TryAdd(session, new TaskCompletionSource<SessionInfo>(TaskCreationOptions.RunContinuationsAsynchronously));
+                        _sessionClosed.GetOrAdd(session, static _ => new SessionLifetime());
                     }
                 }
 
@@ -562,6 +642,12 @@ public sealed class BeaconP2P : IAsyncDisposable
                     {
                         slot.TrySetCanceled();
                     }
+
+                    if (removed is ISession closedSession && _sessionClosed.TryRemove(closedSession, out SessionLifetime? closed))
+                    {
+                        // Callbacks run off this thread: the library raises this event under its sessions lock.
+                        _ = closed.CloseAsync();
+                    }
                 }
 
                 break;
@@ -572,7 +658,34 @@ public sealed class BeaconP2P : IAsyncDisposable
                 }
 
                 _sessionInfo.Clear();
+                foreach (KeyValuePair<ISession, SessionLifetime> closed in _sessionClosed)
+                {
+                    _ = closed.Value.CloseAsync();
+                }
+
+                _sessionClosed.Clear();
                 break;
+        }
+    }
+
+    private sealed class SessionLifetime
+    {
+        private readonly CancellationTokenSource _closed = new();
+
+        public CancellationToken Token { get; }
+
+        public SessionLifetime() => Token = _closed.Token;
+
+        public async Task CloseAsync()
+        {
+            try
+            {
+                await _closed.CancelAsync();
+            }
+            finally
+            {
+                _closed.Dispose();
+            }
         }
     }
 
