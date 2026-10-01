@@ -153,7 +153,7 @@ public class GossipMessageValidatorColumnTests
 
     private static DateTime SlotStart(BeaconChainSpec spec, ulong slot) => DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + slot * spec.SecondsPerSlot);
 
-    private static Message Message(string topic, byte[] data) => new() { Topic = topic, Data = ByteString.CopyFrom(data), Signature = ByteString.Empty };
+    private static Message Message(string topic, byte[] data) => new() { Topic = topic, Data = ByteString.CopyFrom(data) };
 
     private static TestCaseData Fulu(string name, DataColumnSidecar sidecar, ulong finalizedEpoch, MessageValidity expected, bool consumed, ColumnGossipDropReason? reason) =>
         new TestCaseData(sidecar, finalizedEpoch, expected, consumed, reason).SetName(name);

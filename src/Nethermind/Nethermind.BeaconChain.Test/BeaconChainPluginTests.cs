@@ -56,6 +56,19 @@ public class BeaconChainPluginTests
         // Without the validator the library accepts and forwards every message, including a signed one StrictNoSign forbids.
         Message signed = new() { Topic = "/eth2/00000000/beacon_block/ssz_snappy", Signature = ByteString.CopyFrom([1]) };
         Assert.That(p2p.VerifyMessageForTest?.Invoke(signed), Is.EqualTo(MessageValidity.Rejected));
+        ITopic topic = p2p.GetTopic(signed.Topic);
+        topic.Unsubscribe();
+        Assert.That(p2p.VerifyMessageForTest?.Invoke(new Message { Topic = signed.Topic }), Is.EqualTo(MessageValidity.Trottled));
+    }
+
+    /// <summary>p2p-interface.md gossipsub parameters: seen_ttl is SLOT_DURATION_MS * SLOTS_PER_EPOCH * 2 // 1000 seconds.</summary>
+    [Test]
+    public async Task Gossipsub_seen_ttl_covers_two_epochs()
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+
+        Assert.That(p2p.PubsubSettingsForTest.MessageCacheTtl, Is.EqualTo(768_000));
     }
 
     /// <summary>Without discovery the peer manager knows no sampled column, so every custodian search and keep rule would be inert.</summary>
