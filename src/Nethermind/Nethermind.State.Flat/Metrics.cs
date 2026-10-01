@@ -417,8 +417,8 @@ public static class Metrics
     public static long FlatHistoryPrunePassesYielded { get; set; }
 
     [CounterMetric]
-    [Description("Key and value bytes merged from the trie node log into RocksDB (the latest record per key of each generation), by partition")]
-    [KeyIsLabel("partition")]
+    [Description("Key and value bytes merged from the trie node log into RocksDB (the latest record per key of each generation), by column (state, storage)")]
+    [KeyIsLabel("column")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedBytes { get; } = new();
 
     [CounterMetric]
@@ -435,8 +435,8 @@ public static class Metrics
     public static void IncrementTrieNodeLogIndexFalseMatches() => Interlocked.Increment(ref _trieNodeLogIndexFalseMatches);
 
     [CounterMetric]
-    [Description("Bytes written to trie node log files (records with their headers), by partition")]
-    [KeyIsLabel("partition")]
+    [Description("Bytes written to trie node log files (records with their headers), by column (state, storage)")]
+    [KeyIsLabel("column")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogStoredBytes { get; } = new();
 
     [DetailedMetric]

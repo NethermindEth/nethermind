@@ -77,7 +77,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     {
         Name = name;
         Columns = columns;
-        PartitionLabel = TrieNodeLogLabel.Partition(columns[0]);
+        ColumnLabel = TrieNodeLogLabel.Column(columns[0]);
         VersionKey = Keccak.Compute($"TrieNodeLogVersion:{name}").BytesToArray();
         FlushedGenerationKey = Keccak.Compute($"TrieNodeLogFlushedGeneration:{name}").BytesToArray();
         _basePath = basePath;
@@ -100,8 +100,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// <summary>The trie columns this shard holds records of; a record's column follows from its key length.</summary>
     public FlatDbColumns[] Columns { get; }
 
-    /// <summary>Metric label of this shard's partition.</summary>
-    public TrieNodeLogLabel PartitionLabel { get; }
+    /// <summary>Column label of this shard's byte metrics.</summary>
+    public TrieNodeLogLabel ColumnLabel { get; }
 
     internal byte[] VersionKey { get; }
 
@@ -454,7 +454,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                 batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(FlushedGenerationKey, marker, WriteFlags.DisableWAL);
             }
             _db.GetColumnDb(FlatDbColumns.Metadata).FlushOrThrow();
-            if (written != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(PartitionLabel, written);
+            if (written != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(ColumnLabel, written);
             Metrics.TrieNodeLogFlushedGeneration[_label] = (long)generation.Number;
         }
 
