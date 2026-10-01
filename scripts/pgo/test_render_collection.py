@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 from pathlib import Path
+import json
 import tempfile
 import unittest
 
@@ -11,13 +12,20 @@ from render_collection import render
 
 class CollectionRenderTests(unittest.TestCase):
     def fixture(self, root):
-        for name in ("payloads", "fcus"):
-            (root / name).write_text("[]")
         (root / "snapshot").mkdir()
+        payloads = [{"blockNumber": hex(number), "blockHash": str(number), "parentHash": str(number - 1),
+                     "stateRoot": f"root{number}"} for number in range(90, 111)]
+        (root / "payloads").write_text("".join(json.dumps({"method": "engine_newPayloadV4", "params": [body]}) + "\n"
+                                            for body in payloads))
+        (root / "fcus").write_text("".join(json.dumps({"method": "engine_forkchoiceUpdatedV3",
+            "params": [{"headBlockHash": body["blockHash"]}]}) + "\n" for body in payloads))
+        (root / "snapshot/_snapshot_eth_getBlockByNumber.json").write_text(json.dumps({"result": {
+            "number": "0x64", "hash": "100", "stateRoot": "root100"}}))
         config = {"paths": {"work": "shared", "outputs": "old-outputs"}, "scenarios": {"nethermind": {
             "payloads": "payloads", "fcus": "fcus", "snapshot_source": "snapshot",
             "image": "nethermindeth/nethermind:<<DOCKER_TAG>>", "delay": "<<DELAY>>",
-            "amount": "<<AMOUNT>>", "extra_flags": ["--FlatDb.PersistenceWriteBufferFloor=67108864"]}}}
+            "amount": "<<AMOUNT>>", "warmup": 11,
+            "extra_flags": ["--FlatDb.PersistenceWriteBufferFloor=67108864"]}}}
         path = root / "github-action-mainnet-fusaka-flat.yaml"
         path.write_text(yaml.safe_dump(config))
         return path
@@ -30,6 +38,9 @@ class CollectionRenderTests(unittest.TestCase):
             config = render(config_path, root / "run", "nethermindeth/nethermind@sha256:" + "a" * 64, 10)
             scenario = config["scenarios"]["nethermind-pgo-collect"]
             self.assertEqual(scenario["amount"], 10)
+            self.assertEqual(scenario["warmup"], 11)
+            window = json.loads((root / "run/manifest.json").read_text())["replay_window"]
+            self.assertEqual((window["training_first_number"], window["training_last_number"]), (101, 110))
             self.assertEqual(scenario["delay"], 0)
             self.assertEqual(scenario["snapshot_backend"], "overlay")
             self.assertEqual(scenario["extra_volumes"]["pgo"]["source"], str(root / "run/pgo"))

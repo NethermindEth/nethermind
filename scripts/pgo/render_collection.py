@@ -9,6 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from replay_window import validate_window
+
 
 def render(config_path, root, image, amount):
     config_path = Path(config_path).resolve(strict=True)
@@ -40,8 +42,10 @@ def render(config_path, root, image, amount):
         if root == path or root.is_relative_to(path) or path.is_relative_to(root):
             raise ValueError("collection output must not overlap any replay input")
         scenario[key] = str(path)
+    window = validate_window(scenario["payloads"], scenario["fcus"], scenario["snapshot_source"],
+                             scenario.get("warmup", 0), amount)
     scenario.update({"client": "nethermind", "image": image, "amount": amount, "skip": 0,
-                     "repeat": 1, "warmup": 0, "delay": 0, "snapshot_backend": "overlay"})
+                     "repeat": 1, "delay": 0, "warmup_delay": 0, "snapshot_backend": "overlay"})
     scenario.pop("snapshot_path", None)
     volumes = scenario.setdefault("extra_volumes", {})
     if any(volume.get("bind") == "/nethermind/pgo" for name, volume in volumes.items() if name != "pgo"):
@@ -59,7 +63,8 @@ def render(config_path, root, image, amount):
     (root / "manifest.json").write_text(json.dumps({"config_source": str(config_path),
         "image": image, "amount": amount, "payloads": scenario["payloads"], "fcus": scenario["fcus"],
         "snapshot_source": scenario["snapshot_source"], "snapshot_backend": "overlay",
-        "raw_profile_directory": str(root / "pgo"), "state_identity_verified": False}, indent=2) + "\n", encoding="utf-8")
+        "raw_profile_directory": str(root / "pgo"), "replay_window": window,
+        "state_identity_verified": False}, indent=2) + "\n", encoding="utf-8")
     return config
 
 

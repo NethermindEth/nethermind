@@ -14,6 +14,8 @@ import subprocess
 
 import yaml
 
+from replay_window import validate_window
+
 
 def file_identity(path):
     path = Path(path).resolve(strict=True)
@@ -62,9 +64,13 @@ def inspect_inputs(config_path):
     snapshot = snapshot.resolve(strict=True)
     if not snapshot.is_dir():
         raise ValueError("snapshot_source must resolve to a directory for the Linux Flat inventory")
+    header_path = snapshot / "_snapshot_eth_getBlockByNumber.json"
+    window = validate_window(files["payloads"]["path"], files["fcus"]["path"], snapshot,
+                             scenario.get("warmup", 0), 1) if header_path.is_file() else None
     return {
         "config": file_identity(config_path), "files": files,
         "first_requests": {key: first_request(value["path"]) for key, value in files.items()},
+        "replay_window": window,
         "snapshot": {"path": str(snapshot), "backend": scenario.get("snapshot_backend", "overlay"),
                      "entries": sorted(p.name for p in snapshot.iterdir()),
                      "free_bytes": shutil.disk_usage(snapshot).free,
