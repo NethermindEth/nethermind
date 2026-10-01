@@ -52,6 +52,15 @@ public sealed class ExternalClDetector(
         }
     }
 
+    /// <summary>Whether an external consensus client took over and the embedded driver must send no more engine calls.</summary>
+    internal bool HasStoodDown => config.DisableOnExternalCl && IsExternalClDetected;
+
+    internal void ThrowIfStoodDown()
+    {
+        if (HasStoodDown)
+            throw new OperationCanceledException("External consensus client took over the engine API");
+    }
+
     public void SetInner(IEngineRpcModule inner) => Volatile.Write(ref _inner, inner);
 
     /// <summary>Called by the decorator on every externally visible <c>newPayload</c>/<c>forkchoiceUpdated</c>.</summary>

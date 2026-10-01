@@ -281,9 +281,8 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(2), "failed, sent again at once, then the answered send is inside the resend interval");
     }
 
-    /// <summary>A failed call says nothing about the execution layer's sync state, and the head step must still publish the status.</summary>
     [Test]
-    public async Task A_failed_forkchoice_update_neither_reads_as_syncing_nor_blocks_the_status()
+    public async Task A_failed_forkchoice_update_clears_execution_sync_and_still_publishes_the_head([Values] bool thrownFault)
     {
         Harness harness = CreateHarness();
         harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 3, execHash: TestItem.KeccakB);
@@ -291,21 +290,97 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
         harness.Importer.Head = CreateHead(TestItem.KeccakC, 101, finalizedEpoch: 3, execHash: TestItem.KeccakD);
         harness.Engine.FailingFcuCalls = 1;
+        if (thrownFault) harness.Engine.FcuFailure = new InvalidOperationException("storage failure");
 
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(harness.StatusHolder.ExecutionInSync, Is.True, "a failed call is not the execution layer falling back to SYNCING");
+            Assert.That(harness.StatusHolder.ExecutionInSync, Is.False);
+            Assert.That(Metrics.BeaconChainElInSync, Is.Zero);
             Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(TestItem.KeccakC), "the status still advertises the new head");
+        }
+
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 3, execHash: TestItem.KeccakB);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(3), "the head answered VALID before the failure is sent again");
+            Assert.That(harness.StatusHolder.ExecutionInSync, Is.False, "the fresh SYNCING answer is used, not the cached VALID");
         }
     }
 
     [Test]
-    public async Task A_failed_anchor_kick_is_sent_again_by_the_next_head_step()
+    public void Cancellation_between_head_selection_and_an_engine_call_prevents_the_call([Values] bool retry)
+    {
+        Harness harness = CreateHarness();
+        using CancellationTokenSource cancellation = new();
+        if (retry)
+        {
+            harness.Engine.FcuResponses.Enqueue(PayloadStatusV1.Invalid(TestItem.KeccakF));
+            harness.Engine.OnCall = cancellation.Cancel;
+        }
+        else
+        {
+            harness.Importer.OnComputeHead = cancellation.Cancel;
+        }
+
+        Assert.ThrowsAsync<OperationCanceledException>(() => harness.Orchestrator.RunHeadStepAsync(cancellation.Token));
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(retry ? 1 : 0));
+    }
+
+    [Test]
+    public async Task Epoch_log_reports_unavailable_after_a_valid_engine_call_fails()
+    {
+        Nethermind.Core.Test.TestLogger logger = new();
+        Harness harness = CreateHarness(logManager: new OneLoggerLogManager(new ILogger(logger)));
+        harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = PayloadStatus.Valid });
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        harness.Importer.Head = harness.Importer.Head with { HeadExecutionHash = TestItem.KeccakB };
+        harness.Engine.FailingFcuCalls = 1;
+
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + Spec.SlotsPerEpoch, CancellationToken.None);
+
+        Assert.That(logger.LogList.Where(static line => line.StartsWith("Beacon chain:")),
+            Has.Some.EndsWith("EL unavailable"));
+        harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = PayloadStatus.Valid });
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.StatusHolder.ExecutionInSync, Is.True);
+            Assert.That(Metrics.BeaconChainElInSync, Is.EqualTo(1));
+        }
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 2 * Spec.SlotsPerEpoch, CancellationToken.None);
+        Assert.That(logger.LogList.Last(static line => line.StartsWith("Beacon chain:")), Does.EndWith("EL in sync"));
+    }
+
+    [Test]
+    public void Cancellation_releases_a_head_step_waiting_for_the_engine()
+    {
+        Harness harness = CreateHarness();
+        using CancellationTokenSource cancellation = new();
+        TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Engine.FcuAnswer = answer.Task;
+        Task step = harness.Orchestrator.RunHeadStepAsync(cancellation.Token);
+        try
+        {
+            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1));
+            cancellation.Cancel();
+            Assert.CatchAsync<OperationCanceledException>(() => step.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            answer.TrySetResult(PayloadStatusV1.Syncing);
+        }
+    }
+
+    [Test]
+    public async Task A_failed_anchor_kick_is_sent_again_by_the_next_head_step([Values] bool thrownFault)
     {
         Harness harness = CreateHarness();
         harness.Engine.FailingFcuCalls = 1;
+        if (thrownFault) harness.Engine.FcuFailure = new InvalidOperationException("storage failure");
 
         PayloadStatusV1? kick = await harness.Orchestrator.KickExecutionAsync(TestItem.KeccakA);
         Hash256 anchorExecutionHash = harness.Engine.FcuCalls.Single().Head;
@@ -985,9 +1060,12 @@ public partial class BeaconSyncOrchestratorTests
             OnTick?.Invoke(slot);
         }
 
+        public Action? OnComputeHead { get; set; }
+
         public HeadView ComputeHead()
         {
             ComputeHeadCalls++;
+            OnComputeHead?.Invoke();
             return Head;
         }
 
@@ -1034,6 +1112,9 @@ public partial class BeaconSyncOrchestratorTests
         public Action? OnCall { get; set; }
 
         public int FailingFcuCalls { get; set; }
+        public bool IsAvailable { get; private set; } = true;
+        public Exception? FcuFailure { get; set; }
+        public Task<PayloadStatusV1>? FcuAnswer { get; set; }
 
         public bool HasAnsweredNewPayload => false;
 
@@ -1044,10 +1125,12 @@ public partial class BeaconSyncOrchestratorTests
             if (FailingFcuCalls > 0)
             {
                 FailingFcuCalls--;
-                throw new EngineUnavailableException("forkchoiceUpdatedV3", "engine unavailable");
+                IsAvailable = false;
+                throw FcuFailure ?? new EngineUnavailableException("forkchoiceUpdatedV3", "engine unavailable");
             }
 
-            return Task.FromResult(FcuResponses.Count > 0 ? FcuResponses.Dequeue() : PayloadStatusV1.Syncing);
+            IsAvailable = true;
+            return FcuAnswer ?? Task.FromResult(FcuResponses.Count > 0 ? FcuResponses.Dequeue() : PayloadStatusV1.Syncing);
         }
 
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;

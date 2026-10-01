@@ -10,7 +10,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Api;
-using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -79,13 +78,11 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     /// <param name="withPeerManager">Whether to give the host a <see cref="PeerManager"/>, seeded by tests through <see cref="PeerManager.ReserveDialingForTest"/>.</param>
     /// <param name="headSnapshots">The head snapshots the host serves requests from; <c>null</c> reads the status holder once per request instead.</param>
     /// <param name="engine">The execution driver used by the host.</param>
-    /// <param name="engineAvailability">The engine call outcomes read by the node endpoints.</param>
     public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
         IColumnsDb<BeaconChainDbColumns>? db = null, BeaconApiConfig? apiConfig = null, ILogManager? logManager = null, bool withPeerManager = false, HeadSnapshotHolder? headSnapshots = null,
-        IEngineDriver? engine = null, EngineAvailability? engineAvailability = null)
+        IEngineDriver? engine = null)
     {
         BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager, headSnapshots, engine);
-        host.Host.EngineAvailability = engineAvailability;
         await host.Host.StartAsync(CancellationToken.None);
         host.Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Host.Port}"), Timeout = TimeSpan.FromSeconds(30) };
         return host;
@@ -405,11 +402,12 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     };
 }
 
-/// <summary>An engine that reports every payload and fork choice as valid; <see cref="HasAnsweredNewPayload"/> is settable for tests that drive the sync-status endpoints.</summary>
+/// <summary>An engine that reports every payload and fork choice as valid; availability is settable for sync-status endpoint tests.</summary>
 internal sealed class NoOpEngineDriver : IEngineDriver
 {
     public SignedBeaconBlock? CurrentBlock { get; set; }
     public bool HasAnsweredNewPayload { get; set; }
+    public bool IsAvailable { get; set; } = true;
 
     public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
         Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid });

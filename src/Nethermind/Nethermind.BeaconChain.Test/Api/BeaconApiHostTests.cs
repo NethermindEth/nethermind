@@ -12,18 +12,19 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.Api;
-using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Engine;
-using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using NSubstitute;
@@ -79,6 +80,7 @@ public class BeaconApiHostTests
         _statusHolder.JustifiedRoot = Hash256.Zero;
         _statusHolder.ExecutionInSync = false;
         _engine.HasAnsweredNewPayload = false;
+        _engine.IsAvailable = true;
         _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
     }
 
@@ -135,6 +137,16 @@ public class BeaconApiHostTests
         HttpResponseMessage after = await _client.GetAsync("/eth/v1/node/syncing");
         JsonDocument afterBody = await ReadJsonAsync(after);
         Assert.That(afterBody.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.False);
+    }
+
+    [Test]
+    public async Task Syncing_reports_the_last_engine_call_availability([Values] bool available, [Values] bool answeredNewPayload)
+    {
+        _engine.HasAnsweredNewPayload = answeredNewPayload;
+        _engine.IsAvailable = available;
+        using HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/syncing");
+        using JsonDocument body = await ReadJsonAsync(response);
+        Assert.That(body.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.EqualTo(!available));
     }
 
     [Test]
@@ -479,29 +491,38 @@ public class BeaconApiHostTests
     public async Task Most_recent_engine_call_controls_offline([Values(0, 1, 2)] int kind)
     {
         bool unavailable = false;
-        IEngineDriver inner = Substitute.For<IEngineDriver>();
-        inner.ForkchoiceUpdated(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<Hash256>()).Returns(_ => unavailable
-            ? Task.FromException<PayloadStatusV1>(new EngineUnavailableException("test", "offline"))
-            : Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Syncing }));
-        inner.NotifyNewPayload(Arg.Any<BeaconBlockBody>()).Returns(_ => unavailable
-            ? throw new EngineUnavailableException("test", "offline") : ExecutionStatus.Optimistic);
-        inner.NotifyNewPayload(Arg.Any<ExecutionPayloadGloas>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256>(), Arg.Any<ExecutionRequestsGloas>()).Returns(_ => unavailable
-            ? throw new EngineUnavailableException("test", "offline") : ExecutionStatus.Optimistic);
+        IEngineRpcModule rpc = Substitute.For<IEngineRpcModule>();
+        PayloadStatusV1 Answer() => unavailable
+            ? throw new InvalidOperationException("engine offline") : new PayloadStatusV1 { Status = PayloadStatus.Syncing, LatestValidHash = TestRoot(42) };
+        rpc.engine_forkchoiceUpdatedV3(default!).ReturnsForAnyArgs(_ => Task.FromResult(
+            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadStatus = Answer() })));
+        rpc.engine_newPayloadV4(default!, default!, default, default).ReturnsForAnyArgs(_ =>
+            Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(Answer())));
+        rpc.engine_newPayloadV5(default!, default!, default, default).ReturnsForAnyArgs(_ =>
+            Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(Answer())));
+        ExternalClDetector detector = new(new BeaconChainConfig(), new Lazy<IEngineRpcModule>(rpc), LimboLogs.Instance);
+        detector.SetInner(rpc);
+        EngineDriver driver = TestEngineDriver.Create(detector);
+        SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(1);
+        driver.CurrentBlock = block;
         ContainerBuilder builder = new();
-        builder.RegisterInstance(inner).As<IEngineDriver>();
+        builder.RegisterInstance(driver).As<IEngineDriver>();
         builder.RegisterModule<BeaconApiModule>();
         using IContainer container = builder.Build();
         IEngineDriver engine = container.Resolve<IEngineDriver>();
-        Assert.That(engine, Is.InstanceOf<ObservedEngineDriver>());
-        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(Spec, engine: engine,
-            engineAvailability: container.Resolve<EngineAvailability>());
+        Assert.That(engine, Is.SameAs(driver));
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(Spec, engine: engine);
         host.SetStatus(TestRoot(41), Hash256.Zero, 0);
         host.StatusHolder.ExecutionInSync = true;
 
         Task Call()
         {
             if (kind == 0) return engine.ForkchoiceUpdated(Hash256.Zero, Hash256.Zero, Hash256.Zero);
-            if (kind == 1) engine.NotifyNewPayload(new BeaconBlockBody());
+            if (kind == 1)
+            {
+                engine.NotifyNewPayload(block.Message!.Body!, out Hash256? latestValidHash);
+                Assert.That(latestValidHash, Is.EqualTo(TestRoot(42)));
+            }
             else engine.NotifyNewPayload(new ExecutionPayloadGloas(), [], Hash256.Zero, new ExecutionRequestsGloas());
             return Task.CompletedTask;
         }
