@@ -5,6 +5,7 @@
 """Run one sequential, auditable EXPB campaign from workflow environment variables."""
 from __future__ import annotations
 import datetime as dt
+import hashlib
 import json
 import math
 import os
@@ -308,19 +309,15 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     directory.mkdir(parents=True, exist_ok=True)
     started = now()
     log_path = directory / f"combined-{started.replace(':', '').replace('-', '')}.log"
-    config_path = directory / "config.json"
-    result = {"sample_id": sample_id, "image_id": image["id"], "image": image["image"], "run": run, "started_at": started, "architecture": platform.machine(), "runner_hostname": socket.gethostname(), "log": str(log_path), "config": str(config_path), "expb_source": get("EXPB_SOURCE", "unknown"), "expb_env": get("EXPB_ENV_PASSTHROUGH"), "measurement_mode": get("MEASUREMENT_MODE", "standard"), "client": get("CLIENT", "nethermind"), "measurement_source": get("MEASUREMENT_SOURCE", "auto"), "status": "failed"}
+    result = {"sample_id": sample_id, "image_id": image["id"], "image": image["image"], "run": run, "started_at": started, "architecture": platform.machine(), "runner_hostname": socket.gethostname(), "log": str(log_path), "expb_source": get("EXPB_SOURCE", "unknown"), "measurement_mode": get("MEASUREMENT_MODE", "standard"), "client": get("CLIENT", "nethermind"), "measurement_source": get("MEASUREMENT_SOURCE", "auto"), "status": "failed"}
     config = base
     try:
         config, scenario = render(base, image, run)
-        # The artifact is retained and uploaded; only the private runtime copy may contain export credentials.
-        artifact_config = dict(config)
-        artifact_config.pop("export", None)
-        config_path.write_text(json.dumps(artifact_config, indent=2) + "\n", encoding="utf-8")
         runtime_root = get("RUNNER_TEMP") or None
         with tempfile.TemporaryDirectory(prefix=".expb-runtime-", dir=runtime_root) as runtime_directory:
             runtime_config_path = Path(runtime_directory) / "config.json"
             runtime_config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+            result["runtime_config_sha256"] = hashlib.sha256(runtime_config_path.read_bytes()).hexdigest()
             configured = parse_amount(get("AMOUNT"))
             if configured is None:
                 configured = config["scenarios"][scenario].get("amount", 0)
@@ -332,7 +329,9 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
             if get("MEASUREMENT_SOURCE", "auto") == "engine-api": command.append("--no-client-metrics")
             result["command"] = command
             child_env = os.environ.copy()
-            child_env.update(parse_pairs(get("EXPB_ENV_PASSTHROUGH")))
+            expb_env = parse_pairs(get("EXPB_ENV_PASSTHROUGH"))
+            result["expb_env_names"] = sorted(expb_env)
+            child_env.update(expb_env)
             if get("MEASUREMENT_MODE", "standard") == "compute-warm": child_env["EXPB_EVM_WARMUP"] = "1"
             # With a CPU override in play, read the limits the kernel enforces rather than what expb asked Docker for.
             readout_done, readout = threading.Event(), []

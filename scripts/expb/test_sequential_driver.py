@@ -10,13 +10,16 @@ failure scope that decides how much of a campaign one bad sample discards.
 """
 
 import contextlib
+import hashlib
 import importlib.util
+import io
 import json
 import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 DRIVER = ROOT / "scripts" / "expb" / "sequential_driver.py"
@@ -365,6 +368,59 @@ class RenderTests(unittest.TestCase):
     def test_a_config_without_the_nethermind_scenario_is_rejected(self) -> None:
         with environment(), self.assertRaises(ValueError):
             driver.render({"scenarios": {}}, self.IMAGE, 1)
+
+
+class SamplePrivacyTests(unittest.TestCase):
+    def test_only_private_execution_copy_contains_config_on_success_and_failure(self) -> None:
+        base = {"scenarios": {"nethermind": {"image": "placeholder", "extra_env": {
+                    "PRIVATE_SETTING": "private-non-export-setting"}}},
+                "export": {"credentials": "private-export-credential"}}
+        for code in (0, 1):
+            with self.subTest(exit_code=code), tempfile.TemporaryDirectory() as directory, \
+                    environment(AMOUNT="1", EXPB_ENV_PASSTHROUGH="PRIVATE_EXPB_VALUE=private-expb-env-value"):
+                root = Path(directory)
+                private_paths = []
+                hashes = []
+
+                def launch(command, **kwargs):
+                    config_path = Path(command[command.index("--config-file") + 1])
+                    self.assertEqual(kwargs["env"]["PRIVATE_EXPB_VALUE"], "private-expb-env-value")
+                    private_paths.append(config_path)
+                    self.assertFalse(config_path.is_relative_to(root))
+                    content = config_path.read_bytes()
+                    hashes.append(hashlib.sha256(content).hexdigest())
+                    config = json.loads(content)
+                    self.assertEqual(config["export"], base["export"])
+                    scenario = next(iter(config["scenarios"].values()))
+                    self.assertEqual(scenario["extra_env"]["PRIVATE_SETTING"], "private-non-export-setting")
+                    kwargs["stdout"].write(b"| 1 | 30000000 | 25.0 |\nNethermind is shut down\nevent=\"Cleanup completed\"\n")
+                    process = unittest.mock.Mock()
+                    process.wait.return_value = code
+                    return process
+
+                console = io.StringIO()
+                with patch.object(driver.subprocess, "Popen", side_effect=launch), \
+                        patch.object(driver, "verify_clean"), patch.object(driver, "cancelled", False), \
+                        contextlib.redirect_stdout(console):
+                    result = driver.run_sample(base, RenderTests.IMAGE, 1, root)
+                self.assertEqual(result["status"], "success" if code == 0 else "failed")
+                self.assertEqual(result["runtime_config_sha256"], hashes[0])
+                self.assertTrue(all(not path.exists() for path in private_paths))
+                public = console.getvalue() + "".join(path.read_text(encoding="utf-8")
+                                                      for path in root.rglob("*") if path.is_file())
+                self.assertNotIn("private-export-credential", public)
+                self.assertNotIn("private-non-export-setting", public)
+                self.assertNotIn("private-expb-env-value", public)
+                self.assertEqual(result["expb_env_names"], ["PRIVATE_EXPB_VALUE"])
+                self.assertFalse(list(root.rglob("config.json")))
+
+    def test_single_image_workflow_does_not_stage_configs_or_echo_environment_values(self) -> None:
+        text = (ROOT / ".github/workflows/run-expb-reproducible-benchmarks.yml").read_text(encoding="utf-8")
+        stage = text.split("- name: Stage benchmark logs", 1)[1].split("- name: Upload benchmark logs", 1)[0]
+        self.assertNotIn("CONFIG_FILE", stage)
+        self.assertNotIn("rendered-config", stage)
+        self.assertNotIn('echo "Set client env ${env_key}=${env_value}', text)
+        self.assertNotIn('"${YQ}" \'.resources\' "${RENDERED_CONFIG_FILE}"', text)
 
 
 class CampaignScopeTests(unittest.TestCase):
