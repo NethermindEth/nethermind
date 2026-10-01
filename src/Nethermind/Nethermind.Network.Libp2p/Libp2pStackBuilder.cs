@@ -45,7 +45,9 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
             apps.AddRange([Get<GossipsubProtocolV13>(), Get<GossipsubProtocolV12>(), Get<GossipsubProtocolV11>(), Get<GossipsubProtocol>(), Get<FloodsubProtocol>()]);
         }
 
-        Connect(appSelector, [.. apps]);
+        // A typed array is one choice of protocols; a collection expression would bind to the params array and chain them instead.
+        ProtocolRef[] choices = [.. apps];
+        Connect(appSelector, choices);
         return [tcp];
     }
 }
