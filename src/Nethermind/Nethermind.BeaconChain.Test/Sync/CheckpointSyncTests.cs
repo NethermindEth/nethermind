@@ -168,6 +168,60 @@ public class CheckpointSyncTests
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
+    /// <summary>On a first sync nothing is stored yet, so a checkpoint with a fork version outside its fork points at the configuration or the source, never at the database.</summary>
+    [Test]
+    public void A_checkpoint_with_a_version_outside_its_fork_is_refused_without_blaming_the_database([Values] bool unknownVersion)
+    {
+        ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;
+        BeaconStateGloas state = first.PostState.Clone();
+        state.Fork = new Fork { PreviousVersion = state.Fork!.PreviousVersion, CurrentVersion = unknownVersion ? [0xFE, 0, 0, 0] : state.Fork.PreviousVersion, Epoch = state.Fork.Epoch };
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, new ForkedSignedBeaconBlock.OfGloas(first.Block));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        Exception refusal = Assert.CatchAsync(() => sync.RunAsync(CancellationToken.None))!;
+
+        Assert.That(refusal, unknownVersion ? Is.TypeOf<NotSupportedException>() : Is.TypeOf<InvalidDataException>());
+        Assert.That(refusal.Message, Does.Contain("Fix the fork configuration or use a checkpoint source of this network").And.Not.Contain("beaconChain database"));
+        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+    }
+
+    /// <summary>
+    /// specs/gloas/fork-choice.md get_forkchoice_store asserts anchor_block.state_root == hash_tree_root(anchor_state): a state that copies its
+    /// block's header with the real state root but not the real contents, or precedes its header, must not be persisted even when it proves the checkpoint.
+    /// </summary>
+    [Test]
+    public void A_checkpoint_state_that_is_not_its_blocks_post_state_is_refused_before_anything_is_persisted([Values] bool headerAfterState)
+    {
+        ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;
+        BeaconStateGloas forged = first.PostState.Clone();
+        BeaconBlockHeader header = forged.LatestBlockHeader!;
+        forged.LatestBlockHeader = new BeaconBlockHeader
+        {
+            Slot = headerAfterState ? forged.Slot + 1 : header.Slot,
+            ProposerIndex = header.ProposerIndex,
+            ParentRoot = header.ParentRoot,
+            StateRoot = first.Block.Message!.StateRoot,
+            BodyRoot = header.BodyRoot,
+        };
+        forged.Balances![0] += 1;
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(forged, new ForkedSignedBeaconBlock.OfGloas(first.Block));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile, WeakSubjectivityCheckpoint = $"{first.Root}:1" },
+            GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        InvalidDataException refusal = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.Message, Does.Contain(headerAfterState ? "precedes its latest block header" : $"names state root {first.Block.Message.StateRoot}"));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+            Assert.That(store.TryGetState(first.Root, out _), Is.False);
+            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.CheckpointSyncAnchor), Is.Null);
+        }
+    }
+
     /// <summary>A checkpoint sync persists the anchor, its state and block, and no genesis-root metadata that nothing reads.</summary>
     [Test]
     public async Task A_gloas_checkpoint_writes_no_unread_genesis_validators_root_metadata()
