@@ -10,6 +10,21 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.BeaconChain.Sync;
 
 /// <summary>The outcome of running a block through the import pipeline.</summary>
+/// <summary>The cause of an import refusal that its <see cref="BlockImportResult"/> does not tell apart.</summary>
+public enum ImportRefusal
+{
+    None,
+
+    /// <summary>The state the block builds on is not held, and this slot's budget for regenerating it is spent; a later slot can import it.</summary>
+    RegenerationBudget,
+
+    /// <summary>
+    /// A fork-choice <c>on_block</c> check against this node's own store refused the block, such as the finalized slot or
+    /// descent from the finalized checkpoint, which says nothing of the block's own data.
+    /// </summary>
+    LocalAdmission,
+}
+
 public enum BlockImportResult
 {
     Imported,
@@ -126,9 +141,8 @@ public interface IBlockImporter
     /// </remarks>
     HeadView ComputeHead();
 
-    /// <summary>The start slot of fork choice's finalized epoch as of the last import, at or below which <c>on_block</c> refuses a block.</summary>
-    /// <remarks>Imports can move it before the next <see cref="ComputeHead"/>; 0 for an importer that does not track it.</remarks>
-    ulong FinalizedSlot => 0;
+    /// <summary>Why the last import refused its block, where its result alone does not say.</summary>
+    ImportRefusal LastRefusal => ImportRefusal.None;
 
     /// <summary>
     /// Applies a VALID or INVALID <c>forkchoiceUpdated</c> verdict on <paramref name="headExecutionHash"/>, the head hash sent for

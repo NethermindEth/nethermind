@@ -803,13 +803,6 @@ public partial class BeaconSyncOrchestratorTests
         peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
     }
 
-    public enum FinalityView
-    {
-        Above,
-        BelowHeadFinality,
-        BelowImportedFinality,
-    }
-
     /// <summary>
     /// A forged copy of a fetched block, held beside the genuine one behind the same ancestor and drained first, is refused,
     /// but the children waiting on that root still import with the genuine block drained after it.
@@ -850,31 +843,58 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
-    /// fork-choice.md <c>on_block</c> refuses a block at or below the finalized slot by local admission alone, which says
-    /// nothing of the block's data: a peer that served such a block by root is not blamed, while one above finality is. Imports
-    /// since the last head step can have moved finality past the block, which counts as well.
+    /// fork-choice.md <c>on_block</c> checks against this node's own store, such as the finalized slot or descent from the
+    /// finalized checkpoint, say nothing of a block's data: a peer that served a block by root those refused is not blamed,
+    /// while one that served a block whose data is invalid is.
     /// </summary>
     [Test]
-    public async Task Peer_serving_a_refused_block_by_root_is_blamed_only_above_finality([Values] FinalityView finality)
+    public async Task Peer_serving_a_block_by_root_is_blamed_only_when_its_data_is_invalid([Values] bool localAdmission)
     {
-        bool belowFinality = finality == FinalityView.BelowHeadFinality;
         const ulong NearWallSlot = WallSlot - 5;
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
         IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
         harness.Importer.Known.Add(anchorRoot);
-        harness.Importer.Forged.Add(block.ComputeMessageRoot());
-        harness.Importer.Head = CreateHead(anchorRoot, NearWallSlot, finalizedEpoch: belowFinality ? NearWallSlot / 32 + 1 : 1);
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-        harness.Importer.FinalizedSlot = finality == FinalityView.BelowImportedFinality ? block.Slot : 0;
+        (localAdmission ? harness.Importer.AdmissionRefused : harness.Importer.Forged).Add(block.ComputeMessageRoot());
 
         BlockImportResult result = await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None, fetchedByRoot: true, servedBy: peer);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture");
-            peer.Received(finality == FinalityView.Above ? 1 : 0).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+            peer.Received(localAdmission ? 0 : 1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+        }
+    }
+
+    /// <summary>
+    /// A fetched chain whose oldest block cannot import on its known parent waits for the next slot only when the regeneration
+    /// budget refused it; then its descendants are held under the evicting cap of refused backfills. A refusal no later slot
+    /// changes, such as a proposer with no cached key, leaves nothing queued.
+    /// </summary>
+    [Test]
+    public async Task Fetched_chain_on_an_unregenerated_parent_is_held_only_for_a_budget_refusal_and_only_up_to_the_cap([Values] bool budgetRefusal)
+    {
+        const ulong AnchorNearWall = WallSlot - 31;
+        ulong[] slots = [.. Enumerable.Range(1, 31).Select(static i => AnchorNearWall + (ulong)i)];
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorNearWall, slots);
+        Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = chain.Select(static b => (ForkedSignedBeaconBlock)new ForkedSignedBeaconBlock.OfFulu(b)).ToDictionary(static b => b.ComputeMessageRoot());
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([byRoot[((Hash256[])call[0])[0]]]));
+        Harness harness = CreateHarness(anchorSlot: AnchorNearWall, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        Hash256 oldestRoot = SszRoots.HashTreeRoot(chain[0].Message!);
+        (budgetRefusal ? harness.Importer.RegenerationRefused : harness.Importer.RegenerationImpossible).Add(oldestRoot);
+        int pendingBefore = harness.Orchestrator.PendingGossipBlockCount;
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[^1]), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.Imports.Select(static i => i.Root), Does.Contain(oldestRoot), "fixture: the whole chain was fetched");
+            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(budgetRefusal ? 1 : 0));
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount - pendingBefore, Is.EqualTo(budgetRefusal ? BeaconSyncOrchestrator.MaxHeldRefusedBackfills : 0));
         }
     }
 
@@ -1540,8 +1560,13 @@ public partial class BeaconSyncOrchestratorTests
         /// <summary>Block roots whose known parent's state the regeneration budget refuses, so <see cref="Import"/> answers <see cref="BlockImportResult.UnknownParent"/>.</summary>
         public HashSet<Hash256> RegenerationRefused { get; } = [];
 
-        /// <summary>The finalized slot fork choice has reached through imports, ahead of the last <see cref="Head"/> it reported.</summary>
-        public ulong FinalizedSlot { get; set; }
+        /// <summary>Block roots whose known parent's state cannot be had for good, so <see cref="Import"/> answers <see cref="BlockImportResult.UnknownParent"/> with no refusal cause.</summary>
+        public HashSet<Hash256> RegenerationImpossible { get; } = [];
+
+        /// <summary>Block roots this node's own fork-choice admission refuses, so <see cref="Import"/> answers <see cref="BlockImportResult.Invalid"/> for <see cref="ImportRefusal.LocalAdmission"/>.</summary>
+        public HashSet<Hash256> AdmissionRefused { get; } = [];
+
+        public ImportRefusal LastRefusal { get; private set; }
 
         /// <summary>Fulu block signatures that fail, so a copy of a block under another signature answers <see cref="BlockImportResult.Invalid"/>.</summary>
         public HashSet<BlsSignature> ForgedSignatures { get; } = [];
@@ -1611,12 +1636,25 @@ public partial class BeaconSyncOrchestratorTests
         public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {
             Imports.Add((block.Slot, blockRoot, verifySignatures));
+            LastRefusal = ImportRefusal.None;
             ImportOrder.Add((false, blockRoot));
             ImportedOnPoolThread.Add(Thread.CurrentThread.IsThreadPoolThread);
             _deferred.Remove(blockRoot);
             if (Known.Contains(blockRoot)) return BlockImportResult.AlreadyKnown;
             if (!Known.Contains(block.ParentRoot)) return _deferred.Contains(block.ParentRoot) ? Defer(blockRoot) : BlockImportResult.UnknownParent;
-            if (RegenerationRefused.Contains(blockRoot)) return BlockImportResult.UnknownParent;
+            if (AdmissionRefused.Contains(blockRoot))
+            {
+                LastRefusal = ImportRefusal.LocalAdmission;
+                return BlockImportResult.Invalid;
+            }
+
+            if (RegenerationImpossible.Contains(blockRoot)) return BlockImportResult.UnknownParent;
+            if (RegenerationRefused.Contains(blockRoot))
+            {
+                LastRefusal = ImportRefusal.RegenerationBudget;
+                return BlockImportResult.UnknownParent;
+            }
+
             if (UnverifiedPayloads.Contains(block.ParentRoot)) return Defer(blockRoot);
             if (Unavailable.Contains(blockRoot)) return BlockImportResult.DataUnavailable;
             if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;

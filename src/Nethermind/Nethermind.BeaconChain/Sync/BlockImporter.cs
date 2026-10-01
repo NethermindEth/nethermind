@@ -293,6 +293,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <inheritdoc/>
     public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
     {
+        LastRefusal = ImportRefusal.None;
         // Recorded again only if this attempt defers it too.
         if (_deferred.Count > 0)
         {
@@ -322,6 +323,8 @@ public sealed class BlockImporter : IBlockImporter
 
         if (CheckBeforeTransition(block.Slot, block.ParentRoot, out bool failedValidation) is { } refusal)
         {
+            // specs/phase0/beacon-chain.md process_block_header: a block not after its parent's slot is invalid data, whatever this node's store.
+            LastRefusal = block.Slot > _runner.GetBlockSlot(block.ParentRoot) ? ImportRefusal.LocalAdmission : ImportRefusal.None;
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot} before its state transition: {refusal}");
             if (failedValidation)
             {
@@ -523,6 +526,7 @@ public sealed class BlockImporter : IBlockImporter
         }
         catch (ForkChoiceException e)
         {
+            LastRefusal = ImportRefusal.LocalAdmission;
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot} rejected by fork choice: {e.Message}");
             RecordIfRefusalIsPermanent(blockRoot, block.Slot, parentRoot);
             return BlockImportResult.Invalid;
@@ -651,6 +655,7 @@ public sealed class BlockImporter : IBlockImporter
         }
         catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
         {
+            LastRefusal = ImportRefusal.LocalAdmission;
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot} rejected by fork choice: {e.Message}");
             RecordIfRefusalIsPermanent(blockRoot, block.Slot, parentRoot);
             return BlockImportResult.Invalid;
@@ -744,6 +749,7 @@ public sealed class BlockImporter : IBlockImporter
             if (_byRootRegenerationsThisSlot >= MaxByRootRegenerationsPerSlot)
             {
                 if (_logger.IsDebug) _logger.Debug($"Not regenerating the parent state of block {blockRoot} at slot {slot}: this slot's {MaxByRootRegenerationsPerSlot} regenerations for blocks fetched by root are spent");
+                LastRefusal = ImportRefusal.RegenerationBudget;
                 return BlockImportResult.UnknownParent;
             }
 
@@ -759,6 +765,7 @@ public sealed class BlockImporter : IBlockImporter
         {
             // Debug: any cached key can trigger it at will.
             if (_logger.IsDebug) _logger.Debug($"Not regenerating the parent state of block {blockRoot} at slot {slot}: {refusal}");
+            LastRefusal = ImportRefusal.RegenerationBudget;
             return BlockImportResult.UnknownParent;
         }
 
@@ -866,6 +873,7 @@ public sealed class BlockImporter : IBlockImporter
         string? refusal = CheckBeforeTransition(slot, parent.AncestorRoot, out _) ?? (slot > parent.Slot ? null : $"the block is not after its parent's slot {parent.Slot}");
         if (refusal is not null)
         {
+            LastRefusal = slot > parent.Slot ? ImportRefusal.LocalAdmission : ImportRefusal.None;
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {slot} before its state transition: {refusal}");
             return BlockImportResult.Invalid;
         }
@@ -971,7 +979,7 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     /// <inheritdoc/>
-    public ulong FinalizedSlot => BeaconStateAccessors.ComputeStartSlotAtEpoch(_runner.FinalizedCheckpoint.Epoch);
+    public ImportRefusal LastRefusal { get; private set; }
 
     /// <inheritdoc/>
     public HeadView ComputeHead()
