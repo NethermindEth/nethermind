@@ -106,7 +106,7 @@ internal sealed class PostStateCache(
     public void Retain(Hash256 blockRoot, BeaconStateFulu state) => _retained.Set(blockRoot, state);
 
     /// <inheritdoc/>
-    public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot) ?? Regenerate(blockRoot);
+    public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot) ?? Regenerate(blockRoot, hold: true);
 
     /// <summary>The post-state of <paramref name="blockRoot"/> if it is held, without regenerating it from stored blocks.</summary>
     /// <remarks>A retained copy of the lineage root comes first: a trusted import advances the lineage state to its child before fork choice replays the child's body votes.</remarks>
@@ -134,7 +134,8 @@ internal sealed class PostStateCache(
 
     /// <summary>consensus-specs v1.7.0-beta.2 fork choice <c>on_block</c> requires every known parent's post-state.
     /// Replays already validated stored blocks on a clone of the nearest held ancestor, bounded by the fork-choice root.</summary>
-    private BeaconStateFulu? Regenerate(Hash256 blockRoot)
+    /// <param name="hold">Whether the regenerated state joins the tier block import reads, or is only handed to the caller.</param>
+    private BeaconStateFulu? Regenerate(Hash256 blockRoot, bool hold)
     {
         if (ancestors is null || pubkeys is null || isGloasBlock?.Invoke(blockRoot) == true)
         {
@@ -181,7 +182,11 @@ internal sealed class PostStateCache(
             return null;
         }
 
-        _regenerated.Set(blockRoot, state);
+        if (hold)
+        {
+            _regenerated.Set(blockRoot, state);
+        }
+
         if (_logger.IsDebug) _logger.Debug($"Regenerated the post-state of {blockRoot} at slot {state.Slot} by replaying {replay.Count} stored blocks");
         return state;
     }
@@ -190,7 +195,8 @@ internal sealed class PostStateCache(
         ssz.Length >= StateSlotOffset + sizeof(ulong) && SignedBeaconBlockCodec.IsGloasSlot(BinaryPrimitives.ReadUInt64LittleEndian(ssz.AsSpan(StateSlotOffset)), spec);
 
     /// <inheritdoc/>
-    public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
+    /// <remarks>A regenerated state is already the caller's own copy, so it is not held: a copy fork choice asks for never pushes out the state an import needs.</remarks>
+    public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot)?.Clone() ?? Regenerate(blockRoot, hold: false);
 
     /// <summary>
     /// Retains a Gloas block's post-state under its block root, frozen: the state must not be
