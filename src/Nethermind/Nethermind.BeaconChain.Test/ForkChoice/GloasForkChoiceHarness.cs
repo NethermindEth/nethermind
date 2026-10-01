@@ -65,11 +65,16 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
     public void Import(Block block) => Runner.OnBlock(block.Signed, block.PostState);
 
     /// <summary>A block at <paramref name="slot"/> on <paramref name="parent"/>, building on its FULL node when <paramref name="full"/>, and on its EMPTY node otherwise.</summary>
-    public Block Child(Block parent, ulong slot, bool full, byte blockHashFill, params PayloadAttestation[] payloadAttestations)
+    public Block Child(Block parent, ulong slot, bool full, byte blockHashFill, params PayloadAttestation[] payloadAttestations) =>
+        Child(parent, slot, full ? parent.BidBlockHash : parent.PostState.LatestBlockHash!, blockHashFill, payloadAttestations);
+
+    /// <summary>A block at <paramref name="slot"/> on <paramref name="parent"/> whose bid builds on the execution payload <paramref name="parentBlockHash"/>.</summary>
+    /// <remarks>specs/gloas/fork-choice.md get_parent_payload_status: an EMPTY child names the payload its parent built on.</remarks>
+    public Block Child(Block parent, ulong slot, Hash256 parentBlockHash, byte blockHashFill, params PayloadAttestation[] payloadAttestations)
     {
         BeaconStateGloas state = parent.PostState.Clone();
         GloasSlotProcessing.ProcessSlots(state, slot, new EpochCache());
-        SignedBeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, full ? parent.BidBlockHash : parent.PostState.LatestBlockHash!, Hash(blockHashFill)));
+        SignedBeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, parentBlockHash, Hash(blockHashFill)));
         // A built parent's state never ran its block, so its latest header is the grandparent's.
         block.Message!.ParentRoot = parent.Root;
         block.Message.Body!.PayloadAttestations = payloadAttestations;

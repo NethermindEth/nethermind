@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -23,4 +24,12 @@ public interface IEngineDriver : INewPayloadNotifier
 
     /// <inheritdoc cref="EngineDriver.ForkchoiceUpdated"/>
     Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash);
+
+    /// <summary>The block-body <see cref="INewPayloadNotifier.NotifyNewPayload(BeaconBlockBody)"/> that also returns the engine's <c>latestValidHash</c>.</summary>
+    /// <remarks>The default reports no hash, which specs/bellatrix/optimistic-sync.md treats as naming only the payload in question.</remarks>
+    ExecutionStatus NotifyNewPayload(BeaconBlockBody body, out Hash256? latestValidHash)
+    {
+        latestValidHash = null;
+        return NotifyNewPayload(body);
+    }
 }

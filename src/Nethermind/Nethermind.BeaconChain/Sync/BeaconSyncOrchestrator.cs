@@ -1902,16 +1902,29 @@ public sealed class BeaconSyncOrchestrator(
             if (status?.Status == PayloadStatus.Invalid)
             {
                 if (_logger.IsWarn) _logger.Warn($"Execution layer reported head {head.HeadRoot} INVALID (latest valid hash {status.LatestValidHash}); invalidating and re-running fork choice");
-                importer.OnInvalidExecutionPayload(head.HeadRoot, status.LatestValidHash);
+                importer.OnForkchoiceUpdated(head.HeadRoot, headExec, status);
                 head = importer.ComputeHead();
                 if (head.HeadExecutionHash is { } retryExec)
                 {
+                    headExec = retryExec;
                     status = await ForkchoiceUpdatedAsync(head, retryExec);
+                    if (status?.Status == PayloadStatus.Invalid)
+                    {
+                        importer.OnForkchoiceUpdated(head.HeadRoot, headExec, status);
+                        head = importer.ComputeHead();
+                    }
                 }
             }
 
             if (status is not null)
             {
+                // specs/bellatrix/optimistic-sync.md: a NOT_VALIDATED head and its ancestors become VALID on the engine's answer.
+                if (status.Status == PayloadStatus.Valid)
+                {
+                    importer.OnForkchoiceUpdated(head.HeadRoot, headExec, status);
+                    head = importer.ComputeHead();
+                }
+
                 TrackExecutionSyncTransition(status);
             }
         }

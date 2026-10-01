@@ -129,7 +129,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public async Task Head_step_invalidates_payload_recomputes_head_and_retries_fcu_once_on_invalid()
+    public async Task Head_step_invalidates_payload_recomputes_head_and_retries_fcu_once_on_invalid([Values(PayloadStatus.Valid, PayloadStatus.Invalid)] string retryStatus)
     {
         Harness harness = CreateHarness();
         HeadView badHead = CreateHead(TestItem.KeccakA, 103, finalizedEpoch: 3, execHash: TestItem.KeccakB);
@@ -137,14 +137,18 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Head = badHead;
         harness.Importer.HeadAfterInvalidation = goodHead;
         harness.Engine.FcuResponses.Enqueue(PayloadStatusV1.Invalid(TestItem.KeccakF));
-        harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakD });
+        harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = retryStatus, LatestValidHash = TestItem.KeccakD });
 
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(harness.Importer.InvalidatedPayloads, Is.EqualTo((List<(Hash256, Hash256?)>)[(badHead.HeadRoot, TestItem.KeccakF)]), "INVALID propagated with the latest valid hash");
-            Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(2), "head recomputed after invalidation");
+            Assert.That(harness.Importer.ForkchoiceVerdicts, Is.EqualTo((List<(Hash256, Hash256, string, Hash256?)>)
+            [
+                (badHead.HeadRoot, badHead.HeadExecutionHash!, PayloadStatus.Invalid, TestItem.KeccakF),
+                (goodHead.HeadRoot, goodHead.HeadExecutionHash!, retryStatus, TestItem.KeccakD),
+            ]), "each verdict reaches fork choice keyed by the head hash it answered, the latest valid hash included");
+            Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(3), "head recomputed after each applied verdict");
             Assert.That(harness.Engine.FcuCalls, Is.EqualTo((List<(Hash256, Hash256, Hash256)>)
             [
                 (badHead.HeadExecutionHash!, badHead.JustifiedExecutionHash!, badHead.FinalizedExecutionHash!),
@@ -152,7 +156,7 @@ public partial class BeaconSyncOrchestratorTests
             ]), "FCU retried exactly once with the recomputed head");
             Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(goodHead.HeadRoot), "status advertises the recovered head");
             Assert.That(harness.StatusHolder.JustifiedRoot, Is.EqualTo(goodHead.Justified.Root), "status carries the recovered head's justified root");
-            Assert.That(harness.StatusHolder.ExecutionInSync, Is.True, "the retried FCU returned VALID");
+            Assert.That(harness.StatusHolder.ExecutionInSync, Is.EqualTo(retryStatus == PayloadStatus.Valid));
         }
     }
 
@@ -881,7 +885,7 @@ public partial class BeaconSyncOrchestratorTests
 
         public List<(ulong Slot, Hash256 Root, bool VerifySignatures)> Imports { get; } = [];
         public List<ulong> Ticks { get; } = [];
-        public List<(Hash256 Root, Hash256? LatestValidHash)> InvalidatedPayloads { get; } = [];
+        public List<(Hash256 Root, Hash256 ExecutionHash, string Status, Hash256? LatestValidHash)> ForkchoiceVerdicts { get; } = [];
         public List<CheckpointRef> Finalizations { get; } = [];
         public required HeadView Head { get; set; }
         public HeadView? HeadAfterInvalidation { get; set; }
@@ -943,10 +947,11 @@ public partial class BeaconSyncOrchestratorTests
             return Head;
         }
 
-        public void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash)
+        public void OnForkchoiceUpdated(Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)
         {
-            InvalidatedPayloads.Add((blockRoot, latestValidHash));
-            Head = HeadAfterInvalidation ?? Head;
+            ForkchoiceVerdicts.Add((headRoot, headExecutionHash, status.Status, status.LatestValidHash));
+            if (status.Status == PayloadStatus.Invalid)
+                Head = HeadAfterInvalidation ?? Head;
         }
 
         public void OnFinalized(CheckpointRef finalized) => Finalizations.Add(finalized);
