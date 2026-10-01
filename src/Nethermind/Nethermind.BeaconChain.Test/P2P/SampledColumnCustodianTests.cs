@@ -37,7 +37,6 @@ namespace Nethermind.BeaconChain.Test.P2P;
 /// </summary>
 public class SampledColumnCustodianTests
 {
-    // Below 2^255: the pinned libp2p reads a secp256k1 private key as a signed integer.
     private const string PartialCustodianKey = "1c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29111";
     private const string SupernodeKey = "2c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29122";
     private const string LocalKey = "3c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29133";
