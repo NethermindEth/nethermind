@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Types;
@@ -26,6 +27,9 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
 
     private readonly Dictionary<Hash256, BeaconStateFulu> _postStates = [];
     private readonly CommitteeCache _committees;
+
+    // Every state here descends from the anchor, so one incremental hasher serves them all; a full root of a mainnet-preset state costs ~15 ms per slot.
+    private readonly CachedBeaconStateHasher _hasher = new();
 
     private UnsignedChain(ImportableBlobBlock anchor)
     {
@@ -65,7 +69,7 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
         BeaconBlock block = TestChain.CreateBlock(slot, parentRoot).Message!;
         // The proposer the transition expects: the parent state's lookahead once advanced to the slot.
         BeaconStateFulu atSlot = parentState.Clone();
-        SlotProcessing.ProcessSlots(atSlot, slot, new EpochCache());
+        SlotProcessing.ProcessSlots(atSlot, slot, new EpochCache { Hasher = _hasher });
         block.ProposerIndex = atSlot.GetBeaconProposerIndex();
         BeaconBlockBody body = block.Body!;
         ulong epoch = atSlot.GetCurrentEpoch();
@@ -86,8 +90,8 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
 
         SignedBeaconBlock signedBlock = new() { Message = block, Signature = Unsigned };
         BeaconStateFulu postState = parentState.Clone();
-        FuluStateTransition.Apply(postState, signedBlock, new EpochCache(), Anchor.Pubkeys, new AcceptingNotifier(), Spec, validateResult: false, verifySignatures: false);
-        block.StateRoot = SszRoots.HashTreeRoot(postState);
+        FuluStateTransition.Apply(postState, signedBlock, new EpochCache { Hasher = _hasher }, Anchor.Pubkeys, new AcceptingNotifier(), Spec, validateResult: false, verifySignatures: false);
+        block.StateRoot = _hasher.HashTreeRoot(postState);
         Hash256 root = SszRoots.HashTreeRoot(block);
         if (signed)
         {
