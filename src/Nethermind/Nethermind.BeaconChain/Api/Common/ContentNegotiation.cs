@@ -32,6 +32,7 @@ internal static class ContentNegotiation
         }
 
         double bestJsonQ = -1, bestSszQ = -1;
+        int jsonSpecificity = -1, sszSpecificity = -1;
         foreach (string? raw in acceptValues)
         {
             if (string.IsNullOrWhiteSpace(raw)) continue;
@@ -43,26 +44,35 @@ internal static class ContentNegotiation
                 int semicolon = range.IndexOf(';');
                 ReadOnlySpan<char> mediaType = (semicolon < 0 ? range : range[..semicolon]).TrimEnd();
                 double q = semicolon < 0 ? 1.0 : ParseQuality(range[(semicolon + 1)..]);
-                if (q <= 0) continue;
-
                 bool wildcard = mediaType.Equals("*/*", StringComparison.Ordinal)
                     || mediaType.Equals("application/*", StringComparison.OrdinalIgnoreCase);
+                int specificity = mediaType.Equals("*/*", StringComparison.Ordinal) ? 0 : wildcard ? 1 : 2;
                 if (wildcard || mediaType.Equals(Json, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (q > bestJsonQ) bestJsonQ = q;
+                    SetQuality(q, specificity, ref bestJsonQ, ref jsonSpecificity);
                 }
 
                 if (sszSupported && (wildcard || mediaType.Equals(OctetStream, StringComparison.OrdinalIgnoreCase)))
                 {
-                    if (q > bestSszQ) bestSszQ = q;
+                    SetQuality(q, specificity, ref bestSszQ, ref sszSpecificity);
                 }
             }
         }
 
-        if (bestJsonQ < 0 && bestSszQ < 0) return null;
+        if (bestJsonQ <= 0 && bestSszQ <= 0) return null;
         // A strict SSZ preference wins; JSON is the default representation on a tie (including when
         // only a wildcard matched both).
         return bestSszQ > bestJsonQ ? ResponseFormat.Ssz : ResponseFormat.Json;
+    }
+
+    private static void SetQuality(double q, int specificity, ref double quality, ref int selectedSpecificity)
+    {
+        // RFC 9110 section 12.5.1: the most specific matching range determines quality, including zero.
+        if (specificity > selectedSpecificity || (specificity == selectedSpecificity && q > quality))
+        {
+            quality = q;
+            selectedSpecificity = specificity;
+        }
     }
 
     private static double ParseQuality(ReadOnlySpan<char> parameters)

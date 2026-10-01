@@ -9,6 +9,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
@@ -60,10 +61,11 @@ public class BeaconApiHeadSnapshotTests
     {
         HookedMemDbColumns db = new();
         HeadSnapshotHolder snapshots = new();
-        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, db: db, headSnapshots: publishedSnapshots ? snapshots : null);
+        ForkChoiceSnapshotHolder forkChoice = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, db: db, headSnapshots: publishedSnapshots ? snapshots : null, forkChoiceSnapshots: forkChoice);
         Seed(host);
-        Publish(host, snapshots, finalizedEpoch: 0, executionInSync: false);
-        db.BeforeNextRead = () => Publish(host, snapshots, finalizedEpoch: Slot / 32 + 1, executionInSync: true);
+        Publish(host, snapshots, forkChoice, finalizedEpoch: 0, executionInSync: false);
+        db.BeforeNextRead = () => Publish(host, snapshots, forkChoice, finalizedEpoch: Slot / 32 + 1, executionInSync: true);
 
         using JsonDocument during = await GetAsync(host, path);
         using JsonDocument after = await GetAsync(host, path);
@@ -82,9 +84,10 @@ public class BeaconApiHeadSnapshotTests
     public async Task The_published_snapshot_answers_even_when_the_status_holder_names_another_head(string path)
     {
         HeadSnapshotHolder snapshots = new();
-        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
+        ForkChoiceSnapshotHolder forkChoice = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots, forkChoiceSnapshots: forkChoice);
         Seed(host);
-        Publish(host, snapshots, finalizedEpoch: Slot / 32 + 1, executionInSync: true);
+        Publish(host, snapshots, forkChoice, finalizedEpoch: Slot / 32 + 1, executionInSync: true);
         DivergeHolder(host);
 
         using JsonDocument body = await GetAsync(host, path);
@@ -100,8 +103,9 @@ public class BeaconApiHeadSnapshotTests
     public async Task Syncing_reports_the_published_head_when_the_status_holder_names_another()
     {
         HeadSnapshotHolder snapshots = new();
-        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
-        Publish(host, snapshots, finalizedEpoch: 0, executionInSync: true);
+        ForkChoiceSnapshotHolder forkChoice = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots, forkChoiceSnapshots: forkChoice);
+        Publish(host, snapshots, forkChoice, finalizedEpoch: 0, executionInSync: true);
         DivergeHolder(host);
 
         using JsonDocument body = await GetAsync(host, "/eth/v1/node/syncing");
@@ -118,8 +122,9 @@ public class BeaconApiHeadSnapshotTests
     public async Task Health_reports_the_published_head_when_the_status_holder_is_uninitialized()
     {
         HeadSnapshotHolder snapshots = new();
-        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
-        Publish(host, snapshots, finalizedEpoch: 0, executionInSync: true);
+        ForkChoiceSnapshotHolder forkChoice = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots, forkChoiceSnapshots: forkChoice);
+        Publish(host, snapshots, forkChoice, finalizedEpoch: 0, executionInSync: true);
         host.StatusHolder.CurrentStatus = new StatusMessageV2 { HeadRoot = Hash256.Zero, FinalizedRoot = Hash256.Zero };
 
         using HttpResponseMessage response = await host.Client.GetAsync("/eth/v1/node/health");
@@ -132,8 +137,11 @@ public class BeaconApiHeadSnapshotTests
     public async Task The_head_event_reports_the_published_head_when_the_status_holder_names_another(CancellationToken token)
     {
         HeadSnapshotHolder snapshots = new();
-        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
-        Publish(host, snapshots, finalizedEpoch: 0, executionInSync: true);
+        ForkChoiceSnapshotHolder forkChoice = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots, forkChoiceSnapshots: forkChoice);
+        Seed(host);
+        host.Store.SetCanonicalRoot(0, Head);
+        Publish(host, snapshots, forkChoice, finalizedEpoch: 0, executionInSync: true);
         DivergeHolder(host);
 
         using HttpRequestMessage request = new(HttpMethod.Get, "/eth/v1/events?topics=head");
@@ -158,6 +166,7 @@ public class BeaconApiHeadSnapshotTests
     public async Task A_host_without_a_published_head_answers_from_the_status_holder()
     {
         await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: new HeadSnapshotHolder());
+        host.Store.PutBlock(Hash256.Zero, BeaconApiTestHost.MinimalBlock(0));
         host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
         host.SetStatus(Head, Head, Slot / 32);
         host.StatusHolder.ExecutionInSync = true;
@@ -167,13 +176,14 @@ public class BeaconApiHeadSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
-            Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
+            Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False);
+            Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True);
         }
     }
 
     private static void Seed(BeaconApiTestHost host)
     {
+        host.Store.PutBlock(Hash256.Zero, BeaconApiTestHost.MinimalBlock(0));
         host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
         host.Store.PutState(Head, BeaconStateFulu.Encode(BeaconApiTestHost.RichState(host.Spec, Slot)));
         host.Store.SetCanonicalRoot(Slot, Head);
@@ -188,13 +198,15 @@ public class BeaconApiHeadSnapshotTests
         host.StatusHolder.Publish(new StatusMessageV2 { ForkDigest = [], HeadRoot = other, HeadSlot = Slot + 99, FinalizedRoot = other, FinalizedEpoch = 0 }, null);
     }
 
-    private static void Publish(BeaconApiTestHost host, HeadSnapshotHolder snapshots, ulong finalizedEpoch, bool executionInSync)
+    private static void Publish(BeaconApiTestHost host, HeadSnapshotHolder snapshots, ForkChoiceSnapshotHolder forkChoice, ulong finalizedEpoch, bool executionInSync)
     {
         StatusMessageV2 status = new() { ForkDigest = [], HeadRoot = Head, HeadSlot = Slot, FinalizedRoot = Head, FinalizedEpoch = finalizedEpoch };
         host.StatusHolder.JustifiedRoot = Head;
         host.StatusHolder.ExecutionInSync = executionInSync;
         host.StatusHolder.Publish(status, null);
         snapshots.Current = new HeadSnapshot(status, null, Head, executionInSync);
+        forkChoice.Current = new ForkChoiceSnapshot(new CheckpointRef(0, Head), new CheckpointRef(finalizedEpoch, Head), Hash256.Zero,
+            [new ForkChoiceSnapshotNode(Slot, Head, null, 0, finalizedEpoch, 0, executionInSync ? ExecutionStatus.Valid : ExecutionStatus.Optimistic, Head)]);
     }
 
     private static async Task<JsonDocument> GetAsync(BeaconApiTestHost host, string path)

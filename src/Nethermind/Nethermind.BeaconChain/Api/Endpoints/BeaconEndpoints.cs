@@ -68,7 +68,7 @@ internal static class BeaconEndpoints
             // id (or head/finalized genuinely unset) still is.
             if (errorStatus == StatusCodes.Status404NotFound && id != "head" && id != "finalized" && id != "genesis")
             {
-                return BeaconApiJson.WriteEnvelopeAsync(c, Array.Empty<HeaderEntryDto>(), ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource), false, c.RequestAborted);
+                return BeaconApiJson.WriteEnvelopeAsync(c, Array.Empty<HeaderEntryDto>(), false, false, c.RequestAborted);
             }
 
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
@@ -77,7 +77,7 @@ internal static class BeaconEndpoints
         HeaderEntryDto entry = BuildHeaderEntry(ctx, resolved);
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, new[] { entry },
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
             c.RequestAborted);
     }
@@ -119,6 +119,7 @@ internal static class BeaconEndpoints
 
         List<HeaderEntryDto> entries = [];
         bool finalized = childRoots.Length > 0;
+        bool optimistic = false;
         BeaconFork? fork = null;
         bool mixedForks = false;
         foreach (Hash256 childRoot in childRoots)
@@ -128,6 +129,7 @@ internal static class BeaconEndpoints
             ulong childSlot = child.Slot;
             entries.Add(BuildHeaderEntry(ctx, new ResolvedBlock(childRoot, child)));
             finalized &= ResponseEnvelope.IsFinalized(ctx, childSlot, childRoot);
+            optimistic |= ResponseEnvelope.ExecutionOptimistic(ctx, childRoot);
             BeaconFork childFork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(childSlot));
             mixedForks |= fork is not null && fork != childFork;
             fork = childFork;
@@ -139,7 +141,7 @@ internal static class BeaconEndpoints
         }
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            entries.Count > 0 && ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            optimistic,
             finalized && entries.Count > 0,
             c.RequestAborted);
     }
@@ -186,7 +188,7 @@ internal static class BeaconEndpoints
         HeaderEntryDto entry = BuildHeaderEntry(ctx, resolved);
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, entry,
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
             c.RequestAborted);
     }
@@ -205,7 +207,7 @@ internal static class BeaconEndpoints
 
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, new RootDto(resolved.Root.ToString()),
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
             c.RequestAborted);
     }
@@ -243,7 +245,7 @@ internal static class BeaconEndpoints
         }
 
         return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, slot, resolved.Root),
             s =>
             {

@@ -24,7 +24,8 @@ internal static class DebugEndpoints
     public static void Map(WebApplication app, BeaconApiContext ctx)
     {
         app.MapGet("/eth/v2/debug/beacon/states/{state_id}", (HttpContext c, string state_id) => State(c, state_id, ctx.ForRequest()));
-        app.MapGet("/eth/v1/debug/beacon/fork_choice", c => ForkChoice(c, ctx));
+        app.MapGet("/eth/v1/debug/beacon/fork_choice", c => ForkChoice(c, ctx.ForRequest()));
+        app.MapGet("/eth/v1/debug/fork_choice", c => ForkChoice(c, ctx.ForRequest()));
     }
 
     /// <summary>
@@ -39,7 +40,7 @@ internal static class DebugEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
-        if (ctx.ForkChoiceSnapshots?.Current is not { } snapshot)
+        if (ctx.ForkChoiceSnapshot is not { } snapshot)
         {
             return ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable,
                 "Fork choice has not computed a head yet.", c.RequestAborted);
@@ -132,7 +133,7 @@ internal static class DebugEndpoints
         BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(state.Slot));
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
         return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
-            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             s => BeaconJsonWriter.WriteBeaconStateAsync(s, state));
     }
