@@ -15,12 +15,16 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -752,7 +756,133 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot)
+    // The re-check must judge the resent list on the dimensions execution recorded, not on the max(execution,
+    // state) the header reduces them to. The two differ only above the EIP-7825 execution cap: past it a
+    // transaction reserves the cap on the execution dimension but its whole gas on the state one, so an entry
+    // that fits both dimensions reads as unappendable against the max, and real censorship goes unreported.
+    // After cache loss, bounds still prove some verdicts. Only ambiguous cases answer SYNCING with null
+    // compliance (bogota.md newPayloadV6 (2.2)); recovering their exact answer needs safe re-execution.
+    [TestCase(50, false, InclusionListEntry.Boundary, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions")]
+    [TestCase(1, false, InclusionListEntry.Boundary, false, TestName = "NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions_after_the_payload_cache_evicts_it")]
+    [TestCase(1, true, InclusionListEntry.Boundary, false, TestName = "NewPayloadV6_declines_to_judge_a_resent_block_once_both_caches_lose_the_gas_dimensions")]
+    [TestCase(1, true, InclusionListEntry.Included, false, TestName = "NewPayloadV6_answers_an_included_list_after_both_dimension_caches_are_lost")]
+    [TestCase(1, true, InclusionListEntry.Boundary, true, TestName = "NewPayloadV6_declines_an_omitted_list_for_the_head_after_both_dimension_caches_are_lost")]
+    [TestCase(1, true, InclusionListEntry.Included, true, TestName = "NewPayloadV6_answers_an_included_list_for_the_head_after_both_dimension_caches_are_lost")]
+    [TestCase(1, true, InclusionListEntry.Small, false, TestName = "NewPayloadV6_reports_censorship_proven_without_gas_dimensions")]
+    [TestCase(1, true, InclusionListEntry.Small, true, TestName = "NewPayloadV6_reports_censorship_for_the_head_without_gas_dimensions")]
+    [TestCase(1, true, InclusionListEntry.WrongNonce, false, TestName = "NewPayloadV6_answers_an_unappendable_list_without_gas_dimensions")]
+    [TestCase(1, true, InclusionListEntry.WrongNonce, true, TestName = "NewPayloadV6_answers_an_unappendable_list_for_the_head_without_gas_dimensions")]
+    public async Task NewPayloadV6_re_judges_a_resent_block_on_the_recorded_gas_dimensions(
+        int newPayloadCacheSize, bool dimensionsLost, InclusionListEntry entry, bool resendHead)
+    {
+        // Genesis is raised to the production target so the block's remaining gas exceeds the execution cap;
+        // the 4M default leaves no room for a transaction big enough to tell the two rules apart.
+        const ulong gasLimit = 30_000_000UL;
+        AccountReadCountingStateReader accountReader = null!;
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = newPayloadCacheSize },
+            configurer: builder => builder
+                .WithGenesisPostProcessor((genesis, _) => genesis.Header.GasLimit = gasLimit)
+                .AddDecorator<IStateReader>((_, reader) =>
+                    accountReader = new AccountReadCountingStateReader(reader, TestItem.AddressC)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        // A transaction of its own, so the block's execution dimension outgrows its state dimension.
+        Transaction included = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[][] firstList = [Rlp.Encode(included).Bytes];
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(chain.BlockTree.HeadHash, Keccak.Zero, chain.BlockTree.HeadHash),
+            BuildBogotaPayloadAttributes(firstList, targetGasLimit: gasLimit, timestamp: Timestamper.UnixTime.Seconds + 2, slotNumber: 2));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 first = payloadResult.Data!.ExecutionPayload;
+
+        await rpc.engine_newPayloadV6(first, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, firstList);
+        await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3, finalize: !resendHead);
+
+        Block executed = chain.BlockTree.FindBlock(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
+        Assert.That(executed.Header.GasUsedPerDimension, Is.Not.Null, "the dimensions must reach the block a re-check is handed");
+        (ulong execution, ulong state) = executed.Header.GasUsedPerDimension!.Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executed.Transactions, Has.Length.EqualTo(1));
+            Assert.That(Math.Max(execution, state), Is.EqualTo(executed.GasUsed), "EIP-8037 reduces the dimensions to their maximum");
+            Assert.That(execution, Is.GreaterThan(state), "the max must exceed the state dimension for the two rules to differ");
+        }
+
+        // Reserves the whole remaining state dimension, and only the execution cap on the execution dimension:
+        // appendable on the recorded dimensions, over budget against max(execution, state).
+        Transaction censored = Build.A.Transaction
+            .WithNonce(entry == InclusionListEntry.WrongNonce ? 99UL : 0UL)
+            .WithGasLimit(entry is InclusionListEntry.Small or InclusionListEntry.WrongNonce ? 100_000UL : gasLimit - state).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        if (entry == InclusionListEntry.Boundary)
+            Assert.That(censored.GasLimit, Is.GreaterThan(gasLimit - execution), "the entry must not fit the max");
+
+        // What a restart leaves behind: the payload cache is already past this block at size 1, and a header
+        // read back from disk carries no dimensions. Neither an ancestor nor the head itself can be
+        // re-executed to recover them here.
+        if (resendHead)
+        {
+            await rpc.engine_forkchoiceUpdatedV5(
+                new ForkchoiceStateV1(first.BlockHash, first.BlockHash, first.BlockHash), payloadAttributes: null);
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(first.BlockHash), "the resend must target the current head");
+        }
+
+        if (dimensionsLost)
+        {
+            executed.Header.GasUsedPerDimension = null;
+            chain.BlockTree.FindHeader(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.GasUsedPerDimension = null;
+        }
+
+        accountReader.TrackedBlockHash = first.BlockHash;
+
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
+            first, [], Keccak.Zero, [], entry == InclusionListEntry.Included ? firstList : [Rlp.Encode(censored).Bytes]);
+
+        bool answerUnavailable = dimensionsLost && entry == InclusionListEntry.Boundary;
+        bool expectedSatisfied = entry is InclusionListEntry.Included or InclusionListEntry.WrongNonce;
+        using (Assert.EnterMultipleScope())
+        {
+            if (dimensionsLost && entry is InclusionListEntry.WrongNonce)
+                Assert.That(accountReader.AccountReads, Is.EqualTo(1), "all gas-bound passes must share the sender account read");
+            Assert.That(resend.Data.Status, Is.EqualTo(answerUnavailable ? PayloadStatus.Syncing : PayloadStatus.Valid));
+            Assert.That(resend.Data.InclusionListSatisfied, answerUnavailable ? Is.Null : Is.EqualTo(expectedSatisfied),
+                answerUnavailable ? "without the dimensions the answer must be withheld, not guessed"
+                    : expectedSatisfied ? "the entry is included or cannot be appended"
+                    : "the omitted entry fits the remaining gas dimensions");
+        }
+    }
+
+    /// <summary>Entries exercising known and ambiguous compliance after gas-dimension cache loss.</summary>
+    public enum InclusionListEntry { Boundary, Included, Small, WrongNonce }
+
+    /// <summary>Counts a selected sender's account reads during one payload resend.</summary>
+    private sealed class AccountReadCountingStateReader(IStateReader inner, Address sender) : IStateReader
+    {
+        private int _accountReads;
+        public Hash256? TrackedBlockHash { get; set; }
+        public int AccountReads => Volatile.Read(ref _accountReads);
+
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
+        {
+            if (TrackedBlockHash is { } hash && baseBlock?.Hash == hash && address == sender)
+                Interlocked.Increment(ref _accountReads);
+            return inner.TryGetAccount(baseBlock, address, out account);
+        }
+
+        public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) =>
+            inner.GetStorage(baseBlock, address, in index, out value);
+        public byte[]? GetCode(Hash256 codeHash) => inner.GetCode(codeHash);
+        public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
+            where TCtx : struct, INodeContext<TCtx> => inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+    }
+
+    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot, bool finalize = true)
     {
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent, Keccak.Zero, parent),
@@ -762,7 +892,7 @@ public partial class EngineModuleTests
 
         await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
         await rpc.engine_forkchoiceUpdatedV5(
-            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
+            new ForkchoiceStateV1(payload.BlockHash, finalize ? payload.BlockHash : parent, finalize ? payload.BlockHash : parent), payloadAttributes: null);
         return payload;
     }
 
