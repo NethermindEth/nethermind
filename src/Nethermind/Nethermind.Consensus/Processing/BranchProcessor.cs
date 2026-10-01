@@ -161,6 +161,13 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
+                // Only the processed header carries the EIP-8037 dimensions, and its consensus twin is what a
+                // later re-validation of this block is handed, so an inclusion list judged then sees the same gas.
+                // Nothing records them for a block with no transaction to record, and since the header's total is
+                // their maximum, spending no gas puts both at zero.
+                if (processedBlock.GasUsed == 0) processedBlock.Header.GasUsedPerDimension ??= (0, 0);
+                suggestedBlock.Header.GasUsedPerDimension = processedBlock.Header.GasUsedPerDimension;
+
                 // A signal, not a rejection: the block is still committed, and it reads post-execution
                 // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
                 bool inclusionListSatisfied = !checkInclusionList

@@ -694,6 +694,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     _blockCumulativeExecutionGas += spentGas.EffectiveBlockGas;
                     _blockCumulativeStateGas += spentGas.BlockStateGas;
                     header.GasUsed = TGasPolicy.CombineBlockGas(_blockCumulativeExecutionGas, _blockCumulativeStateGas);
+                    header.GasUsedPerDimension = (_blockCumulativeExecutionGas, _blockCumulativeStateGas);
                 }
                 else
                 {

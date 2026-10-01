@@ -602,11 +602,6 @@ jobs:
               # blob-gas fields are never recomputed. Fix pending as ethereum/execution-specs#3406.
               'test_invalid_block_blob_count.*inclusion_list'
               'test_invalid_tx_max_fee_per_blob_gas.*inclusion_list'
-              # At an exactly-fitting state budget the inclusion-list variant expects
-              # inclusionListSatisfied=false, so the spec judges the transaction includable once the
-              # preparation rollback restores the budget. We report true. The exceeded siblings agree,
-              # so this is the boundary case only.
-              'test_preparation_rollback_restores_block_state_budget.*inclusion_list.*exact_fit'
             )
           fi
           if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then

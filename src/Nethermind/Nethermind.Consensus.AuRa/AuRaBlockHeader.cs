@@ -73,6 +73,8 @@ public sealed class AuRaBlockHeader(
             ReceiptsRoot = src.ReceiptsRoot,
             Bloom = src.Bloom,
             GasUsed = src.GasUsed,
+            // After GasUsed, whose setter drops the dimensions it summarises.
+            GasUsedPerDimension = src.GasUsedPerDimension,
             MixHash = src.MixHash,
             Nonce = src.Nonce,
             Hash = src.Hash,
