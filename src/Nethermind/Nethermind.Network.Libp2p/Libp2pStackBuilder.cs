@@ -90,24 +90,33 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
 
         protected override Task ConnectedTo(ISession session, bool isDialer) => session.DialAsync<IdentifyProtocol>();
 
-        Task<ISession> ILocalPeer.DialAsync(Multiaddress addr, CancellationToken token) => DialTcpAsync([addr], token);
+        Task<ISession> ILocalPeer.DialAsync(Multiaddress addr, CancellationToken token) => DialTcpAsync(addr.GetPeerId(), [addr], token);
 
-        Task<ISession> ILocalPeer.DialAsync(Multiaddress[] samePeerAddrs, CancellationToken token) => DialTcpAsync(samePeerAddrs, token);
+        Task<ISession> ILocalPeer.DialAsync(Multiaddress[] samePeerAddrs, CancellationToken token) =>
+            DialTcpAsync(samePeerAddrs.FirstOrDefault()?.GetPeerId(), samePeerAddrs, token);
 
         Task<ISession> ILocalPeer.DialAsync(PeerId peerId, CancellationToken token) =>
-            _peerStore?.GetPeerInfo(peerId).Addrs is { Count: > 0 } addrs ? DialTcpAsync([.. addrs], token) : DialAsync(peerId, token);
+            FindSession(peerId) is { } existing ? Task.FromResult<ISession>(existing)
+            : _peerStore?.GetPeerInfo(peerId).Addrs is { Count: > 0 } addrs ? DialTcpAsync(peerId, [.. addrs], token)
+            : DialAsync(peerId, token);
 
-        private async Task<ISession> DialTcpAsync(Multiaddress[] addrs, CancellationToken token)
+        private Session? FindSession(PeerId peerId) => Sessions.FirstOrDefault(session => session.State.RemotePeerId == peerId);
+
+        private async Task<ISession> DialTcpAsync(PeerId? peerId, Multiaddress[] addrs, CancellationToken token)
         {
-            PeerId? peerId = addrs.FirstOrDefault()?.GetPeerId();
-            if (peerId is null || addrs.Any(addr => addr.GetPeerId() != peerId))
+            if (peerId is null)
             {
-                throw new Libp2pException("A dial needs addresses of one peer id");
+                throw new Libp2pException("A dial needs addresses with a peer id");
             }
 
-            if (Sessions.FirstOrDefault(session => session.State.RemotePeerId == peerId) is { } existing)
+            if (FindSession(peerId) is { } existing)
             {
                 return existing;
+            }
+
+            if (addrs.Any(addr => addr.GetPeerId() != peerId))
+            {
+                throw new Libp2pException($"A dial to {peerId} has addresses of another peer id");
             }
 
             List<Multiaddress> tcp = [];
@@ -115,7 +124,8 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
             {
                 foreach (Multiaddress resolved in await ResolveAsync(addr, token))
                 {
-                    if (resolved.Has<TCP>() && (resolved.Has<IP4>() || resolved.Has<IP6>()) && !resolved.Has<WebSocket>() && !resolved.Has<WebSocketSecure>())
+                    // Only IP, TCP and peer id: the library would resolve any other component, such as a name inside, before its first await.
+                    if (resolved.Protocols is [IP4 or IP6, TCP, P2P])
                     {
                         tcp.Add(resolved);
                     }
@@ -135,19 +145,19 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         {
             try
             {
-                if (addr.Has<DNS4>())
+                if (addr.Protocols is [DNS4, ..])
                 {
                     IPAddress[] ips = await _resolveHost(addr.Get<DNS4>().ToString(), AddressFamily.InterNetwork, token);
                     return [.. ips.Select(ip => addr.Clone().Replace<DNS4, IP4>(ip))];
                 }
 
-                if (addr.Has<DNS6>())
+                if (addr.Protocols is [DNS6, ..])
                 {
                     IPAddress[] ips = await _resolveHost(addr.Get<DNS6>().ToString(), AddressFamily.InterNetworkV6, token);
                     return [.. ips.Select(ip => addr.Clone().Replace<DNS6, IP6>(ip))];
                 }
 
-                if (addr.Has<DNS>())
+                if (addr.Protocols is [DNS, ..])
                 {
                     IPAddress[] ips = await _resolveHost(addr.Get<DNS>().ToString(), AddressFamily.Unspecified, token);
                     return [.. ips.Select(ip => ip.AddressFamily == AddressFamily.InterNetworkV6 ? addr.Clone().Replace<DNS, IP6>(ip) : addr.Clone().Replace<DNS, IP4>(ip))];

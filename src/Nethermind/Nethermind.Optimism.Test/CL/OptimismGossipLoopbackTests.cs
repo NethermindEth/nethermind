@@ -149,6 +149,7 @@ public class OptimismGossipLoopbackTests
     /// <remarks>Nethermind.Libp2p 1.0.0 keeps a dial that fails before its first await as the pending dial of the peer id for good.</remarks>
     [TestCase("/dns4/sequencer.invalid/tcp/{port}/p2p/{id}", TestName = "A name whose first lookup fails")]
     [TestCase("/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name")]
+    [TestCase("/ip4/127.0.0.1/tcp/{port}/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name after an address")]
     [TestCase("/ip4/127.0.0.1/tcp/{port}/p2p/{id}|/ip4/127.0.0.1/tcp/{port}/p2p/{other}", TestName = "Addresses of two peer ids")]
     [CancelAfter(60_000)]
     public async Task A_dial_that_cannot_start_does_not_lose_the_peer(string announced, CancellationToken token)
@@ -169,6 +170,22 @@ public class OptimismGossipLoopbackTests
         Multiaddress named = Multiaddress.Decode($"/dns4/sequencer.invalid/tcp/{port}/p2p/{sequencerId}");
         using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
+    }
+
+    /// <summary>A connected peer whose stored addresses were replaced by a set of two peer ids is still dialed by its existing session.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_connected_peer_is_dialed_by_its_session_whatever_its_stored_addresses(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token);
+        await using Host node = await Host.StartAsync(token);
+        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
+        ISession session = await node.Peer.DialAsync(sequencer.Address, token);
+        Multiaddress other = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{new Nethermind.Libp2p.Core.Identity().PeerId}");
+
+        node.Services.GetRequiredService<PeerStore>().Discover([sequencer.Address, other]);
+
+        Assert.That(await node.Peer.DialAsync(sequencerId, token), Is.SameAs(session));
     }
 
     // Runs the static peer check as its timer does, more often: the peer can refuse a dial while it still holds an earlier session.
