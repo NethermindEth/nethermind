@@ -105,16 +105,17 @@ internal sealed class PostStateCache(
     public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot) ?? Regenerate(blockRoot);
 
     /// <summary>The post-state of <paramref name="blockRoot"/> if it is held, without regenerating it from stored blocks.</summary>
+    /// <remarks>A retained copy of the lineage root comes first: a trusted import advances the lineage state to its child before fork choice replays the child's body votes.</remarks>
     internal BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot)
     {
-        if (blockRoot == LineageRoot)
-        {
-            return LineageState;
-        }
-
         if (_retained.TryGet(blockRoot, out BeaconStateFulu? retained))
         {
             return retained;
+        }
+
+        if (blockRoot == LineageRoot)
+        {
+            return LineageState;
         }
 
         // A Gloas snapshot is not this root's Fulu state, so it is refused by its slot before a full decode; the Gloas getter serves it.
