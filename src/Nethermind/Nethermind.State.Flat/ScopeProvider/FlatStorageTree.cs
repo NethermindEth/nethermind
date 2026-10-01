@@ -53,7 +53,7 @@ public sealed class FlatStorageTree(
     // and the changed paths hashed by the scope's bounded workers while later transactions execute. The block thread
     // is the only producer, at most one worker drains a tree at a time, and finalization claims the trie through the
     // same state word, so a worker can never reacquire it after the join.
-    private readonly bool _speculate = config.SpeculativeStorageRoots && !scope.Trieless && !scope.IsReadOnly && !config.VerifyWithTrie;
+    private readonly bool _speculate = scope.SpeculatesStorageRoots;
     private readonly int _speculationCap = config.SpeculativeStorageRootContractCap;
     private readonly int _minDrainToHash = config.SpeculativeStorageRootMinDrainToHash;
     private readonly int _minDrainToApply = Math.Max(1, config.SpeculativeStorageRootMinDrainToApply);

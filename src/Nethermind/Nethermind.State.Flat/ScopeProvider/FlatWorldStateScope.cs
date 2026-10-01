@@ -29,6 +29,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
+    private readonly bool _speculatesStorageRoots;
 
     private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
@@ -106,19 +107,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+        // VerifyWithTrie reads the tries on the block thread during execution, which the workers would race.
+        _speculatesStorageRoots = configuration.SpeculativeStorageRoots && !isReadOnly && !_trieless && !configuration.VerifyWithTrie;
 
+        // The speculative storage roots take the committed writes instead, so the two never run together.
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
-            && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
+            && !configuration.SpeculativeStorageRoots && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
 
-        // VerifyWithTrie reads the trie on the block thread during execution, which the workers would race.
-        _accountSpeculation = configuration.SpeculativeStorageRoots && configuration.SpeculativeAccountTrie && !_trieless && !isReadOnly && !configuration.VerifyWithTrie
-            ? new AccountTrieSpeculation(this)
-            : null;
+        _accountSpeculation = _speculatesStorageRoots && configuration.SpeculativeAccountTrie ? new AccountTrieSpeculation(this) : null;
     }
+
+    /// <summary>Whether committed storage writes go to the speculation workers, see <see cref="IFlatDbConfig.SpeculativeStorageRoots"/>.</summary>
+    internal bool SpeculatesStorageRoots => _speculatesStorageRoots;
 
     internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
 
@@ -141,8 +145,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         Interlocked.Add(ref _earlyReusedSlots, reused);
         Interlocked.Add(ref _earlyRestoredSlots, restored);
     }
-
-    internal bool IsReadOnly => _isReadOnly;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -593,10 +595,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
-        // Warm-up still queued now would only compete with the commit for the pool: the commit loads what it needs
-        // itself. The sequence bump drops queued jobs, the pause refuses new hints until the scope commits.
-        _pausePrewarmer = true;
-        Interlocked.Increment(ref _hintSequenceId);
+        if (_speculatesStorageRoots)
+        {
+            // Warm-up still queued now would only compete with the commit for the pool: the commit loads what it needs
+            // itself. The sequence bump drops queued jobs, the pause refuses new hints until the scope commits.
+            _pausePrewarmer = true;
+            Interlocked.Increment(ref _hintSequenceId);
+        }
+
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
