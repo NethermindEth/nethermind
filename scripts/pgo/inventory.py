@@ -31,7 +31,10 @@ def file_identity(path):
 
 def first_request(path):
     with Path(path).open("rb") as stream:
-        record = json.loads(next(line for line in stream if line.strip()))
+        line = next((line for line in stream if line.strip()), None)
+        if line is None:
+            raise ValueError(f"input file contains no requests: {path}")
+        record = json.loads(line)
     if not isinstance(record, dict):
         return {"format_error": "first input record is not an RPC object"}
     params = record.get("params", [])

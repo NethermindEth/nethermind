@@ -21,6 +21,9 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual(file_identity(path)["physical_line_count"], 1)
             path.write_text("a\nb")
             self.assertEqual(file_identity(path)["physical_line_count"], 2)
+            path.write_text("\n")
+            with self.assertRaisesRegex(ValueError, "no requests"):
+                first_request(path)
 
     def test_workflow_is_manual_fusaka_inventory_without_promotion(self):
         workflow = Path(__file__).resolve().parents[2] / ".github/workflows/collect-pgo-profile.yml"
