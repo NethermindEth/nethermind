@@ -48,7 +48,7 @@ public class PeerFailureLimitFallbackTests
             IBeaconSyncPeer most = AddPeer(manager, "Most", PeerFailureReason.RequestFailed, Limit + 2);
             if (violatorPassedHealthCheck)
             {
-                typeof(PeerManager).GetNestedType("ManagedPeer", BindingFlags.NonPublic)!.GetMethod("ResetHealthCheckFailures")!.Invoke(violator, null);
+                PassHealthCheck(violator);
             }
 
             ulong slot = Status.HeadSlot;
@@ -66,6 +66,37 @@ public class PeerFailureLimitFallbackTests
             }
 
             Assert.That(manager.GetBestPeers(slot).Select(static p => p.Id), Is.EquivalentTo(new[] { least.Id, next.Id }));
+        }
+    }
+
+    // A passing health check clears the run's violation flag, so only the request-failure marker keeps the violator out here.
+    [Test]
+    public async Task A_violator_is_offered_at_the_limit_again_only_once_all_its_failures_were_forgiven([Values] bool served, [Values] bool allForgiven)
+    {
+        Node node = Create();
+        await using (node.P2P)
+        {
+            ManualTimestamper clock = new();
+            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
+            ISession answering = Substitute.For<ISession>();
+            answering.DialAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(default!, default)
+                .ReturnsForAnyArgs(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([]));
+            IBeaconSyncPeer violator = AddPeer(manager, "Violator", PeerFailureReason.ProtocolViolation, Limit / 2, session: answering);
+            PassHealthCheck(violator);
+            int forgiven = allForgiven ? Limit : 1;
+            if (served)
+            {
+                for (int i = 0; i < forgiven; i++) await violator.RequestBlocksByRootAsync([Hash256.Zero], default);
+            }
+            else
+            {
+                clock.Add(PeerManager.RequestFailureDecayInterval * forgiven);
+            }
+
+            for (int i = 0; i < forgiven; i++) violator.ReportFailure(PeerFailureReason.RequestFailed);
+            IBeaconSyncPeer other = AddPeer(manager, "Other", PeerFailureReason.RequestFailed, Limit + 3);
+
+            Assert.That(manager.GetBestPeers(0), allForgiven ? Is.EquivalentTo(new[] { violator, other }) : Is.EqualTo(new[] { other }));
         }
     }
 
@@ -184,6 +215,9 @@ public class PeerFailureLimitFallbackTests
 
         return peer;
     }
+
+    private static void PassHealthCheck(IBeaconSyncPeer peer) =>
+        typeof(PeerManager).GetNestedType("ManagedPeer", BindingFlags.NonPublic)!.GetMethod("ResetHealthCheckFailures")!.Invoke(peer, null);
 
     private static StatusMessageV2 WithHead(ulong headSlot)
     {
