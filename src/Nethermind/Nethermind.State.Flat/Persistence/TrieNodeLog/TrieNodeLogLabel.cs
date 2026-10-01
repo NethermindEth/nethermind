@@ -21,6 +21,8 @@ public readonly record struct TrieNodeLogLabel(string Value) : IMetricLabels
 
     public static TrieNodeLogLabel Column(byte column) => Columns[column];
 
+    public static int ColumnCount => Columns.Length;
+
     private static TrieNodeLogLabel[] CreateColumnLabels()
     {
         TrieNodeLogLabel[] labels = new TrieNodeLogLabel[Enum.GetValues<FlatDbColumns>().Length];

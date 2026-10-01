@@ -175,19 +175,13 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Write trie nodes (StateTopNodes, StateNodes and StorageNodes; FallbackNodes stays direct) through an append-only trie node log (with an in-memory index) that is merged into RocksDB one generation at a time, so nodes rewritten within a generation are written to RocksDB once. Flat layout only. Experimental: a self-destruct only removes the storage trie nodes already in RocksDB, nodes still in the log are left as unreachable orphans.", DefaultValue = "false")]
     bool TrieNodeLogEnabled { get; set; }
 
-    [ConfigItem(Description = "Byte budget of the state-top partition of the trie node log (StateTopNodes), split evenly over its shards: each shard's generation, i.e. its deduplication window before it is merged into RocksDB, is this divided by the partition's shard count. Each live generation also keeps an in-memory index of 1/TrieNodeLogIndexRatio of its size.", DefaultValue = "524288000")]
-    long TrieNodeLogStateTopBytes { get; set; }
-
-    [ConfigItem(Description = "Byte budget of the state partition of the trie node log (StateNodes), split evenly over its shards like TrieNodeLogStateTopBytes.", DefaultValue = "134217728")]
+    [ConfigItem(Description = "Byte budget of the state partition of the trie node log (StateTopNodes and StateNodes), split evenly over its shards: each shard's generation, i.e. its deduplication window before it is merged into RocksDB, is this divided by the partition's shard count. Each live generation also keeps an in-memory index of 1/TrieNodeLogIndexRatio of its size.", DefaultValue = "524288000")]
     long TrieNodeLogStateBytes { get; set; }
 
-    [ConfigItem(Description = "Byte budget of the storage partition of the trie node log (StorageNodes), split evenly over its shards like TrieNodeLogStateTopBytes.", DefaultValue = "524288000")]
+    [ConfigItem(Description = "Byte budget of the storage partition of the trie node log (StorageNodes), split evenly over its shards like TrieNodeLogStateBytes.", DefaultValue = "524288000")]
     long TrieNodeLogStorageBytes { get; set; }
 
-    [ConfigItem(Description = "Number of shards of the state-top partition of the trie node log, a power of two. Nodes are sharded by the first byte of their column key (the first path nibbles for state nodes, the first byte of the address hash for storage nodes); shards are appended to and merged in parallel.", DefaultValue = "2")]
-    int TrieNodeLogStateTopShardCount { get; set; }
-
-    [ConfigItem(Description = "Number of shards of the state partition of the trie node log, a power of two.", DefaultValue = "1")]
+    [ConfigItem(Description = "Number of shards of the state partition of the trie node log, a power of two. Nodes are sharded by the first byte of their column key (the first path nibbles for state nodes, the first byte of the address hash for storage nodes); shards are appended to and merged in parallel.", DefaultValue = "2")]
     int TrieNodeLogStateShardCount { get; set; }
 
     [ConfigItem(Description = "Number of shards of the storage partition of the trie node log, a power of two.", DefaultValue = "2")]

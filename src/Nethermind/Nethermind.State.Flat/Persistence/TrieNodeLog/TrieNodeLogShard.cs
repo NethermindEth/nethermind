@@ -73,10 +73,10 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     /// <param name="mergeLimiter">Caps concurrent merges across every shard of the log.</param>
     /// <param name="backlogMargin">Sealed generations allowed beyond <paramref name="mergeLag"/> before a roll waits for a merge.</param>
-    public TrieNodeLogShard(string name, FlatDbColumns column, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int indexRatio, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
+    public TrieNodeLogShard(string name, FlatDbColumns[] columns, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int indexRatio, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
     {
         Name = name;
-        Column = column;
+        Columns = columns;
         VersionKey = Keccak.Compute($"TrieNodeLogVersion:{name}").BytesToArray();
         FlushedGenerationKey = Keccak.Compute($"TrieNodeLogFlushedGeneration:{name}").BytesToArray();
         _basePath = basePath;
@@ -96,8 +96,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     public string Name { get; }
 
-    /// <summary>The one trie column this shard holds records of.</summary>
-    public FlatDbColumns Column { get; }
+    /// <summary>The trie columns this shard holds records of; a record's column follows from its key length.</summary>
+    public FlatDbColumns[] Columns { get; }
 
     internal byte[] VersionKey { get; }
 
@@ -400,8 +400,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private void FlushGeneration(TrieNodeLogGeneration generation, List<TrieNodeLogGeneration> newer)
     {
         long sw = Stopwatch.GetTimestamp();
-        long written = 0;
         int records = 0;
+        long writtenTotal = 0;
+        Span<long> written = stackalloc long[TrieNodeLogLabel.ColumnCount];
         IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
         if (!BasePersistence.ReadWipedForSync(metadata))
         {
@@ -412,7 +413,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
-                Core.IWriteBatch column = batch.GetColumnBatch(Column);
+                Core.IWriteBatch?[] columnBatches = new Core.IWriteBatch?[TrieNodeLogLabel.ColumnCount];
                 Scanner scanner = new(generation.Handle, generation.Frontier);
                 try
                 {
@@ -424,9 +425,11 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                         if (!generation.IsLatest(hash, scanner.Offset)) continue;
                         if (HasCommittedNewerRecord(newer, hash, scanner.Key, probeBuffer, committedVersion)) continue;
 
+                        int columnIndex = (int)BaseTriePersistence.ColumnOfNodeKey(header.KeyLength);
+                        Core.IWriteBatch column = columnBatches[columnIndex] ??= batch.GetColumnBatch((FlatDbColumns)columnIndex);
                         if (header.Type == TrieNodeLogRecord.Delete) column.Set(scanner.Key, null, WriteFlags.DisableWAL);
                         else column.PutSpan(scanner.Key, scanner.Value, WriteFlags.DisableWAL);
-                        written += header.KeyLength + header.ValueLength;
+                        written[columnIndex] += header.KeyLength + header.ValueLength;
                         records++;
                     }
                 }
@@ -439,7 +442,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             // The log file is the WAL of this merge: the data goes in without one, the column family is flushed
             // (throwing, so a failure never reaches the marker), and only then is the marker written and flushed.
             // Marker durable therefore implies data durable; a crash before that replays the file.
-            _db.GetColumnDb(Column).FlushOrThrow();
+            foreach (FlatDbColumns column in Columns) _db.GetColumnDb(column).FlushOrThrow();
 
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
@@ -448,7 +451,11 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                 batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(FlushedGenerationKey, marker, WriteFlags.DisableWAL);
             }
             _db.GetColumnDb(FlatDbColumns.Metadata).FlushOrThrow();
-            if (written != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(TrieNodeLogLabel.Column((byte)Column), written);
+            for (int column = 0; column < written.Length; column++)
+            {
+                if (written[column] != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), written[column]);
+                writtenTotal += written[column];
+            }
             Metrics.TrieNodeLogFlushedGeneration[_label] = (long)generation.Number;
         }
 
@@ -461,7 +468,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         generation.Dispose(); // the log's own lease
         Metrics.TrieNodeLogMergeTime.Observe(Stopwatch.GetTimestamp() - sw);
 
-        if (_logger.IsDebug) _logger.Debug($"Merged trie node log {Name} generation {generation.Number}: {records} records, {written / (double)MemorySizes.MiB:F1} MiB of {generation.Frontier / (double)MemorySizes.MiB:F1} MiB in {Stopwatch.GetElapsedTime(sw).TotalMilliseconds:F0} ms");
+        if (_logger.IsDebug) _logger.Debug($"Merged trie node log {Name} generation {generation.Number}: {records} records, {writtenTotal / (double)MemorySizes.MiB:F1} MiB of {generation.Frontier / (double)MemorySizes.MiB:F1} MiB in {Stopwatch.GetElapsedTime(sw).TotalMilliseconds:F0} ms");
     }
 
     private static bool HasCommittedNewerRecord(List<TrieNodeLogGeneration> newer, ulong hash, ReadOnlySpan<byte> key, Span<byte> probeBuffer, ulong committedVersion)

@@ -40,7 +40,7 @@ public class TrieNodeLogTests
         _directory = TempPath.GetTempDirectory();
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // Two shards per partition, so every shard gets a 4 KiB generation.
-        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateTopBytes = 8192, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
+        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
         Open();
     }
 
@@ -328,10 +328,9 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state_top-0")), Is.Not.Empty);
-            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state_top-1")), Is.Not.Empty);
-            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-0")), Is.Empty, "StateNodes keys have their own partition");
-            Assert.That(Directory.Exists(Path.Combine(_directory.Path, "state-1")), Is.False, "the state partition has one shard by default");
+            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-0")), Is.Not.Empty);
+            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-1")), Is.Not.Empty);
+            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "storage-0")), Is.Empty, "storage nodes have their own partition");
             Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
             Assert.That(reader.TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
@@ -371,7 +370,7 @@ public class TrieNodeLogTests
     [Test]
     public async Task Startup_merge_takes_any_shard_layout_into_RocksDB()
     {
-        TreePath highPath = TreePath.FromHexString("f1234"); // second state_top shard
+        TreePath highPath = TreePath.FromHexString("f1234"); // second state shard
         using (IPersistence.IWriteBatch batch = Batch(0, 1))
         {
             batch.SetStateTrieNode(TopPath, Rlp1);
@@ -384,7 +383,7 @@ public class TrieNodeLogTests
         TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance);
 
         // The directory is clean, so a different shard count starts from an empty log and reads come from RocksDB.
-        _config.TrieNodeLogStateTopShardCount = 1;
+        _config.TrieNodeLogStateShardCount = 1;
         Open();
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
@@ -402,7 +401,7 @@ public class TrieNodeLogTests
     {
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
-        string file = LogFiles().Single(static file => file.Contains("state_top"));
+        string file = LogFiles().Single(static file => file.Contains("state-0"));
         using (FileStream stream = new(file, FileMode.Open, FileAccess.Write))
         {
             stream.Position = 4; // the version word after the magic
@@ -439,7 +438,7 @@ public class TrieNodeLogTests
     {
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
-        string directory = Path.GetDirectoryName(LogFiles().Single(static file => file.Contains("state_top")))!;
+        string directory = Path.GetDirectoryName(LogFiles().Single(static file => file.Contains("state-0")))!;
         string stub = Path.Combine(directory, "gen-00000099.log");
         File.WriteAllBytes(stub, Bytes.FromHexString("0x544e"));
 

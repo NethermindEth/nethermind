@@ -65,7 +65,6 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Enabled = true,
             Layout = FlatLayout.Flat,
             TrieNodeLogEnabled = true,
-            TrieNodeLogStateTopBytes = 8192,
             TrieNodeLogStateBytes = 8192,
             TrieNodeLogStorageBytes = 8192,
         }, "Flat+TrieNodeLog");
