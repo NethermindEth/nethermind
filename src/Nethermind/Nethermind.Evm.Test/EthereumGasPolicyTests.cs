@@ -179,8 +179,8 @@ public class EthereumGasPolicyTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracker.WarmUp(null!), Is.True, "first access is cold");
-            Assert.That(tracker.WarmUp(null!), Is.False, "the repeat is warm");
+            Assert.That(tracker.WarmUp((Address)null!), Is.True, "first access is cold");
+            Assert.That(tracker.WarmUp((Address)null!), Is.False, "the repeat is warm");
             Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "a remembered null does not make an address warm");
         }
     }
