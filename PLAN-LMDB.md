@@ -532,6 +532,34 @@ mitigation for exactly this class of problem. Both are gated behind the LMDB plu
 (the static constructor only runs once the decorator type is first used, i.e. only when `Lmdb.Enabled` causes
 Autofac to construct it), so neither affects a `master`/RocksDB run at all.
 
+**Refuted by the very diagnostic added to confirm it.** The next live run's slow-event logs showed the
+ThreadPool in a completely healthy state during a ~1820ms stall affecting two independent writes (3 ops and
+49,094 ops, again with an identical GC-pause delta, again confirming genuine overlap not a logging artifact):
+`277 threads, 32750/32767 worker avail, 1000/1000 IO avail, 0 queued`. That is the *opposite* of starvation -
+tens of thousands of available threads, essentially nothing queued. `SetMinThreads(512, ...)` is left in place
+(it is harmless, and `ThreadPool.ThreadCount` staying below it simply reflects that nothing has demanded more
+threads than the pool already has, which is consistent with there being no queueing pressure) but it is **not**
+the fix for these stalls, and should not be mistaken for one by a future reader of this file.
+
+**Current leading hypothesis, not yet confirmed: LMDB's documented write-commit cost scaling with the number of
+concurrently active read transactions**, independent of the committing write's own size. On every write commit,
+LMDB must determine the oldest active reader transaction, to know which old (now-superseded) pages are safe to
+reclaim for copy-on-write reuse versus which might still be visible to some live reader - standard LMDB
+behavior, not a LightningDB-specific quirk, and one documented to scale with how many readers are concurrently
+open. `CreateSnapshot`'s pool holds `SnapshotReaderPoolSize` (`Environment.ProcessorCount`) read transactions
+alive for however long the *caller* takes to dispose the whole snapshot, not just for one quick read - if many
+snapshots are alive at once during heavy snap-sync activity (e.g. a caller doing further processing before
+disposing), the reader table could have hundreds-to-thousands of active entries at any moment, independent of
+disk I/O, GC, or ThreadPool state - fitting every remaining piece of evidence: write latency uncorrelated with
+the write's own op count, correlated instead with ambient conditions at the moment.
+
+Added `LmdbDb._aliveSnapshotPoolReaders` - a live gauge (not a reset-on-read counter, unlike the other
+`DiagnosticsSnapshot` fields) of pooled read transactions currently alive across every not-yet-disposed
+snapshot on a given column, incremented in `CreateSnapshot` and decremented in `LmdbDbSnapshot.Dispose`. Logged
+alongside every slow-event `Warn` line and in the periodic 30-second diagnostics line
+(`AlivePooledReaders N`). A high count during the next slow-write occurrence would confirm this directly; a low
+one would rule it out just as clearly as the ThreadPool numbers ruled out starvation.
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,

@@ -613,15 +613,40 @@ public class LmdbDbTests
         Assert.That(first.AvgWriteWaveMicros, Is.GreaterThanOrEqualTo(0));
         Assert.That(first.AvgWriteWaveOps, Is.EqualTo(1));
         Assert.That(first.MapGrowthCount, Is.EqualTo(0));
+        // The snapshot above was already disposed (empty `using` body) before TakeAndResetDiagnostics ran.
+        Assert.That(first.AliveSnapshotPoolReaders, Is.EqualTo(0));
 
         // A second call with no activity in between must report an empty interval, not the same counts again -
         // this is what makes the periodic logger's "last ~30s" numbers meaningful on a long-running node.
+        // AliveSnapshotPoolReaders is a gauge, not a reset counter, but it's still 0 here since nothing is alive.
         LmdbDb.DiagnosticsSnapshot second = _db.TakeAndResetDiagnostics();
-        Assert.That(second, Is.EqualTo(new LmdbDb.DiagnosticsSnapshot(0, 0, 0, 0, 0, 0, 0, 0)));
+        Assert.That(second, Is.EqualTo(new LmdbDb.DiagnosticsSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0)));
 
         _db.Get([1]);
         LmdbDb.DiagnosticsSnapshot third = _db.TakeAndResetDiagnostics();
         Assert.That(third.GetCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void AliveSnapshotPoolReaders_tracks_currently_open_pooled_readers_across_multiple_snapshots()
+    {
+        // A gauge, not a reset-on-read counter (unlike the other DiagnosticsSnapshot fields) - see
+        // PLAN-LMDB.md "Known issues": logged alongside slow-event warnings to check whether LMDB's documented
+        // "write-commit cost scales with active reader count" behavior explains a given stall.
+        int poolSize = Environment.ProcessorCount;
+        Assert.That(_db.TakeAndResetDiagnostics().AliveSnapshotPoolReaders, Is.EqualTo(0));
+
+        IKeyValueStoreSnapshot first = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+        Assert.That(_db.TakeAndResetDiagnostics().AliveSnapshotPoolReaders, Is.EqualTo(poolSize));
+
+        IKeyValueStoreSnapshot second = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+        Assert.That(_db.TakeAndResetDiagnostics().AliveSnapshotPoolReaders, Is.EqualTo(poolSize * 2));
+
+        first.Dispose();
+        Assert.That(_db.TakeAndResetDiagnostics().AliveSnapshotPoolReaders, Is.EqualTo(poolSize));
+
+        second.Dispose();
+        Assert.That(_db.TakeAndResetDiagnostics().AliveSnapshotPoolReaders, Is.EqualTo(0));
     }
 
     [Test]

@@ -54,6 +54,17 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     private long _writeWaveOpsCount;
     private long _mapGrowthCount;
 
+    /// <summary>
+    /// Total pooled read transactions currently alive across every not-yet-disposed <see cref="LmdbDbSnapshot"/>
+    /// - i.e. live LMDB reader-table occupancy from this column's snapshots specifically (not counting the much
+    /// shorter-lived per-call transactions <see cref="Get"/> etc. use). Logged alongside slow-event warnings -
+    /// see PLAN-LMDB.md "Known issues": LMDB's write-commit cost is documented to scale with the number of
+    /// concurrently active readers (it must find the oldest one to know which old pages are safe to reclaim for
+    /// copy-on-write reuse), independent of the committing write's own size - a high count here during a slow
+    /// write, with disk I/O, GC, and ThreadPool capacity all ruled out, would be direct evidence of exactly that.
+    /// </summary>
+    private long _aliveSnapshotPoolReaders;
+
     public string Name { get; }
 
     private readonly int _maxOperationsPerWave;
@@ -256,6 +267,8 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             throw;
         }
 
+        long aliveReaders = Interlocked.Add(ref _aliveSnapshotPoolReaders, pool.Length);
+
         long elapsedTicks = Stopwatch.GetTimestamp() - start;
         Interlocked.Increment(ref _createSnapshotCount);
         Interlocked.Add(ref _createSnapshotElapsedTicks, elapsedTicks);
@@ -264,10 +277,10 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         if (elapsedMs >= SlowOperationThresholdMs && _logger.IsWarn)
         {
             double gcPauseDuringMs = (GC.GetTotalPauseDuration() - gcPauseBefore).TotalMilliseconds;
-            _logger.Warn($"Lmdb '{Name}' CreateSnapshot took {elapsedMs:F1}ms (pool size {pool.Length}, GC pause during: {gcPauseDuringMs:F1}ms, {FormatThreadPoolState()}) - every concurrent reader on this column was blocked for this duration.");
+            _logger.Warn($"Lmdb '{Name}' CreateSnapshot took {elapsedMs:F1}ms (pool size {pool.Length}, alive pooled readers: {aliveReaders}, GC pause during: {gcPauseDuringMs:F1}ms, {FormatThreadPoolState()}) - every concurrent reader on this column was blocked for this duration.");
         }
 
-        return new LmdbDbSnapshot(pool, _database);
+        return new LmdbDbSnapshot(pool, _database, this);
     }
 
     /// <summary>
@@ -297,7 +310,8 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         long GetCount, double AvgGetMicros,
         long CreateSnapshotCount, double AvgCreateSnapshotMicros,
         long WriteWaveCount, double AvgWriteWaveMicros, double AvgWriteWaveOps,
-        long MapGrowthCount);
+        long MapGrowthCount,
+        long AliveSnapshotPoolReaders);
 
     /// <summary>Atomically reads and zeroes every counter, so each call reports only the interval since the
     /// previous one rather than a lifetime-since-process-start average that would dilute an early spike into
@@ -316,7 +330,8 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             createSnapshotCount, AvgMicros(Interlocked.Exchange(ref _createSnapshotElapsedTicks, 0), createSnapshotCount),
             writeWaveCount, AvgMicros(Interlocked.Exchange(ref _writeWaveElapsedTicks, 0), writeWaveCount),
             writeWaveCount == 0 ? 0 : (double)writeWaveOpsCount / writeWaveCount,
-            Interlocked.Exchange(ref _mapGrowthCount, 0));
+            Interlocked.Exchange(ref _mapGrowthCount, 0),
+            Interlocked.Read(ref _aliveSnapshotPoolReaders));
 
         static double AvgMicros(long totalTicks, long count) =>
             count == 0 ? 0 : totalTicks * 1_000_000.0 / Stopwatch.Frequency / count;
@@ -395,7 +410,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         }
         else if (elapsedMs >= SlowOperationThresholdMs && _logger.IsWarn)
         {
-            _logger.Warn($"Lmdb '{Name}' write request took {elapsedMs:F1}ms ({operations.Count} ops, durable={wantsDurability}, GC pause during: {gcPauseDuringMs:F1}ms, {FormatThreadPoolState()}) - unusually slow.");
+            _logger.Warn($"Lmdb '{Name}' write request took {elapsedMs:F1}ms ({operations.Count} ops, durable={wantsDurability}, alive pooled readers: {Interlocked.Read(ref _aliveSnapshotPoolReaders)}, GC pause during: {gcPauseDuringMs:F1}ms, {FormatThreadPoolState()}) - unusually slow.");
         }
 
         write.Error?.Throw();
@@ -752,7 +767,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     /// entirely: each pooled transaction has its own independent cursor state, so once a thread has exclusively
     /// rented one, it needs no synchronization to use it.
     /// </remarks>
-    private sealed class LmdbDbSnapshot(LightningTransaction[] pool, LightningDatabase database) : IKeyValueStoreSnapshot, ISortedKeyValueStore
+    private sealed class LmdbDbSnapshot(LightningTransaction[] pool, LightningDatabase database, LmdbDb owner) : IKeyValueStoreSnapshot, ISortedKeyValueStore
     {
         private readonly ConcurrentQueue<LightningTransaction> _available = new(pool);
         private readonly SemaphoreSlim _availablePermits = new(pool.Length, pool.Length);
@@ -851,6 +866,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             for (int i = 0; i < pool.Length; i++) _availablePermits.Wait();
             foreach (LightningTransaction tx in pool) tx.Dispose();
             _availablePermits.Dispose();
+            Interlocked.Add(ref owner._aliveSnapshotPoolReaders, -pool.Length);
         }
     }
 
