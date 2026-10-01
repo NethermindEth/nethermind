@@ -129,7 +129,7 @@ public static partial class EvmInstructions
         if (param > 0x0C) return EvmExceptionType.BadInstruction;
         if (param >= 0x0B)
         {
-            if (!stack.PopUInt256(out UInt256 topicValue) || !stack.PopUInt256(out UInt256 localIndex))
+            if (!stack.PopUInt256(out UInt256 topicValue, out UInt256 localIndex))
                 return EvmExceptionType.StackUnderflow;
             ValueHash256 topic = topicValue.ToValueHash();
             return TxDiffTopicView<TGasPolicy, TTracingInst>(ref gas, (byte)param.u0, view, in topic, in localIndex, ref stack);

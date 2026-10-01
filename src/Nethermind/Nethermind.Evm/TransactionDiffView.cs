@@ -157,14 +157,10 @@ internal sealed class TransactionDiffView
                 Hash256[] topics = Logs[i].Topics;
                 for (int j = 1; j < topics.Length; j++)
                 {
-                    bool duplicate = false;
-                    for (int k = 1; k < j; k++)
-                        duplicate |= topics[k] == topics[j];
-                    if (duplicate) continue;
                     ValueHash256 topic = topics[j].ValueHash256;
                     if (!events.TryGetValue(topic, out List<int>? indices))
                         events.Add(topic, indices = []);
-                    indices.Add(i);
+                    if (indices.Count == 0 || indices[^1] != i) indices.Add(i);
                 }
             }
             return _topicEvents = events;

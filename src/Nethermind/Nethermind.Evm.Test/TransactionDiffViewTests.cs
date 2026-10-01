@@ -28,7 +28,7 @@ public class TransactionDiffViewTests
         LogEntry[] logs =
         [
             new(Low, [], [topic]),
-            new(Mid, [], [signature, topic, topic]),
+            new(Mid, [], [signature, topic, signature, topic]),
             new(High, [], [signature, topic]),
         ];
         TransactionDiffView view = TransactionDiffView.Build(new BlockAccessListAtIndex(), logs);
@@ -39,7 +39,9 @@ public class TransactionDiffViewTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(view.TopicEventCount(in topicValue), Is.EqualTo(2));
-            Assert.That(view.TopicEventCount(in signatureValue), Is.Zero);
+            Assert.That(view.TopicEventCount(in signatureValue), Is.EqualTo(1));
+            Assert.That(view.TryGetTopicEventGlobalIndex(in signatureValue, in first, out int signatureGlobal), Is.True);
+            Assert.That(signatureGlobal, Is.EqualTo(1));
             Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in first, out int firstGlobal), Is.True);
             Assert.That(firstGlobal, Is.EqualTo(1));
             Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in second, out int secondGlobal), Is.True);
