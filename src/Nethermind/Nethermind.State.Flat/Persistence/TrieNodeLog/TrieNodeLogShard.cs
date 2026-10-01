@@ -51,6 +51,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private ulong _nextGeneration;
     private ulong _version;
     private int _openBatch;
+    private int _disposed;
 
     // One batch is open per shard at a time; its pending-key map is kept across batches so its entry arrays
     // (which grow past the LOH threshold) are not reallocated every batch.
@@ -148,6 +149,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         await _cancellation.CancelAsync();
         try { await _flushWorker; }
         catch (OperationCanceledException) { }
@@ -202,6 +204,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         WaitForBacklog();
         using Lock.Scope _ = _lock.EnterScope();
         TrieNodeLogGeneration generation = new(_nextGeneration, System.IO.Path.Combine(_basePath, $"{FilePrefix}{_nextGeneration:D8}{FileExtension}"), TrieNodeLogGeneration.CapacityFor(_generationBytes));
+        generation.WriteFileHeader();
         _nextGeneration++;
         _generations.Add(generation);
         _active = generation;
@@ -464,7 +467,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
         foreach ((ulong number, string path) in files)
         {
-            if (wiped || number <= flushedGeneration)
+            // An empty file is one whose creation did not get as far as its header.
+            if (wiped || number <= flushedGeneration || new FileInfo(path).Length == 0)
             {
                 File.Delete(path);
                 continue;
@@ -490,9 +494,10 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     {
         long fileLength = new FileInfo(path).Length;
         TrieNodeLogGeneration generation = new(number, path, Math.Max(TrieNodeLogGeneration.CapacityFor(_generationBytes), TrieNodeLogGeneration.CapacityFor(fileLength)));
+        generation.ValidateFileHeader();
 
         // First pass: the frontier is the end of the last commit record the metadata column confirms.
-        long frontier = 0;
+        long frontier = TrieNodeLogGeneration.FileHeaderLength;
         using (Scanner scanner = new(generation, fileLength))
         {
             while (scanner.MoveNext() && scanner.Header.Version <= committedVersion)
@@ -527,7 +532,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         private byte[] _buffer = ArrayPool<byte>.Shared.Rent(ScanBufferSize);
         private long _bufferOffset; // file offset of _buffer[0]
         private int _buffered;
-        private long _next;
+        private long _next = TrieNodeLogGeneration.FileHeaderLength; // file offset of the next record
         private int _recordStart;
 
         public long Offset { get; private set; }

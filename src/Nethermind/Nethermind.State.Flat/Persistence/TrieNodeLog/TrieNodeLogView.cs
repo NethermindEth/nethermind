@@ -13,8 +13,8 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// </summary>
 internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNodeLogGeneration> pinned) : IDisposable
 {
-    // Header, the longest key and a full trie node (a branch is ~530 bytes) fit in one read.
-    private const int ReadBufferSize = 1024;
+    // Header, the longest key (28 bytes) and a full branch node (~532 bytes) fit in one read; a longer value takes a second.
+    private const int ReadBufferSize = 700;
 
     private ulong _version;
     private ulong _flushedGeneration;

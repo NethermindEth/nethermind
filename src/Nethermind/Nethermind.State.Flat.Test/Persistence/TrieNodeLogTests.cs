@@ -398,6 +398,21 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public async Task A_generation_file_of_another_format_is_refused()
+    {
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+        string file = LogFiles().Single(static file => file.Contains("state_top"));
+        using (FileStream stream = new(file, FileMode.Open, FileAccess.Write))
+        {
+            stream.Position = 4; // the version word after the magic
+            stream.Write(Bytes.FromHexString("0xffffffff"));
+        }
+
+        Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains("format"));
+    }
+
+    [Test]
     public void Only_one_log_backed_batch_may_be_open()
     {
         using IPersistence.IWriteBatch open = Batch(0, 1);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -22,6 +23,11 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 {
     private const int MinCapacity = 1024;
+
+    /// <summary>File header: magic followed by the record format version; records start right after it.</summary>
+    public const int FileHeaderLength = 8;
+    private const uint FormatVersion = 1;
+    private static ReadOnlySpan<byte> Magic => "TNLG"u8;
 
     private static long _aliveCount;
     private static long _aliveIndexBytes;
@@ -69,6 +75,28 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     public long IndexBytes => (long)Capacity * sizeof(ulong);
 
     public static int CapacityFor(long generationBytes) => (int)Math.Min(int.MaxValue / 2, generationBytes / 64);
+
+    /// <summary>Writes the file header of a new generation; the write frontier starts after it.</summary>
+    public void WriteFileHeader()
+    {
+        Span<byte> header = stackalloc byte[FileHeaderLength];
+        Magic.CopyTo(header);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[Magic.Length..], FormatVersion);
+        Write(0, header);
+        WriteFrontier = FileHeaderLength;
+        Frontier = FileHeaderLength;
+    }
+
+    /// <summary>Checks the file header of a recovered generation, throwing when the file was written by another format.</summary>
+    public void ValidateFileHeader()
+    {
+        Span<byte> header = stackalloc byte[FileHeaderLength];
+        if (ReadAt(0, header) != FileHeaderLength || !header[..Magic.Length].SequenceEqual(Magic))
+            throw new InvalidDataException($"{Path} is not a trie node log generation file");
+        uint version = BinaryPrimitives.ReadUInt32LittleEndian(header[Magic.Length..]);
+        if (version != FormatVersion)
+            throw new InvalidDataException($"{Path} uses trie node log format {version}, this build writes format {FormatVersion}; merge it with the build that wrote it or delete it");
+    }
 
     public bool TryAcquire() => TryAcquireLease();
 
