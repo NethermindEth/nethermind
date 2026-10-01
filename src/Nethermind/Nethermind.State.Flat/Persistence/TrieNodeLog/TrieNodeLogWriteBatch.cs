@@ -3,7 +3,9 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
@@ -29,6 +31,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLog log, ulong version, List
     private TrieNodeLogGeneration? _current; // the generation the buffer appends to
     private int _pendingInsertsInCurrent;
     private bool _committed;
+    private readonly long[] _appendedBytesByColumn = new long[WriteBufferAdjuster.ColumnCount];
 
     public IWriteBatch Wrap(FlatDbColumns column, IWriteBatch inner) => log.Covers(column) ? new Column(this, (byte)column) : inner;
 
@@ -78,7 +81,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLog log, ulong version, List
         _buffered += header.Length;
 
         _pending[hash] = new Pending(generation, slot, recordOffset);
-        Metrics.TrieNodeLogAppendedBytes += key.Length + value.Length;
+        _appendedBytesByColumn[column] += key.Length + value.Length;
     }
 
     private TrieNodeLogGeneration CurrentGeneration()
@@ -121,6 +124,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLog log, ulong version, List
 
     public void Commit(IWriteOnlyKeyValueStore metadataBatch)
     {
+        long sw = Stopwatch.GetTimestamp();
         try
         {
             Span<byte> commit = stackalloc byte[TrieNodeLogRecord.HeaderLength];
@@ -167,6 +171,13 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLog log, ulong version, List
             Abort();
             throw;
         }
+
+        for (int column = 0; column < _appendedBytesByColumn.Length; column++)
+        {
+            if (_appendedBytesByColumn[column] != 0) Metrics.TrieNodeLogAppendedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), _appendedBytesByColumn[column]);
+        }
+        Metrics.TrieNodeLogVersion = (long)version;
+        Metrics.TrieNodeLogCommitTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
 
     private void Abort()

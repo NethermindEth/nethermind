@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
@@ -17,6 +18,9 @@ internal sealed class TrieNodeLogView(TrieNodeLog log, List<TrieNodeLogGeneratio
 
     private ulong _version;
     private ulong _flushedGeneration;
+    private long _hits;
+    private long _chainHits;
+    private long _misses;
 
     public void Bind(IReadOnlyKeyValueStore metadata)
     {
@@ -36,6 +40,10 @@ internal sealed class TrieNodeLogView(TrieNodeLog log, List<TrieNodeLogGeneratio
     {
         foreach (TrieNodeLogGeneration generation in pinned) generation.Dispose();
         pinned.Clear();
+        if (_hits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Hit, _hits);
+        if (_chainHits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Chain, _chainHits);
+        if (_misses != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Miss, _misses);
+        log.RefreshGauges();
     }
 
     /// <summary>Whether the log holds the value for <paramref name="key"/> at this view's version; <paramref name="value"/> is null for a tombstone.</summary>
@@ -48,11 +56,13 @@ internal sealed class TrieNodeLogView(TrieNodeLog log, List<TrieNodeLogGeneratio
             TrieNodeLogGeneration generation = pinned[i];
             if (!generation.TryLocate(hash, column, key, buffer, out TrieNodeLogRecord header, out _, out long offset, out int bytesRead)) continue;
 
+            bool walked = false;
             while (header.Version > _version)
             {
                 ulong previous = header.Prev;
                 if (previous == 0 || TrieNodeLogRecord.LocationGeneration(previous) <= _flushedGeneration)
                 {
+                    Interlocked.Increment(ref _misses);
                     value = null;
                     return false;
                 }
@@ -61,12 +71,15 @@ internal sealed class TrieNodeLogView(TrieNodeLog log, List<TrieNodeLogGeneratio
                 offset = TrieNodeLogRecord.LocationOffset(previous);
                 bytesRead = generation.ReadAt(offset, buffer);
                 header = TrieNodeLogRecord.Read(buffer);
+                walked = true;
             }
 
+            Interlocked.Increment(ref walked ? ref _chainHits : ref _hits);
             value = header.Type == TrieNodeLogRecord.Delete ? null : generation.ReadValue(offset, header, buffer, bytesRead);
             return true;
         }
 
+        Interlocked.Increment(ref _misses);
         value = null;
         return false;
     }

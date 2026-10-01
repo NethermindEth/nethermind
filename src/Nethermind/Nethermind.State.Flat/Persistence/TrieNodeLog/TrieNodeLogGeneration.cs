@@ -23,6 +23,9 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 {
     private const int MinCapacity = 1024;
 
+    private static long _aliveCount;
+    private static long _aliveIndexBytes;
+
     private readonly ulong* _slots;
     private readonly int _mask;
     private int _preserve;
@@ -54,7 +57,16 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         Handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
         // Zeroed native memory so the table never touches the GC heap; freed exactly once in CleanUp.
         _slots = (ulong*)NativeMemory.AllocZeroed((nuint)Capacity, sizeof(ulong));
+        Interlocked.Increment(ref _aliveCount);
+        Interlocked.Add(ref _aliveIndexBytes, IndexBytes);
     }
+
+    /// <summary>Generations whose file and index have not been released yet, merged-but-pinned ones included.</summary>
+    public static long AliveCount => Volatile.Read(ref _aliveCount);
+
+    public static long AliveIndexBytes => Volatile.Read(ref _aliveIndexBytes);
+
+    public long IndexBytes => (long)Capacity * sizeof(ulong);
 
     public static int CapacityFor(long generationBytes) => (int)Math.Min(int.MaxValue / 2, generationBytes / 64);
 
@@ -155,6 +167,8 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     {
         Handle.Dispose();
         NativeMemory.Free(_slots);
+        Interlocked.Decrement(ref _aliveCount);
+        Interlocked.Add(ref _aliveIndexBytes, -IndexBytes);
         if (Volatile.Read(ref _preserve) == 0)
         {
             try { File.Delete(Path); } catch { /* best-effort */ }

@@ -3,7 +3,9 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -121,7 +123,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
         _generations.Clear();
         _active = null;
-        Metrics.TrieNodeLogGenerationCount = 0;
+        RefreshGaugesNoLock();
     }
 
     public async ValueTask DisposeAsync()
@@ -181,7 +183,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _nextGeneration++;
         _generations.Add(generation);
         _active = generation;
-        Metrics.TrieNodeLogGenerationCount = _generations.Count;
+        RefreshGaugesNoLock();
         return generation;
     }
 
@@ -207,6 +209,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 _active.IsSealed = true;
                 _active = null;
             }
+            RefreshGaugesNoLock();
         }
         Volatile.Write(ref _openBatch, 0);
         _flushSignal.Release();
@@ -280,9 +283,11 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     private void FlushGeneration(TrieNodeLogGeneration generation, List<TrieNodeLogGeneration> newer)
     {
-        long sw = System.Diagnostics.Stopwatch.GetTimestamp();
+        long sw = Stopwatch.GetTimestamp();
         long written = 0;
         int records = 0;
+        long[] writtenByColumn = new long[WriteBufferAdjuster.ColumnCount];
+        long[] skippedByColumn = new long[WriteBufferAdjuster.ColumnCount];
         IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
         if (!BasePersistence.ReadWipedForSync(metadata))
         {
@@ -301,12 +306,18 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                         TrieNodeLogRecord header = scanner.Header;
                         if (header.IsCommit) continue;
                         ulong hash = TrieNodeLogRecord.Hash(header.Column, scanner.Key);
-                        if (!generation.IsLatest(hash, scanner.Offset) || HasCommittedNewerRecord(newer, hash, header.Column, scanner.Key, probeBuffer, committedVersion)) continue;
+                        if (!generation.IsLatest(hash, scanner.Offset)) continue;
+                        if (HasCommittedNewerRecord(newer, hash, header.Column, scanner.Key, probeBuffer, committedVersion))
+                        {
+                            skippedByColumn[header.Column] += header.KeyLength + header.ValueLength;
+                            continue;
+                        }
 
                         Core.IWriteBatch column = batch.GetColumnBatch((FlatDbColumns)header.Column);
                         if (header.Type == TrieNodeLogRecord.Delete) column.Remove(scanner.Key);
                         else column.PutSpan(scanner.Key, scanner.Value);
                         written += header.KeyLength + header.ValueLength;
+                        writtenByColumn[header.Column] += header.KeyLength + header.ValueLength;
                         records++;
                     }
                 }
@@ -321,18 +332,24 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             }
 
             _db.SyncWal();
-            Metrics.TrieNodeLogFlushedBytes += written;
+            for (int column = 0; column < WriteBufferAdjuster.ColumnCount; column++)
+            {
+                if (writtenByColumn[column] != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), writtenByColumn[column]);
+                if (skippedByColumn[column] != 0) Metrics.TrieNodeLogSkippedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), skippedByColumn[column]);
+            }
+            Metrics.TrieNodeLogFlushedGeneration = (long)generation.Number;
         }
 
         using (_lock.EnterScope())
         {
             generation.IsFlushed = true;
             _generations.Remove(generation);
-            Metrics.TrieNodeLogGenerationCount = _generations.Count;
+            RefreshGaugesNoLock();
         }
         generation.Dispose(); // the log's own lease
+        Metrics.TrieNodeLogMergeTime.Observe(Stopwatch.GetTimestamp() - sw);
 
-        if (_logger.IsDebug) _logger.Debug($"Merged trie node log generation {generation.Number}: {records} records, {written / (double)MemorySizes.MiB:F1} MiB of {generation.Frontier / (double)MemorySizes.MiB:F1} MiB in {System.Diagnostics.Stopwatch.GetElapsedTime(sw).TotalMilliseconds:F0} ms");
+        if (_logger.IsDebug) _logger.Debug($"Merged trie node log generation {generation.Number}: {records} records, {written / (double)MemorySizes.MiB:F1} MiB of {generation.Frontier / (double)MemorySizes.MiB:F1} MiB in {Stopwatch.GetElapsedTime(sw).TotalMilliseconds:F0} ms");
     }
 
     private static bool HasCommittedNewerRecord(List<TrieNodeLogGeneration> newer, ulong hash, byte column, ReadOnlySpan<byte> key, Span<byte> probeBuffer, ulong committedVersion)
@@ -343,6 +360,25 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 return header.Version <= committedVersion;
         }
         return false;
+    }
+
+    internal void RefreshGauges()
+    {
+        using Lock.Scope _ = _lock.EnterScope();
+        RefreshGaugesNoLock();
+    }
+
+    private void RefreshGaugesNoLock()
+    {
+        long bytes = 0;
+        foreach (TrieNodeLogGeneration generation in _generations) bytes += generation.WriteFrontier;
+        int active = _active is null ? 0 : 1;
+        Metrics.TrieNodeLogGenerationCount[TrieNodeLogLabel.Active] = active;
+        Metrics.TrieNodeLogGenerationCount[TrieNodeLogLabel.Sealed] = _generations.Count - active;
+        Metrics.TrieNodeLogGenerationCount[TrieNodeLogLabel.MergedPinned] = TrieNodeLogGeneration.AliveCount - _generations.Count;
+        Metrics.TrieNodeLogBytes = bytes;
+        Metrics.TrieNodeLogIndexBytes = TrieNodeLogGeneration.AliveIndexBytes;
+        Metrics.TrieNodeLogActiveOccupancyPercent = _active is null ? 0 : _active.Occupied * 100L / _active.Capacity;
     }
 
     private void Recover()
@@ -376,7 +412,9 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             _nextGeneration = Math.Max(_nextGeneration, number + 1);
         }
 
-        Metrics.TrieNodeLogGenerationCount = _generations.Count;
+        Metrics.TrieNodeLogVersion = (long)committedVersion;
+        Metrics.TrieNodeLogFlushedGeneration = (long)flushedGeneration;
+        RefreshGaugesNoLock();
         if (_generations.Count > 0)
         {
             if (_logger.IsInfo) _logger.Info($"Recovered {_generations.Count} trie node log generation(s) up to version {committedVersion}");

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NonBlocking;
 
 
@@ -416,14 +417,57 @@ public static class Metrics
     public static long FlatHistoryPrunePassesYielded { get; set; }
 
     [CounterMetric]
-    [Description("Key and value bytes appended to the trie node log")]
-    public static long TrieNodeLogAppendedBytes { get; set; }
+    [Description("Key and value bytes appended to the trie node log, by column")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogAppendedBytes { get; } = new();
 
     [CounterMetric]
-    [Description("Key and value bytes merged from the trie node log into RocksDB (the latest record per key of each generation)")]
-    public static long TrieNodeLogFlushedBytes { get; set; }
+    [Description("Key and value bytes merged from the trie node log into RocksDB (the latest record per key of each generation), by column")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedBytes { get; } = new();
+
+    [CounterMetric]
+    [Description("Key and value bytes a trie node log merge skipped because a newer committed record exists in a later generation, by column")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogSkippedBytes { get; } = new();
+
+    [CounterMetric]
+    [Description("Trie node reads answered by the trie node log: hit (served from the log), chain (served after walking to an older version), miss (fell through to RocksDB)")]
+    [KeyIsLabel("outcome")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogReads { get; } = new();
+
+    [DetailedMetric]
+    [Description("Time to merge one trie node log generation into RocksDB")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver TrieNodeLogMergeTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Time to commit one batch to the trie node log: buffer flush, fsync and index publish")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver TrieNodeLogCommitTime { get; set; } = new NoopMetricObserver();
 
     [GaugeMetric]
-    [Description("Trie node log generations in memory, including ones merged into RocksDB but still pinned by readers")]
-    public static long TrieNodeLogGenerationCount { get; set; }
+    [Description("Trie node log generations by state: active (being appended to), sealed (waiting for or being merged), merged_pinned (merged into RocksDB but still held open by a reader)")]
+    [KeyIsLabel("state")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogGenerationCount { get; } = new();
+
+    [GaugeMetric]
+    [Description("Bytes of trie node log generation files not yet merged into RocksDB")]
+    public static long TrieNodeLogBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Native memory held by trie node log generation indexes, including merged generations still pinned by readers")]
+    public static long TrieNodeLogIndexBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Index load of the active trie node log generation in percent; it is sealed at 75")]
+    public static long TrieNodeLogActiveOccupancyPercent { get; set; }
+
+    [GaugeMetric]
+    [Description("Version of the last batch committed to the trie node log")]
+    public static long TrieNodeLogVersion { get; set; }
+
+    [GaugeMetric]
+    [Description("Newest trie node log generation merged into RocksDB")]
+    public static long TrieNodeLogFlushedGeneration { get; set; }
 }
