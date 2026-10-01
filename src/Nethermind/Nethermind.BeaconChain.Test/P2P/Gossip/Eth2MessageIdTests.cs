@@ -6,8 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.Libp2p;
 using NUnit.Framework;
 using Snappier;
 
