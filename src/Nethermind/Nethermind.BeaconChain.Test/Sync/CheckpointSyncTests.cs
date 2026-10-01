@@ -22,6 +22,7 @@ using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
@@ -99,14 +100,18 @@ public class CheckpointSyncTests
     /// refused the only checkpoint on offer. The anchor must come back and be stored in the Gloas shape.
     /// </summary>
     [Test]
-    public async Task A_gloas_checkpoint_is_verified_and_persisted_in_the_gloas_shape([Values] bool withBlockFile)
+    public async Task A_gloas_checkpoint_is_verified_and_persisted_in_the_gloas_shape([Values] bool withBlockFile, [Values] bool independentCheckpoint)
     {
         ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(first.PostState, withBlockFile ? new ForkedSignedBeaconBlock.OfGloas(first.Block) : null);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
 
         CheckpointAnchor anchor;
-        using (CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance))
+        using (CheckpointSync sync = new(new BeaconChainConfig
+        {
+            CheckpointStateFile = files.StateFile,
+            WeakSubjectivityCheckpoint = independentCheckpoint ? $"{first.Root}:1" : null,
+        }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance))
         {
             anchor = await sync.RunAsync(CancellationToken.None);
         }
@@ -122,6 +127,8 @@ public class CheckpointSyncTests
             Assert.That(anchorSlot, Is.EqualTo(first.Block.Message!.Slot));
             Assert.That(store.TryGetForkedBlock(first.Root, out ForkedSignedBeaconBlock? stored), Is.EqualTo(withBlockFile));
             Assert.That(stored, withBlockFile ? Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>() : Is.Null);
+            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), independentCheckpoint ? Is.Not.Null : Is.Null,
+                "a proven checkpoint is recorded, so a restart accepts it after the anchor follows finality past it");
         }
     }
 
@@ -216,6 +223,68 @@ public class CheckpointSyncTests
         Assert.That(anchor.BlockRoot, Is.EqualTo(blockRoot));
         Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out _), Is.True);
         Assert.That(anchorRoot, Is.EqualTo(blockRoot));
+    }
+
+    /// <summary>weak-subjectivity.md, Weak Subjectivity Sync Procedure: an unproven checkpoint prevents anchor persistence.</summary>
+    [Test]
+    public void An_independent_checkpoint_mismatch_refuses_fresh_sync_before_persisting([Values(0UL, 1UL, 2UL, ulong.MaxValue)] ulong epoch)
+    {
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, null);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig
+        {
+            CheckpointStateFile = files.StateFile,
+            WeakSubjectivityCheckpoint = $"{GloasTestFixtures.Hash(0x5A)}:{epoch}",
+        }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
+        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+    }
+
+    /// <summary>
+    /// weak-subjectivity.md, Weak Subjectivity Sync Procedure: only the anchor itself proves a checkpoint. A later anchor whose block_roots,
+    /// supplied by the checkpoint source, names the checkpoint proves nothing, and neither does the anchor's root under another epoch.
+    /// </summary>
+    [TestCase(false, false, 1UL, true)]
+    [TestCase(true, false, 1UL, false)]
+    [TestCase(false, true, 1UL, false)]
+    [TestCase(false, false, 0UL, false)]
+    [TestCase(false, false, 2UL, false)]
+    public void Only_the_anchor_itself_proves_a_weak_subjectivity_checkpoint(bool laterAnchor, bool parentRoot, ulong epoch, bool proven)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkCrossingChain.ChainBlock anchor = laterAnchor ? chain.Voting[0] : chain.First;
+        Hash256 root = parentRoot ? chain.AnchorRoot : chain.First.Root;
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig(), GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+        Checkpoint checkpoint = CheckpointSync.ParseWeakSubjectivityCheckpoint($"{root}:{epoch}")!;
+        BeaconStateGloas state = anchor.PostState;
+        if (parentRoot)
+        {
+            Assert.That(Array.IndexOf(state.BlockRoots!, root), Is.GreaterThanOrEqualTo(0), "fixture: the parent is in the anchor's block_roots");
+        }
+
+        Assert.That(sync.ProvesCheckpoint(new ForkedBeaconState.OfGloas(state), anchor.Root, checkpoint), Is.EqualTo(proven));
+    }
+
+    /// <summary>weak-subjectivity.md, Weak Subjectivity Sync Procedure: checkpoint input uses a 32-byte root and unsigned epoch.</summary>
+    [Test]
+    public void An_invalid_independent_checkpoint_is_refused([Values("0x01:1", "root:1", "0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9:-1",
+        "0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9", "0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43dz:1")] string value) =>
+        Assert.That(() => CheckpointSync.ParseWeakSubjectivityCheckpoint(value),
+            Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains("BeaconChain.WeakSubjectivityCheckpoint"));
+
+    /// <summary>weak-subjectivity.md, Weak Subjectivity Sync Procedure: the example input parses, and a blank value leaves the checkpoint unset.</summary>
+    [TestCase("0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9:9544", 9544UL)]
+    [TestCase(" ", null)]
+    [TestCase(null, null)]
+    public void A_weak_subjectivity_checkpoint_parses_as_block_root_and_epoch(string? value, ulong? epoch)
+    {
+        Checkpoint? checkpoint = CheckpointSync.ParseWeakSubjectivityCheckpoint(value);
+
+        Assert.That(checkpoint?.Epoch, Is.EqualTo(epoch));
+        Assert.That(checkpoint?.Root, epoch is null ? Is.Null : Is.EqualTo(new Hash256("0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9")));
     }
 
     private static ExternalClDetector CreateDetector(ILogManager logManager) =>
