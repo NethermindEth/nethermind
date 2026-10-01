@@ -63,7 +63,9 @@ class CollectionRenderTests(unittest.TestCase):
 
     def test_existing_startup_flags_are_replaced_without_changing_other_flags(self):
         replacements = ["--Init.PipelineWarmupEnabled=true", "--Init.EvmWarmupEnabled false",
-                        "--init-pipelinewarmupenabled", "--INIT-EVMWARMUPENABLED=TRUE"]
+                        "--init-pipelinewarmupenabled", "--INIT-EVMWARMUPENABLED=TRUE",
+                        "--Init.EvmWarmupEnabled:true", "--init-evmwarmupenabled:false",
+                        "--Init.PipelineWarmupEnabled", "false"]
         retained = ["--Other.Value=private-test-value", "--Other.Value initpipelinewarmupenabled"]
         expected = retained + ["--Init.PipelineWarmupEnabled=false", "--Init.EvmWarmupEnabled=false"]
         self.assertEqual(without_startup_warmup(retained + replacements), expected)
@@ -82,6 +84,8 @@ class CollectionRenderTests(unittest.TestCase):
         cases = (None, "--Init.EvmWarmupEnabled=true", [False],
                  ["--Init.EvmWarmupEnabled=private-test-value"],
                  ["--Init.EvmWarmupEnabled=true false"],
+                 ["--Init.EvmWarmupEnabled:true false"],
+                 ["--Init.EvmWarmupEnabled", "private-test-value"],
                  ["--Other.Value=private-test-value --Init.EvmWarmupEnabled=true"],
                  ["--Init.EvmWarmupEnabled false --Init.PipelineWarmupEnabled false"])
         with tempfile.TemporaryDirectory() as directory:

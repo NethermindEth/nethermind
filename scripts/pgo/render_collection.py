@@ -6,6 +6,7 @@
 import argparse
 import json
 from pathlib import Path
+import re
 
 import yaml
 
@@ -17,16 +18,23 @@ def without_startup_warmup(flags):
         raise ValueError("collection flags must be a list of strings")
     options = {"initpipelinewarmupenabled", "initevmwarmupenabled"}
     retained = []
-    for flag in flags:
+    index = 0
+    while index < len(flags):
+        flag = flags[index]
+        index += 1
         tokens = flag.split()
         matches = [token for token in tokens
                    if token.startswith("--")
-                   and token.split("=", 1)[0].lstrip("-").replace(".", "").replace("-", "").lower() in options]
+                   and re.split("[=:]", token, maxsplit=1)[0].lstrip("-").replace(".", "").replace("-", "").lower() in options]
         if matches:
             if len(matches) != 1 or tokens[0] != matches[0] or len(tokens) > 2:
                 raise ValueError("startup warmup flags must be separate options")
-            value = tokens[0].split("=", 1)[1] if "=" in tokens[0] else tokens[1] if len(tokens) == 2 else "true"
-            if value.lower() not in ("true", "false") or "=" in tokens[0] and len(tokens) != 1:
+            option = re.split("[=:]", tokens[0], maxsplit=1)
+            value = option[1] if len(option) == 2 else tokens[1] if len(tokens) == 2 else "true"
+            if len(option) == len(tokens) == 1 and index < len(flags) and not flags[index].startswith("--"):
+                value = flags[index]
+                index += 1
+            if value.lower() not in ("true", "false") or len(option) == 2 and len(tokens) != 1:
                 raise ValueError("invalid startup warmup flag")
         else:
             retained.append(flag)

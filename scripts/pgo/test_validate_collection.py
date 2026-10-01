@@ -57,8 +57,12 @@ class CollectionValidationTests(unittest.TestCase):
                 manifest.write_text(json.dumps({"replay_window": window, "startup_warmup_disabled": declaration}))
                 self.assertEqual(validate(log, 1, 0, manifest)["status"] == "valid", valid)
             manifest.write_text(json.dumps({"replay_window": window, "startup_warmup_disabled": True}))
-            log.write_text(original_log + "Startup payload pipeline warmup complete.\n")
-            self.assertEqual(validate(log, 1, 0, manifest)["status"], "failed")
+            for message in ("complete.", "cancelled.", "failed; RPC startup will continue.",
+                            "exceeded its 30 second budget;"):
+                log.write_text(original_log + "Startup payload pipeline warmup " + message + "\n")
+                self.assertEqual(validate(log, 1, 0, manifest)["status"], "failed")
+            log.write_text(original_log + "Skipping startup payload pipeline warmup: disabled\n")
+            self.assertEqual(validate(log, 1, 0, manifest)["status"], "valid")
             log.write_text(original_log)
             for declared in (0, 1):
                 manifest.write_text(json.dumps({"replay_window": window, "delay_seconds": declared,
