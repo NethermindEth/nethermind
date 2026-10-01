@@ -292,14 +292,15 @@ public class PeerDialPolicyTests
     public async Task A_static_peer_is_redialed_without_waiting_out_a_backoff(CancellationToken token)
     {
         Node local = CreateNode();
-        Node remote = CreateNode();
-        SetMatchingStatus(local, remote);
-        remote.StatusHolder.CurrentStatus = new StatusMessageV2
+        SetMatchingStatus(local);
+        // A status holder answers with the wall-clock fork digest, so the other fork is served directly.
+        StatusMessageV2 served = new()
         {
             ForkDigest = [0xde, 0xad, 0xbe, 0xef],
             FinalizedRoot = Hash256.Zero,
             HeadRoot = Hash256.Zero,
         };
+        Node remote = CreateNode(statusSource: new ScriptedStatusSource(_ => served));
         try
         {
             await remote.P2P.StartAsync(token);
@@ -310,7 +311,7 @@ public class PeerDialPolicyTests
             await manager.RunMaintenanceRoundAsync(token);
             Assert.That(manager.PeerCount, Is.Zero, "a static peer on another fork was admitted");
 
-            SetMatchingStatus(remote);
+            served = local.StatusHolder.CurrentStatus;
             // The clock never moves, so only a dial that ignores the backoff of the failed one can connect.
             for (int round = 0; round < 3 && manager.PeerCount == 0; round++)
             {
