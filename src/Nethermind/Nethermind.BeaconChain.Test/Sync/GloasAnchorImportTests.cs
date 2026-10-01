@@ -3,12 +3,15 @@
 
 using System;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -39,6 +42,54 @@ namespace Nethermind.BeaconChain.Test.Sync;
 public class GloasAnchorImportTests
 {
     private const ulong ForkSlot = 32;
+
+    [Test]
+    public async Task A_checkpoint_anchor_with_blobs_imports_a_full_child_after_columns_are_served_by_root([Values] bool delayedColumns)
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block anchorBlock = chain.Next(null, ForkSlot, full: false, 0xA1,
+            blobCommitments: DataColumnSidecarGloasTestFixture.Commitments());
+        SignedGloasChain.Block child = chain.Next(anchorBlock, ForkSlot + 1, full: true, 0xA2);
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(anchorBlock.PostState, anchorBlock.Forked);
+        SignedGloasChain.EnvelopeEngine engine = new();
+        ManualTimestamper time = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (ForkSlot + 2) * chain.Spec.SecondsPerSlot));
+        int requests = 0;
+        EnvelopeServingPeer peer = new("peer", ForkSlot + 2, byRoot: _ => [anchorBlock.Envelope],
+            gloasColumnsByRoot: ids => delayedColumns && ++requests == 1 ? []
+                : [.. ids[0].Columns!.Select(c => DataColumnSidecarGloasTestFixture.BuildSidecar(c, ForkSlot, anchorBlock.Root))]);
+        IBeaconSyncPeerPool peers = Substitute.For<IBeaconSyncPeerPool>();
+        peers.GetBestPeers(Arg.Any<ulong>()).Returns(new IBeaconSyncPeer[] { peer });
+        await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { CheckpointStateFile = files.StateFile })
+            .AddSingleton(GloasCheckpointFiles.Spec)
+            .AddSingleton<IEngineDriver>(engine)
+            .AddSingleton<ITimestamper>(time)
+            .AddSingleton(peers)
+            .Build();
+        container.Resolve<BeaconDiscovery>().CreateDiscv5Services(IPAddress.Loopback);
+        CheckpointAnchor anchor = await container.Resolve<CheckpointSync>().RunAsync(CancellationToken.None);
+        container.Resolve<PubkeyCache>().Build(anchorBlock.PostState.Validators!);
+        IBlockImporter importer = container.Resolve<IBlockImporterFactory>().Create(anchor.State, anchor.Block, anchor.BlockRoot);
+        BeaconSyncOrchestrator orchestrator = container.Resolve<BeaconSyncOrchestrator>();
+        orchestrator.GossipStarted = true;
+        orchestrator.Initialize(importer, anchor.Block, anchor.BlockRoot);
+
+        Assert.That(importer.ImportEnvelope(anchorBlock.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
+        Assert.That(await orchestrator.ImportBlockAsync(child.Forked, CancellationToken.None), Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
+        await orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
+        await orchestrator.ProcessSlotAsync(ForkSlot + 2, CancellationToken.None);
+        time.Set(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (ForkSlot + 3) * chain.Spec.SecondsPerSlot));
+        await orchestrator.ProcessSlotAsync(ForkSlot + 3, CancellationToken.None);
+        await orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
+        await orchestrator.ProcessSlotAsync(ForkSlot + 3, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.ColumnRootRequests, Has.Count.EqualTo(delayedColumns ? 2 : 1));
+            Assert.That(peer.ColumnRootRequests[0][0].BlockRoot, Is.EqualTo(anchor.BlockRoot));
+            Assert.That(importer.IsKnown(child.Root), Is.True);
+            Assert.That(engine.EnvelopeCalls, Is.EqualTo(1));
+        }
+    }
 
     /// <summary>
     /// The anchor's payload is not known verified, so a child that builds on it full waits for the anchor's envelope,
