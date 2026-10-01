@@ -328,6 +328,59 @@ public partial class ParallelUnbalancedWorkTests
         Assert.That(timedOut, Is.Zero);
     }
 
+    [Test]
+    [NonParallelizable]
+    public void For_returns_without_a_free_pool_thread_once_the_caller_claims_the_range([Values] bool withLocal)
+    {
+        if (Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires queued workers.");
+        // Park more callbacks than the pool has threads, so the loop's queued workers sit behind them. A caller
+        // that waited for those workers to be dequeued would block on the pool, as nested loops did when every
+        // pool thread was itself inside one.
+        // Not disposed: parked callbacks may still be dequeued after the test returns.
+        ManualResetEventSlim release = new();
+        int blockers = ThreadPool.ThreadCount + 64;
+        for (int i = 0; i < blockers; i++)
+            ThreadPool.UnsafeQueueUserWorkItem(static r => r.Wait(TimeSpan.FromSeconds(30)), release, preferLocal: false);
+
+        int[] calls = new int[64];
+        int inits = 0;
+        try
+        {
+            Task loop = Task.Factory.StartNew(() =>
+            {
+                ParallelOptions options = new() { MaxDegreeOfParallelism = 4 };
+                if (withLocal)
+                {
+                    ParallelUnbalancedWork.For(0, calls.Length, options, () =>
+                    {
+                        Interlocked.Increment(ref inits);
+                        return 0;
+                    }, (i, local) =>
+                    {
+                        Interlocked.Increment(ref calls[i]);
+                        return local;
+                    }, static _ => { });
+                }
+                else
+                {
+                    ParallelUnbalancedWork.For(0, calls.Length, options, i => Interlocked.Increment(ref calls[i]));
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+            Assert.That(loop.Wait(TimeSpan.FromSeconds(10)), Is.True, "The caller must not wait for queued workers that never started.");
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.All.EqualTo(1));
+            if (withLocal) Assert.That(inits, Is.EqualTo(1), "Only the caller ran; withdrawn workers must not initialize.");
+        }
+    }
+
     private sealed class CallbackWork(Action callback) : IThreadPoolWorkItem
     {
         public void Execute() => callback();
