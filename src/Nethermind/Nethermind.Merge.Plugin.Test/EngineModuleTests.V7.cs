@@ -793,8 +793,7 @@ public partial class EngineModuleTests
         {
             if (newPayloadStatus == PayloadStatus.Syncing)
             {
-                branchProcessor.ProcessingRelease = releaseProcessing.Task;
-                OccupyBlockProcessor(chain, parent);
+                OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
             }
             else newPayloadHandler.Status = newPayloadStatus;
 
@@ -837,7 +836,7 @@ public partial class EngineModuleTests
     // cached for one call must never stand in for a later call that supplied a different list.
     [TestCase(true, false, false, TestName = "ForkchoiceUpdatedV5_recomputes_a_resent_inclusion_list_once_the_head_state_is_readable")]
     [TestCase(false, false, null, TestName = "ForkchoiceUpdatedV5_reports_null_for_a_resent_inclusion_list_it_cannot_evaluate")]
-    [TestCase(true, true, null, TestName = "ForkchoiceUpdatedV5_reports_null_when_retained_list_gas_dimensions_are_unavailable")]
+    [TestCase(true, true, false, TestName = "ForkchoiceUpdatedV5_reports_censorship_proven_without_gas_dimensions")]
     public async Task ForkchoiceUpdatedV5_does_not_answer_a_resent_inclusion_list_from_the_previous_answer(
         bool stateHealed, bool dimensionsLost, bool? expected)
     {
@@ -1174,19 +1173,26 @@ public partial class EngineModuleTests
     }
 
     /// <summary>Occupies the block processor so the payload sent next has to queue and its newPayload times out.</summary>
-    private static void OccupyBlockProcessor(MergeTestBlockchain chain, Block parent)
+    private static void OccupyBlockProcessor(MergeTestBlockchain chain, Block parent, Task processingRelease)
     {
         using ManualResetEventSlim processingStarted = new(false);
         TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
         branchProcessor.ProcessingStarted = processingStarted;
+        branchProcessor.ProcessingRelease = processingRelease;
         Block occupyBlock = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent)
             .WithNonce(0).WithDifficulty(0).WithStateRoot(parent.StateRoot!).TestObject;
         occupyBlock.Header.TotalDifficulty = parent.TotalDifficulty;
-        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
-            occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
-        Assert.That(processingStarted.Wait(TimeSpan.FromSeconds(5)), Is.True, "the block processor was never occupied");
-        // Later blocks must not signal an event disposed here while the chain is still processing.
-        branchProcessor.ProcessingStarted = null;
+        try
+        {
+            _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+                occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+            Assert.That(processingStarted.Wait(TimeSpan.FromSeconds(5)), Is.True, "the block processor was never occupied");
+        }
+        finally
+        {
+            // Later blocks must not signal an event disposed here while the chain is still processing.
+            branchProcessor.ProcessingStarted = null;
+        }
     }
 
     /// <summary>A transfer that fits an empty Bogota payload, so a list holding it is unsatisfied unless the block includes it.</summary>
@@ -1344,6 +1350,23 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
             first, [], Keccak.Zero, [], entry == InclusionListEntry.Included ? firstList : [Rlp.Encode(censored).Bytes]);
+
+        if (dimensionsLost && resendHead && entry == InclusionListEntry.Boundary)
+        {
+            EngineRpcModule engineRpc = (EngineRpcModule)rpc;
+            Assert.That(engineRpc.HasRetainedInclusionList(first.BlockHash), Is.True);
+            Transaction[]? sharedList = executed.InclusionListTransactions;
+            ResultWrapper<ForkchoiceUpdatedV2Result> retained = await rpc.engine_forkchoiceUpdatedV5(
+                new ForkchoiceStateV1(first.BlockHash, first.BlockHash, first.BlockHash), payloadAttributes: null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retained.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                Assert.That(retained.Data.PayloadStatus.InclusionListSatisfied, Is.Null,
+                    "the retained list remains ambiguous across gas-dimension bounds");
+                Assert.That(executed.Header.GasUsedPerDimension, Is.Null, "bounds must not alter the tree's header");
+                Assert.That(executed.InclusionListTransactions, Is.SameAs(sharedList), "the retained list must not replace the tree's list");
+            }
+        }
 
         bool answerUnavailable = dimensionsLost && entry == InclusionListEntry.Boundary;
         bool expectedSatisfied = entry is InclusionListEntry.Included or InclusionListEntry.WrongNonce;

@@ -426,18 +426,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </remarks>
     private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)
     {
-        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-
         Hash256 hash = block.GetOrCalculateHash();
         // A decoded payload has no EIP-8037 dimensions, and neither the state root nor the header's
         // max(execution, state) carries them back, so without what execution recorded this would answer on a
         // coarser gas rule than the processing path and could report real censorship as absent.
         block.Header.GasUsedPerDimension = RecordedGasDimensions(hash);
-        _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
-        SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
-        bool? satisfied = spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
-            ? EvaluateWithUnknownGasDimensions(block, state, spec)
-            : InclusionListValidator.IsSatisfied(block, state, spec, _txValidator);
+        bool? satisfied = IsInclusionListSatisfied(block, block.InclusionListTransactions!);
         if (satisfied is null) return null;
 
         ValidationResult result = satisfied.Value ? ValidationResult.Valid : ValidationResult.InclusionListUnsatisfied;
@@ -449,44 +443,47 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     }
 
     /// <inheritdoc/>
-    /// <remarks>Under EIP-8037, returns null when execution's recorded gas dimensions are unavailable.</remarks>
+    /// <remarks>Without EIP-8037 gas dimensions, answers only when every possible assignment gives the same verdict.</remarks>
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
     {
         Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (block is null || !_stateReader.HasStateForBlock(block.Header)) return null;
+        // Gas bounds must not mutate the tree's shared header while another request reads it.
+        block = block.WithReplacedBodyCloned(block.Body);
         block.Header.GasUsedPerDimension = RecordedGasDimensions(blockHash);
-        if (_specProvider.GetSpec(block.Header).IsEip8037Enabled && block.Header.GasUsedPerDimension is null) return null;
 
         // Undecodable entries are dropped rather than failing the answer: a censoring proposer must not be
         // able to escape the check by having one bad entry gossiped into the aggregate.
         return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
     }
 
-    private bool IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
+    private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
 
-        return InclusionListValidator.IsSatisfied(
-            block, inclusionList, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator);
+        SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
+        return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
+            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
+            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator);
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
-    /// <remarks>Only cold-cache resends use these passes; account reads are shared across their gas bounds.</remarks>
-    private bool? EvaluateWithUnknownGasDimensions(Block block, IReadOnlyStateProvider state, IReleaseSpec spec)
+    /// <remarks>Account reads are shared across the gas bounds.</remarks>
+    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
         state = new CachedAccountStateProvider(state);
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
             block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
-            if (!InclusionListValidator.IsSatisfied(block, state, spec, _txValidator)) return false;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator)) return false;
 
             block.Header.GasUsedPerDimension = (block.GasUsed, 0);
-            if (!InclusionListValidator.IsSatisfied(block, state, spec, _txValidator)) return null;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator)) return null;
 
             block.Header.GasUsedPerDimension = (0, block.GasUsed);
-            return InclusionListValidator.IsSatisfied(block, state, spec, _txValidator) ? true : null;
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator) ? true : null;
         }
         finally
         {
