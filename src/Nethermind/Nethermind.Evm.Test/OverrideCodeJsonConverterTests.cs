@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
@@ -199,23 +200,58 @@ public class OverrideCodeJsonConverterTests
     }
 
     [Test]
+    public void Texts_racing_for_the_last_room_of_a_set_drop_no_text_in_use()
+    {
+        const int set = 9, racers = 8;
+        for (int round = 0; round < 200; round++)
+        {
+            OverrideCodeInterner interner = new();
+            byte[][] inUse = Enumerable.Range(0, OverrideCodeInterner.Ways - 1).Select(static _ => Encoding.ASCII.GetBytes(UniqueCodeText(40))).ToArray();
+            int[] inUseHashes = inUse.Select(static (_, i) => Hash(set, seenSet: i, unique: i)).ToArray();
+            for (int i = 0; i < inUse.Length; i++) OfferTwice(interner, inUse[i], inUseHashes[i]);
+
+            // Each racer was offered once already, so its next offer adds it if the set has room.
+            byte[][] texts = Enumerable.Range(0, racers).Select(static _ => Encoding.ASCII.GetBytes(UniqueCodeText(40))).ToArray();
+            int[] hashes = texts.Select(static (_, i) => Hash(set, seenSet: 10 + i, unique: 10 + i)).ToArray();
+            for (int i = 0; i < racers; i++) interner.Add(texts[i], hashes[i], []);
+
+            using Barrier start = new(racers);
+            Thread[] threads = Enumerable.Range(0, racers).Select(i => new Thread(() =>
+            {
+                start.SignalAndWait();
+                interner.Add(texts[i], hashes[i], []);
+            })).ToArray();
+            foreach (Thread thread in threads) thread.Start();
+            foreach (Thread thread in threads) thread.Join();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(interner.Count, Is.EqualTo(OverrideCodeInterner.Ways), $"round {round}");
+                for (int i = 0; i < inUse.Length; i++) Assert.That(interner.Find(inUse[i], inUseHashes[i]), Is.Not.Null, $"round {round}, text {i}");
+            }
+        }
+    }
+
+    [Test]
     public void Texts_no_longer_found_make_way_once_their_set_ages()
     {
         OverrideCodeInterner interner = new();
         const int set = 6;
         for (int i = 0; i < OverrideCodeInterner.Ways; i++) OfferTwice(interner, Encoding.ASCII.GetBytes(UniqueCodeText(40)), Hash(set, seenSet: i, unique: i));
 
-        // The four texts are never found again; a new one keeps coming back.
+        // The four texts are never found again; a new one keeps coming back. Its first offer only remembers it, and
+        // each later one is a refusal of the set, which ages on the last.
         byte[] text = Encoding.ASCII.GetBytes(UniqueCodeText(40));
         int hash = Hash(set, seenSet: 50, unique: 50);
-        for (int attempt = 1; attempt <= interner.RefusalsBeforeAging; attempt++)
+        interner.Add(text, hash, []);
+        for (int refusal = 1; refusal <= interner.RefusalsBeforeAging; refusal++)
         {
-            OfferTwice(interner, text, hash);
-            Assert.That(interner.Find(text, hash), Is.Null, $"attempt {attempt}, before the set ages");
+            interner.Add(text, hash, []);
+            Assert.That(interner.Find(text, hash), Is.Null, $"refusal {refusal}, before the set ages");
         }
 
-        OfferTwice(interner, text, hash);
-        Assert.That(interner.Find(text, hash), Is.Not.Null, "the attempt after the set aged");
+        interner.Add(text, hash, []);
+        Assert.That(interner.Find(text, hash), Is.Not.Null, "the offer after the set aged");
     }
 
     [Test]

@@ -41,7 +41,9 @@ internal abstract class SetAssociativeEntry(int fastHash)
 /// while all its entries are marked. Asking <see cref="HasRoomFor"/> about a set without room counts as a refusal,
 /// and after <see cref="RefusalsBeforeAging"/> of them the set ages: its marks are cleared, so entries that stopped
 /// being used make way again. A caller whose additions are costly asks first, so a working set larger than the table
-/// keeps the entries in use instead of replacing them on every miss.
+/// keeps the entries in use instead of replacing them on every miss, and then adds with <see cref="TryGetOrAdd"/>,
+/// which asks again under the lock that serialises additions, so an addition that raced another one never drops a
+/// marked entry.
 /// </para>
 /// </remarks>
 internal sealed class SetAssociativeTable<TEntry> where TEntry : SetAssociativeEntry
@@ -107,15 +109,9 @@ internal sealed class SetAssociativeTable<TEntry> where TEntry : SetAssociativeE
         if (_refusals is null) return true;
 
         int setIndex = fastHash & _setMask;
-        Span<TEntry?> set = SetAt(setIndex);
         lock (_addLock)
         {
-            if (WayToDrop(set) >= 0) return true;
-            if (++_refusals[setIndex] < RefusalsBeforeAging) return false;
-
-            _refusals[setIndex] = 0;
-            foreach (TEntry? entry in set) entry!.Used = false;
-            return false;
+            return HasRoom(setIndex);
         }
     }
 
@@ -132,18 +128,57 @@ internal sealed class SetAssociativeTable<TEntry> where TEntry : SetAssociativeE
             TEntry? existing = Find(set, entry.Key, entry.FastHash);
             if (existing is not null) return existing;
 
-            int drop = _refusals is null ? -1 : WayToDrop(set);
-            if (drop < 0) drop = set.Length - 1;
-
-            for (int way = drop; way > 0; way--)
-            {
-                Volatile.Write(ref set[way], set[way - 1]);
-            }
-
-            entry.Used = true;
-            Volatile.Write(ref set[0], entry);
-            return entry;
+            return Add(set, entry);
         }
+    }
+
+    /// <summary>
+    /// Like <see cref="GetOrAdd"/>, except that a table that keeps used entries adds nothing while the set has no room,
+    /// which counts as a refusal of the set, as with <see cref="HasRoomFor"/>.
+    /// </summary>
+    /// <returns>
+    /// The entry the table holds for the key: <paramref name="entry"/> or the one added before it; or
+    /// <see langword="null"/> if the set had no room.
+    /// </returns>
+    public TEntry? TryGetOrAdd(TEntry entry)
+    {
+        int setIndex = entry.FastHash & _setMask;
+        Span<TEntry?> set = SetAt(setIndex);
+        lock (_addLock)
+        {
+            TEntry? existing = Find(set, entry.Key, entry.FastHash);
+            if (existing is not null) return existing;
+
+            return _refusals is null || HasRoom(setIndex) ? Add(set, entry) : null;
+        }
+    }
+
+    // Under _addLock, in a table that keeps used entries: whether the set has room, counting a refusal if not.
+    private bool HasRoom(int setIndex)
+    {
+        Span<TEntry?> set = SetAt(setIndex);
+        if (WayToDrop(set) >= 0) return true;
+        if (++_refusals![setIndex] < RefusalsBeforeAging) return false;
+
+        _refusals[setIndex] = 0;
+        foreach (TEntry? entry in set) entry!.Used = false;
+        return false;
+    }
+
+    // Under _addLock: puts the entry at the front of the set, dropping the way WayToDrop picks or else the last one.
+    private TEntry Add(Span<TEntry?> set, TEntry entry)
+    {
+        int drop = _refusals is null ? -1 : WayToDrop(set);
+        if (drop < 0) drop = set.Length - 1;
+
+        for (int way = drop; way > 0; way--)
+        {
+            Volatile.Write(ref set[way], set[way - 1]);
+        }
+
+        entry.Used = true;
+        Volatile.Write(ref set[0], entry);
+        return entry;
     }
 
     private Span<TEntry?> SetOf(int fastHash) => SetAt(fastHash & _setMask);

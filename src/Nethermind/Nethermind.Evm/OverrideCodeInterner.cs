@@ -17,10 +17,12 @@ namespace Nethermind.Evm;
 /// </para>
 /// <para>
 /// Adding a text copies it, so a text is only added when it comes back: its first offer is remembered in a small
-/// set-associative filter, the second one adds it and is forgotten, and a text that later falls out of the table has
+/// set-associative filter, the next one adds it and is forgotten, and a text that later falls out of the table has
 /// to be offered twice again. The table keeps the entries in use (see <see cref="SetAssociativeTable{TEntry}"/>), so
 /// when more texts come back than it holds, it keeps serving the ones it has instead of copying in a new one on every
-/// miss. Code a client sends once costs a hash and no copy.
+/// miss. A text stays remembered while its set has no room, so each of its later offers counts as a refusal of the
+/// set, which ages after <see cref="RefusalsBeforeAging"/> of them. Code a client sends once costs a hash and no
+/// copy.
 /// </para>
 /// <para>
 /// The table holds at most <see cref="Sets"/> × <see cref="Ways"/> entries of at most <see cref="MaxCodeLength"/>
@@ -93,32 +95,46 @@ internal sealed class OverrideCodeInterner
     public byte[]? Find(ReadOnlySpan<byte> text, int fastHash) => _entries.Find(text, fastHash)?.Code;
 
     /// <summary>Offers <paramref name="code"/>, decoded from <paramref name="text"/>, to later requests.</summary>
-    /// <remarks>The first offer of a text only remembers it, and an offer while the text's set has no room adds nothing.</remarks>
+    /// <remarks>
+    /// The first offer of a text only remembers it. An offer while the text's set has no room adds nothing and keeps
+    /// the text remembered.
+    /// </remarks>
     public void Add(ReadOnlySpan<byte> text, int fastHash, byte[] code)
     {
         if (!Accepts(text) || !OfferedBefore(fastHash) || !_entries.HasRoomFor(fastHash)) return;
 
-        _entries.GetOrAdd(new Entry(fastHash, text.ToArray(), code));
+        if (_entries.TryGetOrAdd(new Entry(fastHash, text.ToArray(), code)) is not null) Forget(fastHash);
     }
 
-    // Whether a text with this hash was offered before and not added since; forgets it if so, remembers it if not.
+    // Whether a text with this hash was offered before and not added since; remembers it if not.
     private bool OfferedBefore(int fastHash)
     {
-        // The top byte picks the set, as the low bits pick the set of the table.
-        int mark = fastHash == 0 ? 1 : fastHash;
-        Span<int> set = _seen.AsSpan((int)((uint)fastHash >> 24) * SeenWays, SeenWays);
+        int mark = MarkOf(fastHash);
+        Span<int> set = SeenSetOf(fastHash);
         lock (_seenLock)
         {
-            int way = set.IndexOf(mark);
-            if (way >= 0)
-            {
-                set[way] = 0;
-                return true;
-            }
+            if (set.Contains(mark)) return true;
 
             set[..^1].CopyTo(set[1..]);
             set[0] = mark;
             return false;
         }
     }
+
+    // Forgets a text with this hash once the table holds it.
+    private void Forget(int fastHash)
+    {
+        int mark = MarkOf(fastHash);
+        Span<int> set = SeenSetOf(fastHash);
+        lock (_seenLock)
+        {
+            int way = set.IndexOf(mark);
+            if (way >= 0) set[way] = 0;
+        }
+    }
+
+    private static int MarkOf(int fastHash) => fastHash == 0 ? 1 : fastHash;
+
+    // The top byte picks the set, as the low bits pick the set of the table.
+    private Span<int> SeenSetOf(int fastHash) => _seen.AsSpan((int)((uint)fastHash >> 24) * SeenWays, SeenWays);
 }
