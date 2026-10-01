@@ -99,6 +99,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly IBeaconChainStatusSource _statusSource;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, ManagedPeer> _peers = new();
+
+    // Peers removed for a closed session, by peer id, so an inbound violation reported just after the close still counts against it.
+    private readonly ConcurrentDictionary<string, (ManagedPeer Peer, long RemovedAtTicks)> _closedPeers = new(StringComparer.Ordinal);
+    internal static readonly TimeSpan ClosedPeerWindow = TimeSpan.FromMinutes(1);
     private readonly BeaconDiscovery? _discovery;
     private readonly INodeColumnCustodySource _localCustody;
     private readonly ITimestamper _timestamper;
@@ -669,13 +673,21 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// Records a protocol violation by the requester of an inbound stream against the connected peer with this id, also when selection leaves
     /// that peer out (at the request-failure limit, or behind a head slot): it is still the one that broke the protocol.
     /// </summary>
-    /// <returns><c>false</c> when no connected peer has this id.</returns>
-    /// <remarks>Not a failed request of ours, so the peer is not put behind others in <see cref="GetBestPeers"/>.</remarks>
+    /// <returns><c>false</c> when no connected peer has this id and none was removed for a closed session within <see cref="ClosedPeerWindow"/>.</returns>
+    /// <remarks>
+    /// Not a failed request of ours, so the peer is not put behind others in <see cref="GetBestPeers"/>.
+    /// A peer removed for its closed session still takes the violation, which turns that close into a fault disconnect (see <see cref="RemoveClosedSession"/>).
+    /// </remarks>
     internal bool TryReportInboundViolation(PeerId peerId, string detail)
     {
-        if (!TryFindConnected(peerId.ToString(), out ManagedPeer? connected))
+        ManagedPeer? connected;
+        // Under the lock the close removal holds, so the peer is found in the pool or among the closed ones, never between.
+        lock (_admissionLock)
         {
-            return false;
+            if (!TryFindConnected(peerId.ToString(), out connected) && !TryFindClosed(peerId.ToString(), out connected))
+            {
+                return false;
+            }
         }
 
         connected!.ReportFailure(PeerFailureReason.ProtocolViolation, detail, ownRequest: false);
@@ -1133,33 +1145,35 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
+        DialRecord dial = new(_dialHistory, address);
         try
         {
             using CancellationTokenSource dialCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
             try
             {
                 Interlocked.Increment(ref Metrics.DialAttemptsCount);
-                DialOutcome outcome = await DialAndAdmitAsync(address, peerId, enr, dialCancellation.Token, () => dialCancellation.CancelAfter(DialTimeout));
+                DialOutcome outcome = await DialAndAdmitAsync(address, peerId, enr, dial, dialCancellation.Token, () => dialCancellation.CancelAfter(DialTimeout));
                 // The peer can still hold its half of the collapsed session when a redial arrives and refuses it, so redials back off.
                 for (int redials = 1; redials <= MaxRedialsAfterSimultaneousDial
                     && outcome.LostSessionPeerId is { } lostPeerId && RedialsAfterSimultaneousDial(lostPeerId); redials++)
                 {
                     await Task.Delay(RedialBackoff * redials, dialCancellation.Token);
-                    outcome = await DialAndAdmitAsync(address, peerId, enr, dialCancellation.Token);
+                    outcome = await DialAndAdmitAsync(address, peerId, enr, dial, dialCancellation.Token);
                 }
 
                 token.ThrowIfCancellationRequested();
-                _dialHistory.Record(address, outcome.Admitted);
+                dial.End(outcome.Admitted);
                 return outcome.Admitted;
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                _dialHistory.Record(address, connected: false);
+                dial.End(admitted: false);
                 return false;
             }
         }
         finally
         {
+            dial.End(admitted: null);
             _dialing.TryRemove(address, out _);
             _ = AdmitSessionLeftUnclaimedAsync(address, callerToken);
         }
@@ -1196,6 +1210,51 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
+    /// <summary>The dial history entry of one outbound dial, written once: a fault close of the peer it admitted makes it a failure whenever that lands.</summary>
+    private sealed class DialRecord(PeerDialHistory history, string address)
+    {
+        private readonly Lock _lock = new();
+        private bool _ended;
+        private bool _failed;
+        private bool _failureRecorded;
+
+        /// <param name="admitted">The dial's outcome; <c>null</c> when the caller cancelled it, which records nothing unless the peer failed.</param>
+        public void End(bool? admitted)
+        {
+            lock (_lock)
+            {
+                if (_ended)
+                {
+                    return;
+                }
+
+                _ended = true;
+                if (_failed || admitted == false)
+                {
+                    history.Record(address, connected: false);
+                    _failureRecorded = true;
+                }
+                else if (admitted == true)
+                {
+                    history.Record(address, connected: true);
+                }
+            }
+        }
+
+        public void Fail()
+        {
+            lock (_lock)
+            {
+                _failed = true;
+                if (_ended && !_failureRecorded)
+                {
+                    history.Record(address, connected: false);
+                    _failureRecorded = true;
+                }
+            }
+        }
+    }
+
     /// <param name="LostSessionPeerId">The peer id of a dial whose connection opened but whose session the libp2p layer refused or
     /// dropped before identify completed.</param>
     private readonly record struct DialOutcome(bool Admitted, string? LostSessionPeerId = null);
@@ -1208,7 +1267,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private bool RedialsAfterSimultaneousDial(string remotePeerId) =>
         _p2p.LocalPeerId is { } localPeerId && string.CompareOrdinal(localPeerId.ToString(), remotePeerId) < 0;
 
-    private async Task<DialOutcome> DialAndAdmitAsync(string address, string peerId, string? enr, CancellationToken token, Action? started = null)
+    private async Task<DialOutcome> DialAndAdmitAsync(string address, string peerId, string? enr, DialRecord dial, CancellationToken token, Action? started = null)
     {
         await _outboundDialGate.WaitAsync(token);
         ISession? session = null;
@@ -1231,7 +1290,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 return new DialOutcome(false, BeaconP2P.RemotePeerIdOf(session)?.ToString());
             }
 
-            bool admitted = await AdmitSessionAsync(address, peerId, session, info, enr, token);
+            bool admitted = await AdmitSessionAsync(address, peerId, session, info, enr, token, dial);
             admissionResolved = true;
             return new DialOutcome(admitted);
         }
@@ -1264,7 +1323,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <paramref name="address"/>. Shared by every admission path; the caller holds the reservation.</summary>
     /// <remarks>Counts the admission as in flight for its session until it returns, so a concurrent admission of the
     /// same session that fails does not tear the session down under this one (see <see cref="DisconnectUnadmittedAsync"/>).</remarks>
-    private async Task<bool> AdmitSessionAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token)
+    /// <param name="dial">The outcome record of the outbound dial that opened the session; <c>null</c> for a session the remote opened.</param>
+    private async Task<bool> AdmitSessionAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token, DialRecord? dial = null)
     {
         lock (_admissionLock)
         {
@@ -1273,7 +1333,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         try
         {
-            return await ExchangeStatusAndRecordAsync(address, peerId, session, info, enr, token);
+            return await ExchangeStatusAndRecordAsync(address, peerId, session, info, enr, token, dial);
         }
         finally
         {
@@ -1287,7 +1347,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
-    private async Task<bool> ExchangeStatusAndRecordAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token)
+    private async Task<bool> ExchangeStatusAndRecordAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token, DialRecord? dial)
     {
         // A dial address without a /p2p/ component keys on the whole address, so the session's real
         // peer id is the only reliable way to notice it is already admitted under another address.
@@ -1297,7 +1357,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return true;
         }
 
-        ManagedPeer peer = new(this, _p2p, address, peerId, session, info.Direction, info.AgentVersion, enr);
+        ManagedPeer peer = new(this, _p2p, address, peerId, session, info.Direction, info.AgentVersion, enr) { Dial = dial };
         if (!await UpdateStatusAsync(peer, token))
         {
             return false;
@@ -1706,6 +1766,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <returns><c>false</c> when the session had already closed, so the peer is no longer in the pool.</returns>
     private bool RemoveWhenSessionCloses(ManagedPeer peer)
     {
+        _closedPeers.TryRemove(peer.PeerId, out _);
         // Runs the removal at once when the session closed before this call; the registration ends with the session's token.
         _p2p.SessionClosedToken(peer.Session).Register(static state =>
         {
@@ -1731,6 +1792,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             if (removed)
             {
                 peer.MarkRemovedOnClose();
+                RememberClosed(peer);
             }
 
             Metrics.BeaconChainPeerCount = _peers.Count;
@@ -1749,13 +1811,42 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         PublishCustodyShortfall();
     }
 
+    /// <summary>Keeps <paramref name="peer"/>, just removed for its closed session, findable by id for <see cref="ClosedPeerWindow"/>, and forgets older ones.</summary>
+    private void RememberClosed(ManagedPeer peer)
+    {
+        long now = _timestamper.UtcNowOffset.UtcTicks;
+        foreach (KeyValuePair<string, (ManagedPeer Peer, long RemovedAtTicks)> closed in _closedPeers)
+        {
+            if (now - closed.Value.RemovedAtTicks > ClosedPeerWindow.Ticks)
+            {
+                _closedPeers.TryRemove(closed);
+            }
+        }
+
+        _closedPeers[peer.PeerId] = (peer, now);
+    }
+
+    private bool TryFindClosed(string peerId, out ManagedPeer? peer)
+    {
+        peer = _closedPeers.TryGetValue(peerId, out (ManagedPeer Peer, long RemovedAtTicks) closed)
+            && _timestamper.UtcNowOffset.UtcTicks - closed.RemovedAtTicks <= ClosedPeerWindow.Ticks ? closed.Peer : null;
+        return peer is not null;
+    }
+
     /// <summary>Records the close of a peer's session in its peer id's history; as a fault disconnect when <paramref name="fault"/>, which also backs its address off.</summary>
     /// <param name="newDisconnect">The close was not recorded yet; <c>false</c> when a violation reported after the removal turns it into a fault.</param>
     private void RecordClosedSession(ManagedPeer peer, bool fault, bool newDisconnect)
     {
         if (fault)
         {
-            _dialHistory.Record(peer.Id, connected: false);
+            if (peer.Dial is { } dial)
+            {
+                dial.Fail();
+            }
+            else
+            {
+                _dialHistory.Record(peer.Id, connected: false);
+            }
         }
 
         RecordDisconnect(peer.PeerId, peer.MessagesSent, peer.FailuresReported, fault ? GoodbyeReason.Fault : SessionClosedReason, SessionClosedDetail, unresponsive: !fault, newDisconnect);
@@ -1924,6 +2015,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private bool _closeCountedAsFault;
 
         public ISession Session { get; } = session;
+
+        /// <summary>The outbound dial that admitted this peer; <c>null</c> for a session the remote opened.</summary>
+        public DialRecord? Dial { get; init; }
         public StatusMessageV2? Status => _status;
 
         /// <summary>Whether the libp2p layer has dropped <see cref="Session"/>; every further request to it fails.</summary>

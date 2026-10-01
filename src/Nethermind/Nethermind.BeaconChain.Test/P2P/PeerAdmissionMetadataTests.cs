@@ -136,7 +136,7 @@ public class PeerAdmissionMetadataTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(admitted, Is.False, "the session closed before the admission ended");
-                Assert.That(discovery.DialHistory.Quality(silentAddress), Is.LessThan(0), "the address stays backed off");
+                Assert.That(discovery.DialHistory.Quality(silentAddress), Is.EqualTo(-1), "the address stays backed off, one step for one failed dial");
             }
         }
     }
