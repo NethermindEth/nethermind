@@ -110,6 +110,41 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// The engine API asks for forkchoiceUpdated after each head change. Range sync behind the wall clock keeps the work queue
+    /// full, so slot ticks are always stale when the worker reaches them; with a head step only per drained batch or 64 imports,
+    /// the execution layer's head froze for many minutes and then jumped 64 blocks. Imports of 0.6 s each must move it every second.
+    /// </summary>
+    [Test]
+    public async Task Range_sync_imports_behind_the_wall_clock_move_the_execution_head_every_second()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, [.. Enumerable.Range(101, 10).Select(static slot => (ulong)slot)]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.OnImported = (block, root) =>
+        {
+            harness.Timestamper.Add(TimeSpan.FromMilliseconds(600));
+            harness.Importer.Head = CreateHead(root, block.Slot, Spec.GetEpoch(AnchorSlot), execHash: ExecutionHashOf(block.Slot));
+        };
+        int fcusBefore = harness.Engine.FcuCalls.Count;
+        foreach (SignedBeaconBlock block in chain)
+        {
+            harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(block)));
+        }
+
+        harness.Orchestrator.WorkWriter.Complete();
+        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.Imports, Has.Count.EqualTo(chain.Length), "fixture: every block imports in one worker pass");
+            Assert.That(harness.Engine.FcuCalls.Skip(fcusBefore).Select(static call => call.Head),
+                Is.EqualTo(new ulong[] { 102, 104, 106, 108, 110 }.Select(ExecutionHashOf)), "the head of each second of imports, in order");
+        }
+
+        static Hash256 ExecutionHashOf(ulong slot) => Keccak.Compute(BitConverter.GetBytes(slot));
+    }
+
     public enum RangeRejection
     {
         AtImport,
@@ -1207,8 +1242,12 @@ public partial class BeaconSyncOrchestratorTests
             if (EngineDown.Contains(blockRoot)) return BlockImportResult.EngineUnavailable;
             if (Early.Contains(blockRoot) && (Ticks.Count == 0 || Ticks[^1] < block.Slot)) return BlockImportResult.FutureSlot;
             Known.Add(blockRoot);
+            OnImported?.Invoke(block, blockRoot);
             return BlockImportResult.Imported;
         }
+
+        /// <summary>Runs on the import thread as each block imports, after it is known.</summary>
+        public Action<ForkedSignedBeaconBlock, Hash256>? OnImported { get; set; }
 
         /// <summary>As the real importer: a signed block is deferred, and a child of a deferred block is deferred too.</summary>
         private BlockImportResult Defer(Hash256 blockRoot)
