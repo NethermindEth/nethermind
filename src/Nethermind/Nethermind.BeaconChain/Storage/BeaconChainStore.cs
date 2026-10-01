@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Merge.Plugin.SszRest;
 using Snappier;
 
 namespace Nethermind.BeaconChain.Storage;
@@ -42,8 +43,9 @@ public static class BeaconChainMetadataKeys
 /// uncompressed length) under the bare block root.
 /// </para>
 /// <para>
-/// The <see cref="BeaconChainDbColumns.BlockIndex"/> column carries two key shapes that cannot
-/// collide: 8-byte big-endian slot keys for the canonical index, and <see cref="ChildrenKeyPrefix"/>
+/// The <see cref="BeaconChainDbColumns.BlockIndex"/> column carries three key shapes that cannot
+/// collide: 8-byte big-endian slot keys for the canonical index, <see cref="BlockSummaryKeyPrefix"/>
+/// <c>++ blockRoot</c> for the block summary index (see <see cref="TryGetBlockSummary"/>), and <see cref="ChildrenKeyPrefix"/>
 /// <c>++ blockRoot</c> (33 bytes) for the children index, whose value is
 /// <c>state (1) ++ parent root (32) ++ child roots (32 each)</c>. A stored block's child list is
 /// always complete: a database from before the index is rebuilt from its stored blocks when first
@@ -86,6 +88,12 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     private const int ChildrenKeyLength = 1 + Hash256.Size;
     private const int ChildrenHeaderLength = 1 + Hash256.Size;
 
+    internal const byte BlockSummaryKeyPrefix = 0x02;
+    private const int BlockSummaryKeyLength = 1 + Hash256.Size;
+    private const int BlockSummaryHeaderLength = 1 + sizeof(ulong);
+    private const byte FuluBlockSummary = 0;
+    private const byte GloasBlockSummary = 1;
+
     /// <summary>Children were linked before the block itself was stored (backfill, or a delete that left children behind); its store completes the entry.</summary>
     private const byte ChildrenPending = 0;
     /// <summary>The block is stored and the list is the full set of stored children.</summary>
@@ -109,6 +117,8 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
 
     private readonly IDb _blocks = db.GetColumnDb(BeaconChainDbColumns.Blocks);
     private readonly IDb _blockIndex = db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
+    // Legacy gossip backfills must not outlive block deletion (gloas/p2p-interface.md block-seen check).
+    private readonly Lock _blockSummaryLock = new();
     private readonly IDb _states = db.GetColumnDb(BeaconChainDbColumns.States);
     private readonly IDb _metadata = db.GetColumnDb(BeaconChainDbColumns.Metadata);
     private readonly IDb _envelopes = db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
@@ -159,6 +169,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// <exception cref="InvalidOperationException">The block is a Gloas block and this store has no spec.</exception>
     public void PutForkedBlock(Hash256 root, ForkedSignedBeaconBlock block)
     {
+        using Lock.Scope summaryScope = _blockSummaryLock.EnterScope();
         Hash256 parentRoot = block.ParentRoot;
         byte[] ssz = spec is not null
             ? SignedBeaconBlockCodec.Encode(block, spec)
@@ -169,6 +180,10 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         batch.GetColumnBatch(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(ssz));
         IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
+
+        Span<byte> summaryKey = stackalloc byte[BlockSummaryKeyLength];
+        BlockSummaryKey(root, summaryKey);
+        index.Set(summaryKey, EncodeBlockSummary(block));
 
         Span<byte> parentKey = stackalloc byte[ChildrenKeyLength];
         ChildrenKey(parentRoot, parentKey);
@@ -254,6 +269,77 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         }
 
         return false;
+    }
+
+    /// <summary>Reads the stored slot and bid for gloas/p2p-interface.md sidecar validation without decoding the block.</summary>
+    /// <returns><c>false</c> when the block was stored before the summary index existed, or the entry is malformed; <see cref="PutBlockSummary"/> then backfills it.</returns>
+    /// <remarks>Written in the same batch as the block, so a stored block has one unless it predates the index.</remarks>
+    internal bool TryGetBlockSummary(Hash256 root, out StoredBlockSummary summary)
+    {
+        Span<byte> key = stackalloc byte[BlockSummaryKeyLength];
+        BlockSummaryKey(root, key);
+        return TryDecodeBlockSummary(_blockIndex.Get(key), out summary);
+    }
+
+    private static bool TryDecodeBlockSummary(byte[]? value, out StoredBlockSummary summary)
+    {
+        if (value is null
+            || value.Length < BlockSummaryHeaderLength
+            || value.Length > BlockSummaryHeaderLength + Eip7594DasConstants.MaxBlobCommitmentsPerBlock * SszKzgCommitment.KzgCommitmentLength
+            || value[0] > GloasBlockSummary
+            || (value[0] == FuluBlockSummary && value.Length != BlockSummaryHeaderLength)
+            || (value.Length - BlockSummaryHeaderLength) % SszKzgCommitment.KzgCommitmentLength != 0)
+        {
+            summary = default;
+            return false;
+        }
+
+        SszKzgCommitment[] commitments = new SszKzgCommitment[(value.Length - BlockSummaryHeaderLength) / SszKzgCommitment.KzgCommitmentLength];
+        for (int i = 0; i < commitments.Length; i++)
+        {
+            commitments[i] = SszKzgCommitment.FromSpan(value.AsSpan(BlockSummaryHeaderLength + i * SszKzgCommitment.KzgCommitmentLength, SszKzgCommitment.KzgCommitmentLength));
+        }
+
+        summary = new StoredBlockSummary(BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(1)), value[0] == GloasBlockSummary, commitments);
+        return true;
+    }
+
+    /// <summary>Persists the slot and bid used by gloas/p2p-interface.md sidecar validation for a legacy block.</summary>
+    internal StoredBlockSummary PutBlockSummary(Hash256 root, ForkedSignedBeaconBlock block)
+    {
+        using Lock.Scope summaryScope = _blockSummaryLock.EnterScope();
+        Span<byte> key = stackalloc byte[BlockSummaryKeyLength];
+        BlockSummaryKey(root, key);
+        byte[] value = EncodeBlockSummary(block);
+        if (HasBlock(root))
+        {
+            _blockIndex.PutSpan(key, value);
+        }
+
+        TryDecodeBlockSummary(value, out StoredBlockSummary summary);
+        return summary;
+    }
+
+    private static void BlockSummaryKey(Hash256 root, Span<byte> key)
+    {
+        key[0] = BlockSummaryKeyPrefix;
+        root.Bytes.CopyTo(key[1..]);
+    }
+
+    private static byte[] EncodeBlockSummary(ForkedSignedBeaconBlock block)
+    {
+        SszKzgCommitment[] commitments = block is ForkedSignedBeaconBlock.OfGloas gloas
+            ? gloas.Block.Message?.Body?.SignedExecutionPayloadBid?.Message?.BlobKzgCommitments ?? []
+            : [];
+        byte[] value = new byte[BlockSummaryHeaderLength + commitments.Length * SszKzgCommitment.KzgCommitmentLength];
+        value[0] = block is ForkedSignedBeaconBlock.OfGloas ? GloasBlockSummary : FuluBlockSummary;
+        BinaryPrimitives.WriteUInt64BigEndian(value.AsSpan(1), block.Slot);
+        for (int i = 0; i < commitments.Length; i++)
+        {
+            commitments[i].AsSpan().CopyTo(value.AsSpan(BlockSummaryHeaderLength + i * SszKzgCommitment.KzgCommitmentLength));
+        }
+
+        return value;
     }
 
     /// <summary>Whether a block is stored under <paramref name="root"/>, without reading or decoding it.</summary>
@@ -392,6 +478,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// </remarks>
     public void DeleteBlock(Hash256 root)
     {
+        using Lock.Scope summaryScope = _blockSummaryLock.EnterScope();
         if (!_blocks.KeyExists(root.Bytes))
         {
             return;
@@ -404,6 +491,10 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         batch.GetColumnBatch(BeaconChainDbColumns.Blocks).Remove(root.Bytes);
         IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
+
+        Span<byte> summaryKey = stackalloc byte[BlockSummaryKeyLength];
+        BlockSummaryKey(root, summaryKey);
+        index.Remove(summaryKey);
 
         Hash256? parentRoot;
         if (ownEntry is null)
@@ -1763,3 +1854,6 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         return true;
     }
 }
+
+/// <summary>The stored slot and bid commitments used by gloas/p2p-interface.md sidecar validation.</summary>
+internal readonly record struct StoredBlockSummary(ulong Slot, bool IsGloas, SszKzgCommitment[] Commitments);
