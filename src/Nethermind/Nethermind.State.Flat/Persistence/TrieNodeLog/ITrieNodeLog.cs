@@ -26,6 +26,12 @@ public interface ITrieNodeLog
     IView OpenView(IColumnsDb<FlatDbColumns> db, ReaderFlags flags);
 
     /// <summary>Starts the log side of the persistence write batch <paramref name="batch"/>; one log-backed batch may be open at a time.</summary>
+    /// <param name="batch">
+    /// The RocksDB batch the records belong to. The log puts its version into that batch's metadata column at
+    /// <see cref="IWriteBatch.Commit"/>, so the version lands in the same atomic write as the state pointer: a
+    /// RocksDB snapshot then confirms exactly which log batches it includes, and recovery discards records of a
+    /// batch whose RocksDB write never happened.
+    /// </param>
     /// <param name="bypass">
     /// When true the log is drained first and the returned batch passes every column through unchanged; used for
     /// sync and import batches, whose range scans must see every node in RocksDB.
