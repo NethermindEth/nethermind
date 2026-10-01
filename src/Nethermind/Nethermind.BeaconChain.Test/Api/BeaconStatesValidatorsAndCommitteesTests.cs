@@ -92,7 +92,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
         ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
         PutState(root, validators, balances);
 
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators");
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators");
         string raw = await response.Content.ReadAsStringAsync();
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), $"body: {raw}");
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo("application/json"));
@@ -122,7 +122,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
         ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
         PutState(root, validators, balances);
 
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators?status={filter}");
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?status={filter}");
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         JsonElement data = body.RootElement.GetProperty("data");
 
@@ -139,12 +139,12 @@ public class BeaconStatesValidatorsAndCommitteesTests
         PutState(root, validators, balances);
 
         string pubkeyOfIndex2 = validators[2].Pubkey.ToString();
-        HttpResponseMessage byMixedId = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators?id=0&id={pubkeyOfIndex2}");
+        HttpResponseMessage byMixedId = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id=0&id={pubkeyOfIndex2}");
         JsonDocument mixedBody = JsonDocument.Parse(await byMixedId.Content.ReadAsStringAsync());
         List<string> indices = [.. mixedBody.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
         Assert.That(indices, Is.EquivalentTo(new[] { "0", "2" }));
 
-        HttpResponseMessage badId = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators?id=not-a-real-id");
+        HttpResponseMessage badId = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id=not-a-real-id");
         Assert.That(badId.StatusCode, Is.EqualTo((HttpStatusCode)400));
     }
 
@@ -163,7 +163,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
 
         string pubkeyOfIndex1 = validators[1].Pubkey.ToString();
         string pubkeyOfIndex4 = validators[4].Pubkey.ToString();
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators?id={pubkeyOfIndex1}&id={pubkeyOfIndex4}");
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id={pubkeyOfIndex1}&id={pubkeyOfIndex4}");
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         List<string> indices = [.. body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
         Assert.That(indices, Is.EquivalentTo(new[] { "1", "4" }));
@@ -184,7 +184,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
 
         string pubkeyOfIndex1 = validators[1].Pubkey.ToString();
         string pubkeyOfIndex4 = validators[4].Pubkey.ToString();
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validator_balances?id=0&id={pubkeyOfIndex1}&id={pubkeyOfIndex4}");
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validator_balances?id=0&id={pubkeyOfIndex1}&id={pubkeyOfIndex4}");
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         List<string> indices = [.. body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
         Assert.That(indices, Is.EquivalentTo(new[] { "0", "1", "4" }));
@@ -206,13 +206,13 @@ public class BeaconStatesValidatorsAndCommitteesTests
         PutState(root, validators, balances);
 
         // id=0,2 (comma-joined) must select the same two validators as the repeated-key form does.
-        HttpResponseMessage commaId = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators?id=0,2");
+        HttpResponseMessage commaId = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id=0,2");
         JsonDocument commaIdBody = JsonDocument.Parse(await commaId.Content.ReadAsStringAsync());
         List<string> commaIndices = [.. commaIdBody.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
         Assert.That(commaIndices, Is.EquivalentTo(new[] { "0", "2" }), "comma-joined id list must be split, not treated as one unmatched id");
 
         // status=active_ongoing&status=exited_slashed (repeated key, not comma) must union both groups.
-        HttpResponseMessage repeatedStatus = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators?status=active_ongoing&status=exited_slashed");
+        HttpResponseMessage repeatedStatus = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?status=active_ongoing&status=exited_slashed");
         JsonDocument repeatedStatusBody = JsonDocument.Parse(await repeatedStatus.Content.ReadAsStringAsync());
         List<string> statuses = [.. repeatedStatusBody.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("status").GetString()!)];
         Assert.That(statuses, Is.EquivalentTo(new[] { "active_ongoing", "exited_slashed" }),
@@ -240,7 +240,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
         Hash256 root = TestRoot(19);
         PutState(root, validators, balances);
 
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/committees?index=0&index=1");
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/committees?index=0&index=1");
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)400),
             "index is a single Uint64 per the beacon-api spec; two occurrences is ambiguous input, not a two-element filter");
     }
@@ -253,13 +253,13 @@ public class BeaconStatesValidatorsAndCommitteesTests
         ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
         PutState(root, validators, balances);
 
-        HttpResponseMessage outOfRange = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators/{validators.Length + 5}");
+        HttpResponseMessage outOfRange = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators/{validators.Length + 5}");
         Assert.That(outOfRange.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
 
-        HttpResponseMessage malformed = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators/0xnotapubkey");
+        HttpResponseMessage malformed = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators/0xnotapubkey");
         Assert.That(malformed.StatusCode, Is.EqualTo((HttpStatusCode)400));
 
-        HttpResponseMessage ok = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators/3");
+        HttpResponseMessage ok = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators/3");
         JsonDocument body = JsonDocument.Parse(await ok.Content.ReadAsStringAsync());
         Assert.That(body.RootElement.GetProperty("data").GetProperty("status").GetString(), Is.EqualTo("active_exiting"));
     }
@@ -273,7 +273,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
         ulong[] balances = [32_100_000_000];
         PutState(root, validators, balances);
 
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validator_balances");
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validator_balances");
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         JsonElement entry = body.RootElement.GetProperty("data")[0];
         Assert.That(entry.GetProperty("balance").GetString(), Is.EqualTo("32100000000"));
@@ -295,7 +295,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
         Hash256 root = TestRoot(15);
         PutState(root, validators, balances);
 
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/committees?epoch={StateEpoch}");
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/committees?epoch={StateEpoch}");
         string raw = await response.Content.ReadAsStringAsync();
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), $"body: {raw}");
 
@@ -328,7 +328,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
         ulong[] balances = [32_000_000_000];
         PutState(root, validators, balances);
 
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/committees?epoch={StateEpoch + 1000}");
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/committees?epoch={StateEpoch + 1000}");
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)400));
     }
 
@@ -348,13 +348,35 @@ public class BeaconStatesValidatorsAndCommitteesTests
         PutState(root, validators, balances);
 
         ulong targetSlot = StateSlot + 5;
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/committees?slot={targetSlot}&index=0");
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/committees?slot={targetSlot}&index=0");
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         JsonElement data = body.RootElement.GetProperty("data");
 
         Assert.That(data.GetArrayLength(), Is.EqualTo(1));
         Assert.That(data[0].GetProperty("slot").GetString(), Is.EqualTo(targetSlot.ToString()));
         Assert.That(data[0].GetProperty("index").GetString(), Is.EqualTo("0"));
+    }
+
+    /// <summary>apis/beacon/states/validators.yaml rejects unknown status filters with 400.</summary>
+    [Test]
+    public async Task Unknown_validator_status_is_rejected([Values("bogus", "active_unknown", "ACTIVE")] string status)
+    {
+        Hash256 root = TestRoot(30);
+        PutState(root, [StatusFixture[0].Validator], [32_000_000_000]);
+        using HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?status={status}");
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+    }
+
+    /// <summary>apis/beacon/states/validators.yaml and validator_balances.yaml limit GET requests to 64 IDs.</summary>
+    [Test]
+    public async Task Validator_id_limit_precedes_state_resolution(
+        [Values("validators", "validator_balances")] string endpoint,
+        [Values] bool commaSeparated,
+        [Values(64, 65)] int count)
+    {
+        string ids = string.Join(commaSeparated ? "," : "&id=", Enumerable.Range(0, count));
+        using HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/invalid/{endpoint}?id={ids}");
+        Assert.That((int)response.StatusCode, Is.EqualTo(count > 64 ? 414 : 400));
     }
 
     private void PutState(Hash256 root, Validator[] validators, ulong[] balances)

@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -48,7 +49,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     /// <summary>A real but unstarted peer manager the node/peers routes read, or <c>null</c> when the host runs without one.</summary>
     public PeerManager? PeerManager { get; }
 
-    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager, HeadSnapshotHolder? headSnapshots)
+    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager, HeadSnapshotHolder? headSnapshots, IEngineDriver? engine)
     {
         Spec = spec;
         Db = db ?? new MemColumnsDb<BeaconChainDbColumns>();
@@ -68,7 +69,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         apiConfig.Host = "127.0.0.1";
         apiConfig.Port = 0;
         Host = new BeaconApiHost(apiConfig, chainConfig, spec, StatusHolder, new SlotClock(spec, timestamper), Store,
-            metadataSource, new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots);
+            metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots);
     }
 
     /// <param name="forkChoiceSnapshots">The holder the debug fork-choice endpoint reads; <c>null</c> runs the host without one, as the driver-less configurations do.</param>
@@ -77,10 +78,14 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     /// <param name="logManager">Where the host logs; <c>null</c> discards every entry.</param>
     /// <param name="withPeerManager">Whether to give the host a <see cref="PeerManager"/>, seeded by tests through <see cref="PeerManager.ReserveDialingForTest"/>.</param>
     /// <param name="headSnapshots">The head snapshots the host serves requests from; <c>null</c> reads the status holder once per request instead.</param>
+    /// <param name="engine">The execution driver used by the host.</param>
+    /// <param name="engineAvailability">The engine call outcomes read by the node endpoints.</param>
     public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
-        IColumnsDb<BeaconChainDbColumns>? db = null, BeaconApiConfig? apiConfig = null, ILogManager? logManager = null, bool withPeerManager = false, HeadSnapshotHolder? headSnapshots = null)
+        IColumnsDb<BeaconChainDbColumns>? db = null, BeaconApiConfig? apiConfig = null, ILogManager? logManager = null, bool withPeerManager = false, HeadSnapshotHolder? headSnapshots = null,
+        IEngineDriver? engine = null, EngineAvailability? engineAvailability = null)
     {
-        BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager, headSnapshots);
+        BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager, headSnapshots, engine);
+        host.Host.EngineAvailability = engineAvailability;
         await host.Host.StartAsync(CancellationToken.None);
         host.Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Host.Port}"), Timeout = TimeSpan.FromSeconds(30) };
         return host;

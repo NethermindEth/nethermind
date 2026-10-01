@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -132,24 +133,39 @@ public class BeaconJsonBodiesTests
     }
 
     [Test]
-    public async Task Block_json_execution_optimistic_and_finalized_flags_track_the_drivers_own_signals()
+    public async Task Block_json_flags_follow_fork_choice_verification_and_finality()
     {
         const ulong slot = Slot + 3;
         Hash256 root = BeaconApiTestHost.TestRoot(0x11);
-        _host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(slot, BeaconApiTestHost.FilledHash(0x00)));
-        _host.Store.SetCanonicalRoot(slot, root);
+        ForkChoiceSnapshotNode node = new(slot, root, null, 0, 0, 0, ExecutionStatus.Optimistic, root);
+        ForkChoiceSnapshotHolder snapshots = new()
+        {
+            Current = new ForkChoiceSnapshot(new CheckpointRef(0, Hash256.Zero), new CheckpointRef(0, Hash256.Zero), Hash256.Zero, [node]),
+        };
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, snapshots);
+        host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(slot, BeaconApiTestHost.FilledHash(0x00)));
+        host.Store.SetCanonicalRoot(slot, root);
 
-        _host.StatusHolder.ExecutionInSync = false;
-        _host.SetStatus(root, Hash256.Zero, 0);
-        JsonElement optimistic = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
-        Assert.That(optimistic.GetProperty("execution_optimistic").GetBoolean(), Is.True, "the EL has not validated the head: a caller must not treat this body as verified");
-        Assert.That(optimistic.GetProperty("finalized").GetBoolean(), Is.False);
+        host.StatusHolder.ExecutionInSync = true;
+        host.SetStatus(root, Hash256.Zero, 0);
+        using HttpResponseMessage optimisticResponse = await host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json);
+        using JsonDocument optimistic = await BeaconApiTestHost.ReadJsonAsync(optimisticResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimistic.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True);
+            Assert.That(optimistic.RootElement.GetProperty("finalized").GetBoolean(), Is.False);
+        }
 
-        _host.StatusHolder.ExecutionInSync = true;
-        _host.SetStatus(root, root, 412_501);
-        JsonElement confirmed = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
-        Assert.That(confirmed.GetProperty("execution_optimistic").GetBoolean(), Is.False, "the orchestrator flipped the in-sync flag after a VALID verdict");
-        Assert.That(confirmed.GetProperty("finalized").GetBoolean(), Is.True, "epoch 412,500 is at or before finalized epoch 412,501");
+        snapshots.Current = snapshots.Current with { Nodes = [node with { ExecutionStatus = ExecutionStatus.Valid }] };
+        host.StatusHolder.ExecutionInSync = false;
+        host.SetStatus(root, root, 412_501);
+        using HttpResponseMessage confirmedResponse = await host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json);
+        using JsonDocument confirmed = await BeaconApiTestHost.ReadJsonAsync(confirmedResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(confirmed.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
+            Assert.That(confirmed.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
+        }
     }
 
     [Test]
@@ -257,9 +273,10 @@ public class BeaconJsonBodiesTests
         Hash256 root = BeaconApiTestHost.TestRoot(0x21);
         byte[] ssz = BeaconStateFulu.Encode(BeaconApiTestHost.RichState(BeaconChainSpec.Mainnet, Slot));
         _host.Store.PutState(root, ssz);
+        _host.Store.SetCanonicalRoot(Slot, root);
         _host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
 
-        HttpResponseMessage response = await _host.GetAsync($"/eth/v2/debug/beacon/states/{root}", Octet);
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v2/debug/beacon/states/{Slot}", Octet);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
         Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(ssz), "the checkpoint-provider path must not re-encode");
@@ -270,8 +287,9 @@ public class BeaconJsonBodiesTests
     {
         Hash256 root = BeaconApiTestHost.TestRoot(0x22);
         _host.Store.PutState(root, [9]);
+        _host.Store.SetCanonicalRoot(Slot, root);
 
-        HttpResponseMessage response = await _host.GetAsync($"/eth/v2/debug/beacon/states/{root}", Json);
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v2/debug/beacon/states/{Slot}", Json);
         JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError));
         Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("not decodable"));
@@ -387,19 +405,21 @@ public class BeaconJsonBodiesTests
     }
 
     [Test]
-    public async Task Headers_by_parent_root_reports_finalized_only_when_every_child_is_at_or_before_the_finalized_epoch()
+    public async Task Headers_by_parent_root_reports_finalized_only_when_every_child_is_at_or_before_the_checkpoint_slot([Values(0, 5)] int offset)
     {
+        ulong checkpointSlot = 412_501 * Presets.SlotsPerEpoch;
+        ulong childSlot = checkpointSlot + (ulong)offset;
         Hash256 parent = BeaconApiTestHost.TestRoot(0x50);
         Hash256 child = BeaconApiTestHost.TestRoot(0x51);
         _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
-        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 8, parent));
-        _host.Store.SetCanonicalRoot(Slot + 8, child);
+        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(childSlot, parent));
+        _host.Store.SetCanonicalRoot(childSlot, child);
 
-        _host.SetStatus(child, child, 412_500);
+        _host.SetStatus(child, child, 412_501);
         JsonElement finalized = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json))).RootElement;
-        Assert.That(finalized.GetProperty("finalized").GetBoolean(), Is.True, "the only child is in epoch 412,500, which is finalized");
+        Assert.That(finalized.GetProperty("finalized").GetBoolean(), Is.EqualTo(offset == 0));
 
-        _host.SetStatus(child, Hash256.Zero, 412_499);
+        _host.SetStatus(child, Hash256.Zero, 412_500);
         JsonElement notFinalized = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json))).RootElement;
         Assert.That(notFinalized.GetProperty("finalized").GetBoolean(), Is.False);
     }
@@ -468,29 +488,25 @@ public class BeaconJsonBodiesTests
         Assert.That(body.GetProperty("data")[0].GetProperty("root").GetString(), Is.EqualTo(root.ToString()));
     }
 
-    /// <summary>
-    /// A state is keyed by the root of the block it came from, and slot processing advances it past
-    /// that block, so the canonical lookup behind the finalized flag has to use the block's slot.
-    /// A checkpoint-synced node's anchor state is exactly this shape, so reading the state's own
-    /// slot reports finalized:false on the one state such a node is certain about.
-    /// </summary>
+    /// <summary>Beacon API Finalized requires the state slot cutoff and canonicality at its latest block's slot.</summary>
     [Test]
-    public async Task State_finalized_flag_uses_the_slot_of_the_block_the_state_is_keyed_by()
+    public async Task State_finalized_flag_uses_the_block_slot_and_the_state_slot_cutoff([Values(0, 5)] int offset)
     {
+        const ulong checkpointSlot = 412_500 * Presets.SlotsPerEpoch;
         Hash256 root = BeaconApiTestHost.TestRoot(0x21);
-        BeaconStateFulu state = BeaconApiTestHost.RichState(BeaconChainSpec.Mainnet, Slot);
+        BeaconStateFulu state = BeaconApiTestHost.RichState(BeaconChainSpec.Mainnet, checkpointSlot + (ulong)offset);
+        state.LatestBlockHeader!.Slot = checkpointSlot - 1;
         _host.Store.PutState(root, BeaconStateFulu.Encode(state));
+        _host.Store.SetCanonicalRoot(state.LatestBlockHeader.Slot, root);
+        _host.SetStatus(root, root, BeaconChainSpec.Mainnet.GetEpoch(checkpointSlot));
 
-        // Canonical at the block's slot only; the state's own slot is left empty, as it is after
-        // slot processing advances a state past its block.
-        _host.Store.SetCanonicalRoot(state.LatestBlockHeader!.Slot, root);
-        _host.SetStatus(root, root, BeaconChainSpec.Mainnet.GetEpoch(Slot));
-
-        HttpResponseMessage response = await _host.GetAsync("/eth/v2/debug/beacon/states/head", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw.Length > 500 ? raw[..500] : raw);
-        Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("finalized").GetBoolean(), Is.True,
-            "the state is canonical at its block's slot, which is what finalization vouches for");
+        using HttpResponseMessage response = await _host.GetAsync("/eth/v2/debug/beacon/states/head", Json);
+        using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.EqualTo(offset == 0));
+        }
     }
 }
 

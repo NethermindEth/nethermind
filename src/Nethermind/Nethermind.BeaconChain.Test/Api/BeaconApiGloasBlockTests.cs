@@ -54,8 +54,8 @@ public class BeaconApiGloasBlockTests
     [TestCase("/eth/v1/beacon/blocks/{0}/root", Json, true)]
     [TestCase("/eth/v2/beacon/blocks/{0}", Json, true)]
     [TestCase("/eth/v2/beacon/blocks/{0}", OctetStream, true)]
-    [TestCase("/eth/v2/debug/beacon/states/{0}", OctetStream, true)]
-    [TestCase("/eth/v1/beacon/states/{0}/root", Json, false)]
+    [TestCase("/eth/v2/debug/beacon/states/{1}", OctetStream, true)]
+    [TestCase("/eth/v1/beacon/states/{1}/root", Json, false)]
     public async Task Every_block_reading_endpoint_serves_a_gloas_root_instead_of_failing(string template, string accept, bool namesTheFork)
     {
         HttpResponseMessage response = await _host.GetAsync(string.Format(template, RootHex, GloasSlot, Parent), accept);
@@ -90,9 +90,9 @@ public class BeaconApiGloasBlockTests
     }
 
     [Test]
-    public async Task State_root_by_block_id_reads_the_gloas_block_state_root()
+    public async Task State_root_by_slot_reads_the_gloas_block_state_root()
     {
-        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{Root}/root", Json);
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{GloasSlot}/root", Json);
         JsonElement data = (await ReadJsonAsync(response)).RootElement.GetProperty("data");
 
         Assert.That(data.GetProperty("root").GetString(), Is.EqualTo(Hex(32, 0x01)));

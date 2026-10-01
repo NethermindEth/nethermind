@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -35,10 +36,13 @@ internal sealed record BeaconApiContext(
     PeerManager? PeerManager,
     BeaconDiscovery? Discovery,
     ForkChoiceSnapshotHolder? ForkChoiceSnapshots = null,
-    HeadSnapshotHolder? HeadSnapshots = null)
+    HeadSnapshotHolder? HeadSnapshots = null,
+    EngineAvailability? EngineAvailability = null)
 {
     /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
-    public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead() };
+    public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };
+
+    public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
 
     /// <summary>Freezes the published get_head view, or the startup status before publication (fork-choice.md).</summary>
     public IBeaconChainStatusSource CaptureHead()
