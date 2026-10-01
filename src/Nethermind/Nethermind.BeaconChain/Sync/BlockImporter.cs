@@ -124,6 +124,12 @@ public sealed class BlockImporter : IBlockImporter
 
     private int _regenerationsThisSlot;
 
+    /// <summary>The (slot, proposer) pairs a gossip block has spent a regeneration for, above the finalized slot.</summary>
+    private readonly HashSet<(ulong Slot, ulong ProposerIndex)> _regenerationProposals = [];
+
+    /// <summary>Whether the import running now is of a block this node requested, which the regeneration budget does not charge.</summary>
+    private bool _importingRequested;
+
     private readonly record struct DeferredBlock(Hash256 AncestorRoot, ulong Slot);
 
     /// <param name="isEnvelopeDataAvailable">The Gloas <c>is_data_available</c> an execution payload envelope is checked against; see <see cref="ExecutionPayloadEnvelopeImporter"/>.</param>
@@ -257,6 +263,20 @@ public sealed class BlockImporter : IBlockImporter
 
     /// <summary>Forgets the deferral entry of a block the orchestrator dropped, so it does not hold a share of <see cref="MaxDeferredBlocks"/> until finality.</summary>
     internal void Release(Hash256 blockRoot) => _deferred.Remove(blockRoot);
+
+    /// <inheritdoc/>
+    public BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot)
+    {
+        _importingRequested = true;
+        try
+        {
+            return Import(block, blockRoot, verifySignatures: true);
+        }
+        finally
+        {
+            _importingRequested = false;
+        }
+    }
 
     /// <inheritdoc/>
     public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
@@ -656,13 +676,18 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     /// <summary>
-    /// Whether a block from gossip may cost the regeneration of a state that is not held: only once its proposer signature
-    /// verifies, and only <see cref="MaxUntrustedRegenerationsPerSlot"/> times per wall-clock slot.
+    /// Whether an untrusted block may cost the regeneration of a state that is not held: only once its proposer signature
+    /// verifies. A block from gossip must also be the first for its slot and proposer to cost one, and fit in
+    /// <see cref="MaxUntrustedRegenerationsPerSlot"/> per wall-clock slot; a requested block need not.
     /// </summary>
     /// <remarks>
     /// The signature is checked without the missing state: with the cached proposer key, and the domain of the block's fork
     /// (specs/phase0/beacon-chain.md <c>get_domain</c>), whose fork version every state of that fork after the anchor shares.
-    /// Gossip validation does not verify it, so without this check a forged child of each evicted block buys a replay.
+    /// Gossip validation does not verify it, so without this check a forged child of each evicted block buys a replay. Any
+    /// cached key signs, so the budget bounds what signed gossip can cost, and blocks this node fetched, a competing branch
+    /// from range sync or an ancestor a gossip block named, never wait on it. A gossip block refused here is recovered by
+    /// the by-root backfill of its first child. phase0/p2p-interface.md <c>beacon_block</c> ignores all but the first block
+    /// with a valid signature per slot and proposer, so a later one costs no regeneration.
     /// </remarks>
     /// <returns><c>null</c> when the regeneration may run; otherwise the result to answer for the block.</returns>
     private BlockImportResult? RefuseRegeneration(Hash256 blockRoot, ulong slot, ulong proposerIndex, BlsSignature signature, Hash256? domain)
@@ -679,19 +704,31 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.Invalid;
         }
 
+        if (_importingRequested)
+        {
+            return null;
+        }
+
         ulong currentSlot = _clock.CurrentSlot;
         if (currentSlot != _regenerationSlot)
         {
             _regenerationSlot = currentSlot;
             _regenerationsThisSlot = 0;
+            // on_block refuses a block at or below the finalized epoch's start slot, so no later block repeats its (slot, proposer).
+            ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(_runner.FinalizedCheckpoint.Epoch);
+            _regenerationProposals.RemoveWhere(proposal => proposal.Slot <= finalizedSlot);
         }
 
-        if (_regenerationsThisSlot >= MaxUntrustedRegenerationsPerSlot)
+        string? refusal = _regenerationProposals.Contains((slot, proposerIndex)) ? $"a block of proposer {proposerIndex} at this slot already cost one"
+            : _regenerationsThisSlot >= MaxUntrustedRegenerationsPerSlot ? $"this slot's {MaxUntrustedRegenerationsPerSlot} regenerations are spent"
+            : null;
+        if (refusal is not null)
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {slot}: the state it builds on is not held, and this slot's {MaxUntrustedRegenerationsPerSlot} regenerations are spent");
+            if (_logger.IsWarn) _logger.Warn($"Not regenerating the parent state of block {blockRoot} at slot {slot}: {refusal}");
             return BlockImportResult.UnknownParent;
         }
 
+        _regenerationProposals.Add((slot, proposerIndex));
         _regenerationsThisSlot++;
         return null;
     }
