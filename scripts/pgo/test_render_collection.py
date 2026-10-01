@@ -81,7 +81,8 @@ class CollectionRenderTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), original)
 
     def test_invalid_startup_flags_fail_before_output_creation(self):
-        cases = (None, "--Init.EvmWarmupEnabled=true", [False],
+        cases = (None, "--Init.EvmWarmupEnabled=true", [False], ["--"], ["@private-test-value"],
+                 ["--Other.Value=true --"],
                  ["--Init.EvmWarmupEnabled=private-test-value"],
                  ["--Init.EvmWarmupEnabled=true false"],
                  ["--Init.EvmWarmupEnabled:true false"],

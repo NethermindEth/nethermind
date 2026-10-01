@@ -23,6 +23,8 @@ def without_startup_warmup(flags):
         flag = flags[index]
         index += 1
         tokens = flag.split()
+        if any(token == "--" or token.startswith("@") for token in tokens):
+            raise ValueError("collection flags cannot end option parsing or use response files")
         matches = [token for token in tokens
                    if token.startswith("--")
                    and re.split("[=:]", token, maxsplit=1)[0].lstrip("-").replace(".", "").replace("-", "").lower() in options]
