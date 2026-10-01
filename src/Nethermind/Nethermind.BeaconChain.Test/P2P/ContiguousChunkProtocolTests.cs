@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Libp2p.Core;
@@ -84,6 +85,40 @@ public class ContiguousChunkProtocolTests
             Assert.That(await response, Is.EqualTo(IOResult.Ok));
             Assert.That(received.Data.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
             Assert.That(relay.IsCompleted, Is.False, "a half-close leaves the channel open");
+        }
+
+        await lower.CloseAsync();
+        await relay.WaitAsync(token);
+    }
+
+    /// <summary>Segments go upward as they are: a multi-segment frame can be megabytes, and a copy of each would land on the large object heap.</summary>
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Segments_are_passed_upward_without_a_copy(CancellationToken token)
+    {
+        byte[] frame = new byte[140_003];
+        Channel lower = new();
+        Channel upper = new();
+        Task relay = ContiguousChunkProtocol.RelayAsync(lower.Reverse, upper);
+        Task<IOResult> written = lower.WriteAsync(Segmented(frame, 0, [70_000, 3, 70_000]), token).AsTask();
+
+        long received = 0;
+        bool sameArray = true;
+        while (received < frame.Length)
+        {
+            ReadResult read = await upper.Reverse.ReadAsync(0, ReadBlockingMode.WaitAny, token);
+            foreach (ReadOnlyMemory<byte> segment in read.Data)
+            {
+                sameArray &= MemoryMarshal.TryGetArray(segment, out ArraySegment<byte> array) && ReferenceEquals(array.Array, frame);
+                received += segment.Length;
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await written, Is.EqualTo(IOResult.Ok));
+            Assert.That(received, Is.EqualTo(frame.Length));
+            Assert.That(sameArray, Is.True, "every byte above is read from the array written below");
         }
 
         await lower.CloseAsync();
