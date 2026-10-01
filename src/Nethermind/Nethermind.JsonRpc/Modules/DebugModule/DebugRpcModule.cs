@@ -76,6 +76,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
+        ValidateLegacyTimeout(options);
         Hash256? blockHash = debugBridge.GetTransactionBlockHash(transactionHash);
         if (blockHash is null)
         {
@@ -174,6 +175,15 @@ public class DebugRpcModule(
             NoBaseFee = !call.ShouldSetBaseFee()
         };
 
+        if (string.IsNullOrEmpty(effective.Tracer))
+        {
+            try { _ = effective.Timeout; }
+            catch (FormatException ex) when (ex.Message.StartsWith("time:", StringComparison.Ordinal))
+            {
+                return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+            }
+        }
+
         UInt256? rejectedBlobBaseFee = GetRejectedTraceCallBlobBaseFee(tx, header!, effective);
         if (CanStreamStructLogs(options))
         {
@@ -199,6 +209,14 @@ public class DebugRpcModule(
         try
         {
             transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, effective);
+        }
+        catch (TimeoutException ex) when (ex.Message == "execution timeout")
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (FormatException ex) when (ex.Message.StartsWith("time:", StringComparison.Ordinal))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
         catch (InsufficientBalanceException ex)
         {
@@ -283,6 +301,17 @@ public class DebugRpcModule(
         return error is null ? block.Header : null;
     }
 
+    private static void ValidateLegacyTimeout(GethTraceOptions? options)
+    {
+        // Only traceCall defers duration validation until tracer construction. Other methods retain
+        // their parameter-error semantics, including paths that never inspect Timeout during execution.
+        try { _ = options?.Timeout; }
+        catch (FormatException ex) when (ex.Message.StartsWith("time:", StringComparison.Ordinal))
+        {
+            throw new System.Text.Json.JsonException(ex.Message, ex);
+        }
+    }
+
     private bool CanStreamStructLogs(GethTraceOptions? options)
     {
         if (!string.IsNullOrEmpty(options?.Tracer)) return false;
@@ -321,6 +350,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
+        ValidateLegacyTimeout(options);
         BlockHeader? header = TryGetHeader(blockhash, out ResultWrapper<GethLikeTxTrace>? error);
         if (error is not null)
         {
@@ -333,6 +363,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
+        ValidateLegacyTimeout(options);
         BlockHeader? header = TryGetHeader(blockParameter, out ResultWrapper<GethLikeTxTrace>? error);
         if (error is not null)
         {
@@ -367,6 +398,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null)
     {
+        ValidateLegacyTimeout(options);
         Block? block = TryGetBlockAndCheckState(new Rlp(blockRlp), out ResultWrapper<GethLikeTxTrace>? blockError);
         if (blockError is not null)
         {
@@ -394,6 +426,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
     {
+        ValidateLegacyTimeout(options);
         Block? block = TryGetBlockAndCheckState(new Rlp(blockRlp), out ResultWrapper<GethLikeTxTrace>? blockError);
         if (blockError is not null)
         {
@@ -486,6 +519,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
     {
+        ValidateLegacyTimeout(options);
         Block? block = TryGetBlockAndCheckState(new Rlp(blockRlp), out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? blockError);
         if (blockError is not null)
         {
@@ -525,6 +559,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
+        ValidateLegacyTimeout(options);
         BlockHeader? header = TryGetHeaderAndCheckState(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
@@ -572,6 +607,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
+        ValidateLegacyTimeout(options);
         BlockHeader? header = TryGetHeaderAndCheckState(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
@@ -619,6 +655,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null)
     {
+        ValidateLegacyTimeout(options);
         TryGetHeaderAndCheckState<IReadOnlyCollection<Hash256>>(blockHash, out ResultWrapper<IReadOnlyCollection<Hash256>>? headerError);
         if (headerError is not null)
         {
@@ -771,6 +808,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
+        ValidateLegacyTimeout(options);
         TryGetHeaderAndCheckState(blockHash, out ResultWrapper<IEnumerable<string>>? headerError);
         if (headerError is not null)
         {
@@ -789,6 +827,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
+        ValidateLegacyTimeout(options);
         TryGetHeaderAndCheckState(blockHash, out ResultWrapper<IEnumerable<string>>? headerError);
         if (headerError is not null)
         {
@@ -815,11 +854,16 @@ public class DebugRpcModule(
         jsonRpcConfig.BuildTimeoutCancellationToken();
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
-        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null) => new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
+        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
+    {
+        ValidateLegacyTimeout(options);
+        return new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
+    }
 
     public ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
+        ValidateLegacyTimeout(options);
         if (bundles is null)
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail("Bundles array cannot be null", ErrorCodes.InvalidParams);
 

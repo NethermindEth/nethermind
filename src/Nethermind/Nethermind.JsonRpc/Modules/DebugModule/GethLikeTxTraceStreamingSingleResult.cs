@@ -27,6 +27,8 @@ public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IDef
     private readonly CancellationToken _timeoutToken;
     private readonly ILogger _logger;
 
+    internal bool DeadlineExpired { get; private set; }
+
     public GethLikeTxTraceStreamingSingleResult(
         Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace,
         CancellationTokenSource timeoutCts,
@@ -52,7 +54,8 @@ public sealed class GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace, IDef
     internal void WriteAsJson(Utf8JsonWriter writer) => EmitContent(writer, null, _timeoutToken);
 
     private void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken) =>
-        StructLogEnvelopeWriter.EmitTraceObject(writer, pipeWriter, cancellationToken, _runTrace, _logger);
+        StructLogEnvelopeWriter.EmitTraceObject(writer, pipeWriter, cancellationToken, _runTrace, _logger,
+            onDeadlineExpired: () => DeadlineExpired = true);
 }
 
 internal sealed class GethLikeTxTraceStreamingSingleResultConverter : JsonConverter<GethLikeTxTraceStreamingSingleResult>

@@ -7,12 +7,14 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
+[JsonConverter(typeof(GethTraceOptionsConverter))]
 public record GethTraceOptions
 {
     [Obsolete("Use EnableMemory instead.")]
@@ -36,8 +38,15 @@ public record GethTraceOptions
     [JsonConverter(typeof(LimitConverter))]
     public long Limit { get; init; }
 
-    [JsonConverter(typeof(CustomTimeDurationConverter))]
-    public TimeSpan? Timeout { get; init; }
+    private TimeSpan? _timeout;
+    internal string? TimeoutText { get; init; }
+    internal CancellationToken? ExecutionCancellation { get; init; }
+
+    public TimeSpan? Timeout
+    {
+        get => TimeoutText is { } text ? GoTraceDuration.Parse(text) : _timeout;
+        init { _timeout = value; TimeoutText = null; }
+    }
 
     public string Tracer { get; init; }
 

@@ -168,7 +168,7 @@ public partial class DebugRpcModuleTests
         using Context ctx = await Context.Create(new TestSpecProvider(Homestead.Instance));
         string call = "6000600060006000600073" + FlatTarget[2..] + "60645a03f1";
         string code = call + "1560" + (call.Length / 2 + 5).ToString("x2") + "57005b600060006000f000";
-        JToken result = await TraceRejectedCreate(ctx, CreateLifecycleOverrides(code), "0xf4240");
+        JToken result = await TraceRejectedCreate(ctx, CreateLifecycleOverrides(code), "0xf4240", timeout: "1m");
         JToken frame = result["callTracer"]!;
         int depth = 1;
         while (frame["calls"] is JArray { Count: 1 } children)
@@ -194,13 +194,14 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    private static async Task<JToken> TraceRejectedCreate(Context ctx, Dictionary<string, object> overrides, string gas = "0x186a0")
+    private static async Task<JToken> TraceRejectedCreate(Context ctx, Dictionary<string, object> overrides, string gas = "0x186a0", string? timeout = null)
     {
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", new { from = FlatSender, to = FlatTarget, gas }, "latest", new
         {
             tracer = "muxTracer",
             tracerConfig = new Dictionary<string, object> { ["callTracer"] = new { }, ["erc7562Tracer"] = new { }, [RejectedCreateCallbacks] = new { } },
-            stateOverrides = overrides
+            stateOverrides = overrides,
+            timeout
         });
         using StringReader text = new(response);
         using JsonTextReader reader = new(text) { MaxDepth = 4096 };

@@ -151,6 +151,11 @@ public static class JsonRpcResponseWriter
             return WriteReplacementError(writer, response, ex, options);
         }
         staged.Commit();
+        if (streamable is Modules.DebugModule.GethLikeTxTraceStreamingSingleResult { DeadlineExpired: true })
+        {
+            using JsonRpcErrorResponse error = response.Streaming!.MapException(new TimeoutException("execution timeout"));
+            return JsonRpcResponseWriteOutcome.Of(error);
+        }
         return null;
     }
 

@@ -95,23 +95,26 @@ public class GethStyleTracer(
         (BlockHeader callHeader, IReleaseSpec callSpec) = PrepareCallHeader(block, options);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(FindParent(block));
         IWorldState state = scope.Component.WorldState;
-        IBlockTracer<GethLikeTxTrace> tracer = CreateIndexedCallTracer(callHeader, call, options, state, callSpec,
-            cancellationToken, writer, pipeWriter);
+        using GethLikeBlockCallDeadlineTracer tracer = new(options with { TxHash = call.Hash }, cancellationToken,
+            timedOptions => CreateIndexedCallTracer(callHeader, call, timedOptions, state, callSpec, cancellationToken, writer, pipeWriter));
         TransactionProcessorAdapterFactory previous = transactionProcessorAdapter.CurrentAdapterFactory;
         try
         {
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
-            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, call,
+            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(tracer.Token), callHeader, call,
                 tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
             IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
-            scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
+            scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, tracer.Token);
             if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
             return tracer.BuildResult().SingleOrDefault();
         }
-        catch
+        catch (Exception ex) when (tracer.Expired)
         {
-            tracer.TryDispose();
-            throw;
+            return tracer.CompleteExpired(ex).SingleOrDefault();
+        }
+        catch when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
         }
         finally
         {
@@ -352,22 +355,33 @@ public class GethStyleTracer(
 
         GethTraceOptions filtered = options with { TxHash = txHash };
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
-        IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, isTraceCall: useBlockAsBase)
-            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
+        IBlockTracer<GethLikeTxTrace> CreateTracer(GethTraceOptions traceOptions) => writer is null
+            ? CreateOptionsTracer(block.Header, traceOptions, scope.Component.WorldState, specProvider, isTraceCall: useBlockAsBase)
+            : new GethLikeBlockStreamingMemoryTracer(traceOptions, writer, pipeWriter, cancellationToken, destroyRefund);
+        using GethLikeBlockCallDeadlineTracer? deadline = useBlockAsBase ? new(filtered, cancellationToken, CreateTracer) : null;
+        IBlockTracer<GethLikeTxTrace> tracer = deadline ?? CreateTracer(filtered);
+        CancellationToken executionToken = deadline?.Token ?? cancellationToken;
 
         try
         {
             // Prefix seeds do not contain the preceding receipts needed for block-wide log indices.
             bool unaltered = allowIndexed && options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee && !RequiresLogIndices(options);
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered ? prefixSeeds : null);
-            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, executionTracer, cancellationToken);
+                tracer.WithCancellation(executionToken), useBlockAsBase ? null : txHash, unaltered ? prefixSeeds : null);
+            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, executionTracer, executionToken);
             return tracer.BuildResult().SingleOrDefault();
+        }
+        catch (Exception ex) when (deadline?.Expired == true)
+        {
+            return deadline.CompleteExpired(ex).SingleOrDefault();
+        }
+        catch when (deadline is not null && cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
         }
         finally
         {
-            tracer.TryDispose();
+            if (deadline is null) tracer.TryDispose();
         }
     }
 
