@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,6 +74,55 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
         Assert.That(parentLookups, Is.Zero, "an archive node may retain state thousands of blocks behind head");
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task HandleAsync_starts_sender_recovery_only_after_block_creation(bool malformedAccessList)
+    {
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(0)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .WithSenderAddress(null)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithParentHash(TestItem.KeccakC)
+            .WithNumber(1)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithTransactions(transaction)
+            .TestObject;
+        block.Header.IsPostMerge = true;
+        block.Header.Hash = block.CalculateHash();
+
+        ExecutionPayload payload;
+        if (malformedAccessList)
+        {
+            ExecutionPayloadV4 malformedPayload = ExecutionPayloadV4.Create(block);
+            malformedPayload.BlockAccessList = [0];
+            payload = malformedPayload;
+        }
+        else
+        {
+            payload = ExecutionPayload.Create(block);
+        }
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.InvalidBlock,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            timeoutMs: 1_000,
+            specProvider: specProvider);
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+        int specLookups = specProvider.ReceivedCalls()
+            .Count(call => call.GetMethodInfo().Name == nameof(ISpecProvider.GetSpec));
+        Assert.That(specLookups, Is.EqualTo(malformedAccessList ? 0 : 1),
+            "sender recovery's spec lookup proves whether recovery was reached");
     }
 
     [Test]
@@ -649,7 +699,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         int timeoutMs = 50,
         Func<bool>? wasProcessedNow = null,
         Func<bool>? parentProcessedNow = null,
-        Action<IBlockTree, IStateReader>? configure = null)
+        Action<IBlockTree, IStateReader>? configure = null,
+        ISpecProvider? specProvider = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -664,6 +715,10 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         IStateReader stateReader = Substitute.For<IStateReader>();
         IMergeConfig mergeConfig = new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = timeoutMs };
         IReceiptConfig receiptConfig = new ReceiptConfig();
+        ISpecProvider effectiveSpecProvider = specProvider ?? Substitute.For<ISpecProvider>();
+        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        effectiveSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        effectiveSpecProvider.ClearReceivedCalls();
 
         BlockHeader parent = Build.A.BlockHeader
             .WithHash(block.ParentHash!)
@@ -725,8 +780,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             mergeConfig,
             receiptConfig,
             stateReader,
-            new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
-            Substitute.For<ISpecProvider>(),
+            new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), effectiveSpecProvider, LimboLogs.Instance),
+            effectiveSpecProvider,
             Substitute.For<ITxValidator>(),
             LimboLogs.Instance);
     }

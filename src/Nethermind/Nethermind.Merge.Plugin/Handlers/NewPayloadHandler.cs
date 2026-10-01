@@ -127,10 +127,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
-        // recovers inline whatever it reaches before the background recovery does.
-        StartSenderRecovery(request);
-
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
         {
@@ -138,6 +134,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+
+        // Start after TryGetBlock so its transaction-root task does not compete with recovery while this request
+        // waits for it. Recovery still overlaps the remaining header checks and block processing.
+        StartSenderRecovery(request);
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
