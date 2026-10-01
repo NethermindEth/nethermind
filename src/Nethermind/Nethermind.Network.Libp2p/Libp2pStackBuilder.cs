@@ -97,8 +97,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
 
         Task<ISession> ILocalPeer.DialAsync(PeerId peerId, CancellationToken token) =>
             FindSession(peerId) is { } existing ? Task.FromResult<ISession>(existing)
-            : _peerStore?.GetPeerInfo(peerId).Addrs is { Count: > 0 } addrs ? DialTcpAsync(peerId, [.. addrs], token)
-            : DialAsync(peerId, token);
+            : DialTcpAsync(peerId, _peerStore?.GetPeerInfo(peerId).Addrs?.ToArray() ?? [], token);
 
         private Session? FindSession(PeerId peerId) => Sessions.FirstOrDefault(session => session.State.RemotePeerId == peerId);
 
@@ -137,7 +136,9 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 throw new Libp2pException($"No TCP address to dial {peerId}");
             }
 
-            return await DialAsync([.. tcp], token);
+            // A dial cancelled before the library's first await would stay the peer's pending dial for good, so the token stops only this
+            // wait; the dial itself ends within the library's connection timeout.
+            return await DialAsync([.. tcp], CancellationToken.None).WaitAsync(token);
         }
 
         // A name that does not resolve leaves the other addresses of the peer to dial.

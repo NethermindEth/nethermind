@@ -172,6 +172,21 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
+    /// <summary>A dial its caller cancelled before it began does not keep the peer from being dialed afterwards.</summary>
+    /// <remarks>Nethermind.Libp2p 1.0.0 keeps a dial cancelled before its first await as the pending dial of the peer id for good.</remarks>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_cancelled_dial_does_not_lose_the_peer(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token);
+        await using Host node = await Host.StartAsync(token);
+        using CancellationTokenSource cancelled = new();
+        await cancelled.CancelAsync();
+
+        Assert.That(async () => await node.Peer.DialAsync(sequencer.Address, cancelled.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the dial is cancelled");
+        Assert.That(await node.Peer.DialAsync(sequencer.Address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
+    }
+
     /// <summary>A connected peer whose stored addresses were replaced by a set of two peer ids is still dialed by its existing session.</summary>
     [Test]
     [CancelAfter(60_000)]
