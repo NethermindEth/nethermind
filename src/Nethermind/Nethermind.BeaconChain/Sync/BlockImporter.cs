@@ -950,7 +950,8 @@ public sealed class BlockImporter : IBlockImporter
             validators = gloas.Validators!;
             epoch = gloas.GetCurrentEpoch();
         }
-        else if (_states.GetBlockState(head) is { } fulu)
+        // Gossip validation must not replay stored blocks for a peer-sent message; only a held head state counts.
+        else if (_states.GetHeldBlockState(head) is { } fulu)
         {
             validators = fulu.Validators!;
             epoch = fulu.GetCurrentEpoch();

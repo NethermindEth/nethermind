@@ -83,7 +83,8 @@ public class BeaconP2PLoopbackTests
                 {
                     lookup.SetException(error);
                 }
-            }) { IsBackground = true };
+            })
+            { IsBackground = true };
             try
             {
                 lock (peer.Sessions)
