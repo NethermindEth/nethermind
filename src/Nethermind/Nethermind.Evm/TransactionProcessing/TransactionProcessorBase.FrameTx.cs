@@ -64,9 +64,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             UInt256 accountNonce = WorldState.GetNonce(sender);
             return accountNonce == tx.Nonce
                 ? TransactionResult.Ok
-                : (tx.Nonce < accountNonce
-                    ? TransactionResult.ErrorType.TransactionNonceTooLow
-                    : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce mismatch");
+                : FrameTxNonceMismatch(tx.Nonce < accountNonce);
         }
 
         if (KeyedNonceManager.IsNonceSetValid(WorldState, sender, nonceKeys, tx.Nonce))
@@ -81,10 +79,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
         ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
-        return (tx.Nonce < current
-            ? TransactionResult.ErrorType.TransactionNonceTooLow
-            : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce sequence mismatch");
+        for (int i = 1; current == tx.Nonce && i < nonceKeys.Length; i++)
+        {
+            current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[i]);
+        }
+
+        return FrameTxNonceMismatch(tx.Nonce < current);
     }
+
+    private static TransactionResult FrameTxNonceMismatch(bool tooLow) => tooLow
+        ? TransactionResult.ErrorType.TransactionNonceTooLow.WithDetail("frame transaction nonce too low")
+        : TransactionResult.ErrorType.TransactionNonceTooHigh.WithDetail("frame transaction nonce too high");
 
     /// <typeparam name="TTracing"><see cref="OnFlag"/> when the tracer is tracing; <see cref="OffFlag"/> compiles the
     /// tracer hooks, including the <see cref="IFrameTxReceiptTracer"/> reports, out of the frame loop.</typeparam>
@@ -641,6 +646,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 if (frame.IsAtomicBatch)
                 {
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("atomic batch flag in validation prefix");
+                }
+
+                if (isDeployFrame && WorldState.IsContract(sender))
+                {
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame targets an already-deployed tx.sender");
                 }
 
                 frameContext.CurrentFrameIndex = i;

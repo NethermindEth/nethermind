@@ -20,12 +20,14 @@ using Autofac.Core.Lifetime;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -791,6 +793,52 @@ public class EthereumRunnerTests
         finally
         {
             await runner.StopAsync();
+        }
+    }
+
+    [TestCase("gnosis", true)]
+    [TestCase("xdc", true)]
+    [TestCase("mainnet", false)]
+    public async Task Pool_initializer_retains_simulator_and_registers_shutdown_disposal(string network, bool chainSpecific)
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
+        configProvider.Initialize();
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        TxPool.TxPool? pool = null;
+        try
+        {
+            INethermindApi api = runner.Api;
+            api.TransactionComparerProvider = new TransactionComparerProvider(api.SpecProvider!, api.BlockTree!.AsReadOnly());
+            IFrameTxPrefixSimulator simulator = api.Context.Resolve<IFrameTxPrefixSimulator>();
+            IEthereumStepsLoader loader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
+            foreach (StepInfo step in loader.ResolveStepsImplementations())
+            {
+                if (!typeof(InitializeBlockchain).IsAssignableFrom(step.StepType)) continue;
+                Assert.That(step.StepType != typeof(InitializeBlockchain), Is.EqualTo(chainSpecific));
+                object initializer = runner.LifetimeScope.Resolve(step.StepType);
+                MethodInfo createPool = step.StepType.GetMethod("CreateTxPool", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
+                FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.That(simulatorField.GetValue(pool), Is.SameAs(simulator));
+                return;
+            }
+            Assert.Fail("No blockchain initializer resolved");
+        }
+        finally
+        {
+            await using TxPool.TxPool? poolCleanup = pool;
+            await runner.StopAsync();
+            if (pool is not null)
+            {
+                FieldInfo disposedField = typeof(TxPool.TxPool).GetField("_isDisposed", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.That(disposedField.GetValue(pool), Is.True);
+            }
         }
     }
 
