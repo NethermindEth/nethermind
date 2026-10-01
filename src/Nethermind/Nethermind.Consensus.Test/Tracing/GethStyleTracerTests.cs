@@ -60,7 +60,7 @@ public class GethStyleTracerTests
     /// compile, used to reach the JavaScript block tracer, which built a V8 engine per traced transaction only to
     /// fail loading the script.
     /// </remarks>
-    [TestCase("flatCallTracer", true)]
+    [TestCase("flatCallTracer", false)]
     [TestCase("_bigInteger", true)]
     public void Create_options_tracer_defers_valid_javascript_expression_evaluation(string tracer, bool javascript)
     {
