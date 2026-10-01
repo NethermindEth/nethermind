@@ -15,6 +15,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -90,7 +91,11 @@ public class BranchProcessor(
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
+        void CancelBackgroundWork()
+        {
+            NewPayloadTrace.Stamp(NewPayloadTrace.TxsDone);
+            backgroundCancellation?.Cancel();
+        }
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
         try
@@ -141,7 +146,9 @@ public class BranchProcessor(
                 TxReceipt[] receipts;
                 try
                 {
+                    NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneStart);
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
+                    NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneEnd);
                 }
                 catch (BlockProcessor.BlockAccessListSequentialRetryException) when (
                     worldStateCloser is not null &&
@@ -183,6 +190,7 @@ public class BranchProcessor(
                 if (notReadOnly && i == blocksCount - 1)
                 {
                     BlockExecutedEventArgs executed = new(suggestedBlock);
+                    NewPayloadTrace.Stamp(NewPayloadTrace.Verdict);
                     BlockExecuted?.Invoke(this, executed);
                     verdictGiven = executed.Answered;
                 }
@@ -192,6 +200,7 @@ public class BranchProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
+                NewPayloadTrace.Stamp(NewPayloadTrace.CommitDone);
                 processedBlocksCount = i + 1;
 
                 if (notReadOnly)

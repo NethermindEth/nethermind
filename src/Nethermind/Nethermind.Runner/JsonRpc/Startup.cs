@@ -43,6 +43,7 @@ using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.Runner.JsonRpc;
 
@@ -458,6 +459,7 @@ public class Startup : IStartup
 
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
+        NewPayloadTrace.BeginRequest();
         long startTime = _jsonRpcLocalStats.IsEnabled ? Stopwatch.GetTimestamp() : 0;
 
         if (_jsonRpcProcessor.ProcessExit.IsCancellationRequested)
@@ -488,6 +490,7 @@ public class Startup : IStartup
         try
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
+            NewPayloadTrace.StampRequest(NewPayloadTrace.BodyRead);
             using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 
@@ -538,6 +541,7 @@ public class Startup : IStartup
                 if (responseSink is not null)
                 {
                     await responseSink.CompleteAsync(ctx.RequestAborted);
+                    NewPayloadTrace.StampRequest(NewPayloadTrace.ResponseDone);
                 }
 
                 Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, collectedBody.BytesRead);

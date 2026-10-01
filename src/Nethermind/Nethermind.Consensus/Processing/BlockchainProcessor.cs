@@ -30,6 +30,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 using static Nethermind.Core.Threading.ProcessingThread;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -641,6 +642,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 Block block = blockRef.Block;
                 if (isTrace) TraceProcessing(block);
 
+                NewPayloadTrace.Stamp(NewPayloadTrace.Dequeued);
                 _stats.Start();
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
 
@@ -750,9 +752,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
 
+        NewPayloadTrace.Stamp(NewPayloadTrace.BranchStart);
         _stopwatch.Restart();
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
         _stopwatch.Stop();
+        NewPayloadTrace.Stamp(NewPayloadTrace.BranchEnd);
         if (processedBlocks is null)
         {
             return null;

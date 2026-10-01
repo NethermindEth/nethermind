@@ -17,6 +17,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using ValidationResult = Nethermind.Merge.Plugin.Data.ValidationResult;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -92,6 +93,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
+        NewPayloadTrace.BeginNewPayload();
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
@@ -130,11 +132,14 @@ public partial class EngineRpcModule : IEngineRpcModule
                 // Start tx-root computation before asynchronous GC-region admission so it can
                 // overlap that work; keep it inside the lock so competing requests cannot run
                 // trie work concurrently.
+                NewPayloadTrace.Stamp(NewPayloadTrace.Locked);
                 _ = executionPayload.StartTxRootComputation();
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
+                NewPayloadTrace.Stamp(NewPayloadTrace.GcRegion);
                 try
                 {
                     ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    NewPayloadTrace.Stamp(NewPayloadTrace.HandleEnd);
                     // The answer is out before the block is committed; the region stays for the commit's allocations
                     // and ends when the block leaves the queue, on the thread that sees it leave.
                     _ = EndNoGCRegionAfterCommitAsync(region, executionPayload.BlockHash);
