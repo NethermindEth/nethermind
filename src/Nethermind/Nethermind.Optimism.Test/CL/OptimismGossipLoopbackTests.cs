@@ -77,11 +77,13 @@ public class OptimismGossipLoopbackTests
         IRoutingStateContainer routing = node.Router;
         Assert.That(routing.ConnectedPeers, Does.Not.Contain(sequencerId), "fixture: the peer starts unconnected");
 
-        await KeepUntilConnectedAsync(node, routing, sequencer.Address, sequencerId, token);
+        using StaticPeerKeeper keeper = new(node.Peer, routing, [sequencer.Address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
+        await KeepUntilConnectedAsync(keeper, node, routing, sequencerId, token);
+        Assert.That(keeper.GossipDialCountForTest, Is.EqualTo(1), "one gossip dial per static peer");
     }
 
     // Runs the static peer check as its timer does, more often: the peer can refuse a dial while it still holds an earlier session.
-    private static async Task KeepUntilConnectedAsync(Host node, IRoutingStateContainer routing, Multiaddress address, PeerId peerId, CancellationToken token)
+    private static async Task KeepUntilConnectedAsync(StaticPeerKeeper keeper, Host node, IRoutingStateContainer routing, PeerId peerId, CancellationToken token)
     {
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
         bounded.CancelAfter(TimeSpan.FromSeconds(20));
@@ -92,7 +94,7 @@ public class OptimismGossipLoopbackTests
                 Assert.Fail($"the static peer check never connected the peer ({((LocalPeer)node.Peer).Sessions.Count} sessions)");
             }
 
-            await OptimismCLP2P.ReconnectStaticPeersAsync(node.Peer, routing, [address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(), bounded.Token);
+            await keeper.CheckAsync(bounded.Token);
             await Task.Delay(200, CancellationToken.None);
         }
     }
