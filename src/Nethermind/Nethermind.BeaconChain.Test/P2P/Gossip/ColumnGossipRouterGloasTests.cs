@@ -235,7 +235,7 @@ public class ColumnGossipRouterGloasTests
     public void Sidecars_naming_a_stored_pre_gloas_block_read_the_store_at_most_once(bool wellFormed, long expectedReads)
     {
         MemColumnsDb<BeaconChainDbColumns>? columns = null;
-        (ColumnGossipRouter router, DataColumnSidecarPool _) = Create(populate: (db, _) => columns = db);
+        (ColumnGossipRouter router, DataColumnSidecarPool _) = Create(legacyBlockIndex: true, populate: (db, _) => columns = db);
         MemDb blocks = (MemDb)columns!.GetColumnDb(BeaconChainDbColumns.Blocks);
         long readsBefore = blocks.ReadsCount;
 
@@ -274,7 +274,7 @@ public class ColumnGossipRouterGloasTests
     {
         Hash256[] roots = [];
         MemDb? blocks = null;
-        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(populate: (db, store) =>
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(legacyBlockIndex: true, populate: (db, store) =>
         {
             blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
             roots = kind == StoredRoots.GloasAtOtherSlots ? StoreGloasBlocksAfterBlockSlot(store, count) : StoreFuluBlocks(store, count);
@@ -304,7 +304,7 @@ public class ColumnGossipRouterGloasTests
     public void Sidecar_of_a_cached_block_is_accepted_after_the_decode_budget_is_spent()
     {
         Hash256[] roots = [];
-        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(populate: (_, store) => roots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot));
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(legacyBlockIndex: true, populate: (_, store) => roots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot));
         // A forgery reads and caches the block without marking its (root, index) seen.
         MessageValidity forged = router.Handle(Column, gloasTopic: true, Encode(Sidecar(mutate: static s => s.KzgProofs = [s.KzgProofs![1], s.KzgProofs[0]])));
         foreach (Hash256 root in roots)
@@ -330,7 +330,7 @@ public class ColumnGossipRouterGloasTests
         Hash256[] roots = [];
         MemDb? blocks = null;
         ManualTimestamper timestamper = WallClock(Sepolia, BlockSlot);
-        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(timestamper: timestamper, populate: (db, store) =>
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(legacyBlockIndex: true, timestamper: timestamper, populate: (db, store) =>
         {
             blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
             roots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot);
@@ -367,7 +367,7 @@ public class ColumnGossipRouterGloasTests
     public void Spent_decode_budget_still_serves_the_canonical_block_and_parks_unknown_blocks(bool canonical, ulong slotsSinceBlock, MessageValidity expected)
     {
         Hash256[] roots = [];
-        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(wallSlot: BlockSlot + slotsSinceBlock, populate: (_, store) =>
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(legacyBlockIndex: true, wallSlot: BlockSlot + slotsSinceBlock, populate: (_, store) =>
         {
             roots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot);
             store.SetCanonicalRoot(BlockSlot, canonical ? BlockRoot : Keccak.Compute("competing block"));
@@ -395,7 +395,7 @@ public class ColumnGossipRouterGloasTests
     {
         Hash256[] roots = [];
         MemDb? blocks = null;
-        (ColumnGossipRouter router, DataColumnSidecarPool _) = Create(populate: (db, store) =>
+        (ColumnGossipRouter router, DataColumnSidecarPool _) = Create(legacyBlockIndex: true, populate: (db, store) =>
         {
             blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
             roots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot);
@@ -421,7 +421,7 @@ public class ColumnGossipRouterGloasTests
     [Test]
     public void Repeated_stored_pre_gloas_root_spends_one_decode_of_the_budget()
     {
-        (ColumnGossipRouter router, DataColumnSidecarPool _) = Create();
+        (ColumnGossipRouter router, DataColumnSidecarPool _) = Create(legacyBlockIndex: true);
         for (int i = 0; i <= ColumnGossipRouter.StoreDecodesPerSlot; i++)
         {
             int variant = i;
@@ -567,7 +567,7 @@ public class ColumnGossipRouterGloasTests
     {
         Hash256[] fuluRoots = [];
         Hash256[] gloasParents = [];
-        (ColumnGossipRouter router, DataColumnSidecarPool _) = Create(populate: (_, store) =>
+        (ColumnGossipRouter router, DataColumnSidecarPool _) = Create(legacyBlockIndex: true, populate: (_, store) =>
         {
             fuluRoots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot);
             gloasParents = StoreGloasBlocksAtBlockSlot(store, ColumnGossipRouter.ParentSlotReadsPerSlot + 1);
@@ -617,15 +617,99 @@ public class ColumnGossipRouterGloasTests
         }
     }
 
-    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool) Create(BeaconChainSpec? spec = null, ulong? wallSlot = null, ulong[]? subscribed = null,
-        Action<MemColumnsDb<BeaconChainDbColumns>, BeaconChainStore>? populate = null, ManualTimestamper? timestamper = null, FailedBlockRoots? failedBlocks = null)
+    /// <summary>Checks that gloas/p2p-interface.md validation of indexed blocks survives a stored-root flood.</summary>
+    [Test]
+    public void Sidecars_of_a_stored_block_are_accepted_however_many_other_stored_blocks_are_named_first([Values] bool canonical)
     {
-        (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = CreateWithTopic(spec, wallSlot, subscribed, populate, timestamper, failedBlocks);
+        Hash256[] roots = [];
+        MemDb? blocks = null;
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(populate: (db, store) =>
+        {
+            blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
+            roots = StoreFuluBlocks(store, 4 * ColumnGossipRouter.StoreDecodesPerSlot);
+            store.SetCanonicalRoot(BlockSlot, canonical ? BlockRoot : Keccak.Compute("competing block"));
+        });
+        long readsBefore = blocks!.ReadsCount;
+        foreach (Hash256 root in roots)
+        {
+            router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: root)));
+        }
+
+        MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
+            Assert.That(router.GetDropCount(ColumnGossipDropReason.SlotMismatch), Is.EqualTo(roots.Length));
+            Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.Zero);
+            Assert.That(blocks.ReadsCount - readsBefore, Is.Zero, "no block record is read for a sidecar");
+            Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.True);
+        }
+    }
+
+    /// <summary>Checks that gloas/p2p-interface.md validation reads summaries after a router restart.</summary>
+    [Test]
+    public void The_summary_of_a_stored_block_serves_a_router_started_after_a_restart()
+    {
+        MemColumnsDb<BeaconChainDbColumns>? database = null;
+        MemDb? blocks = null;
+        Create(populate: (db, _) =>
+        {
+            database = db;
+            blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
+        });
+        long readsBefore = blocks!.ReadsCount;
+        DataColumnSidecarPool pool = new();
+        ColumnGossipRouter restarted = new(Sepolia, new SlotClock(Sepolia, WallClock(Sepolia, BlockSlot)), LimboLogs.Instance, pool, new BeaconChainStore(database!, Sepolia));
+        restarted.Start(_ => new ForwardingTopic(), ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(BlockSlot)), [Column]);
+
+        MessageValidity genuine = restarted.Handle(Column, gloasTopic: true, Encode(Sidecar()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
+            Assert.That(blocks.ReadsCount - readsBefore, Is.Zero, "the restarted router reads no block record");
+        }
+    }
+
+    /// <summary>Checks that legacy blocks pay for one decode across restarts of gloas/p2p-interface.md validation.</summary>
+    [Test]
+    public void A_block_stored_before_the_summary_existed_is_decoded_once_and_then_served_from_its_summary()
+    {
+        MemColumnsDb<BeaconChainDbColumns>? database = null;
+        MemDb? blocks = null;
+        (ColumnGossipRouter router, _) = Create(legacyBlockIndex: true, populate: (db, _) =>
+        {
+            database = db;
+            blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
+        });
+        long readsBefore = blocks!.ReadsCount;
+        MessageValidity first = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
+        long readsForFirst = blocks.ReadsCount - readsBefore;
+        DataColumnSidecarPool pool = new();
+        ColumnGossipRouter restarted = new(Sepolia, new SlotClock(Sepolia, WallClock(Sepolia, BlockSlot)), LimboLogs.Instance, pool, new BeaconChainStore(database!, Sepolia));
+        restarted.Start(_ => new ForwardingTopic(), ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(BlockSlot)), [Column]);
+
+        MessageValidity second = restarted.Handle(Column, gloasTopic: true, Encode(Sidecar()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(MessageValidity.Accepted));
+            Assert.That(readsForFirst, Is.EqualTo(1), "the old record is decoded to write its summary");
+            Assert.That(second, Is.EqualTo(MessageValidity.Accepted));
+            Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(1), "the restarted router reads no block record");
+        }
+    }
+
+    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool) Create(BeaconChainSpec? spec = null, ulong? wallSlot = null, ulong[]? subscribed = null,
+        Action<MemColumnsDb<BeaconChainDbColumns>, BeaconChainStore>? populate = null, ManualTimestamper? timestamper = null, FailedBlockRoots? failedBlocks = null, bool legacyBlockIndex = false)
+    {
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = CreateWithTopic(spec, wallSlot, subscribed, populate, timestamper, failedBlocks, legacyBlockIndex);
         return (router, pool);
     }
 
     private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, ForwardingTopic Topic) CreateWithTopic(BeaconChainSpec? spec = null, ulong? wallSlot = null, ulong[]? subscribed = null,
-        Action<MemColumnsDb<BeaconChainDbColumns>, BeaconChainStore>? populate = null, ManualTimestamper? timestamper = null, FailedBlockRoots? failedBlocks = null)
+        Action<MemColumnsDb<BeaconChainDbColumns>, BeaconChainStore>? populate = null, ManualTimestamper? timestamper = null, FailedBlockRoots? failedBlocks = null, bool legacyBlockIndex = false)
     {
         spec ??= Sepolia;
         ulong slot = wallSlot ?? BlockSlot;
@@ -638,6 +722,10 @@ public class ColumnGossipRouterGloasTests
         }
 
         populate?.Invoke(db, store);
+        if (legacyBlockIndex)
+        {
+            StripBlockSummaries(db);
+        }
 
         DataColumnSidecarPool pool = new();
         SlotClock clock = new(spec, timestamper ?? WallClock(spec, slot));
@@ -645,6 +733,15 @@ public class ColumnGossipRouterGloasTests
         ForwardingTopic topic = new();
         router.Start(_ => topic, ForkDigest.Compute(spec, spec.GetEpoch(slot)), subscribed ?? [Column]);
         return (router, pool, topic);
+    }
+
+    private static void StripBlockSummaries(MemColumnsDb<BeaconChainDbColumns> db)
+    {
+        MemDb index = (MemDb)db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
+        foreach (byte[] key in index.GetAllKeys().Where(static key => key.Length == 1 + Hash256.Size && key[0] == BeaconChainStore.BlockSummaryKeyPrefix).ToArray())
+        {
+            index.Remove(key);
+        }
     }
 
     private static ManualTimestamper WallClock(BeaconChainSpec spec, ulong slot) =>
