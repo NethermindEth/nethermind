@@ -51,28 +51,20 @@ public class PeerDialPolicyTests
                 throw new InvalidOperationException("caller cancelled during admission");
             };
             string address = LoopbackAddress(remote.P2P);
-            for (int attempt = 0; attempt < 3 && !caller.IsCancellationRequested; attempt++)
+            int quality = discovery.DialHistory.Quality(address);
+            try
             {
-                int quality = discovery.DialHistory.Quality(address);
-                try
-                {
-                    await manager.TryAddPeerAsync(address, caller.Token);
-                }
-                catch (OperationCanceledException) when (caller.IsCancellationRequested)
-                {
-                }
-
-                if (caller.IsCancellationRequested)
-                {
-                    Assert.That(discovery.DialHistory.Quality(address), Is.EqualTo(quality), "caller cancellation was recorded as an endpoint failure");
-                }
-                else
-                {
-                    clock.Add(PeerDialHistory.MaximumBackoff);
-                }
+                await manager.TryAddPeerAsync(address, caller.Token);
+            }
+            catch (OperationCanceledException) when (caller.IsCancellationRequested)
+            {
             }
 
-            Assert.That(caller.IsCancellationRequested, Is.True, "the admission callback never ran");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(caller.IsCancellationRequested, Is.True, "the admission callback never ran");
+                Assert.That(discovery.DialHistory.Quality(address), Is.EqualTo(quality), "caller cancellation was recorded as an endpoint failure");
+            }
         }
         finally
         {
@@ -139,10 +131,10 @@ public class PeerDialPolicyTests
             ManualTimestamper clock = new();
             PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: clock);
 
-            Assert.That(await AdmitWithRetriesAsync(manager, remote, clock, token, attempts: 3), Is.EqualTo(!conflicting));
+            Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.EqualTo(!conflicting));
             if (conflicting)
             {
-                // A lost dial looks the same from outside, so the recorded disconnect proves the refusal was for the checkpoint.
+                // The recorded disconnect proves the refusal was for the checkpoint, not a failed dial.
                 PeerManager.PeerDiagnostics diagnostics = manager.GetPeerDiagnostics().Single(d => d.PeerId == remote.P2P.LocalPeerId!.ToString());
                 using (Assert.EnterMultipleScope())
                 {
@@ -198,19 +190,8 @@ public class PeerDialPolicyTests
 
             async Task<bool> OfferUntilConnectedAsync()
             {
-                // The pinned libp2p can lose a fresh session, so a failed attempt waits out its backoff and is offered again.
-                for (int attempt = 0; attempt < 3; attempt++)
-                {
-                    await offered.Writer.WriteAsync(candidate, token);
-                    if (await EventuallyAsync(() => manager.PeerCount == 1, TimeSpan.FromSeconds(10), token))
-                    {
-                        return true;
-                    }
-
-                    clock.Add(PeerDialHistory.MaximumBackoff);
-                }
-
-                return false;
+                await offered.Writer.WriteAsync(candidate, token);
+                return await EventuallyAsync(() => manager.PeerCount == 1, TimeSpan.FromSeconds(10), token);
             }
         }
         finally
@@ -363,21 +344,6 @@ public class PeerDialPolicyTests
     }
 
     private static Hash256 Root(int fill) => fill == 0 ? Hash256.Zero : new Hash256(Enumerable.Repeat((byte)fill, Hash256.Size).ToArray());
-
-    private static async Task<bool> AdmitWithRetriesAsync(PeerManager manager, Node remote, ManualTimestamper clock, CancellationToken token, int attempts)
-    {
-        for (int attempt = 0; attempt < attempts; attempt++)
-        {
-            if (await manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token))
-            {
-                return true;
-            }
-
-            clock.Add(PeerDialHistory.MaximumBackoff);
-        }
-
-        return false;
-    }
 
     private static async Task<bool> EventuallyAsync(Func<bool> condition, TimeSpan bound, CancellationToken token)
     {

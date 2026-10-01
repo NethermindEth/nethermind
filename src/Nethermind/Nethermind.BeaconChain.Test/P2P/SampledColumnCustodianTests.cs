@@ -432,19 +432,8 @@ public class SampledColumnCustodianTests
         }
     }
 
-    /// <summary>Admission is not what the caller checks, so a dial whose session the pinned libp2p loses is tried again.</summary>
-    private static async Task<bool> AdmitAsync(PeerManager peerManager, Node node, CancellationToken token)
-    {
-        for (int attempt = 0; attempt < 3; attempt++)
-        {
-            if (await peerManager.TryAddPeerAsync(LoopbackAddress(node.P2P), token))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    private static Task<bool> AdmitAsync(PeerManager peerManager, Node node, CancellationToken token) =>
+        peerManager.TryAddPeerAsync(LoopbackAddress(node.P2P), token);
 
     private static void ReportFailuresUpToTheLimit(IBeaconSyncPeer peer)
     {

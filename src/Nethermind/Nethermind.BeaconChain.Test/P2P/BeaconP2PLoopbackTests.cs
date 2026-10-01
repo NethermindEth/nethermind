@@ -352,7 +352,7 @@ public class BeaconP2PLoopbackTests
         BeaconChainStatusHolder statusHolder = new(spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
         DataColumnSidecarPool pool = new();
-        BeaconP2P p2p = PeerSessionNodes.Watched(logs => new BeaconP2P(config, spec, store, statusHolder, metadataSource, pool, new ExecutionPayloadEnvelopePool(), logs));
+        BeaconP2P p2p = new(config, spec, store, statusHolder, metadataSource, pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
         return new Node(p2p, store, statusHolder, metadataSource, config, pool);
     }
 }
