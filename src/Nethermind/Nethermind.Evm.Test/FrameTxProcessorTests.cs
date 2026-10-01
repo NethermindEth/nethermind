@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -81,6 +82,40 @@ public partial class FrameTxProcessorTests
 
     [TearDown]
     public void TearDown() => _worldStateCloser?.Dispose();
+
+    [Test]
+    public void Execute_SimulateReportsGasBeforeRefunds([Values] bool clearStorage, [Values] bool postTxReverts)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Done);
+        if (clearStorage)
+        {
+            _stateProvider.Set(new StorageCell(Observer, 0), (UInt256)1);
+            _stateProvider.Commit(Spec);
+        }
+        DeployContract(Recipient, postTxReverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.PostTx, target: Recipient));
+        SimulateTxTracer tracer = new(false, tx, 1, TestItem.KeccakA, 1, 0, 0);
+
+        using NativeStateGasTracer stateGasTracer = new(tx, Spec, GethTraceOptions.Default);
+        CompositeTxTracer combinedTracer = new(tracer, stateGasTracer);
+
+        Assert.That(Process(tx, tracer: combinedTracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.TraceResult, Is.Not.Null);
+        using GethLikeTxTrace trace = stateGasTracer.BuildResult();
+        StateGasTrace gas = (StateGasTrace)trace.CustomTracerResult!.Value;
+        bool hasRefund = clearStorage && !postTxReverts;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.TraceResult.MaxUsedGas,
+                hasRefund ? Is.GreaterThan(tracer.TraceResult.GasUsed) : Is.EqualTo(tracer.TraceResult.GasUsed));
+            Assert.That(gas.GasRefund, hasRefund ? Is.GreaterThan(0) : Is.Zero);
+            Assert.That(gas.GasRefund, Is.EqualTo(tracer.TraceResult.MaxUsedGas - tracer.TraceResult.GasUsed));
+            Assert.That(gas.GasRefund, Is.LessThanOrEqualTo(tracer.TraceResult.MaxUsedGas / RefundHelper.MaxRefundQuotientEIP3529));
+        }
+    }
 
     [Test]
     public void Execute_NonceHigherThanAccount_ReturnsNonceTooHigh()
