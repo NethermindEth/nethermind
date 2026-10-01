@@ -339,7 +339,8 @@ public class OptimismCLP2P : IDisposable
             await _router.StartAsync(_localPeer, token);
 
             _peerStore = _serviceProvider.GetService<PeerStore>()!;
-            foreach (Multiaddress multiaddress in _staticPeerList)
+            // A DNS static peer is dialed only by the static peer check, which resolves it first.
+            foreach (Multiaddress multiaddress in _staticPeerList.Where(static address => !StaticPeerKeeper.HasDnsName(address)))
             {
                 _peerStore.Discover([multiaddress]);
             }
