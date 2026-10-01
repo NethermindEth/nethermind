@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -35,25 +31,10 @@ public sealed class FlatStorageTree(
 
     private Trees? _trees;
 
-    private const int EarlyIdle = 0;
-    private const int EarlyApplying = 1;
-    private const int EarlyClaimed = 2;
-
-    // Committed writes waiting for the early apply thread, in commit order.
-    private ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? _earlyWrites;
-    // Owned by whoever holds _earlyState.
-    private StorageTree? _earlyTree;
-    private Dictionary<UInt256, UInt256>? _earlyApplied;
-    private int _earlyState;
-    private int _earlyQueued;
-    private readonly int _earlyGeneration = scope.EarlyApplyGeneration;
-
     private sealed class Trees(StorageTree tree, StorageTree warmup)
     {
         public readonly StorageTree Tree = tree;
         public readonly StorageTree Warmup = warmup;
-        // The root before any write, so a tree built on it copies on write.
-        public readonly TrieNode? PreBlockRoot = tree.RootRef;
     }
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
@@ -105,111 +86,6 @@ public sealed class FlatStorageTree(
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
     public void HintSet(in UInt256 index) => WarmUpSlot(index);
-
-    public void HintSet(in UInt256 index, in UInt256 value)
-    {
-        WarmUpSlot(index);
-        if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) == EarlyClaimed) return;
-
-        ConcurrentQueue<(UInt256 Slot, UInt256 Value)> writes = Volatile.Read(ref _earlyWrites) ?? CreateEarlyWrites();
-        writes.Enqueue((index, value));
-        // A set flag means a pass that has yet to clear it will see this write.
-        if (Volatile.Read(ref _earlyQueued) == 0 && Interlocked.Exchange(ref _earlyQueued, 1) == 0) _scope.EarlyApplier.Enqueue(this);
-    }
-
-    private ConcurrentQueue<(UInt256 Slot, UInt256 Value)> CreateEarlyWrites()
-    {
-        ConcurrentQueue<(UInt256 Slot, UInt256 Value)> created = new();
-        return Interlocked.CompareExchange(ref _earlyWrites, created, null) ?? created;
-    }
-
-    [SkipLocalsInit]
-    internal void ApplyEarlyWrites()
-    {
-        // Cleared before the queue is read, so a hint landing during the pass queues the tree again.
-        Interlocked.Exchange(ref _earlyQueued, 0);
-        if (_scope.EarlyApplyClosed || _scope.EarlyApplyGeneration != _earlyGeneration
-            || Interlocked.CompareExchange(ref _earlyState, EarlyApplying, EarlyIdle) != EarlyIdle) return;
-
-        bool leased = false;
-        try
-        {
-            ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? writes = Volatile.Read(ref _earlyWrites);
-            if (writes is null || writes.IsEmpty || !(leased = _bundle.TryLeaseReadOnlyBundle())) return;
-
-            Dictionary<UInt256, UInt256> applied = _earlyApplied ??= [];
-            Dictionary<UInt256, UInt256> latest = new(writes.Count);
-            while (writes.TryDequeue(out (UInt256 Slot, UInt256 Value) write)) latest[write.Slot] = write.Value;
-
-            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(latest.Count);
-            Unsafe.SkipInit(out EvmWord word);
-            ValueHash256 key = default;
-            foreach ((UInt256 slot, UInt256 value) in latest)
-            {
-                if (applied.TryGetValue(slot, out UInt256 current) && current == value) continue;
-
-                bool isZero = value.IsZero;
-                StorageTree.ComputeKeyWithLookup(slot, ref key);
-                entries.Add(StorageTree.CreateBulkSetEntry(key, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero));
-                applied[slot] = value;
-            }
-
-            if (entries.Count == 0) return;
-
-            OnEarlyPassDrained?.Invoke();
-            StorageTree tree = _earlyTree ??= CreateEarlyTree();
-            // No thread-pool work: it would run at normal priority.
-            tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
-            tree.UpdateRootHash(canBeParallel: false);
-            _scope.CountEarlyApplied(entries.Count);
-        }
-        catch
-        {
-            // A partly applied tree must never be adopted.
-            _earlyTree = null;
-            _earlyApplied = null;
-            Volatile.Write(ref _earlyState, EarlyClaimed);
-            throw;
-        }
-        finally
-        {
-            if (leased) _bundle.ReleaseReadOnlyBundleLease();
-            Interlocked.CompareExchange(ref _earlyState, EarlyIdle, EarlyApplying);
-        }
-    }
-
-    /// <summary>Whether every queued write has been applied to the early tree. For tests.</summary>
-    internal bool EarlyWritesDrained => Volatile.Read(ref _earlyWrites) is not { IsEmpty: false } && Volatile.Read(ref _earlyState) != EarlyApplying && Volatile.Read(ref _earlyQueued) == 0;
-
-    /// <summary>Called once a pass has taken its writes. For tests.</summary>
-    internal Action? OnEarlyPassDrained;
-
-    private StorageTree CreateEarlyTree()
-    {
-        // Never the current root: an abandoned pass may still run while the batch writes into the block tree.
-        StorageTree tree = new(new StorageTrieStoreWarmerAdapter(_bundle, AddressHash), _logManager);
-        tree.SetRootHash(_storageRoot, false);
-        tree.RootRef = GetTrees().PreBlockRoot;
-        return tree;
-    }
-
-    private Dictionary<UInt256, UInt256>? AdoptEarlyTree(StorageTree tree)
-    {
-        if (Volatile.Read(ref _earlyWrites) is null) return null;
-
-        int previous = Interlocked.Exchange(ref _earlyState, EarlyClaimed);
-        if (previous == EarlyApplying)
-        {
-            // Mid-pass: waiting could take a scheduler tick, so the batch writes every slot instead.
-            _scope.CountEarlyAbandoned();
-            return null;
-        }
-
-        if (previous != EarlyIdle || _earlyTree is not { } earlyTree || _earlyApplied is not { Count: > 0 } applied) return null;
-
-        tree.RootRef = earlyTree.RootRef;
-        return applied;
-    }
 
     private void WarmUpSlot(UInt256 index)
     {
@@ -284,64 +160,11 @@ public sealed class FlatStorageTree(
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        StorageTree tree = GetTrees().Tree;
-        Dictionary<UInt256, UInt256>? earlyApplied = AdoptEarlyTree(tree);
         // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported
         // valid. The hash then goes parallel from the size at which a commit would split the tree across threads.
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, tree, onRootUpdated, _address,
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, GetTrees().Tree, onRootUpdated, _address,
             commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel);
-        return earlyApplied is null
-            ? new StorageTreeBulkWriteBatch(trieBatch, this)
-            : new EarlyAppliedStorageWriteBatch(trieBatch, this, earlyApplied);
-    }
-
-    // For a tree that already holds the early writes: unchanged slots only update the flat overlay.
-    private sealed class EarlyAppliedStorageWriteBatch(
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
-        FlatStorageTree storageTree,
-        Dictionary<UInt256, UInt256> earlyApplied) : IWorldStateScopeProvider.IStorageWriteBatch
-    {
-        private Dictionary<UInt256, UInt256>? _earlyApplied = earlyApplied;
-        private int _reused;
-
-        public void Set(in UInt256 index, in UInt256 value)
-        {
-            storageTree.Set(index, value);
-            if (_earlyApplied is not null && _earlyApplied.Remove(index, out UInt256 applied) && applied == value)
-            {
-                trieBatch.MarkSet();
-                _reused++;
-                return;
-            }
-
-            trieBatch.Set(in index, value);
-        }
-
-        public void Clear()
-        {
-            // Clearing resets the tree, early writes included.
-            _earlyApplied = null;
-            trieBatch.Clear();
-            storageTree.ClearStorage();
-        }
-
-        public void Dispose()
-        {
-            int restored = 0;
-            if (_earlyApplied is { Count: > 0 } leftovers)
-            {
-                // Early writes the block ended at their pre-block value, which the flush skips.
-                foreach (UInt256 slot in leftovers.Keys)
-                {
-                    storageTree.Get(slot, out UInt256 value);
-                    trieBatch.Set(slot, value);
-                    restored++;
-                }
-            }
-
-            storageTree._scope.CountEarlyReconciled(_reused, restored);
-            trieBatch.Dispose();
-        }
+        return new StorageTreeBulkWriteBatch(trieBatch, this);
     }
 
     // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.

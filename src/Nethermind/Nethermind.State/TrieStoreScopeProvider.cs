@@ -461,9 +461,6 @@ public class TrieStoreScopeProvider(
             _hasSelfDestruct = true;
         }
 
-        /// <summary>Updates the root on dispose even if no slot was set.</summary>
-        public void MarkSet() => _wasSetCalled = true;
-
         public void Dispose()
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;

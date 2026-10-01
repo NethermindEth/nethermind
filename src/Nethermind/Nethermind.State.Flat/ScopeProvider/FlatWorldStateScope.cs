@@ -53,16 +53,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
 
-    private readonly IdleStorageApplier? _earlyApplier;
-    // Closed from the block-end write batch on.
-    private volatile bool _earlyApplyClosed;
-    // Advanced by every commit, so trees of an earlier block are skipped.
-    private volatile int _earlyApplyGeneration;
-    private int _earlyAppliedSlots;
-    private int _earlyReusedSlots;
-    private int _earlyRestoredSlots;
-    private int _earlyAbandonedTrees;
-
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
@@ -94,41 +84,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
-
-        if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
-            && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
-        {
-            _earlyApplier = IdleStorageApplier.GetInstance(logManager);
-            _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
-        }
-    }
-
-    internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
-
-    internal bool EarlyApplyClosed => _earlyApplyClosed;
-
-    internal int EarlyApplyGeneration => _earlyApplyGeneration;
-
-    internal IdleStorageApplier EarlyApplier => _earlyApplier!;
-
-    internal void CountEarlyApplied(int slots) => Interlocked.Add(ref _earlyAppliedSlots, slots);
-
-    /// <summary>This block's early apply counters so far. For tests.</summary>
-    internal (int Applied, int Reused, int Restored, int Abandoned) EarlyApplyCounts =>
-        (Volatile.Read(ref _earlyAppliedSlots), Volatile.Read(ref _earlyReusedSlots), Volatile.Read(ref _earlyRestoredSlots), Volatile.Read(ref _earlyAbandonedTrees));
-
-    internal void CountEarlyAbandoned() => Interlocked.Increment(ref _earlyAbandonedTrees);
-
-    internal void CountEarlyReconciled(int reused, int restored)
-    {
-        Interlocked.Add(ref _earlyReusedSlots, reused);
-        Interlocked.Add(ref _earlyRestoredSlots, restored);
     }
 
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
-        _earlyApplyClosed = true;
         // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
@@ -516,7 +476,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
-        _earlyApplyClosed = true;
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
@@ -555,22 +514,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
         _pausePrewarmer = false;
-
-        if (_earlyApplier is not null) ReportEarlyApply(blockNumber);
-    }
-
-    private void ReportEarlyApply(ulong blockNumber)
-    {
-        int applied = Interlocked.Exchange(ref _earlyAppliedSlots, 0);
-        int reused = Interlocked.Exchange(ref _earlyReusedSlots, 0);
-        int restored = Interlocked.Exchange(ref _earlyRestoredSlots, 0);
-        int abandoned = Interlocked.Exchange(ref _earlyAbandonedTrees, 0);
-        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-        if (logger.IsDebug) logger.Debug($"Early storage apply block={blockNumber} applied={applied} reused={reused} restored={restored} abandoned={abandoned}");
-
-        _earlyApplier!.BlockCommitted();
-        _earlyApplyGeneration++;
-        _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
     }
 
     private void CommitStorageTrees()

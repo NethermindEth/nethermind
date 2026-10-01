@@ -1284,7 +1284,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             EnsureStorageTree();
-            _backend.HintSet(storageCell.Index, value);
+            _backend.HintSet(storageCell.Index);
         }
 
         /// <remarks>
