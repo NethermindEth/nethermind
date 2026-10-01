@@ -98,6 +98,29 @@ public partial class EthRpcModuleTests
             "blob signing without commitments must surface a precise error so callers know what to add");
     }
 
+    [Test]
+    public async Task SignTransaction_WhenBlobTxHasZeroMaxFeePerBlobGas_ReturnsInvalidInput()
+    {
+        byte[] versionedHash = new byte[32];
+        versionedHash[0] = 0x01;
+        BlobTransactionForRpc rpcTx = new()
+        {
+            From = new Address(UnlockedTestAccount),
+            To = new Address("0x2d44c0e097f6cd0f514edac633d82e01280b4a5c"),
+            Gas = 0x76c0,
+            Nonce = 0UL,
+            MaxFeePerGas = (UInt256)0x9184e72a000,
+            MaxPriorityFeePerGas = (UInt256)0x3b9aca00,
+            MaxFeePerBlobGas = UInt256.Zero,
+            BlobVersionedHashes = [versionedHash],
+        };
+
+        string response = await SignTransaction(rpcTx);
+
+        Assert.That(response, Does.Contain(RpcTransactionErrors.ZeroMaxFeePerBlobGas),
+            "a call may leave its blob gas unpriced, but a transaction to sign must carry a non-zero blob fee cap");
+    }
+
     [TestCase(false, typeof(EIP1559TransactionForRpc), TestName = "WithoutExplicitType_PromotedToEip1559")]
     [TestCase(true, typeof(LegacyTransactionForRpc), TestName = "WithExplicitLegacyType_StaysLegacy")]
     public async Task SignTransaction_LegacyShapeJson_RespectsExplicitTypePinning(bool withExplicitType, Type expectedEchoType)

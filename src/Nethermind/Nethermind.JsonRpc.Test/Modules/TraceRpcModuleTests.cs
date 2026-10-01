@@ -39,6 +39,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
@@ -2474,6 +2475,158 @@ public class TraceRpcModuleTests
             _ => $",\"maxFeePerGas\":\"{price}\",\"maxPriorityFeePerGas\":\"0x0\"",
         };
         return $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{contract}\",\"gas\":\"0x186a0\"{feeFields}}}";
+    }
+
+    private static readonly byte[] BlobBaseFeeReturnCode = Prepare.EvmCode
+        .Op(Instruction.BLOBBASEFEE)
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .PushData("0x20")
+        .PushData("0x0")
+        .Op(Instruction.RETURN)
+        .Done;
+
+    public enum BlobFeeCap { Omitted, Null, Zero, BelowBlobBaseFee, BlobBaseFee, NotABlobCall }
+
+    private static readonly UInt256 BlobCallerBalance = 1.Ether;
+
+    // The test chain sets the excess blob gas only in its genesis header, so the calls run on top of genesis, where the
+    // blob base fee is above the minimum. AddressE holds exactly one blob's fee at the blob base fee, so a charged blob
+    // call empties its balance; AddressD holds BlobCallerBalance.
+    private static async Task<(Context Context, Address Contract, UInt256 BlobBaseFee)> BuildWithBlobBaseFeeContract()
+    {
+        Address contract = TestItem.AddressF;
+        Context context = new();
+        await context.Build(new TestSpecProvider(Cancun.Instance), configurer: builder =>
+            builder.WithGenesisPostProcessor((genesis, state) =>
+            {
+                genesis.Header.ExcessBlobGas = 10_000_000;
+                BlobGasCalculator.TryCalculateFeePerBlobGas(genesis.Header, Cancun.Instance.BlobBaseFeeUpdateFraction, out UInt256 genesisBlobBaseFee);
+                state.CreateAccount(TestItem.AddressE, (UInt256)Eip4844Constants.GasPerBlob * genesisBlobBaseFee);
+                state.CreateAccount(TestItem.AddressD, BlobCallerBalance);
+                state.CreateAccount(contract, 0);
+                state.InsertCode(contract, BlobBaseFeeReturnCode, Cancun.Instance);
+            }));
+        BlobGasCalculator.TryCalculateFeePerBlobGas(context.Blockchain.BlockTree.Genesis!, Cancun.Instance.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee);
+        Assert.That(blobBaseFee, Is.GreaterThan(UInt256.One), "precondition: the genesis blob base fee is above the minimum");
+        return (context, contract, blobBaseFee);
+    }
+
+    private static string BlobCall(Address from, Address contract, BlobFeeCap cap, UInt256 blobBaseFee, string feeFields = "")
+    {
+        string blobHashes = $",\"blobVersionedHashes\":[\"0x01{new string('0', 62)}\"]";
+        string blobFields = cap switch
+        {
+            BlobFeeCap.Omitted => blobHashes,
+            BlobFeeCap.Null => $"{blobHashes},\"maxFeePerBlobGas\":null",
+            BlobFeeCap.Zero => $"{blobHashes},\"maxFeePerBlobGas\":\"0x0\"",
+            BlobFeeCap.BelowBlobBaseFee => $"{blobHashes},\"maxFeePerBlobGas\":\"{(blobBaseFee - 1).ToHexString(skipLeadingZeros: true)}\"",
+            BlobFeeCap.BlobBaseFee => $"{blobHashes},\"maxFeePerBlobGas\":\"{blobBaseFee.ToHexString(skipLeadingZeros: true)}\"",
+            _ => "",
+        };
+        return $"{{\"from\":\"{from}\",\"to\":\"{contract}\",\"gas\":\"0x186a0\"{feeFields}{blobFields}}}";
+    }
+
+    [Test]
+    public async Task Trace_call_and_callMany_price_blob_gas_as_eth_call_does([Values] BlobFeeCap cap, [Values] bool many, [Values] bool streaming)
+    {
+        (Context context, Address contract, UInt256 blobBaseFee) = await BuildWithBlobBaseFeeContract();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        string call = BlobCall(TestItem.AddressE, contract, cap, blobBaseFee);
+        using JsonDocument callDocument = JsonDocument.Parse(call);
+        using JsonDocument calls = JsonDocument.Parse($"[[{call},[\"trace\",\"stateDiff\"]]]");
+
+        string eth = await RpcTest.TestSerializedRequest(blockchain.EthRpcModule, "eth_call", callDocument.RootElement, "0x0");
+        string trace = many
+            ? await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls.RootElement, "0x0")
+            : await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", callDocument.RootElement, new[] { "trace", "stateDiff" }, "0x0");
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (cap is BlobFeeCap.BelowBlobBaseFee)
+            {
+                const string belowBlobBaseFee = "max fee per blob gas less than block blob gas fee";
+                Assert.That(JToken.Parse(eth)["error"]?["message"]?.Value<string>(), Does.Contain(belowBlobBaseFee), eth);
+                Assert.That(JToken.Parse(trace)["error"]?["message"]?.Value<string>(), Does.Contain(belowBlobBaseFee), trace);
+                return;
+            }
+
+            bool priced = cap is BlobFeeCap.BlobBaseFee;
+            string expected = Word(priced || cap is BlobFeeCap.NotABlobCall ? blobBaseFee : UInt256.Zero);
+            JToken? result = JToken.Parse(trace)["result"];
+            JToken? traceResult = many ? result?[0] : result;
+            JToken? senderBalance = traceResult?["stateDiff"]?[TestItem.AddressE.ToString()]?["balance"];
+            Assert.That(JToken.Parse(eth)["result"]?.Value<string>(), Is.EqualTo(expected), eth);
+            Assert.That(traceResult?["output"]?.Value<string>(), Is.EqualTo(expected), trace);
+            Assert.That(priced ? senderBalance?["*"]?["to"]?.Value<string>() : senderBalance?.Value<string>(), Is.EqualTo(priced ? "0x0" : "="), trace);
+        }
+    }
+
+    [Test]
+    public async Task Trace_callMany_gives_each_call_the_blob_base_fee_of_its_own_blob_fee_cap([Values] bool streaming)
+    {
+        (Context context, Address contract, UInt256 blobBaseFee) = await BuildWithBlobBaseFeeContract();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        UInt256 baseFee = blockchain.BlockTree.Genesis!.BaseFeePerGas;
+        UInt256 tip = 1.GWei;
+        string pricedGas = $",\"maxFeePerGas\":\"{(baseFee + tip).ToHexString(skipLeadingZeros: true)}\",\"maxPriorityFeePerGas\":\"{tip.ToHexString(skipLeadingZeros: true)}\"";
+        (BlobFeeCap Cap, string FeeFields, UInt256 BlobBaseFee, bool Charged)[] cases =
+        [
+            (BlobFeeCap.Omitted, "", UInt256.Zero, false),
+            (BlobFeeCap.BlobBaseFee, "", blobBaseFee, true),
+            (BlobFeeCap.NotABlobCall, "", blobBaseFee, false),
+            (BlobFeeCap.Zero, pricedGas, UInt256.Zero, true),
+        ];
+        using JsonDocument calls = JsonDocument.Parse(
+            $"[{string.Join(",", cases.Select(c => $"[{BlobCall(TestItem.AddressD, contract, c.Cap, blobBaseFee, c.FeeFields)},[\"trace\",\"stateDiff\"]]"))}]");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls.RootElement, "0x0");
+
+        JToken[] results = [.. JToken.Parse(response)["result"] ?? new JArray()];
+        Assert.That(results, Has.Length.EqualTo(cases.Length), response);
+        string pricedBlobBalance = (BlobCallerBalance - (UInt256)Eip4844Constants.GasPerBlob * blobBaseFee).ToHexString(skipLeadingZeros: true);
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < cases.Length; i++)
+            {
+                JToken? senderBalance = results[i]["stateDiff"]?[TestItem.AddressD.ToString()]?["balance"];
+                Assert.That(results[i]["output"]?.Value<string>(), Is.EqualTo(Word(cases[i].BlobBaseFee)), $"call {i}: {response}");
+                Assert.That(senderBalance?.Type, Is.EqualTo(cases[i].Charged ? JTokenType.Object : JTokenType.String), $"call {i}: {response}");
+            }
+
+            // The priced blob call pays exactly one blob's fee, and the zero-capped call priced for gas pays exactly for its
+            // gas and nothing for its blob.
+            Assert.That(results[1]["stateDiff"]?[TestItem.AddressD.ToString()]?["balance"]?["*"]?["to"]?.Value<string>(), Is.EqualTo(pricedBlobBalance), response);
+            JToken? pricedGasBalance = results[3]["stateDiff"]?[TestItem.AddressD.ToString()]?["balance"]?["*"];
+            UInt256 gasUsed = GasCostOf.Transaction + HexValue(results[3]["trace"]?[0]?["result"]?["gasUsed"]);
+            Assert.That(HexValue(pricedGasBalance?["from"]) - HexValue(pricedGasBalance?["to"]), Is.EqualTo(gasUsed * (baseFee + tip)), response);
+        }
+    }
+
+    private static UInt256 HexValue(JToken? value) => new(Bytes.FromHexString(value?.Value<string>() ?? "0x0"), isBigEndian: true);
+
+    [TestCase(TxType.Blob)]
+    [TestCase(TxType.FrameTx)]
+    public void Unpriced_blob_fee_calculator_prices_only_blobs_under_a_zero_cap_at_zero(TxType type)
+    {
+        UnpricedBlobFeeCalculator calculator = new(BlobBaseFeeCalculator.Instance);
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(10_000_000).TestObject;
+        ulong fraction = Cancun.Instance.BlobBaseFeeUpdateFraction;
+        BlobGasCalculator.TryCalculateFeePerBlobGas(header, fraction, out UInt256 blobBaseFee);
+        byte[][] blobHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]];
+
+        bool unpriced = calculator.TryCalculateBlobFees(header, new Transaction { Type = type, MaxFeePerBlobGas = 0, BlobVersionedHashes = blobHashes },
+            fraction, out UInt256 unpricedFee, out UInt256 unpricedTotal);
+        bool priced = calculator.TryCalculateBlobFees(header, new Transaction { Type = type, MaxFeePerBlobGas = blobBaseFee, BlobVersionedHashes = blobHashes },
+            fraction, out UInt256 pricedFee, out UInt256 pricedTotal);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((unpriced, unpricedFee, unpricedTotal), Is.EqualTo((true, UInt256.Zero, UInt256.Zero)));
+            Assert.That((priced, pricedFee, pricedTotal), Is.EqualTo((true, blobBaseFee, (UInt256)Eip4844Constants.GasPerBlob * blobBaseFee)));
+        }
     }
 
     [Test]

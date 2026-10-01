@@ -1185,9 +1185,11 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
     }
 
-    [TestCase("0x0", null, TestName = "Unpriced from an empty sender")]
-    [TestCase("0x1319718a5000", "0x3b9aca00", TestName = "Priced from a sender funding exactly the base cost")]
-    public async Task Eth_estimateGas_blob_transaction_without_blob_fee_cap_prices_blob_gas_at_zero(string balance, string? maxFeePerGas)
+    [TestCase("0x0", null, null, TestName = "Unpriced from an empty sender")]
+    [TestCase("0x1319718a5000", "0x3b9aca00", null, TestName = "Priced from a sender funding exactly the base cost")]
+    [TestCase("0x0", null, "0x0", TestName = "Unpriced with a zero blob fee cap from an empty sender")]
+    [TestCase("0x1319718a5000", "0x3b9aca00", "0x0", TestName = "Priced with a zero blob fee cap from a sender funding exactly the base cost")]
+    public async Task Eth_estimateGas_blob_transaction_without_blob_fee_cap_prices_blob_gas_at_zero(string balance, string? maxFeePerGas, string? maxFeePerBlobGas)
     {
         ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
         Block[] blocks = [Build.A.Block.WithNumber(0).WithGasLimit(30_000_000).WithExcessBlobGas(1ul).TestObject];
@@ -1197,7 +1199,8 @@ public partial class EthRpcModuleTests
             .WithBlockFinder(blockTree)
             .Build(specProvider);
 
-        string fees = maxFeePerGas is null ? "" : ",\"maxFeePerGas\":\"" + maxFeePerGas + "\",\"maxPriorityFeePerGas\":\"0x0\"";
+        string fees = (maxFeePerGas is null ? "" : ",\"maxFeePerGas\":\"" + maxFeePerGas + "\",\"maxPriorityFeePerGas\":\"0x0\"")
+            + (maxFeePerBlobGas is null ? "" : ",\"maxFeePerBlobGas\":\"" + maxFeePerBlobGas + "\"");
         object? transaction = JsonSerializer.Deserialize<object>(
             $$"""{"from":"0xa9Ac1233699BDae25abeBae4f9Fb54DbB1b44700","to":"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1","type":"0x3"{{fees}},"blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""");
         object? stateOverride = JsonSerializer.Deserialize<object>(
