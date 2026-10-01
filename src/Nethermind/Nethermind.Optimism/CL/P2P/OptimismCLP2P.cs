@@ -361,49 +361,17 @@ public class OptimismCLP2P : IDisposable
 
     private async Task KeepStaticPeersAsync(CancellationToken token)
     {
+        using StaticPeerKeeper keeper = new(_localPeer!, _router!, _staticPeerList, _logger);
         using PeriodicTimer timer = new(StaticPeerCheckInterval);
         try
         {
             while (await timer.WaitForNextTickAsync(token))
             {
-                await ReconnectStaticPeersAsync(_localPeer!, _router!, _staticPeerList, _logger, token);
+                await keeper.CheckAsync(token);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-        }
-    }
-
-    /// <summary>Dials every static peer the router holds no gossip connection to and opens gossipsub on the session.</summary>
-    /// <remarks>The router redials a peer only while its reconnection is not suppressed, and a peer it disconnected for an invalid RPC stays
-    /// suppressed; discovering a known peer again does nothing, so a lost static peer such as the sequencer is dialed here.</remarks>
-    internal static async Task ReconnectStaticPeersAsync(ILocalPeer localPeer, IRoutingStateContainer router, IEnumerable<Multiaddress> staticPeers, ILogger logger, CancellationToken token)
-    {
-        foreach (Multiaddress address in staticPeers)
-        {
-            if (address.GetPeerId() is not { } peerId || router.ConnectedPeers.Contains(peerId))
-            {
-                continue;
-            }
-
-            try
-            {
-                ISession session = await localPeer.DialAsync(address, token);
-                // A second gossip stream to one peer can leave the router a stale entry, so a connect the router made meanwhile wins.
-                if (router.ConnectedPeers.Contains(peerId))
-                {
-                    continue;
-                }
-
-                // The gossip stream lives as long as the connection, so its end is only observed.
-                _ = session.DialAsync<GossipsubProtocolV11>(token).ContinueWith(
-                    static (t, state) => { if (t.IsFaulted && ((ILogger)state!).IsDebug) ((ILogger)state!).Debug($"Static peer gossip ended: {t.Exception!.InnerException?.Message}"); },
-                    logger, TaskScheduler.Default);
-            }
-            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
-            {
-                if (logger.IsDebug) logger.Debug($"Reconnecting static peer {address} failed: {e.Message}");
-            }
         }
     }
 
