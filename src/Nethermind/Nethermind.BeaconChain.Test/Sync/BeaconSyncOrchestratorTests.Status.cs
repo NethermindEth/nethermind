@@ -73,6 +73,35 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(FuluAnchorSlot));
     }
 
+    /// <summary>Completed history lowers Status v2 availability no further than the anchor (fulu/p2p-interface.md).</summary>
+    [TestCase(-1000L, -1000L, TestName = "Blocks and columns backfilled below the anchor advertise the slot they are held from")]
+    [TestCase(40L, 0L, TestName = "A backfill that has not reached the anchor advertises the anchor")]
+    public async Task Status_advertises_the_slot_the_backfill_holds_blocks_from(long backfilledOffset, long expectedOffset)
+    {
+        DataColumnSidecarPool pool = new();
+        AddColumn(pool, FuluAnchorSlot + 10);
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, YoungWallSlot, backfilledFrom: (ulong)((long)FuluAnchorSlot + backfilledOffset));
+
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo((ulong)((long)FuluAnchorSlot + expectedOffset)));
+    }
+
+    /// <summary>Full retention coverage makes the column floor determine Status v2 availability (fulu/p2p-interface.md).</summary>
+    [Test]
+    public async Task Status_advertises_the_start_of_the_serve_range_once_the_backfill_reached_it()
+    {
+        DataColumnSidecarPool pool = new();
+        AddColumn(pool, FuluAnchorSlot + 10);
+        ulong serveFrom = DataAvailabilityBoundary.ComputeStartSlot(new SlotClock(Spec, new ManualTimestamper(WallTime(YoungWallSlot))).CurrentEpoch, Spec);
+        pool.LowerCompletelyServableFloor(serveFrom);
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, YoungWallSlot, backfilledFrom: serveFrom);
+
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(serveFrom));
+    }
+
     [Test]
     public async Task Status_earliest_slot_rises_when_the_pool_evicts_below_it()
     {
@@ -228,7 +257,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 10), "the orchestrator must read the pool the column protocols serve from");
     }
 
-    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null)
+    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null, ulong? backfilledFrom = null)
     {
         BeaconChainSpec spec = forkSpec ?? Spec;
         ManualTimestamper timestamper = new(WallTime(wallSlot));
@@ -236,19 +265,25 @@ public partial class BeaconSyncOrchestratorTests
         StubPool peers = new([]);
         ScriptedImporter importer = ImporterWithHead(anchorSlot, headOffset, headFull);
         BeaconChainStatusHolder statusHolder = new(spec, timestamper);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        RangeSync rangeSync = new(peers, LimboLogs.Instance, pool, spec, RangeSyncTests.ClockAtGenesis(spec));
+        ColumnBackfill? columnBackfill = backfilledFrom is { } from
+            ? new ColumnBackfill(store, pool, rangeSync, peers, slotClock, spec, statusHolder, new DiscoveryNodeCustodySource(null), LimboLogs.Instance) { CompleteFrom = from }
+            : null;
         BeaconSyncOrchestrator orchestrator = new(
             new BeaconChainConfig(),
             spec,
-            new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
+            store,
             new ScriptedFactory(importer),
             new ScriptedEngine(),
             peers,
-            new RangeSync(peers, LimboLogs.Instance, pool, spec, RangeSyncTests.ClockAtGenesis(spec)),
+            rangeSync,
             slotClock,
             new GossipRouter(spec, slotClock, LimboLogs.Instance),
             statusHolder,
             LimboLogs.Instance,
-            columnPool: pool);
+            columnPool: pool,
+            columnBackfill: columnBackfill);
         Initialize(orchestrator, importer, anchorSlot);
         return (orchestrator, statusHolder, slotClock);
     }

@@ -62,7 +62,8 @@ public sealed class BeaconSyncOrchestrator(
     ColumnGossipRouter? columnRouter = null,
     DataColumnSidecarPool? columnPool = null,
     ExecutionPayloadEnvelopePool? envelopePool = null,
-    HeadSnapshotHolder? headSnapshots = null)
+    HeadSnapshotHolder? headSnapshots = null,
+    ColumnBackfill? columnBackfill = null)
 {
     /// <summary>Maximum parent-chain depth fetched by root for a gossip block with an unknown parent.</summary>
     private const int MaxBackfillDepth = 32;
@@ -438,42 +439,32 @@ public sealed class BeaconSyncOrchestrator(
         if (headSnapshots is not null) headSnapshots.Current = new HeadSnapshot(anchorStatus, null, Hash256.Zero, false);
     }
 
-    /// <summary>The <c>earliest_available_slot</c> to advertise in Status v2.</summary>
-    /// <remarks>
-    /// fulu/p2p-interface.md Status v2: it is the slot of the earliest available block, the anchor, except that a node able to
-    /// serve every block of the sidecar retention period but not every sidecar advertises the earliest slot from which it can
-    /// serve all sidecars. So the held columns raise it only once the anchor is at or below the start of
-    /// <c>data_column_serve_range</c>, and only when they start inside that range. The range ends at the current slot, so the
-    /// slot after it is servable even with no columns held. The sidecar retention period is bounded by both the blob and
-    /// the column window, so while the blob window reaches before Fulu and the anchor covers it, the earliest servable slot is at least the fork slot.
-    /// </remarks>
+    /// <summary>The earliest held block, raised by incomplete columns once all retention blocks are held (fulu/p2p-interface.md Status v2).</summary>
     private ulong EarliestAvailableSlot()
     {
+        ulong blocksFrom = Math.Min(_anchorSlot, columnBackfill?.CompleteFrom ?? _anchorSlot);
         if (columnPool is null || slotClock.CurrentEpoch < spec.FuluForkEpoch)
         {
-            return _anchorSlot;
+            return blocksFrom;
         }
 
         ulong serveFrom = DataAvailabilityBoundary.ComputeStartSlot(slotClock.CurrentEpoch, spec);
-        if (_anchorSlot > serveFrom)
+        if (blocksFrom > serveFrom)
         {
-            return _anchorSlot;
+            return blocksFrom;
         }
 
         ulong columnsFrom = Math.Min(columnPool.EarliestCompletelyServableSlot, slotClock.CurrentSlot + 1);
-        return columnsFrom <= serveFrom ? BlobSidecarFloor() : columnsFrom;
+        return columnsFrom <= serveFrom ? BlobSidecarFloor(blocksFrom) : columnsFrom;
     }
 
-    /// <summary>
-    /// The anchor, or the Fulu fork slot when the anchor covers every block of the blob sidecar retention period and that period
-    /// reaches before Fulu: this node keeps no blob sidecars, so it cannot serve every sidecar of a pre-Fulu block in it.
-    /// </summary>
-    private ulong BlobSidecarFloor()
+    /// <summary>Pre-Fulu blob sidecars are not retained, so full block coverage still requires a Fulu floor (fulu/p2p-interface.md).</summary>
+    private ulong BlobSidecarFloor(ulong blocksFrom)
     {
         ulong epoch = slotClock.CurrentEpoch;
         ulong blobWindowStart = (epoch >= DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests ? epoch - DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests : 0) * spec.SlotsPerEpoch;
         ulong fuluSlot = spec.FuluForkEpoch * spec.SlotsPerEpoch;
-        return _anchorSlot <= blobWindowStart && blobWindowStart < fuluSlot ? fuluSlot : _anchorSlot;
+        return blocksFrom <= blobWindowStart && blobWindowStart < fuluSlot ? fuluSlot : blocksFrom;
     }
 
     /// <summary>

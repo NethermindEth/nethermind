@@ -58,7 +58,7 @@ public class CanonicalIndexReorgServingTests
             "the columns held for chain A's slot 2 and 3 blocks belong to orphans");
     }
 
-    private static async Task<T> ServeAsync<T>(ISessionListenerProtocol protocol, System.Func<IChannel, ISessionContext, Task<T>> dial)
+    internal static async Task<T> ServeAsync<T>(ISessionListenerProtocol protocol, System.Func<IChannel, ISessionContext, Task<T>> dial)
     {
         ISessionContext context = Substitute.For<ISessionContext>();
         context.State.Returns(new Nethermind.Libp2p.Core.State());

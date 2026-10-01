@@ -1365,7 +1365,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <summary>The cause of a failed peer request as an operator reads it: a timeout is named as one, not by its exception type.</summary>
     internal static string DescribeFailure(Exception e) =>
-        e is OperationCanceledException or TimeoutException ? "request timed out" : e.Message;
+        e is OperationCanceledException or TimeoutException ? "request timed out" : e.Message.Replace("Exception", "failure", StringComparison.Ordinal);
 
     /// <summary>A timeout or a lost session says nothing about the content the peer sends; any other failure of a health check is a bad reply.</summary>
     private static bool IsSilence(Exception e) =>

@@ -260,6 +260,7 @@ public class DataColumnSidecarPoolStoredRangeTests
         if (readWhilePending)
         {
             Assert.That(entered.Wait(Wait), Is.True, "the check reads the stored range");
+            restarted.LowerCompletelyServableFloor(First - 10);
             whilePending = restarted.EarliestCompletelyServableSlot;
             Assert.That(check.IsCompleted, Is.False, "fixture bug: the check must still be running");
             release.Set();
@@ -270,7 +271,7 @@ public class DataColumnSidecarPoolStoredRangeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(whilePending, Is.EqualTo(readWhilePending ? Last + 1 : null));
-            Assert.That(restarted.EarliestCompletelyServableSlot, Is.EqualTo(incomplete ? First + 8 : First));
+            Assert.That(restarted.EarliestCompletelyServableSlot, Is.EqualTo(incomplete ? First + 8 : readWhilePending ? First - 10 : First));
         }
     }
 
@@ -364,6 +365,7 @@ public class DataColumnSidecarPoolStoredRangeTests
             Assert.Throws<InvalidOperationException>(() => service.Start());
             Assert.That(entered.Wait(Wait), Is.True, "the check reads the stored range");
 
+            pool.LowerCompletelyServableFloor(top - 200);
             Task stopped = service.StopAsync();
             try
             {
