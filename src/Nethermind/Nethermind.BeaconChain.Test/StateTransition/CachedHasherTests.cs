@@ -142,7 +142,7 @@ public class CachedHasherTests
         Assert.That(hasher.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(state)), stage);
 
     /// <summary>Creates a fully populated Fulu state at the last slot of epoch 5, ready for <see cref="EpochProcessing.ProcessEpoch"/>.</summary>
-    private static BeaconStateFulu CreateState(int validatorCount)
+    internal static BeaconStateFulu CreateState(int validatorCount)
     {
         Validator[] validators = new Validator[validatorCount];
         ulong[] balances = new ulong[validatorCount];

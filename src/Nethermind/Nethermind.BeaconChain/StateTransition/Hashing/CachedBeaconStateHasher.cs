@@ -9,8 +9,8 @@ using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Threading;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -356,7 +356,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
                 int[] dirtyLocal = dirty;
                 T[] itemsLocal = items!;
                 IChunkTree treeLocal = _tree;
-                Parallel.For(0, dirtyCount, r =>
+                BeaconParallel.For(0, dirtyCount, r =>
                 {
                     int i = dirtyLocal[r];
                     T.Merkleize(itemsLocal[i], out treeLocal.Leaf(i));
