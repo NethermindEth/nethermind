@@ -18,7 +18,7 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// <summary>The eth2 <c>beacon_blocks_by_range</c> v2 protocol.</summary>
 /// <remarks>
 /// The listen side serves canonical blocks from the local <see cref="BeaconChainStore"/>, skipping
-/// empty slots, and answers <c>ResourceUnavailable</c> below the verified block floor (fulu/p2p-interface.md).
+/// empty slots, and answers <c>ResourceUnavailable</c> for ranges older than the earliest stored block.
 /// The dial side validates per-chunk fork-digest context bytes and strictly increasing slots within
 /// the requested range.
 /// </remarks>
@@ -78,18 +78,28 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
                 throw new Eth2ReqRespException("Blocks-by-range request count must be positive");
             }
 
-            if (!store.TryGetAnchor(out _, out ulong anchorSlot) || request.StartSlot < Math.Min(anchorSlot, store.BackfilledBlockFloor ?? anchorSlot))
+            // BeaconBlocksByRange: a peer unable to reply SHOULD answer ResourceUnavailable; an empty reply would claim the slots are empty.
+            if (!store.TryGetEarliestBlockSlot(out ulong earliestSlot) || request.StartSlot < Math.Min(earliestSlot, store.BackfilledBlockFloor ?? earliestSlot))
             {
-                throw new Eth2ReqRespException("Requested range predates available blocks", ReqRespFraming.ResponseCode.ResourceUnavailable);
+                throw new Eth2ReqRespException("Requested range predates the earliest stored block", ReqRespFraming.ResponseCode.ResourceUnavailable);
             }
 
             // Per the spec, step is deprecated and the request is served as if it were 1.
             ulong count = Math.Min(request.Count, MaxRequestBlocks);
-            for (ulong slot = request.StartSlot; slot < request.StartSlot + count; slot++)
+            Hash256? previousRoot = null;
+            for (ulong offset = 0; offset < count && offset <= ulong.MaxValue - request.StartSlot; offset++)
             {
+                ulong slot = request.StartSlot + offset;
                 if (store.TryGetCanonicalRoot(slot, out Hash256? root) && store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
                 {
+                    // BeaconBlocksByRange: each parent_root MUST match the preceding block, so a reorg mid-reply ends the reply.
+                    if (previousRoot is not null && block.ParentRoot != previousRoot)
+                    {
+                        break;
+                    }
+
                     await WriteBlockChunkAsync(stream, block, cts);
+                    previousRoot = root;
                 }
             }
         }

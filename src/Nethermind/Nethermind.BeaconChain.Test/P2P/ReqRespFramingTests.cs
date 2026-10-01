@@ -67,6 +67,27 @@ public class ReqRespFramingTests
         Assert.That(await ReadChunkAsync(stream), Is.Null, "end of stream");
     }
 
+    [Test]
+    public async Task Empty_error_preserves_the_peer_result([Values("0x0300", "0x0300ff060000734e6150705901040000d8ea82a2")] string wire)
+    {
+        using MemoryStream input = new(Bytes.FromHexString(wire));
+        AssertChunk(await ReqRespFraming.ReadResponseChunkAsync(input, 4, 8, default), ReqRespFraming.ResponseCode.ResourceUnavailable, [], []);
+    }
+
+    [Test]
+    public void Rejects_overflowing_tenth_varint_byte([Values(2, 127, 128, 255)] byte last, [Values] bool response)
+    {
+        byte[] prefix = [0x88, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, last];
+        byte[] framed = Bytes.FromHexString(PingRequestWire)[1..];
+        using MemoryStream input = new(response ? [0, .. prefix, .. framed] : [.. prefix, .. framed]);
+        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(async () =>
+        {
+            if (response) await ReqRespFraming.ReadResponseChunkAsync(input, 0, 8, default);
+            else await ReqRespFraming.ReadRequestAsync(input, 8, default);
+        })!;
+        Assert.That(thrown.Message, Does.Contain("overflows Uint64"));
+    }
+
     // Truncations of the golden ping request at every interesting boundary: inside the varint-less
     // frame header, inside the magic, inside the data frame header, and inside the frame data.
     [TestCase("0x", 8, Description = "empty stream")]

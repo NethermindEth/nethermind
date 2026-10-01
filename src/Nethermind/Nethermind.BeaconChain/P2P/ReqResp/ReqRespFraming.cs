@@ -137,10 +137,10 @@ public static class ReqRespFraming
     /// <summary>Reads the next response chunk, or <c>null</c> on a clean end of stream.</summary>
     /// <param name="contextBytesLength">The context-bytes length of the method: <see cref="ForkContextLength"/> for fork-context methods, 0 otherwise.</param>
     /// <param name="maxSize">The maximum uncompressed payload size accepted for a success chunk.</param>
-    public static async Task<ResponseChunk?> ReadResponseChunkAsync(Stream stream, int contextBytesLength, int maxSize, CancellationToken token)
+    public static async Task<ResponseChunk?> ReadResponseChunkAsync(Stream input, int contextBytesLength, int maxSize, CancellationToken token)
     {
         byte[] resultBuffer = new byte[1];
-        if (await stream.ReadAsync(resultBuffer, token) == 0)
+        if (await input.ReadAsync(resultBuffer, token) == 0)
         {
             return null;
         }
@@ -153,10 +153,26 @@ public static class ReqRespFraming
             if (result == ResponseCode.Success && contextBytesLength > 0)
             {
                 contextBytes = new byte[contextBytesLength];
-                await stream.ReadExactlyAsync(contextBytes, token);
+                await input.ReadExactlyAsync(contextBytes, token);
             }
 
-            byte[] payload = await ReadPayloadAsync(stream, result == ResponseCode.Success ? maxSize : MaxErrorMessageSize, token);
+            ulong declaredLength = await ReadVarintAsync(input, token);
+            byte[] payload;
+            if (result != ResponseCode.Success && declaredLength == 0)
+            {
+                RequestTail tail = await ReadEmptyRequestFramingAsync(input, token);
+                if (!tail.IsClosed && await tail.WatchAsync(input, token) is { } error)
+                {
+                    throw new Eth2ReqRespException(error);
+                }
+
+                payload = [];
+            }
+            else
+            {
+                payload = (await ReadFramedPayloadAsync(input, declaredLength, result == ResponseCode.Success ? maxSize : MaxErrorMessageSize, token)).Payload;
+            }
+
             return new ResponseChunk(result, contextBytes, payload);
         }
         catch (EndOfStreamException e)
@@ -364,9 +380,6 @@ public static class ReqRespFraming
         return block[^1] == 0;
     }
 
-    private static async Task<byte[]> ReadPayloadAsync(Stream stream, int maxSize, CancellationToken token) =>
-        (await ReadFramedPayloadAsync(stream, await ReadVarintAsync(stream, token), maxSize, token)).Payload;
-
     private static async Task<(byte[] Payload, bool TailOpen)> ReadFramedPayloadAsync(Stream stream, ulong declaredLength, int maxSize, CancellationToken token, bool isRequest = false)
     {
         if (declaredLength == 0 || declaredLength > (ulong)maxSize)
@@ -488,6 +501,11 @@ public static class ReqRespFraming
         for (int i = 0; i < MaxVarintLength; i++)
         {
             await stream.ReadExactlyAsync(buffer, token);
+            if (i == 9 && buffer[0] > 0x01)
+            {
+                throw new Eth2ReqRespException("Varint length header overflows Uint64");
+            }
+
             value |= (ulong)(buffer[0] & 0x7f) << (7 * i);
             if ((buffer[0] & 0x80) == 0)
             {

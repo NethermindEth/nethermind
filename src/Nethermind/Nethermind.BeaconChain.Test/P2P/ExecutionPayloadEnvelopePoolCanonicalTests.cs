@@ -40,7 +40,7 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
     }
 
     [Test]
-    public void Omits_a_block_whose_child_builds_on_the_payload_before_it()
+    public void Omits_a_block_whose_child_builds_on_the_payload_before_it([Values(2UL, 3UL)] ulong count)
     {
         EnvelopeChain chain = new();
         (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
@@ -49,7 +49,7 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
         chain.AddEnvelopes(genesis, empty);
         chain.SetHead(head, Base + 2);
 
-        Assert.That(chain.ServedRoots(Base, 3), Is.EqualTo(new[] { genesis }), "the head's bid names the grandparent's payload, so its parent's is EMPTY");
+        Assert.That(chain.ServedRoots(Base, count), Is.EqualTo(new[] { genesis }), "the head's bid names the grandparent's payload, so its parent's is EMPTY");
     }
 
     [Test]
@@ -176,50 +176,83 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
         Assert.That(chain.BlockReads - before, Is.Zero, "a pre-Gloas block that ends the walk is decoded once, not once per request");
     }
 
+    // gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange: the first held envelope must survive a concurrent index update.
     [Test]
-    public void Range_further_below_the_head_than_the_walk_cap_is_resource_unavailable()
+    public void Serves_the_first_envelope_when_a_reorg_moves_the_index_under_the_published_head([Values] bool betweenReads)
+    {
+        SlotReadHookColumnsDb db = new(Base + 2);
+        EnvelopeChain chain = new(db: db);
+        (Hash256 first, Hash256 firstHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        (Hash256 top, Hash256 topHash) = chain.Put(Base + 1, first, firstHash);
+        (Hash256 newTop, Hash256 newTopHash) = chain.Put(Base + 1, first, firstHash, salt: 1);
+        chain.AddEnvelopes(first, top, newTop);
+        if (betweenReads)
+        {
+            (Hash256 head, _) = chain.Put(Base + 2, top, topHash);
+            (Hash256 newHead, _) = chain.Put(Base + 2, newTop, newTopHash, salt: 1);
+            chain.SetHead(head, Base + 2);
+            db.OnRead = () => chain.Store.ApplyCanonicalIndexChanges([(Base + 1, newTop), (Base + 2, newHead)], Base + 2);
+        }
+        else
+        {
+            chain.SetHead(top, Base + 1, full: true);
+            chain.Store.SetCanonicalRoot(Base + 1, newTop);
+        }
+
+        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(betweenReads ? new[] { first, newTop } : new[] { first }));
+    }
+
+    [Test]
+    public void Reads_the_range_top_again_when_a_reorg_replaces_it_between_reads()
+    {
+        SlotReadHookColumnsDb db = new(Base + 1);
+        EnvelopeChain chain = new(db: db);
+        (Hash256 a, Hash256 aHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        (Hash256 aChild, _) = chain.Put(Base + 1, a, aHash);
+        (Hash256 b, Hash256 bHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero, salt: 1);
+        (Hash256 bChild, _) = chain.Put(Base + 1, b, bHash, salt: 1);
+        chain.AddEnvelopes(a, b);
+        chain.SetHead(aChild, Base + 1);
+        db.OnRead = () => chain.Store.ApplyCanonicalIndexChanges([(Base, b), (Base + 1, bChild)], Base + 1);
+
+        Assert.That(chain.ServedRoots(Base, 1), Is.EqualTo(new[] { b }), "the second read sees one chain, whose child builds on the payload");
+    }
+
+    [Test]
+    public void Range_whose_only_block_has_an_unknown_payload_status_is_resource_unavailable()
     {
         EnvelopeChain chain = new();
-        Hash256 root = Hash256.Zero;
-        Hash256 blockHash = Hash256.Zero;
-        for (ulong slot = Base; slot <= Base + ExecutionPayloadEnvelopePool.MaxCanonicalWalk; slot++)
+        (Hash256 first, Hash256 firstHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        (Hash256 top, _) = chain.Put(Base + 1, first, firstHash);
+        (Hash256 sibling, _) = chain.Put(Base + 1, first, firstHash, salt: 1);
+        chain.AddEnvelopes(sibling);
+        chain.SetHead(top, Base + 1, full: true);
+        chain.Store.SetCanonicalRoot(Base + 1, sibling);
+
+        Eth2ReqRespException? thrown = Assert.Throws<Eth2ReqRespException>(() => chain.ServedRoots(Base + 1, 1));
+        Assert.That(thrown!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "an empty reply would claim the held envelope is off the chain");
+    }
+
+    [Test]
+    public void Serves_old_envelopes_without_decoding_later_blocks()
+    {
+        EnvelopeChain chain = new();
+        (Hash256 first, Hash256 firstHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        Hash256 root = first;
+        Hash256 blockHash = firstHash;
+        for (ulong slot = Base + 1; slot <= Base + 8193; slot++)
         {
             (root, blockHash) = chain.Put(slot, root, blockHash);
         }
 
-        chain.SetHead(root, Base + ExecutionPayloadEnvelopePool.MaxCanonicalWalk);
-
-        Assert.That(() => chain.Pool.GetCanonical(Base + 1, 1), Throws.Nothing, "reaching the start takes exactly the cap");
-        Eth2ReqRespException? thrown = Assert.Throws<Eth2ReqRespException>(() => chain.Pool.GetCanonical(Base, 1));
-        Assert.That(thrown!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "one block past the cap");
-    }
-
-    [Test]
-    public void Repeated_range_past_the_walk_cap_reads_the_cap_once_and_nothing_after()
-    {
-        EnvelopeChain chain = new();
-        Hash256 head = Hash256.Zero;
-        Hash256 headHash = Hash256.Zero;
-        ulong headSlot = Base + ExecutionPayloadEnvelopePool.MaxCanonicalWalk;
-        for (ulong slot = Base; slot <= headSlot; slot++)
-        {
-            (head, headHash) = chain.Put(slot, head, headHash);
-        }
-
-        (Hash256 fork, _) = chain.Put(headSlot + 1, head, headHash);
-        chain.SetHead(head, headSlot);
-
+        chain.AddEnvelopes(first);
+        chain.SetHead(root, Base + 8193);
         long before = chain.BlockReads;
-        Assert.Throws<Eth2ReqRespException>(() => chain.Pool.GetCanonical(Base, 1));
-        long first = chain.BlockReads - before;
-        chain.SetHead(fork, headSlot + 1);
-        chain.ServedRoots(headSlot + 1, 1);
-        chain.SetHead(head, headSlot);
-        long beforeRepeat = chain.BlockReads;
-        Assert.Throws<Eth2ReqRespException>(() => chain.Pool.GetCanonical(Base, 1));
-
-        Assert.That((first, chain.BlockReads - beforeRepeat), Is.EqualTo(((long)ExecutionPayloadEnvelopePool.MaxCanonicalWalk, 0L)),
-            "the cap is checked before a read, and a full walk plus another root stays memoized");
+        Assert.That(chain.ServedRoots(Base, 1), Is.EqualTo(new[] { first }));
+        Assert.That(chain.BlockReads - before, Is.EqualTo(2));
+        before = chain.BlockReads;
+        chain.ServedRoots(Base, 1);
+        Assert.That(chain.BlockReads - before, Is.Zero);
     }
 
     [Test]
@@ -259,11 +292,12 @@ internal sealed class EnvelopeChain
 {
     public static readonly BeaconChainSpec Spec = Sepolia;
 
-    private readonly MemColumnsDb<BeaconChainDbColumns> _db = new();
+    private readonly IColumnsDb<BeaconChainDbColumns> _db;
     private readonly Dictionary<Hash256, (ulong Slot, Hash256 BlockHash)> _blocks = [];
 
-    public EnvelopeChain(bool withStore = true, bool withStatus = true)
+    public EnvelopeChain(bool withStore = true, bool withStatus = true, IColumnsDb<BeaconChainDbColumns>? db = null)
     {
+        _db = db ?? new MemColumnsDb<BeaconChainDbColumns>();
         Store = new BeaconChainStore(_db, Spec);
         Status = new BeaconChainStatusHolder(Spec, Timestamper.Default)
         {
@@ -299,6 +333,7 @@ internal sealed class EnvelopeChain
         bid.ExecutionRequestsRoot = SszRoots.HashTreeRoot(new ExecutionRequestsGloas());
         Hash256 root = SszRoots.HashTreeRoot(block.Message);
         Store.PutForkedBlock(root, new ForkedSignedBeaconBlock.OfGloas(block));
+        if (salt == 0) Store.SetCanonicalRoot(slot, root);
         _blocks[root] = (slot, bid.BlockHash);
         return (root, bid.BlockHash);
     }
@@ -308,6 +343,7 @@ internal sealed class EnvelopeChain
         SignedBeaconBlock block = CreateMinimalBlock(slot);
         Hash256 root = SszRoots.HashTreeRoot(block.Message!);
         Store.PutBlock(root, block);
+        Store.SetCanonicalRoot(slot, root);
         _blocks[root] = (slot, Hash256.Zero);
         return root;
     }
@@ -323,7 +359,11 @@ internal sealed class EnvelopeChain
         }
     }
 
-    public void SetHead(Hash256 root, ulong slot, bool full = false) => Status.Publish(HeadStatus(root, slot), full ? root : null);
+    public void SetHead(Hash256 root, ulong slot, bool full = false)
+    {
+        Store.SetCanonicalRoot(slot, root);
+        Status.Publish(HeadStatus(root, slot), full ? root : null);
+    }
 
     public StatusMessageV2 HeadStatus(Hash256 root, ulong slot) => new()
     {
