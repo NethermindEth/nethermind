@@ -84,7 +84,7 @@ public class TrieNodeTests
 
         CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
         CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
-        Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
+        Assert.That(actual.AsSpan(), Is.SequenceEqualTo(expectedRlp));
         AssertChildHashesMatchScalarKeccak(dirtyChildren);
     }
 
@@ -457,7 +457,7 @@ public class TrieNodeTests
         TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 11);
         decodedTiniest.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
-        Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
+        Assert.That(decodedTiniest.Value.AsSpan(), Is.SequenceEqualTo(ctx.TiniestLeaf.Value), "value");
         Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)), "key");
     }
 
@@ -543,7 +543,7 @@ public class TrieNodeTests
                     expected.SetChild(i, new TrieNode(NodeType.Unknown, Keccak.Compute(branch.FullRlp.AsSpan())));
             }
             if (nonCandidate is not null) expected.SetChild(TrieNode.BranchesCount - 1, nonCandidate);
-            Assert.That(root.FullRlp.ToArray(), Is.EqualTo(expected.RlpEncode(NullTrieNodeResolver.Instance, ref path).ToArray()),
+            Assert.That(root.FullRlp.AsSpan(), Is.SequenceEqualTo(expected.RlpEncode(NullTrieNodeResolver.Instance, ref path)),
                 "parent references match individually hashed children");
         }
     }
@@ -564,7 +564,7 @@ public class TrieNodeTests
         TrieNode? decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0);
         decodedTiniest?.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
-        Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
+        Assert.That(decodedTiniest.Value.AsSpan(), Is.SequenceEqualTo(ctx.TiniestLeaf.Value), "value");
         Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)),
             "key");
     }
@@ -1320,7 +1320,7 @@ public class TrieNodeTests
         TrieNode restoredLeaf1 = clone.GetChild(trieStore, ref emptyPath, 1);
         Assert.That(restoredLeaf1, Is.Not.Null);
         restoredLeaf1.ResolveNode(trieStore, TreePath.Empty);
-        Assert.That(restoredLeaf1.Value.ToArray(), Is.EqualTo(leaf1.Value.ToArray()));
+        Assert.That(restoredLeaf1.Value.AsSpan(), Is.SequenceEqualTo(leaf1.Value));
     }
 
     [Test]

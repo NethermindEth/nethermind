@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using Nethermind.Core.Buffers;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -20,6 +23,9 @@ public class SequenceNUnitConstraintExtensionsTests
         yield return new TestCaseData(new ArraySegment<byte>([0, 1, 2, 3, 4], 1, 3)).SetName("ArraySegment");
         yield return new TestCaseData(new List<byte> { 1, 2, 3 }).SetName("List");
         yield return new TestCaseData(Expected.Select(static b => b)).SetName("lazy sequence");
+        yield return new TestCaseData(new ReadOnlySequence<byte>(Expected)).SetName("single-segment ReadOnlySequence");
+        yield return new TestCaseData(MultiSegment([1], [2, 3])).SetName("multi-segment ReadOnlySequence");
+        yield return new TestCaseData(new MemoryStream(Expected)).SetName("MemoryStream");
     }
 
     [TestCaseSource(nameof(EqualActuals))]
@@ -30,6 +36,7 @@ public class SequenceNUnitConstraintExtensionsTests
         Assert.That(actual, Is.SequenceEqualTo((Memory<byte>)Expected));
         Assert.That(actual, Is.SequenceEqualTo(new List<byte>(Expected)));
         Assert.That(actual, Is.SequenceEqualTo(Expected.Select(static b => b)));
+        Assert.That(actual, Is.SequenceEqualTo(new CappedArray<byte>([1, 2, 3, 4], 3)));
         Assert.That(actual, Is.SequenceEqualTo("\x01\x02\x03"u8));
     }
 
@@ -58,6 +65,9 @@ public class SequenceNUnitConstraintExtensionsTests
         AssertFails(actual.Select(static b => b), Is.SequenceEqualTo(Expected));
         AssertFails(actual.Select(static b => b), Is.SequenceEqualTo(Expected.Select(static b => b)));
         Assert.Throws<AssertionException>(() => Assert.That(new ReadOnlySpan<byte>(actual), Is.SequenceEqualTo(Expected.Select(static b => b))));
+        AssertFails(MultiSegment(actual[..1], actual[1..]), Is.SequenceEqualTo(Expected));
+        AssertFails(new MemoryStream(actual), Is.SequenceEqualTo(Expected));
+        AssertFails(actual, Is.SequenceEqualTo(new CappedArray<byte>([1, 2, 3, 4], 3)));
     }
 
     [Test]
@@ -126,6 +136,25 @@ public class SequenceNUnitConstraintExtensionsTests
 
     private static string AssertFails<TActual, T>(TActual actual, SequenceEqualConstraint<T> constraint) =>
         Assert.Throws<AssertionException>(() => Assert.That(actual, constraint))!.Message;
+
+    private static ReadOnlySequence<byte> MultiSegment(byte[] first, byte[] second)
+    {
+        Segment start = new(first);
+        Segment end = start.Append(second);
+        return new ReadOnlySequence<byte>(start, 0, end, second.Length);
+    }
+
+    private sealed class Segment : ReadOnlySequenceSegment<byte>
+    {
+        public Segment(byte[] data) => Memory = data;
+
+        public Segment Append(byte[] data)
+        {
+            Segment next = new(data) { RunningIndex = RunningIndex + Memory.Length };
+            Next = next;
+            return next;
+        }
+    }
 
     private static IEnumerable<byte> TwoOnFirstReadThenOne()
     {

@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Buffers;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 
@@ -19,6 +22,8 @@ public static class SequenceNUnitConstraintExtensions
         public static SequenceEqualConstraint<T> SequenceEqualTo<T>(ReadOnlyMemory<T> expected) => new(expected);
         public static SequenceEqualConstraint<T> SequenceEqualTo<T>(Memory<T> expected) => new((ReadOnlyMemory<T>)expected);
         public static SequenceEqualConstraint<T> SequenceEqualTo<T>(IEnumerable<T> expected) => new(expected);
+        public static SequenceEqualConstraint<T> SequenceEqualTo<T>(CappedArray<T> expected) where T : struct =>
+            new(new ReadOnlyMemory<T>(expected.UnderlyingArray, 0, expected.Length));
 
         /// <remarks>Copies <paramref name="expected"/> once, as a constraint cannot hold a span.</remarks>
         public static SequenceEqualConstraint<T> SequenceEqualTo<T>(ReadOnlySpan<T> expected) => new((ReadOnlyMemory<T>)expected.ToArray());
@@ -37,7 +42,10 @@ public static class SequenceNUnitConstraintExtensions
     }
 }
 
-/// <summary>Element-wise equality for arrays, <see cref="Memory{T}"/>, <see cref="ReadOnlyMemory{T}"/>, spans and any <see cref="IEnumerable{T}"/>.</summary>
+/// <summary>
+/// Element-wise equality for arrays, <see cref="Memory{T}"/>, <see cref="ReadOnlyMemory{T}"/>, spans,
+/// <see cref="ReadOnlySequence{T}"/>, a <see cref="MemoryStream"/> of bytes and any <see cref="IEnumerable{T}"/>.
+/// </summary>
 /// <remarks>
 /// Compares sequences of primitives or enums in place, reading a lazy sequence once while comparing, so a pass copies neither
 /// side unless both are lazy. A mismatch, or any other element type, goes to <see cref="EqualConstraint"/>, which reports the
@@ -96,6 +104,8 @@ public sealed class SequenceEqualConstraint<T> : Constraint
             Memory<T> memory => Matches(memory.Span),
             ArraySegment<T> segment => Matches(segment.AsSpan()),
             List<T> list => Matches(CollectionsMarshal.AsSpan(list)),
+            ReadOnlySequence<T> sequence => Matches(sequence),
+            MemoryStream stream => stream.TryGetBuffer(out ArraySegment<byte> buffer) && buffer is ArraySegment<T> segment && Matches(segment.AsSpan()),
             IEnumerable<T> sequence => Matches(sequence, out actualRead),
             _ => false
         };
@@ -107,6 +117,8 @@ public sealed class SequenceEqualConstraint<T> : Constraint
                 T[] array => array,
                 ReadOnlyMemory<T> memory => memory.ToArray(),
                 Memory<T> memory => memory.ToArray(),
+                ReadOnlySequence<T> sequence => sequence.ToArray(),
+                MemoryStream stream => stream.ToArray(),
                 IEnumerable<T> sequence => actualRead ?? sequence.ToArray(),
                 _ => (object?)actual
             });
@@ -121,6 +133,21 @@ public sealed class SequenceEqualConstraint<T> : Constraint
         bool matches = MatchesPrefix(enumerator, actual, out int read, out bool stoppedOnElement);
         if (!matches) _expectedRead = Rebuild(actual[..read], enumerator, stoppedOnElement);
         return matches;
+    }
+
+    private bool Matches(in ReadOnlySequence<T> actual)
+    {
+        if (actual.IsSingleSegment) return Matches(actual.FirstSpan);
+        if (!TryGetExpectedSpan(out ReadOnlySpan<T> expected)) expected = ExpectedArray;
+        if (actual.Length != expected.Length) return false;
+
+        foreach (ReadOnlyMemory<T> segment in actual)
+        {
+            if (!segment.Span.SequenceEqual(expected[..segment.Length], EqualityComparer<T>.Default)) return false;
+            expected = expected[segment.Length..];
+        }
+
+        return true;
     }
 
     private bool Matches(IEnumerable<T> actual, out T[]? actualRead)

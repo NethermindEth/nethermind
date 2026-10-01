@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -144,9 +145,9 @@ namespace Nethermind.Store.Test.Proofs
                 Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
                 Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
                 Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
-                Assert.That(proof.StorageProofs[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
-                Assert.That(proof.StorageProofs[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
-                Assert.That(proof.StorageProofs[2].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
+                Assert.That(proof.StorageProofs[0].Value, Is.SequenceEqualTo(new byte[] { 0 }));
+                Assert.That(proof.StorageProofs[1].Value, Is.SequenceEqualTo(new byte[] { 0 }));
+                Assert.That(proof.StorageProofs[2].Value, Is.SequenceEqualTo(new byte[] { 0 }));
             }
         }
 
@@ -679,7 +680,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
                 node.ResolveNode(null, TreePath.Empty);
                 Assert.That(node.IsBranch, Is.True);
-                Assert.That(FindEmbeddedLeaf(node, Keccak.Compute(indexBytes).Bytes).Value.ToArray(), Is.EqualTo(new byte[] { 1 }));
+                Assert.That(FindEmbeddedLeaf(node, Keccak.Compute(indexBytes).Bytes).Value.AsSpan(), Is.SequenceEqualTo(new byte[] { 1 }));
             }
         }
 
@@ -784,7 +785,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                         }
                     }
 
-                    Assert.That(node.Value.ToArray(), Is.EqualTo(new byte[] { 1 }));
+                    Assert.That(node.Value.AsSpan(), Is.SequenceEqualTo(new byte[] { 1 }));
                 }
             }
         }

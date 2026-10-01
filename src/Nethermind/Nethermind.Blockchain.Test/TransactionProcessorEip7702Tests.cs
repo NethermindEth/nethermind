@@ -703,7 +703,7 @@ internal class TransactionProcessorEip7702Tests
         CallOutputTracer callOutputTracer = new();
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), callOutputTracer);
 
-        Assert.That(callOutputTracer.ReturnValue?.ToArray(), Is.EqualTo(expectedValue));
+        Assert.That(callOutputTracer.ReturnValue, Is.SequenceEqualTo(expectedValue));
     }
 
     public static IEnumerable<TestCaseData> EXTCODEHASHAccountSetup()

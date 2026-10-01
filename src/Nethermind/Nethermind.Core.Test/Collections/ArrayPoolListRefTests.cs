@@ -88,7 +88,7 @@ public class ArrayPoolListRefTests
     {
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
-        Assert.That(list.ToArray(), Is.EqualTo(Enumerable.Range(0, 50)));
+        Assert.That(list.AsSpan(), Is.SequenceEqualTo(Enumerable.Range(0, 50)));
     }
 
     [TestCase(0, new[] { -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
