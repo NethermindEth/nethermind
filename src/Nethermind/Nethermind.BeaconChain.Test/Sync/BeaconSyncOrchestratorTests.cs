@@ -771,6 +771,197 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// A block fetched by root has the root this node asked for, so when it is invalid the peer that served it served an
+    /// invalid block and is blamed, as range sync blames the supplier of an invalid range block; also when the block first
+    /// waited for a retry.
+    /// </summary>
+    [Test]
+    public async Task Peer_serving_an_invalid_block_by_root_is_blamed([Values] bool onRetry)
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent]));
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Forged.Add(parent.ComputeMessageRoot());
+        if (onRetry)
+        {
+            harness.Importer.Unavailable.Add(parent.ComputeMessageRoot());
+        }
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[1]), CancellationToken.None);
+        if (onRetry)
+        {
+            peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
+            harness.Importer.Unavailable.Remove(parent.ComputeMessageRoot());
+            await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 3, CancellationToken.None);
+        }
+
+        peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+    }
+
+    /// <summary>
+    /// fork-choice.md <c>on_block</c> refuses a block at or below the finalized slot by local admission alone, which says
+    /// nothing of the block's data: a peer that served such a block by root is not blamed, while one above finality is.
+    /// </summary>
+    [Test]
+    public async Task Peer_serving_a_refused_block_by_root_is_blamed_only_above_finality([Values] bool belowFinality)
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1);
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Forged.Add(block.ComputeMessageRoot());
+        harness.Importer.Head = CreateHead(anchorRoot, NearWallSlot, finalizedEpoch: belowFinality ? NearWallSlot / 32 + 1 : 1);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        BlockImportResult result = await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None, fetchedByRoot: true, servedBy: peer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture");
+            peer.Received(belowFinality ? 0 : 1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+        }
+    }
+
+    /// <summary>
+    /// A copy of a block fetched by root, with the same message but another signature, is not the block the peer served: when
+    /// the copy arrives by gossip and is invalid, the peer that served the real block is not blamed, and the real block keeps
+    /// its retry.
+    /// </summary>
+    [Test]
+    public async Task Forged_gossip_copy_of_a_block_fetched_by_root_does_not_blame_its_supplier()
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        Hash256 parentRoot = parent.ComputeMessageRoot();
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent]));
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(parentRoot);
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[1]), CancellationToken.None);
+        harness.Importer.Unavailable.Remove(parentRoot);
+        harness.Importer.Forged.Add(parentRoot);
+        ForkedSignedBeaconBlock copy = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = new BlsSignature(Enumerable.Repeat((byte)0x11, 96).ToArray()) });
+
+        BlockImportResult result = await harness.Orchestrator.ImportBlockAsync(copy, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(1), "the fetched block still waits for its retry");
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture");
+            Assert.That(harness.Importer.ByRootImports.Count(root => root == parentRoot), Is.EqualTo(1), "the copy imports as gossip, not as the fetched block");
+            peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
+        }
+    }
+
+    /// <summary>
+    /// A block fetched by root that waits behind a fetched ancestor the regeneration budget deferred still imports as fetched
+    /// once that ancestor does, so the peer that served it is blamed when it is invalid.
+    /// </summary>
+    [Test]
+    public async Task Fetched_block_held_behind_a_deferred_fetched_ancestor_blames_its_supplier_when_invalid()
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2, NearWallSlot + 3);
+        ForkedSignedBeaconBlock ancestor = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        ForkedSignedBeaconBlock middle = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        Hash256 ancestorRoot = ancestor.ComputeMessageRoot();
+        Hash256 middleRoot = middle.ComputeMessageRoot();
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == ancestorRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([ancestor]));
+        peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == middleRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([middle]));
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.RegenerationRefused.Add(ancestorRoot);
+        harness.Importer.Forged.Add(middleRoot);
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[2]), CancellationToken.None);
+        bool ancestorWaited = harness.Orchestrator.PendingRetryBlockCount == 1;
+        harness.Importer.RegenerationRefused.Remove(ancestorRoot);
+        await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 4, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ancestorWaited, Is.True, "fixture: the budget-deferred ancestor waits for a retry");
+            Assert.That(harness.Importer.Known, Does.Contain(ancestorRoot), "fixture: the ancestor imports on the next slot");
+            Assert.That(harness.Importer.ByRootImports, Does.Contain(middleRoot), "the held fetched block imports as fetched");
+            peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+        }
+    }
+
+    /// <summary>
+    /// A fetched block that waits for the regeneration budget keeps the gossip child held behind it when a copy of it with a
+    /// forged signature arrives and is invalid: that copy says nothing of the queued block, which imports with its child.
+    /// </summary>
+    [Test]
+    public async Task Invalid_copy_of_a_waiting_fetched_block_keeps_its_held_child()
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        ForkedSignedBeaconBlock ancestor = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        Hash256 ancestorRoot = ancestor.ComputeMessageRoot();
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([ancestor]));
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.RegenerationRefused.Add(ancestorRoot);
+        BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
+        harness.Importer.ForgedSignatures.Add(forgedSignature);
+        await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+        harness.Importer.RegenerationRefused.Remove(ancestorRoot);
+
+        BlockImportResult copy = await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = forgedSignature }), CancellationToken.None);
+        await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 3, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy, Is.EqualTo(BlockImportResult.Invalid), "fixture");
+            Assert.That(harness.Importer.Known, Does.Contain(ancestorRoot));
+            Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()), "the held child imports with the queued block");
+        }
+    }
+
+    /// <summary>
+    /// A gossip block waiting for a retry takes the provenance of a block fetched under its root only when both are the same
+    /// signed block: otherwise the honest supplier of the fetched copy would be blamed when the queued forgery fails.
+    /// </summary>
+    [Test]
+    public async Task Fetched_copy_does_not_lend_its_supplier_to_a_queued_forgery()
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1);
+        ForkedSignedBeaconBlock genuine = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        Hash256 root = genuine.ComputeMessageRoot();
+        BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
+        ForkedSignedBeaconBlock forgery = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = forgedSignature });
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(root);
+        harness.Importer.ForgedSignatures.Add(forgedSignature);
+
+        await harness.Orchestrator.ImportBlockAsync(forgery, CancellationToken.None);
+        await harness.Orchestrator.ImportBlockAsync(genuine, CancellationToken.None, fetchedByRoot: true, servedBy: peer);
+        harness.Importer.Unavailable.Remove(root);
+        await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 2, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero, "fixture: the queued copy was retried");
+            Assert.That(harness.Importer.Known, Does.Not.Contain(root), "fixture: the queued copy is the forgery, which fails");
+            peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
+        }
+    }
+
     /// <summary>The retry list is bounded by finality, not just by size: a block finality has passed stops being retried even after its data becomes available.</summary>
     [Test]
     public async Task Gossip_block_with_unavailable_data_stops_being_retried_once_finality_passes_its_slot()
@@ -1297,6 +1488,12 @@ public partial class BeaconSyncOrchestratorTests
         /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.DataUnavailable"/> instead of importing.</summary>
         public HashSet<Hash256> Unavailable { get; } = [];
 
+        /// <summary>Block roots whose known parent's state the regeneration budget refuses, so <see cref="Import"/> answers <see cref="BlockImportResult.UnknownParent"/>.</summary>
+        public HashSet<Hash256> RegenerationRefused { get; } = [];
+
+        /// <summary>Fulu block signatures that fail, so a copy of a block under another signature answers <see cref="BlockImportResult.Invalid"/>.</summary>
+        public HashSet<BlsSignature> ForgedSignatures { get; } = [];
+
         /// <summary>Block roots whose proposer signature fails, so <see cref="Import"/> answers <see cref="BlockImportResult.Invalid"/>.</summary>
         public HashSet<Hash256> Forged { get; } = [];
 
@@ -1349,9 +1546,13 @@ public partial class BeaconSyncOrchestratorTests
         /// <summary>The roots imported as blocks this node requested, once per attempt.</summary>
         public List<Hash256> RequestedImports { get; } = [];
 
-        public BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot)
+        /// <summary>The roots of <see cref="RequestedImports"/> fetched by root, once per attempt.</summary>
+        public List<Hash256> ByRootImports { get; } = [];
+
+        public BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool fetchedByRoot = false)
         {
             RequestedImports.Add(blockRoot);
+            if (fetchedByRoot) ByRootImports.Add(blockRoot);
             return Import(block, blockRoot, verifySignatures: true);
         }
 
@@ -1363,9 +1564,11 @@ public partial class BeaconSyncOrchestratorTests
             _deferred.Remove(blockRoot);
             if (Known.Contains(blockRoot)) return BlockImportResult.AlreadyKnown;
             if (!Known.Contains(block.ParentRoot)) return _deferred.Contains(block.ParentRoot) ? Defer(blockRoot) : BlockImportResult.UnknownParent;
+            if (RegenerationRefused.Contains(blockRoot)) return BlockImportResult.UnknownParent;
             if (UnverifiedPayloads.Contains(block.ParentRoot)) return Defer(blockRoot);
             if (Unavailable.Contains(blockRoot)) return BlockImportResult.DataUnavailable;
             if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
+            if (block is ForkedSignedBeaconBlock.OfFulu { Block.Signature: var signature } && ForgedSignatures.Contains(signature)) return BlockImportResult.Invalid;
             if (EngineDown.Contains(blockRoot)) return BlockImportResult.EngineUnavailable;
             if (Early.Contains(blockRoot) && (Ticks.Count == 0 || Ticks[^1] < block.Slot)) return BlockImportResult.FutureSlot;
             Known.Add(blockRoot);
