@@ -958,9 +958,9 @@ public partial class BeaconSyncOrchestratorTests
 
         public void OnFinalized(CheckpointRef finalized) => Finalizations.Add(finalized);
 
-        public void OnGossipAggregate(SignedAggregateAndProof aggregate) { }
+        public bool OnGossipAggregate(SignedAggregateAndProof aggregate) => Consume(aggregate);
 
-        public void OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => Consume(aggregate);
+        public bool OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => Consume(aggregate);
 
         /// <summary>Whether fork choice accepts each gossip slashing and payload attestation, as a verified signature would.</summary>
         public bool AcceptsGossipOperations { get; set; } = true;

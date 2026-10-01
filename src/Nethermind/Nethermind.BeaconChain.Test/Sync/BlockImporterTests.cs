@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Crypto;
@@ -1263,6 +1264,117 @@ public class BlockImporterTests
         }
 
         Assert.That(RefusedByForkChoice("gossip_aggregate") - refusedBefore, Is.EqualTo(1), "the aggregate reached fork choice, which refused its unknown head block");
+    }
+
+    public enum AggregatorForgery
+    {
+        None,
+        NotSelected,
+        SelectionProofByAnotherValidator,
+        AggregatorSignatureByAnotherValidator,
+        AggregatorOutsideTheCommittee,
+        AggregateSignatureByAnotherValidator,
+    }
+
+    // p2p-interface.md beacon_aggregate_and_proof: the aggregator is a committee member whose selection proof and
+    // signature are valid, so a valid aggregate re-wrapped by anyone else is refused before its votes apply.
+    [Test]
+    public void Gossip_aggregate_applies_only_once_its_aggregator_authenticates([Values] bool gloasContainer, [Values] AggregatorForgery forgery)
+    {
+        const ulong slot = 1;
+        UnsignedChain chain = UnsignedChain.Create(forgery == AggregatorForgery.NotSelected ? ImportableBlobBlock.Create(blobCount: 0, validatorCount: 1024) : null);
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        importer.OnSlotTick(slot + 1);
+        BeaconStateFulu state = chain.Anchor.AnchorState;
+        byte[] slotRoot = new byte[32];
+        BitConverter.TryWriteBytes(slotRoot, slot);
+        int[] committee = new EpochCache().GetCommitteeCache(state, 0).GetBeaconCommittee(slot, 0).ToArray();
+        int member = forgery == AggregatorForgery.NotSelected
+            ? committee.First(index => !BeaconStateAccessors.IsAggregator(committee.Length, SignAs(index, new Hash256(slotRoot), DomainType.SelectionProof)))
+            : committee.Single();
+        int outsider = (member + 1) % state.Validators!.Length;
+        int aggregator = forgery == AggregatorForgery.AggregatorOutsideTheCommittee ? outsider : member;
+        Attestation vote = chain.Vote(slot, chain.AnchorRoot);
+        vote.AggregationBits!.SetAll(false);
+        vote.AggregationBits[Array.IndexOf(committee, member)] = true;
+        vote.Signature = SignAs(forgery == AggregatorForgery.AggregateSignatureByAnotherValidator ? outsider : member, SszRoots.HashTreeRoot(vote.Data!), DomainType.BeaconAttester);
+        BlsSignature selectionProof = SignAs(forgery == AggregatorForgery.SelectionProofByAnotherValidator ? outsider : aggregator, new Hash256(slotRoot), DomainType.SelectionProof);
+        int signer = forgery == AggregatorForgery.AggregatorSignatureByAnotherValidator ? outsider : aggregator;
+
+        bool accepted;
+        if (gloasContainer)
+        {
+            AggregateAndProofGloas message = new()
+            {
+                AggregatorIndex = (ulong)aggregator,
+                Aggregate = new AttestationGloas { AggregationBits = vote.AggregationBits, Data = vote.Data, Signature = vote.Signature, CommitteeBits = vote.CommitteeBits },
+                SelectionProof = selectionProof,
+            };
+            accepted = importer.OnGossipAggregate(new SignedAggregateAndProofGloas { Message = message, Signature = SignAs(signer, SszRoots.HashTreeRoot(message), DomainType.AggregateAndProof) });
+        }
+        else
+        {
+            AggregateAndProof message = new() { AggregatorIndex = (ulong)aggregator, Aggregate = vote, SelectionProof = selectionProof };
+            accepted = importer.OnGossipAggregate(new SignedAggregateAndProof { Message = message, Signature = SignAs(signer, SszRoots.HashTreeRoot(message), DomainType.AggregateAndProof) });
+        }
+
+        Assert.That(accepted, Is.EqualTo(forgery == AggregatorForgery.None));
+
+        BlsSignature SignAs(int validator, Hash256 root, ReadOnlySpan<byte> domainType) =>
+            ImportableBlobBlock.Sign(ImportableBlobBlock.DeriveKey(validator), root, state.GetDomain(domainType, 0));
+    }
+
+    // validator.md is_aggregator: the little-endian first 8 bytes of sha256(proof) modulo max(1, committee size // 16) is zero.
+    [TestCase(1, 31, true)]
+    [TestCase(1, 32, false)]
+    [TestCase(0, 32, true)]
+    [TestCase(1, 47, false)]
+    [TestCase(2, 128, true)]
+    [TestCase(0, 128, false)]
+    public void Selection_proof_selects_an_aggregator_by_its_hash(byte proofFill, int committeeSize, bool selected)
+    {
+        byte[] proof = new byte[BlsSignature.Length];
+        proof.AsSpan().Fill(proofFill);
+
+        Assert.That(BeaconStateAccessors.IsAggregator(committeeSize, new BlsSignature(proof)), Is.EqualTo(selected));
+    }
+
+    [Test]
+    public void Gossip_attester_slashing_requires_a_slashable_validator([Values] bool gloasContainer, [Values] bool allSlashed, [Values] bool headRetained)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        AttesterSlashing slashing = chain.DoubleVote([1], 1, chain.AnchorRoot, UnknownBlockRoot);
+        foreach (IndexedAttestation vote in new[] { slashing.Attestation1!, slashing.Attestation2! })
+        {
+            Hash256 domain = chain.Anchor.AnchorState.GetDomain(DomainType.BeaconAttester, vote.Data!.Target!.Epoch);
+            vote.Signature = ImportableBlobBlock.Sign(ImportableBlobBlock.DeriveKey(1), SszRoots.HashTreeRoot(vote.Data), domain);
+        }
+
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        if (!headRetained)
+        {
+            // p2p-interface.md attester_slashing still needs the head state even when the justified state is retained.
+            ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+            PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+            states.Retain(chain.AnchorRoot, chain.Anchor.AnchorState.Clone());
+            UnsignedChain.ChainBlock head = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
+            Assert.That(importer.Import(head.Block, head.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(runner.GetHead(), Is.EqualTo(head.Root));
+            states.SetLineage(UnknownBlockRoot, chain.Anchor.AnchorState);
+            Assert.That(states.GetBlockState(head.Root), Is.Null);
+        }
+
+        // p2p-interface.md attester_slashing reads the retained head state; set the flag after anchoring to preserve the fixture root.
+        chain.Anchor.AnchorState.Validators![1].Slashed = allSlashed;
+        bool accepted = gloasContainer
+            ? importer.OnGossipAttesterSlashing(new AttesterSlashingGloas
+            {
+                Attestation1 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation1!.AttestingIndices, Data = slashing.Attestation1.Data, Signature = slashing.Attestation1.Signature },
+                Attestation2 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation2!.AttestingIndices, Data = slashing.Attestation2.Data, Signature = slashing.Attestation2.Signature },
+            })
+            : importer.OnGossipAttesterSlashing(slashing);
+
+        Assert.That(accepted, Is.EqualTo(headRetained && !allSlashed));
     }
 
     [Test]

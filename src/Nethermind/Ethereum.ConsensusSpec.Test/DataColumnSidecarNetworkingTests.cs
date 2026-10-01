@@ -173,7 +173,7 @@ public class DataColumnSidecarNetworkingTests
         };
         SlotClock clock = new(spec, timestamper);
         BeaconChainStore store = GossipValidationTests.SeedStore(testCase.CasePath, spec);
-        FailedBlockRoots failedBlocks = SeedFailedBlocks(testCase.CasePath, meta, spec);
+        FailedBlockRoots failedBlocks = GossipValidationTests.SeedFailedBlocks(testCase.CasePath, spec);
         ColumnGossipRouter router;
         if (anchor is null)
         {
@@ -250,19 +250,6 @@ public class DataColumnSidecarNetworkingTests
 
         if (uncheckedRejects.Count > 0)
             throw new NotImplementedInDriverException($"ColumnGossipRouter does not reject: {string.Join("; ", uncheckedRejects)}");
-    }
-
-    /// <summary>The blocks meta.yaml marks <c>failed</c>, as the importer records the ones it refuses.</summary>
-    private static FailedBlockRoots SeedFailedBlocks(string casePath, GossipValidationTests.VectorMeta meta, BeaconChainSpec spec)
-    {
-        FailedBlockRoots failedBlocks = new();
-        foreach (GossipValidationTests.VectorBlock block in meta.Blocks.Where(static block => block.Failed))
-        {
-            ForkedSignedBeaconBlock decoded = SignedBeaconBlockCodec.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy")), spec);
-            failedBlocks.Add(decoded.ComputeMessageRoot(), decoded.Slot);
-        }
-
-        return failedBlocks;
     }
 
     /// <summary>The fork-choice store and head lookahead of <c>get_forkchoice_store(anchor_state, anchor_block)</c> over the vector's accepted blocks.</summary>

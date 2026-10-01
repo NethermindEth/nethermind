@@ -47,7 +47,7 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
 
     public Hash256 AnchorRoot => Anchor.AnchorRoot;
 
-    public static UnsignedChain Create() => new(ImportableBlobBlock.CreateWithoutBlobs());
+    public static UnsignedChain Create(ImportableBlobBlock? anchor = null) => new(anchor ?? ImportableBlobBlock.CreateWithoutBlobs());
 
     public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => _postStates.GetValueOrDefault(blockRoot);
 

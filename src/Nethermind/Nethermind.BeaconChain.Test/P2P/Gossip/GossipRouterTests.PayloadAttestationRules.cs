@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -28,6 +29,33 @@ public partial class GossipRouterTests
     private static readonly ulong PtcSlot = FirstGloasSlot + 1;
     private static readonly Hash256 PtcBlockRoot = Keccak.Compute("ptc voted block");
     private const ulong PtcValidator = 7;
+
+    [TestCase(0, false, MessageValidity.Rejected)]
+    [TestCase(-1, false, MessageValidity.Ignored)]
+    [TestCase(1, false, MessageValidity.Ignored)]
+    [TestCase(0, true, MessageValidity.Ignored)]
+    public void Payload_attestation_failed_block_respects_prior_ignores(int slotOffset, bool verified, MessageValidity expected)
+    {
+        FailedBlockRoots failed = new();
+        failed.Add(PtcBlockRoot, PtcSlot);
+        ManualTimestamper time = new(SepoliaSlotStart(PtcSlot).AddSeconds(6));
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, time), LimboLogs.Instance, failedBlocks: failed);
+        int received = 0;
+        router.PayloadAttestationMessageReceived += _ => received++;
+        PayloadAttestationMessage vote = PtcVote(PtcBlockRoot, (ulong)((long)PtcSlot + slotOffset));
+        if (verified)
+        {
+            router.MarkPayloadAttestationVerified(vote);
+        }
+
+        MessageValidity validity = Handle(router, vote);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validity, Is.EqualTo(expected));
+            Assert.That(received, Is.Zero);
+        }
+    }
 
     public enum PtcCase
     {
