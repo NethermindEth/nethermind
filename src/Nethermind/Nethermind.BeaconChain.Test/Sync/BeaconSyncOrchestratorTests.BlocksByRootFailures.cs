@@ -42,9 +42,10 @@ public partial class BeaconSyncOrchestratorTests
             return Task.FromException<IReadOnlyList<ForkedSignedBeaconBlock>>(new OperationCanceledException(caller.Token));
         });
 
-        Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.ProcessGossipBlockAsync(child, caller.Token));
+        await harness.Orchestrator.ProcessGossipBlockAsync(child, caller.Token);
 
         peer.DidNotReceiveWithAnyArgs().ReportFailure(default);
+        Assert.That(harness.Orchestrator.QueuedWorkCount, Is.Zero, "a fetch ended by shutdown reports no result to the worker");
     }
 
     private static (IBeaconSyncPeer Peer, Harness Harness, ForkedSignedBeaconBlock Child) CreateUnknownParentScenario()

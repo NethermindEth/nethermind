@@ -76,6 +76,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Gossip blocks the backfill budget refused that are held for their parent at once.</summary>
     internal const int MaxHeldRefusedBackfills = 4 * MaxBackfillsPerSlot;
 
+    /// <summary>The most distinct roots fetched by root at once for the ancestors of gossip blocks.</summary>
+    internal const int MaxConcurrentAncestorFetches = 8;
+
     private const int MaxPendingGossipBlocks = 128;
 
     /// <summary>Bounds the range-synced blocks held for a deferred block, so gossip blocks held for a parent keep the rest of <see cref="MaxPendingGossipBlocks"/>.</summary>
@@ -203,6 +206,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The gossip blocks held in <see cref="_pendingByParent"/> after the backfill budget refused them, oldest first.</summary>
     private readonly Queue<ForkedSignedBeaconBlock> _heldForBackfill = new();
 
+    /// <summary>The ancestor roots whose by-root fetch runs off the worker, with the chains waiting on each, gossip block first; a fetch ends with an <see cref="AncestorFetchedItem"/>.</summary>
+    private readonly Dictionary<Hash256, List<List<ForkedSignedBeaconBlock>>> _ancestorFetches = [];
+
 
     private IBlockImporter? _importer;
 
@@ -283,6 +289,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>A by-root column fetch for <paramref name="BlockRoot"/> ended; <paramref name="Complete"/> is whether every sampled column is then held, and <paramref name="Refused"/> the deferred block the full retry set could not hold.</summary>
     internal sealed record ColumnFetchEndedItem(Hash256 BlockRoot, bool Complete, ForkedSignedBeaconBlock? Refused = null) : WorkItem;
 
+    /// <summary>The by-root fetch of the ancestor <paramref name="Root"/> ended; <paramref name="Block"/> is <c>null</c> when no peer returned it.</summary>
+    internal sealed record AncestorFetchedItem(Hash256 Root, ForkedSignedBeaconBlock? Block) : WorkItem;
+
     /// <summary><paramref name="Peer"/> was admitted; a deferred block missing a column it custodies is fetched from it now, not at the next slot tick.</summary>
     internal sealed record PeerAdmittedItem(IBeaconSyncPeer Peer) : WorkItem;
 
@@ -322,6 +331,9 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>The by-root column fetches running off the worker; for tests.</summary>
     internal int ColumnFetchesInFlight => _columnFetchesInFlight.Count;
+
+    /// <summary>The by-root ancestor fetches running off the worker, bounded by <see cref="MaxConcurrentAncestorFetches"/>; for tests.</summary>
+    internal int AncestorFetchesInFlight => _ancestorFetches.Count;
 
     /// <summary>The gossip blocks held for a parent, bounded by <see cref="MaxPendingGossipBlocks"/>; for tests.</summary>
     internal int PendingGossipBlockCount => _pendingCount;
@@ -748,6 +760,9 @@ public sealed class BeaconSyncOrchestrator(
                 }
 
                 await RetryOnColumnsAsync(held.BlockRoot, token);
+                break;
+            case AncestorFetchedItem fetched:
+                await OnAncestorFetchedAsync(fetched, token);
                 break;
             case PeerAdmittedItem admitted:
                 FetchDeferredColumnsFrom(admitted.Peer, token);
@@ -1736,19 +1751,13 @@ public sealed class BeaconSyncOrchestrator(
             {
                 QueuePendingGossipBlock(block);
             }
-            else if (TryTakeBackfill(block))
+            else if (_ancestorFetches.Count < MaxConcurrentAncestorFetches && TryTakeBackfill(block))
             {
-                await BackfillAndImportAsync(block, token);
-                Hash256 parent = block.ParentRoot;
-                // A parent that neither imported nor waits for a retry may be fetched again, within the slot's spent budget.
-                if (!importer.IsKnown(parent) && !_pendingRetry.ContainsKey(parent) && !IsWaitingForPayload(parent))
-                {
-                    _backfilledParents.Remove(parent);
-                }
+                await AdvanceBackfillAsync([block], token);
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Holding gossip block at slot {block.Slot} for unknown parent {block.ParentRoot}: {(_backfilledParents.Contains(block.ParentRoot) ? "that parent waits for a retry" : "backfill budget for this slot spent")}");
+                if (_logger.IsDebug) _logger.Debug($"Holding gossip block at slot {block.Slot} for unknown parent {block.ParentRoot}: {(_ancestorFetches.Count >= MaxConcurrentAncestorFetches ? "ancestor fetches at their bound" : _backfilledParents.Contains(block.ParentRoot) ? "that parent is being fetched or waits for a retry" : "backfill budget for this slot spent")}");
                 HoldRefusedBackfill(block);
             }
 
@@ -1880,38 +1889,36 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Fetches the unknown parent chain of a gossip block by root (bounded depth), then imports oldest-first.</summary>
-    private async Task BackfillAndImportAsync(ForkedSignedBeaconBlock block, CancellationToken token)
+    /// <summary>
+    /// Walks the unknown ancestors of the gossip block <paramref name="chain"/>[0] by root, one fetch at a time and to a bounded
+    /// depth, then imports the chain oldest-first once the parent of its last block is known.
+    /// </summary>
+    /// <remarks>
+    /// A fetch can wait out several peers' timeouts, so it runs off the worker and the walk resumes on its
+    /// <see cref="AncestorFetchedItem"/>; head imports and slot ticks do not wait behind it.
+    /// </remarks>
+    private async Task AdvanceBackfillAsync(List<ForkedSignedBeaconBlock> chain, CancellationToken token)
     {
-        IBlockImporter importer = _importer!;
-        List<ForkedSignedBeaconBlock> chain = [block];
-        Hash256 parent = block.ParentRoot;
-        while (!importer.IsKnown(parent))
+        ForkedSignedBeaconBlock block = chain[0];
+        Hash256 parent = chain[^1].ParentRoot;
+        if (!_importer!.IsKnown(parent))
         {
             if (IsWaitingForPayload(parent))
             {
                 await HoldChainForWaitingParentAsync(chain, chain.Count - 1);
-                return;
             }
-
-            if (chain.Count > MaxBackfillDepth)
+            else if (chain.Count > MaxBackfillDepth)
             {
                 if (_logger.IsDebug) _logger.Debug($"Giving up on gossip block at slot {block.Slot}: ancestor chain exceeds {MaxBackfillDepth} unknown blocks");
-                return;
             }
-
-            ForkedSignedBeaconBlock? fetched = await FetchBlockByRootAsync(parent, token);
-            if (fetched is null)
+            else
             {
-                // phase0/p2p-interface.md beacon_block: a block whose parent is unseen MAY be queued until the parent is retrieved.
-                if (_logger.IsDebug) _logger.Debug($"No peer returned ancestor {parent} of gossip block at slot {block.Slot}; holding the block for range sync");
-                HoldRefusedBackfill(block);
-                WakeRangeSyncForAncestors();
+                StartAncestorFetch(parent, chain, token);
                 return;
             }
 
-            chain.Add(fetched);
-            parent = fetched.ParentRoot;
+            EndBackfill(block);
+            return;
         }
 
         for (int i = chain.Count - 1; i >= 0; i--)
@@ -1920,13 +1927,83 @@ public sealed class BeaconSyncOrchestrator(
             if (result == BlockImportResult.ParentPayloadUnverified && i > 0 && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
             {
                 await HoldChainForWaitingParentAsync(chain, i - 1);
-                return;
+                break;
             }
 
             if (result is not (BlockImportResult.Imported or BlockImportResult.AlreadyKnown))
             {
-                return;
+                break;
             }
+        }
+
+        EndBackfill(block);
+    }
+
+    /// <summary>Releases the backfill of <paramref name="block"/>'s parent unless it imported or waits for a retry, so a later block may fetch it again within the slot's spent budget.</summary>
+    private void EndBackfill(ForkedSignedBeaconBlock block)
+    {
+        Hash256 parent = block.ParentRoot;
+        if (!_importer!.IsKnown(parent) && !_pendingRetry.ContainsKey(parent) && !IsWaitingForPayload(parent))
+        {
+            _backfilledParents.Remove(parent);
+        }
+    }
+
+    /// <summary>Adds <paramref name="chain"/> to the fetch of <paramref name="root"/>, starting one off the worker unless one runs.</summary>
+    private void StartAncestorFetch(Hash256 root, List<ForkedSignedBeaconBlock> chain, CancellationToken token)
+    {
+        if (_ancestorFetches.TryGetValue(root, out List<List<ForkedSignedBeaconBlock>>? waiting))
+        {
+            waiting.Add(chain);
+            return;
+        }
+
+        _ancestorFetches[root] = [chain];
+        _ = RunAncestorFetchAsync(root, token);
+    }
+
+    /// <remarks>Touches no worker state: the result is reported as an <see cref="AncestorFetchedItem"/>.</remarks>
+    private async Task RunAncestorFetchAsync(Hash256 root, CancellationToken token)
+    {
+        try
+        {
+            ForkedSignedBeaconBlock? fetched = await FetchBlockByRootAsync(root, token);
+            await _work.Writer.WriteAsync(new AncestorFetchedItem(root, fetched), token);
+        }
+        catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
+        {
+        }
+    }
+
+    /// <summary>Resumes the chains waiting on the fetched ancestor, or holds their gossip blocks for range sync when no peer returned it.</summary>
+    private async Task OnAncestorFetchedAsync(AncestorFetchedItem fetched, CancellationToken token)
+    {
+        if (!_ancestorFetches.Remove(fetched.Root, out List<List<ForkedSignedBeaconBlock>>? chains))
+        {
+            return;
+        }
+
+        // The ancestor may have imported, or begun to wait for its payload, by another route while the fetch ran.
+        bool arrivedElsewhere = _importer!.IsKnown(fetched.Root) || IsWaitingForPayload(fetched.Root);
+        foreach (List<ForkedSignedBeaconBlock> chain in chains)
+        {
+            if (!arrivedElsewhere)
+            {
+                if (fetched.Block is null)
+                {
+                    ForkedSignedBeaconBlock block = chain[0];
+                    // phase0/p2p-interface.md beacon_block: a block whose parent is unseen MAY be queued until the parent is retrieved.
+                    if (_logger.IsDebug) _logger.Debug($"No peer returned ancestor {fetched.Root} of gossip block at slot {block.Slot}; holding the block for range sync");
+                    HoldRefusedBackfill(block);
+                    WakeRangeSyncForAncestors();
+                    EndBackfill(block);
+                    continue;
+                }
+
+                chain.Add(fetched.Block);
+            }
+
+            await AdvanceBackfillAsync(chain, token);
         }
     }
 
