@@ -126,6 +126,10 @@ public interface IBlockImporter
     /// </remarks>
     HeadView ComputeHead();
 
+    /// <summary>The start slot of fork choice's finalized epoch as of the last import, at or below which <c>on_block</c> refuses a block.</summary>
+    /// <remarks>Imports can move it before the next <see cref="ComputeHead"/>; 0 for an importer that does not track it.</remarks>
+    ulong FinalizedSlot => 0;
+
     /// <summary>
     /// Applies a VALID or INVALID <c>forkchoiceUpdated</c> verdict on <paramref name="headExecutionHash"/>, the head hash sent for
     /// <paramref name="headRoot"/>, to the payloads it names; recompute the head afterwards. Other statuses change nothing.

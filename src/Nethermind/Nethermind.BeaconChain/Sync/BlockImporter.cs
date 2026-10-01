@@ -971,6 +971,9 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     /// <inheritdoc/>
+    public ulong FinalizedSlot => BeaconStateAccessors.ComputeStartSlotAtEpoch(_runner.FinalizedCheckpoint.Epoch);
+
+    /// <inheritdoc/>
     public HeadView ComputeHead()
     {
         ForkChoiceNode headNode = _runner.GetHeadNode();
