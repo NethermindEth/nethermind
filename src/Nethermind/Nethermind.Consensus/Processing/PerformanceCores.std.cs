@@ -139,12 +139,18 @@ internal static partial class PerformanceCores
             try
             {
                 string? performanceCpus = ReadOrNull("/sys/devices/cpu_core/cpus");
-                if (performanceCpus is null || !TryReadAffinity(out CpuMask allowedMask)) return;
+                if (!TryReadAffinity(out CpuMask allowedMask)) return;
 
                 HashSet<int> allowed = [];
                 for (int cpu = 0; cpu < MaxCpus; cpu++)
                 {
                     if (allowedMask.Contains(cpu)) allowed.Add(cpu);
+                }
+
+                if (performanceCpus is null)
+                {
+                    PrewarmDedicated = BuildSingleKindDedicated(allowed);
+                    return;
                 }
 
                 foreach (ProcessingCores cores in Enum.GetValues<ProcessingCores>())
@@ -176,6 +182,40 @@ internal static partial class PerformanceCores
                 Prewarm = null;
                 PrewarmDedicated = null;
             }
+        }
+
+        /// <summary>
+        /// On a CPU with one kind of core only <see cref="ProcessingCores.Dedicated"/> narrows anything: the processing
+        /// thread gets the last core, both hyperthreads of it, and every prewarm worker runs on the other CPUs, so none
+        /// of them shares the processing thread's core. The last core rather than the first, because the low CPUs are
+        /// where interrupts and pinned helpers tend to go.
+        /// </summary>
+        private static PrewarmSplit? BuildSingleKindDedicated(HashSet<int> allowed)
+        {
+            if (allowed.Count < 4) return null;
+
+            int last = -1;
+            foreach (int cpu in allowed) last = Math.Max(last, cpu);
+            if (ReadSiblings(last) is not { } siblings) return null;
+
+            HashSet<int> core = [last];
+            foreach (int sibling in ParseCpuList(siblings))
+            {
+                if (allowed.Contains(sibling)) core.Add(sibling);
+            }
+
+            int[] coreCpus = [.. core];
+            Array.Sort(coreCpus);
+            int[] allowedCpus = [.. allowed];
+            Array.Sort(allowedCpus);
+            if (!TryExclude(allowedCpus, coreCpus, out CpuMask rest, out int[] restCpus)) return null;
+
+            CpuMask coreMask = default;
+            foreach (int cpu in coreCpus) coreMask.Add(cpu);
+            Selections[(int)ProcessingCores.Dedicated] = new Selection(coreMask, coreCpus);
+            Selection others = new(rest, restCpus);
+            // Every worker is a near one: there are no efficiency cores to send the far end of the block to.
+            return new PrewarmSplit(others, others, int.MaxValue);
         }
     }
 
