@@ -16,7 +16,7 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 namespace Nethermind.Network.Libp2p;
 
 /// <summary>The libp2p stack the node's libp2p hosts run on: TCP, Noise, yamux, identify, ping and optionally gossipsub.</summary>
-/// <remarks>Built from the component packages, so the node ships none of the transports the meta package adds (WebRTC, WebSockets, relay, QUIC, TLS) or their dependencies.</remarks>
+/// <remarks>Every yamux stream passes through <see cref="ContiguousChunkProtocol"/> before multistream. Built from the component packages, so the node ships none of the transports the meta package adds (WebRTC, WebSockets, relay, QUIC, TLS) or their dependencies.</remarks>
 public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     : PeerFactoryBuilderBase<Libp2pStackBuilder, Libp2pStackPeerFactory>(serviceProvider)
 {
@@ -37,7 +37,7 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     {
         ProtocolRef tcp = Get<IpTcpProtocol>();
         ProtocolRef[] appSelector = [Get<MultistreamProtocol>()];
-        Connect([tcp], [Get<MultistreamProtocol>()], [Get<NoiseProtocol>()], [Get<MultistreamProtocol>()], [Get<YamuxProtocol>()], appSelector);
+        Connect([tcp], [Get<MultistreamProtocol>()], [Get<NoiseProtocol>()], [Get<MultistreamProtocol>()], [Get<YamuxProtocol>()], [Get<ContiguousChunkProtocol>()], appSelector);
 
         List<ProtocolRef> apps = [Get<IdentifyProtocol>(), Get<IdentifyPushProtocol>(), Get<PingProtocol>(), .. additionalProtocols];
         if (_pubsub)
