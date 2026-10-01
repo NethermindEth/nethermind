@@ -490,6 +490,50 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
+    /// p2p-interface.md beacon_aggregate_and_proof IGNOREs an aggregate whose voted block does not descend from the finalized
+    /// checkpoint. With the first Gloas block finalized, a vote for the anchor before it is refused for that reason, ahead of
+    /// any target state or signature work.
+    /// </summary>
+    [Test]
+    public void Gossip_aggregate_for_a_block_off_the_finalized_chain_is_refused()
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkChoiceRunner runner = FinalizedOnFirstGloasBlock(chain);
+        const ulong voteEpoch = 2;
+        AttestationData data = new()
+        {
+            Slot = voteEpoch * Presets.SlotsPerEpoch,
+            Index = 0,
+            BeaconBlockRoot = chain.AnchorRoot,
+            Source = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
+            Target = new Checkpoint { Epoch = voteEpoch, Root = chain.AnchorRoot },
+        };
+        BlsSignature unsigned = new(SignatureSets.G2PointAtInfinity);
+        SignedAggregateAndProofGloas aggregate = new()
+        {
+            Message = new AggregateAndProofGloas
+            {
+                AggregatorIndex = 0,
+                Aggregate = new AttestationGloas
+                {
+                    AggregationBits = new BitArray((int)CommitteeSize, true),
+                    Data = data,
+                    Signature = unsigned,
+                    CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+                },
+                SelectionProof = unsigned,
+            },
+            Signature = unsigned,
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)), "fixture bug: the first Gloas block must be finalized");
+            Assert.That(() => runner.OnAggregateAndProof(aggregate), Throws.TypeOf<ForkChoiceException>().With.Message.Contains("finalized checkpoint"));
+        }
+    }
+
+    /// <summary>
     /// <c>on_attester_slashing</c> reads the justified block's state; with a Gloas justified root that
     /// state is only in the Gloas provider. Whichever container carried the slashing, only the validators
     /// named by both attestations equivocated: the first and the last 40 of slot 32's committee share 16,
