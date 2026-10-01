@@ -124,11 +124,13 @@ public interface IBlockImporter
     /// </summary>
     void OnFinalized(CheckpointRef finalized);
 
-    /// <summary>Feeds a gossip aggregate to fork choice; invalid attestations are counted and dropped.</summary>
-    void OnGossipAggregate(SignedAggregateAndProof aggregate);
+    /// <summary>Feeds a gossip aggregate to fork choice once its aggregator is authenticated; invalid aggregates are counted and dropped.</summary>
+    /// <returns>Whether fork choice accepted the aggregate, its selection proof and signatures included.</returns>
+    bool OnGossipAggregate(SignedAggregateAndProof aggregate);
 
-    /// <summary>Feeds a Gloas gossip aggregate to fork choice; invalid attestations are counted and dropped.</summary>
-    void OnGossipAggregate(SignedAggregateAndProofGloas aggregate);
+    /// <summary>Feeds a Gloas gossip aggregate to fork choice once its aggregator is authenticated; invalid aggregates are counted and dropped.</summary>
+    /// <returns>Whether fork choice accepted the aggregate, its selection proof and signatures included.</returns>
+    bool OnGossipAggregate(SignedAggregateAndProofGloas aggregate);
 
     /// <summary>Feeds a gossip attester slashing to fork choice; invalid slashings are counted and dropped.</summary>
     /// <returns>Whether fork choice accepted the slashing, its signatures included.</returns>

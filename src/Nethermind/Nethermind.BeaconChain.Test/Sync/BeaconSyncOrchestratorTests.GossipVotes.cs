@@ -252,6 +252,39 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    // p2p-interface.md beacon_aggregate_and_proof: only accepted aggregates mark seen sets and suppress queued copies.
+    [Test]
+    public async Task Gossip_aggregate_marks_the_seen_sets_only_once_fork_choice_accepts_it([Values] bool accepted)
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Importer.AcceptsGossipOperations = accepted;
+        harness.Orchestrator.RouteGossipEvents();
+        Assert.That(Handle(Aggregate(participants: 2, aggregator: 7)), Is.EqualTo(MessageValidity.Ignored), "fixture: the aggregate is raised");
+        Assert.That(Handle(Aggregate(participants: 1, aggregator: 8)), Is.EqualTo(MessageValidity.Ignored), "fixture: the covered copy is raised before the first verifies");
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        long duplicatesBefore = router.GetDropCount(GossipDropReason.Duplicate);
+        Handle(Aggregate(participants: 1, aggregator: 9));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(accepted ? 1 : 2), "a queued copy the accepted aggregate covers is not verified");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate) - duplicatesBefore, Is.EqualTo(accepted ? 1 : 0), "only an accepted aggregate covers later copies");
+        }
+
+        MessageValidity Handle(SignedAggregateAndProofGloas aggregate) =>
+            router.Handle(GossipTopics.BeaconAggregateAndProof, gloasTopic: true, GossipMessageValidatorTests.Encode(aggregate));
+
+        SignedAggregateAndProofGloas Aggregate(int participants, ulong aggregator)
+        {
+            SignedAggregateAndProofGloas aggregate = GossipMessageValidatorTests.GloasAggregate(slot, participants: participants);
+            aggregate.Message!.AggregatorIndex = aggregator;
+            return aggregate;
+        }
+    }
+
     /// <summary>
     /// gloas/fork-choice.md <c>on_payload_attestation_message</c> checks a gossip vote against the store's current slot, so every vote
     /// queued before a slot tick must reach fork choice before that tick moves the store to the next slot, however many are queued,

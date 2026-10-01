@@ -849,30 +849,34 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     /// <inheritdoc/>
-    public void OnGossipAggregate(SignedAggregateAndProof aggregate)
+    public bool OnGossipAggregate(SignedAggregateAndProof aggregate)
     {
         try
         {
-            _runner.OnAttestation(aggregate.Message!.Aggregate!, isFromBlock: false);
+            _runner.OnAggregateAndProof(aggregate);
+            return true;
         }
         catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAggregateRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected gossip aggregate: {e.Message}");
+            return false;
         }
     }
 
     /// <inheritdoc/>
-    public void OnGossipAggregate(SignedAggregateAndProofGloas aggregate)
+    public bool OnGossipAggregate(SignedAggregateAndProofGloas aggregate)
     {
         try
         {
-            _runner.OnAttestation(aggregate.Message!.Aggregate!, isFromBlock: false);
+            _runner.OnAggregateAndProof(aggregate);
+            return true;
         }
         catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAggregateRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected Gloas gossip aggregate: {e.Message}");
+            return false;
         }
     }
 
@@ -881,6 +885,7 @@ public sealed class BlockImporter : IBlockImporter
     {
         try
         {
+            RequireSlashableIntersection(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
             _runner.OnAttesterSlashing(slashing);
             return true;
         }
@@ -897,6 +902,7 @@ public sealed class BlockImporter : IBlockImporter
     {
         try
         {
+            RequireSlashableIntersection(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
             _runner.OnAttesterSlashing(slashing);
             return true;
         }
@@ -906,6 +912,39 @@ public sealed class BlockImporter : IBlockImporter
             if (_logger.IsTrace) _logger.Trace($"Rejected Gloas gossip attester slashing: {e.Message}");
             return false;
         }
+    }
+
+    // p2p-interface.md attester_slashing: an intersecting index must be slashable in the head state before gossip is accepted.
+    private void RequireSlashableIntersection(ulong[] first, ulong[] second)
+    {
+        Hash256 head = _runner.GetHead();
+        Validator[] validators;
+        ulong epoch;
+        if (_states.GetGloasBlockState(head) is { } gloas)
+        {
+            validators = gloas.Validators!;
+            epoch = gloas.GetCurrentEpoch();
+        }
+        else if (_states.GetBlockState(head) is { } fulu)
+        {
+            validators = fulu.Validators!;
+            epoch = fulu.GetCurrentEpoch();
+        }
+        else
+        {
+            throw new ForkChoiceException($"Head state {head} is not retained for attester slashing validation");
+        }
+
+        HashSet<ulong> indices = [.. second];
+        foreach (ulong index in first)
+        {
+            if (index < (ulong)validators.Length && indices.Contains(index) && validators[(int)index].IsSlashableValidator(epoch))
+            {
+                return;
+            }
+        }
+
+        throw new ForkChoiceException("Attester slashing has no slashable validator");
     }
 
     /// <inheritdoc/>
