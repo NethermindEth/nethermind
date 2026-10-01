@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -364,6 +365,35 @@ public class TrieNodeLogTests
         {
             Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(value));
             Assert.That(LogFiles, Is.Empty.After(5000, 20));
+        }
+    }
+
+    [Test]
+    public async Task Startup_merge_takes_any_shard_layout_into_RocksDB()
+    {
+        TreePath highPath = TreePath.FromHexString("f1234"); // second state_top shard
+        using (IPersistence.IWriteBatch batch = Batch(0, 1))
+        {
+            batch.SetStateTrieNode(TopPath, Rlp1);
+            batch.SetStateTrieNode(highPath, Rlp2);
+            batch.SetStateTrieNode(MediumPath, Rlp3);
+        }
+        await _log.DisposeAsync();
+        Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.Null);
+
+        TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance);
+
+        // The directory is clean, so a different shard count starts from an empty log and reads come from RocksDB.
+        _config.TrieNodeLogStateTopShardCount = 1;
+        Open();
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.GetDirectories(_directory.Path).Where(static directory => Directory.GetFiles(directory).Length > 0), Is.Empty);
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp3));
+            Assert.That(reader.TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
     }
 

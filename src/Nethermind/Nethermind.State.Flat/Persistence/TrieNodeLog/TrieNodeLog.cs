@@ -70,6 +70,46 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     internal IReadOnlyList<TrieNodeLogShard> Shards => _shards;
 
+    /// <summary>
+    /// Merges every shard directory found under <paramref name="basePath"/> into RocksDB and removes it, whatever
+    /// shard layout wrote it, so the log can be reconfigured or disabled between runs without losing nodes.
+    /// Run before the log is constructed; the configured shards then start empty.
+    /// </summary>
+    public static void MergeAllOnDisk(string basePath, IColumnsDb<FlatDbColumns> db, ILogManager logManager)
+    {
+        if (!Directory.Exists(basePath)) return;
+        ILogger logger = logManager.GetClassLogger<TrieNodeLog>();
+        using SemaphoreSlim mergeLimiter = new(1, 1);
+        foreach (string directory in Directory.GetDirectories(basePath))
+        {
+            string name = Path.GetFileName(directory);
+            FlatDbColumns? column = name.Split('-')[0] switch
+            {
+                "state_top" => FlatDbColumns.StateTopNodes,
+                "state" => FlatDbColumns.StateNodes,
+                "storage" => FlatDbColumns.StorageNodes,
+                _ => null,
+            };
+            if (column is null)
+            {
+                if (logger.IsWarn) logger.Warn($"Ignoring unrecognized trie node log directory {directory}");
+                continue;
+            }
+
+            if (logger.IsInfo) logger.Info($"Merging trie node log shard {name} left by the previous run");
+            TrieNodeLogShard shard = new(name, column.Value, directory, db, generationBytes: 0, mergeLag: 0, backlogMargin: 1, mergeLimiter, logManager);
+            try
+            {
+                shard.Drain();
+            }
+            finally
+            {
+                shard.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     internal static bool Covers(FlatDbColumns column) => column is FlatDbColumns.StateTopNodes or FlatDbColumns.StateNodes or FlatDbColumns.StorageNodes;
 
     private const int StateTopPartition = 0;

@@ -105,9 +105,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, ILogManager>((cfg, initConfig, db, logManager) =>
-                cfg.TrieNodeLogEnabled
-                    ? new TrieNodeLog(Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog"), db, cfg, logManager)
-                    : NullTrieNodeLog.Instance)
+            {
+                string basePath = Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog");
+                // Whatever the previous run left is merged first, so the shard layout and the enabled flag can change freely.
+                TrieNodeLog.MergeAllOnDisk(basePath, db, logManager);
+                return cfg.TrieNodeLogEnabled
+                    ? new TrieNodeLog(basePath, db, cfg, logManager)
+                    : NullTrieNodeLog.Instance;
+            })
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .Add<CarryForwardCachingPersistence>()
