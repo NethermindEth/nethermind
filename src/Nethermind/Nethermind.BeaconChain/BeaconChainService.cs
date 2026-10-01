@@ -48,6 +48,7 @@ public sealed class BeaconChainService(
     private readonly Lock _lifecycleLock = new();
     private bool _disposed;
     private Task? _runTask;
+    private Task _columnFloorCheck = Task.CompletedTask;
 
     /// <summary>Wait before checkpoint sync starts over after a network failure that outlasted its own retries.</summary>
     internal TimeSpan StartRetryDelay { get; init; } = DefaultStartRetryDelay;
@@ -71,16 +72,16 @@ public sealed class BeaconChainService(
 
         // A database or resumed anchor this build refuses leaves the execution layer without a driver, so it fails startup instead of the background run.
         store.EnsureSchemaVersion();
-        SeedColumnFloor();
+        _columnFloorCheck = SeedColumnFloor();
         _runTask = RunAsync(LoadPersistedAnchor());
         return _runTask;
     }
 
-    // The importer resumes with this as the canonical index top, so the sidecars of every slot up to it were never given to this process.
-    private void SeedColumnFloor() =>
+    // Stored slots remain conservative until checked for DataColumnSidecarsByRange (fulu/p2p-interface.md).
+    private Task SeedColumnFloor() =>
         columnPool?.SeedCompletelyServableFloor(store.TryGetAnchor(out _, out ulong anchorSlot)
             ? Math.Max(anchorSlot, store.GetCanonicalIndexTopSlot() ?? 0)
-            : store.GetCanonicalIndexTopSlot());
+            : store.GetCanonicalIndexTopSlot(), _cancellationTokenSource.Token) ?? Task.CompletedTask;
 
     private async Task RunAsync((ForkedBeaconState State, ForkedSignedBeaconBlock? Block, Hash256 BlockRoot)? persistedAnchor)
     {
@@ -231,6 +232,8 @@ public sealed class BeaconChainService(
         {
             await _runTask;
         }
+
+        await _columnFloorCheck;
     }
 
     /// <remarks>Idempotent: the service is disposed both via the plugin dispose stack and as a container-owned singleton.</remarks>

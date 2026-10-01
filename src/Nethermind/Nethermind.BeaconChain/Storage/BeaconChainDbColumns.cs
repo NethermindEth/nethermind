@@ -19,4 +19,6 @@ public enum BeaconChainDbColumns
     ExecutionPayloadEnvelopes,
     /// <summary>Block root and column index to a data column sidecar record, with a slot index for pruning and the retention floor.</summary>
     DataColumnSidecars,
+    /// <summary>Big-endian slot and block root to an empty value for state pruning.</summary>
+    StateSlotIndex,
 }
