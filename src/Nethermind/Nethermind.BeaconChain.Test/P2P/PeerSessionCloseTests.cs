@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
+using KeyType = Nethermind.Libp2p.Core.Dto.KeyType;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
@@ -31,7 +32,9 @@ namespace Nethermind.BeaconChain.Test.P2P;
 /// </summary>
 public class PeerSessionCloseTests
 {
-    private const string PeerAddress = "/ip4/10.0.0.1/tcp/9000/p2p/16Uiu2HAmPeer";
+    // A real peer id, so an inbound violation can name it.
+    private static readonly Identity PeerIdentity = new(privateKey: null, KeyType.Secp256K1);
+    private static readonly string PeerAddress = $"/ip4/10.0.0.1/tcp/9000/p2p/{PeerIdentity.PeerId}";
 
     // Well under the admission wait's 5 s poll, so only the wake on removal can end the wait in time.
     private static readonly TimeSpan ReplacementBound = TimeSpan.FromSeconds(2);
@@ -133,6 +136,7 @@ public class PeerSessionCloseTests
         HealthCheckBeforeClose,
         RequestAfterRemoval,
         HealthCheckAfterRemoval,
+        InboundRequestAfterRemoval,
     }
 
     [Test]
@@ -153,9 +157,10 @@ public class PeerSessionCloseTests
                 await ViolateAndCloseAsync(manager, node.P2P, violation, round, token);
             }
 
+            // The ban is set just after the disconnect is counted, which is what the rounds wait for.
+            await WaitUntilAsync(() => manager.IsBannedForTest(PeerId), "closing the session after a bad reply escaped the ban", token, ReplacementBound);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(manager.IsBannedForTest(PeerId), Is.True, "closing the session after a bad reply does not escape the ban");
                 Assert.That(discovery.DialHistory.Quality(PeerAddress), Is.LessThan(0), "its address is not dialed again at once");
                 Assert.That(manager.GetPeerDiagnostics().Single().DisconnectCount, Is.EqualTo(node.Config.FaultDisconnectsBeforeBan), "one disconnect per session");
             }
@@ -186,7 +191,7 @@ public class PeerSessionCloseTests
             }
 
             await ViolateAndCloseAsync(manager, node.P2P, Violation.RequestBeforeClose, 2, token);
-            Assert.That(manager.IsBannedForTest(PeerId), Is.True, "the stale drop did not reset the fault streak");
+            await WaitUntilAsync(() => manager.IsBannedForTest(PeerId), "the stale drop reset the fault streak", token, ReplacementBound);
         }
     }
 
@@ -196,7 +201,7 @@ public class PeerSessionCloseTests
     {
         LocalPeer.Session session = RequestFailureCauseTests.AddWedgedSession(p2p);
         IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress, Status);
-        bool afterRemoval = violation is Violation.RequestAfterRemoval or Violation.HealthCheckAfterRemoval;
+        bool afterRemoval = violation is Violation.RequestAfterRemoval or Violation.HealthCheckAfterRemoval or Violation.InboundRequestAfterRemoval;
         if (!afterRemoval) await ViolateAsync();
         await session.DisconnectAsync();
         await WaitUntilAsync(() => manager.GetPeerDiagnostics().Any(p => p.DisconnectCount == round), "the peer's removal never finished", token, ReplacementBound);
@@ -208,6 +213,12 @@ public class PeerSessionCloseTests
             if (violation is Violation.HealthCheckBeforeClose or Violation.HealthCheckAfterRemoval)
             {
                 return manager.HandleHealthFailureAsync(peer, new InvalidDataException("the status reply failed its content check"), startedAt: 0, token);
+            }
+
+            if (violation is Violation.InboundRequestAfterRemoval)
+            {
+                Assert.That(manager.TryReportInboundViolation(PeerIdentity.PeerId, "bytes after the request"), Is.True, "the closed peer still takes the violation");
+                return Task.CompletedTask;
             }
 
             peer.ReportFailure(PeerFailureReason.ProtocolViolation, "a block failed its parent-root check");
@@ -237,6 +248,41 @@ public class PeerSessionCloseTests
 
             Assert.That(manager.GetBestPeers(0), Is.EqualTo(new[] { newer }), "a drop that started before the address changed hands removes only the peer it names");
         }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public Task A_dialed_peer_that_breaks_the_protocol_and_closes_after_its_admission_backs_its_address_off(CancellationToken token) =>
+        RetryStalledAsync(ViolationAfterDialAsync, token, TimeSpan.FromSeconds(20));
+
+    private static async Task<bool> ViolationAfterDialAsync(CancellationToken token)
+    {
+        Node remote = Create();
+        Node local = Create();
+        await using BeaconDiscovery discovery = new(local.Config, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
+            new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), new ManualTimestamper(), LimboLogs.Instance);
+        await using (local.P2P)
+        await using (remote.P2P)
+        {
+            await remote.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, discovery);
+            string address = LoopbackAddressText(remote.P2P);
+            if (!await manager.TryAddPeerAsync(address, token))
+            {
+                ThrowIfIdentifyStalled(local.P2P, remote.P2P);
+                throw new TimeoutException("the dial was not admitted");
+            }
+
+            manager.GetBestPeers(0).Single().ReportFailure(PeerFailureReason.ProtocolViolation, "a block failed its parent-root check");
+            Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? session), Is.True);
+            await session!.DisconnectAsync();
+            await WaitUntilAsync(() => manager.GetPeerDiagnostics().Any(static peer => peer.DisconnectCount == 1), "the peer's removal never finished", token, ReplacementBound);
+
+            Assert.That(discovery.DialHistory.Quality(address), Is.EqualTo(-1), "the fault close turns the dial's recorded success into one failure");
+        }
+
+        return true;
     }
 
     [Test]
