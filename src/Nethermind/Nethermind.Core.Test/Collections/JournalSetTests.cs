@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
@@ -137,6 +138,150 @@ namespace Nethermind.Core.Test.Collections
 
             Assert.That(journalSet, Is.Empty);
             Assert.That(journalSet.Contains(item), Is.False);
+        }
+
+        /// <remarks>The table grows several times past the snapshot, so the restore frees entries the growth re-placed.</remarks>
+        [Test]
+        public void Restore_across_growth_drops_only_the_newer_items()
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            journalSet.AddRange(Enumerable.Range(0, 5));
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange(Enumerable.Range(5, 2000));
+            journalSet.Restore(snapshot);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 5)));
+                Assert.That(Enumerable.Range(0, 5).All(journalSet.Contains), Is.True, "the older items stay");
+                Assert.That(Enumerable.Range(5, 2000).Any(journalSet.Contains), Is.False, "the newer items are gone");
+            }
+
+            Assert.That(journalSet.Add(1000), Is.True, "a dropped item adds again");
+            Assert.That(journalSet.Add(3), Is.False, "a kept item is still present");
+        }
+
+        /// <remarks>
+        /// A weak hash puts many items on one home slot, so the probe runs cross each other and wrap around the end
+        /// of the table: the cases where freeing the wrong slot, or freeing out of order, would lose an item.
+        /// </remarks>
+        [TestCase(1)]
+        [TestCase(3)]
+        [TestCase(64)]
+        [TestCase(int.MaxValue)]
+        public void Matches_a_reference_journal_under_random_adds_restores_and_clears(int distinctHashes)
+        {
+            Random random = new(distinctHashes);
+            JournalSet<int> journalSet = new(new ModuloComparer(distinctHashes));
+            List<int> expected = [];
+            Stack<int> snapshots = new();
+            const int keys = 400;
+
+            for (int step = 0; step < 20_000; step++)
+            {
+                int roll = random.Next(100);
+                if (roll < 70)
+                {
+                    int item = random.Next(keys);
+                    Assert.That(journalSet.Add(item), Is.EqualTo(!expected.Contains(item)), $"Add({item}) at step {step}");
+                    if (!expected.Contains(item)) expected.Add(item);
+                }
+                else if (roll < 82)
+                {
+                    snapshots.Push(journalSet.TakeSnapshot());
+                }
+                else if (roll < 97)
+                {
+                    if (snapshots.Count == 0) continue;
+                    int snapshot = snapshots.Pop();
+                    journalSet.Restore(snapshot);
+                    expected.RemoveRange(snapshot + 1, expected.Count - snapshot - 1);
+                }
+                else
+                {
+                    journalSet.Clear();
+                    expected.Clear();
+                    snapshots.Clear();
+                }
+
+                Assert.That(journalSet.Count, Is.EqualTo(expected.Count), $"Count at step {step}");
+                if (step % 97 == 0)
+                {
+                    Assert.That(journalSet, Is.EqualTo(expected), $"insertion order at step {step}");
+                    for (int key = 0; key < keys; key++)
+                    {
+                        Assert.That(journalSet.Contains(key), Is.EqualTo(expected.Contains(key)), $"Contains({key}) at step {step}");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void Clear_shrinks_after_large_contents_and_keeps_working()
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            journalSet.AddRange(Enumerable.Range(0, 10_000));
+            journalSet.Clear();
+
+            // The first clear keeps the large table; a clear of a few items shrinks it.
+            journalSet.AddRange([10_000, 10_001, 10_002]);
+            journalSet.Clear();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.Empty);
+                Assert.That(journalSet.Contains(10_001), Is.False);
+                Assert.That(Enumerable.Range(0, 10_000).Any(journalSet.Contains), Is.False);
+            }
+
+            journalSet.AddRange(Enumerable.Range(0, 100));
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange(Enumerable.Range(50, 100));
+            journalSet.Restore(snapshot);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 100)));
+                Assert.That(journalSet.Contains(120), Is.False);
+            }
+        }
+
+        [Test]
+        public void Supports_null_reference_items()
+        {
+            JournalSet<string?> journalSet = new(EqualityComparer<string?>.Default);
+            int snapshot = journalSet.TakeSnapshot();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet.Add(null), Is.True);
+                Assert.That(journalSet.Add(null), Is.False);
+                Assert.That(journalSet.Contains(null), Is.True);
+            }
+
+            journalSet.Restore(snapshot);
+            Assert.That(journalSet.Contains(null), Is.False);
+        }
+
+        [Test]
+        public void Restore_outside_the_journal_throws_and_changes_nothing()
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            journalSet.AddRange([1, 2, 3]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => journalSet.Restore(3), Throws.InvalidOperationException);
+                Assert.That(() => journalSet.Restore(-2), Throws.InstanceOf<ArgumentOutOfRangeException>());
+                Assert.That(journalSet, Is.EqualTo([1, 2, 3]));
+                Assert.That(journalSet.Contains(2), Is.True);
+            }
+        }
+
+        private sealed class ModuloComparer(int distinctHashes) : EqualityComparer<int>
+        {
+            public override bool Equals(int x, int y) => x == y;
+            public override int GetHashCode(int obj) => obj % distinctHashes;
         }
     }
 }
