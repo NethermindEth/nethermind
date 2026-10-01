@@ -746,7 +746,7 @@ public partial class BeaconSyncOrchestratorTests
                 await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
                 break;
             case BlockSource.ByRootBackfill:
-                await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+                await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
                 break;
             case BlockSource.GossipThenFetched:
                 await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
@@ -792,7 +792,7 @@ public partial class BeaconSyncOrchestratorTests
             harness.Importer.Unavailable.Add(parent.ComputeMessageRoot());
         }
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[1]), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(new ForkedSignedBeaconBlock.OfFulu(chain[1]), CancellationToken.None);
         if (onRetry)
         {
             peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
@@ -828,8 +828,8 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.ForgedSignatures.Add(forgedSignature);
 
         // The forgery arrives first and is held behind the deferred ancestor; the genuine block, fetched for its child, after it.
-        await harness.Orchestrator.ProcessGossipBlockAsync(forged, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAsync(grandchild, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(forged, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(grandchild, CancellationToken.None);
         int held = harness.Orchestrator.PendingGossipBlockCount;
         harness.Importer.RegenerationRefused.Remove(ancestorRoot);
         await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 4, CancellationToken.None);
@@ -888,7 +888,7 @@ public partial class BeaconSyncOrchestratorTests
         (budgetRefusal ? harness.Importer.RegenerationRefused : harness.Importer.RegenerationImpossible).Add(oldestRoot);
         int pendingBefore = harness.Orchestrator.PendingGossipBlockCount;
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[^1]), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(new ForkedSignedBeaconBlock.OfFulu(chain[^1]), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -919,7 +919,7 @@ public partial class BeaconSyncOrchestratorTests
         Hash256 deferredRoot = blocks[0].ComputeMessageRoot();
         harness.Importer.RegenerationRefused.Add(deferredRoot);
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(blocks[^1], CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(blocks[^1], CancellationToken.None);
         harness.Importer.RegenerationRefused.Remove(deferredRoot);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
 
@@ -949,7 +949,7 @@ public partial class BeaconSyncOrchestratorTests
         Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
         harness.Importer.Known.Add(anchorRoot);
         harness.Importer.Unavailable.Add(parentRoot);
-        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[1]), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(new ForkedSignedBeaconBlock.OfFulu(chain[1]), CancellationToken.None);
         harness.Importer.Unavailable.Remove(parentRoot);
         harness.Importer.Forged.Add(parentRoot);
         ForkedSignedBeaconBlock copy = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = new BlsSignature(Enumerable.Repeat((byte)0x11, 96).ToArray()) });
@@ -986,7 +986,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.RegenerationRefused.Add(ancestorRoot);
         harness.Importer.Forged.Add(middleRoot);
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[2]), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(new ForkedSignedBeaconBlock.OfFulu(chain[2]), CancellationToken.None);
         bool ancestorWaited = harness.Orchestrator.PendingRetryBlockCount == 1;
         harness.Importer.RegenerationRefused.Remove(ancestorRoot);
         await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 4, CancellationToken.None);
@@ -1019,7 +1019,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.RegenerationRefused.Add(ancestorRoot);
         BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
         harness.Importer.ForgedSignatures.Add(forgedSignature);
-        await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
         harness.Importer.RegenerationRefused.Remove(ancestorRoot);
 
         BlockImportResult copy = await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = forgedSignature }), CancellationToken.None);
