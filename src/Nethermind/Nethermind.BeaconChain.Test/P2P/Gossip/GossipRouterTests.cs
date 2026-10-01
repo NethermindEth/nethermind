@@ -5,7 +5,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
 using Google.Protobuf;
+using Multiformats.Address;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -18,7 +21,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
+using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using NUnit.Framework;
 using Snappier;
@@ -32,6 +38,103 @@ public partial class GossipRouterTests
     private const ulong CurrentSlot = 13_410_304;
 
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
+
+    [Test]
+    public void Retiring_digest_sends_unsubscribe_and_skips_validation_without_caching([Values] bool column, [Values] bool getTopic)
+    {
+        using PubsubRouter pubsub = new(new PeerStore(), new PubsubSettings
+        {
+            DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
+            GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
+        });
+        int verified = 0;
+        GossipTopicSubscriptions subscriptions = new(pubsub, _ => { verified++; return MessageValidity.Ignored; });
+        pubsub.VerifyMessage = subscriptions.Verify;
+        byte[] digest = ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot));
+        GossipRouter gossip = CreateRouter();
+        ColumnGossipRouter columns = new(Spec, new SlotClock(Spec, new ManualTimestamper(
+            DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot))), LimboLogs.Instance);
+        if (column)
+        {
+            columns.Start(subscriptions.GetTopic, digest, [0]);
+        }
+        else
+        {
+            gossip.Start(subscriptions.GetTopic, digest);
+        }
+
+        string topicId = GossipTopics.Topic(digest, column ? GossipTopics.DataColumnSidecarTopicName(0) : GossipTopics.BeaconBlock);
+        ITopic topic = subscriptions.GetTopic(topicId);
+        PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+        List<Rpc> sent = [];
+        TaskCompletionSource dial = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        typeof(PubsubRouter).GetMethod("OutboundConnection", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pubsub,
+            [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), "/meshsub/1.1.0", dial.Task, (Action<Rpc>)sent.Add]);
+        MethodInfo receive = typeof(PubsubRouter).GetMethod("OnRpc", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Rpc subscribe = new();
+        subscribe.Subscriptions.Add(new Rpc.Types.SubOpts { Topicid = topicId, Subscribe = true });
+        receive.Invoke(pubsub, [peer, subscribe]);
+        ((IRoutingStateContainer)pubsub).Mesh[topicId].Add(peer);
+        sent.Clear();
+
+        if (column)
+        {
+            columns.UnsubscribeDigest(digest);
+        }
+        else
+        {
+            gossip.UnsubscribeDigest(digest);
+        }
+
+        Rpc publish = new();
+        publish.Publish.Add(new Message { Topic = topicId, Data = ByteString.CopyFrom([1]) });
+        receive.Invoke(pubsub, [peer, publish]);
+        receive.Invoke(pubsub, [peer, publish]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topic.IsSubscribed, Is.False);
+            Assert.That(sent.SelectMany(static rpc => rpc.Subscriptions).Any(s => s.Topicid == topicId && !s.Subscribe), Is.True);
+            Assert.That(sent.SelectMany(static rpc => rpc.Control?.Prune ?? []).Any(p => p.TopicID == topicId), Is.True);
+            Assert.That(verified, Is.Zero);
+        }
+
+        if (getTopic)
+        {
+            topic = subscriptions.GetTopic(topicId);
+        }
+        else
+        {
+            topic.Subscribe();
+        }
+
+        Assert.That(topic.IsSubscribed, Is.True);
+        receive.Invoke(pubsub, [peer, publish]);
+        Assert.That(verified, Is.EqualTo(1), "retired messages do not enter the seen cache, and rejoining restores validation");
+    }
+
+    /// <summary>The router's RPC handler changes the peer sets under its monitor while unsubscribing enumerates them.</summary>
+    [Test]
+    public void Retiring_a_topic_waits_for_the_router_monitor()
+    {
+        using PubsubRouter pubsub = new(new PeerStore(), new PubsubSettings());
+        GossipTopicSubscriptions subscriptions = new(pubsub, static _ => MessageValidity.Ignored);
+        ITopic topic = subscriptions.GetTopic(GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.BeaconBlock));
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task retire;
+        lock (pubsub)
+        {
+            retire = Task.Run(() =>
+            {
+                started.SetResult();
+                topic.Unsubscribe();
+            });
+            Assert.That(started.Task.Wait(5_000), Is.True, "the unsubscribe worker did not start");
+            Assert.That(retire.Wait(200), Is.False, "unsubscribing ran while the router's monitor was held");
+        }
+
+        Assert.That(retire.Wait(5_000), Is.True, "unsubscribing did not finish after releasing the monitor");
+        Assert.That(topic.IsSubscribed, Is.False);
+    }
 
     private static GossipRouter CreateRouter(double secondsIntoSlot = 6.0)
     {

@@ -47,7 +47,7 @@ namespace Nethermind.BeaconChain.P2P;
 /// stable across restarts (and reusable for the discv5 ENR in a later milestone). Gossipsub uses
 /// the eth2 parameters: <c>StrictNoSign</c>, the eth2 message-id function
 /// (<see cref="Eth2MessageId"/>), D=8/D_low=6/D_high=12/D_lazy=6, a 700 ms heartbeat, and a seen
-/// TTL of 550 heartbeats. Note that the pinned libp2p preview always signs published messages,
+/// TTL of two epochs (p2p-interface.md, gossipsub parameters). Note that the pinned libp2p preview always signs published messages,
 /// which StrictNoSign peers reject — receiving gossip works, but publishing needs a library fix.
 /// </remarks>
 public sealed class BeaconP2P : IAsyncDisposable
@@ -77,6 +77,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     private LocalPeer? _localPeer;
     private PubsubRouter? _router;
+    private GossipTopicSubscriptions? _gossipSubscriptions;
 
     /// <summary>The per-session facts <see cref="PeerManager"/> cannot read off an <see cref="ISession"/>.
     /// <paramref name="AgentVersion"/> is <c>null</c> only when the peer's identify answer carries none
@@ -173,7 +174,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 FanoutTtl = 60_000, // fanout_ttl: 60 s
                 mcache_len = 6,
                 mcache_gossip = 3,
-                MessageCacheTtl = 550 * 700, // seen_ttl: 550 heartbeats
+                MessageCacheTtl = checked((int)(spec.SecondsPerSlot * 1000 * spec.SlotsPerEpoch * 2)), // seen_ttl: two epochs, in ms
             })
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
@@ -231,7 +232,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         _router = _serviceProvider.GetRequiredService<PubsubRouter>();
         if (_messageValidator is not null)
         {
-            _router.VerifyMessage = _messageValidator.Verify;
+            _gossipSubscriptions = new GossipTopicSubscriptions(_router, _messageValidator.Verify);
+            _router.VerifyMessage = _gossipSubscriptions.Verify;
         }
 
         await _router.StartAsync(_localPeer, token);
@@ -240,6 +242,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Gets (and subscribes) the pubsub topic; available after <see cref="StartAsync"/>.</summary>
     public ITopic GetTopic(string topicId) =>
+        _gossipSubscriptions?.GetTopic(topicId) ??
         (_router ?? throw new InvalidOperationException($"{nameof(BeaconP2P)} is not started")).GetTopic(topicId);
 
     /// <summary>Feeds known peer addresses to the peer store so the pubsub router connects to them.</summary>
@@ -298,6 +301,9 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Internal so a test can give one node a distinguishable agent string before it connects.</summary>
     internal IdentifyProtocolSettings IdentifySettingsForTest => _serviceProvider.GetRequiredService<IdentifyProtocolSettings>();
+
+    /// <summary>Internal so a test can read the gossipsub parameters the host was built with.</summary>
+    internal PubsubSettings PubsubSettingsForTest => _serviceProvider.GetRequiredService<PubsubSettings>();
 
     /// <summary>Internal so a test can read what a peer advertised in its identify answers.</summary>
     internal PeerStore.PeerInfo PeerInfoForTest(PeerId peerId) => _serviceProvider.GetRequiredService<PeerStore>().GetPeerInfo(peerId);
