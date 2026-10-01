@@ -509,7 +509,8 @@ public class ForkChoiceRunnerTests
 
     /// <summary>
     /// A held vote state stands in for every target of its shuffling, so only a vote that verified may leave one: two unsigned
-    /// votes each build, a trusted body vote builds once and is held, and a later body vote of that shuffling builds nothing.
+    /// votes each build and leave no checkpoint state behind, a trusted body vote builds once and is held, and a later body
+    /// vote of that shuffling builds nothing.
     /// </summary>
     [Test]
     public void Vote_state_is_held_only_once_a_vote_verifies_against_it()
@@ -528,13 +529,16 @@ public class ForkChoiceRunnerTests
             buildCounts.Add(builds.Count);
         }
 
+        // A refused vote's state is not its target's checkpoint state either, so asking for that builds again.
+        runner.GetCheckpointState(new CheckpointRef(targetEpoch, targets[0].Root));
+        buildCounts.Add(builds.Count);
         foreach (UnsignedChain.ChainBlock target in targets.Skip(2))
         {
             runner.OnAttestation(BodyVote(chain, target, targetEpoch), isFromBlock: true, verifySignature: false);
             buildCounts.Add(builds.Count);
         }
 
-        Assert.That(buildCounts, Is.EqualTo((int[])[1, 2, 3, 3]));
+        Assert.That(buildCounts, Is.EqualTo((int[])[1, 2, 3, 4, 4]));
     }
 
     /// <summary>
