@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Network;
 using NSubstitute;
@@ -40,11 +42,19 @@ public class BeaconDiscoveryBootnodesTests
     }
 
     [Test]
-    public void Discovery_dials_the_networks_own_bootnodes_when_the_config_does_not_override_them()
+    public void Discovery_dials_the_networks_own_bootnodes_when_the_config_does_not_override_them(
+        [Values(BlockchainIds.Mainnet, BlockchainIds.Hoodi, BlockchainIds.Sepolia)] ulong chainId)
     {
-        List<Node> nodes = Discovery(BeaconChainSpec.Mainnet).CreateBootNodes();
+        BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
+        PublicKey[] own = [.. Discovery(spec).CreateBootNodes().Select(static n => n.Id)];
+        // The same records listed explicitly, so only the network's own list can match.
+        PublicKey[] listed = [.. Discovery(BeaconChainSpec.Mainnet, string.Join(',', spec.Bootnodes)).CreateBootNodes().Select(static n => n.Id)];
 
-        Assert.That(nodes, Is.Not.Empty, "mainnet discovery has no bootnode to dial");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(own, Is.Not.Empty, $"chain {chainId} discovery has no bootnode to dial");
+            Assert.That(own, Is.EquivalentTo(listed), $"chain {chainId} dials bootnodes other than its own");
+        }
     }
 
     [Test]

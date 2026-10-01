@@ -1070,7 +1070,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             using CancellationTokenSource dialCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
             try
             {
-                Metrics.BeaconChainDialAttempts++;
+                Interlocked.Increment(ref Metrics.DialAttemptsCount);
                 DialOutcome outcome = await DialAndAdmitAsync(address, peerId, enr, dialCancellation.Token, () => dialCancellation.CancelAfter(DialTimeout));
                 // The peer can still hold its half of the collapsed session when a redial arrives and refuses it, so redials back off.
                 for (int redials = 1; redials <= MaxRedialsAfterSimultaneousDial

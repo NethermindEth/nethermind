@@ -33,6 +33,9 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
 {
     private const string UnhandledTopicLabel = "unhandled";
 
+    private static readonly string[] ColumnTopicNames = CreateColumnTopicNames();
+    private static readonly StringLabel[] ColumnTopicLabels = Array.ConvertAll(ColumnTopicNames, static name => new StringLabel(name));
+
     private volatile DigestWindow? _window;
 
     /// <summary>Validates <paramref name="message"/> and consumes it when it passes.</summary>
@@ -44,12 +47,14 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
     {
         bool parsed = GossipTopics.TryParse(message.Topic, out byte[]? digest, out string? name);
         string label = parsed && IsHandledName(name!) ? name! : UnhandledTopicLabel;
+        StringLabel? columnLabel = null;
         if (parsed && GossipTopics.TryParseDataColumnSidecarTopicName(name!, out ulong labelSubnet)
             && labelSubnet < Eip7594DasConstants.DataColumnSidecarSubnetCount)
         {
-            label = GossipTopics.DataColumnSidecarTopicName(labelSubnet);
+            label = ColumnTopicNames[labelSubnet];
+            columnLabel = ColumnTopicLabels[labelSubnet];
         }
-        Metrics.BeaconChainGossipReceivedByTopic.Increment(new StringLabel(label));
+        Metrics.BeaconChainGossipReceivedByTopic.Increment(columnLabel ?? new StringLabel(label));
 
         // p2p-interface.md "Topics and messages": StrictNoSign requires all four optional fields to be absent.
         if (message.HasFrom || message.HasSeqno || message.HasSignature || message.HasKey)
@@ -80,6 +85,17 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
         }
 
         return gossip.Handle(name!, gloas, message.Data.ToByteArray());
+    }
+
+    private static string[] CreateColumnTopicNames()
+    {
+        string[] names = new string[Eip7594DasConstants.DataColumnSidecarSubnetCount];
+        for (ulong subnet = 0; subnet < Eip7594DasConstants.DataColumnSidecarSubnetCount; subnet++)
+        {
+            names[subnet] = GossipTopics.DataColumnSidecarTopicName(subnet);
+        }
+
+        return names;
     }
 
     private static bool IsHandledName(string name) =>
