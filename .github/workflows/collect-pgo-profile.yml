@@ -294,10 +294,12 @@ jobs:
           trace_file="${COLLECTION_TRACE}"
           test -s "${trace_file}"
           ref_dir="${COLLECTION_ROOT}/references"
-          mkdir -p "${ref_dir}"
+          mkdir -p "${ref_dir}/app" "${ref_dir}/shared"
           ref_cid=$(docker create --entrypoint /bin/true "${COLLECTION_IMAGE}")
           trap 'docker rm -v "${ref_cid}" >/dev/null' EXIT
-          docker cp "${ref_cid}:/nethermind/." "${ref_dir}/"
+          docker cp "${ref_cid}:/nethermind/." "${ref_dir}/app/"
+          docker cp "${ref_cid}:/usr/share/dotnet/shared/." "${ref_dir}/shared/"
+          python3 scripts/pgo/reference_inventory.py --root "${ref_dir}" --image "${COLLECTION_IMAGE}"
 
           echo "Converting ${trace_file} to .mibc..."
           trace_mibc="${validation_dir}/trace.mibc"
@@ -305,11 +307,9 @@ jobs:
             --trace "${trace_file}"
             --output "${trace_mibc}"
           )
-          if [[ -d "${ref_dir}" ]]; then
-            for dll in "${ref_dir}"/*.dll; do
-              create_mibc_args+=(--reference "${dll}")
-            done
-          fi
+          while IFS= read -r dll; do
+            create_mibc_args+=(--reference "${dll}")
+          done < "${ref_dir}/references.txt"
           dotnet-pgo create-mibc "${create_mibc_args[@]}"
           dotnet-pgo dump --input "${trace_mibc}" --output "${validation_dir}/dump.json"
           python3 scripts/pgo/validate_profile.py \
@@ -336,7 +336,7 @@ jobs:
             echo "No .jit file found — skipping edge profiling trim."
           fi
 
-      - name: Upload matching application references
+      - name: Upload matching application and framework references
         if: always()
         uses: actions/upload-artifact@v7
         with:
