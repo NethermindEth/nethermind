@@ -19,6 +19,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
@@ -625,6 +626,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), GetExceptionText(ex), in request.IdRef, returnAction)),
+
+            RejectedCallException or { InnerException: RejectedCallException } when (ex as RejectedCallException ?? ex.InnerException as RejectedCallException) is { Reason: var rejection } =>
+                GetErrorResponse(methodName, TransactionErrorCodes.Get(rejection.Error) ?? ErrorCodes.Default, rejection.ErrorDescription, null, in request.IdRef, returnAction),
 
             InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, description, null, in request.IdRef, returnAction),
