@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -123,12 +125,13 @@ public class OptimismGossipLoopbackTests
         List<CancellationToken> dials = [];
         List<bool> earlierCancelledAtStart = [];
         using StaticPeerKeeper keeper = new(localPeer, router, [address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(),
-            (_, dialToken) =>
+            openGossip: (_, dialToken) =>
             {
                 earlierCancelledAtStart.Add(dials.All(static dial => dial.IsCancellationRequested));
                 dials.Add(dialToken);
                 return Task.Delay(Timeout.Infinite, dialToken);
-            });
+            },
+            resolveHost: null);
 
         for (int check = 0; check < 3; check++)
         {
@@ -140,6 +143,30 @@ public class OptimismGossipLoopbackTests
             Assert.That(earlierCancelledAtStart, Is.EqualTo(new[] { true, true, true }), "every earlier dial was cancelled before the next started");
             Assert.That(dials.Select(static dial => dial.IsCancellationRequested), Is.EqualTo(new[] { true, true, false }));
         }
+    }
+
+    /// <summary>A static peer named by DNS is connected once its name resolves, although an earlier lookup failed.</summary>
+    /// <remarks>Nethermind.Libp2p 1.0.0 keeps a failed resolution as the pending dial of the peer id for good, so the keeper resolves names itself.</remarks>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_static_peer_named_by_dns_is_connected_after_a_failed_lookup(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
+        string[] parts = sequencer.Address.ToString().Split('/');
+        IPAddress ip = IPAddress.Parse(parts[2]);
+        Multiaddress named = Multiaddress.Decode($"/dns4/sequencer.invalid/{string.Join('/', parts[3..])}");
+        int lookups = 0;
+        using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(), openGossip: null,
+            resolveHost: (_, _, _) => ++lookups == 1
+                ? Task.FromException<IPAddress[]>(new SocketException((int)SocketError.HostNotFound))
+                : Task.FromResult(new[] { ip }));
+
+        await keeper.CheckAsync(token);
+        Assert.That(lookups, Is.EqualTo(1), "fixture: the first lookup fails");
+
+        await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
     // Runs the static peer check as its timer does, more often: the peer can refuse a dial while it still holds an earlier session.
