@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -43,7 +44,9 @@ namespace Nethermind.BeaconChain.P2P;
 /// <param name="clock">Where the wall-clock epoch that sets the retention window is read from; <c>null</c> never prunes the store.</param>
 /// <param name="status">Where the finalized epoch is read from, below which sidecars of non-canonical blocks are pruned; <c>null</c> prunes none.</param>
 /// <param name="logManager">Reports stored sidecars that cannot be read or written.</param>
-public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainStore? store = null, SlotClock? clock = null, IBeaconChainStatusSource? status = null, ILogManager? logManager = null)
+/// <param name="storeWriter">Where the store writes and prunes run, in order, after memory holds the sidecar; <c>null</c> runs them on the caller.</param>
+public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainStore? store = null, SlotClock? clock = null, IBeaconChainStatusSource? status = null, ILogManager? logManager = null,
+    ColumnStoreWriter? storeWriter = null)
 {
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<DataColumnSidecarPool>();
 
@@ -64,6 +67,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
 
     // A corrupt record would otherwise be read and decoded again for every request that names it.
     private readonly LruKeyCache<(Hash256 BlockRoot, ulong Column)> _unreadable = new(256, "unreadable data column sidecars");
+    // A sidecar whose store write is queued stays readable here until the store holds it, as memory may evict it first.
+    private readonly ConcurrentDictionary<(Hash256 BlockRoot, ulong Column), object> _unwritten = new();
     // Pending sidecars are unverified and peer-supplied, so they get a smaller bound than the served maps.
     private readonly int _maxPendingGloas = Math.Min(capacity, MaxPendingGloasSidecars);
     private readonly Lock _pendingLock = new();
@@ -244,7 +249,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         {
             for (ulong column = 0; column < Eip7594DasConstants.NumberOfColumns; column++)
             {
-                if (_byRootAndColumn.TryGet((blockRoot, column), out _))
+                if (_byRootAndColumn.TryGet((blockRoot, column), out _)
+                    || (_unwritten.TryGetValue((blockRoot, column), out object? unwritten) && unwritten is DataColumnSidecar))
                 {
                     columns |= UInt128.One << (int)column;
                     inMemory++;
@@ -299,6 +305,11 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
 
     private bool StoreHolds(Hash256 blockRoot, ulong column)
     {
+        if (_unwritten.ContainsKey((blockRoot, column)))
+        {
+            return true;
+        }
+
         if (_unreadable.Get((blockRoot, column)))
         {
             return false;
@@ -327,6 +338,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     public void Add(Hash256 blockRoot, ulong slot, DataColumnSidecar sidecar)
     {
         Action? wake;
+        TrackUnwritten(blockRoot, sidecar.Index, sidecar);
         lock (_servedLock)
         {
             MarkGiven(slot);
@@ -334,7 +346,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
             wake = TakeWakeOnArrival(blockRoot, sidecar.Index);
         }
 
-        Persist(slot, blockRoot, sidecar.Index, sidecar, null);
+        QueuePersist(slot, blockRoot, sidecar.Index, sidecar, null);
         wake?.Invoke();
     }
 
@@ -450,6 +462,12 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
             }
         }
 
+        if (_unwritten.TryGetValue((blockRoot, column), out object? unwritten) && unwritten is DataColumnSidecar queued)
+        {
+            sidecar = queued;
+            return true;
+        }
+
         sidecar = null;
         if (store is null || _unreadable.Get((blockRoot, column)))
         {
@@ -480,6 +498,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     {
         Hash256 blockRoot = BlockRootOf(sidecar);
         Action? wake;
+        TrackUnwritten(blockRoot, sidecar.Index, sidecar);
         lock (_servedLock)
         {
             MarkGiven(sidecar.Slot);
@@ -487,7 +506,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
             wake = TakeWakeOnArrival(blockRoot, sidecar.Index);
         }
 
-        Persist(sidecar.Slot, blockRoot, sidecar.Index, null, sidecar);
+        QueuePersist(sidecar.Slot, blockRoot, sidecar.Index, null, sidecar);
 
         lock (_pendingLock)
         {
@@ -508,6 +527,12 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
             {
                 return true;
             }
+        }
+
+        if (_unwritten.TryGetValue((blockRoot, column), out object? unwritten) && unwritten is DataColumnSidecarGloas queued)
+        {
+            sidecar = queued;
+            return true;
         }
 
         sidecar = null;
@@ -551,6 +576,43 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
 
         if (_logger.IsWarn) _logger.Warn($"Stored data column sidecar {blockRoot} index {column} is unreadable and is not served: {e.Message}");
+    }
+
+    private void QueuePersist(ulong slot, Hash256 blockRoot, ulong column, DataColumnSidecar? fulu, DataColumnSidecarGloas? gloas)
+    {
+        if (store is null)
+        {
+            return;
+        }
+
+        if (storeWriter is null)
+        {
+            Persist(slot, blockRoot, column, fulu, gloas);
+        }
+        else
+        {
+            storeWriter.Post(() =>
+            {
+                try
+                {
+                    Persist(slot, blockRoot, column, fulu, gloas);
+                }
+                finally
+                {
+                    // Only this write's entry: a later copy queued for the same key stays until its own write.
+                    _unwritten.TryRemove(new KeyValuePair<(Hash256, ulong), object>((blockRoot, column), (object?)fulu ?? gloas!));
+                }
+            });
+        }
+    }
+
+    // Tracked before memory holds the sidecar and released only after the store does, so a reader that misses memory finds one or the other.
+    private void TrackUnwritten(Hash256 blockRoot, ulong column, object sidecar)
+    {
+        if (storeWriter is not null && store is not null)
+        {
+            _unwritten[(blockRoot, column)] = sidecar;
+        }
     }
 
     /// <summary>Writes a sidecar the memory now holds to the store, fixes the stored floor on the first one, and prunes once per epoch.</summary>
