@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
@@ -188,7 +189,7 @@ public class GossipMessageValidatorColumnTests
 
     private sealed class SilentTopic : ITopic
     {
-        public event Action<byte[]>? OnMessage { add { } remove { } }
+        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
 
         public bool IsSubscribed => true;
 
