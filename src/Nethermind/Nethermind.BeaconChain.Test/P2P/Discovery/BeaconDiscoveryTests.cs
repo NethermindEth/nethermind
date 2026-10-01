@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P.Discovery;
@@ -20,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Enr;
+using NSubstitute;
 using NUnit.Framework;
 using KeyType = Nethermind.Libp2p.Core.Dto.KeyType;
 
@@ -34,6 +36,176 @@ public class BeaconDiscoveryTests
     private static readonly byte[] FuluVersion = Bytes.FromHexString("0x06000000");
 
     private static readonly EnrForkId TestForkId = new(CurrentDigest, FuluVersion, Presets.FarFutureEpoch);
+
+    [Test]
+    [CancelAfter(15_000)]
+    public async Task Concurrent_enr_updates_wait_for_the_earlier_sequence_to_be_persisted(CancellationToken token)
+    {
+        using ManualResetEventSlim release = new(false);
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int writes = 0;
+        bool hold = false;
+        using GatedEnrMetadata metadata = new(() =>
+        {
+            if (Volatile.Read(ref hold) && Interlocked.Increment(ref writes) == 1)
+            {
+                entered.TrySetResult();
+                release.Wait();
+            }
+        });
+        using MemColumnsDb<BeaconChainDbColumns> memory = new();
+        IColumnsDb<BeaconChainDbColumns> columns = Substitute.For<IColumnsDb<BeaconChainDbColumns>>();
+        columns.GetColumnDb(Arg.Any<BeaconChainDbColumns>()).Returns(call => memory.GetColumnDb(call.Arg<BeaconChainDbColumns>()));
+        columns.GetColumnDb(BeaconChainDbColumns.Metadata).Returns(metadata);
+        BeaconChainStore store = new(columns);
+        ulong beforeBpo1 = BeaconChainSpec.Mainnet.GenesisTime + 412_671UL * BeaconChainSpec.Mainnet.SlotsPerEpoch * BeaconChainSpec.Mainnet.SecondsPerSlot + 1;
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(beforeBpo1));
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store, new FixedIPResolver(PublicIp), clock, LimboLogs.Instance);
+        discovery.CreateDiscv5Services(PublicIp);
+        clock.Add(TimeSpan.FromSeconds(BeaconChainSpec.Mainnet.SlotsPerEpoch * BeaconChainSpec.Mainnet.SecondsPerSlot));
+        Volatile.Write(ref hold, true);
+        Task<bool> first = Task.Run(discovery.UpdateLocalEnr, token);
+        Task<bool>? second = null;
+        bool overtook = false;
+        try
+        {
+            await entered.Task.WaitAsync(token);
+            second = Task.Run(() =>
+            {
+                secondStarted.TrySetResult();
+                return discovery.UpdateLocalEnr();
+            }, token);
+            await secondStarted.Task.WaitAsync(token);
+            overtook = await Task.WhenAny(second, Task.Delay(TimeSpan.FromSeconds(1), token)) == second;
+        }
+        finally
+        {
+            release.Set();
+            await first;
+            if (second is not null) await second;
+        }
+
+        Assert.That(overtook, Is.False, "a later update published while the preceding sequence write was blocked");
+    }
+
+    private sealed class GatedEnrMetadata(Action beforeSequenceWrite) : MemDb
+    {
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (key.SequenceEqual("p2pEnrSequence"u8)) beforeSequenceWrite();
+            base.Set(key, value, flags);
+        }
+    }
+
+    [Test]
+    public void An_ipv4_mapped_address_is_encoded_as_ipv4()
+    {
+        NodeRecord record = new BeaconNodeRecordProvider(TestItem.PrivateKeyA, PublicIp.MapToIPv6(), 9000, 9001, TestForkId, 4).Current;
+        Assert.That(record.TryGetTcpEndpoint(AddressFamily.InterNetwork, out IPEndPoint? endpoint), Is.True);
+        Assert.That(endpoint!.Address, Is.EqualTo(PublicIp));
+    }
+
+    [Test]
+    public void A_dual_address_record_preserves_both_tcp_targets([Values] bool ipv4)
+    {
+        NodeRecord record = new();
+        if (ipv4)
+        {
+            record.SetEntry(new IpEntry(PublicIp));
+            record.SetEntry(new TcpEntry(9000));
+        }
+
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860:4860::8888")));
+        record.SetEntry(new Tcp6Entry(9002));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null, out BeaconPeerCandidate? candidate), Is.True);
+        Assert.That(candidate!.Addresses.Count, Is.EqualTo(ipv4 ? 2 : 1));
+        Assert.That(candidate.Addresses[^1], Does.StartWith("/ip6/2001:4860:4860::8888/tcp/9002/"));
+    }
+
+    [Test]
+    public void Next_fork_mismatch_changes_preference_without_rejecting_a_current_peer([Values] bool matching)
+    {
+        BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4, matching ? NextDigest : ForeignDigest);
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(provider.Current.ToString()), CurrentDigest, NextDigest, out BeaconPeerCandidate? candidate), Is.True);
+        Assert.That(candidate!.ForkPreference, Is.EqualTo(matching ? 3 : 2));
+    }
+
+    [Test]
+    public void Next_fork_version_and_epoch_are_evaluated_alongside_nfd([Values] bool matching)
+    {
+        EnrForkId advertised = matching ? TestForkId : new EnrForkId(CurrentDigest, FuluVersion, 10);
+        BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, 9000, 9001, advertised, 4, NextDigest);
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(provider.Current.ToString()), CurrentDigest, NextDigest,
+            out BeaconPeerCandidate? candidate, TestForkId), Is.True);
+        Assert.That(candidate!.ForkPreference, Is.EqualTo(matching ? 4 : 3));
+    }
+
+    [Test]
+    public void An_ipv6_address_is_advertised_under_ip6_and_never_as_an_ipv4_ip_entry()
+    {
+        IPAddress ipv6 = IPAddress.Parse("2001:4860:4860::8888");
+        NodeRecord decoded = NodeRecord.FromEnrString(new BeaconNodeRecordProvider(TestItem.PrivateKeyA, ipv6, 9000, 9001, TestForkId, 4).Current.ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.HasEntry(EnrContentKey.Ip), Is.False, "an IPv6 address was encoded as an IPv4 ip entry");
+            Assert.That(decoded.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? tcp6), Is.True);
+            Assert.That(tcp6?.Address, Is.EqualTo(ipv6));
+            Assert.That(tcp6?.Port, Is.EqualTo(9000));
+            Assert.That(decoded.TryGetDiscoveryEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? udp6) ? udp6.Port : 0, Is.EqualTo(9001));
+        }
+    }
+
+    [TestCase("8.8.8.8", "8.8.8.8", TestName = "The external IPv4 address is advertised")]
+    [TestCase("2001:4860:4860::8888", null, TestName = "An IPv6-only external address is not advertised while the listeners are IPv4 only")]
+    public async Task The_local_enr_advertises_only_an_endpoint_this_node_listens_on(string external, string? advertised)
+    {
+        IPAddress? address = BeaconDiscovery.AdvertisedAddress(new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Parse(external)));
+        Assert.That(address, Is.EqualTo(advertised is null ? null : IPAddress.Parse(advertised)));
+
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
+            new FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
+        discovery.CreateDiscv5Services(address);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(discovery.LocalNodeRecord.HasEntry(EnrContentKey.Ip), Is.EqualTo(advertised is not null));
+            Assert.That(discovery.LocalNodeRecord.HasEntry(EnrContentKey.Ip6), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task The_enr_sequence_keeps_growing_across_restarts_and_updates()
+    {
+        // One second into the last epoch before mainnet BPO1 (412672), so the next epoch republishes the record.
+        ulong beforeBpo1 = BeaconChainSpec.Mainnet.GenesisTime + 412_671UL * BeaconChainSpec.Mainnet.SlotsPerEpoch * BeaconChainSpec.Mainnet.SecondsPerSlot + 1;
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(beforeBpo1));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        ulong updated;
+        await using (BeaconDiscovery discovery = CreateDiscovery(store, clock))
+        {
+            discovery.CreateDiscv5Services(PublicIp);
+            ulong first = discovery.LocalNodeRecord.EnrSequence;
+            clock.Add(TimeSpan.FromSeconds(BeaconChainSpec.Mainnet.SlotsPerEpoch * BeaconChainSpec.Mainnet.SecondsPerSlot));
+            Task<bool>[] updates = new Task<bool>[8];
+            for (int i = 0; i < updates.Length; i++) updates[i] = Task.Run(discovery.UpdateLocalEnr);
+            bool[] changed = await Task.WhenAll(updates);
+            Assert.That(Array.FindAll(changed, static value => value).Length, Is.EqualTo(1), "crossing BPO1 must republish once");
+            updated = discovery.LocalNodeRecord.EnrSequence;
+            Assert.That(updated, Is.GreaterThan(first));
+        }
+
+        await using BeaconDiscovery restarted = CreateDiscovery(store, clock);
+        restarted.CreateDiscv5Services(PublicIp);
+        Assert.That(restarted.LocalNodeRecord.EnrSequence, Is.GreaterThan(updated), "EIP-778: a restart must not publish a sequence peers already hold");
+
+        static BeaconDiscovery CreateDiscovery(BeaconChainStore store, ITimestamper clock) =>
+            new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store, new FixedIPResolver(PublicIp), clock, LimboLogs.Instance);
+    }
 
     [Test]
     public void Local_enr_round_trips_and_update_bumps_sequence()

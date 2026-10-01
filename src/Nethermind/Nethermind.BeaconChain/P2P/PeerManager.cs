@@ -14,7 +14,9 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -70,7 +72,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private static readonly TimeSpan UnderPeeredMaintenanceInterval = TimeSpan.FromSeconds(5);
 
     // How often WaitForAdmissionCapacityAsync re-checks the target band while parked.
-    private static readonly TimeSpan AdmissionPollInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan AdmissionPollInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DialTimeout = TimeSpan.FromSeconds(10);
     private const int MaxRedialsAfterSimultaneousDial = 3;
     internal static readonly TimeSpan RedialBackoff = TimeSpan.FromMilliseconds(100);
@@ -81,6 +83,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private const int MaxTrackedPeerIds = 8192;
     private const int MaxBanMinutes = 10 * 365 * 24 * 60;
 
+    // Bounds the canonical index walk back over empty slots to a peer's finalized checkpoint block; not a spec value.
+    private const ulong FinalizedCheckpointSearchEpochs = 4;
+
     private readonly BeaconP2P _p2p;
     private readonly IBeaconChainConfig _config;
     private readonly IBeaconChainStatusSource _statusSource;
@@ -89,6 +94,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly BeaconDiscovery? _discovery;
     private readonly INodeColumnCustodySource _localCustody;
     private readonly ITimestamper _timestamper;
+    private readonly PeerDialHistory _dialHistory;
+    private readonly BeaconChainStore? _store;
+    private readonly BeaconChainSpec? _spec;
 
     // Stopwatch timestamp of the latest request of ours, to any peer, that was answered.
     private long _lastAnswerAt;
@@ -138,23 +146,26 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <param name="discovery">Supplies this node's sampled columns and dials their custodians; without it no custody is sought or kept.</param>
     /// <param name="timestamper">The clock the request-failure decay reads; the system clock when omitted.</param>
-    public PeerManager(BeaconP2P p2p, IBeaconChainConfig config, IBeaconChainStatusSource statusSource, ILogManager logManager, BeaconDiscovery? discovery = null, ITimestamper? timestamper = null)
+    /// <param name="store">The canonical index a peer's older finalized checkpoint is checked against; without it only our own finalized epoch is checked.</param>
+    /// <param name="spec">The epoch length for that check.</param>
+    public PeerManager(BeaconP2P p2p, IBeaconChainConfig config, IBeaconChainStatusSource statusSource, ILogManager logManager, BeaconDiscovery? discovery = null, ITimestamper? timestamper = null,
+        BeaconChainStore? store = null, BeaconChainSpec? spec = null)
     {
+        _store = store;
+        _spec = spec;
         _timestamper = timestamper ?? Timestamper.Default;
         _p2p = p2p;
         _config = config;
         _statusSource = statusSource;
         _logger = logManager.GetClassLogger<PeerManager>();
         _discovery = discovery;
+        _dialHistory = discovery?.DialHistory ?? new PeerDialHistory(_timestamper);
         _localCustody = new DiscoveryNodeCustodySource(discovery);
         _outboundDialGate = new SemaphoreSlim(Math.Max(1, config.MaxConcurrentOutboundDials));
 
         // A session the remote side opened has no dial here to admit it through; this is its only way in.
         p2p.SessionEstablished += OnSessionEstablished;
     }
-
-    /// <summary>Raised with the dropped peer's id so dial dedup can allow a later re-dial.</summary>
-    public event Action<string>? PeerDropped;
 
     /// <inheritdoc/>
     public event Action<IBeaconSyncPeer>? PeerAdmitted;
@@ -359,7 +370,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             if (!IsConnected(address))
             {
-                await ConnectAsync(address, token, token);
+                await ConnectAsync(address, token, token, backoff: false);
             }
         }
 
@@ -639,12 +650,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        cts.CancelAfter(DialTimeout);
         bool admitted;
         try
         {
-            admitted = await ConnectAsync(address, token, cts.Token, enr, overCeiling: replacing);
+            admitted = await ConnectAsync(address, token, token, enr, overCeiling: replacing);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
@@ -659,6 +668,39 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         return admitted;
+    }
+
+    /// <summary>Dials discovered candidates, at most <see cref="IBeaconChainConfig.MaxConcurrentOutboundDials"/> at once, while the pool has room; returns once every dial has ended.</summary>
+    internal Task DialDiscoveredPeersAsync(IAsyncEnumerable<BeaconPeerCandidate> candidates, CancellationToken token)
+        => ScheduleDialsAsync(candidates, Math.Max(1, _config.MaxConcurrentOutboundDials), WaitForAdmissionCapacityAsync, DialCandidateAsync,
+            (candidate, e) => { if (_logger.IsDebug) _logger.Debug($"Dialing discovered beacon chain peer {candidate.Multiaddress} failed: {DescribeFailure(e)}"); }, token);
+
+    /// <param name="failed">Receives a dial's failure, which is contained to its candidate so one bad record cannot end the schedule.</param>
+    internal static Task ScheduleDialsAsync(IAsyncEnumerable<BeaconPeerCandidate> candidates, int concurrency,
+        Func<CancellationToken, Task> waitForCapacity, Func<BeaconPeerCandidate, CancellationToken, Task> dial, Action<BeaconPeerCandidate, Exception> failed, CancellationToken token)
+        => Parallel.ForEachAsync(candidates, new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = token },
+            async (candidate, dialToken) =>
+            {
+                await waitForCapacity(dialToken);
+                try
+                {
+                    await dial(candidate, dialToken);
+                }
+                catch (Exception e) when (e is not OperationCanceledException || !dialToken.IsCancellationRequested)
+                {
+                    failed(candidate, e);
+                }
+            });
+
+    /// <summary>Dials the candidate's selected address, then its other advertised addresses until one is admitted.</summary>
+    private async Task DialCandidateAsync(BeaconPeerCandidate candidate, CancellationToken token)
+    {
+        if (await TryAddPeerAsync(candidate.Multiaddress, token, candidate.Enr)) return;
+        foreach (string address in candidate.Addresses)
+        {
+            if (!string.Equals(address, candidate.Multiaddress, StringComparison.Ordinal) &&
+                await TryAddPeerAsync(address, token, candidate.Enr)) return;
+        }
     }
 
     /// <param name="covering">The custody of <paramref name="enr"/> when the admission rests on it custodying a sampled column no connected peer custodies.</param>
@@ -1007,12 +1049,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <param name="callerToken">The caller's own token; once it is cancelled nothing is admitted after the dial ends.</param>
     /// <param name="token">Cancels the dial: <paramref name="callerToken"/> or a timeout linked to it.</param>
     /// <param name="overCeiling">See <see cref="TryReserveAdmissionSlot"/>.</param>
-    private async Task<bool> ConnectAsync(string address, CancellationToken callerToken, CancellationToken token, string? enr = null, bool overCeiling = false)
+    /// <param name="backoff">Refuses an address whose earlier dials failed until its backoff ends; a configured static peer is dialed regardless.</param>
+    private async Task<bool> ConnectAsync(string address, CancellationToken callerToken, CancellationToken token, string? enr = null, bool overCeiling = false, bool backoff = true)
     {
         string peerId = ExtractPeerId(address);
-        if (IsBanned(peerId))
+        if (IsBanned(peerId) || (backoff && !_dialHistory.CanDial(address)))
         {
-            if (_logger.IsDebug) _logger.Debug($"Refusing to dial banned beacon chain peer {peerId}");
+            if (_logger.IsDebug) _logger.Debug($"Refusing to dial banned or cooling down beacon chain peer {peerId}");
             return false;
         }
 
@@ -1024,16 +1067,28 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         try
         {
-            DialOutcome outcome = await DialAndAdmitAsync(address, peerId, enr, token);
-            // The peer can still hold its half of the collapsed session when a redial arrives and refuses it, so redials back off.
-            for (int redials = 1; redials <= MaxRedialsAfterSimultaneousDial
-                && outcome.LostSessionPeerId is { } lostPeerId && RedialsAfterSimultaneousDial(lostPeerId); redials++)
+            using CancellationTokenSource dialCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            try
             {
-                await Task.Delay(RedialBackoff * redials, token);
-                outcome = await DialAndAdmitAsync(address, peerId, enr, token);
-            }
+                Metrics.BeaconChainDialAttempts++;
+                DialOutcome outcome = await DialAndAdmitAsync(address, peerId, enr, dialCancellation.Token, () => dialCancellation.CancelAfter(DialTimeout));
+                // The peer can still hold its half of the collapsed session when a redial arrives and refuses it, so redials back off.
+                for (int redials = 1; redials <= MaxRedialsAfterSimultaneousDial
+                    && outcome.LostSessionPeerId is { } lostPeerId && RedialsAfterSimultaneousDial(lostPeerId); redials++)
+                {
+                    await Task.Delay(RedialBackoff * redials, dialCancellation.Token);
+                    outcome = await DialAndAdmitAsync(address, peerId, enr, dialCancellation.Token);
+                }
 
-            return outcome.Admitted;
+                token.ThrowIfCancellationRequested();
+                _dialHistory.Record(address, outcome.Admitted);
+                return outcome.Admitted;
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                _dialHistory.Record(address, connected: false);
+                return false;
+            }
         }
         finally
         {
@@ -1069,7 +1124,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Admitting the session beacon chain peer {address} opened during our dial failed: {e.Message}");
+            if (_logger.IsDebug) _logger.Debug($"Admitting the session beacon chain peer {address} opened during our dial failed: {DescribeFailure(e)}");
         }
     }
 
@@ -1085,13 +1140,14 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private bool RedialsAfterSimultaneousDial(string remotePeerId) =>
         _p2p.LocalPeerId is { } localPeerId && string.CompareOrdinal(localPeerId.ToString(), remotePeerId) < 0;
 
-    private async Task<DialOutcome> DialAndAdmitAsync(string address, string peerId, string? enr, CancellationToken token)
+    private async Task<DialOutcome> DialAndAdmitAsync(string address, string peerId, string? enr, CancellationToken token, Action? started = null)
     {
         await _outboundDialGate.WaitAsync(token);
         ISession? session = null;
         bool admissionResolved = false;
         try
         {
+            started?.Invoke();
             session = await _p2p.DialPeerAsync(Multiaddress.Decode(address), token);
             // The dial returns before the agent probe has answered, and may hand back a session that
             // already existed (the peer connected to us first): wait for what the libp2p layer
@@ -1103,7 +1159,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
             catch (InvalidOperationException e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Session with beacon chain peer {address} closed before identify completed: {e.Message}");
+                if (_logger.IsDebug) _logger.Debug($"Session with beacon chain peer {address} closed before identify completed: {DescribeFailure(e)}");
                 return new DialOutcome(false, BeaconP2P.RemotePeerIdOf(session)?.ToString());
             }
 
@@ -1115,17 +1171,16 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             // The pinned dial throws this, unwrapped, when the connection opened but its session was refused or closed,
             // which is how our side of a simultaneous dial can end as well as the session closing before identify.
-            if (_logger.IsDebug) _logger.Debug($"Connection to beacon chain peer {address} closed before a session was established: {e.Message}");
+            if (_logger.IsDebug) _logger.Debug($"Connection to beacon chain peer {address} closed before a session was established: {DescribeFailure(e)}");
             return new DialOutcome(false, Multiaddress.Decode(address).GetPeerId()?.ToString());
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            if (_logger.IsDebug) _logger.Debug($"Failed to connect to beacon chain peer {address}: {e.Message}");
+            if (_logger.IsDebug) _logger.Debug($"Failed to connect to beacon chain peer {address}: {DescribeFailure(e)}");
             return new DialOutcome(false);
         }
         finally
         {
-            // The dial slot is free before the teardown, so a slow disconnect cannot hold up the next dial.
             _outboundDialGate.Release();
 
             // Covers the dial-timeout cancellation exit as well as a thrown status exchange: either
@@ -1254,7 +1309,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Admitting beacon chain peer {address} failed: {e.Message}");
+            if (_logger.IsDebug) _logger.Debug($"Admitting beacon chain peer {address} failed: {DescribeFailure(e)}");
             await DisconnectUnadmittedAsync(session);
         }
     }
@@ -1278,7 +1333,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Exception e)
         {
-            if (_logger.IsTrace) _logger.Trace($"Disconnect from {session.RemoteAddress} failed: {e.Message}");
+            if (_logger.IsTrace) _logger.Trace($"Disconnect from {session.RemoteAddress} failed: {DescribeFailure(e)}");
         }
     }
 
@@ -1296,7 +1351,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Exception e)
         {
-            if (_logger.IsTrace) _logger.Trace($"Disconnect from {session.RemoteAddress} failed: {e.Message}");
+            if (_logger.IsTrace) _logger.Trace($"Disconnect from {session.RemoteAddress} failed: {DescribeFailure(e)}");
         }
     }
 
@@ -1307,6 +1362,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// </remarks>
     private async Task CheckHealthAsync(ManagedPeer peer, CancellationToken token)
     {
+        long startedAt = _timestamper.UtcNow.Ticks;
         try
         {
             if (!await UpdateStatusAsync(peer, token))
@@ -1316,6 +1372,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
             ulong metadataSeqNumber = await peer.ExchangeAsync(RequestName.Ping, _ => _p2p.PingAsync(peer.Session, token), token);
             peer.RecordMessageSent();
+            peer.RecordActivity();
             peer.ResetHealthCheckFailures();
             if (peer.MetadataSeqNumber != metadataSeqNumber)
             {
@@ -1324,20 +1381,47 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            if (e is ReqRespTimeoutException { NotBlamed: true })
+            await HandleHealthFailureAsync(peer, e, startedAt, token);
+        }
+    }
+
+    internal async Task HandleHealthFailureAsync(IBeaconSyncPeer failedPeer, Exception e, long startedAt, CancellationToken token)
+    {
+        if (e is OperationCanceledException && token.IsCancellationRequested) return;
+        ManagedPeer peer = (ManagedPeer)failedPeer;
+        bool timeout = e is OperationCanceledException or TimeoutException;
+        bool independentSuccess = false;
+        foreach (KeyValuePair<string, ManagedPeer> other in _peers)
+        {
+            if (other.Value.PeerId != peer.PeerId && other.Value.LastRequestServedAt > startedAt)
             {
-                if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check, not counted as no request of ours to any peer was answered meanwhile: {e.Message}");
+                independentSuccess = true;
+                break;
+            }
+        }
+
+        bool protectedTimeout = timeout && !peer.ViolatedProtocolSinceLastHealthyCheck
+            && e is not ReqRespTimeoutException { ChannelNeverOpened: true, NotBlamed: false };
+        if (protectedTimeout)
+        {
+            peer.DeprioritiseAfterTimeout();
+            if (!independentSuccess || e is ReqRespTimeoutException { NotBlamed: true })
+            {
+                peer.ResetTimeoutFailures();
                 return;
             }
+        }
+        else if (e is ReqRespTimeoutException { NotBlamed: true })
+        {
+            return;
+        }
 
-            int failures = peer.RecordFailedHealthCheck(violation: !IsSilence(e));
-            if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check ({failures}/{MaxConsecutiveFailures}): {e.Message}");
-            if (failures < MaxConsecutiveFailures)
-            {
-                return;
-            }
-
-            await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last: {DescribeFailure(e)}", token, unresponsive: IsUnresponsiveFailure(peer, e), healthFailure: e);
+        int failures = protectedTimeout ? peer.RecordTimeoutFailure() : peer.RecordFailedHealthCheck(violation: !IsSilence(e));
+        if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check ({failures}/{MaxConsecutiveFailures}): {DescribeFailure(e)}");
+        if (failures >= MaxConsecutiveFailures)
+        {
+            await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last: {DescribeFailure(e)}", token,
+                unresponsive: IsUnresponsiveFailure(peer, e), healthFailure: e);
         }
     }
 
@@ -1364,7 +1448,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         catch (Exception e)
         {
             // Swallowed even on cancellation: the peer is already admitted, and the caller's next request observes the token.
-            if (_logger.IsDebug) _logger.Debug($"Metadata request to beacon chain peer {peer.Id} failed: {e.Message}");
+            if (_logger.IsDebug) _logger.Debug($"Metadata request to beacon chain peer {peer.Id} failed: {DescribeFailure(e)}");
         }
 
         PublishCustodyShortfall();
@@ -1389,14 +1473,72 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             peer.StatusRequestEnded();
         }
         peer.RecordMessageSent();
-        if (!status.ForkDigest.AsSpan().SequenceEqual(_statusSource.CurrentStatus.ForkDigest))
+        StatusMessageV2 local = _statusSource.CurrentStatus;
+        if (!status.ForkDigest.AsSpan().SequenceEqual(local.ForkDigest))
         {
             await DropAsync(peer, GoodbyeReason.IrrelevantNetwork, "fork digest mismatch", token);
             return false;
         }
 
+        if (ConflictsWithFinalized(status, local, _store, _spec?.SlotsPerEpoch ?? 0))
+        {
+            await DropAsync(peer, GoodbyeReason.IrrelevantNetwork, $"finalized checkpoint {status.FinalizedRoot} at epoch {status.FinalizedEpoch} is not in our chain", token);
+            return false;
+        }
+
         peer.SetStatus(status, _timestamper.UtcNowOffset.UtcTicks);
+        peer.RecordActivity();
         return true;
+    }
+
+    /// <summary>Whether the peer's finalized checkpoint is proven absent from this node's chain at its epoch.</summary>
+    /// <remarks>consensus-specs v1.7.0-beta.2 networking Status: disconnect only for a proven finalized conflict;
+    /// future, genesis, and locally unknown checkpoints cannot prove one.</remarks>
+    /// <param name="slotsPerEpoch">0 when no spec is known, which limits the check to our own finalized epoch.</param>
+    internal static bool ConflictsWithFinalized(StatusMessageV2 remote, StatusMessageV2 local, BeaconChainStore? store, ulong slotsPerEpoch)
+    {
+        // Only the genesis checkpoint carries the zero root; a zero root at a later epoch is compared like any other.
+        if (remote.FinalizedEpoch == 0 || remote.FinalizedRoot is not { } remoteRoot
+            || local.FinalizedRoot is not { } localRoot || localRoot == Hash256.Zero || remote.FinalizedEpoch > local.FinalizedEpoch)
+        {
+            return false;
+        }
+
+        if (remote.FinalizedEpoch == local.FinalizedEpoch)
+        {
+            return remoteRoot != localRoot;
+        }
+
+        if (store is null || slotsPerEpoch == 0)
+        {
+            return false;
+        }
+
+        // consensus-specs v1.7.0-beta.2 get_block_root: use the latest block at or before the epoch's start slot.
+        if (remote.FinalizedEpoch > ulong.MaxValue / slotsPerEpoch)
+        {
+            return false;
+        }
+
+        ulong startSlot = remote.FinalizedEpoch * slotsPerEpoch;
+        if (store.GetCanonicalIndexTopSlot() is not { } topSlot || topSlot < startSlot)
+        {
+            return false;
+        }
+
+        ulong lowest = startSlot - Math.Min(startSlot, FinalizedCheckpointSearchEpochs * slotsPerEpoch);
+        for (ulong slot = startSlot; ; slot--)
+        {
+            if (store.TryGetCanonicalRoot(slot, out Hash256? canonical))
+            {
+                return canonical != remoteRoot;
+            }
+
+            if (slot == lowest)
+            {
+                return false;
+            }
+        }
     }
 
     /// <summary>The cause of a failed peer request as an operator reads it: a timeout is named as one, not by its exception type.</summary>
@@ -1430,6 +1572,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private async Task DropAsync(ManagedPeer peer, ulong reason, string detail, CancellationToken token, bool unresponsive = false, Exception? healthFailure = null)
     {
         bool kept;
+        bool removed = false;
         lock (_admissionLock)
         {
             kept = healthFailure is not null && IsKeptAtPeerFloor(healthFailure, _peers.Count, peer.ViolatedProtocolSinceLastHealthyCheck);
@@ -1439,7 +1582,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
             else
             {
-                _peers.TryRemove(peer.Id, out _);
+                removed = _peers.TryRemove(peer.Id, out _);
             }
         }
 
@@ -1453,8 +1596,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         Metrics.BeaconChainPeersDropped++;
         Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(GoodbyeReasonName(reason)));
         Metrics.BeaconChainPeerCount = _peers.Count;
+        if (removed) _dialHistory.Record(peer.Id, connected: false);
         RecordDisconnect(peer, reason, detail, unresponsive);
-        PeerDropped?.Invoke(peer.Id);
         await _p2p.GoodbyeAsync(peer.Session, reason, token);
         try
         {
@@ -1462,7 +1605,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            if (_logger.IsTrace) _logger.Trace($"Disconnect from {peer.Id} failed: {e.Message}");
+            if (_logger.IsTrace) _logger.Trace($"Disconnect from {peer.Id} failed: {DescribeFailure(e)}");
         }
     }
 
@@ -1600,6 +1743,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private long _cooldownUntilTicks;
         private int _consecutiveFailures;
         private bool _violatedProtocol;
+        private long _lastRequestServedAt;
+        private int _timeoutFailures;
+        // A passing health check clears only the selection penalty from health timeouts, never failed sync requests.
+        private int _healthTimeoutFailures;
         private long _messagesSent;
         private long _failuresReported;
         private volatile PeerColumnCustody _custody = CustodyOf(session, PeerColumnCustody.CustodyGroupCountOf(enr));
@@ -1668,7 +1815,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public int ConsecutiveFailures => Volatile.Read(ref _consecutiveFailures);
 
-        /// <summary>Sync request failures, which a passing health check leaves alone: the peer answers status and ping while it times out every request.</summary>
+        /// <summary>The selection penalty from failed requests; a passing health check clears only its health-timeout contribution.</summary>
         /// <remarks>Each served request takes one off, and one is forgiven every <see cref="RequestFailureDecayInterval"/> since the latest failure. Held at the limit, so a peer taken out of selection needs one served request or one interval to return.</remarks>
         public int RequestFailures
         {
@@ -1677,7 +1824,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 lock (_requestFailureLock)
                 {
                     DecayRequestFailures();
-                    return _requestFailures;
+                    return _requestFailures + _healthTimeoutFailures;
                 }
             }
         }
@@ -1696,21 +1843,48 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         public void ResetHealthCheckFailures()
         {
             Interlocked.Exchange(ref _consecutiveFailures, 0);
+            ResetTimeoutFailures();
+            lock (_requestFailureLock)
+            {
+                _healthTimeoutFailures = 0;
+            }
             Volatile.Write(ref _violatedProtocol, false);
             _heldOutOfSelection = false;
         }
 
         public void RecordRequestServed()
         {
+            RecordActivity();
             lock (_requestFailureLock)
             {
                 DecayRequestFailures();
-                if (_requestFailures > 0)
+                if (_healthTimeoutFailures > 0)
+                {
+                    _healthTimeoutFailures--;
+                }
+                else if (_requestFailures > 0)
                 {
                     _requestFailures--;
                 }
             }
         }
+
+        /// <summary>Offers the peer after others as a failed request does, without a step toward <see cref="MaxConsecutiveFailures"/>.</summary>
+        public void DeprioritiseAfterTimeout()
+        {
+            Volatile.Write(ref _cooldownUntilTicks, (manager._timestamper.UtcNowOffset + RequestFailureCooldown).UtcTicks);
+            lock (_requestFailureLock)
+            {
+                DecayRequestFailures();
+                _requestFailuresDecayFrom = manager._timestamper.UtcNowOffset;
+                _healthTimeoutFailures = Math.Min(MaxConsecutiveFailures - _requestFailures, _healthTimeoutFailures + 1);
+            }
+        }
+
+        public void RecordActivity() => Interlocked.Exchange(ref _lastRequestServedAt, manager._timestamper.UtcNow.Ticks);
+        public long LastRequestServedAt => Interlocked.Read(ref _lastRequestServedAt);
+        public void ResetTimeoutFailures() => Interlocked.Exchange(ref _timeoutFailures, 0);
+        public int RecordTimeoutFailure() => Interlocked.Increment(ref _timeoutFailures);
 
         private void AddRequestFailures(int failures)
         {
@@ -1719,12 +1893,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 DecayRequestFailures();
                 _requestFailuresDecayFrom = manager._timestamper.UtcNowOffset;
                 _requestFailures = Math.Min(MaxConsecutiveFailures, _requestFailures + failures);
+                _healthTimeoutFailures = Math.Min(_healthTimeoutFailures, MaxConsecutiveFailures - _requestFailures);
             }
         }
 
         private void DecayRequestFailures()
         {
-            if (_requestFailures == 0)
+            if (_requestFailures + _healthTimeoutFailures == 0)
             {
                 return;
             }
@@ -1733,7 +1908,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             long forgiven = (now - _requestFailuresDecayFrom).Ticks / RequestFailureDecayInterval.Ticks;
             if (forgiven > 0)
             {
-                _requestFailures = (int)Math.Max(0, _requestFailures - forgiven);
+                long healthForgiven = Math.Min(_healthTimeoutFailures, forgiven);
+                _healthTimeoutFailures -= (int)healthForgiven;
+                _requestFailures = (int)Math.Max(0, _requestFailures - (forgiven - healthForgiven));
                 _requestFailuresDecayFrom += TimeSpan.FromTicks(forgiven * RequestFailureDecayInterval.Ticks);
             }
         }
@@ -1812,6 +1989,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             try
             {
                 T response = await request(timing);
+                RecordActivity();
                 Volatile.Write(ref manager._lastAnswerAt, Stopwatch.GetTimestamp());
                 Volatile.Write(ref _unblamedInARow, 0);
                 return response;

@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
@@ -24,6 +27,130 @@ public class PeerHealthCheckRoundTests
 
     // Under the 15 s request timeout, so a status held this long still answers and a check that ran alone shows only as a missed rendezvous.
     private static readonly TimeSpan RendezvousWait = TimeSpan.FromSeconds(10);
+
+    [Test]
+    [CancelAfter(20_000)]
+    public async Task Admission_capacity_is_rechecked_within_ten_seconds(CancellationToken token)
+    {
+        Node local = CreateNode();
+        try
+        {
+            local.Config.TargetPeerCount = 0;
+            PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+            Task waiting = manager.WaitForAdmissionCapacityAsync(token);
+            Assert.That(waiting.IsCompleted, Is.False);
+            local.Config.TargetPeerCount = 1;
+            await waiting.WaitAsync(TimeSpan.FromSeconds(10), token);
+        }
+        finally
+        {
+            await local.P2P.DisposeAsync();
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Discovery_scheduling_never_exceeds_its_bound_and_awaits_workers_on_completion_or_cancellation([Values] bool cancel, CancellationToken token)
+    {
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int active = 0;
+        int started = 0;
+        int maximum = 0;
+        Task scheduled = PeerManager.ScheduleDialsAsync(Candidates(4), 2, _ => Task.CompletedTask, async (_, dialToken) =>
+        {
+            int count = Interlocked.Increment(ref active);
+            Interlocked.Increment(ref started);
+            int seen;
+            while ((seen = Volatile.Read(ref maximum)) < count && Interlocked.CompareExchange(ref maximum, count, seen) != seen)
+            {
+            }
+
+            if (count == 2)
+            {
+                held.TrySetResult();
+            }
+
+            try
+            {
+                await release.Task.WaitAsync(dialToken);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref active);
+            }
+        }, static (_, _) => { }, stop.Token);
+
+        await held.Task.WaitAsync(token);
+        // Gives a worker past the bound time to start before the assertions read the counters.
+        await Task.Delay(200, token);
+        Assert.That(Volatile.Read(ref started), Is.EqualTo(2));
+        if (cancel)
+        {
+            await stop.CancelAsync();
+            Assert.CatchAsync<OperationCanceledException>(async () => await scheduled);
+        }
+        else
+        {
+            release.TrySetResult();
+            await scheduled;
+            Assert.That(started, Is.EqualTo(4));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(active, Is.Zero, "the schedule returned while a dial was still running");
+            Assert.That(maximum, Is.EqualTo(2), "more dials ran at once than the configured limit");
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Discovery_scheduling_waits_for_admission_capacity_before_dialling(CancellationToken token)
+    {
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource capacity = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int dialled = 0;
+        Task scheduled = PeerManager.ScheduleDialsAsync(Candidates(1), 1, async dialToken =>
+        {
+            waiting.TrySetResult();
+            await capacity.Task.WaitAsync(dialToken);
+        }, (_, _) => { Interlocked.Increment(ref dialled); return Task.CompletedTask; }, static (_, _) => { }, token);
+        await waiting.Task.WaitAsync(token);
+        Assert.That(dialled, Is.Zero);
+        capacity.TrySetResult();
+        await scheduled;
+        Assert.That(dialled, Is.EqualTo(1));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_failing_dial_does_not_end_discovery_scheduling(CancellationToken token)
+    {
+        List<string> dialled = [];
+        List<string> failed = [];
+        await PeerManager.ScheduleDialsAsync(Candidates(2), 1, _ => Task.CompletedTask, (candidate, _) =>
+        {
+            lock (dialled) dialled.Add(candidate.PeerId);
+            return candidate.PeerId == "peer-0" ? Task.FromException(new InvalidOperationException("malformed record")) : Task.CompletedTask;
+        }, (candidate, _) => { lock (failed) failed.Add(candidate.PeerId); }, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dialled, Is.EqualTo(new[] { "peer-0", "peer-1" }), "the candidate after a failing one was never dialled");
+            Assert.That(failed, Is.EqualTo(new[] { "peer-0" }));
+        }
+    }
+
+    private static async IAsyncEnumerable<BeaconPeerCandidate> Candidates(int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            yield return new BeaconPeerCandidate($"address-{i}", $"peer-{i}", [], 1, "enr:");
+            await Task.Yield();
+        }
+    }
 
     [Test]
     [CancelAfter(120_000)]
@@ -156,7 +283,8 @@ public class PeerHealthCheckRoundTests
             await node.P2P.StartAsync(token);
         }
 
-        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, logManager ?? LimboLogs.Instance);
+        AdvancingTimestamper clock = new();
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, logManager ?? LimboLogs.Instance, timestamper: clock);
         foreach (Node server in servers)
         {
             // Admission is not what these tests check, so a dial whose session the pinned libp2p loses is tried again.
@@ -164,12 +292,23 @@ public class PeerHealthCheckRoundTests
             for (int attempt = 0; attempt < 3 && !admitted; attempt++)
             {
                 admitted = await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token);
+                if (!admitted) clock.Add(TimeSpan.FromMinutes(15));
             }
 
             Assert.That(admitted, Is.True);
         }
 
         return peerManager;
+    }
+
+    private sealed class AdvancingTimestamper : ITimestamper
+    {
+        private readonly ManualTimestamper _clock = new();
+        private readonly Stopwatch _elapsed = Stopwatch.StartNew();
+        public DateTime UtcNow => _clock.UtcNow + _elapsed.Elapsed;
+        public DateTimeOffset UtcNowOffset => new(UtcNow);
+        public UnixTime UnixTime => new(UtcNow);
+        public void Add(TimeSpan offset) => _clock.Add(offset);
     }
 
     internal static async Task DisposeAsync(Node client, Node[] servers)

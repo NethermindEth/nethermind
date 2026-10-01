@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -123,9 +122,6 @@ public sealed class BeaconSyncOrchestrator(
 
     private const long ProgressLogIntervalMs = 1000;
 
-    // Most mainnet dials fail (peers at capacity); high parallelism shortens time-to-first-peer.
-    private const int ConcurrentDials = 16;
-
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconSyncOrchestrator>();
 
     /// <summary>Runs the importer's block and envelope imports, whose engine call blocks, off the thread pool.</summary>
@@ -202,7 +198,6 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The gossip blocks held in <see cref="_pendingByParent"/> after the backfill budget refused them, oldest first.</summary>
     private readonly Queue<ForkedSignedBeaconBlock> _heldForBackfill = new();
 
-    private readonly ConcurrentDictionary<string, byte> _dialedPeerIds = new();
 
     private IBlockImporter? _importer;
 
@@ -2513,56 +2508,9 @@ public sealed class BeaconSyncOrchestrator(
         return true;
     }
 
-    /// <summary>Dials discovered candidates (bounded concurrency) until the target peer count is reached, then idles.</summary>
-    private async Task RunDiscoveryDialLoopAsync(CancellationToken token)
-    {
-        // A dropped peer becomes re-dialable after a cooldown - dialable mainnet peers are
-        // scarce, so permanently blacklisting every drop starves the pool.
-        if (peerManager is PeerManager manager)
-        {
-            manager.PeerDropped += peerId => _ = Task.Delay(TimeSpan.FromMinutes(2), token)
-                .ContinueWith(_ => _dialedPeerIds.TryRemove(peerId, out byte _), token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
-        }
-
-        using SemaphoreSlim dialGate = new(ConcurrentDials);
-        await foreach (BeaconPeerCandidate candidate in discovery!.DiscoverPeers(token))
-        {
-            // PeerManager owns the target band (and the ban list and dial gate behind it), so this
-            // loop asks whether there is room rather than comparing PeerCount to config itself - the
-            // orchestrator's own comparison here and PeerManager's admission check used to disagree.
-            await peerManager!.WaitForAdmissionCapacityAsync(token);
-
-            if (!_dialedPeerIds.TryAdd(candidate.PeerId, 0))
-            {
-                continue;
-            }
-
-            Metrics.BeaconChainDialAttempts++;
-            await dialGate.WaitAsync(token);
-            _ = DialCandidateAsync(candidate, dialGate, token);
-        }
-    }
-
-    private async Task DialCandidateAsync(BeaconPeerCandidate candidate, SemaphoreSlim dialGate, CancellationToken token)
-    {
-        try
-        {
-            if (!await peerManager!.TryAddPeerAsync(candidate.Multiaddress, token, candidate.Enr))
-            {
-                // Allow a later re-dial when the peer shows up again.
-                _dialedPeerIds.TryRemove(candidate.PeerId, out _);
-            }
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            _dialedPeerIds.TryRemove(candidate.PeerId, out _);
-            if (_logger.IsDebug) _logger.Debug($"Dialing discovered beacon peer {candidate.Multiaddress} failed: {e.Message}");
-        }
-        finally
-        {
-            dialGate.Release();
-        }
-    }
+    /// <summary>Dials discovered candidates until cancellation, with scheduling owned by the peer manager.</summary>
+    private Task RunDiscoveryDialLoopAsync(CancellationToken token)
+        => peerManager!.DialDiscoveredPeersAsync(discovery!.DiscoverPeers(token), token);
 
     /// <summary>Logs sync progress at most once per second, and only when the sync tip's slot has moved, until the node follows head in sync.</summary>
     /// <remarks>Once following head with the execution layer in sync, the per-epoch status line is enough.</remarks>
