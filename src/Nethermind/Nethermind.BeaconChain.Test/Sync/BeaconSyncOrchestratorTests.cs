@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
@@ -933,7 +934,7 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>A restart replays stored blocks before the libp2p host starts; a replayed head near the wall clock must wait for it to start gossip.</summary>
+    /// <summary>Gossip topics exist only once the libp2p host has started; a replayed head near the wall clock that finds none must wait for it to start gossip.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_replayed_head_near_the_wall_clock_starts_gossip_once_the_libp2p_host_has_started(CancellationToken token)
@@ -959,6 +960,36 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(startedBeforeHost, Is.False, "gossip topics cannot be subscribed before the host starts");
             Assert.That(harness.Orchestrator.GossipStarted, Is.True, "the first head step after the host starts starts gossip");
         }
+    }
+
+    /// <summary>
+    /// A restart replays the stored blocks one by one, which took ten minutes at mainnet size. The libp2p host and discovery start
+    /// before it, so peers connect and the discovery table fills while it runs instead of after it.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Networking_starts_before_the_stored_block_replay(CancellationToken testToken)
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1);
+        TestChain.Persist(store, anchorBlock, anchorRoot, chain);
+        // Not built ahead as CreateDiscovery does, so it has a custody only once started.
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
+        PeerBandTests.Node node = PeerBandTests.CreateNode();
+        await using BeaconP2P p2p = node.P2P;
+        Harness harness = CreateHarness(store: store, discovery: discovery, p2p: p2p, peerManager: new PeerManager(p2p, node.Config, node.StatusHolder, LimboLogs.Instance));
+        harness.Importer.Known.Add(anchorRoot);
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(testToken);
+        (bool Listening, bool Discovering)? duringReplay = null;
+        harness.Importer.OnImported = (_, _) =>
+        {
+            duringReplay = (p2p.LocalPeerId is not null, (LocalCustody?)discovery.LocalCustody is not null);
+            cts.Cancel();
+        };
+
+        Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token));
+
+        Assert.That(duringReplay, Is.EqualTo((true, true)), "the stored block was replayed with the host listening and discovery running");
     }
 
     /// <summary>
