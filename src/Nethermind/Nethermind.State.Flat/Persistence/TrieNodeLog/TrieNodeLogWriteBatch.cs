@@ -44,6 +44,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     public void Append(byte column, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete)
     {
         if (key.Length is 0 or > TrieNodeLogRecord.MaxKeyLength) throw new ArgumentOutOfRangeException(nameof(key), key.Length, "Unsupported trie node log key length");
+        if (value.Length > TrieNodeLogRecord.MaxValueLength) throw new ArgumentOutOfRangeException(nameof(value), value.Length, "Unsupported trie node log value length");
 
         TrieNodeLogGeneration generation = CurrentGeneration();
         ulong hash = TrieNodeLogRecord.Hash(column, key);

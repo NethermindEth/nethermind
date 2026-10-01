@@ -8,7 +8,7 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
 /// <summary>
 /// Header of one log record. Layout:
-/// <c>u8 type | u8 column | u8 keyLength | u32 valueLength | u64 version | u64 prev | key | value</c>.
+/// <c>u8 type | u8 column | u8 keyLength | u16 valueLength | u64 version | u64 prev | key | value</c>.
 /// </summary>
 /// <remarks>
 /// <see cref="Prev"/> is the <see cref="PackLocation">packed location</see> of the previous record of the same key
@@ -21,8 +21,9 @@ internal readonly record struct TrieNodeLogRecord(byte Type, byte Column, int Ke
     public const byte Delete = 1;
     public const byte Commit = 2;
 
-    public const int HeaderLength = 1 + 1 + 1 + 4 + 8 + 8;
+    public const int HeaderLength = 1 + 1 + 1 + 2 + 8 + 8;
     public const int MaxKeyLength = byte.MaxValue;
+    public const int MaxValueLength = ushort.MaxValue;
 
     // Packed location: generation in the high 24 bits, (offset + 1) in the low 40 bits so that 0 means "none".
     private const int OffsetBits = 40;
@@ -41,18 +42,18 @@ internal readonly record struct TrieNodeLogRecord(byte Type, byte Column, int Ke
         destination[0] = Type;
         destination[1] = Column;
         destination[2] = (byte)KeyLength;
-        BinaryPrimitives.WriteInt32LittleEndian(destination[3..], ValueLength);
-        BinaryPrimitives.WriteUInt64LittleEndian(destination[7..], Version);
-        BinaryPrimitives.WriteUInt64LittleEndian(destination[15..], Prev);
+        BinaryPrimitives.WriteUInt16LittleEndian(destination[3..], (ushort)ValueLength);
+        BinaryPrimitives.WriteUInt64LittleEndian(destination[5..], Version);
+        BinaryPrimitives.WriteUInt64LittleEndian(destination[13..], Prev);
     }
 
     public static TrieNodeLogRecord Read(ReadOnlySpan<byte> source) => new(
         source[0],
         source[1],
         source[2],
-        BinaryPrimitives.ReadInt32LittleEndian(source[3..]),
-        BinaryPrimitives.ReadUInt64LittleEndian(source[7..]),
-        BinaryPrimitives.ReadUInt64LittleEndian(source[15..]));
+        BinaryPrimitives.ReadUInt16LittleEndian(source[3..]),
+        BinaryPrimitives.ReadUInt64LittleEndian(source[5..]),
+        BinaryPrimitives.ReadUInt64LittleEndian(source[13..]));
 
     /// <summary>Whether the header can be a record written by this log (a zero-filled tail fails this).</summary>
     public bool IsPlausible => Type switch
