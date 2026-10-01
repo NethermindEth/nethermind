@@ -57,6 +57,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxNoPayer { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions ignored because their validation prefix is outside the public-mempool grammar.")]
+        public static long PendingTransactionsFrameTxUnrecognizedPrefix { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because they carry a VERIFY frame after their validation prefix.")]
         public static long PendingTransactionsFrameTxVerifyAfterPrefix { get; set; }
 

@@ -319,7 +319,7 @@ namespace Nethermind.TxPool
                 new FrameTxMisplacedExpiryFrameFilter(_logger), // before ExpiredFrameTxFilter: leaves the deadline readable from the leading frame alone
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
-                new FrameTxPayerlessFilter(_logger), // before FrameTxSignatureFilter: a structural payerless verdict needs no signature work
+                new FrameTxPayerlessFilter(_logger), // before FrameTxSignatureFilter: structural prefix verdicts need no signature work
                 new FrameTxVerifyAfterPrefixFilter(_logger), // after MalformedTxFilter: matches the prefix grammar against an already recovered sender
 
                 new TxTypeTxFilter(_transactions,
