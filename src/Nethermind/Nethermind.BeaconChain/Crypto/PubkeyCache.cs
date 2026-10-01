@@ -7,8 +7,8 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Threading;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Crypto;
 using Snappier;
@@ -81,7 +81,6 @@ public class PubkeyCache
     /// <exception cref="OperationCanceledException">Cancelled; the verdicts stored so far stay.</exception>
     internal virtual void WarmSubgroupChecks(CancellationToken cancellationToken)
     {
-        ParallelOptions options = new() { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) };
         byte[] checks;
         do
         {
@@ -89,7 +88,7 @@ public class PubkeyCache
             checks = Volatile.Read(ref _subgroupChecks);
             long[] points = Volatile.Read(ref _points);
             WarmUpPassStarted?.Invoke();
-            Parallel.For(0, Math.Min(checks.Length, points.Length / G1Affine.Sz), options, i =>
+            BeaconParallel.For(0, Math.Min(checks.Length, points.Length / G1Affine.Sz), Math.Max(1, Environment.ProcessorCount / 2), cancellationToken, i =>
             {
                 if (checks[i] == 0)
                     checks[i] = new G1Affine(points.AsSpan(i * G1Affine.Sz, G1Affine.Sz)).InGroup() ? (byte)1 : (byte)2;
@@ -154,7 +153,7 @@ public class PubkeyCache
         if (pending is null || pending.Count < ParallelCheckThreshold)
             return;
 
-        Parallel.ForEach(pending, index =>
+        BeaconParallel.ForEach(pending, index =>
         {
             if (checks[index] == 0)
                 checks[index] = new G1Affine(points.AsSpan(index * G1Affine.Sz, G1Affine.Sz)).InGroup() ? (byte)1 : (byte)2;
@@ -223,7 +222,7 @@ public class PubkeyCache
         byte[] subgroupChecks = new byte[validators.Length];
 
         long firstInvalid = -1;
-        Parallel.For(fromIndex, validators.Length, (i, state) =>
+        BeaconParallel.For(fromIndex, validators.Length, (i, state) =>
         {
             G1Affine point = new(points.AsSpan(i * G1Affine.Sz, G1Affine.Sz));
             BlsPublicKey pubkey = validators[i].Pubkey;
