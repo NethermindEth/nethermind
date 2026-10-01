@@ -420,6 +420,7 @@ public class PeerBandTests
             PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
 
+            using BeaconP2P.SessionWatch knockingSessions = local.P2P.WatchSessions(knocking.P2P.LocalPeerId!);
             await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
 
             string knockingId = knocking.P2P.LocalPeerId!.ToString();
@@ -429,6 +430,7 @@ public class PeerBandTests
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 1, token, "the refused session was not torn down");
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(knockingSessions.Opened, Is.EqualTo(1), "the knocking session reached this node, so the refusal path ran");
                 Assert.That(peerManager.PeerCount, Is.EqualTo(1), "an inbound session must not take the pool past MaxPeerCount");
                 Assert.That(peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
                     "a never-admitted id must not get a record: distinct knockers at the ceiling would otherwise evict real peers' history");
