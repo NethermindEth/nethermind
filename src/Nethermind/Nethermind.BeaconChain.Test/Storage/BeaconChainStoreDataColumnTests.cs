@@ -436,8 +436,8 @@ public class BeaconChainStoreDataColumnTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(BeaconChainStore.CurrentSchemaVersion, Is.EqualTo(4u));
-            Assert.That(store.TryGetSchemaVersion(out uint version) ? version : 0, Is.EqualTo(4u));
+            Assert.That(BeaconChainStore.CurrentSchemaVersion, Is.EqualTo(5u));
+            Assert.That(store.TryGetSchemaVersion(out uint version) ? version : 0, Is.EqualTo(5u));
             Assert.That(store.TryGetDataColumnFloor(out _), Is.False, "no floor, so the pool seeds one from the canonical index");
         }
     }

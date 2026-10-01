@@ -4,6 +4,9 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
@@ -15,6 +18,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -26,6 +30,7 @@ public class DataColumnSidecarPoolStoredRangeTests
     private const ulong First = 13_399_995;
     private const ulong Last = First + 10;
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
+    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(20);
     private static readonly IReadOnlyList<ulong> Sampled = new NodeColumnCustody(TestItem.PrivateKeyA.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement).SampledColumns;
 
     private static Hash256 RootAt(ulong slot) => Keccak.Compute($"canonical {slot}");
@@ -66,7 +71,7 @@ public class DataColumnSidecarPoolStoredRangeTests
     private static DataColumnSidecarPool Restart(BeaconChainStore store, SlotClock? clock = null)
     {
         DataColumnSidecarPool restarted = new(store: store, clock: clock);
-        restarted.SeedCompletelyServableFloor(store.GetCanonicalIndexTopSlot());
+        restarted.SeedCompletelyServableFloor(store.GetCanonicalIndexTopSlot()).Wait();
         return restarted;
     }
 
@@ -228,5 +233,149 @@ public class DataColumnSidecarPoolStoredRangeTests
         SlotClock clock = new(Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + currentSlot * Spec.SecondsPerSlot)));
 
         Assert.That(Restart(store, clock).EarliestCompletelyServableSlot, Is.EqualTo(First), "the prune raises the floor past that slot; the start-up check does not");
+    }
+
+    // DataColumnSidecarsByRange (fulu/p2p-interface.md) requires completeness even while the stored range is checked.
+    [Test]
+    public void The_floor_stays_at_the_top_until_the_stored_range_is_checked_and_is_then_the_check_result([Values] bool incomplete, [Values] bool readWhilePending)
+    {
+        (FaultyColumnsDb db, BeaconChainStore store, _) = StoreRange(skip: incomplete ? [(First + 7, Sampled[0])] : []);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        if (readWhilePending)
+        {
+            db.BeforeCanonicalSlotRead = () =>
+            {
+                if (!entered.IsSet)
+                {
+                    entered.Set();
+                    release.Wait(Wait);
+                }
+            };
+        }
+
+        DataColumnSidecarPool restarted = new(store: store);
+        Task check = restarted.SeedCompletelyServableFloor(store.GetCanonicalIndexTopSlot());
+        ulong? whilePending = null;
+        if (readWhilePending)
+        {
+            Assert.That(entered.Wait(Wait), Is.True, "the check reads the stored range");
+            whilePending = restarted.EarliestCompletelyServableSlot;
+            Assert.That(check.IsCompleted, Is.False, "fixture bug: the check must still be running");
+            release.Set();
+        }
+
+        Assert.That(check.Wait(Wait), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(whilePending, Is.EqualTo(readWhilePending ? Last + 1 : null));
+            Assert.That(restarted.EarliestCompletelyServableSlot, Is.EqualTo(incomplete ? First + 8 : First));
+        }
+    }
+
+    [Test]
+    public async Task A_failed_write_during_the_check_keeps_its_higher_floor()
+    {
+        (FaultyColumnsDb db, BeaconChainStore store, _) = StoreRange();
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        db.BeforeCanonicalSlotRead = () =>
+        {
+            entered.Set();
+            release.Wait(Wait);
+        };
+        DataColumnSidecarPool restarted = new(store: store);
+        Task check = restarted.SeedCompletelyServableFloor(Last);
+        try
+        {
+            Assert.That(entered.Wait(Wait), Is.True);
+            db.FailWrites = true;
+            restarted.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, Last + 5, RootAt(Last + 5)));
+        }
+        finally
+        {
+            release.Set();
+            await check.WaitAsync(Wait);
+        }
+
+        Assert.That(restarted.EarliestCompletelyServableSlot, Is.EqualTo(Last + 6));
+    }
+
+    /// <summary>A service over a database with a recorded floor, whose stored range check is held at its first read; <paramref name="entered"/> is set when it gets there.</summary>
+    private static (IContainer Container, DataColumnSidecarPool Pool, ulong Top, ManualResetEventSlim Release) HoldStoredRangeCheck(out ManualResetEventSlim entered, out BeaconChainService service, bool singleSlot = false)
+    {
+        FaultyColumnsDb db = new();
+        IContainer container = BeaconChainTestContainer.Builder().AddSingleton<IColumnsDb<BeaconChainDbColumns>>(db).Build();
+        ulong top = container.Resolve<SlotClock>().CurrentSlot - 50;
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        store.SetAnchor(TestItem.KeccakA, top - 10);
+        store.ApplyCanonicalIndexChanges([], top);
+        store.RaiseDataColumnFloor(singleSlot ? top : top - 100);
+        ManualResetEventSlim held = new();
+        ManualResetEventSlim release = new();
+        db.BeforeCanonicalSlotRead = () =>
+        {
+            if (!held.IsSet)
+            {
+                held.Set();
+                release.Wait(Wait);
+            }
+        };
+        entered = held;
+        service = container.Resolve<BeaconChainService>();
+        return (container, container.Resolve<DataColumnSidecarPool>(), top, release);
+    }
+
+    [Test]
+    public void Start_does_not_wait_for_the_stored_range_check()
+    {
+        (IContainer container, DataColumnSidecarPool pool, ulong top, ManualResetEventSlim release) = HoldStoredRangeCheck(out ManualResetEventSlim entered, out BeaconChainService service);
+        using (container)
+        using (entered)
+        using (release)
+        {
+            Task start = Task.Run(() => Assert.Throws<InvalidOperationException>(() => service.Start()));
+            bool returned = start.Wait(Wait);
+            bool checking = entered.Wait(Wait);
+            ulong whilePending = pool.EarliestCompletelyServableSlot;
+            release.Set();
+            bool lowered = SpinWait.SpinUntil(() => pool.EarliestCompletelyServableSlot != top + 1, Wait);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(returned, Is.True, "Start returns while the check is still reading");
+                Assert.That(checking, Is.True);
+                Assert.That(whilePending, Is.EqualTo(top + 1));
+                Assert.That(lowered, Is.True);
+                Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(top - 100), "the recorded floor covers a range with nothing missing");
+            }
+        }
+    }
+
+    [Test]
+    public async Task Stopping_the_service_ends_the_stored_range_check_and_leaves_the_floor_at_the_top([Values] bool singleSlot)
+    {
+        (IContainer container, DataColumnSidecarPool pool, ulong top, ManualResetEventSlim release) = HoldStoredRangeCheck(out ManualResetEventSlim entered, out BeaconChainService service, singleSlot);
+        using (container)
+        using (entered)
+        using (release)
+        {
+            Assert.Throws<InvalidOperationException>(() => service.Start());
+            Assert.That(entered.Wait(Wait), Is.True, "the check reads the stored range");
+
+            Task stopped = service.StopAsync();
+            try
+            {
+                Assert.That(stopped.IsCompleted, Is.False, "shutdown awaits the held database read");
+            }
+            finally
+            {
+                release.Set();
+                await stopped.WaitAsync(Wait);
+            }
+
+            Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(top + 1), "a check that did not finish claims nothing below the top");
+        }
     }
 }

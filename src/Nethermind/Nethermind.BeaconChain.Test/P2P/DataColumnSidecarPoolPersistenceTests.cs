@@ -94,7 +94,7 @@ public class DataColumnSidecarPoolPersistenceTests
         new DataColumnSidecarPool(store: store).AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, stored, Keccak.Compute("held")));
 
         DataColumnSidecarPool restarted = new(store: store);
-        restarted.SeedCompletelyServableFloor(CurrentSlot - 10);
+        restarted.SeedCompletelyServableFloor(CurrentSlot - 10).Wait();
         restarted.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(1, stored - 500, Keccak.Compute("late")));
 
         Assert.That(restarted.EarliestCompletelyServableSlot, Is.EqualTo(stored), "the slots the store holds stay servable, and a late lower column never lowers the floor");
@@ -145,7 +145,7 @@ public class DataColumnSidecarPoolPersistenceTests
         first.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, top - 5, Keccak.Compute("late")));
 
         DataColumnSidecarPool second = new(store: store);
-        second.SeedCompletelyServableFloor(store.GetCanonicalIndexTopSlot());
+        second.SeedCompletelyServableFloor(store.GetCanonicalIndexTopSlot()).Wait();
 
         using (Assert.EnterMultipleScope())
         {

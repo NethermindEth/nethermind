@@ -14,6 +14,7 @@ internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
 {
     private readonly MemColumnsDb<BeaconChainDbColumns> _inner = new();
     private readonly FaultyMemDb _sidecars = new();
+    private readonly SlotReadHookMemDb _canonicalIndex = new();
 
     public bool FailReads { set => _sidecars.FailReads = value; }
 
@@ -24,7 +25,15 @@ internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
     /// <summary>Runs once after the next read of a 40-byte record key, between the read and whatever the reader does with it.</summary>
     public Action? AfterNextRecordRead { set => _sidecars.AfterNextRecordRead = value; }
 
-    public IDb GetColumnDb(BeaconChainDbColumns key) => key == BeaconChainDbColumns.DataColumnSidecars ? _sidecars : _inner.GetColumnDb(key);
+    /// <summary>Runs before every read of a canonical index slot entry, so a test can hold a reader there.</summary>
+    public Action? BeforeCanonicalSlotRead { set => _canonicalIndex.BeforeSlotRead = value; }
+
+    public IDb GetColumnDb(BeaconChainDbColumns key) => key switch
+    {
+        BeaconChainDbColumns.DataColumnSidecars => _sidecars,
+        BeaconChainDbColumns.BlockIndex => _canonicalIndex,
+        _ => _inner.GetColumnDb(key),
+    };
 
     public IEnumerable<BeaconChainDbColumns> ColumnKeys => _inner.ColumnKeys;
 
@@ -35,6 +44,21 @@ internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
     public void Dispose() { }
 
     public void Flush(bool onlyWal = false) { }
+
+    private sealed class SlotReadHookMemDb : MemDb
+    {
+        public Action? BeforeSlotRead { get; set; }
+
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (key.Length == sizeof(ulong))
+            {
+                BeforeSlotRead?.Invoke();
+            }
+
+            return base.Get(key, flags);
+        }
+    }
 
     private sealed class FaultyMemDb : MemDb
     {
