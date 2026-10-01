@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Threading.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -94,8 +95,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     {
         // Pinned before the snapshot so a generation merged and deleted in between stays readable, bound after it
         // so the view serves exactly the log version the snapshot's metadata confirms.
-        TrieNodeLogView[] views = new TrieNodeLogView[_shards.Length];
-        for (int i = 0; i < views.Length; i++) views[i] = _shards[i].PinLiveGenerations();
+        ArrayPoolList<TrieNodeLogView> views = new(_shards.Length);
+        foreach (TrieNodeLogShard shard in _shards) views.Add(shard.PinLiveGenerations());
         IColumnDbSnapshot<FlatDbColumns> snapshot;
         try
         {
@@ -103,7 +104,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
         catch
         {
-            foreach (TrieNodeLogView view in views) view.Dispose();
+            views.DisposeRecursive();
             throw;
         }
 
@@ -151,7 +152,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _mergeLimiter.Dispose();
     }
 
-    private sealed class View(TrieNodeLog log, IColumnDbSnapshot<FlatDbColumns> snapshot, TrieNodeLogView[] views) : ITrieNodeLog.IView
+    private sealed class View(TrieNodeLog log, IColumnDbSnapshot<FlatDbColumns> snapshot, ArrayPoolList<TrieNodeLogView> views) : ITrieNodeLog.IView
     {
         public IColumnDbSnapshot<FlatDbColumns> Snapshot => snapshot;
 
@@ -161,10 +162,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         public void Dispose()
         {
             snapshot.Dispose();
-            foreach (TrieNodeLogView view in views) view.Dispose();
+            views.DisposeRecursive();
         }
 
-        private sealed class Column(TrieNodeLog log, TrieNodeLogView[] views, byte column, IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore
+        private sealed class Column(TrieNodeLog log, ArrayPoolList<TrieNodeLogView> views, byte column, IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore
         {
             public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
                 views[log.ShardIndex(column, key)].TryGet(column, key, out byte[]? value) ? value : inner.Get(key, flags);
