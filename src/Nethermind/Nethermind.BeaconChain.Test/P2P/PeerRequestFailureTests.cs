@@ -34,7 +34,7 @@ public class PeerRequestFailureTests
     [CancelAfter(60_000)]
     public async Task A_peer_failing_its_requests_stays_connected_but_out_of_selection_through_passing_health_checks([Values] Failure failure, CancellationToken token)
     {
-        await using Fixture fixture = await Fixture.CreateAsync(token);
+        await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
         fixture.Fail(failure == Failure.SessionClosed ? PeerFailureReason.SessionClosed : PeerFailureReason.RequestFailed, failure == Failure.SessionClosed ? 1 : Limit);
 
         await fixture.Manager.RunMaintenanceRoundAsync(token);
@@ -43,7 +43,7 @@ public class PeerRequestFailureTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.IsSelectable, Is.False, "answering status and ping does not make a peer that fails its requests selectable again");
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1), "request failures alone do not drop the peer");
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2), "request failures alone do not drop the peer");
         }
     }
 
@@ -99,7 +99,7 @@ public class PeerRequestFailureTests
     [CancelAfter(120_000)]
     public async Task A_silent_peer_kept_at_the_peer_floor_is_out_of_selection(CancellationToken token)
     {
-        await using Fixture fixture = await Fixture.CreateAsync(token, hangable: true);
+        await using Fixture fixture = await Fixture.CreateAsync(token, hangable: true, withUsablePeer: true);
         fixture.Manager.CountEveryTimeoutForTest();
         fixture.Fail(PeerFailureReason.RequestFailed, Limit - 1);
         bool selectableBefore = fixture.IsSelectable;
@@ -110,7 +110,7 @@ public class PeerRequestFailureTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(selectableBefore, Is.True, "test setup: below the request-failure limit");
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1), "one connected peer is below the floor");
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2), "two connected peers are below the floor");
             Assert.That(fixture.IsSelectable, Is.False);
         }
 
@@ -124,14 +124,14 @@ public class PeerRequestFailureTests
     [CancelAfter(60_000)]
     public async Task Uncorrelated_timeouts_deprioritise_a_peer_without_dropping_it_even_above_the_floor(CancellationToken token)
     {
-        await using Fixture fixture = await Fixture.CreateAsync(token);
+        await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
         fixture.Config.MinPeerCount = 0;
         for (int i = 0; i < Limit * 2; i++)
         {
             await fixture.Manager.HandleHealthFailureAsync(fixture.Peer, new TimeoutException(), fixture.Time.UtcNow.Ticks, token);
         }
 
-        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1));
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
         Assert.That(fixture.IsSelectable, Is.False);
     }
 
@@ -226,7 +226,7 @@ public class PeerRequestFailureTests
     [CancelAfter(60_000)]
     public async Task A_served_request_takes_one_failure_off_so_one_more_failure_returns_the_peer_to_the_limit(CancellationToken token)
     {
-        await using Fixture fixture = await Fixture.CreateAsync(token);
+        await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
         fixture.Fail(PeerFailureReason.RequestFailed, Limit + 5);
         Assert.That(fixture.IsSelectable, Is.False);
 
@@ -245,7 +245,7 @@ public class PeerRequestFailureTests
     [CancelAfter(60_000)]
     public async Task Request_failures_decay_one_per_interval(CancellationToken token)
     {
-        await using Fixture fixture = await Fixture.CreateAsync(token);
+        await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
         fixture.Fail(PeerFailureReason.RequestFailed, Limit);
 
         fixture.Time.Add(PeerManager.RequestFailureDecayInterval - TimeSpan.FromSeconds(1));
@@ -266,7 +266,7 @@ public class PeerRequestFailureTests
     [CancelAfter(60_000)]
     public async Task A_peer_stays_out_for_a_full_interval_after_its_latest_failure_however_slowly_the_failures_came(CancellationToken token)
     {
-        await using Fixture fixture = await Fixture.CreateAsync(token);
+        await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
         fixture.Fail(PeerFailureReason.RequestFailed, 1);
         fixture.Time.Add(PeerManager.RequestFailureDecayInterval - TimeSpan.FromSeconds(1));
         fixture.Fail(PeerFailureReason.RequestFailed, Limit - 1);
@@ -286,7 +286,7 @@ public class PeerRequestFailureTests
     [CancelAfter(60_000)]
     public async Task A_peer_whose_requests_really_fail_leaves_selection_because_a_failed_request_earns_no_credit(CancellationToken token)
     {
-        await using Fixture fixture = await Fixture.CreateAsync(token);
+        await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
         using CancellationTokenSource cancelled = new();
         await cancelled.CancelAsync();
 
@@ -372,6 +372,7 @@ public class PeerRequestFailureTests
     {
         private Node _client = null!;
         private Node _server = null!;
+        private Node? _usable;
         private HangableStatusSource? _hang;
 
         public ManualTimestamper Time { get; } = new();
@@ -390,7 +391,8 @@ public class PeerRequestFailureTests
         /// <summary>Makes the server's status answer fail with an error instead of a reply.</summary>
         public void Break() => _hang!.Break();
 
-        public static async Task<Fixture> CreateAsync(CancellationToken token, ulong? serverEarliestAvailableSlot = null, bool hangable = false)
+        /// <param name="withUsablePeer">Connects a second peer that stays under the request-failure limit, so the limit takes <see cref="Peer"/> out of selection.</param>
+        public static async Task<Fixture> CreateAsync(CancellationToken token, ulong? serverEarliestAvailableSlot = null, bool hangable = false, bool withUsablePeer = false)
         {
             Fixture fixture = new() { _client = CreateNode() };
             if (hangable)
@@ -399,7 +401,8 @@ public class PeerRequestFailureTests
             }
 
             fixture._server = CreateNode(fixture._hang);
-            SetMatchingStatus(fixture._client, fixture._server);
+            fixture._usable = withUsablePeer ? CreateNode() : null;
+            SetMatchingStatus(fixture._usable is null ? new[] { fixture._client, fixture._server } : new[] { fixture._client, fixture._server, fixture._usable });
             if (serverEarliestAvailableSlot is { } earliest)
             {
                 fixture._server.StatusHolder.CurrentStatus.EarliestAvailableSlot = earliest;
@@ -409,7 +412,13 @@ public class PeerRequestFailureTests
             await fixture._server.P2P.StartAsync(token);
             fixture.Manager = new PeerManager(fixture._client.P2P, fixture._client.Config, fixture._client.StatusHolder, LimboLogs.Instance, timestamper: fixture.Time);
             Assert.That(await fixture.Manager.TryAddPeerAsync(LoopbackAddress(fixture._server.P2P), token), Is.True);
-            fixture.Peer = fixture.Manager.GetBestPeers(0).Single();
+            if (fixture._usable is not null)
+            {
+                await fixture._usable.P2P.StartAsync(token);
+                Assert.That(await fixture.Manager.TryAddPeerAsync(LoopbackAddress(fixture._usable.P2P), token), Is.True);
+            }
+
+            fixture.Peer = fixture.Manager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(fixture._server.P2P));
             return fixture;
         }
 
@@ -433,6 +442,10 @@ public class PeerRequestFailureTests
             _hang?.Release();
             await _client.P2P.DisposeAsync();
             await _server.P2P.DisposeAsync();
+            if (_usable is not null)
+            {
+                await _usable.P2P.DisposeAsync();
+            }
         }
     }
 }
