@@ -222,8 +222,8 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The newest range-synced block that waits in <see cref="_pendingRetry"/> or is held under it, so a round starts past it; written by the worker, read by the feed.</summary>
     private volatile HeldRange? _rangeHeld;
 
-    /// <summary>The roots of the range-synced blocks held on the chain of <see cref="_rangeHeld"/>; touched by the worker only.</summary>
-    private readonly HashSet<Hash256> _rangeHeldRoots = [];
+    /// <summary>The roots and suppliers of the range-synced blocks held on the chain of <see cref="_rangeHeld"/>; touched by the worker only.</summary>
+    private readonly Dictionary<Hash256, IBeaconSyncPeer?> _rangeHeldRoots = [];
 
     /// <summary>The held range blocks whose by-root column fetch runs ahead of their turn to import, at most <see cref="MaxConcurrentHeldColumnFetches"/>.</summary>
     private readonly HashSet<Hash256> _heldColumnFetches = [];
@@ -268,7 +268,7 @@ public sealed class BeaconSyncOrchestrator(
     private sealed record HeldRange(Hash256 DeferredRoot, Tip Tip);
 
     internal abstract record WorkItem;
-    internal sealed record RangeBlockItem(ForkedSignedBeaconBlock Block) : WorkItem;
+    internal sealed record RangeBlockItem(ForkedSignedBeaconBlock Block, IBeaconSyncPeer? Source = null, CancellationToken RoundToken = default) : WorkItem;
     internal sealed record GossipBlockItem(ForkedSignedBeaconBlock Block) : WorkItem;
     internal sealed record GossipAggregateItem(SignedAggregateAndProof Aggregate) : WorkItem;
     internal sealed record GossipGloasAggregateItem(SignedAggregateAndProofGloas Aggregate) : WorkItem;
@@ -636,7 +636,10 @@ public sealed class BeaconSyncOrchestrator(
         switch (item)
         {
             case RangeBlockItem range:
-                await ImportRangeBlockAsync(range.Block, token);
+                if (!range.RoundToken.IsCancellationRequested)
+                {
+                    await ImportRangeBlockAsync(range, token);
+                }
                 break;
             case GossipBlockItem gossip:
                 await ProcessGossipBlockAsync(gossip.Block, token);
@@ -751,9 +754,10 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Imports a range-synced block, and notes it when it waits for a retry or for a parent that does, so the next round does not fetch it again.</summary>
-    private async Task ImportRangeBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token)
+    private async Task ImportRangeBlockAsync(RangeBlockItem item, CancellationToken token)
     {
-        BlockImportResult result = await ImportBlockAsync(block, token);
+        ForkedSignedBeaconBlock block = item.Block;
+        BlockImportResult result = await ImportBlockAsync(block, token, rangeItem: item);
         if (result is not (BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified or BlockImportResult.FutureSlot or BlockImportResult.UnknownParent))
         {
             return;
@@ -806,7 +810,7 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         // A block waiting on another chain's deferred block must not take this chain over.
-        if (_rangeHeld?.DeferredRoot == deferredRoot && _rangeHeldRoots.Add(root) && result == BlockImportResult.UnknownParent)
+        if (_rangeHeld?.DeferredRoot == deferredRoot && _rangeHeldRoots.TryAdd(root, item.Source) && result == BlockImportResult.UnknownParent)
         {
             QueueHeldColumnFetch(block, root, token);
         }
@@ -829,7 +833,7 @@ public sealed class BeaconSyncOrchestrator(
             Hash256 root = next.Root;
             BeaconBlock message = next.Message;
             // A block that left the held chain meanwhile needs nothing ahead of its turn.
-            if (_rangeHeldRoots.Contains(root) && StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, message, fetchToken), token))
+            if (_rangeHeldRoots.ContainsKey(root) && StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, message, fetchToken), token))
             {
                 _heldColumnFetches.Add(root);
             }
@@ -869,7 +873,7 @@ public sealed class BeaconSyncOrchestrator(
     /// wiring it in at only one call site would leave the other three silently dropping it.
     /// </summary>
     /// <param name="retryingOnColumns">Whether this import was woken by the columns it waited for, so a repeat deferral waits for the slot tick instead of watching and fetching again.</param>
-    internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns = false)
+    internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns = false, RangeBlockItem? rangeItem = null)
     {
         Hash256 root = block.ComputeMessageRoot();
         long startMs = Environment.TickCount64;
@@ -927,7 +931,16 @@ public sealed class BeaconSyncOrchestrator(
         {
             // A retried block answers UnknownParent once its parent's state is gone, so it never imports.
             bool wasRetried = _pendingRetry.Remove(root);
-            if (wasRetried)
+            if (result == BlockImportResult.Invalid && (rangeItem is not null || _rangeHeld?.DeferredRoot == root || _rangeHeldRoots.ContainsKey(root)))
+            {
+                // fork-choice.md on_block: rejected range blocks end the round and only their supplier is blamed.
+                IBeaconSyncPeer? source = _rangeHeldRoots.GetValueOrDefault(root) ?? rangeItem?.Source;
+                source?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
+                _rangeHeld = null;
+                ClearRangeHeldRoots();
+                EndRangeSyncRound();
+            }
+            else if (wasRetried)
             {
                 ReleaseRangeHeld(root);
             }
@@ -1108,7 +1121,7 @@ public sealed class BeaconSyncOrchestrator(
 
         _pendingRetry[root] = new PendingRetry(block, slotClock.CurrentSlot);
         // A held block that waits once the blocks before it imported holds the rest of the chain, as fulu/fork-choice.md is_data_available lets none of it import before it.
-        if (_rangeHeld is { } held && (held.DeferredRoot == block.ParentRoot || _rangeHeldRoots.Contains(root)))
+        if (_rangeHeld is { } held && (held.DeferredRoot == block.ParentRoot || _rangeHeldRoots.ContainsKey(root)))
         {
             _rangeHeld = held with { DeferredRoot = root };
         }
@@ -1128,6 +1141,9 @@ public sealed class BeaconSyncOrchestrator(
             ClearRangeHeldRoots();
         }
     }
+
+    /// <summary>Ends the range-sync round in flight and drops its queued blocks, so the next round starts from the sync tip.</summary>
+    private void EndRangeSyncRound() => _ = Interlocked.Exchange(ref _rangeSyncRestart, new CancellationTokenSource()).CancelAsync();
 
     /// <summary>Moves the held tip back to the deferred block its chain waits on once the tip is dropped, so the next round fetches the dropped blocks again instead of starting past them.</summary>
     private void LowerRangeHeldTip()
@@ -1160,7 +1176,7 @@ public sealed class BeaconSyncOrchestrator(
         for (int waiting = _heldColumnFetchQueue.Count; waiting > 0; waiting--)
         {
             (Hash256 Root, BeaconBlock Message) next = _heldColumnFetchQueue.Dequeue();
-            if (_rangeHeldRoots.Contains(next.Root))
+            if (_rangeHeldRoots.ContainsKey(next.Root))
             {
                 _heldColumnFetchQueue.Enqueue(next);
             }
@@ -2334,28 +2350,31 @@ public sealed class BeaconSyncOrchestrator(
         token = round.Token;
 
         List<ForkedSignedBeaconBlock.OfGloas> gloasRun = [];
-        await foreach (ForkedSignedBeaconBlock block in rangeSync.Run(tip.Root, tip.Slot, () => slotClock.CurrentSlot, token, fallback))
+        List<IBeaconSyncPeer> sources = [];
+        IBeaconSyncPeer source = null!;
+        await foreach (ForkedSignedBeaconBlock block in rangeSync.Run(tip.Root, tip.Slot, () => slotClock.CurrentSlot, token, fallback, peer => source = peer, retryToken => WriteGloasRunAsync(gloasRun, sources, restart, retryToken)))
         {
             if (block is not ForkedSignedBeaconBlock.OfGloas gloas)
             {
-                await WriteGloasRunAsync(gloasRun, token);
-                await _work.Writer.WriteAsync(new RangeBlockItem(block), token);
+                await WriteGloasRunAsync(gloasRun, sources, restart, token);
+                await _work.Writer.WriteAsync(new RangeBlockItem(block, source, restart), token);
                 continue;
             }
 
             if (gloasRun.Count > 0 && gloas.Slot - gloasRun[0].Slot >= ExecutionPayloadEnvelopesProtocolBase.MaxRequestPayloads)
             {
-                await WriteGloasRunAsync(gloasRun, token);
+                await WriteGloasRunAsync(gloasRun, sources, restart, token);
             }
 
             gloasRun.Add(gloas);
+            sources.Add(source);
             if ((ulong)gloasRun.Count >= RangeSync.DefaultBatchSize)
             {
-                await WriteGloasRunAsync(gloasRun, token);
+                await WriteGloasRunAsync(gloasRun, sources, restart, token);
             }
         }
 
-        await WriteGloasRunAsync(gloasRun, token);
+        await WriteGloasRunAsync(gloasRun, sources, restart, token);
     }
 
     /// <summary>Writes each block of <paramref name="run"/> in order, each followed by its envelope when the chain carries that payload, then clears the run.</summary>
@@ -2364,7 +2383,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <c>bid.block_hash</c>); the last block's envelope is written when a peer served it. A missing envelope a full child
     /// needs is recovered by root once that child is parked.
     /// </remarks>
-    private async Task WriteGloasRunAsync(List<ForkedSignedBeaconBlock.OfGloas> run, CancellationToken token)
+    private async Task WriteGloasRunAsync(List<ForkedSignedBeaconBlock.OfGloas> run, List<IBeaconSyncPeer> sources, CancellationToken restart, CancellationToken token)
     {
         if (run.Count == 0)
         {
@@ -2374,7 +2393,7 @@ public sealed class BeaconSyncOrchestrator(
         (SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source)?[] envelopes = await FetchRunEnvelopesAsync(run, token);
         for (int i = 0; i < run.Count; i++)
         {
-            await _work.Writer.WriteAsync(new RangeBlockItem(run[i]), token);
+            await _work.Writer.WriteAsync(new RangeBlockItem(run[i], sources[i], restart), token);
             if (envelopes[i] is { } served && (i == run.Count - 1 || IsPayloadOnChain(run[i], run[i + 1])))
             {
                 await _work.Writer.WriteAsync(new RangeEnvelopeItem(served.Envelope, served.Source), token);
@@ -2382,6 +2401,7 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         run.Clear();
+        sources.Clear();
     }
 
     private static ExecutionPayloadBid BidOf(ForkedSignedBeaconBlock.OfGloas block) => block.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
