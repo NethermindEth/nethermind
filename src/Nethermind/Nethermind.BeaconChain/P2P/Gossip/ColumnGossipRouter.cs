@@ -20,6 +20,7 @@ using Nethermind.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
+using Nethermind.Network.Libp2p;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.P2P.Gossip;
