@@ -253,6 +253,30 @@ namespace Nethermind.Facade
                 : EstimateGasShareable(header, tx, errorMargin, gasCap, blobFeeCapFill, cancellationToken);
         }
 
+        public Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
+            Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted)
+        {
+            executionReverted = false;
+            BlockHeader executionHeader = header.Clone();
+            // The requested block's context, as the gas estimate that follows uses.
+            if (HasOverrides(stateOverride, null, blockOverride))
+            {
+                if (!processingEnv.TryBuildAndOverride(executionHeader, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope))
+                    return Result<TxFrame[]>.Fail(StateUnavailable(header).Error!);
+                using IDisposable _ = scope;
+                GasEstimator estimator = new(scope.Component.TransactionProcessor, scope.Component.WorldState);
+                scope.Component.RequestState.BlobBaseFeeOverride = blockOverride?.BlobBaseFee;
+                return estimator.EstimateFrameGas(tx, PrepareCall(scope.Component.WorldState, executionHeader, tx, blobBaseFeeOverride: blockOverride?.BlobBaseFee),
+                    fillExecution, fillState, gasCap, errorMargin, cancellationToken, out executionReverted);
+            }
+            if (!shareableTxProcessorSource.TryBuild(executionHeader, out IReadOnlyTxProcessingScope? shared))
+                return Result<TxFrame[]>.Fail(StateUnavailable(header).Error!);
+            using IDisposable __ = shared;
+            GasEstimator sharedEstimator = new(shared.TransactionProcessor, shared.WorldState);
+            return sharedEstimator.EstimateFrameGas(tx, PrepareCall(shared.WorldState, executionHeader, tx, blobBaseFeeOverride: null),
+                fillExecution, fillState, gasCap, errorMargin, cancellationToken, out executionReverted);
+        }
+
         private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, ulong gasCap, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
         {
             if (!shareableTxProcessorSource.TryBuild(header, out IReadOnlyTxProcessingScope? scope)) return EstimateGasStateUnavailable(header, tx);

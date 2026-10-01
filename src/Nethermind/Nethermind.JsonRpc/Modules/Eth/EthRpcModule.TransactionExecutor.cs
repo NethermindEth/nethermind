@@ -29,6 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected bool NoBaseFee { get; set; }
             private BlockOverride? _blockOverride;
+            private CancellationToken _requestToken;
             protected BlockOverride? BlockOverride => _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
 
@@ -93,7 +94,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 // The block override is applied later, inside the bridge, after the read-only state scope is opened
                 // on this (base) header — so the overridden block number does not leak into state selection.
-                return ExecuteTx(clonedHeader, tx, stateOverride, token);
+                if (!_requestToken.CanBeCanceled) return ExecuteTx(clonedHeader, tx, stateOverride, token);
+                using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, _requestToken);
+                return ExecuteTx(clonedHeader, tx, stateOverride, linked.Token);
             }
 
             public override ResultWrapper<TResult> Execute(
@@ -107,13 +110,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
-            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+            /// <param name="requestToken">Cancels this execution along with work the request did before it, so both share one timeout.</param>
+            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
+                BlockOverride? blockOverride = null, CancellationToken requestToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
                 ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
                 if (blockOverride?.GasLimit > gasCap)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {gasCap}", ErrorCodes.InvalidInput);
                 _blockOverride = blockOverride;
-                return Execute(transactionCall, blockParameter, stateOverride);
+                _requestToken = requestToken;
+                return Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);

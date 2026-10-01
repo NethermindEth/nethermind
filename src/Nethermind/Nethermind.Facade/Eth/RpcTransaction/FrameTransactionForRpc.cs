@@ -27,6 +27,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     /// <summary>EIP-8141 <c>signatures</c>: the entries hoisted out of the frames, verified before any frame
     /// runs and read by frame code through <c>SIGPARAM</c> by index into this list.</summary>
+    /// <remarks>RPC simulation accepts an entry with empty signature bytes as a placeholder and prices it as signed, so
+    /// supply one per entry the signed transaction will carry; entries with signature bytes are still verified.</remarks>
     public FrameSignatureForRpc[]? Signatures { get; set; }
 
     /// <summary><c>max_fee_per_blob_gas</c>, an unconditional field of the signed payload.</summary>
