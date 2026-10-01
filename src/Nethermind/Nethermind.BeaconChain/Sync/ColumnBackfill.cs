@@ -43,8 +43,13 @@ public sealed class ColumnBackfill(
     private readonly Dictionary<Hash256, RangeSync.ColumnFetchRotation> _rotations = [];
     private long _completeFrom = long.MaxValue;
     private int _peerCursor;
+    private ulong _blockedSlot;
+    private int _blockedAttempts;
 
     internal TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>How many attempts in a row one slot may stay incomplete before it is reported as a warning; at the default <see cref="RetryDelay"/> about 5 minutes.</summary>
+    internal const int BlockedAttemptsBeforeWarning = 10;
 
     internal TimeSpan WindowPause { get; init; } = TimeSpan.FromMilliseconds(200);
 
@@ -285,22 +290,44 @@ public sealed class ColumnBackfill(
 
         await Task.WhenAll(fetches);
 
-        ulong? highestIncomplete = null;
-        foreach ((Hash256 root, ForkedSignedBeaconBlock block, _) in needing)
+        (Hash256 Root, ulong Slot, RangeSync.ColumnFetchRotation Rotation)? highestIncomplete = null;
+        foreach ((Hash256 root, ForkedSignedBeaconBlock block, RangeSync.ColumnFetchRotation rotation) in needing)
         {
-            if (!HoldsColumns(root, custody))
+            if (!HoldsColumns(root, custody) && (highestIncomplete is not { } known || block.Slot > known.Slot))
             {
-                highestIncomplete = highestIncomplete is { } known ? Math.Max(known, block.Slot) : block.Slot;
+                highestIncomplete = (root, block.Slot, rotation);
             }
         }
 
-        if (highestIncomplete is not { } missingSlot)
+        if (highestIncomplete is not ({ } missingRoot, ulong missingSlot, { } missingRotation))
         {
             return (lowest, WindowOutcome.Complete);
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Data column backfill cannot complete slot {missingSlot} yet; the columns are held from slot {missingSlot + 1} and are asked for again in {RetryDelay.TotalSeconds:F0} s");
+        LogBlocked(missingRoot, missingSlot, missingRotation, custody);
         return (Math.Min(floor, missingSlot + 1), IsFollowingHead() ? WindowOutcome.Incomplete : WindowOutcome.HeadBehind);
+    }
+
+    /// <summary>Reports a slot whose sampled columns no custodian served: at Debug while the retries are routine, as a warning each time it has stayed blocked for another <see cref="BlockedAttemptsBeforeWarning"/> attempts.</summary>
+    private void LogBlocked(Hash256 root, ulong slot, RangeSync.ColumnFetchRotation rotation, NodeColumnCustody custody)
+    {
+        _blockedAttempts = slot == _blockedSlot ? _blockedAttempts + 1 : 1;
+        _blockedSlot = slot;
+        bool stuck = _blockedAttempts % BlockedAttemptsBeforeWarning == 0;
+        if (stuck ? !_logger.IsWarn : !_logger.IsDebug)
+        {
+            return;
+        }
+
+        List<ulong> missing = [];
+        foreach (ulong column in custody.SampledColumns)
+        {
+            if (!store.HasDataColumnRecord(root, column)) missing.Add(column);
+        }
+
+        string text = $"Data column backfill cannot complete slot {slot} yet (attempt {_blockedAttempts}): columns {string.Join(", ", missing)} are missing after asking {rotation.AskedCount} custodian{(rotation.AskedCount == 1 ? "" : "s")}; the columns are held from slot {slot + 1} and are asked for again in {RetryDelay.TotalSeconds:F0} s";
+        if (stuck) _logger.Warn(text);
+        else _logger.Debug(text);
     }
 
     private async Task<bool> CollectBlocksAsync(

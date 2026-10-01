@@ -1044,7 +1044,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         private HashSet<string> _previous = new(StringComparer.Ordinal);
         private ulong _cycleSlot = clock.CurrentSlot;
 
-        /// <summary>The custodians recorded as asked; for tests.</summary>
+        /// <summary>The custodians recorded as asked since the rotation last started over, counting only those still custodians at the last take.</summary>
         internal int AskedCount => _asked.Count;
 
         /// <summary>Takes up to <paramref name="max"/> of <paramref name="custodians"/>, in their order within each group, and records them as asked.</summary>

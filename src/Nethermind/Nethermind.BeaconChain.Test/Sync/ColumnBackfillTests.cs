@@ -99,6 +99,33 @@ public partial class ColumnBackfillTests
 
     [Test]
     [CancelAfter(60_000)]
+    public async Task A_blocked_slot_is_routine_at_debug_and_a_warning_once_it_stays_blocked_naming_its_columns_and_the_custodians_asked(CancellationToken token)
+    {
+        LevelCapturingLogManager logs = new();
+        await using Fixture fixture = Fixture.Create(logs);
+        fixture.WithheldRoots.TryAdd(fixture.Roots[1], 0);
+
+        Task run = fixture.StartBackfill(token, fixture.Peer("peer"));
+        while (!Blocked().Any(static line => line.Level == "Warn"))
+        {
+            await Task.Delay(10, token);
+        }
+
+        await fixture.StopAsync(run);
+        (string Level, string Text)[] blocked = Blocked();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocked.Take(ColumnBackfill.BlockedAttemptsBeforeWarning - 1).Select(static line => line.Level), Is.All.EqualTo("Debug"), "a retry is routine until the slot stays blocked");
+            Assert.That(blocked[ColumnBackfill.BlockedAttemptsBeforeWarning - 1].Level, Is.EqualTo("Warn"));
+            Assert.That(blocked[ColumnBackfill.BlockedAttemptsBeforeWarning - 1].Text, Does.StartWith(
+                $"Data column backfill cannot complete slot 1 yet (attempt {ColumnBackfill.BlockedAttemptsBeforeWarning}): columns {string.Join(", ", fixture.Sampled)} are missing after asking 1 custodian;"));
+        }
+
+        (string Level, string Text)[] Blocked() => [.. logs.Lines.Where(static line => line.Text.Contains("cannot complete slot"))];
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
     public async Task A_restart_lowers_the_floor_to_the_stored_progress_before_the_head_is_followed(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
