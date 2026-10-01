@@ -72,6 +72,7 @@ namespace Nethermind.Runner.Ethereum
 
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
             string[] urls = _jsonRpcUrlCollection.Urls;
+            string[] listenUrls = await GetListenUrls(_jsonRpcUrlCollection.Values, Dns.GetHostAddressesAsync, cancellationToken);
             WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
             {
                 ApplicationName = "Nethermind"
@@ -109,7 +110,7 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton<ApplicationLifetime>();
                     startup.ConfigureServices(s);
                 })
-                .UseUrls(GetListenUrls(_jsonRpcUrlCollection.Values, Dns.GetHostAddresses))
+                .UseUrls(listenUrls)
                 .ConfigureLogging(logging =>
                 {
                     logging.SetMinimumLevel(LogLevel.Information);
@@ -147,8 +148,14 @@ namespace Nethermind.Runner.Ethereum
         /// Kestrel binds any host that is neither an IP literal nor <c>localhost</c> to all interfaces,
         /// so a host name such as <c>node.lan</c> would otherwise expose the port on every address of the machine.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">A host name cannot be resolved or resolves to no addresses.</exception>
-        internal static string[] GetListenUrls(IEnumerable<JsonRpcUrl> urls, Func<string, IPAddress[]> resolveHost)
+        /// <exception cref="InvalidOperationException">
+        /// A host name cannot be resolved, resolves to no addresses, or resolves to an unspecified address
+        /// (<c>0.0.0.0</c> or <c>::</c>), which Kestrel would bind to all interfaces.
+        /// </exception>
+        internal static async Task<string[]> GetListenUrls(
+            IEnumerable<JsonRpcUrl> urls,
+            Func<string, CancellationToken, Task<IPAddress[]>> resolveHost,
+            CancellationToken cancellationToken)
         {
             List<string> listenUrls = [];
             foreach (JsonRpcUrl url in urls)
@@ -164,7 +171,7 @@ namespace Nethermind.Runner.Ethereum
                 IPAddress[] addresses;
                 try
                 {
-                    addresses = resolveHost(url.Host);
+                    addresses = await resolveHost(url.Host, cancellationToken);
                 }
                 catch (SocketException e)
                 {
@@ -178,6 +185,11 @@ namespace Nethermind.Runner.Ethereum
 
                 foreach (IPAddress address in addresses)
                 {
+                    if (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
+                    {
+                        throw new InvalidOperationException($"JSON RPC host '{url.Host}' resolves to the unspecified address {address}. Use 0.0.0.0 directly to listen on all interfaces.");
+                    }
+
                     string host = address.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
                     string listenUrl = $"{url.Scheme}://{host}:{url.Port}";
                     if (!listenUrls.Contains(listenUrl))
