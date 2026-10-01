@@ -1159,7 +1159,6 @@
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "K4os.Compression.LZ4": "[1.3.8, )",
           "Nethermind.Blockchain": "[2.1.0-preview, )",
           "Nethermind.Core": "[2.1.0-preview, )",
           "Nethermind.Db": "[2.1.0-preview, )",
@@ -1168,6 +1167,7 @@
           "Nethermind.State": "[2.1.0-preview, )",
           "Nethermind.Synchronization": "[2.1.0-preview, )",
           "Nethermind.Trie": "[2.1.0-preview, )",
+          "Snappier": "[1.3.1, )",
           "System.IO.Hashing": "[10.0.12, )"
         }
       },
@@ -1388,12 +1388,6 @@
         "dependencies": {
           "JetBrains.HabitatDetector": "1.4.6"
         }
-      },
-      "K4os.Compression.LZ4": {
-        "type": "CentralTransitive",
-        "requested": "[1.3.8, )",
-        "resolved": "1.3.8",
-        "contentHash": "LhwlPa7c1zs1OV2XadMtAWdImjLIsqFJPoRcIWAadSRn0Ri1DepK65UbWLPmt4riLqx2d40xjXRk0ogpqNtK7g=="
       },
       "KubernetesClient": {
         "type": "CentralTransitive",
