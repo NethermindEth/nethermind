@@ -691,10 +691,12 @@ public class DebugRpcModule(
         }
 
         // Geth extension: write the list to a new file and return null. CreateNew never overwrites an existing file.
+        // Serializing first means a serialization failure never leaves a file behind.
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(badBlocks, EthereumJsonSerializer.JsonOptions);
+        FileStream stream;
         try
         {
-            using FileStream stream = new(file, FileMode.CreateNew, FileAccess.Write);
-            JsonSerializer.Serialize(stream, badBlocks, EthereumJsonSerializer.JsonOptions);
+            stream = new FileStream(file, FileMode.CreateNew, FileAccess.Write);
         }
         catch (IOException) when (File.Exists(file) || Directory.Exists(file))
         {
@@ -702,6 +704,21 @@ public class DebugRpcModule(
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
+            return ResultWrapper<IEnumerable<BadBlock>?>.Fail($"Cannot write bad blocks to {file}: {e.Message}", ErrorCodes.Default);
+        }
+
+        try
+        {
+            // Disposing flushes, so a failed flush is caught here too.
+            using (stream)
+            {
+                stream.Write(json);
+            }
+        }
+        catch (IOException e)
+        {
+            // The file is ours: remove the partial write rather than leave a truncated list.
+            File.Delete(file);
             return ResultWrapper<IEnumerable<BadBlock>?>.Fail($"Cannot write bad blocks to {file}: {e.Message}", ErrorCodes.Default);
         }
 

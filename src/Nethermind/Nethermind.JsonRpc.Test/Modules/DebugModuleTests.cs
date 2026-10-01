@@ -512,6 +512,18 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task DebugGetBadBlocks_WithExistingDirectory_FailsAsExistingLocation()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+
+        string response = await SerializedRequest("debug_getBadBlocks", directory.Path);
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"location would overwrite an existing file\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task DebugGetBadBlocks_WithPathInMissingDirectory_Fails()
     {
         _debugBridge.GetBadBlocks().Returns([]);
