@@ -48,6 +48,9 @@ static string Snapshot(MethodILToNativeMapTraceData e)
         object? value = e.PayloadByName(name);
         payload[name] = value is IEnumerable entries && value is not string ? entries.Cast<object>().ToArray() : value;
     }
+    List<object> mappings = [];
+    for (int i = 0; i < e.CountOfMapEntries; i++)
+        mappings.Add(new { nativeOffset = e.NativeOffset(i), ilOffset = e.ILOffset(i) });
     return JsonSerializer.Serialize(new { e.ProcessID, e.ThreadID, e.Version,
-        timeMicroseconds = Math.Round(e.TimeStampRelativeMSec * 1000), payload });
+        timeMicroseconds = Math.Round(e.TimeStampRelativeMSec * 1000), payload, mappings });
 }
