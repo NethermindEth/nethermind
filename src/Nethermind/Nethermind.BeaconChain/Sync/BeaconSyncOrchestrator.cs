@@ -1962,12 +1962,21 @@ public sealed class BeaconSyncOrchestrator(
         _ = RunAncestorFetchAsync(root, token);
     }
 
-    /// <remarks>Touches no worker state: the result is reported as an <see cref="AncestorFetchedItem"/>.</remarks>
+    /// <remarks>Touches no worker state: the result is reported as an <see cref="AncestorFetchedItem"/>, also after a fault, so the fetch always frees its place.</remarks>
     private async Task RunAncestorFetchAsync(Hash256 root, CancellationToken token)
     {
+        ForkedSignedBeaconBlock? fetched = null;
         try
         {
-            ForkedSignedBeaconBlock? fetched = await FetchBlockByRootAsync(root, token);
+            fetched = await FetchBlockByRootAsync(root, token);
+        }
+        catch (Exception e)
+        {
+            if (!token.IsCancellationRequested && _logger.IsDebug) _logger.Debug($"By-root fetch of ancestor {root} failed and counts as not returned: {e.Message}");
+        }
+
+        try
+        {
             await _work.Writer.WriteAsync(new AncestorFetchedItem(root, fetched), token);
         }
         catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
