@@ -441,6 +441,36 @@ public class RangeSyncPeerSelectionTests
         }
     }
 
+    /// <summary>
+    /// At the head, every peer's last status names this node's head while the chain has moved on (phase0/p2p-interface.md Status), so no peer reaches the next slot.
+    /// The periodic refresh comes about once a minute; range sync must ask for the statuses itself, for the slot it waits on, or it stalls until then.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Range_sync_whose_peers_all_report_its_own_head_refreshes_their_status_instead_of_waiting(CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        // One slot past its last status, which names this node's head.
+        StubPeer peer = new("ahead", AnchorSlot + 1, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
+        StaleStatusPool pool = new(peer, AnchorSlot);
+        RangeSync sync = new(pool, LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bound.CancelAfter(TimeSpan.FromSeconds(10));
+        List<ForkedSignedBeaconBlock> yielded = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => AnchorSlot + 1, bound.Token))
+        {
+            yielded.Add(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.Refreshes, Is.EqualTo(new[] { AnchorSlot + 1 }), "asked once, for the slot range sync waits on");
+            Assert.That(yielded, Is.EqualTo(chainBlocks));
+        }
+    }
+
     private static async Task<(bool Ended, int Yielded)> RunBoundedAsync(RangeSync sync, Hash256 anchorRoot, ulong target, CancellationToken token)
     {
         using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -465,6 +495,22 @@ public class RangeSyncPeerSelectionTests
     private sealed class OfferingPool(params IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
     {
         public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => peers;
+    }
+
+    /// <summary>Selects <paramref name="peer"/> by a last status of <paramref name="staleHeadSlot"/> until a refresh is asked for, as <see cref="PeerManager"/> does.</summary>
+    private sealed class StaleStatusPool(IBeaconSyncPeer peer, ulong staleHeadSlot) : IBeaconSyncPeerPool
+    {
+        private ulong _statusHeadSlot = staleHeadSlot;
+
+        public List<ulong> Refreshes { get; } = [];
+
+        public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => _statusHeadSlot >= minHeadSlot ? [peer] : [];
+
+        public void RefreshStatusesBehind(ulong slot, string reason)
+        {
+            Refreshes.Add(slot);
+            _statusHeadSlot = peer.HeadSlot;
+        }
     }
 
     private sealed class CountingPool(IBeaconSyncPeer peer) : IBeaconSyncPeerPool
