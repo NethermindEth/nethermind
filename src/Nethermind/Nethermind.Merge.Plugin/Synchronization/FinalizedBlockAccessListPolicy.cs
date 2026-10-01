@@ -29,6 +29,7 @@ public sealed class FinalizedBlockAccessListPolicy(
     private Hash256? _checkpoint;
     private BlockHeader? _oldestAncestor;
     private BlockHeader? _finalizedHeader;
+    private ulong _lowestCached;
 
     /// <summary>Whether this header belongs to the finalized ancestry and supports reconstruction.</summary>
     public bool CanReconstruct(BlockHeader header)
@@ -42,6 +43,20 @@ public sealed class FinalizedBlockAccessListPolicy(
 
         lock (_lock)
         {
+            // Downloader requests can run ahead of processing. Evict against the processed head,
+            // not the requested height, so queued ancestors remain eligible.
+            ulong processed = blockTree.Head?.Number ?? 0;
+            if (_finalizedHeader is not null && processed >= _finalizedHeader.Number)
+            {
+                _ancestors.Clear();
+                _lowestCached = _finalizedHeader.Number + 1;
+            }
+            else
+            {
+                while (_lowestCached <= processed && _ancestors.Count > 0) _ancestors.Remove(_lowestCached++);
+            }
+            if (header.Number <= processed) return false;
+
             Hash256? finalized = beaconSync.GetFinalizedHash();
             if (finalized is null || finalized == Keccak.Zero) return false;
             if ((_checkpoint != finalized || _oldestAncestor is null) && !UpdateCheckpoint(finalized)) return false;
@@ -51,6 +66,7 @@ public sealed class FinalizedBlockAccessListPolicy(
                 BlockHeader? parent = blockTree.FindHeader(ancestor.ParentHash!, BlockTreeLookupOptions.None);
                 if (parent is null || parent.Number != ancestor.Number - 1) return false;
                 _ancestors[parent.Number] = ancestor.ParentHash!;
+                _lowestCached = Math.Min(_lowestCached, parent.Number);
                 _oldestAncestor = parent;
             }
 
@@ -79,6 +95,7 @@ public sealed class FinalizedBlockAccessListPolicy(
         if (_finalizedHeader is null || cursor.Hash != _checkpoint)
         {
             _ancestors.Clear();
+            _lowestCached = latest.Number;
             _oldestAncestor = latest;
         }
         else

@@ -178,12 +178,13 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Assert.That(env.Recording.Calls, Is.EqualTo(1));
     }
 
-    [Test]
-    public void Consecutive_finalized_blocks_reconstruct_through_branch_processing()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Consecutive_finalized_blocks_reconstruct_through_branch_processing(bool mismatchSecond)
     {
         using TestEnvironment env = new(useFlatDb);
         Block first = env.CreateBlock();
-        Block second = env.CreateBlock(parent: first, balance: 15);
+        Block second = env.CreateBlock(parent: first, balance: 15, matchingRoot: !mismatchSecond);
         Block third = env.CreateBlock(parent: second, balance: 5);
         env.Beacon.GetFinalizedHash().Returns(third.Hash);
         Block[] result = env.Branch.Process(env.Genesis.Header, [first, second, third], ProcessingOptions.None, NullBlockTracer.Instance);
@@ -191,7 +192,9 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Has.Length.EqualTo(3));
-            Assert.That(env.Recording.Calls, Is.Zero);
+            Assert.That(env.Recording.Calls, Is.EqualTo(mismatchSecond ? 1 : 0));
+            Assert.That(env.Recording.LastOptions.HasFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.EqualTo(mismatchSecond));
+            if (mismatchSecond) Assert.That(env.Recording.BalanceAtEntry, Is.EqualTo((UInt256)25));
             Assert.That(env.State.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)5));
             Assert.That(env.State.StateRoot, Is.EqualTo(third.StateRoot));
         }
@@ -217,6 +220,9 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         tree.ClearReceivedCalls();
         env.Beacon.GetFinalizedHash().Returns(third.Hash);
         Assert.That(policy.CanReconstruct(first.Header), Is.True);
+        Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        tree.Head.Returns(first);
+        Assert.That(policy.CanReconstruct(first.Header), Is.False);
         Assert.That(policy.CanReconstruct(second.Header), Is.True);
         tree.DidNotReceive().FindHeader(env.Genesis.Hash!, BlockTreeLookupOptions.None);
         tree.DidNotReceive().FindHeader(first.Hash!, BlockTreeLookupOptions.None);
@@ -311,12 +317,14 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
     {
         public int Calls { get; private set; }
         public ProcessingOptions LastOptions { get; private set; }
+        public UInt256 BalanceAtEntry { get; private set; }
         public event Action? TransactionsExecuted { add { } remove { } }
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block block, ProcessingOptions options,
             IBlockTracer tracer, IReleaseSpec spec, CancellationToken token = default)
         {
             Calls++;
             LastOptions = options;
+            BalanceAtEntry = state.GetBalance(TestItem.AddressA);
             block.Header.StateRoot = state.StateRoot;
             return (block, []);
         }
