@@ -362,13 +362,12 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
-    /// p2p-interface.md checks an aggregate with the head state, so one whose target has another shuffling never verifies there,
-    /// and fork choice would weigh it with committees it was never signed for. Signed by the head's committee but naming the
-    /// sibling branch (A at the decision slot 31 is its own decision block, B at slot 32 has their parent), it is refused before
-    /// any state is built and its vote does not count.
+    /// p2p-interface.md authenticates an aggregate with the head state, so an unsigned one naming a target of another shuffling
+    /// (A at the decision slot 31 is its own decision block, B at slot 32 has their parent) is refused with only the head's own
+    /// target state built, never the one the peer named, and its vote does not count.
     /// </summary>
     [Test]
-    public void Gossip_aggregate_whose_target_has_another_shuffling_than_the_head_is_refused_without_a_build()
+    public void Unsigned_gossip_aggregate_for_another_shuffling_builds_only_the_head_target_state()
     {
         const ulong targetEpoch = 2;
         UnsignedChain chain = UnsignedChain.Create();
@@ -380,16 +379,86 @@ public class ForkChoiceRunnerTests
         UnsignedChain.ChainBlock b = ImportLine(chain, runner, parent.Root, 32)[0];
         Hash256 head = runner.GetHead();
         (UnsignedChain.ChainBlock headTip, UnsignedChain.ChainBlock other) = head == a.Root ? (a, b) : (b, a);
-        (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(headTip, targetEpoch);
+        (_, ulong voteSlot, int member) = FirstCommitteeMember(headTip, targetEpoch);
         ulong weightBefore = Weight(runner, other.Root);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(head, Is.AnyOf(a.Root, b.Root), "fixture bug: the head must be one of the two branches");
-            Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, other.Root, targetEpoch, member, signingState)),
-                Throws.TypeOf<ForkChoiceException>().With.Message.Contains("another shuffling"));
-            Assert.That(builds.Count, Is.Zero, "no state is built for a peer's choice of target");
+            Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, other.Root, targetEpoch, member, signingState: null)),
+                Throws.InstanceOf<Exception>());
+            Assert.That(builds.Count, Is.EqualTo(1), "only the head's target state is built for a peer's aggregate");
             Assert.That(Weight(runner, other.Root), Is.EqualTo(weightBefore), "the vote does not count");
+        }
+    }
+
+    /// <summary>
+    /// Two blocks a proposer equivocated at the decision slot carry the same RANDAO reveal, so their branches have different
+    /// decision blocks but the same committees. An aggregate the head's committee signed for the other branch is valid gossip
+    /// and valid for on_attestation with its own target state, so it must count, at the cost of building that state.
+    /// </summary>
+    [Test]
+    public void Signed_gossip_aggregate_for_an_equivocated_sibling_with_the_same_committees_counts()
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
+        UnsignedChain.ChainBlock first = chain.Extend(parent.Root, 31, payloadHashByte: 0xE1);
+        UnsignedChain.ChainBlock second = chain.Extend(parent.Root, 31, payloadHashByte: 0xE2);
+        ImportWithBodyReplay(runner, first);
+        ImportWithBodyReplay(runner, second);
+        Hash256 head = runner.GetHead();
+        (UnsignedChain.ChainBlock headTip, UnsignedChain.ChainBlock other) = head == first.Root ? (first, second) : (second, first);
+        (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(headTip, targetEpoch);
+        ulong weightBefore = Weight(runner, other.Root);
+
+        runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, other.Root, targetEpoch, member, signingState));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FirstCommitteeMember(other, targetEpoch).Member, Is.EqualTo(member), "fixture bug: the siblings must share committees");
+            Assert.That(Weight(runner, other.Root) - weightBefore, Is.EqualTo(EffectiveBalance), "the vote counts on the sibling");
+            Assert.That(builds.Count, Is.EqualTo(2), "the head's target state and the sibling's own");
+        }
+    }
+
+    /// <summary>
+    /// Every target of another shuffling than the head's costs a whole state even once its aggregate authenticated, so only
+    /// two are built per epoch: four siblings at or before the decision slot, each its own decision block and all with the
+    /// same committees, give three off-head targets, and the third aggregate is refused.
+    /// </summary>
+    [Test]
+    public void Gossip_targets_of_other_shufflings_cost_at_most_two_states_an_epoch()
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        List<UnsignedChain.ChainBlock> siblings = [];
+        foreach (ulong slot in (ulong[])[28, 29, 30, 31])
+        {
+            siblings.Add(ImportLine(chain, runner, chain.AnchorRoot, slot)[0]);
+        }
+
+        Hash256 head = runner.GetHead();
+        UnsignedChain.ChainBlock headTip = siblings.Single(sibling => sibling.Root == head);
+        (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(headTip, targetEpoch);
+        List<UnsignedChain.ChainBlock> others = [.. siblings.Where(sibling => sibling.Root != head)];
+
+        runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, others[0].Root, targetEpoch, member, signingState));
+        runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, others[1].Root, targetEpoch, member, signingState));
+        int afterTwo = builds.Count;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterTwo, Is.EqualTo(3), "the head's target state and two off-head ones");
+            Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, others[2].Root, targetEpoch, member, signingState)),
+                Throws.TypeOf<ForkChoiceException>().With.Message.Contains("spent"));
+            Assert.That(builds.Count, Is.EqualTo(3), "the third target state is not built");
         }
     }
 
