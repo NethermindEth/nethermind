@@ -469,7 +469,7 @@ public sealed class BlockImporter : IBlockImporter
             _runner.OnValidExecutionPayload(blockRoot);
         }
 
-        ApplyBodyOperations(block.Body!);
+        ApplyBodyOperations(block.Body!, blockRoot);
 
         _store.PutBlock(blockRoot, signedBlock);
         _unfinalized[blockRoot] = block.Slot;
@@ -575,7 +575,7 @@ public sealed class BlockImporter : IBlockImporter
             _states.RetainGloas(parentRoot, gloasParent, checkpointCandidate: true);
         }
 
-        ApplyBodyOperations(block.Body!);
+        ApplyBodyOperations(block.Body!, blockRoot);
 
         _store.PutForkedBlock(blockRoot, forked);
         _unfinalized[blockRoot] = block.Slot;
@@ -1005,13 +1005,18 @@ public sealed class BlockImporter : IBlockImporter
     /// leaves to its caller: feeds the block's attestations and attester slashings (already verified
     /// by the transition) to fork choice. A refused operation is counted and skipped, never fatal.
     /// </summary>
-    private void ApplyBodyOperations(BeaconBlockBody body)
+    /// <remarks>
+    /// specs/phase0/fork-choice.md on_attestation checks every vote, a block's too, against its target's state. The transition
+    /// already checked the signature with the committees of this block's state, so it is skipped only for a target whose
+    /// shuffling is this block's: another shuffling reads the same aggregation bits as other validators.
+    /// </remarks>
+    private void ApplyBodyOperations(BeaconBlockBody body, Hash256 blockRoot)
     {
         foreach (Attestation attestation in body.Attestations!)
         {
             try
             {
-                _runner.OnAttestation(attestation, isFromBlock: true, verifySignature: false);
+                _runner.OnAttestation(attestation, isFromBlock: true, verifySignature: !_runner.HasShufflingOf(blockRoot, CheckpointRef.From(attestation.Data!.Target!)));
             }
             catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
             {
@@ -1038,13 +1043,13 @@ public sealed class BlockImporter : IBlockImporter
 
     /// <summary>The Gloas body replay, under the Fulu replay's policy.</summary>
     /// <remarks>Payload attestations are not fed: fork choice keeps no payload timeliness votes yet (the spec's <c>notify_ptc_messages</c>).</remarks>
-    private void ApplyBodyOperations(BeaconBlockBodyGloas body)
+    private void ApplyBodyOperations(BeaconBlockBodyGloas body, Hash256 blockRoot)
     {
         foreach (AttestationGloas attestation in body.Attestations!)
         {
             try
             {
-                _runner.OnAttestation(attestation, isFromBlock: true, verifySignature: false);
+                _runner.OnAttestation(attestation, isFromBlock: true, verifySignature: !_runner.HasShufflingOf(blockRoot, CheckpointRef.From(attestation.Data!.Target!)));
             }
             catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
             {

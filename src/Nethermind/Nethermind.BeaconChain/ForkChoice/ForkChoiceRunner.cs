@@ -1649,6 +1649,16 @@ public sealed class ForkChoiceRunner
         return entry.State;
     }
 
+    /// <summary>Whether <paramref name="target"/>'s epoch has the same shuffling decision block on the chain of <paramref name="blockRoot"/> as on the target's own.</summary>
+    /// <remarks>
+    /// The committees of a target epoch are fixed by that block, so a vote the state transition checked with the committees of
+    /// <paramref name="blockRoot"/>'s state names the same validators through the target's state exactly when this holds. The first two
+    /// epochs decide on the slot-0 block every chain shares.
+    /// </remarks>
+    internal bool HasShufflingOf(Hash256 blockRoot, CheckpointRef target) =>
+        target.Epoch <= Presets.MinSeedLookahead
+        || (GetShufflingKey(target) is { } key && key == GetShufflingKey(new CheckpointRef(target.Epoch, blockRoot)));
+
     /// <summary>The <see cref="ShufflingKey"/> of <paramref name="target"/>'s epoch on its chain; <c>null</c> for the first two epochs or a root the tree does not hold.</summary>
     private ShufflingKey? GetShufflingKey(CheckpointRef target)
     {
