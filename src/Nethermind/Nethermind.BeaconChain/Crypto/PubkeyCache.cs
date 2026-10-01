@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +27,8 @@ public class PubkeyCache
 {
     private const byte FormatVersion = 1;
     private const int ValidatorsPerChunk = 65_536;
+
+    private const int ParallelCheckThreshold = 64;
     internal const string CountKey = "pubkeys:count";
 
     private long[] _points = [];
@@ -124,6 +127,7 @@ public class PubkeyCache
     /// <exception cref="ArgumentOutOfRangeException">An index is not cached, or <paramref name="sum"/> is not a G1 point buffer.</exception>
     internal bool TrySumValidPublicKeys(ReadOnlySpan<ulong> validatorIndices, Span<long> sum)
     {
+        CheckUncheckedInParallel(validatorIndices);
         foreach (ulong index in validatorIndices)
         {
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, (ulong)Count, nameof(validatorIndices));
@@ -133,6 +137,28 @@ public class PubkeyCache
 
         SumPublicKeys(validatorIndices, sum);
         return true;
+    }
+
+    private void CheckUncheckedInParallel(ReadOnlySpan<ulong> validatorIndices)
+    {
+        // Spec BLS KeyValidate: each verdict must match its point; Extend publishes points before verdicts.
+        byte[] checks = Volatile.Read(ref _subgroupChecks);
+        long[] points = Volatile.Read(ref _points);
+        List<int>? pending = null;
+        foreach (ulong index in validatorIndices)
+        {
+            if (index < (ulong)checks.Length && checks[(int)index] == 0)
+                (pending ??= []).Add((int)index);
+        }
+
+        if (pending is null || pending.Count < ParallelCheckThreshold)
+            return;
+
+        Parallel.ForEach(pending, index =>
+        {
+            if (checks[index] == 0)
+                checks[index] = new G1Affine(points.AsSpan(index * G1Affine.Sz, G1Affine.Sz)).InGroup() ? (byte)1 : (byte)2;
+        });
     }
 
     /// <summary>Writes the sum of the public keys of <paramref name="validatorIndices"/> into <paramref name="sum"/>, a Jacobian G1 point.</summary>

@@ -432,8 +432,10 @@ public static class GloasBlockProcessing
 
         ulong proposerRewardNumerator = 0;
         ulong addedWeight = 0;
+        ulong? baseRewardPerIncrement = null;
         foreach (ulong index in attestingIndices)
         {
+            ulong? baseReward = null;
             bool hadNoParticipation = epochParticipation[index] == 0;
             bool willSetNewFlag = false;
             for (int flagIndex = 0; flagIndex < Presets.ParticipationFlagWeights.Length; flagIndex++)
@@ -442,7 +444,9 @@ public static class GloasBlockProcessing
                 if ((participationFlags & flag) != 0 && (epochParticipation[index] & flag) == 0)
                 {
                     epochParticipation[index] |= flag;
-                    proposerRewardNumerator += state.GetBaseReward((int)index, cache) * Presets.ParticipationFlagWeights[flagIndex];
+                    baseRewardPerIncrement ??= state.GetBaseRewardPerIncrement(cache);
+                    baseReward ??= state.Validators![(int)index].EffectiveBalance / Presets.EffectiveBalanceIncrement * baseRewardPerIncrement.Value;
+                    proposerRewardNumerator += baseReward.Value * Presets.ParticipationFlagWeights[flagIndex];
                     willSetNewFlag = true;
                 }
             }

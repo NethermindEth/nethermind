@@ -326,6 +326,25 @@ public class PubkeyCacheTests
         Assert.That(new BlsSigner.AggregatedPublicKey(sum).PublicKey.Compress(), Is.EqualTo(oneAtATime.PublicKey.Compress()));
     }
 
+    // Spec BLS KeyValidate: one refused key rejects the sum; batching still records every checked verdict.
+    [Test]
+    public void Summing_unchecked_keys_remembers_every_verdict_even_when_one_is_refused()
+    {
+        Validator[] validators = MixedRegistry(256);
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        ulong[] everyone = [.. Enumerable.Range(0, validators.Length).Select(static i => (ulong)i)];
+
+        bool accepted = cache.TrySumValidPublicKeys(everyone, new long[Bls.P1.Sz]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.False, "key 3 is outside G1");
+            Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True, "every requested verdict was recorded");
+        }
+        Assert.That(Enumerable.Range(0, validators.Length).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, validators.Length).Select(static i => !IsOffSubgroup(i))));
+    }
+
     [Test]
     public void Summing_an_index_past_the_cache_throws()
     {
