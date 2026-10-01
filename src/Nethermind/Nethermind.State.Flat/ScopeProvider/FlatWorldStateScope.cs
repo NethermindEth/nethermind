@@ -104,8 +104,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _streamer = new StateRootStreamer(StateTree, _initialStateRoot, stateRootThreads, logManager);
         }
 
+        // The state root stream takes the committed writes instead, so the two never run together.
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
-            && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
+            && !configuration.StreamStateRoot && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();

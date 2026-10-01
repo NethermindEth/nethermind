@@ -5,14 +5,18 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.State.Flat;
 using NUnit.Framework;
 
@@ -48,10 +52,10 @@ public class FlatStateRootStreamingTests
 
         long mismatchesBefore = Metrics.StateRootStreamMismatches;
         long fallbacksBefore = Metrics.StateRootStreamFallbacks;
-        (IWorldState flatState, _, IContainer container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
         Hash256[] actual;
-        using (container)
+        using (IContainer container = CreateStreamingFlatContainer())
         {
+            IWorldState flatState = new WorldState(container.Resolve<IWorldStateManager>().GlobalWorldState, LimboLogs.Instance);
             actual = Execute(flatState, blocks, pauses: true);
         }
 
@@ -61,6 +65,18 @@ public class FlatStateRootStreamingTests
             Assert.That(Metrics.StateRootStreamMismatches, Is.EqualTo(mismatchesBefore), "the streamed root must equal the written one on its own, not only after the write batch re-applies the block");
             Assert.That(Metrics.StateRootStreamFallbacks, Is.EqualTo(fallbacksBefore), "streaming must not have fallen back");
         }
+    }
+
+    private static IContainer CreateStreamingFlatContainer()
+    {
+        ConfigProvider configProvider = new();
+        Nethermind.Db.IFlatDbConfig flatConfig = configProvider.GetConfig<Nethermind.Db.IFlatDbConfig>();
+        flatConfig.Enabled = true;
+        flatConfig.StreamStateRoot = true;
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
+            .Build();
     }
 
     private static Hash256[] Execute(IWorldState worldState, List<List<Transaction>> blocks, bool pauses)

@@ -136,7 +136,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Cache flat account and slot reads across heads in the persistence layer, so a new head does not re-read the working set from the database. `false` reads every persistence miss from the database.", DefaultValue = "true")]
     bool EnableCarryForwardCache { get; set; }
 
-    [ConfigItem(Description = "Apply each committed transaction's account and storage changes to the tries on dedicated threads while the block executes, and hash them as it goes, so the state root at the end of the block only covers what changed last.", DefaultValue = "true")]
+    [ConfigItem(Description = "Apply each committed transaction's account and storage changes to the tries on dedicated threads while the block executes, and hash them as it goes, so the state root at the end of the block only covers what changed last. When on, ApplyStorageWritesOnIdleThread is ignored.", DefaultValue = "false")]
     bool StreamStateRoot { get; set; }
 
     [ConfigItem(Description = "Dedicated threads for state root streaming (0 to disable). Each writable scope drains on one thread at a time, so this bounds how many blocks can stream at once, e.g. while a block is built during another's validation.", DefaultValue = "2")]
