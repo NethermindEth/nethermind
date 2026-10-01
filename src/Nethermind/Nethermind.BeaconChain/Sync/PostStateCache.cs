@@ -69,7 +69,7 @@ internal sealed class PostStateCache(
 
     private const int RetainedStateCount = 8;
 
-    // A regenerated state is asked for again by its siblings or votes, but must not push a checkpoint candidate out of the LRU above.
+    // A regenerated state is asked for again by its siblings or votes, but lives apart, so a run of regenerations never pushes out the states of live blocks.
     private const int RegeneratedStateCount = 2;
 
     /// <summary>Byte offset of <c>slot</c> in a persisted state, the same in the Fulu and Gloas layouts: <c>genesis_time</c> (8) plus <c>genesis_validators_root</c> (32).</summary>
@@ -80,9 +80,9 @@ internal sealed class PostStateCache(
     private const int RetainedGloasStateCount = 2 * (int)Presets.SlotsPerEpoch;
 
     private readonly LruCache<Hash256, BeaconStateFulu> _retained = new(RetainedStateCount, nameof(PostStateCache));
-    private readonly LruCache<Hash256, BeaconStateFulu> _regenerated = new(RegeneratedStateCount, nameof(PostStateCache) + "Regenerated");
     private readonly BoundaryTier<BeaconStateFulu> _retainedBoundaries = new(store, isAboveFinalized, BeaconStateFulu.Encode, nameof(PostStateCache) + "Boundaries", (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>());
     private readonly LruCache<Hash256, BeaconStateGloas> _retainedGloas = new(RetainedGloasStateCount, nameof(PostStateCache) + "Gloas");
+    private readonly LruCache<Hash256, ForkedBeaconState> _regenerated = new(RegeneratedStateCount, nameof(PostStateCache) + "Regenerated");
     private readonly BoundaryTier<BeaconStateGloas> _retainedGloasBoundaries = new(store, isAboveFinalized, BeaconStateGloas.Encode, nameof(PostStateCache) + "GloasBoundaries", (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>());
 
     private Hash256? _pinnedGloasRoot;
@@ -133,9 +133,9 @@ internal sealed class PostStateCache(
             return boundary.State;
         }
 
-        if (_regenerated.TryGet(blockRoot, out BeaconStateFulu? regenerated))
+        if (_regenerated.TryGet(blockRoot, out ForkedBeaconState? regenerated) && regenerated is ForkedBeaconState.OfFulu { State: BeaconStateFulu regeneratedState })
         {
-            return regenerated;
+            return regeneratedState;
         }
 
         if (blockRoot == LineageRoot)
@@ -233,15 +233,7 @@ internal sealed class PostStateCache(
 
         if (hold)
         {
-            switch (state)
-            {
-                case ForkedBeaconState.OfGloas { State: BeaconStateGloas gloasState }:
-                    RetainGloas(blockRoot, gloasState);
-                    break;
-                case ForkedBeaconState.OfFulu { State: BeaconStateFulu fuluState }:
-                    _regenerated.Set(blockRoot, fuluState);
-                    break;
-            }
+            _regenerated.Set(blockRoot, state);
         }
 
         if (_logger.IsDebug) _logger.Debug($"Regenerated the post-state of {blockRoot} at slot {state.Slot} by replaying {replay.Count} stored blocks in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms");
@@ -335,6 +327,11 @@ internal sealed class PostStateCache(
         if (_retainedGloasBoundaries.TryGet(blockRoot, out RetainedState<BeaconStateGloas> boundary))
         {
             return boundary.State;
+        }
+
+        if (_regenerated.TryGet(blockRoot, out ForkedBeaconState? regenerated) && regenerated is ForkedBeaconState.OfGloas { State: BeaconStateGloas regeneratedState })
+        {
+            return regeneratedState;
         }
 
         if (isGloasBlock?.Invoke(blockRoot) == true

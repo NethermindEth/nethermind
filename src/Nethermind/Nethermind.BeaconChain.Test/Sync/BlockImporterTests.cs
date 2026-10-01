@@ -951,6 +951,50 @@ public class BlockImporterTests
     }
 
     /// <summary>
+    /// Gossip validation verifies no block signature, so a forged child of an evicted Fulu block must be refused before it
+    /// costs a regeneration, or forged children would spend the slot's budget and a real reorg block would be refused.
+    /// </summary>
+    [Test]
+    public void Forged_children_of_evicted_blocks_do_not_spend_the_regeneration_budget()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + 8 * chain.Spec.SecondsPerSlot + 1));
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        store.PutState(chain.AnchorRoot, BeaconStateFulu.Encode(chain.Anchor.AnchorState));
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), importClock: new SlotClock(chain.Spec, timestamper), store: store);
+        List<UnsignedChain.ChainBlock> lineage = [];
+        Hash256 tip = chain.AnchorRoot;
+        for (ulong slot = 1; slot <= 6; slot++)
+        {
+            lineage.Add(chain.Extend(tip, slot, payloadHashByte: (byte)(0x80 + slot), signed: true));
+            tip = lineage[^1].Root;
+        }
+
+        UnsignedChain.ChainBlock sibling = chain.Extend(lineage[3].Root, slot: 6, payloadHashByte: 0x90, signed: true);
+        BlockImportResult[] fixture = [.. lineage.Select(b => importer.Import(b.Block, b.Root, verifySignatures: false))];
+
+        // Each forged child copies a real child's message under a new root and keeps the real child's signature.
+        BlockImportResult[] forged = [.. new[] { 1, 2 }.Select(i =>
+        {
+            BeaconBlock real = lineage[i + 1].Block.Message!;
+            BeaconBlock message = new() { Slot = real.Slot, ProposerIndex = real.ProposerIndex, ParentRoot = real.ParentRoot, StateRoot = Keccak.Compute(BitConverter.GetBytes(i)), Body = real.Body };
+            return importer.Import(new SignedBeaconBlock { Message = message, Signature = lineage[i + 1].Block.Signature }, SszRoots.HashTreeRoot(message), verifySignatures: true);
+        })];
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        bool forgedParentRegenerated = states.GetHeldBlockState(lineage[1].Root) is not null || states.GetHeldBlockState(lineage[2].Root) is not null;
+        BlockImportResult result = importer.Import(sibling.Block, sibling.Root, verifySignatures: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+            Assert.That(forged, Is.All.EqualTo(BlockImportResult.Invalid));
+            Assert.That(forgedParentRegenerated, Is.False, "no state is regenerated for a block whose proposer signature fails");
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the real block on an evicted parent still has the slot's regeneration budget");
+        }
+    }
+
+    /// <summary>
     /// Regeneration replays at most one epoch, so the checkpoint block state of each epoch must outlive the small LRU that
     /// fork branch imports churn: the epoch's first block, or the block before its start slot when that slot is empty,
     /// on the followed lineage or on a branch.
