@@ -317,4 +317,170 @@ public class ForkChoiceRunnerPayloadTests
         runner.GetHead();
         return runner.Snapshot().Nodes.Single(n => n.Root == root).Weight;
     }
+
+    // specs/gloas/fork-choice.md get_node_children: an invalid FULL payload leaves the EMPTY branch viable.
+    [Test]
+    public void Invalid_verdict_on_a_full_head_removes_only_its_payload([Values] bool latestValidIsParentPayload)
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        GloasForkChoiceHarness.Block b = harness.Child(first, first.Slot + 1, full: true, 0xB1);
+        harness.Import(b);
+        harness.Runner.OnExecutionPayloadVerified(b.Root);
+        GloasForkChoiceHarness.Block onEmpty = harness.Child(b, first.Slot + 2, first.BidBlockHash, 0xE1);
+        GloasForkChoiceHarness.Block onFull = harness.Child(b, first.Slot + 2, full: true, 0xF1);
+        harness.Import(onEmpty);
+        harness.Import(onFull);
+        harness.Runner.OnExecutionPayloadVerified(onFull.Root);
+        GloasForkChoiceHarness.Block onFullDescendant = harness.Child(onFull, first.Slot + 3, full: true, 0xF2);
+        harness.Import(onFullDescendant);
+        GloasForkChoiceHarness.Block grandchild = harness.Child(onEmpty, first.Slot + 3, first.BidBlockHash, 0xE2);
+
+        harness.Runner.InvalidateExecutionChain(b.Root, b.BidBlockHash, latestValidIsParentPayload ? first.BidBlockHash : null);
+        harness.Runner.OnExecutionPayloadVerified(b.Root);
+        Assert.That(() => harness.Import(grandchild), Throws.Nothing, "a block on B's EMPTY branch is still accepted");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.IsPayloadVerified(b.Root), Is.False, "B's FULL node leaves the tree, and a later optimistic envelope import does not bring it back");
+            Assert.That(harness.Runner.GetBlockExecutionStatus(b.Root), Is.EqualTo(ExecutionStatus.Optimistic), "B builds on a payload the verdict does not name");
+            Assert.That(harness.Runner.GetBlockExecutionStatus(onEmpty.Root), Is.EqualTo(ExecutionStatus.Optimistic));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(onFull.Root), Is.EqualTo(ExecutionStatus.Invalid));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(onFullDescendant.Root), Is.EqualTo(ExecutionStatus.Invalid));
+            Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(grandchild.Root, ForkChoicePayloadStatus.Empty)));
+        }
+    }
+
+    [Test]
+    public void Latest_valid_hash_walk_skips_a_block_whose_payload_the_chain_bypassed()
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        GloasForkChoiceHarness.Block x = harness.Child(first, first.Slot + 1, full: true, 0xA1);
+        harness.Import(x);
+        harness.Runner.OnExecutionPayloadVerified(x.Root);
+        GloasForkChoiceHarness.Block b = harness.Child(x, first.Slot + 2, first.BidBlockHash, 0xB1);
+        harness.Import(b);
+        harness.Runner.OnExecutionPayloadVerified(b.Root);
+        GloasForkChoiceHarness.Block onEmpty = harness.Child(b, first.Slot + 3, first.BidBlockHash, 0xE1);
+        harness.Import(onEmpty);
+
+        harness.Runner.InvalidateExecutionChain(b.Root, b.BidBlockHash, first.BidBlockHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.IsPayloadVerified(b.Root), Is.False);
+            Assert.That(harness.Runner.IsPayloadVerified(x.Root), Is.True, "X's payload is not an execution ancestor of B's");
+            Assert.That(harness.Runner.GetBlockExecutionStatus(x.Root), Is.EqualTo(ExecutionStatus.Optimistic));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(b.Root), Is.EqualTo(ExecutionStatus.Optimistic));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(onEmpty.Root), Is.EqualTo(ExecutionStatus.Optimistic));
+        }
+    }
+
+    [TestCase(true, TestName = "Invalid verdict on an EMPTY head removes the ancestor payload its hash names")]
+    [TestCase(false, TestName = "Invalid verdict with an older latest valid hash removes every payload after it")]
+    public void Invalid_verdict_removes_the_payload_the_sent_hash_names(bool emptyHead)
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        GloasForkChoiceHarness.Block invalidAncestor = first;
+        if (!emptyHead)
+        {
+            invalidAncestor = harness.Child(first, first.Slot + 1, full: true, 0xA1);
+            harness.Import(invalidAncestor);
+            harness.Runner.OnExecutionPayloadVerified(invalidAncestor.Root);
+        }
+        GloasForkChoiceHarness.Block b = harness.Child(invalidAncestor, invalidAncestor.Slot + 1, full: true, 0xB1);
+        harness.Import(b);
+        harness.Runner.OnExecutionPayloadVerified(b.Root);
+        GloasForkChoiceHarness.Block e = harness.Child(b, b.Slot + 1, invalidAncestor.BidBlockHash, 0xE1);
+        harness.Import(e);
+
+        if (emptyHead)
+            harness.Runner.InvalidateExecutionChain(e.Root, invalidAncestor.BidBlockHash, latestValidHash: null);
+        else
+            harness.Runner.InvalidateExecutionChain(b.Root, b.BidBlockHash, first.BidBlockHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.IsPayloadVerified(invalidAncestor.Root), Is.False, "the ancestor payload is invalid");
+            Assert.That(harness.Runner.GetBlockExecutionStatus(invalidAncestor.Root), Is.EqualTo(ExecutionStatus.Optimistic));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(b.Root), Is.EqualTo(ExecutionStatus.Invalid));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(e.Root), Is.EqualTo(ExecutionStatus.Invalid));
+            Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(invalidAncestor.Root, ForkChoicePayloadStatus.Empty)));
+        }
+    }
+
+    // specs/bellatrix/optimistic-sync.md: a VALID payload cannot become INVALID without intervention.
+    [Test]
+    public void Invalid_verdict_on_a_payload_called_valid_is_refused()
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        GloasForkChoiceHarness.Block b = harness.Child(first, first.Slot + 1, full: true, 0xB1);
+        harness.Import(b);
+        harness.Runner.OnExecutionPayloadVerified(b.Root);
+        harness.Runner.ValidateExecutionChain(b.Root, b.BidBlockHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => harness.Runner.InvalidateExecutionChain(b.Root, b.BidBlockHash, latestValidHash: null), Throws.TypeOf<ProtoArrayException>());
+            Assert.That(harness.Runner.IsPayloadVerified(b.Root), Is.True);
+        }
+    }
+
+    [Test]
+    public void Valid_verdict_promotes_the_head_and_its_ancestors_only()
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        GloasForkChoiceHarness.Block x = harness.Child(first, first.Slot + 1, full: true, 0xA1);
+        GloasForkChoiceHarness.Block sibling = harness.Child(first, first.Slot + 1, full: true, 0xD1);
+        harness.Import(x);
+        harness.Import(sibling);
+        GloasForkChoiceHarness.Block e = harness.Child(x, first.Slot + 2, first.BidBlockHash, 0xE1);
+        harness.Import(e);
+
+        harness.Runner.ValidateExecutionChain(e.Root, first.BidBlockHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.GetBlockExecutionStatus(e.Root), Is.EqualTo(ExecutionStatus.Valid));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(x.Root), Is.EqualTo(ExecutionStatus.Valid));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(first.Root), Is.EqualTo(ExecutionStatus.Valid));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(sibling.Root), Is.EqualTo(ExecutionStatus.Optimistic));
+        }
+    }
+
+    // specs/bellatrix/optimistic-sync.md: contradictory verdicts require intervention and must not partially change the tree.
+    [Test]
+    public void Valid_verdict_on_an_invalid_payload_is_refused_without_promoting_its_block()
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        harness.Runner.InvalidateExecutionChain(first.Root, first.BidBlockHash, latestValidHash: null);
+
+        Assert.That(() => harness.Runner.ValidateExecutionChain(first.Root, first.BidBlockHash), Throws.TypeOf<ProtoArrayException>());
+        Assert.That(harness.Runner.GetBlockExecutionStatus(first.Root), Is.EqualTo(ExecutionStatus.Optimistic));
+    }
+
+    // specs/bellatrix/optimistic-sync.md: zero latestValidHash names the first execution block, contradicting a valid anchor.
+    [Test]
+    public void Zero_latest_valid_hash_is_refused_when_it_would_invalidate_the_valid_anchor()
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+
+        Assert.That(() => harness.Runner.InvalidateExecutionChain(first.Root, first.BidBlockHash, Hash256.Zero), Throws.TypeOf<ProtoArrayException>());
+        Assert.That(harness.Runner.IsPayloadVerified(first.Root), Is.True);
+    }
+
+    private static GloasForkChoiceHarness.Block ImportVerifiedFirst(GloasForkChoiceHarness harness)
+    {
+        GloasForkChoiceHarness.Block first = harness.First;
+        harness.TickTo(first.Slot + 3);
+        harness.Import(first);
+        harness.Runner.OnExecutionPayloadVerified(first.Root);
+        return first;
+    }
 }

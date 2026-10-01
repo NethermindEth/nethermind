@@ -121,9 +121,10 @@ public class EngineTests
     [TestCase(PayloadStatus.Invalid, ExecutionStatus.Invalid)]
     public async Task Engine_driver_maps_statuses_and_bridges_the_transition_hook(string status, ExecutionStatus expected)
     {
+        Hash256 latestValidHash = Keccak.Compute("latest valid");
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         engine.engine_newPayloadV4(default!, default!, default, default)
-            .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = status })));
+            .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = status, LatestValidHash = latestValidHash })));
         engine.engine_forkchoiceUpdatedV3(default!, default)
             .ReturnsForAnyArgs(Task.FromResult(ForkchoiceUpdatedV1Result.Valid(null, TestHash)));
 
@@ -139,6 +140,9 @@ public class EngineTests
         {
             Assert.That(newPayloadStatus.Status, Is.EqualTo(status));
             Assert.That(driver.NotifyNewPayload(block.Message!.Body!), Is.EqualTo(expected));
+            // specs/bellatrix/optimistic-sync.md: an INVALID status is applied through its latestValidHash, so the hook must not drop it.
+            Assert.That(((IEngineDriver)driver).NotifyNewPayload(block.Message!.Body!, out Hash256? reportedHash), Is.EqualTo(expected));
+            Assert.That(reportedHash, Is.EqualTo(latestValidHash));
             Assert.That(forkchoiceStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
         });

@@ -914,6 +914,79 @@ public class BlockImporterTests
         });
     }
 
+    // specs/bellatrix/optimistic-sync.md: apply the verdict to the payloads its head hash and latestValidHash name.
+    [Test]
+    public void Invalid_new_payload_invalidates_the_optimistic_blocks_after_its_latest_valid_hash([Values(-1, 0, 1, 2)] int latestValid, [Values] bool offLineage)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        UnsignedChain.ChainBlock v = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x71);
+        UnsignedChain.ChainBlock a = chain.Extend(v.Root, slot: 2, payloadHashByte: 0x72);
+        UnsignedChain.ChainBlock b = chain.Extend(a.Root, slot: 3, payloadHashByte: 0x73);
+        UnsignedChain.ChainBlock refused = chain.Extend(b.Root, slot: 4, payloadHashByte: 0x74);
+        UnsignedChain.ChainBlock side = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x75);
+        UnsignedChain.ChainBlock[] held = [v, a, b];
+        ExecutionStatus[] verdicts = offLineage
+            ? [ExecutionStatus.Optimistic, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic, ExecutionStatus.Invalid]
+            : [ExecutionStatus.Optimistic, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic, ExecutionStatus.Invalid];
+        ScriptedPayloadEngine engine = new(verdicts)
+        {
+            LatestValidHash = latestValid < 0 ? Keccak.Compute("unknown payload") : held[latestValid].Block.Message!.Body!.ExecutionPayload!.BlockHash,
+        };
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), engine: engine, forkChoiceSnapshots: snapshots);
+        importer.OnSlotTick(refused.Block.Message!.Slot);
+        if (offLineage)
+        {
+            Assert.That(importer.Import(side.Block, side.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        }
+        foreach (UnsignedChain.ChainBlock block in held)
+            Assert.That(importer.Import(block.Block, block.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture: imported optimistically");
+        Assert.That(importer.LineageRoot == b.Root, Is.EqualTo(!offLineage));
+
+        BlockImportResult result = importer.Import(refused.Block, refused.Root, verifySignatures: false);
+        importer.ComputeHead();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            for (int i = 0; i < held.Length; i++)
+            {
+                ExecutionStatus expected = latestValid >= 0 && i > latestValid ? ExecutionStatus.Invalid : ExecutionStatus.Optimistic;
+                Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == held[i].Root).ExecutionStatus, Is.EqualTo(expected));
+            }
+        }
+    }
+
+    // specs/bellatrix/optimistic-sync.md: apply the verdict to the payloads its head hash and latestValidHash name.
+    [TestCase(PayloadStatus.Valid, ExecutionStatus.Valid, ExecutionStatus.Valid)]
+    [TestCase(PayloadStatus.Invalid, ExecutionStatus.Optimistic, ExecutionStatus.Invalid)]
+    [TestCase(PayloadStatus.Syncing, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic)]
+    public void Forkchoice_verdict_changes_the_status_of_the_optimistic_head_chain(string status, ExecutionStatus expectedParent, ExecutionStatus expectedHead)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x81);
+        UnsignedChain.ChainBlock head = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0x82);
+        UnsignedChain.ChainBlock side = chain.Extend(chain.AnchorRoot, slot: 2, payloadHashByte: 0x92);
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), forkChoiceSnapshots: snapshots,
+            engine: new ScriptedPayloadEngine(ExecutionStatus.Optimistic, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic));
+        importer.OnSlotTick(2);
+        foreach (UnsignedChain.ChainBlock block in new[] { parent, head, side })
+            Assert.That(importer.Import(block.Block, block.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture: imported optimistically");
+        Hash256 parentHash = parent.Block.Message!.Body!.ExecutionPayload!.BlockHash!;
+
+        importer.OnForkchoiceUpdated(head.Root, head.Block.Message!.Body!.ExecutionPayload!.BlockHash!, new PayloadStatusV1 { Status = status, LatestValidHash = parentHash });
+        importer.ComputeHead();
+
+        ForkChoiceSnapshotNode[] nodes = [.. snapshots.Current!.Nodes];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes.Single(n => n.Root == parent.Root).ExecutionStatus, Is.EqualTo(expectedParent));
+            Assert.That(nodes.Single(n => n.Root == head.Root).ExecutionStatus, Is.EqualTo(expectedHead));
+            Assert.That(nodes.Single(n => n.Root == side.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
+        }
+    }
+
     /// <summary>fulu/p2p-interface.md data_column_sidecar_{subnet_id}: [REJECT] the sidecar's block's parent passes validation.</summary>
     [Test]
     public void Block_refused_by_the_state_transition_is_recorded_as_failed()
@@ -1382,6 +1455,8 @@ public class BlockImporterTests
     {
         private int _call;
 
+        public Hash256? LatestValidHash { get; init; }
+
         public SignedBeaconBlock? CurrentBlock { get; set; }
 
         public bool HasAnsweredNewPayload { get; private set; }
@@ -1395,6 +1470,12 @@ public class BlockImporterTests
             return _call < verdicts.Length
                 ? verdicts[_call++]
                 : throw new InvalidOperationException($"The engine was called {_call + 1} times but only {verdicts.Length} verdicts were scripted");
+        }
+
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body, out Hash256? latestValidHash)
+        {
+            latestValidHash = LatestValidHash;
+            return NotifyNewPayload(body);
         }
     }
 
