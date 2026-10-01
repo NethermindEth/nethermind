@@ -3,41 +3,57 @@ name: Collect PGO Profile
 on:
   workflow_dispatch:
     inputs:
-      state_layout:
-        description: State layout mode
+      phase:
+        description: Inspect Linux inputs or collect an instrumentation profile
         required: true
         type: choice
-        options:
-          - flat
-          - halfpath
-        default: flat
-      payload_set:
-        description: Payload set mode
-        required: true
-        type: choice
-        options:
-          - realblocks
-          - superblocks
-        default: realblocks
-  schedule:
-    # Weekly on Sunday at 02:00 UTC
-    - cron: "0 2 * * 0"
+        options: [inventory, instrumentation]
+        default: inventory
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
   actions: write
-  pull-requests: write
 
 env:
   EXPB_DATA_DIR: /mnt/sda/expb-data
   PGO_TAG: pgo-${{ github.run_id }}
 
 jobs:
+  inventory:
+    name: Inspect Fusaka Flat Linux x64 inputs
+    if: inputs.phase == 'inventory'
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Save input and capability inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="${RUNNER_TEMP}/pgo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/inventory"
+          mkdir -p "${output}"
+          git rev-parse HEAD > "${output}/source-sha.txt"
+          uv run --with pyyaml==6.0.3 python scripts/pgo/inventory.py \
+            --config "${EXPB_DATA_DIR}/github-action-mainnet-fusaka-flat.yaml" \
+            --output "${output}/inventory.json"
+
+      - name: Upload inventory including failed probes
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pgo-inventory-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/inventory/
+          if-no-files-found: error
+          retention-days: 90
+
   build-pgo-image:
+    if: inputs.phase == 'instrumentation'
     name: Build PGO collection image
     runs-on: ubuntu-latest
     steps:
@@ -129,21 +145,8 @@ jobs:
       - name: Resolve config file
         id: resolve
         shell: bash
-        env:
-          STATE_LAYOUT: ${{ inputs.state_layout || 'flat' }}
-          PAYLOAD_SET: ${{ inputs.payload_set || 'realblocks' }}
         run: |
-          set -euo pipefail
-          if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
-            config_file="github-action-mainnet-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet.yaml"
-          else
-            config_file="github-action-mainnet.yaml"
-          fi
-          echo "config_file=${config_file}" >> "${GITHUB_OUTPUT}"
+          echo "config_file=github-action-mainnet-fusaka-flat.yaml" >> "${GITHUB_OUTPUT}"
 
       - name: Render benchmark config
         id: render-config
@@ -374,63 +377,3 @@ jobs:
           path: ${{ runner.temp }}/pgo-data/
           if-no-files-found: warn
           retention-days: 30
-
-  update-pgo-profile:
-    name: Create PR to update PGO profile
-    needs: collect
-    runs-on: ubuntu-latest
-    if: success()
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Download .mibc artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: nethermind-pgo-profile
-          path: src/Nethermind/Nethermind.Runner/pgo/
-
-      - name: Download .jit.gz artifact
-        uses: actions/download-artifact@v7
-        continue-on-error: true
-        with:
-          name: nethermind-pgo-jit
-          path: src/Nethermind/Nethermind.Runner/pgo/
-
-      - name: Check for changes
-        id: diff
-        run: |
-          if git diff --quiet src/Nethermind/Nethermind.Runner/pgo/; then
-            echo "changed=false" >> "${GITHUB_OUTPUT}"
-            echo "No changes to PGO profile."
-          else
-            echo "changed=true" >> "${GITHUB_OUTPUT}"
-            echo "PGO profile has changed."
-          fi
-
-      - name: Create pull request
-        if: steps.diff.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          branch="chore/update-pgo-profile-$(date +%Y%m%d)"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "${branch}"
-          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
-          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.jit.gz 2>/dev/null || true
-          git commit -m "chore(pgo): update PGO profile from weekly collection"
-          git push -u origin "${branch}"
-          gh pr create \
-            --title "chore(pgo): update PGO profile" \
-            --body "$(cat <<'EOF'
-          ## Summary
-          - Weekly automated update of the PGO (.mibc) profile used for R2R compilation
-          - Updated edge/block profiling data (.jit.gz) for runtime branch optimization
-          - Generated from 5000 mainnet blocks via EventPipe profiling
-
-          ## Test plan
-          - [ ] CI passes (R2R build uses the updated profile automatically)
-          EOF
-          )" \
-            --base master
