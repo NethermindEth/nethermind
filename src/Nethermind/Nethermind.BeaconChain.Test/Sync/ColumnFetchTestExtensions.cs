@@ -27,7 +27,7 @@ internal static class ColumnFetchTestExtensions
     public static async Task<int> SettleWithinAsync(this BeaconSyncOrchestrator orchestrator, int maxPasses, CancellationToken token)
     {
         int passes = 0;
-        while (orchestrator.QueuedWorkCount > 0 || orchestrator.ColumnFetchesInFlight > 0)
+        while (orchestrator.QueuedWorkCount > 0 || orchestrator.ColumnFetchesInFlight > 0 || orchestrator.AncestorFetchesInFlight > 0)
         {
             if (++passes > maxPasses)
             {
@@ -43,6 +43,21 @@ internal static class ColumnFetchTestExtensions
         }
 
         return passes;
+    }
+
+    /// <summary>Processes the gossip <paramref name="block"/>, then the work its ancestor fetches queue until none runs, as the worker would.</summary>
+    public static async Task ProcessGossipBlockAndFetchAncestorsAsync(this BeaconSyncOrchestrator orchestrator, ForkedSignedBeaconBlock block, CancellationToken token)
+    {
+        await orchestrator.ProcessGossipBlockAsync(block, token);
+        while (orchestrator.AncestorFetchesInFlight > 0)
+        {
+            if (orchestrator.QueuedWorkCount == 0)
+            {
+                await orchestrator.WaitForWorkAsync(token);
+            }
+
+            await orchestrator.ProcessQueuedAsync(token);
+        }
     }
 
     /// <summary>Imports <paramref name="block"/>, lets the fetch its deferral starts and the retry the fetched columns wake run, and reports <see cref="BlockImportResult.Imported"/> once <paramref name="importer"/> knows the block.</summary>

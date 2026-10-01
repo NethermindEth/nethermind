@@ -84,7 +84,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
         harness.Pool.OfferedAfterRefresh = [stale];
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(gossip, token);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(gossip, token);
         int heldAfterFailedFetch = harness.Orchestrator.PendingGossipBlockCount;
         const int maxRounds = 3;
         int rounds = 0;
@@ -133,7 +133,7 @@ public partial class BeaconSyncOrchestratorTests
         // The round has ended and the feed waits for the next slot.
         await Task.Delay(TimeSpan.FromMilliseconds(300), token);
         harness.Pool.OfferedAfterRefresh = [stale];
-        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[^1]), token);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(new ForkedSignedBeaconBlock.OfFulu(chain[^1]), token);
         TimeSpan bound = TimeSpan.FromSeconds(Spec.SecondsPerSlot / 2.0);
         Stopwatch sinceFailedFetch = Stopwatch.StartNew();
         while (RangeRequests(stale) == 0 && sinceFailedFetch.Elapsed < bound)
