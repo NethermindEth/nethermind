@@ -5,6 +5,8 @@ using System;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 
@@ -42,6 +44,12 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
     {
         bool parsed = GossipTopics.TryParse(message.Topic, out byte[]? digest, out string? name);
         string label = parsed && IsHandledName(name!) ? name! : UnhandledTopicLabel;
+        if (parsed && GossipTopics.TryParseDataColumnSidecarTopicName(name!, out ulong labelSubnet)
+            && labelSubnet < Eip7594DasConstants.DataColumnSidecarSubnetCount)
+        {
+            label = GossipTopics.DataColumnSidecarTopicName(labelSubnet);
+        }
+        Metrics.BeaconChainGossipReceivedByTopic.Increment(new StringLabel(label));
 
         // p2p-interface.md "Topics and messages": StrictNoSign requires all four optional fields to be absent.
         if (message.HasFrom || message.HasSeqno || message.HasSignature || message.HasKey)

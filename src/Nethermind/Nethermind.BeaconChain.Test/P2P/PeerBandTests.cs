@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
@@ -52,6 +53,57 @@ public class PeerBandTests
         PeerManager.DescribeFailure(exceptionType == typeof(InvalidOperationException) ? new InvalidOperationException("the peer sent garbage")
             : exceptionType == typeof(ReqRespTimeoutException) ? new ReqRespTimeoutException("timed out after 16 s waiting for the channel to open: the request budget ran out")
             : (Exception)Activator.CreateInstance(exceptionType)!);
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Metrics_peer_removal_and_count_publication_wait_for_admission_lock(CancellationToken token)
+    {
+        Node client = CreateNode();
+        Node server = CreateNode();
+        SetMatchingStatus(client, server);
+        await using (client.P2P)
+        await using (server.P2P)
+        {
+            await client.P2P.StartAsync(token);
+            await server.P2P.StartAsync(token);
+            PeerManager manager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+            ulong connectedBefore = Metrics.BeaconChainPeersConnected;
+            Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
+            Assert.That(Metrics.BeaconChainPeersConnected, Is.EqualTo(connectedBefore + 1));
+            object peer = manager.GetBestPeers(0).Single();
+            object admissionLock = typeof(PeerManager).GetField("_admissionLock", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(manager)!;
+            MethodInfo remove = typeof(PeerManager).GetMethod("DropAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            using ManualResetEventSlim entered = new();
+            using ManualResetEventSlim dropped = new();
+            ulong droppedBefore = Metrics.BeaconChainPeersDropped;
+            Task removal;
+            bool removedWhileLocked;
+            int countWhileLocked;
+            int gaugeWhileLocked;
+            lock (admissionLock)
+            {
+                removal = Task.Run(async () =>
+                {
+                    entered.Set();
+                    await (Task)remove.Invoke(manager, [peer, GoodbyeReason.ClientShutdown, "shutdown", token, false, null])!;
+                    dropped.Set();
+                }, token);
+                Assert.That(entered.Wait(TimeSpan.FromSeconds(5), token), Is.True);
+                removedWhileLocked = dropped.Wait(TimeSpan.FromMilliseconds(100), token);
+                countWhileLocked = manager.PeerCount;
+                gaugeWhileLocked = Metrics.BeaconChainPeerCount;
+            }
+
+            await removal.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(removedWhileLocked, Is.False);
+                Assert.That((countWhileLocked, gaugeWhileLocked), Is.EqualTo((1, 1)));
+                Assert.That((manager.PeerCount, Metrics.BeaconChainPeerCount), Is.EqualTo((0, 0)));
+                Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(droppedBefore + 1));
+            }
+        }
+    }
 
     [Test]
     public void A_single_fault_disconnect_below_the_threshold_does_not_ban()

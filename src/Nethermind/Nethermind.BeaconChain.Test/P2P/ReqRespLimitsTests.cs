@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -24,6 +25,7 @@ using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
 using NUnit.Framework;
+using NSubstitute;
 using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -31,6 +33,103 @@ namespace Nethermind.BeaconChain.Test.P2P;
 public class ReqRespLimitsTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
+
+    [Test]
+    public async Task Metrics_single_response_failures_are_counted_once(
+        [Range(0, 2)] int protocolKind, [Range(0, 4)] int failure)
+    {
+        LocalMetadataSource source = new();
+        Eth2PingProtocol ping = new(source);
+        MetaDataProtocolV3 meta = new(source);
+        InvalidDecoderProtocol invalidDecoder = new();
+        RequestTiming timing = new();
+        byte[] request = timing.Track(new byte[sizeof(ulong)]);
+        string id = protocolKind switch { 0 => ping.Id, 1 => meta.Id, _ => invalidDecoder.Id };
+        ReqRespFailureReason reason = failure == 0 ? ReqRespFailureReason.Timeout
+            : failure == 3 ? ReqRespFailureReason.PeerError : ReqRespFailureReason.InvalidMessage;
+        long before = FailureCount(id, reason);
+        long invalidBefore = FailureCount(id, ReqRespFailureReason.InvalidMessage);
+        using MemoryStream input = new();
+        if (failure == 1)
+        {
+            input.WriteByte(ReqRespFraming.ResponseCode.Success);
+        }
+        else if (failure == 2)
+        {
+            await ReqRespFraming.WriteResponseChunkAsync(input, ReqRespFraming.ResponseCode.Success, default, new byte[1], default);
+        }
+        else if (failure == 3)
+        {
+            await ReqRespFraming.WriteErrorChunkAsync(input, ReqRespFraming.ResponseCode.InvalidRequest, "refused", default);
+        }
+
+        input.Position = 0;
+        IChannel channel = Substitute.For<IChannel>();
+        channel.WriteAsync(Arg.Any<ReadOnlySequence<byte>>(), Arg.Any<CancellationToken>()).Returns(new ValueTask<IOResult>(IOResult.Ok));
+        channel.WriteEofAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<IOResult>(IOResult.Ok));
+        channel.ReadAsync(Arg.Any<int>(), Arg.Any<ReadBlockingMode>(), Arg.Any<CancellationToken>())
+            .Returns(call => ReadAsync(call.ArgAt<int>(0)));
+        Task Dial() => protocolKind switch
+        {
+            0 => ping.DialAsync(channel, null!, 0),
+            1 => meta.DialAsync(channel, null!, 0),
+            _ => invalidDecoder.DialAsync(channel, null!, request),
+        };
+        if (failure == 0)
+        {
+            Assert.CatchAsync<OperationCanceledException>(Dial);
+        }
+        else
+        {
+            Assert.CatchAsync(Dial);
+        }
+
+        if (protocolKind == 2)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(timing.Chunks, Is.EqualTo(failure is 2 or 3 ? 1 : 0));
+                Assert.That(timing.Settled().IsCompletedSuccessfully, Is.True);
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FailureCount(id, reason), Is.EqualTo(before + 1));
+            Assert.That(FailureCount(id, ReqRespFailureReason.InvalidMessage),
+                Is.EqualTo(invalidBefore + (reason == ReqRespFailureReason.InvalidMessage ? 1 : 0)));
+        }
+
+        ValueTask<ReadResult> ReadAsync(int length)
+        {
+            if (failure == 0) throw new OperationCanceledException();
+            byte[] bytes = new byte[length];
+            int count = input.Read(bytes);
+            return new ValueTask<ReadResult>(new ReadResult { Result = count == 0 ? IOResult.Ended : IOResult.Ok, Data = new ReadOnlySequence<byte>(bytes.AsMemory(0, count)) });
+        }
+    }
+
+    private sealed class InvalidDecoderProtocol : SingleChunkProtocol<byte[], ulong>
+    {
+        public override string Id => "/test/invalid-decoder/1";
+        protected override int MaxRequestSize => sizeof(ulong);
+        protected override int MaxResponseSize => sizeof(ulong);
+        protected override byte[] EncodeRequest(byte[] request) => request;
+        protected override byte[] DecodeRequest(byte[] ssz) => ssz;
+        protected override byte[] EncodeResponse(ulong response) => Eth2PingProtocol.EncodeUint64(response);
+        protected override ulong DecodeResponse(byte[] ssz) => throw new FormatException("Malformed response");
+        protected override ulong HandleRequest(byte[] request) => 0;
+    }
+
+    [Test]
+    public void Metrics_truncated_block_framing_records_one_invalid_message()
+    {
+        TestBlocksProtocol protocol = new(Spec);
+        using MemoryStream input = new(new byte[] { ReqRespFraming.ResponseCode.Success });
+        long before = FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.InvalidMessage);
+        Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadBlocksAsync(input, 1));
+        Assert.That(FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.InvalidMessage), Is.EqualTo(before + 1));
+    }
 
     [Test]
     public async Task Concurrent_inbound_requests_beyond_the_cap_are_refused()
@@ -264,11 +363,17 @@ public class ReqRespLimitsTests
             }
         });
 
+        string id = metadata ? new MetaDataProtocolV3(new LocalMetadataSource()).Id : protocol.Id;
+        long before = FailureCount(id, ReqRespFailureReason.Timeout);
         ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => metadata
             ? new MetaDataProtocolV3(new LocalMetadataSource()).DialAsync(channel, FakeSessionContext.ForNewPeer(), 0)
             : protocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), 7));
 
-        Assert.That(cut!.Message, Is.EqualTo("timed out after 15 s waiting for the response"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cut!.Message, Is.EqualTo("timed out after 15 s waiting for the response"));
+            Assert.That(FailureCount(id, ReqRespFailureReason.Timeout), Is.EqualTo(before + 1));
+        }
         await channel.CloseAsync();
         await drain.WaitAsync(TimeSpan.FromSeconds(5));
     }
