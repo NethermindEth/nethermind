@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.EraE.Archive;
-using Nethermind.Serialization.Rlp;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.Specs;
@@ -21,9 +20,7 @@ internal class EraReaderTests
     {
         Transaction source = Build.A.Transaction.Signed().TestObject;
         using TestEraFile file = await TestEraFile.Create(postMerge ? 0U : 1U, postMerge ? 1U : 0U, transaction: source);
-        HashSet<Transaction> pooled = new(ReferenceEqualityComparer.Instance);
-        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
-        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+        HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
         using EraReader reader = new(file.FilePath);
         (Block block, _) = await reader.GetBlockByNumber(0);
