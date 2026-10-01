@@ -39,7 +39,7 @@ public class RangeSyncGloasColumnsTests
     private const ulong SecondGloasSlot = 33;
 
     /// <summary>Fulu from genesis and Gloas from epoch 1, so slots 31 and 32 straddle the fork inside one batch.</summary>
-    private static BeaconChainSpec Spec { get; } = new()
+    internal static BeaconChainSpec Spec { get; } = new()
     {
         ChainId = ImportableBlobBlock.FuluFromGenesis.ChainId,
         CheckpointSyncUrl = ImportableBlobBlock.FuluFromGenesis.CheckpointSyncUrl,

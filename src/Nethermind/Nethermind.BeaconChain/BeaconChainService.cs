@@ -39,7 +39,8 @@ public sealed class BeaconChainService(
     ExternalClDetector externalClDetector,
     ILogManager logManager,
     DataColumnSidecarPool? columnPool = null,
-    ProcessStallWatchdog? watchdog = null) : IDisposable, IStoppableService
+    ProcessStallWatchdog? watchdog = null,
+    ColumnBackfill? columnBackfill = null) : IDisposable, IStoppableService
 {
     private static readonly TimeSpan DefaultStartRetryDelay = TimeSpan.FromSeconds(30);
 
@@ -88,6 +89,7 @@ public sealed class BeaconChainService(
         CancellationToken token = _cancellationTokenSource.Token;
         using CancellationTokenSource warmUpSource = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task warmUp = Task.CompletedTask;
+        Task backfill = Task.CompletedTask;
         try
         {
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.EffectiveCheckpointSyncUrl}");
@@ -111,6 +113,10 @@ public sealed class BeaconChainService(
             {
                 InitializePubkeyCache(validators, token);
                 warmUp = Task.Run(() => WarmSubgroupChecks(warmUpSource.Token));
+                if (columnBackfill is not null)
+                {
+                    backfill = Task.Run(() => columnBackfill.RunAsync(warmUpSource.Token));
+                }
             });
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -125,6 +131,7 @@ public sealed class BeaconChainService(
             // Awaited so StopAsync returns only after the warm-up has left the cache.
             await warmUpSource.CancelAsync();
             await warmUp;
+            await backfill;
         }
     }
 

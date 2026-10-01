@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
@@ -574,6 +575,67 @@ public class BeaconChainServiceStartupTests
 
         await service.Start().WaitAsync(TimeSpan.FromSeconds(60));
         return (logs, engine, pubkeyCache);
+    }
+
+    [Test]
+    public async Task Sync_backfill_starts_after_the_engine_kick_and_stop_waits_for_it()
+    {
+        PubkeyCache pubkeyCache = new();
+        TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        KickEngine engine = new(pubkeyCache) { Answer = answer.Task };
+        TestErrorLogManager logs = new();
+        ReadGate replay = new();
+        using BlockingCustody custody = new();
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.BlockIndex, new GatedMemDb(replay)), GloasCheckpointFiles.Spec);
+        await using IContainer container = KickContainer(engine, pubkeyCache, logs).AddSingleton(store).AddSingleton<INodeColumnCustodySource>(custody).Build();
+        SeedAnchor(store, gloas: false, nextCommittee: false, key: null);
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+        Task run = service.Start();
+        try
+        {
+            await engine.Called.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.That(custody.Reached.IsCompleted, Is.False);
+            replay.Arm();
+            answer.SetResult(PayloadStatusV1.Syncing);
+            await replay.Reached.WaitAsync(TimeSpan.FromSeconds(30));
+            await custody.Reached.WaitAsync(TimeSpan.FromSeconds(30));
+            Task stopping = service.StopAsync();
+            replay.Release();
+            await Task.WhenAny(stopping, Task.Delay(1000));
+            Assert.That(stopping.IsCompleted, Is.False, "backfill is still reading custody");
+            custody.Release();
+            await stopping.WaitAsync(TimeSpan.FromSeconds(30));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(run.IsCompletedSuccessfully, Is.True);
+                Assert.That(logs.Errors, Is.Empty);
+            }
+        }
+        finally
+        {
+            service.Stop();
+            replay.Release();
+            custody.Release();
+            await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        }
+    }
+
+    private sealed class BlockingCustody : INodeColumnCustodySource, IDisposable
+    {
+        private readonly ManualResetEventSlim _release = new();
+        private readonly TaskCompletionSource _reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task Reached => _reached.Task;
+        public NodeColumnCustody? Current
+        {
+            get
+            {
+                _reached.TrySetResult();
+                if (!_release.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("Custody was not released");
+                return null;
+            }
+        }
+        public void Release() => _release.Set();
+        public void Dispose() => _release.Dispose();
     }
 
     private static ContainerBuilder KickContainer(KickEngine engine, PubkeyCache pubkeyCache, TestErrorLogManager? logManager = null, BeaconChainConfig? config = null) =>

@@ -203,7 +203,8 @@ public partial class RangeSyncTests
         Func<DataColumnsByRootIdentifier[], DataColumnSidecarGloas[]>? gloasRootHandler = null,
         PeerColumnCustody? custody = null,
         Func<DataColumnsByRootIdentifier[], DataColumnSidecar[]>? rootHandler = null,
-        ulong earliestAvailableSlot = 0) : IBeaconSyncPeer
+        ulong earliestAvailableSlot = 0,
+        Func<Hash256[], ForkedSignedBeaconBlock[]>? blockRootHandler = null) : IBeaconSyncPeer
     {
         /// <summary>Every column, as a supernode would custody, unless the test narrows it.</summary>
         public PeerColumnCustody Custody { get; } = custody ?? AllColumns;
@@ -213,6 +214,8 @@ public partial class RangeSyncTests
         /// <summary>The columns of every by-range and by-root column request, in order.</summary>
         public List<ulong[]> RequestedColumns { get; } = [];
         public int RootColumnRequests { get; private set; }
+        public int RootBlockRequests { get; private set; }
+        public List<(ulong Start, ulong Count)> RequestedRanges { get; } = [];
 
         public List<PeerFailureReason> Reports { get; } = [];
         public int Failures => Reports.Count;
@@ -226,11 +229,15 @@ public partial class RangeSyncTests
         public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
         {
             Requests++;
+            RequestedRanges.Add((startSlot, count));
             return Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>(handler(startSlot, count));
         }
 
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
-            Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([]);
+        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token)
+        {
+            RootBlockRequests++;
+            return Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>(blockRootHandler?.Invoke(roots) ?? []);
+        }
 
         public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
         {

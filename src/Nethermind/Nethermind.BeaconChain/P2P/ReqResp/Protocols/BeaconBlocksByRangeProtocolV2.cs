@@ -18,7 +18,7 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// <summary>The eth2 <c>beacon_blocks_by_range</c> v2 protocol.</summary>
 /// <remarks>
 /// The listen side serves canonical blocks from the local <see cref="BeaconChainStore"/>, skipping
-/// empty slots, and answers <c>ResourceUnavailable</c> for ranges older than the checkpoint anchor.
+/// empty slots, and answers <c>ResourceUnavailable</c> below the verified block floor (fulu/p2p-interface.md).
 /// The dial side validates per-chunk fork-digest context bytes and strictly increasing slots within
 /// the requested range.
 /// </remarks>
@@ -79,9 +79,9 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
                 throw new Eth2ReqRespException("Blocks-by-range request count must be positive");
             }
 
-            if (!store.TryGetAnchor(out _, out ulong anchorSlot) || request.StartSlot < anchorSlot)
+            if (!store.TryGetAnchor(out _, out ulong anchorSlot) || request.StartSlot < Math.Min(anchorSlot, store.BackfilledBlockFloor ?? anchorSlot))
             {
-                throw new Eth2ReqRespException("Requested range predates the checkpoint anchor", ReqRespFraming.ResponseCode.ResourceUnavailable);
+                throw new Eth2ReqRespException("Requested range predates available blocks", ReqRespFraming.ResponseCode.ResourceUnavailable);
             }
 
             // Per the spec, step is deprecated and the request is served as if it were 1.
