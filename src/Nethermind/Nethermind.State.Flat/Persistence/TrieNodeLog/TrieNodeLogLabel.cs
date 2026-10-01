@@ -15,28 +15,13 @@ public readonly record struct TrieNodeLogLabel(string Value) : IMetricLabels
     public static readonly TrieNodeLogLabel Sealed = new("sealed");
     public static readonly TrieNodeLogLabel MergedPinned = new("merged_pinned");
 
-    private static readonly TrieNodeLogLabel[] Columns = CreateColumnLabels();
+    public static readonly TrieNodeLogLabel State = new("state");
+    public static readonly TrieNodeLogLabel Storage = new("storage");
+
+    public static int ColumnCount { get; } = Enum.GetValues<FlatDbColumns>().Length;
 
     public string[] Labels => [Value];
 
-    public static TrieNodeLogLabel Column(byte column) => Columns[column];
-
-    public static int ColumnCount => Columns.Length;
-
-    private static TrieNodeLogLabel[] CreateColumnLabels()
-    {
-        TrieNodeLogLabel[] labels = new TrieNodeLogLabel[Enum.GetValues<FlatDbColumns>().Length];
-        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
-        {
-            labels[(int)column] = new TrieNodeLogLabel(column switch
-            {
-                FlatDbColumns.StateTopNodes => "state_top",
-                FlatDbColumns.StateNodes => "state",
-                FlatDbColumns.StorageNodes => "storage",
-                FlatDbColumns.FallbackNodes => "fallback",
-                _ => column.ToString().ToLowerInvariant(),
-            });
-        }
-        return labels;
-    }
+    /// <summary>The partition label of a logged column: state for the state tries' columns, storage for storage.</summary>
+    public static TrieNodeLogLabel Partition(FlatDbColumns column) => column == FlatDbColumns.StorageNodes ? Storage : State;
 }

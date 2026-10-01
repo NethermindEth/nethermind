@@ -39,7 +39,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     private int _pendingInsertsInCurrent;
     private bool _committed;
     private bool _poisoned;
-    private readonly long[] _storedBytes = new long[TrieNodeLogLabel.ColumnCount]; // by column
+    private long _storedBytes;
 
     public void Append(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete)
     {
@@ -98,7 +98,6 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         key.CopyTo(destination[TrieNodeLogRecord.HeaderLength..]);
         value.CopyTo(destination[(TrieNodeLogRecord.HeaderLength + key.Length)..]);
         _buffered += header.Length;
-        _storedBytes[(int)BaseTriePersistence.ColumnOfNodeKey(key.Length)] += header.Length;
 
         Pending record = new(generation, slot, recordOffset);
         if (!collided) _pending[hash] = record;
@@ -161,6 +160,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         if (_buffered == 0) return;
         _current!.Write(_current.WriteFrontier, _buffer.AsSpan(0, _buffered));
         _current.WriteFrontier += _buffered;
+        _storedBytes += _buffered;
         _buffered = 0;
     }
 
@@ -203,10 +203,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
 
         foreach ((TrieNodeLogGeneration generation, _) in _touched) generation.PublishFrontier(generation.WriteFrontier);
 
-        for (int column = 0; column < _storedBytes.Length; column++)
-        {
-            if (_storedBytes[column] != 0) Metrics.TrieNodeLogStoredBytes.AddBy(TrieNodeLogLabel.Column((byte)column), _storedBytes[column]);
-        }
+        if (_storedBytes != 0) Metrics.TrieNodeLogStoredBytes.AddBy(shard.PartitionLabel, _storedBytes);
         _committed = true;
     }
 

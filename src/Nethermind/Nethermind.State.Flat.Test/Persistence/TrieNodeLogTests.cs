@@ -97,8 +97,8 @@ public class TrieNodeLogTests
         return value;
     }
 
-    private static long FlushedBytes(FlatDbColumns column) =>
-        Metrics.TrieNodeLogFlushedBytes.TryGetValue(TrieNodeLogLabel.Column((byte)column), out long bytes) ? bytes : 0;
+    private static long FlushedStateBytes() =>
+        Metrics.TrieNodeLogFlushedBytes.TryGetValue(TrieNodeLogLabel.State, out long bytes) ? bytes : 0;
 
     [Test]
     public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges()
@@ -152,16 +152,14 @@ public class TrieNodeLogTests
             Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
 
-        long topBefore = FlushedBytes(FlatDbColumns.StateTopNodes);
-        long stateBefore = FlushedBytes(FlatDbColumns.StateNodes);
+        long flushedBefore = FlushedStateBytes();
         _log.Drain();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
             Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
-            Assert.That(FlushedBytes(FlatDbColumns.StateTopNodes) - topBefore, Is.EqualTo(3 + Rlp3.Length), "one 3-byte top key with its latest value");
-            Assert.That(FlushedBytes(FlatDbColumns.StateNodes) - stateBefore, Is.EqualTo(8), "one 8-byte tombstone key");
+            Assert.That(FlushedStateBytes() - flushedBefore, Is.EqualTo(3 + Rlp3.Length + 8), "one 3-byte top key with its latest value and one 8-byte tombstone key");
         }
     }
 
