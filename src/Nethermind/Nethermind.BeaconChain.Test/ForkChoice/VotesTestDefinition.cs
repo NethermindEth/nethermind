@@ -56,8 +56,8 @@ public static class VotesTestDefinition
             new FindHead(anchor, anchor, twoValidators, GetRoot(4)),
             // Add block 5 on 4, which has a justified epoch of 2.
             new ProcessBlock(4, GetRoot(5), GetRoot(4), new(2, GetRoot(1)), new(2, GetRoot(1))),
-            // Ensure that 5 is filtered out and the head stays at 4.
-            new FindHead(anchor, anchor, twoValidators, GetRoot(4)),
+            // 5 is filtered out, and filter_block_tree drops 4, 3 and 1 with it as none has another child, so the head is 2.
+            new FindHead(anchor, anchor, twoValidators, GetRoot(2)),
             // Add block 6 on 4, which has a justified epoch of 1.
             new ProcessBlock(0, GetRoot(6), GetRoot(4), anchor, anchor),
             // Move both votes to 5.

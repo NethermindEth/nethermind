@@ -449,7 +449,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         ProtoNode bestNode = Nodes[justifiedNode.BestDescendant ?? justifiedIndex];
 
         // specs/phase0/fork-choice.md get_head: an empty get_filtered_block_tree leaves the head at the justified root.
-        return NodeIsViableForHead(bestNode, currentSlot, justifiedCheckpoint, finalizedCheckpoint) ? bestNode.Root : justifiedRoot;
+        return IsViableLeaf(bestNode, currentSlot, justifiedCheckpoint, finalizedCheckpoint) ? bestNode.Root : justifiedRoot;
     }
 
     /// <summary>The spec's <c>get_filtered_block_tree</c>: which nodes, by index, are in the viable block tree.</summary>
@@ -553,6 +553,18 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         ProtoNode child = Nodes[childIndex];
         ProtoNode parent = Nodes[parentIndex];
 
+        // specs/bellatrix/optimistic-sync.md: an invalidated block is not in the block tree, so it is never a best child.
+        if (child.ExecutionStatus == ExecutionStatus.Invalid)
+        {
+            if (parent.BestChild == childIndex)
+            {
+                parent.BestChild = null;
+                parent.BestDescendant = null;
+            }
+
+            return;
+        }
+
         bool childLeadsToViableHead = NodeLeadsToViableHead(child, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
 
         (int? BestChild, int? BestDescendant) changeToNone = (null, null);
@@ -573,6 +585,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         (int?, int?) CompareToCurrentBest(int bestChildIndex)
         {
             ProtoNode bestChild = Nodes[bestChildIndex];
+            if (bestChild.ExecutionStatus == ExecutionStatus.Invalid) return childLeadsToViableHead ? changeToChild : changeToNone;
+
             bool bestChildLeadsToViableHead = NodeLeadsToViableHead(bestChild, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
 
             if (childLeadsToViableHead && !bestChildLeadsToViableHead) return changeToChild;
@@ -588,13 +602,20 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         }
     }
 
-    /// <summary>Indicates if the node itself, or its best descendant, is viable for the head.</summary>
-    private bool NodeLeadsToViableHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
-    {
-        bool bestDescendantIsViableForHead = node.BestDescendant is int bestDescendantIndex
-            && NodeIsViableForHead(Nodes[bestDescendantIndex], currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+    /// <summary>Indicates if the node's best descendant, or the node itself when it has none, is a viable leaf.</summary>
+    private bool NodeLeadsToViableHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint) =>
+        IsViableLeaf(node.BestDescendant is int bestDescendantIndex ? Nodes[bestDescendantIndex] : node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
 
-        return bestDescendantIsViableForHead || NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+    /// <summary>Indicates if <paramref name="node"/> is kept by <c>filter_block_tree</c> as a leaf.</summary>
+    /// <remarks>A node with a child that is not invalid is kept only through a kept child, never on its own checkpoints; see <see cref="FilterBlockTree"/>.</remarks>
+    private bool IsViableLeaf(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
+    {
+        foreach (int child in node.Children)
+        {
+            if (Nodes[child].ExecutionStatus != ExecutionStatus.Invalid) return false;
+        }
+
+        return NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
     }
 
     /// <summary>

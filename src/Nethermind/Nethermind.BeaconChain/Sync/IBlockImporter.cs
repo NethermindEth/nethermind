@@ -43,6 +43,12 @@ public enum BlockImportResult
     /// and proposer signature are verified first.
     /// </summary>
     ParentPayloadUnverified,
+
+    /// <summary>
+    /// fork-choice.md on_block: the block is within MAXIMUM_GOSSIP_CLOCK_DISPARITY but waits for its slot tick.
+    /// Untrusted blocks have passed their state transition and proposer signature verification; fork choice has not recorded them.
+    /// </summary>
+    FutureSlot,
 }
 
 /// <summary>The current fork-choice head and checkpoints mapped to execution block hashes for <c>forkchoiceUpdated</c>.</summary>
