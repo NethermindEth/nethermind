@@ -214,7 +214,7 @@ public class PeerRequestFailureTests
     [CancelAfter(60_000)]
     public async Task A_peer_below_the_limit_stays_selectable_through_health_checks(CancellationToken token)
     {
-        await using Fixture fixture = await Fixture.CreateAsync(token);
+        await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
         fixture.Fail(PeerFailureReason.RequestFailed, Limit - 1);
 
         await fixture.Manager.RunMaintenanceRoundAsync(token);
