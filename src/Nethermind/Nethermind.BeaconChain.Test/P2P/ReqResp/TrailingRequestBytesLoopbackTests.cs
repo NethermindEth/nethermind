@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -82,8 +83,7 @@ public class TrailingRequestBytesLoopbackTests
         await server.StartAsync(token);
         byte[] wire = await EncodeAsync(protocolId, 0, token);
 
-        (byte[] response, TimeSpan elapsed) = await PeerSessionNodes.RetryStalledAsync(attemptToken =>
-            RequestAsync(server, protocolId, wire, halfClose: false, attemptToken, requester, requests: 3), token);
+        (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, halfClose: false, token, requester, requests: 3);
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
@@ -114,8 +114,7 @@ public class TrailingRequestBytesLoopbackTests
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         await server.StartAsync(token);
 
-        (byte[] response, TimeSpan elapsed) = await PeerSessionNodes.RetryStalledAsync(attemptToken =>
-            RequestAsync(server, protocolId, wire, halfClose: false, attemptToken, requests: 3), token);
+        (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, halfClose: false, token, requests: 3);
 
         using (Assert.EnterMultipleScope())
         {
@@ -134,8 +133,7 @@ public class TrailingRequestBytesLoopbackTests
     {
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         await server.StartAsync(token);
-        (byte[] response, TimeSpan elapsed) = await PeerSessionNodes.RetryStalledAsync(attemptToken =>
-            RequestAsync(server, MetaData, TrailingBytes(trailingBytes), halfClose: !holdOpen, attemptToken), token);
+        (byte[] response, TimeSpan elapsed) = await RequestAsync(server, MetaData, TrailingBytes(trailingBytes), halfClose: !holdOpen, token);
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
@@ -163,18 +161,14 @@ public class TrailingRequestBytesLoopbackTests
         await server.StartAsync(token);
 
         byte[] wire = await EncodeAsync(StatusV2, 0, token);
-        (byte[] response, _) = await PeerSessionNodes.RetryStalledAsync(attemptToken =>
+        gate.Arm();
+        (byte[] response, _) = await RequestAsync(server, StatusV2, wire, halfClose: false, token, requester, afterRequest: async (channel, requestToken) =>
         {
-            gate.Arm();
-            reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            return RequestAsync(server, StatusV2, wire, halfClose: false, attemptToken, requester, afterRequest: async (channel, requestToken) =>
-            {
-                await gate.Entered.WaitAsync(requestToken);
-                await channel.WriteAsync(new ReadOnlySequence<byte>(TrailingBytes(3)), requestToken);
-                await reported.Task.WaitAsync(requestToken);
-                gate.Release();
-            });
-        }, token);
+            await gate.Entered.WaitAsync(requestToken);
+            await channel.WriteAsync(new ReadOnlySequence<byte>(TrailingBytes(3)), requestToken);
+            await reported.Task.WaitAsync(requestToken);
+            gate.Release();
+        });
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
@@ -203,15 +197,11 @@ public class TrailingRequestBytesLoopbackTests
         await server.StartAsync(token);
 
         byte[] wire = await EncodeAsync(StatusV2, 0, token);
-        await PeerSessionNodes.RetryStalledAsync(attemptToken =>
+        await RequestAsync(server, StatusV2, wire, halfClose: false, token, requester, afterResponse: async (channel, requestToken) =>
         {
-            reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            return RequestAsync(server, StatusV2, wire, halfClose: false, attemptToken, requester, afterResponse: async (channel, requestToken) =>
-            {
-                await channel.WriteAsync(new ReadOnlySequence<byte>(TrailingBytes(3)), requestToken);
-                await reported.Task.WaitAsync(TimeSpan.FromSeconds(3), requestToken);
-            });
-        }, token);
+            await channel.WriteAsync(new ReadOnlySequence<byte>(TrailingBytes(3)), requestToken);
+            await reported.Task.WaitAsync(TimeSpan.FromSeconds(3), requestToken);
+        });
 
         Assert.That(reported.Task.Result, Is.EqualTo(PeerFailureReason.ProtocolViolation));
     }
@@ -223,7 +213,7 @@ public class TrailingRequestBytesLoopbackTests
     {
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         await server.StartAsync(token);
-        (byte[] response, TimeSpan elapsed) = await PeerSessionNodes.RetryStalledAsync(attemptToken => RequestAsync(server, protocolId, wire, halfClose: !holdOpen, attemptToken), token);
+        (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, halfClose: !holdOpen, token);
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
@@ -289,16 +279,15 @@ public class TrailingRequestBytesLoopbackTests
     private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token,
         Identity? requesterIdentity = null, int requests = 1, Func<IChannel, CancellationToken, Task>? afterRequest = null, Func<IChannel, CancellationToken, Task>? afterResponse = null)
     {
-        YamuxFaultLog requesterLog = new();
         ServiceProvider services = new ServiceCollection()
-            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(requesterLog))
+            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(LimboLogs.Instance))
             .AddSingleton<RawRequestProtocol>()
             .AddLibp2p(static builder => builder.AddProtocol<RawRequestProtocol>())
             .BuildServiceProvider();
         await using (services)
         await using (ILocalPeer requester = services.GetRequiredService<IPeerFactory>().Create(requesterIdentity ?? new Identity(privateKey: null, KeyType.Secp256K1)))
         {
-            ISession session = await PeerSessionNodes.DialFromPlainPeerAsync(requester, requesterLog, server, token);
+            ISession session = await PeerSessionNodes.DialFromPlainPeerAsync(requester, server, token);
             RawRequestProtocol protocol = services.GetRequiredService<RawRequestProtocol>();
             protocol.Id = protocolId;
             protocol.HalfClose = halfClose;

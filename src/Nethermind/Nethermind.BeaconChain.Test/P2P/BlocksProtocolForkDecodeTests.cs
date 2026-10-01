@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
+using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
@@ -99,8 +100,8 @@ public class BlocksProtocolForkDecodeTests
     }
 
     private static BeaconP2P CreateNode(BeaconChainStore store) =>
-        PeerSessionNodes.Watched(logs => new BeaconP2P(new BeaconChainConfig { P2PPort = 0 }, Sepolia, store, new BeaconChainStatusHolder(Sepolia, Timestamper.Default), new LocalMetadataSource(),
-            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logs));
+        new(new BeaconChainConfig { P2PPort = 0 }, Sepolia, store, new BeaconChainStatusHolder(Sepolia, Timestamper.Default), new LocalMetadataSource(),
+            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
 
     private sealed class TestBlocksProtocol(BeaconChainSpec spec) : BlocksProtocolBase(spec)
     {

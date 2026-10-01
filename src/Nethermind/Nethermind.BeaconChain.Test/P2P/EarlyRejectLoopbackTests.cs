@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -96,7 +97,7 @@ public class EarlyRejectLoopbackTests
         byte[] wire = await EncodeAsync(protocolId, request, token);
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         await server.StartAsync(token);
-        (byte[] response, TimeSpan elapsed) = await PeerSessionNodes.RetryStalledAsync(attemptToken => RequestAsync(server, protocolId, wire, request != Request.ZeroLengthStreamHeldOpen, attemptToken), token);
+        (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, request != Request.ZeroLengthStreamHeldOpen, token);
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, token);
@@ -118,7 +119,7 @@ public class EarlyRejectLoopbackTests
         byte[] wire = await EncodeAsync(protocolId, request, token);
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         await server.StartAsync(token);
-        (byte[] response, TimeSpan elapsed) = await PeerSessionNodes.RetryStalledAsync(attemptToken => RequestAsync(server, protocolId, wire, request != Request.ZeroLengthStreamHeldOpen, attemptToken), token);
+        (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, request != Request.ZeroLengthStreamHeldOpen, token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -130,16 +131,15 @@ public class EarlyRejectLoopbackTests
     /// <summary>Sends the request from a fresh plain libp2p peer and returns the whole response and how long it took.</summary>
     private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token)
     {
-        YamuxFaultLog requesterLog = new();
         ServiceProvider services = new ServiceCollection()
-            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(requesterLog))
+            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(LimboLogs.Instance))
             .AddSingleton<RawRequestProtocol>()
             .AddLibp2p(static builder => builder.AddProtocol<RawRequestProtocol>())
             .BuildServiceProvider();
         await using (services)
         await using (ILocalPeer requester = services.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1)))
         {
-            ISession session = await PeerSessionNodes.DialFromPlainPeerAsync(requester, requesterLog, server, token);
+            ISession session = await PeerSessionNodes.DialFromPlainPeerAsync(requester, server, token);
             services.GetRequiredService<RawRequestProtocol>().Id = protocolId;
             services.GetRequiredService<RawRequestProtocol>().HalfClose = halfClose;
 

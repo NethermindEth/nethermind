@@ -45,7 +45,7 @@ public class IdentifyTests
     [Test]
     [CancelAfter(60_000)]
     public Task Identify_advertises_its_own_protocol_id_once_and_the_client_agent_string(CancellationToken token) =>
-        PeerSessionNodes.RetryStalledAsync(Identify_advertises_its_own_protocol_id_once_and_the_client_agent_stringAsync, token);
+        Identify_advertises_its_own_protocol_id_once_and_the_client_agent_stringAsync(token);
 
     private static async Task<bool> Identify_advertises_its_own_protocol_id_once_and_the_client_agent_stringAsync(CancellationToken token)
     {
@@ -71,7 +71,7 @@ public class IdentifyTests
     [Test]
     [CancelAfter(60_000)]
     public Task Identify_push_advertises_the_identify_protocol_id_once(CancellationToken token) =>
-        PeerSessionNodes.RetryStalledAsync(Identify_push_advertises_the_identify_protocol_id_onceAsync, token);
+        Identify_push_advertises_the_identify_protocol_id_onceAsync(token);
 
     private static async Task<bool> Identify_push_advertises_the_identify_protocol_id_onceAsync(CancellationToken token)
     {
@@ -99,7 +99,7 @@ public class IdentifyTests
     [Test]
     [CancelAfter(60_000)]
     public Task A_session_reads_the_agent_version_from_one_identify_exchange([Values] bool nodeDials, CancellationToken token) =>
-        PeerSessionNodes.RetryStalledAsync(t => A_session_reads_the_agent_version_from_one_identify_exchangeAsync(nodeDials, t), token);
+        A_session_reads_the_agent_version_from_one_identify_exchangeAsync(nodeDials, token);
 
     private static async Task<bool> A_session_reads_the_agent_version_from_one_identify_exchangeAsync(bool nodeDials, CancellationToken token)
     {
@@ -130,7 +130,7 @@ public class IdentifyTests
         Volatile.Write(ref holdAnswer, 1);
         Task<ISession> dial = nodeDials
             ? client.DialPeerAsync(address, token)
-            : PeerSessionNodes.DialFromPlainPeerAsync(server.Peer, server.Log, client, token);
+            : PeerSessionNodes.DialFromPlainPeerAsync(server.Peer, client, token);
         try
         {
             await answerStarted.Task.WaitAsync(token);
@@ -279,7 +279,7 @@ public class IdentifyTests
     [Test]
     [CancelAfter(60_000)]
     public Task A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_established([Values] bool nodeDials, CancellationToken token) =>
-        PeerSessionNodes.RetryStalledAsync(t => A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_establishedAsync(nodeDials, t), token);
+        A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_establishedAsync(nodeDials, token);
 
     private static async Task<bool> A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_establishedAsync(bool nodeDials, CancellationToken token)
     {
@@ -294,7 +294,6 @@ public class IdentifyTests
         {
             Task<ISession> dial = node.DialPeerAsync(peer.Address, token);
             Assert.That(await Task.WhenAny(dial, Task.Delay(within, token)), Is.SameAs(dial), "the dial ended within the identify bound");
-            PeerSessionNodes.ThrowIfIdentifyStalled(node);
             Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), "no session with a misidentified peer is handed back");
         }
         else
@@ -302,11 +301,10 @@ public class IdentifyTests
             ISession session = await peer.Peer.DialAsync(PeerSessionNodes.LoopbackAddress(node), token).WaitAsync(token);
             // The node completes its side of the upgrade only once the dialer sends on the connection.
             _ = session.DialAsync<PingProtocol>(token);
-            await PeerSessionNodes.WaitUntilAsync(() => peer.Peer.Sessions.Count == 0, "the peer's session was left open", token, within, [node]);
-            PeerSessionNodes.ThrowIfIdentifyStalled(node);
+            await PeerSessionNodes.WaitUntilAsync(() => peer.Peer.Sessions.Count == 0, "the peer's session was left open", token, within);
         }
 
-        await PeerSessionNodes.WaitUntilAsync(() => node.SessionCountForTest == 0, "the misidentified session was left open", token, within, [node]);
+        await PeerSessionNodes.WaitUntilAsync(() => node.SessionCountForTest == 0, "the misidentified session was left open", token, within);
         Assert.That(Volatile.Read(ref established), Is.Zero, "a misidentified session is never reported as established");
         return true;
     }

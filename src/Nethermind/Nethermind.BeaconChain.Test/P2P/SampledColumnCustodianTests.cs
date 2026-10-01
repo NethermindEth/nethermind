@@ -53,8 +53,7 @@ public class SampledColumnCustodianTests
         Node client = CreateNode();
         SetMatchingStatus(partial, bystander, supernode, client);
         client.Config.TargetPeerCount = 1;
-        PeerHealthCheckRoundTests.AdvancingTimestamper dialClock = new();
-        await using BeaconDiscovery discovery = CreateDiscovery(timestamper: dialClock);
+        await using BeaconDiscovery discovery = CreateDiscovery();
 
         await using (client.P2P)
         await using (partial.P2P)
@@ -63,7 +62,7 @@ public class SampledColumnCustodianTests
         {
             await StartAsync(token, partial, bystander, supernode, client);
             PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            Assert.That(await AdmitAsync(peerManager, dialClock, partial, token, Enr(partialKey, partial, Eip7594DasConstants.CustodyRequirement)), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token, Enr(partialKey, partial, Eip7594DasConstants.CustodyRequirement)), Is.True);
 
             PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
             ulong[] uncustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
@@ -104,8 +103,7 @@ public class SampledColumnCustodianTests
         }
 
         partial.StatusHolder.CurrentStatus.HeadSlot = supernodeHeadSlot + 100;
-        PeerHealthCheckRoundTests.AdvancingTimestamper dialClock = new();
-        await using BeaconDiscovery discovery = CreateDiscovery(timestamper: dialClock);
+        await using BeaconDiscovery discovery = CreateDiscovery();
 
         try
         {
@@ -113,7 +111,7 @@ public class SampledColumnCustodianTests
             PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
             foreach (Node node in (Node[])[.. supernodes, partial])
             {
-                Assert.That(await AdmitAsync(peerManager, dialClock, node, token), Is.True);
+                Assert.That(await AdmitAsync(peerManager, node, token), Is.True);
             }
 
             client.Config.MaxPeerCount = 1;
@@ -183,8 +181,7 @@ public class SampledColumnCustodianTests
         supernodeStatus.Status = supernode.StatusHolder.CurrentStatus;
         client.Config.TargetPeerCount = 2;
         client.Config.MaxPeerCount = 4;
-        PeerHealthCheckRoundTests.AdvancingTimestamper dialClock = new();
-        await using BeaconDiscovery discovery = CreateDiscovery(timestamper: dialClock);
+        await using BeaconDiscovery discovery = CreateDiscovery();
 
         await using (client.P2P)
         await using (partial.P2P)
@@ -192,8 +189,8 @@ public class SampledColumnCustodianTests
         {
             await StartAsync(token, supernode, partial, client);
             PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            Assert.That(await AdmitAsync(peerManager, dialClock, supernode, token), Is.True);
-            Assert.That(await AdmitAsync(peerManager, dialClock, partial, token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
             IReadOnlyList<ulong> wantedWhileHealthy = [.. discovery.WantedColumns];
             Stopwatch parked = Stopwatch.StartNew();
             Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
@@ -241,8 +238,7 @@ public class SampledColumnCustodianTests
         SetMatchingStatus(failing, partial, replacement, client);
         client.Config.TargetPeerCount = 2;
         client.Config.MaxPeerCount = 4;
-        PeerHealthCheckRoundTests.AdvancingTimestamper dialClock = new();
-        await using BeaconDiscovery discovery = CreateDiscovery(timestamper: dialClock);
+        await using BeaconDiscovery discovery = CreateDiscovery();
 
         await using (client.P2P)
         await using (failing.P2P)
@@ -251,8 +247,8 @@ public class SampledColumnCustodianTests
         {
             await StartAsync(token, failing, partial, replacement, client);
             PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            Assert.That(await AdmitAsync(peerManager, dialClock, failing, token), Is.True);
-            Assert.That(await AdmitAsync(peerManager, dialClock, partial, token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
             IReadOnlyList<ulong> uncustodiedWhileHealthy = peerManager.UncustodiedSampledColumns();
             ReportFailuresUpToTheLimit(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P)));
 
@@ -436,24 +432,8 @@ public class SampledColumnCustodianTests
         }
     }
 
-    /// <summary>Admission is not what the caller checks, so a dial whose session the pinned libp2p loses is tried again.</summary>
-    /// <remarks>The pinned yamux can lose a channel it just opened, so the admission's first status request gets no answer and the
-    /// dial times out. A failed dial puts its address in back-off, so <paramref name="dialClock"/>, the discovery clock, is moved past it.</remarks>
-    private static async Task<bool> AdmitAsync(PeerManager peerManager, PeerHealthCheckRoundTests.AdvancingTimestamper dialClock, Node node, CancellationToken token, string? enr = null)
-    {
-        for (int attempt = 0; attempt < 3; attempt++)
-        {
-            if (await peerManager.TryAddPeerAsync(LoopbackAddress(node.P2P), token, enr))
-            {
-                return true;
-            }
-
-            TestContext.Out.WriteLine($"Admission attempt {attempt + 1} of {LoopbackAddress(node.P2P)} failed, dialing again past its back-off");
-            dialClock.Add(PeerDialHistory.MaximumBackoff);
-        }
-
-        return false;
-    }
+    private static Task<bool> AdmitAsync(PeerManager peerManager, Node node, CancellationToken token) =>
+        peerManager.TryAddPeerAsync(LoopbackAddress(node.P2P), token);
 
     private static void ReportFailuresUpToTheLimit(IBeaconSyncPeer peer)
     {
@@ -528,7 +508,7 @@ public class SampledColumnCustodianTests
 
     /// <summary>This node's identity and sampled columns, resolved as discovery's start does without binding a socket.</summary>
     /// <param name="identity">Pins the identity, and so the sampled columns; random when omitted.</param>
-    private static BeaconDiscovery CreateDiscovery(PrivateKey? identity = null, ITimestamper? timestamper = null)
+    private static BeaconDiscovery CreateDiscovery(PrivateKey? identity = null)
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         if (identity is not null)
@@ -537,7 +517,7 @@ public class SampledColumnCustodianTests
         }
 
         BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store,
-            Substitute.For<IIPResolver>(), timestamper ?? Timestamper.Default, LimboLogs.Instance);
+            Substitute.For<IIPResolver>(), Timestamper.Default, LimboLogs.Instance);
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         return discovery;
     }
