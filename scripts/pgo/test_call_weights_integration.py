@@ -98,8 +98,9 @@ def run(manifest, tool, output, dotnet="dotnet"):
             result = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT)
         text = log.read_text(encoding="utf-8", errors="replace")
         if case.get("overflow", False):
-            if result.returncode == 0 or profile.exists() or "OverflowException" not in text:
-                raise ValueError(f"{case['name']}: expected checked overflow without a profile")
+            if (result.returncode == 0 or profile.exists() or "OverflowException" not in text
+                    or "Call weight source:" in text or "Universal CPU sample process:" in text):
+                raise ValueError(f"{case['name']}: expected checked call-weight overflow before SPGO without a profile")
         else:
             if result.returncode != 0 or f"Call weight source: {case['source']}" not in text:
                 raise ValueError(f"{case['name']}: conversion or selected source mismatch")
