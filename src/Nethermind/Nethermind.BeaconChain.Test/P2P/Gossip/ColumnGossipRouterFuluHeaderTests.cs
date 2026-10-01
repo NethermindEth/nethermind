@@ -181,7 +181,7 @@ public class ColumnGossipRouterFuluHeaderTests
 
     // A column sync pooled proves which cells and proofs are valid under its header, so a copy is judged against it without KZG.
     [Test]
-    public void A_copy_of_a_column_sync_already_pooled_runs_no_KZG_and_only_an_equal_copy_is_forwarded([Values] bool imported, [Values] bool alteredCopy, [Values] bool proposerCovered)
+    public void Metrics_A_copy_of_a_column_sync_already_pooled_runs_no_KZG_and_only_an_equal_copy_is_forwarded([Values] bool imported, [Values] bool alteredCopy, [Values] bool proposerCovered)
     {
         ProposerLookaheadHolder lookaheads = new() { Current = proposerCovered ? Lookahead(ParentRoot, 0) : null };
         // Import verified the proposer; otherwise only a covered expected proposer lets a copy be forwarded.
@@ -194,11 +194,13 @@ public class ColumnGossipRouterFuluHeaderTests
             StoreAsImported(store, honest);
         }
 
+        ulong acceptedBefore = Metrics.BeaconChainGossipAccepted;
         MessageValidity first = router.Handle(Column, gloasTopic: false, Message(alteredCopy ? Altered(honest, 0) : honest));
         MessageValidity second = router.Handle(Column, gloasTopic: false, Message(honest));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (forwardable ? 1UL : 0UL)));
             Assert.That(router.KzgBatchCount, Is.Zero);
             Assert.That((first, second), Is.EqualTo(!forwardable ? (MessageValidity.Ignored, MessageValidity.Ignored)
                 : alteredCopy ? (MessageValidity.Ignored, MessageValidity.Accepted)
@@ -472,7 +474,7 @@ public class ColumnGossipRouterFuluHeaderTests
     }
 
     [Test]
-    public void A_column_that_passes_every_check_is_forwarded_once([Values] ImportOrder order)
+    public void Metrics_A_column_that_passes_every_check_is_forwarded_once([Values] ImportOrder order)
     {
         ProposerLookaheadHolder lookaheads = new() { Current = order == ImportOrder.UncoveredUntilImport ? null : Lookahead(ParentRoot, 0) };
         ForkChoiceSnapshotHolder snapshots = new() { Current = Snapshot(order == ImportOrder.AncestryUnknownUntilImport ? Ancestry.ParentAncestryUnknown : Ancestry.DescendsFromFinalized, parentInSnapshot: false) };
@@ -485,6 +487,7 @@ public class ColumnGossipRouterFuluHeaderTests
             StoreAsImported(store, honest);
         }
 
+        ulong acceptedBefore = Metrics.BeaconChainGossipAccepted;
         MessageValidity first = router.Handle(Column, gloasTopic: false, Message(honest));
         StoreAsImported(store, honest);
         // The importer publishes a snapshot holding the block, whose finalized ancestry is then known.
@@ -497,6 +500,7 @@ public class ColumnGossipRouterFuluHeaderTests
             MessageValidity[] expected = order is ImportOrder.UncoveredUntilImport or ImportOrder.AncestryUnknownUntilImport
                 ? [MessageValidity.Ignored, MessageValidity.Accepted, MessageValidity.Ignored]
                 : [MessageValidity.Accepted, MessageValidity.Ignored, MessageValidity.Ignored];
+            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + 1));
             Assert.That(new[] { first, second, third }, Is.EqualTo(expected));
             Assert.That((raised, router.KzgBatchCount), Is.EqualTo((1, 1L)), "consumed once, verified once");
             Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True);
@@ -735,6 +739,29 @@ public class ColumnGossipRouterFuluHeaderTests
         {
             Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True, "the other proposer's queued column survives the flood");
             Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(ColumnGossipRouter.ParkedColumnsPerProposer), "the retry meets exactly the flooding proposer's share of the queue");
+        }
+    }
+
+    [Test]
+    public void Metrics_revalidating_a_queued_column_is_not_exported_as_a_received_message([Values] bool nestedMessage)
+    {
+        ForkChoiceSnapshotHolder snapshots = new() { Current = Snapshot(Ancestry.BlockAndParentNotInSnapshot, parentInSnapshot: true) };
+        ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(ParentRoot, 0, Spec.GetEpoch(CurrentSlot) - 1) };
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, subnets: AllSubnets, lookaheads: lookaheads, forkChoice: snapshots);
+        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        router.Handle(Column, gloasTopic: false, Message(honest));
+        ulong acceptedBefore = Metrics.BeaconChainGossipAccepted;
+        ulong droppedBefore = Metrics.BeaconChainGossipDropped;
+
+        if (nestedMessage) router.DataColumnSidecarReceived += _ => router.Handle(Column, gloasTopic: false, UndecodableMessage);
+        snapshots.Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
+        router.Handle(Column, gloasTopic: false, UndecodableMessage);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True, "the retry accepted the queued column");
+            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore), "one received message is one outcome");
+            Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (nestedMessage ? 2UL : 1UL)), "only the undecodable messages are new");
         }
     }
 

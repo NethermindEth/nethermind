@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -47,17 +48,42 @@ public class GossipMessageValidatorColumnTests
         yield return Fulu("invalid KZG proofs", Sidecar(static s => s.KzgProofs = [s.KzgProofs![1], s.KzgProofs[0]]), 0, MessageValidity.Rejected, consumed: false, ColumnGossipDropReason.FailedKzgProofs);
     }
 
+    [Test]
+    public void Metrics_column_topic_labels_use_the_canonical_subnet([Values("0005", "0000005")] string suffix)
+    {
+        (GossipMessageValidator validator, _, _, _) = CreateMainnet();
+        StringLabel canonical = new(GossipTopics.DataColumnSidecarTopicName(Subnet));
+        string name = "data_column_sidecar_" + suffix;
+        StringLabel supplied = new(name);
+        long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(canonical);
+        long suppliedBefore = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(supplied);
+        validator.Verify(Message(GossipTopics.Topic(MainnetDigest, name), []));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(canonical), Is.EqualTo(before + 1));
+            Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(supplied), Is.EqualTo(suppliedBefore));
+        }
+    }
+
     [TestCaseSource(nameof(FuluCases))]
-    public void Fulu_sidecar_is_consumed_or_dropped_per_the_spec_order(DataColumnSidecar sidecar, ulong finalizedEpoch, MessageValidity expected, bool consumed, ColumnGossipDropReason? reason)
+    public void Metrics_fulu_sidecar_is_consumed_or_dropped_per_the_spec_order(DataColumnSidecar sidecar, ulong finalizedEpoch, MessageValidity expected, bool consumed, ColumnGossipDropReason? reason)
     {
         (GossipMessageValidator validator, _, ColumnGossipRouter columns, DataColumnSidecarPool pool) = CreateMainnet(finalizedEpoch);
         int raised = 0;
         columns.DataColumnSidecarReceived += _ => raised++;
 
+        StringLabel key = new(GossipTopics.DataColumnSidecarTopicName(Subnet));
+        long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key);
+        ulong droppedBefore = Metrics.BeaconChainGossipDropped;
+        StringLabel reasonKey = new(reason?.ToString() ?? "unused");
+        long reasonBefore = Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(reasonKey);
         MessageValidity validity = validator.Verify(Message(GossipTopics.Topic(MainnetDigest, GossipTopics.DataColumnSidecarTopicName(Subnet)), Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar))));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key), Is.EqualTo(before + 1));
+            Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (reason is null ? 0UL : 1UL)));
+            Assert.That(Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(reasonKey), Is.EqualTo(reasonBefore + (reason is null ? 0 : 1)));
             Assert.That(validity, Is.EqualTo(expected));
             Assert.That(raised, Is.EqualTo(consumed ? 1 : 0), "consumed");
             Assert.That(pool.TryGet(SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!), sidecar.Index, out _), Is.EqualTo(consumed), "pooled");

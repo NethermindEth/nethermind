@@ -14,7 +14,9 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -314,6 +316,20 @@ public sealed class ColumnGossipRouter(
     /// </returns>
     internal MessageValidity Handle(ulong subnetId, bool gloasTopic, byte[] message)
     {
+        bool retrying = _retrying;
+        _retrying = false;
+        try
+        {
+            return HandleReceived(subnetId, gloasTopic, message);
+        }
+        finally
+        {
+            _retrying = retrying;
+        }
+    }
+
+    private MessageValidity HandleReceived(ulong subnetId, bool gloasTopic, byte[] message)
+    {
         if (!IsSubscribed(subnetId))
         {
             return Drop(ColumnGossipDropReason.UnsubscribedSubnet, MessageValidity.Ignored);
@@ -474,7 +490,7 @@ public sealed class ColumnGossipRouter(
     private MessageValidity ConsumeVerified(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot, ulong proposerIndex) =>
         // [IGNORE] the first sidecar for (slot, proposer_index, index) with a valid header signature, inclusion proof and KZG proofs.
         _seenSidecars.Set((slot, proposerIndex, sidecar.Index)) && TryConsume(sidecar, blockRoot, slot)
-            ? MessageValidity.Accepted
+            ? Accept()
             : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
 
     /// <summary>
@@ -490,7 +506,7 @@ public sealed class ColumnGossipRouter(
             && MemoryMarshal.AsBytes<SszBlobCell>(held.Column).SequenceEqual(MemoryMarshal.AsBytes<SszBlobCell>(sidecar.Column))
             && MemoryMarshal.AsBytes<SszKzgCommitment>(held.KzgProofs).SequenceEqual(MemoryMarshal.AsBytes<SszKzgCommitment>(sidecar.KzgProofs))
             && _seenSidecars.Set((slot, proposerIndex, sidecar.Index))
-            ? MessageValidity.Accepted
+            ? Accept()
             : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
 
     /// <summary>The spec checks for a sidecar whose header is not a block fork choice holds with known finalized ancestry.</summary>
@@ -760,17 +776,26 @@ public sealed class ColumnGossipRouter(
             _parkedColumns.Clear();
         }
 
-        foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry in parked)
+        bool retrying = _retrying;
+        _retrying = true;
+        try
         {
-            foreach (DataColumnSidecar sidecar in entry.Value)
+            foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry in parked)
             {
-                // Its message was already Ignored, so the tuple stays unmarked for any equal copy that reaches this router.
-                if (ValidateFulu(CustodyGroups.ComputeSubnetForDataColumnSidecar(sidecar.Index), sidecar) == MessageValidity.Accepted
-                    && sidecar.SignedBlockHeader?.Message is { } header)
+                foreach (DataColumnSidecar sidecar in entry.Value)
                 {
-                    _seenSidecars.Delete((header.Slot, header.ProposerIndex, sidecar.Index));
+                    // Its message was already Ignored, so the tuple stays unmarked for any equal copy that reaches this router.
+                    if (ValidateFulu(CustodyGroups.ComputeSubnetForDataColumnSidecar(sidecar.Index), sidecar) == MessageValidity.Accepted
+                        && sidecar.SignedBlockHeader?.Message is { } header)
+                    {
+                        _seenSidecars.Delete((header.Slot, header.ProposerIndex, sidecar.Index));
+                    }
                 }
             }
+        }
+        finally
+        {
+            _retrying = retrying;
         }
     }
 
@@ -989,7 +1014,7 @@ public sealed class ColumnGossipRouter(
         }
 
         pool?.AddGloas(sidecar);
-        return MessageValidity.Accepted;
+        return Accept();
     }
 
     /// <summary>
@@ -1194,9 +1219,24 @@ public sealed class ColumnGossipRouter(
             : ColumnGossipDropReason.FutureSlot;
     }
 
+    [ThreadStatic]
+    private static bool _retrying;
+
+    private static MessageValidity Accept()
+    {
+        if (!_retrying) Interlocked.Increment(ref Metrics.GossipAcceptedCount);
+        return MessageValidity.Accepted;
+    }
+
     private MessageValidity Drop(ColumnGossipDropReason reason, MessageValidity validity)
     {
         Interlocked.Increment(ref _dropCounts[(int)reason]);
+        if (!_retrying)
+        {
+            Interlocked.Increment(ref Metrics.GossipDroppedCount);
+            Metrics.BeaconChainColumnGossipDroppedByReason.Increment(new StringLabel(reason.ToString()));
+        }
+
         if (_logger.IsTrace) _logger.Trace($"Dropped data column sidecar gossip message: {reason}");
         return validity;
     }

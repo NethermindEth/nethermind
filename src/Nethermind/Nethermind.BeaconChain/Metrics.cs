@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Threading;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.Core.Attributes;
@@ -18,13 +19,22 @@ public readonly record struct GossipRejectKey(string Topic, GossipDropReason Rea
 
 public class Metrics
 {
+    internal static ulong PeersConnectedCount;
+    internal static ulong PeersDroppedCount;
+    internal static ulong GossipAcceptedCount;
+    internal static ulong GossipDroppedCount;
+    internal static ulong BlocksImportedCount;
+    private static long _headSlotDelay;
+    private static int _peerCount;
+    private static long _lastBlockImportMs;
+
     [GaugeMetric]
     [Description("Head slot of the embedded beacon chain driver.")]
     public static ulong BeaconChainHeadSlot { get; set; }
 
     [GaugeMetric]
     [Description("Slots between the wall clock and the embedded driver's head.")]
-    public static long BeaconChainHeadSlotDelay { get; set; }
+    public static long BeaconChainHeadSlotDelay { get => Interlocked.Read(ref _headSlotDelay); set => Interlocked.Exchange(ref _headSlotDelay, value); }
 
     [GaugeMetric]
     [Description("Finalized epoch tracked by the embedded beacon chain driver.")]
@@ -40,15 +50,15 @@ public class Metrics
 
     [GaugeMetric]
     [Description("Connected, status-exchanged beacon chain peers.")]
-    public static int BeaconChainPeerCount { get; set; }
+    public static int BeaconChainPeerCount { get => Volatile.Read(ref _peerCount); set => Volatile.Write(ref _peerCount, value); }
 
     [CounterMetric]
     [Description("Beacon chain peer connections established.")]
-    public static ulong BeaconChainPeersConnected { get; set; }
+    public static ulong BeaconChainPeersConnected { get => Volatile.Read(ref PeersConnectedCount); set => Volatile.Write(ref PeersConnectedCount, value); }
 
     [CounterMetric]
     [Description("Beacon chain peers dropped.")]
-    public static ulong BeaconChainPeersDropped { get; set; }
+    public static ulong BeaconChainPeersDropped { get => Volatile.Read(ref PeersDroppedCount); set => Volatile.Write(ref PeersDroppedCount, value); }
 
     [KeyIsLabel("reason")]
     [Description("Beacon chain peers dropped, by goodbye reason.")]
@@ -64,11 +74,11 @@ public class Metrics
 
     [CounterMetric]
     [Description("Beacon blocks imported through the state transition.")]
-    public static ulong BeaconChainBlocksImported { get; set; }
+    public static ulong BeaconChainBlocksImported { get => Volatile.Read(ref BlocksImportedCount); set => Volatile.Write(ref BlocksImportedCount, value); }
 
     [GaugeMetric]
     [Description("Milliseconds spent importing the most recent beacon block.")]
-    public static long BeaconChainLastBlockImportMs { get; set; }
+    public static long BeaconChainLastBlockImportMs { get => Interlocked.Read(ref _lastBlockImportMs); set => Interlocked.Exchange(ref _lastBlockImportMs, value); }
 
     [CounterMetric]
     [Description("Blocks held for a parent or a deferred block that were dropped because it could not import.")]
@@ -76,11 +86,15 @@ public class Metrics
 
     [CounterMetric]
     [Description("Gossip messages accepted across the beacon chain topics.")]
-    public static ulong BeaconChainGossipAccepted { get; set; }
+    public static ulong BeaconChainGossipAccepted { get => Volatile.Read(ref GossipAcceptedCount); set => Volatile.Write(ref GossipAcceptedCount, value); }
 
     [CounterMetric]
-    [Description("Gossip messages dropped during decode-level validation.")]
-    public static ulong BeaconChainGossipDropped { get; set; }
+    [Description("Gossip messages dropped during validation.")]
+    public static ulong BeaconChainGossipDropped { get => Volatile.Read(ref GossipDroppedCount); set => Volatile.Write(ref GossipDroppedCount, value); }
+
+    [KeyIsLabel("reason")]
+    [Description("Data column gossip messages dropped, by validation reason.")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainColumnGossipDroppedByReason { get; } = new();
 
     [KeyIsLabel("topic")]
     [Description("Gossip messages received per beacon chain topic, before validation.")]

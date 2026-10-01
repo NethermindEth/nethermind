@@ -40,18 +40,21 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
         List<ForkedSignedBeaconBlock> blocks = [];
         using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxBlocksResponseDuration);
         CancellationTokenSource cts = timeout.Cts;
+        bool failureRecorded = false;
         try
         {
             while (await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, cts.Token) is { } chunk)
             {
                 if (chunk.Result != ReqRespFraming.ResponseCode.Success)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.PeerError);
                     throw ErrorChunkToException(chunk);
                 }
 
                 if (blocks.Count >= maxBlocks)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.LimitExceeded);
                     throw new Eth2ReqRespException($"Peer responded with more than the requested {maxBlocks} blocks");
                 }
@@ -63,6 +66,7 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
                 }
                 catch (Exception e) when (e is not Eth2ReqRespException and not OperationCanceledException)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException($"Malformed block chunk: {e.Message}");
                 }
@@ -70,6 +74,7 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
                 // The shape was chosen by slot, so requiring digest(epoch(slot)) accepts exactly what decoding by the context fork would.
                 if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(block)))
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException($"Block chunk context bytes do not match the fork digest of slot {block.Slot}");
                 }
@@ -78,6 +83,11 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
                 timing?.ChunkRead();
                 cts.CancelAfter(RespTimeout);
             }
+        }
+        catch (Eth2ReqRespException) when (!failureRecorded)
+        {
+            RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+            throw;
         }
         catch (OperationCanceledException e) when (cts.IsCancellationRequested)
         {

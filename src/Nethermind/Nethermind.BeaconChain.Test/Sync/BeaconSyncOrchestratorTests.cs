@@ -41,6 +41,51 @@ public partial class BeaconSyncOrchestratorTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
     [Test]
+    [CancelAfter(10_000)]
+    public async Task Metrics_head_delay_timer_advances_without_worker_progress([Values] bool blockedEngine, CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        PeerBandTests.Node node = PeerBandTests.CreateNode();
+        await using BeaconP2P p2p = node.P2P;
+        Harness harness = CreateHarness(discovery: discovery, p2p: p2p, peerManager: new PeerManager(p2p, node.Config, node.StatusHolder, LimboLogs.Instance));
+        Assert.That(Metrics.BeaconChainHeadSlotDelay, Is.EqualTo((long)(WallSlot - AnchorSlot)));
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource<PayloadStatusV1> reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Engine.PendingFcu = blockedEngine ? reply.Task : null;
+        (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, _) = TestChain.BuildLinkedChain(AnchorSlot);
+        Task run = blockedEngine
+            ? harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, stop.Token)
+            : harness.Orchestrator.RunHeadSlotDelayTimerAsync(stop.Token);
+        if (blockedEngine) Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1));
+        try
+        {
+            harness.Timestamper.Add(TimeSpan.FromSeconds(3 * Spec.SecondsPerSlot));
+            while (Metrics.BeaconChainHeadSlotDelay != (long)(WallSlot + 3 - AnchorSlot))
+            {
+                await Task.Delay(10, token);
+            }
+
+            if (!blockedEngine)
+            {
+                harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot + 1, Spec.GetEpoch(AnchorSlot));
+                await harness.Orchestrator.RunHeadStepAsync(token);
+                Assert.That(Metrics.BeaconChainHeadSlotDelay, Is.EqualTo((long)(WallSlot + 3 - AnchorSlot - 1)));
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            reply.TrySetResult(PayloadStatusV1.Syncing);
+            Assert.CatchAsync<OperationCanceledException>(() => run);
+        }
+
+        Metrics.BeaconChainHeadSlotDelay = -1;
+        harness.Timestamper.Add(TimeSpan.FromSeconds(Spec.SecondsPerSlot));
+        await Task.Delay(1100, token);
+        Assert.That(Metrics.BeaconChainHeadSlotDelay, Is.EqualTo(-1));
+    }
+
+    [Test]
     public async Task Worker_imports_in_order_drains_queued_gossip_children_and_runs_one_fcu_per_batch()
     {
         Harness harness = CreateHarness();
@@ -775,7 +820,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public async Task Replay_imports_canonical_store_blocks_without_network_and_stops_at_a_linkage_break()
+    public async Task Metrics_replay_imports_canonical_store_blocks_without_network_and_stops_at_a_linkage_break()
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102, 103, 104, 105);
@@ -788,12 +833,16 @@ public partial class BeaconSyncOrchestratorTests
         Harness harness = CreateHarness(store: store);
         harness.Importer.Known.Add(anchorRoot);
 
+        ulong before = Metrics.BeaconChainBlocksImported;
+        Metrics.BeaconChainLastBlockImportMs = -1;
         await harness.Orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, 102, 103, 104, 105]), "all linked canonical blocks replayed");
             Assert.That(harness.Importer.Imports.Select(static i => i.VerifySignatures), Is.All.False, "store replays skip signature verification");
+            Assert.That(Metrics.BeaconChainBlocksImported, Is.EqualTo(before + 5));
+            Assert.That(Metrics.BeaconChainLastBlockImportMs, Is.GreaterThanOrEqualTo(0));
             Assert.That(harness.Pool.GetBestPeersCalls, Is.Zero, "the network was not touched");
             Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(105UL), "sync tip resumes at the replayed head");
             Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "a head step follows the replay");
@@ -1218,6 +1267,8 @@ public partial class BeaconSyncOrchestratorTests
         public Exception? FcuFailure { get; set; }
         public Task<PayloadStatusV1>? FcuAnswer { get; set; }
 
+        public Task<PayloadStatusV1>? PendingFcu { get; set; }
+
         public bool HasAnsweredNewPayload => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
@@ -1232,7 +1283,7 @@ public partial class BeaconSyncOrchestratorTests
             }
 
             IsAvailable = true;
-            return FcuAnswer ?? Task.FromResult(FcuResponses.Count > 0 ? FcuResponses.Dequeue() : PayloadStatusV1.Syncing);
+            return PendingFcu ?? FcuAnswer ?? Task.FromResult(FcuResponses.Count > 0 ? FcuResponses.Dequeue() : PayloadStatusV1.Syncing);
         }
 
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
