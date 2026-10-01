@@ -811,6 +811,45 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
+    /// A forged copy of a fetched block, held beside the genuine one behind the same ancestor and drained first, is refused,
+    /// but the children waiting on that root still import with the genuine block drained after it.
+    /// </summary>
+    [Test]
+    public async Task Forged_copy_drained_before_the_genuine_block_keeps_its_children()
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2, NearWallSlot + 3);
+        ForkedSignedBeaconBlock ancestor = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        ForkedSignedBeaconBlock genuine = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        ForkedSignedBeaconBlock grandchild = new ForkedSignedBeaconBlock.OfFulu(chain[2]);
+        Hash256 ancestorRoot = ancestor.ComputeMessageRoot();
+        Hash256 genuineRoot = genuine.ComputeMessageRoot();
+        BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
+        ForkedSignedBeaconBlock forged = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[1].Message, Signature = forgedSignature });
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == ancestorRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([ancestor]));
+        peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == genuineRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([genuine]));
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.RegenerationRefused.Add(ancestorRoot);
+        harness.Importer.ForgedSignatures.Add(forgedSignature);
+
+        // The forgery arrives first and is held behind the deferred ancestor; the genuine block, fetched for its child, after it.
+        await harness.Orchestrator.ProcessGossipBlockAsync(forged, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAsync(grandchild, CancellationToken.None);
+        int held = harness.Orchestrator.PendingGossipBlockCount;
+        harness.Importer.RegenerationRefused.Remove(ancestorRoot);
+        await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 4, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(held, Is.EqualTo(3), "fixture: the forgery, the genuine block and the grandchild are held");
+            Assert.That(harness.Importer.Known, Does.Contain(genuineRoot), "fixture: the genuine block imports");
+            Assert.That(harness.Importer.Known, Does.Contain(grandchild.ComputeMessageRoot()));
+        }
+    }
+
+    /// <summary>
     /// fork-choice.md <c>on_block</c> refuses a block at or below the finalized slot by local admission alone, which says
     /// nothing of the block's data: a peer that served such a block by root is not blamed, while one above finality is. Imports
     /// since the last head step can have moved finality past the block, which counts as well.
