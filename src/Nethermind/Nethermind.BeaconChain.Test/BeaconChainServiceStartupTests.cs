@@ -196,11 +196,15 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    /// <summary>The record follows the anchor it was proven for, so a checkpoint sync interrupted before its anchor leaves none to vouch for a later one.</summary>
+    /// <summary>
+    /// The record follows the anchor it was proven for, so a checkpoint sync interrupted before its anchor leaves none to vouch for a later one;
+    /// the checkpoint sync anchor record precedes the anchor, so no stored anchor lacks the evidence a restart checks the checkpoint against.
+    /// </summary>
     [Test]
-    public void A_checkpoint_sync_interrupted_before_its_anchor_leaves_no_weak_subjectivity_record()
+    public void A_checkpoint_sync_interrupted_before_its_anchor_leaves_no_weak_subjectivity_record(
+        [Values(BeaconChainMetadataKeys.Anchor, BeaconChainMetadataKeys.CheckpointSyncAnchor)] string interruptedWrite)
     {
-        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, new AnchorFailingMemDb()), GloasCheckpointFiles.Spec);
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, new KeyFailingMemDb(interruptedWrite)), GloasCheckpointFiles.Spec);
         ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(first.PostState, new ForkedSignedBeaconBlock.OfGloas(first.Block));
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile, WeakSubjectivityCheckpoint = $"{first.Root}:1" },
@@ -208,6 +212,7 @@ public class BeaconChainServiceStartupTests
 
         Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None));
         Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
     /// <summary>A malformed checkpoint is an operator error that fails startup before any download or database read.</summary>
@@ -834,13 +839,13 @@ public class BeaconChainServiceStartupTests
     }
 
     /// <summary>Fails the write of the anchor entry, as a crash between persisting a checkpoint's state and its anchor would.</summary>
-    private sealed class AnchorFailingMemDb : MemDb
+    private sealed class KeyFailingMemDb(string failingKey) : MemDb
     {
         public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
-            if (key.SequenceEqual(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.Anchor)))
+            if (key.SequenceEqual(Encoding.UTF8.GetBytes(failingKey)))
             {
-                throw new IOException("anchor write interrupted");
+                throw new IOException($"{failingKey} write interrupted");
             }
 
             base.Set(key, value, flags);

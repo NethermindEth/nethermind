@@ -34,6 +34,8 @@ public static class BeaconChainMetadataKeys
     public const string CanonicalIndexTopSlot = "canonicalIndexTopSlot";
     /// <summary>32-byte root followed by the 8-byte big-endian epoch of the last weak subjectivity checkpoint an anchor of this database proved.</summary>
     public const string WeakSubjectivityCheckpoint = "weakSubjectivityCheckpoint";
+    /// <summary>32-byte block root, 8-byte big-endian block slot and 8-byte big-endian slot of the state the checkpoint sync anchored on, which proves any weak subjectivity checkpoint that state proved.</summary>
+    public const string CheckpointSyncAnchor = "checkpointSyncAnchor";
     /// <summary>8-byte big-endian slot of the lowest anchor ever recorded, before any verified backfill.</summary>
     public const string EarliestBlockSlot = "earliestBlockSlot";
 }
