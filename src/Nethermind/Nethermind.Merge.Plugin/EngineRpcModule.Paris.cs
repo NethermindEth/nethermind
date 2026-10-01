@@ -113,6 +113,10 @@ public partial class EngineRpcModule : IEngineRpcModule
             return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.NewPayload.V2 ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
         }
 
+        // Started before the parameter checks, which decode the transactions, so the transactions-trie root overlaps
+        // that decoding and the lock wait instead of following them; the payload instance is this request's own.
+        _ = executionPayload.StartTxRootComputation();
+
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
 
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
@@ -129,11 +133,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                // Start tx-root computation before asynchronous GC-region admission so it can
-                // overlap that work; keep it inside the lock so competing requests cannot run
-                // trie work concurrently.
                 NewPayloadTrace.Stamp(NewPayloadTrace.Locked);
-                _ = executionPayload.StartTxRootComputation();
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
                 NewPayloadTrace.Stamp(NewPayloadTrace.GcRegion);
                 try
