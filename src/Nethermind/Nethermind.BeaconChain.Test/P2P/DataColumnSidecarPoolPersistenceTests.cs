@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.DataAvailability;
@@ -16,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -417,7 +419,131 @@ public class DataColumnSidecarPoolPersistenceTests
         // The anchor state is missing, so the start step stops after it has seeded the pool.
         Assert.Throws<InvalidOperationException>(() => container.Resolve<BeaconChainService>().Start());
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, top - 5, Keccak.Compute("late")));
+        DrainStoreWrites(container.Resolve<ColumnStoreWriter>());
 
         Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(top + 1));
+    }
+
+    /// <summary>
+    /// Gossip validation runs inside the pubsub router's lock, which every peer's read loop waits for on a thread-pool thread, so adding a
+    /// verified column must not wait for the store: the write runs later on the writer's own thread, and memory serves the column until then.
+    /// </summary>
+    [Test]
+    public void Adding_a_column_returns_before_its_store_write_which_runs_off_the_thread_pool([Values] bool gloas, [Values] bool fromModule)
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        using ColumnStoreWriter ownWriter = new(LimboLogs.Instance);
+        SlotClock clock = container.Resolve<SlotClock>();
+        ulong slot = clock.CurrentSlot - 1;
+        (BeaconChainStore store, DataColumnSidecarPool pool, ColumnStoreWriter writer) = fromModule
+            ? (container.Resolve<BeaconChainStore>(), container.Resolve<DataColumnSidecarPool>(), container.Resolve<ColumnStoreWriter>())
+            : WithWriter(ownWriter);
+        using ManualResetEventSlim release = new();
+        writer.Post(() => release.Wait(TimeSpan.FromSeconds(30)));
+        Hash256 root;
+        if (gloas)
+        {
+            root = Keccak.Compute("written later");
+            pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(7, slot, root));
+        }
+        else
+        {
+            DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(7, slot);
+            root = RootOf(sidecar);
+            pool.Add(root, slot, sidecar);
+        }
+
+        bool storedWhileWriterBusy = Stored(store, root, gloas);
+        bool servedWhileWriterBusy = gloas ? pool.TryGetGloas(root, 7, out _) : pool.TryGet(root, 7, out _);
+        release.Set();
+        bool? writerOnPoolThread = null;
+        writer.Post(() => writerOnPoolThread = Thread.CurrentThread.IsThreadPoolThread);
+        DrainStoreWrites(writer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storedWhileWriterBusy, Is.False, "the caller wrote the store");
+            Assert.That(servedWhileWriterBusy, Is.True, "memory serves the column before the write");
+            Assert.That(Stored(store, root, gloas), Is.True, "the queued write was lost");
+            Assert.That(writerOnPoolThread, Is.False);
+        }
+
+        (BeaconChainStore, DataColumnSidecarPool, ColumnStoreWriter) WithWriter(ColumnStoreWriter own)
+        {
+            (_, BeaconChainStore created) = CreateStore();
+            return (created, new DataColumnSidecarPool(store: created, clock: clock, storeWriter: own), own);
+        }
+
+        static bool Stored(BeaconChainStore store, Hash256 root, bool gloas) =>
+            gloas ? store.TryGetDataColumnSidecarGloas(root, 7, out _) : store.TryGetDataColumnSidecar(root, 7, out _);
+    }
+
+    /// <summary>A column memory evicts while its store write is still queued must stay readable, as the slot is already claimed held.</summary>
+    [Test]
+    public void A_column_evicted_from_memory_before_its_store_write_is_still_served([Values] bool gloas)
+    {
+        using ColumnStoreWriter writer = new(LimboLogs.Instance);
+        (_, BeaconChainStore store) = CreateStore();
+        DataColumnSidecarPool pool = new(capacity: 1, store: store, clock: ClockAt(CurrentSlot), storeWriter: writer);
+        using ManualResetEventSlim release = new();
+        writer.Post(() => release.Wait(TimeSpan.FromSeconds(30)));
+        Hash256 evicted = Add(5, CurrentSlot - 3);
+        Add(6, CurrentSlot - 2);
+
+        bool servedWhileQueued = gloas ? pool.TryGetGloas(evicted, 5, out _) : pool.TryGet(evicted, 5, out _);
+        bool watchedWhileQueued = pool.TryWatch(evicted, [5], gloas, static () => { });
+        release.Set();
+        DrainStoreWrites(writer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(servedWhileQueued, Is.True);
+            Assert.That(watchedWhileQueued, Is.False, "an import waiting for the column would wait for a wake that never comes");
+            Assert.That(gloas ? pool.TryGetGloas(evicted, 5, out _) : pool.TryGet(evicted, 5, out _), Is.True, "served from the store once written");
+        }
+
+        Hash256 Add(ulong column, ulong slot)
+        {
+            if (gloas)
+            {
+                Hash256 root = Keccak.Compute($"block at {slot}");
+                pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, slot, root));
+                return root;
+            }
+
+            DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot);
+            pool.Add(RootOf(sidecar), slot, sidecar);
+            return RootOf(sidecar);
+        }
+    }
+
+    // das-core.md: a node holding at least half the columns SHOULD reconstruct, so a column waiting for its store write still counts.
+    [Test]
+    public void Columns_evicted_from_memory_before_their_store_write_count_toward_the_held_columns()
+    {
+        const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
+        using ColumnStoreWriter writer = new(LimboLogs.Instance);
+        (_, BeaconChainStore store) = CreateStore();
+        DataColumnSidecarPool pool = new(capacity: required / 2, store: store, storeWriter: writer);
+        using ManualResetEventSlim release = new();
+        writer.Post(() => release.Wait(TimeSpan.FromSeconds(30)));
+        Hash256 root = RootOf(DataColumnSidecarTestFixture.BuildValidSidecar(0, CurrentSlot));
+        for (ulong column = 0; column < required; column++)
+        {
+            pool.Add(root, CurrentSlot, DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot));
+        }
+
+        bool held = pool.TryGetHeldColumns(root, CurrentSlot, required, out DataColumnSidecar[]? columns);
+        release.Set();
+        DrainStoreWrites(writer);
+
+        Assert.That(held ? columns!.Select(static c => c.Index) : [], Is.EqualTo(Enumerable.Range(0, required).Select(static i => (ulong)i)));
+    }
+
+    internal static void DrainStoreWrites(ColumnStoreWriter writer)
+    {
+        using ManualResetEventSlim drained = new();
+        writer.Post(drained.Set);
+        Assert.That(drained.Wait(TimeSpan.FromSeconds(30)), Is.True, "the queued store writes did not finish");
     }
 }
