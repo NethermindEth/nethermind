@@ -292,11 +292,8 @@ public static class GloasEpochProcessing
         bool isChurnLimitReached = false;
         ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(state.FinalizedCheckpoint!.Epoch);
 
-        Dictionary<BlsPublicKey, int> pubkeyToIndex = [];
-        for (int i = 0; i < state.Validators!.Length; i++)
-        {
-            pubkeyToIndex.TryAdd(state.Validators[i].Pubkey, i);
-        }
+        // Spec process_pending_deposits: validator_pubkeys.index is needed only after the queue gates pass.
+        Dictionary<BlsPublicKey, int>? pubkeyToIndex = null;
 
         PendingDeposit[] pendingDeposits = state.PendingDeposits ?? [];
         foreach (PendingDeposit deposit in pendingDeposits)
@@ -308,9 +305,10 @@ public static class GloasEpochProcessing
 
             bool isValidatorExited = false;
             bool isValidatorWithdrawn = false;
+            pubkeyToIndex ??= IndexPubkeys(state.Validators!);
             if (pubkeyToIndex.TryGetValue(deposit.Pubkey, out int validatorIndex))
             {
-                Validator validator = state.Validators[validatorIndex];
+                Validator validator = state.Validators![validatorIndex];
                 isValidatorExited = validator.ExitEpoch < Presets.FarFutureEpoch;
                 isValidatorWithdrawn = validator.WithdrawableEpoch < nextEpoch;
             }
@@ -337,6 +335,17 @@ public static class GloasEpochProcessing
 
         state.PendingDeposits = [.. pendingDeposits[nextDepositIndex..], .. depositsToPostpone];
         state.DepositBalanceToConsume = isChurnLimitReached ? availableForProcessing - processedAmount : 0;
+    }
+
+    private static Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators)
+    {
+        Dictionary<BlsPublicKey, int> pubkeyToIndex = [];
+        for (int i = 0; i < validators.Length; i++)
+        {
+            pubkeyToIndex.TryAdd(validators[i].Pubkey, i);
+        }
+
+        return pubkeyToIndex;
     }
 
     /// <summary>Electra <c>apply_pending_deposit</c>, unmodified in Gloas.</summary>

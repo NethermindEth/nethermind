@@ -1131,26 +1131,23 @@ public class BlockImporterTests
         });
     }
 
-    /// <summary>
-    /// Fork choice checks availability against the live sidecar pool a second time, after the state transition. Columns that vanish
-    /// in between are a delay, not a verdict: the block stays importable, so its root must not mark the sidecars of its children.
-    /// </summary>
+    // Spec Fulu on_block asserts availability before state_transition; the saved verdict belongs to that root.
     [Test]
-    public void Block_whose_data_goes_missing_after_the_first_availability_check_is_not_recorded_as_failed()
+    public void Block_is_checked_for_data_availability_once([Values] bool matchingRoot)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
         FailedBlockRoots failed = new();
         AvailableOnce availability = new();
         BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), failedBlocks: failed, availability: availability);
 
-        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+        BlockImportResult result = importer.Import(chain.Block, matchingRoot ? chain.BlockRoot : Hash256.Zero, verifySignatures: true);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(availability.Calls, Is.EqualTo(2), "fixture: fork choice asked again");
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(availability.Calls, Is.EqualTo(1), "neither the importer nor fork choice asks again");
+            Assert.That(result, Is.EqualTo(matchingRoot ? BlockImportResult.Imported : BlockImportResult.Invalid));
             Assert.That(failed.Contains(chain.BlockRoot), Is.False);
-        });
+        }
     }
 
     [Test]

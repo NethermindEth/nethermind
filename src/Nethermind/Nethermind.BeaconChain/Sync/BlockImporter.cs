@@ -346,6 +346,11 @@ public sealed class BlockImporter : IBlockImporter
         return slot > parentSlot ? null : $"the block is not after its parent's slot {parentSlot}";
     }
 
+    private sealed class ConfirmedBlockAvailability(Hash256 confirmedRoot) : IDataAvailabilityRule
+    {
+        public bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, BeaconChainSpec spec) => blockRoot == confirmedRoot;
+    }
+
     private BlockImportResult ImportFulu(SignedBeaconBlock signedBlock, Hash256 blockRoot, bool verifySignatures, long receivedMs)
     {
         BeaconBlock block = signedBlock.Message!;
@@ -436,11 +441,10 @@ public sealed class BlockImporter : IBlockImporter
         ExecutionStatus executionStatus = verdict.Status;
         TickToClock(block.Slot, receivedMs);
 
-        // Already confirmed available above; this is a harmless backstop for a caller of OnBlock
-        // that does not pre-check (the consensus-spec vector harness calls it directly).
+        // Spec Fulu on_block asserts is_data_available before state_transition; reuse that verdict only for this root.
         try
         {
-            _runner.OnBlock(signedBlock, state, executionStatus, availability);
+            _runner.OnBlock(signedBlock, state, executionStatus, new ConfirmedBlockAvailability(blockRoot));
         }
         catch (ForkChoiceException e)
         {
