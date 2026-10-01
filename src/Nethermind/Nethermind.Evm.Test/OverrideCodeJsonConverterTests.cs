@@ -163,6 +163,154 @@ public class OverrideCodeJsonConverterTests
     }
 
     [Test]
+    public void Texts_that_share_a_seen_set_are_added_when_they_alternate()
+    {
+        OverrideCodeInterner interner = new();
+        // As many texts as a seen set holds, in one seen set, each in its own set of the table.
+        byte[][] texts = Enumerable.Range(0, 4).Select(static _ => Encoding.ASCII.GetBytes(UniqueCodeText(40))).ToArray();
+        int[] hashes = texts.Select(static (_, i) => Hash(tableSet: i, seenSet: 9, unique: i)).ToArray();
+
+        for (int round = 0; round < 2; round++)
+        {
+            for (int i = 0; i < texts.Length; i++) interner.Add(texts[i], hashes[i], [(byte)i]);
+        }
+
+        for (int i = 0; i < texts.Length; i++) Assert.That(interner.Find(texts[i], hashes[i]), Is.Not.Null, $"text {i}");
+    }
+
+    [Test]
+    public void Texts_in_use_stay_while_new_texts_keep_coming_back_to_their_set()
+    {
+        OverrideCodeInterner interner = new();
+        const int set = 5;
+        byte[][] hot = Enumerable.Range(0, OverrideCodeInterner.Ways).Select(static _ => Encoding.ASCII.GetBytes(UniqueCodeText(40))).ToArray();
+        int[] hotHashes = hot.Select(static (_, i) => Hash(set, seenSet: i, unique: i)).ToArray();
+        for (int i = 0; i < hot.Length; i++) OfferTwice(interner, hot[i], hotHashes[i]);
+
+        for (int request = 0; request < 50 * interner.RefusalsBeforeAging; request++)
+        {
+            for (int i = 0; i < hot.Length; i++) Assert.That(interner.Find(hot[i], hotHashes[i]), Is.Not.Null, $"text {i} at request {request}");
+
+            // A text the set has no room for, sent twice so each would be added if room were made by dropping one.
+            OfferTwice(interner, Encoding.ASCII.GetBytes(UniqueCodeText(40)), Hash(set, seenSet: 100 + request % 100, unique: 100 + request));
+        }
+
+        Assert.That(interner.Count, Is.EqualTo(OverrideCodeInterner.Ways));
+    }
+
+    [Test]
+    public void Texts_no_longer_found_make_way_once_their_set_ages()
+    {
+        OverrideCodeInterner interner = new();
+        const int set = 6;
+        for (int i = 0; i < OverrideCodeInterner.Ways; i++) OfferTwice(interner, Encoding.ASCII.GetBytes(UniqueCodeText(40)), Hash(set, seenSet: i, unique: i));
+
+        // The four texts are never found again; a new one keeps coming back.
+        byte[] text = Encoding.ASCII.GetBytes(UniqueCodeText(40));
+        int hash = Hash(set, seenSet: 50, unique: 50);
+        for (int attempt = 1; attempt <= interner.RefusalsBeforeAging; attempt++)
+        {
+            OfferTwice(interner, text, hash);
+            Assert.That(interner.Find(text, hash), Is.Null, $"attempt {attempt}, before the set ages");
+        }
+
+        OfferTwice(interner, text, hash);
+        Assert.That(interner.Find(text, hash), Is.Not.Null, "the attempt after the set aged");
+    }
+
+    [Test]
+    public void A_full_set_drops_its_oldest_text_not_found_since_it_aged()
+    {
+        OverrideCodeInterner interner = new();
+        const int set = 8;
+        byte[][] texts = Enumerable.Range(0, OverrideCodeInterner.Ways).Select(static _ => Encoding.ASCII.GetBytes(UniqueCodeText(40))).ToArray();
+        int[] hashes = texts.Select(static (_, i) => Hash(set, seenSet: i, unique: i)).ToArray();
+        for (int i = 0; i < texts.Length; i++) OfferTwice(interner, texts[i], hashes[i]);
+
+        for (int i = 0; i < interner.RefusalsBeforeAging; i++)
+            OfferTwice(interner, Encoding.ASCII.GetBytes(UniqueCodeText(40)), Hash(set, seenSet: 10 + i, unique: 10 + i));
+
+        // After the set aged, the oldest text is found again, so a new one drops the second oldest instead.
+        Assert.That(interner.Find(texts[0], hashes[0]), Is.Not.Null);
+        OfferTwice(interner, Encoding.ASCII.GetBytes(UniqueCodeText(40)), Hash(set, seenSet: 200, unique: 200));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(interner.Find(texts[0], hashes[0]), Is.Not.Null, "the oldest, found since the set aged");
+            Assert.That(interner.Find(texts[1], hashes[1]), Is.Null, "the second oldest");
+            for (int i = 2; i < texts.Length; i++) Assert.That(interner.Find(texts[i], hashes[i]), Is.Not.Null, $"text {i}");
+        }
+    }
+
+    [Test]
+    public void A_text_that_fell_out_is_added_again_only_once_it_is_offered_twice()
+    {
+        OverrideCodeInterner interner = new();
+        const int set = 7;
+        byte[] first = Encoding.ASCII.GetBytes(UniqueCodeText(40));
+        int firstHash = Hash(set, seenSet: 1, unique: 1);
+        OfferTwice(interner, first, firstHash);
+        for (int i = 2; i <= OverrideCodeInterner.Ways; i++) OfferTwice(interner, Encoding.ASCII.GetBytes(UniqueCodeText(40)), Hash(set, seenSet: i, unique: i));
+
+        // Age the set, then add one more text, which drops the oldest: the first.
+        for (int i = 0; i < interner.RefusalsBeforeAging; i++)
+            OfferTwice(interner, Encoding.ASCII.GetBytes(UniqueCodeText(40)), Hash(set, seenSet: 10 + i, unique: 10 + i));
+        OfferTwice(interner, Encoding.ASCII.GetBytes(UniqueCodeText(40)), Hash(set, seenSet: 200, unique: 200));
+        Assert.That(interner.Find(first, firstHash), Is.Null, "dropped");
+
+        interner.Add(first, firstHash, []);
+        Assert.That(interner.Find(first, firstHash), Is.Null, "offered once after it was dropped");
+
+        interner.Add(first, firstHash, []);
+        Assert.That(interner.Find(first, firstHash), Is.Not.Null, "offered twice after it was dropped");
+    }
+
+    [Test]
+    public void A_long_text_changed_in_any_sample_or_in_length_gets_another_hash()
+    {
+        // Head and tail are random, the middle repeats "60", so a text two code bytes longer has the same samples.
+        string head = UniqueCodeText(256), tail = UniqueCodeText(256)[2..];
+        string Text(int middleBytes) => head + string.Concat(Enumerable.Repeat("60", middleBytes)) + tail;
+        string text = Text(5_000);
+        int hash = HashOf(text);
+
+        static string ChangedAt(string text, int index) => text[..index] + (text[index] == 'a' ? 'b' : 'a') + text[(index + 1)..];
+        int middle = (text.Length - OverrideCodeInterner.SampleLength) / 2 + 7;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HashOf(ChangedAt(text, 10)), Is.Not.EqualTo(hash), "first sample");
+            Assert.That(HashOf(ChangedAt(text, middle)), Is.Not.EqualTo(hash), "middle sample");
+            Assert.That(HashOf(ChangedAt(text, text.Length - 3)), Is.Not.EqualTo(hash), "last sample");
+            Assert.That(HashOf(Text(5_002)), Is.Not.EqualTo(hash), "length");
+            Assert.That(HashOf(text), Is.EqualTo(hash), "the same text");
+        }
+    }
+
+    [Test]
+    public void Long_texts_that_differ_only_outside_the_samples_get_their_own_arrays()
+    {
+        OverrideCodeJsonConverter converter = new(new OverrideCodeInterner());
+        string text = UniqueCodeText(5_000);
+        string other = text[..1_000] + (text[1_000] == 'a' ? 'b' : 'a') + text[1_001..];
+        Assert.That(HashOf(other), Is.EqualTo(HashOf(text)));
+
+        byte[]? textCode = null, otherCode = null;
+        for (int i = 0; i < 3; i++)
+        {
+            textCode = Read(converter, $"\"{text}\"");
+            otherCode = Read(converter, $"\"{other}\"");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(textCode, Is.EqualTo(Bytes.FromHexString(text)));
+            Assert.That(otherCode, Is.EqualTo(Bytes.FromHexString(other)));
+            Assert.That(Read(converter, $"\"{text}\""), Is.SameAs(textCode));
+            Assert.That(Read(converter, $"\"{other}\""), Is.SameAs(otherCode));
+        }
+    }
+
+    [Test]
     public void Concurrent_reads_get_the_bytes_of_their_own_text()
     {
         OverrideCodeJsonConverter converter = new(new OverrideCodeInterner());
@@ -247,6 +395,17 @@ public class OverrideCodeJsonConverterTests
         Utf8JsonReader reader = new(Encoding.UTF8.GetBytes(json));
         reader.Read();
         return converter.Read(ref reader, typeof(byte[]), EthereumJsonSerializer.JsonRpcRequestOptions);
+    }
+
+    private static int HashOf(string text) => OverrideCodeInterner.HashOf(Encoding.ASCII.GetBytes(text));
+
+    // A hash that picks the given set of the table and of the seen filter.
+    private static int Hash(int tableSet, int seenSet, int unique) => (seenSet << 24) | (unique << 6) | tableSet;
+
+    private static void OfferTwice(OverrideCodeInterner interner, byte[] text, int hash)
+    {
+        interner.Add(text, hash, []);
+        interner.Add(text, hash, []);
     }
 
     private static string UniqueCodeText(int length)

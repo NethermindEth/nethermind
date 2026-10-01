@@ -3,7 +3,6 @@
 
 using System;
 using System.Text.Json;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Evm;
@@ -33,7 +32,7 @@ public sealed class OverrideCodeJsonConverter : ByteArrayConverter
         if (!OverrideCodeInterner.Accepts(text))
             return base.Read(ref reader, typeToConvert, options);
 
-        int fastHash = text.FastHash();
+        int fastHash = OverrideCodeInterner.HashOf(text);
         byte[]? code = _interner.Find(text, fastHash);
         if (code is null)
         {

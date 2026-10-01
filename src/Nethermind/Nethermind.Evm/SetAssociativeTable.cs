@@ -13,6 +13,11 @@ internal abstract class SetAssociativeEntry(int fastHash)
 {
     public readonly int FastHash = fastHash;
 
+    /// <summary>
+    /// Whether the entry was added or found since its set last aged. Only a table that keeps used entries reads it.
+    /// </summary>
+    internal bool Used;
+
     /// <summary>The bytes the entry is found by. They must not change while the entry is in a table.</summary>
     public abstract ReadOnlySpan<byte> Key { get; }
 }
@@ -22,13 +27,21 @@ internal abstract class SetAssociativeEntry(int fastHash)
 /// <para>
 /// The hash of a key picks one set, and the entry may sit in any way of it, so keys whose hashes pick the same set
 /// do not evict each other until the set is full. A new entry goes to the front of its set and the oldest one falls
-/// off the end. A hit does not reorder the set, so lookups never write.
+/// off the end. A hit does not reorder the set.
 /// </para>
 /// <para>
 /// Lookups take no lock. Every hit is checked against the whole key, so a hash collision costs a miss, never a wrong
 /// entry. Additions are serialised and look the key up again first, so a key is in the table at most once. An
-/// addition moves the entries down one way starting from the end, and a lookup walks from the front, so it never
-/// skips an entry that stays in the table.
+/// addition moves the entries down one way, starting from the one it drops, and a lookup walks from the front, so it
+/// never skips an entry that stays in the table.
+/// </para>
+/// <para>
+/// A table that keeps used entries marks an entry when it is added or found, which a lookup writes once per entry
+/// until the set ages. A full set then drops its oldest unmarked entry rather than its oldest, and it has no room
+/// while all its entries are marked. Asking <see cref="HasRoomFor"/> about a set without room counts as a refusal,
+/// and after <see cref="RefusalsBeforeAging"/> of them the set ages: its marks are cleared, so entries that stopped
+/// being used make way again. A caller whose additions are costly asks first, so a working set larger than the table
+/// keeps the entries in use instead of replacing them on every miss.
 /// </para>
 /// </remarks>
 internal sealed class SetAssociativeTable<TEntry> where TEntry : SetAssociativeEntry
@@ -38,9 +51,13 @@ internal sealed class SetAssociativeTable<TEntry> where TEntry : SetAssociativeE
     private readonly int _setMask;
     private readonly Lock _addLock = new();
 
+    // Per set, the refusals since it last aged; null unless the table keeps used entries.
+    private readonly int[]? _refusals;
+
     /// <param name="sets">The number of sets, a power of two.</param>
     /// <param name="ways">The number of entries a set holds.</param>
-    public SetAssociativeTable(int sets, int ways)
+    /// <param name="keepsUsedEntries">Whether entries added or found since their set last aged are kept over new ones.</param>
+    public SetAssociativeTable(int sets, int ways, bool keepsUsedEntries = false)
     {
         if (!BitOperations.IsPow2(sets)) throw new ArgumentOutOfRangeException(nameof(sets), sets, "Must be a power of two.");
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(ways);
@@ -48,10 +65,14 @@ internal sealed class SetAssociativeTable<TEntry> where TEntry : SetAssociativeE
         _entries = new TEntry?[sets * ways];
         _ways = ways;
         _setMask = sets - 1;
+        if (keepsUsedEntries) _refusals = new int[sets];
     }
 
     /// <summary>The most entries the table holds.</summary>
     public int Capacity => _entries.Length;
+
+    /// <summary>How many refusals age a set of a table that keeps used entries.</summary>
+    public int RefusalsBeforeAging => 4 * _ways;
 
     /// <summary>The number of entries in the table now.</summary>
     public int Count
@@ -69,11 +90,38 @@ internal sealed class SetAssociativeTable<TEntry> where TEntry : SetAssociativeE
     }
 
     /// <summary>Returns the entry whose key is <paramref name="key"/>, or <see langword="null"/>.</summary>
-    public TEntry? Find(ReadOnlySpan<byte> key, int fastHash) => Find(SetOf(fastHash), key, fastHash);
+    public TEntry? Find(ReadOnlySpan<byte> key, int fastHash)
+    {
+        TEntry? entry = Find(SetOf(fastHash), key, fastHash);
+        if (_refusals is not null && entry is { Used: false }) entry.Used = true;
+        return entry;
+    }
 
     /// <summary>
-    /// Adds <paramref name="entry"/> at the front of its set, dropping the oldest entry of a full set, unless an entry
-    /// with the same key is already there.
+    /// Whether an entry with this hash would find room in its set: always, unless the table keeps used entries and
+    /// every entry of the set was added or found since it last aged.
+    /// </summary>
+    /// <remarks>A <see langword="false"/> answer counts as a refusal of the set.</remarks>
+    public bool HasRoomFor(int fastHash)
+    {
+        if (_refusals is null) return true;
+
+        int setIndex = fastHash & _setMask;
+        Span<TEntry?> set = SetAt(setIndex);
+        lock (_addLock)
+        {
+            if (WayToDrop(set) >= 0) return true;
+            if (++_refusals[setIndex] < RefusalsBeforeAging) return false;
+
+            _refusals[setIndex] = 0;
+            foreach (TEntry? entry in set) entry!.Used = false;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Adds <paramref name="entry"/> at the front of its set, dropping the oldest entry of a full set (in a table that
+    /// keeps used entries, the oldest unmarked one if there is one), unless an entry with the same key is already there.
     /// </summary>
     /// <returns>The entry the table holds for the key: <paramref name="entry"/>, or the one added before it.</returns>
     public TEntry GetOrAdd(TEntry entry)
@@ -84,17 +132,35 @@ internal sealed class SetAssociativeTable<TEntry> where TEntry : SetAssociativeE
             TEntry? existing = Find(set, entry.Key, entry.FastHash);
             if (existing is not null) return existing;
 
-            for (int way = set.Length - 1; way > 0; way--)
+            int drop = _refusals is null ? -1 : WayToDrop(set);
+            if (drop < 0) drop = set.Length - 1;
+
+            for (int way = drop; way > 0; way--)
             {
                 Volatile.Write(ref set[way], set[way - 1]);
             }
 
+            entry.Used = true;
             Volatile.Write(ref set[0], entry);
             return entry;
         }
     }
 
-    private Span<TEntry?> SetOf(int fastHash) => _entries.AsSpan((fastHash & _setMask) * _ways, _ways);
+    private Span<TEntry?> SetOf(int fastHash) => SetAt(fastHash & _setMask);
+
+    private Span<TEntry?> SetAt(int setIndex) => _entries.AsSpan(setIndex * _ways, _ways);
+
+    // The last way that is free or holds an unmarked entry, or -1.
+    private static int WayToDrop(Span<TEntry?> set)
+    {
+        for (int way = set.Length - 1; way >= 0; way--)
+        {
+            TEntry? entry = set[way];
+            if (entry is null || !entry.Used) return way;
+        }
+
+        return -1;
+    }
 
     private static TEntry? Find(Span<TEntry?> set, ReadOnlySpan<byte> key, int fastHash)
     {
