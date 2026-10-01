@@ -55,10 +55,10 @@ public class BeaconChainPluginTests
 
         // Without the validator the library accepts and forwards every message, including a signed one StrictNoSign forbids.
         Message signed = new() { Topic = "/eth2/00000000/beacon_block/ssz_snappy", Signature = ByteString.CopyFrom([1]) };
-        Assert.That(p2p.VerifyMessageForTest?.Invoke(signed), Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, signed), Is.EqualTo(MessageValidity.Rejected));
         ITopic topic = p2p.GetTopic(signed.Topic);
         topic.Unsubscribe();
-        Assert.That(p2p.VerifyMessageForTest?.Invoke(new Message { Topic = signed.Topic }), Is.EqualTo(MessageValidity.Trottled));
+        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = signed.Topic }), Is.EqualTo(MessageValidity.Throttled));
     }
 
     /// <summary>p2p-interface.md gossipsub parameters: seen_ttl is SLOT_DURATION_MS * SLOTS_PER_EPOCH * 2 // 1000 seconds.</summary>
@@ -69,6 +69,24 @@ public class BeaconChainPluginTests
         await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
 
         Assert.That(p2p.PubsubSettingsForTest.MessageCacheTtl, Is.EqualTo(768_000));
+    }
+
+    /// <summary>p2p-interface.md "Gossipsub size limits": an encoded RPC may reach max_message_size(), max_compressed_len(10 MiB) + 1024 bytes.</summary>
+    /// <remarks>The library's own 1 MiB RPC and 512 KiB IWANT bounds would drop a legal block, and its 10,000 seen ids would forget most ids before seen_ttl.</remarks>
+    [Test]
+    public async Task Gossipsub_bounds_admit_a_max_size_rpc_and_keep_every_id_for_seen_ttl()
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+        PubsubSettings settings = p2p.PubsubSettingsForTest;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(settings.MaxRpcBytes, Is.EqualTo(12_234_442));
+            Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(12_234_442));
+            // (64 committees * 16 aggregators + 512 PTC votes + 128 column subnets + 5 single-message topics) per slot, over 64 slots.
+            Assert.That(settings.MaxSeenMessageIds, Is.EqualTo(106_816));
+        }
     }
 
     /// <summary>Without discovery the peer manager knows no sampled column, so every custodian search and keep rule would be inert.</summary>

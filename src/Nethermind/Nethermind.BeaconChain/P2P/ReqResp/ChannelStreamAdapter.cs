@@ -55,7 +55,7 @@ internal sealed class ChannelStreamAdapter(IChannel channel) : Stream
     /// <returns><c>false</c> when no byte is buffered or the stream has ended.</returns>
     internal async ValueTask<bool> TryReadBufferedByteAsync(byte[] buffer, CancellationToken cancellationToken)
     {
-        ReadResult result = await channel.ReadAsync(1, ReadBlockingMode.DontWait, cancellationToken);
+        ReadResult result = await channel.ReadAsync(1, ReadBlockingMode.DoNotWait, cancellationToken);
         if (result.Result != IOResult.Ok || result.Data.Length == 0)
         {
             return false;

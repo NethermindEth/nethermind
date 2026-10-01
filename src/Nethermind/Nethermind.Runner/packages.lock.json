@@ -75,6 +75,15 @@
           "NETStandard.Library": "1.6.1"
         }
       },
+      "Certes": {
+        "type": "Transitive",
+        "resolved": "3.0.4",
+        "contentHash": "dWst/ss3+b9HjkwP3V7zxUngL8puQwrjce22w4xdZoGMovYi8NFF7xSE5A4A2zqR+M5n70Z5d2RDJR73iNggsA==",
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.2",
+          "Portable.BouncyCastle": "1.9.0"
+        }
+      },
       "Common.Logging": {
         "type": "Transitive",
         "resolved": "3.4.1",
@@ -87,6 +96,11 @@
         "type": "Transitive",
         "resolved": "3.4.1",
         "contentHash": "wLHldZHvxsSD6Ahonfj00/SkfHfKqO+YT6jsUwVm8Rch1REL9IArHAcSLXxYxYfu5/4ydGtmXvOtaH3AkVPu0A=="
+      },
+      "Concentus": {
+        "type": "Transitive",
+        "resolved": "2.2.2",
+        "contentHash": "2B9YmHPKO+k7YpAAnqmiXwiMJnfjfj1C868RszOll2iZWLnGTAiC1q21L/d7CvTan7T+hyqU8dR0Dcy3cpjVfQ=="
       },
       "FastEnum.Core": {
         "type": "Transitive",
@@ -134,10 +148,22 @@
           "JetBrains.FormatRipper": "2.4.0"
         }
       },
+      "Libp2p.Protocols.KadDht": {
+        "type": "Transitive",
+        "resolved": "1.0.0",
+        "contentHash": "9j7db8i6E8WoNVbSM0UY5BMDNGsCV9YrghukAmib3K2gBlWEsnTJZ/9uqMNrUpxubcJ0YyIZAK2+g78h/Dm45A==",
+        "dependencies": {
+          "Google.Protobuf": "3.33.1",
+          "Nethermind.Kademlia": "2.0.0",
+          "Nethermind.Libp2p.Core": "1.0.0",
+          "Nethermind.Libp2p.Protocols.RequestResponse": "1.0.0",
+          "Nethermind.Multiformats.Address": "1.1.10"
+        }
+      },
       "libsodium": {
         "type": "Transitive",
-        "resolved": "1.0.20",
-        "contentHash": "fMO6HpAbvLagobzBH6eU36riWF01lCAweX34D5eugqjuXA+WS5MnV1ngE+2Sw3LvGvxZlmyLp9416t57dMZ5og=="
+        "resolved": "1.0.20.1",
+        "contentHash": "pkiceEqJDQFHjbga3k/oPfTVX9g+GKJZ1VrkuiLhaymt9YNw1Dr7cX9hNuZuNaWcr9WD0moW55k4pMwzQ7JaZQ=="
       },
       "Makaretu.Dns": {
         "type": "Transitive",
@@ -306,129 +332,168 @@
       },
       "Nethermind.Libp2p.Core": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "jk63RB4s0LwGnAJKRLRM0lN2wFlNgMk92wJcLOfEXyCLnLuC/6JocELz0fmao3WQbJIFC895x3GYvvkDsUS4nw==",
+        "resolved": "1.0.0",
+        "contentHash": "M2Ri01ieZ+lLXnh7yVaTDfLgQ+0VLpSX73OF+fo2Zs1trFgNb5ddmQUOXvn4NGseZVwPlOGU5KlDIDZME06BfQ==",
         "dependencies": {
-          "BouncyCastle.Cryptography": "2.4.0",
-          "Google.Protobuf": "3.28.3",
-          "Nethermind.Multiformats.Address": "1.1.8",
+          "BouncyCastle.Cryptography": "2.6.2",
+          "DnsClient": "1.8.0",
+          "Google.Protobuf": "3.33.1",
+          "Nethermind.Multiformats.Address": "1.1.10",
           "SimpleBase": "4.0.2"
+        }
+      },
+      "Nethermind.Libp2p.Protocols.AutoTls": {
+        "type": "Transitive",
+        "resolved": "1.0.0",
+        "contentHash": "+3f7Tiq7up+EPao7UJuyC0HoA/ES1Iv83x5BDYm8Rjm0S8uNxjZxuKy3Il5XhNkwOk5vnYs/wmc+rBcgQmAFwg==",
+        "dependencies": {
+          "Certes": "3.0.4",
+          "Nethermind.Libp2p.Core": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Identify": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "8hEzwS9eYYy1xvmXq+6VcfKcOflEmnPdT5UA8Lhr0cdK2af+wV6tMwHhuvqF0L7N+bdaFMNcUUhBhy17jafutw==",
+        "resolved": "1.0.0",
+        "contentHash": "JInnwUJxahh2AmTkIhwvSk2i0ufjrG/W8Hh9yzQO6vx+5f8jeMbYPHLpaVTZI+eWzlmU0iiBStfbHO03kp3DsQ==",
         "dependencies": {
-          "Google.Protobuf": "3.28.3",
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.IpTcp": "1.0.0-preview.45"
+          "Google.Protobuf": "3.33.1",
+          "Nethermind.Libp2p.Core": "1.0.0",
+          "Nethermind.Libp2p.Protocols.IpTcp": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.IpTcp": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "vDoUfrz/45OEKc9TMEs9l0wPWW4r49opS/J+bh3zUTMLaWWf9jl8zkbPh5mz9moBh1JdDVuLRSPT3zRd8/Gvkg==",
+        "resolved": "1.0.0",
+        "contentHash": "aOFD14ZbBIfq0EQb5G6Cns/G9jLkA22pJoYdlmoGpb4GyRtj4xais90e3fQSzWhM8+1SscHTYXufZfxKEd1IYw==",
         "dependencies": {
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45"
+          "Nethermind.Libp2p.Core": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.MDns": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "NZhHziBoq9mGeqV8o0QMoKOnBLjyPEIhEIcsnL6rdV4nJ1PwRWort8O811dh4aWq8rxVm1dkj66U4Q/ZwEX+JQ==",
+        "resolved": "1.0.0",
+        "contentHash": "zI+T9EAo41jQAP4fYLIXbRPzdt5S0MwUSaBlU7P2XF0ImNP2nSS1HAPIkT/TpbqIOxRhuerLteJuCfi5ZYf5oA==",
         "dependencies": {
           "Makaretu.Dns.Multicast": "0.27.0",
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45"
+          "Nethermind.Libp2p.Core": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Multistream": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "JPYycuQ68VRMdCvlJoHA6iB3ROxCVUH0y0Nw03jtxttu9i6aQw4byGQTx+VyidTeij0H2I+Nkuf0oAB6xiDoHg==",
+        "resolved": "1.0.0",
+        "contentHash": "m9iOqm1M/ojsAvHZOTHzUUAMJY3iA633GVKK9c4eJ4X3Jqc3Qo2U4MLi1O3p6UFwny/ydTO/I2AYJLPn6vauHw==",
         "dependencies": {
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45"
+          "Nethermind.Libp2p.Core": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Noise": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "+LvFZaZn8BvEMKHlIlX7N7PgKlOrExZQLITHtcTkLqua0qvjsgwCKYyr/3KwWQm2BX0YBlwp99bOW3d7mlDW4g==",
+        "resolved": "1.0.0",
+        "contentHash": "lT4fhG9fy4uQLsBUF8xKPTMKH3Yzs58SRPWuCy/oqVNOYuOrrtyrfStlgrvS1yMxn+vLuXDnQ/D2Hcy9dIus2A==",
         "dependencies": {
-          "BouncyCastle.Cryptography": "2.4.0",
-          "Google.Protobuf": "3.28.3",
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45",
+          "BouncyCastle.Cryptography": "2.6.2",
+          "Google.Protobuf": "3.33.1",
+          "Nethermind.Libp2p.Core": "1.0.0",
           "Noise.NET": "1.0.0",
-          "libsodium": "1.0.20"
+          "libsodium": "1.0.20.1"
         }
       },
       "Nethermind.Libp2p.Protocols.Ping": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "a0jomAxlnaWOVrLl5pnhYJO5XtGTILxExCC0ElHxv4uNBjaxcarBERreaf0Dku/8VWofOleNkPJWQpqu6W8RCA==",
+        "resolved": "1.0.0",
+        "contentHash": "JDQhQaOno+VRW+SG8b+lz6yemezdfwAx1LjuVq+hesrwk6gCGgp8KgteA+8QwBJ49ziGtMEG//6eoDp3eSVuYA==",
         "dependencies": {
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45"
+          "Nethermind.Libp2p.Core": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Plaintext": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "8WBSnSmro8g1W+7k+3pdE1DaTRUZqGEtSM8KUBw/4V0iOH4J2MIxAhLtB6Qq51ywY6T4WXFl5+aM4KDufGeITQ==",
+        "resolved": "1.0.0",
+        "contentHash": "NGhTA9PS699Bx+uj8h50VoZYKZ6A22YP6zwKl8sh+VP+VE4n7qnKquf8hyYyaZzmFb6WnG3U8stFZtlP0ildsw==",
         "dependencies": {
-          "Google.Protobuf": "3.28.3",
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45"
+          "Google.Protobuf": "3.33.1",
+          "Nethermind.Libp2p.Core": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Pubsub": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "G9M3cYBr0fPcKA7n4EfyaIdntMSxxq/TquFbYF/i41pGq06pcAQSxH2c2qEUGNBYJfz8ao4lUoRRC755cNskSg==",
+        "resolved": "1.0.0",
+        "contentHash": "8f2+bnLJQ6Vf6tjVxx6vhhKqGdHSRzCZYaNf4HOewQyn2MON4qhg758m57EDzrIhLpbHDEG/ec14q5Bi1fXUXw==",
         "dependencies": {
-          "BouncyCastle.Cryptography": "2.4.0",
-          "Google.Protobuf": "3.28.3",
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Identify": "1.0.0-preview.45"
+          "BouncyCastle.Cryptography": "2.6.2",
+          "Google.Protobuf": "3.33.1",
+          "Nethermind.Libp2p.Core": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Identify": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Quic": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "TfdjpazHxi/Pxfa8oR3wPDoWzgTJJ9L0OHQo5hkozte9mpa8sUim+cfIiEC9qtAjq4D1/MfpvfQaZZzeRh2akQ==",
+        "resolved": "1.0.0",
+        "contentHash": "eup8P0pMlXrhkZiBJzJSm95GIvjdo5MGyecmeswi9WKYkntIpF5Htb3gL91LRJ1rD7HKTmvcB/HcRgjScYKK+A==",
         "dependencies": {
-          "BouncyCastle.Cryptography": "2.4.0",
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45"
+          "BouncyCastle.Cryptography": "2.6.2",
+          "Nethermind.Libp2p.Core": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Relay": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "r91tuuF9pRzLGSZ8Vp/MInN4KFqQZDyKEsv1CkCsOOlkS/IGzFMWofYchgouQGrj7/yvAiPjjd3c8wlWpMp4dg==",
+        "resolved": "1.0.0",
+        "contentHash": "nkJIudRfcGmm22LCRH//YB9zCrIkPr9j7IuepgjQcaJUc2f3voDrDK2FAvAy3rKrzbQFxJmeVCYWJ2HZH5+p9A==",
         "dependencies": {
-          "Google.Protobuf": "3.28.3",
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45"
+          "Google.Protobuf": "3.33.1",
+          "Nethermind.Libp2p.Core": "1.0.0"
+        }
+      },
+      "Nethermind.Libp2p.Protocols.RequestResponse": {
+        "type": "Transitive",
+        "resolved": "1.0.0",
+        "contentHash": "v6zrBTiDgEYnRYfSVSC6HZjnwnwKaZTzma4+jReqblXUHgZ0VdbKogMSwsNOydLRmhRCgVqMmznTgGpOY2/imA==",
+        "dependencies": {
+          "Google.Protobuf": "3.33.1",
+          "Nethermind.Libp2p.Core": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Tls": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "BJXIfz9T1zPRJjVHGn4qJLvZu2vKnjoSoT9Zd+nYePc+C4ESwhtFuuHHSirnuKqJ/GVY2v8lvhb+fnjYSV3E8w==",
+        "resolved": "1.0.0",
+        "contentHash": "ntcGmd0OBJQPcqYxuu650RfoDs1F3Vt0KBzpMXdv/5B56uJJGtDHHdaRe4tYvdGY78RnZx5cBZRWoFscX3R/Mg==",
         "dependencies": {
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Quic": "1.0.0-preview.45"
+          "Nethermind.Libp2p.Core": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Quic": "1.0.0"
+        }
+      },
+      "Nethermind.Libp2p.Protocols.WebRtc": {
+        "type": "Transitive",
+        "resolved": "1.0.0",
+        "contentHash": "QRl3sFUxnF2/9iXl2d2u05HJtmoP2yneUpAU52YJdyDeZs9GGFq3g3FmjYTcYcI1PK0m2J2EvoSKBMX36rIuFg==",
+        "dependencies": {
+          "Nethermind.Libp2p.Core": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Noise": "1.0.0",
+          "Noise.NET": "1.0.0",
+          "SIPSorcery": "10.0.14"
+        }
+      },
+      "Nethermind.Libp2p.Protocols.WebSockets": {
+        "type": "Transitive",
+        "resolved": "1.0.0",
+        "contentHash": "RYgVDm9BZZjk88nxvmvg8aUPyWY8t8CmseN9n6qYQ+32kMDL+EizN56uKS+mjYrmZeyaHatSEvPegCFHxHB3rA==",
+        "dependencies": {
+          "Nethermind.Libp2p.Core": "1.0.0",
+          "Nethermind.Libp2p.Protocols.AutoTls": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Yamux": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "ElNnTVoTxpHZMGTFbKTndQ1C3jFMMVLQfK1wzJVAw5sD294Yur42UKxdHtrzQJEJ/XHARz5ORxwtWcbprCQLDA==",
+        "resolved": "1.0.0",
+        "contentHash": "BVbqpsGG0wevGQBJScTApJCTzf0erXfoPYfuH0POvy1wSLF8yilEXesnannoJf+4uKVhWPv8mjIBCwgmA0otjA==",
         "dependencies": {
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45"
+          "Nethermind.Libp2p.Core": "1.0.0"
         }
       },
       "Nethermind.Multiformats.Address": {
         "type": "Transitive",
-        "resolved": "1.1.8",
-        "contentHash": "+nRuuVXjj/Okj/RAJtJUZ/nDRjwMfjJnF1+4Z7gKX2MjMsxR92KPJbsP4fY4IaEwXMDjNJsXJu78z2C06tElzw==",
+        "resolved": "1.1.10",
+        "contentHash": "FjGKTX3URQ9aROhNGK2DyZKvZwogE/pQTaBZjE/Tt7ebMw59lAebPPS8YzN2NRgnwpkfGYVGY040oIZGBCCm9Q==",
         "dependencies": {
           "BinaryEncoding": "1.4.0",
           "Nethermind.Multiformats.Base": "2.0.3-preview.1",
@@ -479,6 +544,11 @@
         "resolved": "8.7.0",
         "contentHash": "BS2t+nsBer16PIebCEPNBK5fgMisADQyRCd7K+BgkMWpFmSaiYE+rVVNpFhGRqUkJmNSLmw0uCNzHHWfgml28Q=="
       },
+      "Portable.BouncyCastle": {
+        "type": "Transitive",
+        "resolved": "1.9.0",
+        "contentHash": "eZZBCABzVOek+id9Xy04HhmgykF0wZg9wpByzrWN7q8qEI0Qen9b7tfd7w8VA3dOeesumMG7C5ZPy0jk7PSRHw=="
+      },
       "prometheus-net": {
         "type": "Transitive",
         "resolved": "8.2.1",
@@ -488,6 +558,29 @@
         "type": "Transitive",
         "resolved": "4.0.2",
         "contentHash": "sNKHP2Qzy4DafamgH44UGg1YeyHFT08AMgHPraxYt4CVBoHHYD5f0MjbBfdmtGca69xikPU5aV8H+MMP7ZnfIg=="
+      },
+      "SIPSorcery": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "NvJUoEOpY4NORy1uWdKA70YN8Et3q2IfFtc0JjzhmnVTmFmjOuiqd4LlPMrJ8920+Txm7A5SrhNXwXrOSHO9dQ==",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "2.6.2",
+          "Concentus": "2.2.2",
+          "DnsClient": "1.8.0",
+          "Makaretu.Dns.Multicast": "0.27.0",
+          "SIPSorcery.WebSocketSharp": "0.0.1",
+          "SIPSorceryMedia.Abstractions": "10.0.14"
+        }
+      },
+      "SIPSorcery.WebSocketSharp": {
+        "type": "Transitive",
+        "resolved": "0.0.1",
+        "contentHash": "lBlR9rZmMty2v5kPzCseAyuSv95FSoGuYZJgDy6M/qqZ/xq1ejFnOVEpXMDqBIthiTUOH8rvMcpnva7HXK0ZVw=="
+      },
+      "SIPSorceryMedia.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "sgqwzWcqCS3gQlKLuku4knEoJQX8ySL+awW5+aLqmVpT5fDFi4bkvdCjDF7fQ9y0sh/wM8YYZpueuJ6i+nkJXA=="
       },
       "System.CodeDom": {
         "type": "Transitive",
@@ -598,11 +691,11 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Crypto.Bls": "[1.1.0, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.Libp2p": "[1.0.0-preview.45, )",
-          "Nethermind.Logging.Microsoft": "[1.40.0-unstable, )",
-          "Nethermind.Merge.Plugin": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Ssz": "[1.40.0-unstable, )",
+          "Nethermind.Init": "[2.2.0-preview, )",
+          "Nethermind.Libp2p": "[1.0.0, )",
+          "Nethermind.Logging.Microsoft": "[2.2.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.2.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.2.0-preview, )",
           "Snappier": "[1.3.1, )"
         }
       },
@@ -1077,8 +1170,8 @@
           "Nethermind.Core": "[2.2.0-preview, )",
           "Nethermind.Init": "[2.2.0-preview, )",
           "Nethermind.JsonRpc": "[2.2.0-preview, )",
-          "Nethermind.Libp2p": "[1.0.0-preview.45, )",
-          "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0-preview.45, )",
+          "Nethermind.Libp2p": "[1.0.0, )",
+          "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0, )",
           "Nethermind.Merge.Plugin": "[2.2.0-preview, )",
           "Snappier": "[1.3.1, )"
         }
@@ -1131,8 +1224,8 @@
           "Nethermind.Core": "[2.2.0-preview, )",
           "Nethermind.Crypto": "[2.2.0-preview, )",
           "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.Libp2p": "[1.0.0-preview.45, )",
-          "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0-preview.45, )",
+          "Nethermind.Libp2p": "[1.0.0, )",
+          "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0, )",
           "Nethermind.Logging.Microsoft": "[2.2.0-preview, )",
           "Nethermind.Merge.Plugin": "[2.2.0-preview, )",
           "Nethermind.Network.Discovery": "[2.2.0-preview, )",
@@ -1563,33 +1656,38 @@
       },
       "Nethermind.Libp2p": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.45, )",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "OLV+fEkqbG+kFfQnFgkOloX8a1QPCJnTZfTkviOKgWo7vVlOnmePIvy0Tk963LVpmRmjreMCTvLLOh3yB1ZCJQ==",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "PWsvMP1Ulhl0SRc5L8Tto75Sf0pPxKfptgurS1OR3th8IM4xwKt4ITYM8l/fl01R+Cnk3nVqoCiVVOyLxcO6GQ==",
         "dependencies": {
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Identify": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.MDns": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Multistream": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Noise": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Ping": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Plaintext": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Pubsub": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Relay": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Tls": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Yamux": "1.0.0-preview.45"
+          "Libp2p.Protocols.KadDht": "1.0.0",
+          "Nethermind.Libp2p.Core": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Identify": "1.0.0",
+          "Nethermind.Libp2p.Protocols.IpTcp": "1.0.0",
+          "Nethermind.Libp2p.Protocols.MDns": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Multistream": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Noise": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Ping": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Plaintext": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Pubsub": "1.0.0",
+          "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Relay": "1.0.0",
+          "Nethermind.Libp2p.Protocols.RequestResponse": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Tls": "1.0.0",
+          "Nethermind.Libp2p.Protocols.WebRtc": "1.0.0",
+          "Nethermind.Libp2p.Protocols.WebSockets": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Yamux": "1.0.0"
         }
       },
       "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.45, )",
-        "resolved": "1.0.0-preview.45",
-        "contentHash": "VK0g5fehGQbarfAzqwCFfNLhU7BBQBEkVypjt/ToOD619FhDMjqJJ1FuBPC0EP6Gmf2whG55cYnIBoGQdrNgtA==",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "12lVbmgGEyj6Vw8t4ur+Vz3dNk32cga9SHLPYoc/GI8TdBywdb0VNjCEKtMA6lAXHo4erejnfTcQn8QCzCHLRA==",
         "dependencies": {
           "Makaretu.Dns.Multicast": "0.27.0",
-          "Nethermind.Libp2p.Core": "1.0.0-preview.45",
-          "Nethermind.Libp2p.Protocols.Pubsub": "1.0.0-preview.45"
+          "Nethermind.Libp2p.Core": "1.0.0",
+          "Nethermind.Libp2p.Protocols.Pubsub": "1.0.0"
         }
       },
       "Nethermind.MclBindings": {
@@ -1729,8 +1827,8 @@
     "net10.0/linux-arm64": {
       "libsodium": {
         "type": "Transitive",
-        "resolved": "1.0.20",
-        "contentHash": "fMO6HpAbvLagobzBH6eU36riWF01lCAweX34D5eugqjuXA+WS5MnV1ngE+2Sw3LvGvxZlmyLp9416t57dMZ5og=="
+        "resolved": "1.0.20.1",
+        "contentHash": "pkiceEqJDQFHjbga3k/oPfTVX9g+GKJZ1VrkuiLhaymt9YNw1Dr7cX9hNuZuNaWcr9WD0moW55k4pMwzQ7JaZQ=="
       },
       "Tmds.LibC": {
         "type": "Transitive",
@@ -1819,8 +1917,8 @@
     "net10.0/linux-x64": {
       "libsodium": {
         "type": "Transitive",
-        "resolved": "1.0.20",
-        "contentHash": "fMO6HpAbvLagobzBH6eU36riWF01lCAweX34D5eugqjuXA+WS5MnV1ngE+2Sw3LvGvxZlmyLp9416t57dMZ5og=="
+        "resolved": "1.0.20.1",
+        "contentHash": "pkiceEqJDQFHjbga3k/oPfTVX9g+GKJZ1VrkuiLhaymt9YNw1Dr7cX9hNuZuNaWcr9WD0moW55k4pMwzQ7JaZQ=="
       },
       "Tmds.LibC": {
         "type": "Transitive",
@@ -1909,8 +2007,8 @@
     "net10.0/osx-arm64": {
       "libsodium": {
         "type": "Transitive",
-        "resolved": "1.0.20",
-        "contentHash": "fMO6HpAbvLagobzBH6eU36riWF01lCAweX34D5eugqjuXA+WS5MnV1ngE+2Sw3LvGvxZlmyLp9416t57dMZ5og=="
+        "resolved": "1.0.20.1",
+        "contentHash": "pkiceEqJDQFHjbga3k/oPfTVX9g+GKJZ1VrkuiLhaymt9YNw1Dr7cX9hNuZuNaWcr9WD0moW55k4pMwzQ7JaZQ=="
       },
       "Tmds.LibC": {
         "type": "Transitive",
@@ -1999,8 +2097,8 @@
     "net10.0/osx-x64": {
       "libsodium": {
         "type": "Transitive",
-        "resolved": "1.0.20",
-        "contentHash": "fMO6HpAbvLagobzBH6eU36riWF01lCAweX34D5eugqjuXA+WS5MnV1ngE+2Sw3LvGvxZlmyLp9416t57dMZ5og=="
+        "resolved": "1.0.20.1",
+        "contentHash": "pkiceEqJDQFHjbga3k/oPfTVX9g+GKJZ1VrkuiLhaymt9YNw1Dr7cX9hNuZuNaWcr9WD0moW55k4pMwzQ7JaZQ=="
       },
       "Tmds.LibC": {
         "type": "Transitive",
@@ -2089,8 +2187,8 @@
     "net10.0/win-x64": {
       "libsodium": {
         "type": "Transitive",
-        "resolved": "1.0.20",
-        "contentHash": "fMO6HpAbvLagobzBH6eU36riWF01lCAweX34D5eugqjuXA+WS5MnV1ngE+2Sw3LvGvxZlmyLp9416t57dMZ5og=="
+        "resolved": "1.0.20.1",
+        "contentHash": "pkiceEqJDQFHjbga3k/oPfTVX9g+GKJZ1VrkuiLhaymt9YNw1Dr7cX9hNuZuNaWcr9WD0moW55k4pMwzQ7JaZQ=="
       },
       "Tmds.LibC": {
         "type": "Transitive",

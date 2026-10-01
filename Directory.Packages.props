@@ -63,8 +63,8 @@
     <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="0.8.0.11" />
     <PackageVersion Include="Nethermind.DotNetty.Transport" Version="0.8.0.11" />
     <PackageVersion Include="Nethermind.GmpBindings" Version="2.0.0" />
-    <PackageVersion Include="Nethermind.Libp2p" Version="1.0.0-preview.45" />
-    <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
+    <PackageVersion Include="Nethermind.Libp2p" Version="1.0.0" />
+    <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0" />
     <PackageVersion Include="Nethermind.MclBindings" Version="2.0.0" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.11.0" />
     <PackageVersion Include="Nethermind.OpenVM.Runtime" Version="[1.0.0-preview.1]" />

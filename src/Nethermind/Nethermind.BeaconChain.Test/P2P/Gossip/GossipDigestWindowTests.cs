@@ -11,6 +11,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using NUnit.Framework;
@@ -108,7 +109,7 @@ public class GossipDigestWindowTests
     /// <summary>A pubsub topic that records its subscription state and delivers nothing.</summary>
     internal sealed class RecordingTopic : ITopic
     {
-        public event Action<byte[]>? OnMessage { add { } remove { } }
+        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
 
         public bool IsSubscribed { get; private set; }
 

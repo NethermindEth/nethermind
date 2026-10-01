@@ -13,6 +13,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -57,7 +58,7 @@ public class ColumnGossipRouterHeldBlockTests
 
     private sealed class NullTopic : ITopic
     {
-        public event Action<byte[]>? OnMessage { add { } remove { } }
+        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
 
         public bool IsSubscribed => true;
 
