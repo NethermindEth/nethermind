@@ -2039,8 +2039,9 @@ public sealed class BeaconSyncOrchestrator(
             if (i > 0 && result == BlockImportResult.UnknownParent && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
             {
                 // The ancestor waits for the next slot's regeneration budget; its descendants import after it, the fetched ones as
-                // fetched, held under the evicting cap a refused backfill has, so no fetched chain can fill the shared queue.
-                for (int j = i - 1; j >= 0; j--)
+                // fetched, held under the evicting cap a refused backfill has, so no fetched chain can fill the shared queue. Only the
+                // descendants nearest the ancestor are held: the cap evicts the oldest held first, which would strand the rest.
+                for (int j = i - 1; j >= Math.Max(0, i - MaxHeldRefusedBackfills); j--)
                 {
                     HoldRefusedBackfill(chain[j]);
                     if (j > 0)
