@@ -18,8 +18,10 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.Sync;
 
@@ -61,6 +63,9 @@ public sealed class BlockImporter : IBlockImporter
 
     /// <summary>Covers the orchestrator's retry set and gossip hold queue, 128 blocks each.</summary>
     private const int MaxDeferredBlocks = 256;
+
+    /// <summary>Parent or ancestor states regenerated per wall-clock slot for blocks from gossip; trusted replays are not counted.</summary>
+    private const int MaxUntrustedRegenerationsPerSlot = 2;
 
     private readonly BeaconChainSpec _spec;
     private readonly BeaconChainStore _store;
@@ -109,6 +114,16 @@ public sealed class BlockImporter : IBlockImporter
 
     private readonly Hash256? _gloasAnchorParentBlockHash;
 
+    /// <summary>The proposer signature domain of Fulu blocks, <c>null</c> for a Gloas anchor.</summary>
+    private readonly Hash256? _fuluProposerDomain;
+
+    /// <summary>The proposer signature domain of Gloas blocks.</summary>
+    private readonly Hash256 _gloasProposerDomain = null!;
+
+    private ulong _regenerationSlot;
+
+    private int _regenerationsThisSlot;
+
     private readonly record struct DeferredBlock(Hash256 AncestorRoot, ulong Slot);
 
     /// <param name="isEnvelopeDataAvailable">The Gloas <c>is_data_available</c> an execution payload envelope is checked against; see <see cref="ExecutionPayloadEnvelopeImporter"/>.</param>
@@ -153,6 +168,8 @@ public sealed class BlockImporter : IBlockImporter
                 _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
                 _runner = new ForkChoiceRunner(spec, fuluState, fuluBlock.Message!, _states, pubkeys, _states);
                 _lastSnapshotEpoch = fuluState.GetCurrentEpoch();
+                _fuluProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, fuluState.Fork!.CurrentVersion!, fuluState.GenesisValidatorsRoot!);
+                _gloasProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, spec.GloasForkVersion, fuluState.GenesisValidatorsRoot!);
                 break;
             case (ForkedBeaconState.OfGloas { State: BeaconStateGloas gloasState }, ForkedSignedBeaconBlock.OfGloas { Block: SignedBeaconBlockGloas gloasBlock }):
                 // specs/gloas/fork-choice.md get_forkchoice_store: block_states holds the anchor state, the finalized checkpoint's.
@@ -162,6 +179,7 @@ public sealed class BlockImporter : IBlockImporter
                 _gloasAnchorRoot = anchorRoot;
                 _gloasAnchorParentBlockHash = gloasBlock.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash;
                 _lastSnapshotEpoch = gloasState.GetCurrentEpoch();
+                _gloasProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, gloasState.Fork!.CurrentVersion!, gloasState.GenesisValidatorsRoot!);
                 break;
             default:
                 throw new ArgumentException($"The anchor state at slot {anchorState.Slot} is a {anchorState.Fork} state, but its block at slot {anchorBlock.Slot} is a {anchorBlock.GetType().Name} block", nameof(anchorBlock));
@@ -376,7 +394,17 @@ public sealed class BlockImporter : IBlockImporter
 
         bool onLineage = parentRoot == _states.LineageRoot;
         // Kept frozen: the body operations below may load states that push it out of the retained tiers before it is marked.
-        BeaconStateFulu? heldParent = onLineage ? null : _states.GetBlockState(parentRoot);
+        BeaconStateFulu? heldParent = null;
+        if (!onLineage && (heldParent = _states.GetHeldBlockState(parentRoot)) is null)
+        {
+            if (verifySignatures && RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) is { } refused)
+            {
+                return refused;
+            }
+
+            heldParent = _states.GetBlockState(parentRoot);
+        }
+
         BeaconStateFulu? parentState = onLineage ? _states.LineageState : heldParent?.Clone();
         if (parentState is null)
         {
@@ -520,16 +548,36 @@ public sealed class BlockImporter : IBlockImporter
         BeaconStateGloas? gloasParent = null;
         BeaconStateFulu? fuluParent = null;
         ForkedBeaconState? parentState;
-        if (SignedBeaconBlockCodec.IsGloasSlot(parentSlot, _spec))
+        bool gloasParentSlot = SignedBeaconBlockCodec.IsGloasSlot(parentSlot, _spec);
+        if (gloasParentSlot)
         {
-            gloasParent = _states.GetOrRegenerateGloasBlockState(parentRoot);
-            parentState = gloasParent is null ? null : new ForkedBeaconState.OfGloas(gloasParent.Clone());
+            gloasParent = _states.GetGloasBlockState(parentRoot);
         }
         else
         {
-            fuluParent = _states.GetBlockState(parentRoot);
-            parentState = fuluParent is null ? null : new ForkedBeaconState.OfFulu(fuluParent.Clone());
+            fuluParent = _states.GetHeldBlockState(parentRoot);
         }
+
+        if (gloasParent is null && fuluParent is null)
+        {
+            if (verifySignatures && RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain) is { } refused)
+            {
+                return refused;
+            }
+
+            if (gloasParentSlot)
+            {
+                gloasParent = _states.GetOrRegenerateGloasBlockState(parentRoot);
+            }
+            else
+            {
+                fuluParent = _states.GetBlockState(parentRoot);
+            }
+        }
+
+        parentState = gloasParent is not null ? new ForkedBeaconState.OfGloas(gloasParent.Clone())
+            : fuluParent is not null ? new ForkedBeaconState.OfFulu(fuluParent.Clone())
+            : null;
 
         if (parentState is null)
         {
@@ -607,6 +655,47 @@ public sealed class BlockImporter : IBlockImporter
         return BlockImportResult.Imported;
     }
 
+    /// <summary>
+    /// Whether a block from gossip may cost the regeneration of a state that is not held: only once its proposer signature
+    /// verifies, and only <see cref="MaxUntrustedRegenerationsPerSlot"/> times per wall-clock slot.
+    /// </summary>
+    /// <remarks>
+    /// The signature is checked without the missing state: with the cached proposer key, and the domain of the block's fork
+    /// (specs/phase0/beacon-chain.md <c>get_domain</c>), whose fork version every state of that fork after the anchor shares.
+    /// Gossip validation does not verify it, so without this check a forged child of each evicted block buys a replay.
+    /// </remarks>
+    /// <returns><c>null</c> when the regeneration may run; otherwise the result to answer for the block.</returns>
+    private BlockImportResult? RefuseRegeneration(Hash256 blockRoot, ulong slot, ulong proposerIndex, BlsSignature signature, Hash256? domain)
+    {
+        if (domain is null || proposerIndex >= (ulong)_pubkeys.Count || !_pubkeys.TryGetValidPublicKey((int)proposerIndex, out G1Affine key))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Not regenerating a state for block {blockRoot} at slot {slot}: its proposer {proposerIndex} has no cached key");
+            return BlockImportResult.UnknownParent;
+        }
+
+        if (!BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {slot}: invalid proposer signature");
+            return BlockImportResult.Invalid;
+        }
+
+        ulong currentSlot = _clock.CurrentSlot;
+        if (currentSlot != _regenerationSlot)
+        {
+            _regenerationSlot = currentSlot;
+            _regenerationsThisSlot = 0;
+        }
+
+        if (_regenerationsThisSlot >= MaxUntrustedRegenerationsPerSlot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {slot}: the state it builds on is not held, and this slot's {MaxUntrustedRegenerationsPerSlot} regenerations are spent");
+            return BlockImportResult.UnknownParent;
+        }
+
+        _regenerationsThisSlot++;
+        return null;
+    }
+
     /// <summary>Records a block <c>on_block</c> refused after <see cref="TickToClock"/>, when the ticked store shows the refusal is permanent.</summary>
     /// <remarks>The tick pulls up unrealized finality (specs/phase0/fork-choice.md on_tick), which the checks before the transition never saw; a refusal for any other reason, such as data availability, stays unrecorded.</remarks>
     private void RecordIfRefusalIsPermanent(Hash256 blockRoot, ulong slot, Hash256 parentRoot)
@@ -644,7 +733,18 @@ public sealed class BlockImporter : IBlockImporter
     {
         BeaconBlockGloas block = signedBlock.Message!;
         // A full parent whose payload is unverified is a Gloas block: a known Fulu block counts as verified.
-        if (_states.GetOrRegenerateGloasBlockState(ancestorRoot) is not { } ancestorState)
+        BeaconStateGloas? ancestorState = _states.GetGloasBlockState(ancestorRoot);
+        if (ancestorState is null)
+        {
+            if (RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain) is { } refused)
+            {
+                return refused;
+            }
+
+            ancestorState = _states.GetOrRegenerateGloasBlockState(ancestorRoot);
+        }
+
+        if (ancestorState is null)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {block.Slot}: the post-state of its ancestor {ancestorRoot} is no longer retained");
             return BlockImportResult.UnknownParent;
