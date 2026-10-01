@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Snappier;
+using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -61,6 +62,107 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "one head FCU per drained batch");
             Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(103UL), "sync tip follows imports");
             Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(harness.Importer.Head.HeadRoot), "status holder refreshed by the head step");
+        }
+    }
+
+    public enum RangeRejection
+    {
+        AtImport,
+        OnRetry,
+        FutureOnRetry,
+        HeldChildOnRetry,
+    }
+
+    /// <summary>fork-choice.md on_block: an invalid block ends its round, also when it fails on a retry of its held chain, and no other peer is blamed.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task RangeSync_restarts_from_the_imported_tip_and_blames_only_the_invalid_blocks_supplier([Values] bool gloas, [Values] bool activeRound, [Values] RangeRejection rejection, CancellationToken token)
+    {
+        ulong target = activeRound ? WallSlot : 103;
+        ulong[] slots = [.. Enumerable.Range(101, (int)(target - AnchorSlot)).Select(static slot => (ulong)slot)];
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, slots);
+        ForkedSignedBeaconBlock[] blocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        bool childRejected = rejection == RangeRejection.HeldChildOnRetry;
+        ulong rejectedSlot = childRejected ? 103UL : 102UL;
+        Hash256 rejectedParent = (childRejected ? blocks[1] : blocks[0]).ComputeMessageRoot();
+        SignedBeaconBlock signedForged = TestChain.CreateBlock(rejectedSlot, rejectedParent);
+        signedForged.Message!.StateRoot = TestItem.KeccakB;
+        ForkedSignedBeaconBlock forged = gloas
+            ? new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(rejectedSlot, rejectedParent))
+            : new ForkedSignedBeaconBlock.OfFulu(signedForged);
+        ForkedSignedBeaconBlock first = childRejected ? blocks[1] : forged;
+        ForkedSignedBeaconBlock second = childRejected
+            ? forged
+            : gloas
+                ? new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(103, forged.ComputeMessageRoot()))
+                : new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(103, forged.ComputeMessageRoot()));
+        bool rejectedServed = false;
+        EnvelopeServingPeer supplier = new("supplier", target, blocksByRange: (start, count) =>
+        {
+            if (!rejectedServed)
+            {
+                rejectedServed = true;
+                return [first, second];
+            }
+            return [.. blocks.Where(b => b.Slot >= start && b.Slot < start + count)];
+        });
+        bool shortReply = true;
+        List<ulong> starts = [];
+        EnvelopeServingPeer honest = new("honest", target, blocksByRange: (start, count) =>
+        {
+            starts.Add(start);
+            if (shortReply)
+            {
+                shortReply = false;
+                return [blocks[0]];
+            }
+            return [.. blocks.Where(b => b.Slot >= start && b.Slot < start + count)];
+        });
+        Harness harness = CreateHarness(wallSlot: target, peers: [honest, supplier]);
+        harness.Importer.Known.Add(anchorRoot);
+        Hash256 firstRoot = first.ComputeMessageRoot();
+        Hash256 forgedRoot = forged.ComputeMessageRoot();
+        if (rejection == RangeRejection.AtImport)
+        {
+            harness.Importer.Forged.Add(forgedRoot);
+        }
+        else if (rejection == RangeRejection.FutureOnRetry)
+        {
+            harness.Importer.Ticks.Clear();
+            harness.Importer.Ticks.Add(rejectedSlot - 1);
+            harness.Importer.Early.Add(firstRoot);
+        }
+        else
+        {
+            harness.Importer.Unavailable.Add(firstRoot);
+        }
+
+        Task firstRound = harness.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+        if (rejection != RangeRejection.AtImport)
+        {
+            harness.Importer.Unavailable.Remove(firstRoot);
+            harness.Importer.Forged.Add(forgedRoot);
+            await harness.Orchestrator.ProcessSlotAsync(target, token);
+        }
+
+        Assert.That(await EndsAsync(firstRound, token), Is.True);
+        ulong acceptedSlot = harness.Orchestrator.SyncTip.Slot;
+        await harness.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(acceptedSlot, Is.EqualTo(rejectedSlot - 1));
+            Assert.That(starts, Does.Contain(rejectedSlot), "the restarted request begins after the last imported block");
+            Assert.That(honest.Reports, Is.Empty);
+            Assert.That(harness.Importer.Known, Does.Not.Contain(forgedRoot));
+            Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(target));
+            Assert.That(supplier.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+            if (rejection == RangeRejection.AtImport)
+            {
+                Assert.That(harness.Importer.Imports.Any(i => i.Root == second.ComputeMessageRoot()), Is.False, "the rejected block's queued child is dropped unseen");
+            }
         }
     }
 

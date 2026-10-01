@@ -408,7 +408,8 @@ public class DeferredBlockColumnFetchTests
         {
             Assert.That(stuck, Is.True, "no peer serves the block's columns");
             Assert.That(requestedStarts.Count(start => start <= blockSlot), Is.EqualTo(1), "only the first round asks for the block's slot");
-            Assert.That(requestsPerRound, Is.All.EqualTo(requestsPerRound[0]), "each round asks for the slots past the block, no more");
+            // BeaconBlocksByRange: the first round asks again from the slot after the block, as a limited reply may have left out the rest of its window.
+            Assert.That(requestsPerRound.Skip(1), Is.All.EqualTo(requestsPerRound[0] - 1), "each later round asks for the slots past the block, no more");
             Assert.That(server.RootColumnRequests, Is.EqualTo(1), "the block is not delivered again, so the same custodian is not asked again within the slot");
             Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
             Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the admitted custodian is asked at once and the block imports");
