@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
@@ -34,6 +35,9 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// </summary>
 internal sealed class SignedGloasChain
 {
+    // Every state here descends from the anchor, so one incremental hasher serves them all; a full root of a mainnet-preset state costs ~15 ms per slot.
+    private readonly CachedBeaconStateHasher _hasher = new();
+
     public BeaconChainSpec Spec => ForkCrossingChain.Instance.Spec;
 
     /// <summary>A copy of the shared anchor state, so an importer that mutated it would show here and not in other tests.</summary>
@@ -97,13 +101,13 @@ internal sealed class SignedGloasChain
     private BeaconStateGloas CrossFork(BeaconStateFulu fuluParent)
     {
         BeaconStateFulu fulu = fuluParent.Clone();
-        SlotProcessing.ProcessSlots(fulu, BoundarySlot, new EpochCache());
+        SlotProcessing.ProcessSlots(fulu, BoundarySlot, new EpochCache { Hasher = _hasher });
         return GloasForkTransition.UpgradeToGloas(fulu, Spec);
     }
 
     private Block Build(BeaconStateGloas state, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments, System.Func<BeaconStateGloas, EpochCache, AttestationGloas[]>? attestations = null, PayloadAttestation[]? payloadAttestations = null)
     {
-        EpochCache cache = new();
+        EpochCache cache = new() { Hasher = _hasher };
         if (state.Slot < slot)
         {
             GloasSlotProcessing.ProcessSlots(state, slot, cache);
@@ -133,11 +137,11 @@ internal sealed class SignedGloasChain
         Hash256 proposerDomain = state.GetDomain(DomainType.BeaconProposer, epoch);
 
         GloasBlockProcessing.ProcessBlock(state, message, cache, new PubkeyCache(), new AcceptingNotifier(), Spec, verifySignatures: false);
-        message.StateRoot = SszRoots.HashTreeRoot(state);
+        message.StateRoot = _hasher.HashTreeRoot(state);
         Hash256 root = SszRoots.HashTreeRoot(message);
         block.Signature = Sign(proposerKey, Domains.ComputeSigningRoot(root, proposerDomain));
 
-        return new Block(block, root, state, ValidEnvelope(state, bid.Message!, proposerKey, Presets.BuilderIndexSelfBuild));
+        return new Block(block, root, state, ValidEnvelope(state, bid.Message!, proposerKey, Presets.BuilderIndexSelfBuild, root));
     }
 
     /// <summary>A real importer on the anchor whose store can hold Gloas blocks.</summary>
