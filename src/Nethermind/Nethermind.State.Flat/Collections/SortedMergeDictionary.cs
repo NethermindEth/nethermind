@@ -173,82 +173,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         return new PooledRun(entries, count);
     }
 
-    /// <summary>Copies <paramref name="source"/> into a run without sorting it, for <see cref="BuildFromHashMerge{TKeep}"/>.</summary>
-    internal static PooledRun BuildRunUnsorted(IReadOnlyCollection<KeyValuePair<TKey, TValue>> source)
-    {
-        int count = source.Count;
-        Entry[] entries = count == 0 ? [] : RentEntries(count);
-        Span<Entry> run = entries.AsSpan(0, count);
-        FillResult result = Fill(run, source);
-        if (result != FillResult.Success)
-        {
-            if (count != 0)
-            {
-                Array.Clear(entries, 0, count);
-                ReturnEntries(entries);
-            }
-            ThrowSourceCountMismatch(result);
-        }
-
-        return new PooledRun(entries, count);
-    }
-
     internal Run AsRun() => new(_entries, _count);
-
-    /// <summary>
-    /// Merges inputs that need not be sorted (ascending priority; the highest-index source wins on equal keys)
-    /// by key hash: sources are walked newest first and a key is taken the first time <paramref name="keep"/>
-    /// accepts it. Lookups work as usual; enumeration order is arrival order, not key order.
-    /// </summary>
-    /// <remarks>
-    /// The sorted merge exists so a compacted snapshot hands its nodes to RocksDB in key order. With the trie node
-    /// log enabled the nodes go to an append log instead, where order buys nothing, so compaction uses this merge
-    /// and skips the sort; the result is the same set of entries with the same priorities.
-    /// </remarks>
-    [SkipLocalsInit]
-    internal void BuildFromHashMerge<TKeep>(ReadOnlySpan<Run> sources, TKeep keep)
-        where TKeep : struct, IMergeKeep<TKey>
-    {
-        _count = 0; // a build that throws must leave the dictionary empty, not mixing entries of two builds
-        int total = 0;
-        for (int i = 0; i < sources.Length; i++) total += sources[i].Count;
-        if (total == 0) return;
-
-        int dirtyBefore = EnsureEntryCapacity(total);
-        Span<int> buckets = PrepareBuckets(total);
-        Entry[] entries = _entries;
-        int bias = _bucketBias;
-        int count = 0;
-        for (int sourceIndex = sources.Length - 1; sourceIndex >= 0; sourceIndex--)
-        {
-            Span<Entry> run = sources[sourceIndex].Entries.AsSpan(0, sources[sourceIndex].Count);
-            for (int i = 0; i < run.Length; i++)
-            {
-                ref Entry entry = ref run[i];
-                if (!keep.Keep(sourceIndex, entry.Key)) continue;
-
-                ref int bucket = ref buckets[(int)entry.HashCode & (buckets.Length - 1)];
-                bool present = false;
-                for (int j = bucket + bias; (uint)j < (uint)count; j = entries[j].Next)
-                {
-                    if (entries[j].HashCode == entry.HashCode && entries[j].Key.Equals(entry.Key))
-                    {
-                        present = true;
-                        break;
-                    }
-                }
-                if (present) continue;
-
-                entries[count] = entry;
-                entries[count].Next = bucket + bias;
-                bucket = count - bias;
-                count++;
-            }
-        }
-
-        _entriesDirty = Math.Max(dirtyBefore, count);
-        _count = count;
-    }
 
     /// <summary>
     /// Merges already-sorted inputs (ascending priority; the highest-index source wins on equal keys). When
@@ -481,23 +406,6 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     {
         if (count == 0) return; // reads are gated on _count
 
-        Span<int> bucketSpan = PrepareBuckets(count);
-        int bias = _bucketBias;
-
-        // A slot stores (i + 1 + salt); slots from earlier builds decode negative and read as empty.
-        Span<Entry> entries = _entries.AsSpan(0, count);
-        for (int i = 0; i < entries.Length; i++)
-        {
-            ref Entry entry = ref entries[i];
-            ref int bucket = ref bucketSpan[(int)entry.HashCode & (bucketSpan.Length - 1)];
-            entry.Next = bucket + bias;
-            bucket = i - bias;
-        }
-    }
-
-    /// <summary>Sizes and stamps the bucket array for a build of up to <paramref name="count"/> entries and returns it.</summary>
-    private Span<int> PrepareBuckets(int count)
-    {
         int size = BucketSize(count);
         int[] buckets = _buckets;
         int salt;
@@ -529,9 +437,20 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         }
 
         _bucketSalt = salt + count;
-        _bucketBias = -1 - salt;
+        int bias = -1 - salt;
+        _bucketBias = bias;
         _bucketMask = (uint)(size - 1);
-        return buckets.AsSpan(0, size);
+
+        // A slot stores (i + 1 + salt); slots from earlier builds decode negative and read as empty.
+        Span<int> bucketSpan = buckets.AsSpan(0, size);
+        Span<Entry> entries = _entries.AsSpan(0, count);
+        for (int i = 0; i < entries.Length; i++)
+        {
+            ref Entry entry = ref entries[i];
+            ref int bucket = ref bucketSpan[(int)entry.HashCode & (bucketSpan.Length - 1)];
+            entry.Next = bucket + bias;
+            bucket = i - bias;
+        }
     }
 
     public static SortedMergeDictionary<TKey, TValue> FromUnsorted<TComparer>(

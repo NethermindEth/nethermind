@@ -14,9 +14,8 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
 
-[TestFixture(false)]
-[TestFixture(true)] // trie nodes merged by hash instead of sorted
-public class SnapshotCompactorTests(bool trieNodeLogEnabled)
+[TestFixture]
+public class SnapshotCompactorTests
 {
     private SnapshotCompactor _compactor = null!;
     private ResourcePool _resourcePool = null!;
@@ -27,7 +26,7 @@ public class SnapshotCompactorTests(bool trieNodeLogEnabled)
     [SetUp]
     public void SetUp()
     {
-        _config = new FlatDbConfig { CompactSize = 16, TrieNodeLogEnabled = trieNodeLogEnabled };
+        _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
         _tier = new FlatTestContainer();
         _snapshotRepository = _tier.Repository;
