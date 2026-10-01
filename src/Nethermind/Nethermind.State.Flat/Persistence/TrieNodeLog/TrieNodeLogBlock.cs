@@ -21,9 +21,10 @@ internal static class TrieNodeLogBlock
     /// <summary>Writes <paramref name="raw"/> as one block, LZ4-compressed when <paramref name="compress"/> and that makes it smaller; returns the bytes written.</summary>
     public static int Write(Span<byte> destination, ReadOnlySpan<byte> raw, bool compress)
     {
-        // The target is capped at the raw length so a result that does not shrink fails and is stored verbatim.
+        // The target is capped at the raw length so a result that does not shrink fails and is stored verbatim; a
+        // result of exactly the raw length must be stored verbatim too, as equal lengths mean "uncompressed" on read.
         int stored = compress ? LZ4Codec.Encode(raw, destination.Slice(HeaderLength, raw.Length)) : -1;
-        if (stored <= 0)
+        if (stored <= 0 || stored >= raw.Length)
         {
             raw.CopyTo(destination[HeaderLength..]);
             stored = raw.Length;

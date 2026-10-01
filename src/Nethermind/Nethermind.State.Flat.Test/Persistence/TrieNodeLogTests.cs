@@ -366,6 +366,31 @@ public class TrieNodeLogTests(bool compression)
     }
 
     [Test]
+    public void Blocks_round_trip([Values] bool compress)
+    {
+        byte[] repetitive = new byte[TrieNodeLogBlock.Size];
+        for (int i = 0; i < repetitive.Length; i++) repetitive[i] = (byte)(i % 7);
+        byte[] random = Value(3, TrieNodeLogBlock.Size);
+        byte[] stored = new byte[TrieNodeLogBlock.MaxStoredLength];
+        byte[] decoded = new byte[TrieNodeLogBlock.Size];
+
+        foreach ((byte[] raw, bool shrinks) in new[] { (repetitive, compress), (random, false), (random[..100], false) })
+        {
+            int written = TrieNodeLogBlock.Write(stored, raw, compress);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(written - TrieNodeLogBlock.HeaderLength, shrinks ? Is.LessThan(raw.Length) : Is.EqualTo(raw.Length));
+                Assert.That(TrieNodeLogBlock.StoredLength(stored), Is.EqualTo(written));
+                Assert.That(TrieNodeLogBlock.Read(stored.AsSpan(0, written), decoded), Is.EqualTo(raw.Length));
+                Assert.That(decoded.AsSpan(0, raw.Length).ToArray(), Is.EqualTo(raw));
+                Assert.That(TrieNodeLogBlock.Read(stored.AsSpan(0, written - 1), decoded), Is.EqualTo(-1), "a truncated block does not decode");
+            }
+        }
+
+        Assert.That(TrieNodeLogBlock.Read(new byte[TrieNodeLogBlock.MaxStoredLength], decoded), Is.EqualTo(-1), "a zero-filled tail is not a block");
+    }
+
+    [Test]
     public void Only_one_log_backed_batch_may_be_open()
     {
         using IPersistence.IWriteBatch open = Batch(0, 1);
