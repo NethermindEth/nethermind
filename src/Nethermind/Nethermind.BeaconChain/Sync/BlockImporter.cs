@@ -67,6 +67,9 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>Parent or ancestor states regenerated per wall-clock slot for blocks from gossip; trusted replays are not counted.</summary>
     private const int MaxUntrustedRegenerationsPerSlot = 2;
 
+    /// <summary>Parent states regenerated per wall-clock slot for blocks fetched by root, which a gossip block can name.</summary>
+    private const int MaxByRootRegenerationsPerSlot = 2;
+
     private readonly BeaconChainSpec _spec;
     private readonly BeaconChainStore _store;
     private readonly PubkeyCache _pubkeys;
@@ -127,8 +130,17 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>The block that spent a regeneration for each (slot, proposer) from gossip, above the finalized slot.</summary>
     private readonly Dictionary<(ulong Slot, ulong ProposerIndex), Hash256> _regenerationProposals = [];
 
-    /// <summary>Whether the import running now is of a block this node requested, which the regeneration budget does not charge.</summary>
-    private bool _importingRequested;
+    private int _byRootRegenerationsThisSlot;
+
+    /// <summary>How the block whose import runs now reached this node, which decides the regeneration budget it is charged to.</summary>
+    private RequestedImport _importing;
+
+    private enum RequestedImport
+    {
+        None,
+        Range,
+        ByRoot,
+    }
 
     private readonly record struct DeferredBlock(Hash256 AncestorRoot, ulong Slot);
 
@@ -265,16 +277,16 @@ public sealed class BlockImporter : IBlockImporter
     internal void Release(Hash256 blockRoot) => _deferred.Remove(blockRoot);
 
     /// <inheritdoc/>
-    public BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot)
+    public BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool fetchedByRoot = false)
     {
-        _importingRequested = true;
+        _importing = fetchedByRoot ? RequestedImport.ByRoot : RequestedImport.Range;
         try
         {
             return Import(block, blockRoot, verifySignatures: true);
         }
         finally
         {
-            _importingRequested = false;
+            _importing = RequestedImport.None;
         }
     }
 
@@ -678,7 +690,8 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>
     /// Whether an untrusted block may cost the regeneration of a state that is not held: only once its proposer signature
     /// verifies. A block from gossip must also be the first for its slot and proposer to cost one, and fit in
-    /// <see cref="MaxUntrustedRegenerationsPerSlot"/> per wall-clock slot; a requested block need not.
+    /// <see cref="MaxUntrustedRegenerationsPerSlot"/> per wall-clock slot. A range-sync block need not; a block fetched by root
+    /// fits in <see cref="MaxByRootRegenerationsPerSlot"/> of its own, since any gossip block can make this node fetch one.
     /// </summary>
     /// <remarks>
     /// The signature is checked without the missing state: with the cached proposer key, and the domain of the block's fork
@@ -704,7 +717,7 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.Invalid;
         }
 
-        if (_importingRequested)
+        if (_importing == RequestedImport.Range)
         {
             return null;
         }
@@ -714,6 +727,7 @@ public sealed class BlockImporter : IBlockImporter
         {
             _regenerationSlot = currentSlot;
             _regenerationsThisSlot = 0;
+            _byRootRegenerationsThisSlot = 0;
             // on_block refuses a block at or below the finalized epoch's start slot, so no later block repeats its (slot, proposer).
             ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(_runner.FinalizedCheckpoint.Epoch);
             foreach ((ulong Slot, ulong ProposerIndex) proposal in _regenerationProposals.Keys)
@@ -723,6 +737,18 @@ public sealed class BlockImporter : IBlockImporter
                     _regenerationProposals.Remove(proposal);
                 }
             }
+        }
+
+        if (_importing == RequestedImport.ByRoot)
+        {
+            if (_byRootRegenerationsThisSlot >= MaxByRootRegenerationsPerSlot)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Not regenerating the parent state of block {blockRoot} at slot {slot}: this slot's {MaxByRootRegenerationsPerSlot} regenerations for blocks fetched by root are spent");
+                return BlockImportResult.UnknownParent;
+            }
+
+            _byRootRegenerationsThisSlot++;
+            return null;
         }
 
         // A retry of the same block, deferred after its first regeneration, is no repeat proposal.

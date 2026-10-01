@@ -223,7 +223,7 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(harness.Importer.Known, Does.Contain(grandchildRoot));
             Assert.That(harness.Importer.Known.Contains(greatGrandchild.ComputeMessageRoot()), Is.EqualTo(parentUnknown));
             Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
-            Assert.That(harness.Importer.RequestedImports.Contains(grandchildRoot), Is.EqualTo(parentUnknown), "a fetched block is held as a requested import");
+            Assert.That(harness.Importer.ByRootImports.Contains(grandchildRoot), Is.EqualTo(parentUnknown), "a fetched block is held as an import fetched by root");
             Assert.That(harness.Importer.RequestedImports, Does.Not.Contain(greatGrandchild.ComputeMessageRoot()));
         }
     }
@@ -431,6 +431,40 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// A fetched Gloas parent that waits for the next slot's regeneration budget is no parent waiting for its payload: every
+    /// gossip child naming it, a later genuine one after a first that may be forged, is held and imports with it.
+    /// </summary>
+    [Test]
+    public async Task Gossip_children_of_a_fetched_gloas_parent_waiting_for_regeneration_are_held_and_import_with_it()
+    {
+        ulong anchorSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 1, anchorRoot));
+        Hash256 parentRoot = parent.ComputeMessageRoot();
+        ForkedSignedBeaconBlock first = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 2, parentRoot));
+        ForkedSignedBeaconBlock second = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(anchorSlot + 3, parentRoot));
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent]));
+        Harness harness = CreateHarness(anchorSlot: anchorSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.RegenerationRefused.Add(parentRoot);
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(first, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAsync(second, CancellationToken.None);
+        int held = harness.Orchestrator.PendingGossipBlockCount;
+        harness.Importer.RegenerationRefused.Remove(parentRoot);
+        await harness.Orchestrator.ProcessSlotAsync(anchorSlot + 4, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(held, Is.EqualTo(2));
+            Assert.That(harness.Importer.Known, Does.Contain(parentRoot), "fixture: the parent imports on the next slot");
+            Assert.That(harness.Importer.Known, Does.Contain(first.ComputeMessageRoot()));
+            Assert.That(harness.Importer.Known, Does.Contain(second.ComputeMessageRoot()));
+        }
+    }
+
     private sealed record ParkedParentScenario(Harness Harness, IBeaconSyncPeer Peer, Hash256 FullRoot, ForkedSignedBeaconBlock Parent, ForkedSignedBeaconBlock Child, ForkedSignedBeaconBlock Grandchild);
 
     private static int ByRootRequestsFor(IBeaconSyncPeer peer, Hash256 root) =>
@@ -522,6 +556,63 @@ public partial class BeaconSyncOrchestratorTests
                 Assert.That(asGossip, Is.EqualTo(BlockImportResult.UnknownParent), "fixture: the spent budget refused the block from gossip");
                 Assert.That(importer.IsKnown(child.Root), Is.True);
             }
+        }
+    }
+
+    /// <summary>
+    /// A parent fetched by root that this slot's regeneration budget refuses is kept for a retry, with the gossip block that
+    /// named it held behind it: both import on the next slot instead of being dropped.
+    /// </summary>
+    [Test]
+    public async Task Fetched_parent_refused_by_the_regeneration_budget_imports_with_its_child_on_the_next_slot()
+    {
+        SignedGloasChain chain = new();
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (ulong slot = chain.Spec.SlotsPerEpoch; slot < 3 * chain.Spec.SlotsPerEpoch + 4; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            blocks.Add(tip);
+        }
+
+        ulong wallSlot = tip!.Signed.Message!.Slot + 6;
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain, clock: clock, peers: [peer], importOnClock: true);
+        List<BlockImportResult> fixture = [];
+        foreach (SignedGloasChain.Block block in blocks)
+        {
+            fixture.Add(await orchestrator.ImportBlockAsync(block.Forked, CancellationToken.None));
+        }
+
+        // Three gossip children past the chain, each naming a fetched parent on another evicted block.
+        (SignedGloasChain.Block Parent, SignedGloasChain.Block Child)[] pairs = [.. Enumerable.Range(1, 3).Select(i =>
+        {
+            SignedGloasChain.Block parent = chain.Next(blocks[i], wallSlot - 6 + (ulong)i, full: false, (byte)(0xE0 + i));
+            return (parent, chain.Next(parent, wallSlot - 3 + (ulong)i, full: false, (byte)(0xF0 + i)));
+        })];
+        foreach ((SignedGloasChain.Block parent, _) in pairs)
+        {
+            Hash256 parentRoot = parent.Root;
+            peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == parentRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent.Forked]));
+        }
+
+        foreach ((_, SignedGloasChain.Block child) in pairs)
+        {
+            await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+        }
+
+        bool refusedThisSlot = !importer.IsKnown(pairs[2].Parent.Root);
+        clock.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
+        await orchestrator.ProcessSlotAsync(wallSlot + 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+            Assert.That(pairs.Take(2).Select(p => importer.IsKnown(p.Child.Root)), Is.All.True, "fixture: two fetched parents spend the budget");
+            Assert.That(refusedThisSlot, Is.True, "fixture: the third fetched parent waits for the next slot");
+            Assert.That(importer.IsKnown(pairs[2].Parent.Root), Is.True);
+            Assert.That(importer.IsKnown(pairs[2].Child.Root), Is.True);
         }
     }
 
