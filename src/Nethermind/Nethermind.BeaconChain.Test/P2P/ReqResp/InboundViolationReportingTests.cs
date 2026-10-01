@@ -31,9 +31,10 @@ public class InboundViolationReportingTests
         manager = listener.CreatePeerManager();
         Assert.That(await manager.TryAddPeerAsync(PeerSessionNodes.LoopbackAddressText(remoteHost), token), Is.True);
         IBeaconSyncPeer peer = manager.GetBestPeers(0).Single();
-        for (int i = 0; i < Limit; i++)
+        // Invalid data keeps a peer at the limit out even when no other peer is offered.
+        for (int i = 0; i < Limit / 2; i++)
         {
-            peer.ReportFailure(PeerFailureReason.RequestFailed);
+            peer.ReportFailure(PeerFailureReason.ProtocolViolation);
         }
 
         Assert.That(manager.GetBestPeers(0), Is.Empty, "test setup: selection leaves the peer out");
