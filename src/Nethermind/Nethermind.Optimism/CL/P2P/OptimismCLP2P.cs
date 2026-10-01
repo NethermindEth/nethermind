@@ -97,6 +97,9 @@ public class OptimismCLP2P : IDisposable
         LazyDegree = 3,
         DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
         GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
+        // rollup-node-p2p.md "Message compression and limits": gossip carries up to 10 MiB, beyond the library's 1 MiB RPC and 512 KiB IWANT bounds.
+        MaxRpcBytes = Eth2MessageId.MaxMessageSize,
+        MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
     }, [blocksTopicId]);
 
     private void OnMessage(byte[] msg, CancellationToken token)
