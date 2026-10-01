@@ -29,6 +29,8 @@ namespace Nethermind.Shutter;
 
 public class ShutterP2P : IShutterP2P
 {
+    private const string DecryptionKeysTopic = "decryptionKeys";
+
     private readonly ILogger _logger;
     private readonly IShutterConfig _cfg;
     private readonly Channel<byte[]> _msgQueue = System.Threading.Channels.Channel.CreateBounded<byte[]>(1000);
@@ -65,7 +67,9 @@ public class ShutterP2P : IShutterP2P
                 Degree = 3,
                 LowestDegree = 2,
                 HighestDegree = 6,
-                LazyDegree = 3
+                LazyDegree = 3,
+                // Nethermind.Libp2p scores topics by default; its delivery-rate penalty would prune honest peers between keys.
+                TopicScoreParams = { [DecryptionKeysTopic] = new TopicScoreParams { TopicWeight = 0 } },
             });
 
         if (_cfg.P2PLogsEnabled)
@@ -89,7 +93,7 @@ public class ShutterP2P : IShutterP2P
         _peer = peerFactory.Create(identity);
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
         _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
-        ITopic topic = _router.GetTopic("decryptionKeys");
+        ITopic topic = _router.GetTopic(DecryptionKeysTopic);
 
         topic.OnMessage += (_, msg) =>
         {

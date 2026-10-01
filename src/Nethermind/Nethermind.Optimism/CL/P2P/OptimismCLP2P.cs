@@ -92,7 +92,9 @@ public class OptimismCLP2P : IDisposable
                 HighestDegree = 6,
                 LazyDegree = 3,
                 DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
-                GetMessageId = CalculateMessageId
+                GetMessageId = CalculateMessageId,
+                // Nethermind.Libp2p scores topics by default; its delivery-rate penalty would prune honest peers between blocks.
+                TopicScoreParams = { [_blocksV2TopicId] = new TopicScoreParams { TopicWeight = 0 } },
             })
             .BuildServiceProvider();
     }
