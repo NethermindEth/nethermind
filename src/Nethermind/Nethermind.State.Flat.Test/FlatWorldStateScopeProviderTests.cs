@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Builder;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -175,7 +176,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, StateRootStreamThreads? stateRootThreads = null)
         {
             config ??= new FlatDbConfig();
 
@@ -242,7 +243,7 @@ public class FlatWorldStateScopeProviderTests
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();
-            ConfigureFlatWorldStateScope();
+            ConfigureFlatWorldStateScope(stateRootThreads);
         }
 
         private void ConfigureSnapshotBundle() =>
@@ -251,10 +252,14 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
                 .ExternallyOwned();
 
-        private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
-                .SingleInstance()
-                .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
-                ;
+        private void ConfigureFlatWorldStateScope(StateRootStreamThreads? stateRootThreads)
+        {
+            IRegistrationBuilder<FlatWorldStateScope, ConcreteReflectionActivatorData, SingleRegistrationStyle> registration =
+                _containerBuilder.RegisterType<FlatWorldStateScope>()
+                    .SingleInstance()
+                    .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)));
+            if (stateRootThreads is not null) registration.WithParameter(TypedParameter.From(stateRootThreads));
+        }
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
 
@@ -922,6 +927,94 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void StreamStateRoot_CommitsTheSameStorageNodes([Values(1, 3)] int contractCount, [Values] bool clearInSecondBatch, [Values] bool deferStorageTrieCommit)
+    {
+        (HashSet<string> serialNodes, Hash256[] serialRoots) = CommitStorageSlots(deferStorageTrieCommit: false, contractCount, clearInSecondBatch);
+        long streamedBefore = Metrics.StateRootStreamedBlocks;
+        long mismatchesBefore = Metrics.StateRootStreamMismatches;
+        (HashSet<string> streamedNodes, Hash256[] streamedRoots) = CommitStorageSlots(deferStorageTrieCommit, contractCount, clearInSecondBatch, streamStateRoot: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateRootStreamedBlocks, Is.GreaterThan(streamedBefore), "the stream must have finished the block");
+            Assert.That(Metrics.StateRootStreamMismatches, Is.EqualTo(mismatchesBefore));
+            Assert.That(streamedNodes, Is.EquivalentTo(serialNodes));
+            Assert.That(streamedRoots, Is.EqualTo(serialRoots));
+        }
+    }
+
+    // The early apply is on and its idle gap open, so only the stream keeps it out.
+    [Test]
+    public void StreamStateRoot_ReplacesTheEarlyApply([Values] bool clearFirst, [Values] bool deferStorageTrieCommit)
+    {
+        const int slotCount = 40;
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using StateRootStreamThreads threads = new(1);
+        using TestContext ctx = new(config: new FlatDbConfig
+        {
+            ApplyStorageWritesOnIdleThread = true,
+            StreamStateRoot = true,
+            DeferStorageTrieCommit = deferStorageTrieCommit
+        }, stateRootThreads: threads);
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+        Assert.That(scope.Streamer, Is.Not.Null);
+        Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+        long streamedBefore = Metrics.StateRootStreamedBlocks;
+        long mismatchesBefore = Metrics.StateRootStreamMismatches;
+        long fallbacksBefore = Metrics.StateRootStreamFallbacks;
+
+        // The committed rounds: the account, optionally a clear, every slot once, then slot 1 again and slot 2 back to
+        // its pre-block zero, which the flush skips.
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+        UInt256[] expected = new UInt256[slotCount];
+        scope.HintSetAccount(address, account);
+        if (clearFirst) storageTree.HintClear();
+        for (int slot = 0; slot < slotCount; slot++) storageTree.HintSet((UInt256)slot, expected[slot] = (UInt256)(slot + 1));
+        storageTree.HintSet(1, expected[1] = 1000);
+        storageTree.HintSet(2, expected[2] = 0);
+        // Until a write batch publishes it, the root is the pre-block one whatever the stream did.
+        Assert.That(storageTree.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address, account);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+            if (clearFirst) storageBatch.Clear();
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                if (slot != 2) storageBatch.Set((UInt256)slot, expected[slot]);
+            }
+        }
+        // Deferred, the batch only hashed the trie and leaves its nodes to the scope commit.
+        Assert.That(storageTree.HasUncommittedNodes, Is.EqualTo(deferStorageTrieCommit));
+        scope.Commit(1);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            if (!expected[slot].IsZero) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
+        }
+        expectedTree.UpdateRootHash();
+        StateTree expectedStateTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expectedStateTree.Set(address, account.WithChangedStorageRoot(expectedTree.RootHash));
+        expectedStateTree.UpdateRootHash();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateRootStreamedBlocks, Is.GreaterThan(streamedBefore), "the stream must have finished the block");
+            Assert.That(Metrics.StateRootStreamMismatches, Is.EqualTo(mismatchesBefore));
+            Assert.That(Metrics.StateRootStreamFallbacks, Is.EqualTo(fallbacksBefore));
+            Assert.That(storageTree.UsedEarlyApply, Is.False);
+            Assert.That(scope.EarlyApplyCounts, Is.EqualTo((0, 0, 0, 0)));
+            Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+            Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+            Assert.That(scope.RootHash, Is.EqualTo(expectedStateTree.RootHash));
+        }
+    }
+
+    [Test]
     public void DeferredStorageTrieCommit_NextBlockBuildsOnTheCommittedNodes([Values] bool deferStorageTrieCommit, [Values] bool clearInSecondBatch)
     {
         const int slotCount = 64;
@@ -973,14 +1066,28 @@ public class FlatWorldStateScopeProviderTests
         }
     }
 
-    private static (HashSet<string> Nodes, Hash256[] Roots) CommitStorageSlots(bool deferStorageTrieCommit, int contractCount, bool clearInSecondBatch)
+    private static (HashSet<string> Nodes, Hash256[] Roots) CommitStorageSlots(bool deferStorageTrieCommit, int contractCount, bool clearInSecondBatch, bool streamStateRoot = false)
     {
         const int slotCount = 64;
-        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
+        using StateRootStreamThreads? threads = streamStateRoot ? new StateRootStreamThreads(1) : null;
+        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit, StreamStateRoot = streamStateRoot }, stateRootThreads: threads);
         FlatWorldStateScope scope = ctx.Scope;
         Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
         addresses = addresses[..contractCount];
         foreach (Address address in addresses) ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        // Streamed, the first batch's writes and the accounts that carry their roots reach the stream as committed
+        // rounds would; the first batch finishes the stream, and a second batch runs as without it.
+        if (streamStateRoot)
+        {
+            Assert.That(scope.Streamer, Is.Not.Null);
+            for (int contract = 0; contract < addresses.Length; contract++)
+            {
+                scope.HintSetAccount(addresses[contract], scope.Get(addresses[contract]));
+                IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addresses[contract]);
+                for (int slot = 0; slot < slotCount; slot++) storageTree.HintSet((UInt256)slot, (UInt256)(slot + 1 + contract * 100));
+            }
+        }
 
         // A second batch that clears first drops the trie the first one built, as a self-destruct and recreation in a
         // later transaction does, so none of that trie's nodes may reach the snapshot.

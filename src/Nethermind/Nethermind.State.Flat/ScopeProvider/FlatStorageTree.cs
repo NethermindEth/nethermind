@@ -190,6 +190,9 @@ public sealed class FlatStorageTree(
     /// <summary>Called once a pass has taken its writes. For tests.</summary>
     internal Action? OnEarlyPassDrained;
 
+    /// <summary>Whether a write was ever handed to the early apply. For tests.</summary>
+    internal bool UsedEarlyApply => Volatile.Read(ref _earlyWrites) is not null;
+
     private StorageTree CreateEarlyTree()
     {
         // Never the current root: an abandoned pass may still run while the batch writes into the block tree.

@@ -44,7 +44,7 @@ public class FlatStateRootStreamingTests
     private static readonly IReleaseSpec Spec = Cancun.Instance;
 
     [Test]
-    public void StateRoot_StreamedBlocks_MatchesTrieBackend([Range(1, 8)] int seed)
+    public void StateRoot_StreamedBlocks_MatchesTrieBackend([Range(1, 8)] int seed, [Values] bool deferStorageTrieCommit)
     {
         List<List<Transaction>> blocks = GenerateBlocks(new Random(seed));
 
@@ -52,8 +52,9 @@ public class FlatStateRootStreamingTests
 
         long mismatchesBefore = Metrics.StateRootStreamMismatches;
         long fallbacksBefore = Metrics.StateRootStreamFallbacks;
+        long streamedBefore = Metrics.StateRootStreamedBlocks;
         Hash256[] actual;
-        using (IContainer container = CreateStreamingFlatContainer())
+        using (IContainer container = CreateStreamingFlatContainer(deferStorageTrieCommit))
         {
             IWorldState flatState = new WorldState(container.Resolve<IWorldStateManager>().GlobalWorldState, LimboLogs.Instance);
             actual = Execute(flatState, blocks, pauses: true);
@@ -64,15 +65,19 @@ public class FlatStateRootStreamingTests
             Assert.That(actual, Is.EqualTo(expected), "every block's root must be the one the trie backend computes from the same changes");
             Assert.That(Metrics.StateRootStreamMismatches, Is.EqualTo(mismatchesBefore), "the streamed root must equal the written one on its own, not only after the write batch re-applies the block");
             Assert.That(Metrics.StateRootStreamFallbacks, Is.EqualTo(fallbacksBefore), "streaming must not have fallen back");
+            Assert.That(Metrics.StateRootStreamedBlocks - streamedBefore, Is.GreaterThanOrEqualTo(BlockCount), "every block must have been streamed");
         }
     }
 
-    private static IContainer CreateStreamingFlatContainer()
+    // The early apply stays on, as on master, so the stream must keep it out of the way.
+    private static IContainer CreateStreamingFlatContainer(bool deferStorageTrieCommit)
     {
         ConfigProvider configProvider = new();
         Nethermind.Db.IFlatDbConfig flatConfig = configProvider.GetConfig<Nethermind.Db.IFlatDbConfig>();
         flatConfig.Enabled = true;
         flatConfig.StreamStateRoot = true;
+        flatConfig.ApplyStorageWritesOnIdleThread = true;
+        flatConfig.DeferStorageTrieCommit = deferStorageTrieCommit;
         return new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
