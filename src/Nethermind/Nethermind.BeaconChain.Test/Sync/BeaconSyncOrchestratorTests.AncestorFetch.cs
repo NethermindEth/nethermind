@@ -131,6 +131,33 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    // A fault outside the per-peer catch must still free the fetch's place, or each one would shrink the bound until restart.
+    [Test]
+    public async Task A_faulted_ancestor_fetch_frees_its_place_and_holds_its_block()
+    {
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<ForkedSignedBeaconBlock>>(new InvalidOperationException("Channel closed")));
+        peer.When(static p => p.ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string?>())).Do(static _ => throw new InvalidOperationException("peer bookkeeping failed"));
+        Harness harness = CreateHarness(anchorSlot: NearHeadAnchorSlot, peers: [peer]);
+        const int Faults = BeaconSyncOrchestrator.MaxConcurrentAncestorFetches + 1;
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+
+        for (int i = 0; i < Faults; i++)
+        {
+            ulong slot = WallSlot + (ulong)(i / BeaconSyncOrchestrator.MaxBackfillsPerSlot);
+            SetWallSlot(harness, slot);
+            await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(slot, i), cts.Token);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Orchestrator.AncestorFetchesInFlight, Is.Zero);
+            Assert.That(ByRootRequests(peer), Is.EqualTo(Faults), "faulted fetches do not use up the bound");
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Faults), "each block is held for range sync");
+        }
+    }
+
     /// <summary>A node near the head with one peer whose by-root request for each root waits until the test completes it.</summary>
     private static (Harness Harness, IBeaconSyncPeer Peer, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> Fetches) CreateWaitingByRootHarness()
     {
@@ -152,7 +179,7 @@ public partial class BeaconSyncOrchestratorTests
     /// <summary>Processes queued work until the walk has asked for <paramref name="root"/>.</summary>
     private static async Task WaitForFetchAsync(Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches, Hash256 root, Harness harness, CancellationToken token)
     {
-        while (true)
+        for (int passes = 0; ; passes++)
         {
             lock (fetches)
             {
@@ -160,6 +187,11 @@ public partial class BeaconSyncOrchestratorTests
                 {
                     return;
                 }
+            }
+
+            if (passes == 10)
+            {
+                throw new InvalidOperationException($"No fetch of {root} after {passes} passes");
             }
 
             await harness.Orchestrator.WaitForWorkAsync(token);
