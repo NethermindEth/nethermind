@@ -719,7 +719,14 @@ public class DebugRpcModule(
         catch (IOException e)
         {
             // The file is ours: remove the partial write rather than leave a truncated list.
-            fileSystem.File.Delete(file);
+            try
+            {
+                fileSystem.File.Delete(file);
+            }
+            catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot remove partially written bad-block file {file}: {cleanupError.Message}");
+            }
             return ResultWrapper<IEnumerable<BadBlock>?>.Fail($"Cannot write bad blocks to {file}: {e.Message}", ErrorCodes.Default);
         }
 
