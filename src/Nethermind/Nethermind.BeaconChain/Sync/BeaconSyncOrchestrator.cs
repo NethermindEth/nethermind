@@ -317,6 +317,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Whether gossip has started; settable by tests to keep it from starting.</summary>
     internal bool GossipStarted { get; set; }
 
+    /// <summary>A work item or vote that holds the worker at least this long is logged at Debug with what it was.</summary>
+    internal TimeSpan SlowWorkItemThreshold { get; set; } = TimeSpan.FromSeconds(1);
+
     internal byte[] CurrentGossipDigest => _currentDigest;
 
     internal (Hash256 Root, ulong Slot) SyncTip => (_syncTip.Root, _syncTip.Slot);
@@ -697,6 +700,7 @@ public sealed class BeaconSyncOrchestrator(
 
     private async Task ProcessItemAsync(WorkItem item, CancellationToken token)
     {
+        long startMs = Environment.TickCount64;
         switch (item)
         {
             case RangeBlockItem range:
@@ -802,7 +806,20 @@ public sealed class BeaconSyncOrchestrator(
 
                 break;
         }
+
+        long elapsedMs = Environment.TickCount64 - startMs;
+        if (elapsedMs >= SlowWorkItemThreshold.TotalMilliseconds && _logger.IsDebug) _logger.Debug($"Import worker spent {elapsedMs} ms on {DescribeWorkItem(item)}");
     }
+
+    private static string DescribeWorkItem(WorkItem item) => item switch
+    {
+        GossipAggregateItem { Aggregate.Message.Aggregate.Data: { Target: { } target } data } => $"a gossip aggregate for slot {data.Slot} with target epoch {target.Epoch} root {target.Root}",
+        GossipGloasAggregateItem { Aggregate.Message.Aggregate.Data: { Target: { } target } data } => $"a gossip aggregate for slot {data.Slot} with target epoch {target.Epoch} root {target.Root}",
+        RangeBlockItem range => $"the range block at slot {range.Block.Slot}",
+        GossipBlockItem gossip => $"the gossip block at slot {gossip.Block.Slot}",
+        SlotTickItem tick => $"the slot tick of slot {tick.Slot}",
+        _ => item.GetType().Name,
+    };
 
     // phase0/p2p-interface.md attester_slashing: the seen set holds the intersecting indices of slashings whose signatures verified.
     private void MarkSlashedIndicesSeen(ulong[] indices1, ulong[] indices2)
