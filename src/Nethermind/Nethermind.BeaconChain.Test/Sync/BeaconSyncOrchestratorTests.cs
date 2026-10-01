@@ -899,6 +899,40 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
+    /// The held descendants of a fetched block that waits for the regeneration budget are the ones nearest it, so on the next
+    /// slot they import as one unbroken run behind it and none is left waiting on a parent that was never held.
+    /// </summary>
+    [Test]
+    public async Task Descendants_held_behind_a_budget_deferred_fetched_block_import_on_the_next_slot()
+    {
+        const int Descendants = 20;
+        const ulong AnchorNearWall = WallSlot - Descendants - 1;
+        ulong[] slots = [.. Enumerable.Range(1, Descendants + 1).Select(static i => AnchorNearWall + (ulong)i)];
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorNearWall, slots);
+        ForkedSignedBeaconBlock[] blocks = [.. chain.Select(static b => (ForkedSignedBeaconBlock)new ForkedSignedBeaconBlock.OfFulu(b))];
+        Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = blocks.ToDictionary(static b => b.ComputeMessageRoot());
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([byRoot[((Hash256[])call[0])[0]]]));
+        Harness harness = CreateHarness(anchorSlot: AnchorNearWall, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        Hash256 deferredRoot = blocks[0].ComputeMessageRoot();
+        harness.Importer.RegenerationRefused.Add(deferredRoot);
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(blocks[^1], CancellationToken.None);
+        harness.Importer.RegenerationRefused.Remove(deferredRoot);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.Known, Does.Contain(deferredRoot), "fixture: the deferred block imports on the next slot");
+            Assert.That(blocks.Skip(1).Take(BeaconSyncOrchestrator.MaxHeldRefusedBackfills).Select(static b => b.ComputeMessageRoot()), Is.SubsetOf(harness.Importer.Known),
+                "the held descendants nearest the deferred block import behind it");
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero, "no held block is left waiting on a parent never held");
+        }
+    }
+
+    /// <summary>
     /// A copy of a block fetched by root, with the same message but another signature, is not the block the peer served: when
     /// the copy arrives by gossip and is invalid, the peer that served the real block is not blamed, and the real block keeps
     /// its retry.
