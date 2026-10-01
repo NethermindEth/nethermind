@@ -39,6 +39,56 @@ public partial class BeaconSyncOrchestratorTests
     private const ulong EnvelopeBlockSlot = 150;
 
     [Test]
+    public async Task A_blob_carrying_stored_parent_recovers_columns_and_imports_its_full_child([Values] bool anchor, [Values] bool delayedColumns)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        ulong wallSlot = ColumnSlot + 2;
+        ForkedSignedBeaconBlock parent = GloasBlobBlock(ColumnSlot, AnchorRoot(), ColumnSlot);
+        Hash256 root = parent.ComputeMessageRoot();
+        ExecutionPayloadBid bid = ((ForkedSignedBeaconBlock.OfGloas)parent).Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        store.PutForkedBlock(root, parent);
+        DataColumnSidecarPool sidecars = new();
+        int columnRequests = 0;
+        EnvelopeServingPeer peer = new("peer", wallSlot, byRoot: _ => [EnvelopeFor(root, ColumnSlot)],
+            gloasColumnsByRoot: ids => delayedColumns && ++columnRequests == 1 ? []
+                : [.. ids[0].Columns!.Select(c => DataColumnSidecarGloasTestFixture.BuildSidecar(c, ColumnSlot, root))]);
+        Harness harness = CreateHarness(wallSlot: wallSlot, store: store, peers: [peer], sidecarPool: sidecars, discovery: discovery);
+        if (anchor) harness.Orchestrator.Initialize(harness.Importer, parent, root);
+        harness.Importer.Known.UnionWith([AnchorRoot(), root]);
+        harness.Importer.UnverifiedPayloads.Add(root);
+        harness.Importer.Head = CreateHead(root, ColumnSlot, finalizedEpoch: Spec.GetEpoch(ColumnSlot));
+        GloasCustodySamplingAvailability availability = new(new DiscoveryNodeCustodySource(discovery), sidecars, RangeSyncTests.ClockAtGenesis(Spec), Spec);
+        Func<SignedExecutionPayloadEnvelope, ExecutionPayloadEnvelopeImportResult> envelopeVerdict = _ => availability.IsDataAvailable(root, bid)
+            ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.DataUnavailable;
+        harness.Importer.EnvelopeVerdict = envelopeVerdict;
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(ColumnSlot + 1, root));
+
+        Assert.That(await harness.Orchestrator.ImportBlockAsync(child, CancellationToken.None), Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
+        if (delayedColumns) harness.Importer.EnvelopeVerdict = _ => ExecutionPayloadEnvelopeImportResult.EngineUnavailable;
+        await harness.Orchestrator.ProcessSlotAsync(wallSlot, CancellationToken.None);
+        harness.Timestamper.Set(SlotStart(wallSlot + 1));
+        await harness.Orchestrator.ProcessSlotAsync(wallSlot + 1, CancellationToken.None);
+        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
+        if (delayedColumns)
+        {
+            Assert.That(peer.ColumnRootRequests, Has.Count.EqualTo(2));
+            harness.Importer.EnvelopeVerdict = envelopeVerdict;
+        }
+        await harness.Orchestrator.ProcessSlotAsync(wallSlot + 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.ColumnRootRequests, Has.Count.EqualTo(delayedColumns ? 2 : 1));
+            Assert.That(peer.ColumnRootRequests[0][0].BlockRoot, Is.EqualTo(root));
+            Assert.That(availability.IsDataAvailable(root, bid), Is.True);
+            Assert.That(harness.Importer.Known.Contains(child.ComputeMessageRoot()), Is.True);
+            Assert.That(harness.EnvelopePool.TryGet(root, out _), Is.True);
+        }
+    }
+
+    [Test]
     public async Task Gossip_envelope_reaches_the_importer_through_the_worker()
     {
         ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + (FirstGloasSlot + 1) * Sepolia.SecondsPerSlot).AddSeconds(6));

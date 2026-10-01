@@ -113,6 +113,15 @@ public class CheckpointSyncTests
             WeakSubjectivityCheckpoint = independentCheckpoint ? $"{first.Root}:1" : null,
         }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance))
         {
+            if (!withBlockFile)
+            {
+                InvalidDataException refusal = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+                Assert.That(refusal.Message, Does.Contain(Path.ChangeExtension(files.StateFile, ".block.ssz")));
+                Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+                Assert.That(store.TryGetState(first.Root, out _), Is.False);
+                return;
+            }
+
             anchor = await sync.RunAsync(CancellationToken.None);
         }
 
@@ -121,12 +130,12 @@ public class CheckpointSyncTests
             Assert.That(anchor.State, Is.TypeOf<ForkedBeaconState.OfGloas>());
             Assert.That(anchor.BlockRoot, Is.EqualTo(first.Root), "the root derived from the Gloas state's latest header");
             Assert.That(anchor.StateRoot, Is.EqualTo(SszRoots.HashTreeRoot(first.PostState)));
-            Assert.That(anchor.Block, withBlockFile ? Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>() : Is.Null);
+            Assert.That(anchor.Block, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
             Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot), Is.True);
             Assert.That(anchorRoot, Is.EqualTo(first.Root));
             Assert.That(anchorSlot, Is.EqualTo(first.Block.Message!.Slot));
-            Assert.That(store.TryGetForkedBlock(first.Root, out ForkedSignedBeaconBlock? stored), Is.EqualTo(withBlockFile));
-            Assert.That(stored, withBlockFile ? Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>() : Is.Null);
+            Assert.That(store.TryGetForkedBlock(first.Root, out ForkedSignedBeaconBlock? stored), Is.True);
+            Assert.That(stored, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
             Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), independentCheckpoint ? Is.Not.Null : Is.Null,
                 "a proven checkpoint is recorded, so a restart accepts it after the anchor follows finality past it");
         }
@@ -163,7 +172,7 @@ public class CheckpointSyncTests
     [Test]
     public async Task A_gloas_checkpoint_writes_no_unread_genesis_validators_root_metadata()
     {
-        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, null);
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, new ForkedSignedBeaconBlock.OfGloas(ForkCrossingChain.Instance.First.Block));
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
 
         using (CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance))
@@ -213,10 +222,13 @@ public class CheckpointSyncTests
     [Test]
     public async Task A_checkpoint_with_valid_sync_committee_keys_is_persisted([Values] bool gloas)
     {
-        using TempPath stateFile = TempPath.GetTempFile();
-        File.WriteAllBytes(stateFile.Path, SyncCommitteeKeyAnchors.EncodeState(gloas, nextCommittee: false, key: null, out Hash256 blockRoot));
+        byte[] stateSsz = SyncCommitteeKeyAnchors.EncodeState(gloas, nextCommittee: false, key: null, out Hash256 blockRoot);
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkedSignedBeaconBlock block = gloas ? new ForkedSignedBeaconBlock.OfGloas(chain.First.Block)
+            : new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain.AnchorBlock, Signature = new BlsSignature(new byte[BlsSignature.Length]) });
+        using GloasCheckpointFiles stateFile = GloasCheckpointFiles.Write(stateSsz, block);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
-        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = stateFile.Path }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = stateFile.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
 
         CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None);
 

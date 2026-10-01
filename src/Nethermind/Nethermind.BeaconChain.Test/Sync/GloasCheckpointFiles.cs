@@ -43,6 +43,9 @@ internal sealed class GloasCheckpointFiles : IDisposable
     public static GloasCheckpointFiles Write(BeaconStateGloas state, ForkedSignedBeaconBlock? block) =>
         new(BeaconStateGloas.Encode(state), block is null ? null : SignedBeaconBlockCodec.Encode(block, Spec));
 
+    public static GloasCheckpointFiles Write(byte[] stateSsz, ForkedSignedBeaconBlock block) =>
+        new(stateSsz, SignedBeaconBlockCodec.Encode(block, Spec));
+
     public void Dispose() => _directory.Dispose();
 
     private static BeaconChainSpec WithGloasScheduled(BeaconChainSpec spec, bool fuluInGloasEpoch) => new()
