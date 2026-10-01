@@ -4,7 +4,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Threading.Tasks;
+using Nethermind.BeaconChain.Threading;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 
@@ -71,7 +71,7 @@ internal sealed class MerkleChunkTree(int depth)
             int parentCount = LevelLength(_leafCount, level + 1);
             int childLevel = level;
             if (parentCount >= ParallelThreshold)
-                Parallel.For(0, parentCount, parent => parents[parent] = ComputeParent(children, childCount, parent, childLevel));
+                BeaconParallel.For(0, parentCount, parent => parents[parent] = ComputeParent(children, childCount, parent, childLevel));
             else
                 for (int parent = 0; parent < parentCount; parent++)
                 {
@@ -104,7 +104,7 @@ internal sealed class MerkleChunkTree(int depth)
             dirtyCount = write;
 
             if (dirtyCount >= ParallelThreshold)
-                Parallel.For(0, dirtyCount, i =>
+                BeaconParallel.For(0, dirtyCount, i =>
                 {
                     int parent = dirtyIndices[i];
                     parents[parent] = ComputeParent(children, childCount, parent, childLevel);
