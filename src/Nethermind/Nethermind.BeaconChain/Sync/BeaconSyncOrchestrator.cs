@@ -41,7 +41,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// thread-safe). Each import runs to completion on <see cref="ImportThread"/> before the next starts, as its
 /// engine call blocks. A fork-choice head step - <c>engine_forkchoiceUpdated</c>,
 /// finality handling, status refresh - runs on the worker after every drained import batch (or
-/// every <see cref="HeadStepImportInterval"/> imports while saturated) and on every slot tick.
+/// every <see cref="HeadStepImportInterval"/> imports or <see cref="HeadStepInterval"/> while saturated) and on every slot tick.
 /// </remarks>
 public sealed class BeaconSyncOrchestrator(
     IBeaconChainConfig config,
@@ -116,6 +116,9 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Head-step cadence while the work queue never drains (deep range sync).</summary>
     private const int HeadStepImportInterval = 64;
+
+    /// <summary>The longest the worker imports without a head step, so the execution layer's head follows fork choice while range sync imports behind the wall clock.</summary>
+    private static readonly TimeSpan HeadStepInterval = TimeSpan.FromSeconds(1);
 
     /// <summary>Head distance (~2 epochs) below which gossip is started while range sync finishes the residual gap.</summary>
     private const ulong GossipStartDistanceSlots = 64;
@@ -254,6 +257,9 @@ public sealed class BeaconSyncOrchestrator(
     internal static readonly TimeSpan ForkchoiceResendInterval = TimeSpan.FromSeconds(60);
     private bool _importedSinceHeadStep;
     private int _importsSinceHeadStep;
+
+    /// <summary>When the last head step started, on the slot clock.</summary>
+    private long _headStepMs;
     private int _pendingCount;
     private byte[] _currentDigest = [];
     private (ulong Epoch, byte[] Digest)? _nextRotation;
@@ -485,6 +491,7 @@ public sealed class BeaconSyncOrchestrator(
         RefreshHeadSlotDelay();
         _progressLogSlot = _anchorSlot;
         _progressLogMs = slotClock.UnixMilliseconds;
+        _headStepMs = _progressLogMs;
         _newPayloadMsAtProgressLog = Metrics.BeaconChainNewPayloadMilliseconds;
 
         ulong epoch = slotClock.CurrentEpoch;
@@ -1713,7 +1720,8 @@ public sealed class BeaconSyncOrchestrator(
             }
         }
 
-        if (++_importsSinceHeadStep >= HeadStepImportInterval)
+        // A busy worker skips stale slot ticks, so the head step runs here too: the engine API wants forkchoiceUpdated after each head change.
+        if (++_importsSinceHeadStep >= HeadStepImportInterval || slotClock.UnixMilliseconds - _headStepMs >= (long)HeadStepInterval.TotalMilliseconds)
         {
             await RunHeadStepAsync(token);
         }
@@ -2099,6 +2107,7 @@ public sealed class BeaconSyncOrchestrator(
         token.ThrowIfCancellationRequested();
         _importedSinceHeadStep = false;
         _importsSinceHeadStep = 0;
+        _headStepMs = slotClock.UnixMilliseconds;
 
         IBlockImporter importer = _importer!;
         HeadView head = importer.ComputeHead();
