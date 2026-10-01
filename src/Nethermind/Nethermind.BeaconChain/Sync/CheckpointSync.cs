@@ -134,6 +134,13 @@ public class CheckpointSync(
             if (_logger.IsInfo) _logger.Info($"Computed {state.Fork} checkpoint state root {stateRoot} ({ValidatorCount(state)} validators) in {stopwatch.Elapsed.TotalSeconds:F1} s");
 
             BeaconBlockHeader latestBlockHeader = LatestBlockHeader(state);
+            if (state.Slot < latestBlockHeader.Slot)
+            {
+                // process_block_header (beacon-chain.md) writes the header at the state's slot, and slots only increase.
+                throw new InvalidDataException($"Checkpoint state at slot {state.Slot} precedes its latest block header at slot {latestBlockHeader.Slot}.");
+            }
+
+            ulong checkpointStateSlot = state.Slot;
             Hash256 blockRoot = ComputeAnchorBlockRoot(latestBlockHeader, stateRoot);
             if (weakSubjectivityCheckpoint is not null && !ProvesCheckpoint(state, blockRoot, weakSubjectivityCheckpoint))
             {
@@ -145,7 +152,6 @@ public class CheckpointSync(
 
             if (state.Slot > latestBlockHeader.Slot)
             {
-                // specs/gloas/fork-choice.md get_forkchoice_store asserts anchor_block.state_root == hash_tree_root(anchor_state).
                 (byte[] postState, int postLength) = await RetryTransientAsync("anchor post-state download", async token =>
                 {
                     using HttpResponseMessage response = await GetOctetStreamAsync($"/eth/v2/debug/beacon/states/{blockStateRoot}", token);
@@ -158,15 +164,20 @@ public class CheckpointSync(
                 ThrowIfWrongNetwork(state, spec);
                 ThrowIfInvalidSyncCommitteeKeys(state);
                 stateRoot = HashTreeRoot(state);
-                if (state.Slot != block.Slot || stateRoot != blockStateRoot
-                    || ComputeAnchorBlockRoot(LatestBlockHeader(state), stateRoot) != blockRoot)
+                if (state.Slot != block.Slot || ComputeAnchorBlockRoot(LatestBlockHeader(state), stateRoot) != blockRoot)
                 {
                     throw new InvalidDataException($"Anchor post-state does not match block {blockRoot} at slot {block.Slot}.");
                 }
             }
 
+            // specs/gloas/fork-choice.md get_forkchoice_store asserts anchor_block.state_root == hash_tree_root(anchor_state).
+            if (stateRoot != blockStateRoot)
+            {
+                throw new InvalidDataException($"Anchor state at slot {state.Slot} has root {stateRoot}, but its block {blockRoot} names state root {blockStateRoot}.");
+            }
+
             CheckpointAnchor anchor = new(state, block, blockRoot, stateRoot);
-            Persist(anchor, buffer.AsSpan(0, length), weakSubjectivityCheckpoint);
+            Persist(anchor, buffer.AsSpan(0, length), weakSubjectivityCheckpoint, checkpointStateSlot);
             if (_logger.IsInfo) _logger.Info($"Checkpoint sync complete: anchor block {blockRoot} at slot {latestBlockHeader.Slot}");
             return anchor;
         }
@@ -321,7 +332,7 @@ public class CheckpointSync(
     private ForkedBeaconState DecodeState(ReadOnlySpan<byte> sszBytes)
     {
         ForkedBeaconState state = BeaconStateCodec.DecodeForked(sszBytes, spec);
-        ThrowIfUnsupportedFork(state, spec);
+        ThrowIfUnsupportedFork(state, spec, resumed: false);
         return state;
     }
 
@@ -329,8 +340,10 @@ public class CheckpointSync(
     /// Maps the state's fork version onto the spec schedule, refuses anything before Fulu, and refuses a
     /// version whose fork is not the one the state's slot selected its layout by.
     /// </summary>
-    internal static void ThrowIfUnsupportedFork(ForkedBeaconState state, BeaconChainSpec spec)
+    /// <param name="resumed">Whether the state is the persisted anchor, which only deleting the database replaces.</param>
+    internal static void ThrowIfUnsupportedFork(ForkedBeaconState state, BeaconChainSpec spec, bool resumed)
     {
+        string remedy = resumed ? "Fix the fork configuration or delete the beaconChain database to checkpoint-sync again." : "Fix the fork configuration or use a checkpoint source of this network.";
         byte[] currentVersion = state switch
         {
             ForkedBeaconState.OfFulu fulu => fulu.State.Fork!.CurrentVersion!,
@@ -355,14 +368,14 @@ public class CheckpointSync(
                 BeaconFork versionFork = currentVersion.AsSpan().SequenceEqual(spec.GloasForkVersion) ? BeaconFork.Gloas : BeaconFork.Fulu;
                 if (versionFork != state.Fork)
                 {
-                    throw new InvalidDataException($"Checkpoint state at slot {state.Slot} carries the {versionFork} fork version {currentVersion.ToHexString(true)}, but its slot belongs to the {state.Fork} fork. Fix the fork configuration or delete the beaconChain database to checkpoint-sync again.");
+                    throw new InvalidDataException($"Checkpoint state at slot {state.Slot} carries the {versionFork} fork version {currentVersion.ToHexString(true)}, but its slot belongs to the {state.Fork} fork. {remedy}");
                 }
 
                 return;
             }
         }
 
-        throw new NotSupportedException($"Checkpoint state has unknown fork version {currentVersion.ToHexString(true)}. Fix the fork configuration or delete the beaconChain database to checkpoint-sync again.");
+        throw new NotSupportedException($"Checkpoint state has unknown fork version {currentVersion.ToHexString(true)}. {remedy}");
     }
 
     /// <summary>Refuses an anchor state whose current or next sync committee holds a pubkey that fails BLS <c>KeyValidate</c>, or an <c>aggregate_pubkey</c> that is not the aggregate of its pubkeys.</summary>
@@ -521,13 +534,16 @@ public class CheckpointSync(
         return response;
     }
 
-    private void Persist(CheckpointAnchor anchor, ReadOnlySpan<byte> stateSsz, Checkpoint? weakSubjectivityCheckpoint)
+    /// <param name="checkpointStateSlot">Slot of the checkpoint state as received, which an advanced state holds past <paramref name="anchor"/>'s.</param>
+    private void Persist(CheckpointAnchor anchor, ReadOnlySpan<byte> stateSsz, Checkpoint? weakSubjectivityCheckpoint, ulong checkpointStateSlot)
     {
         store.PutState(anchor.BlockRoot, stateSsz);
         store.PutForkedBlock(anchor.BlockRoot, anchor.Block);
 
-        // The anchor entry is written after the state and block: its presence marks a fully persisted checkpoint.
-        store.SetAnchor(anchor.BlockRoot, LatestBlockHeader(anchor.State).Slot);
+        // The anchor entry is written after the state, block and checkpoint sync record: its presence marks a fully persisted checkpoint.
+        ulong blockSlot = LatestBlockHeader(anchor.State).Slot;
+        store.PutMetadata(BeaconChainMetadataKeys.CheckpointSyncAnchor, EncodeCheckpointSyncAnchorRecord(anchor.BlockRoot, blockSlot, checkpointStateSlot));
+        store.SetAnchor(anchor.BlockRoot, blockSlot);
         if (weakSubjectivityCheckpoint is not null)
         {
             // Weak Subjectivity Sync Procedure (weak-subjectivity.md): record the proof only after its anchor is persisted.
@@ -563,13 +579,14 @@ public class CheckpointSync(
         return new Checkpoint { Root = new Hash256(parts[0]), Epoch = epoch };
     }
 
-    /// <summary>Refuses a resumed anchor unless the configured weak subjectivity checkpoint was proven for this database or <paramref name="state"/> proves it.</summary>
+    /// <summary>Refuses a resumed anchor unless the configured weak subjectivity checkpoint was proven for this database, the checkpoint sync anchor proves it, or <paramref name="state"/> proves it.</summary>
     /// <remarks>
-    /// The persisted anchor follows finality, so it is the checkpoint only until the first finalized block after it; the record
-    /// written when the checkpoint was proven keeps it accepted. A checkpoint proven here is recorded the same way.
+    /// The persisted anchor follows finality, so it is the checkpoint only until the first finalized block after it, and an advanced
+    /// checkpoint state is stored as its block's earlier post-state; the records written at checkpoint sync keep a checkpoint it proved
+    /// accepted. A checkpoint proven here is recorded the same way.
     /// </remarks>
     /// <exception cref="InvalidConfigurationException">The configured checkpoint is malformed.</exception>
-    /// <exception cref="InvalidDataException">Neither the record nor <paramref name="state"/> proves the configured checkpoint.</exception>
+    /// <exception cref="InvalidDataException">Neither the records nor <paramref name="state"/> prove the configured checkpoint.</exception>
     internal void ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(ForkedBeaconState state, Hash256 anchorRoot)
     {
         if (ParseWeakSubjectivityCheckpoint(config.WeakSubjectivityCheckpoint) is not { } checkpoint)
@@ -583,9 +600,13 @@ public class CheckpointSync(
             return;
         }
 
-        if (!ProvesCheckpoint(state, anchorRoot, checkpoint))
+        string? syncedReason = store.GetMetadata(BeaconChainMetadataKeys.CheckpointSyncAnchor) is { Length: CheckpointSyncAnchorRecordLength } synced
+            ? WhyUnproven(new Hash256(synced.AsSpan(0, Hash256.Size)), BinaryPrimitives.ReadUInt64BigEndian(synced.AsSpan(Hash256.Size)),
+                BinaryPrimitives.ReadUInt64BigEndian(synced.AsSpan(Hash256.Size + sizeof(ulong))), checkpoint)
+            : "is not recorded";
+        if (syncedReason is not null && WhyUnproven(anchorRoot, LatestBlockHeader(state).Slot, state.Slot, checkpoint) is { } anchorReason)
         {
-            throw new InvalidDataException($"The persisted anchor at slot {state.Slot} is not BeaconChain.WeakSubjectivityCheckpoint {config.WeakSubjectivityCheckpoint}, and this database recorded no other anchor as that checkpoint. Correct the checkpoint, or delete the beaconChain database to checkpoint-sync again.");
+            throw new InvalidDataException($"BeaconChain.WeakSubjectivityCheckpoint {config.WeakSubjectivityCheckpoint} is not proven by this database: the checkpoint sync anchor {syncedReason}, and the persisted anchor {anchorReason}. Correct the checkpoint, or delete the beaconChain database to checkpoint-sync again.");
         }
 
         store.PutMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint, record);
@@ -597,15 +618,42 @@ public class CheckpointSync(
     /// an older root in provider-supplied <c>block_roots</c> cannot prove ancestry.
     /// </remarks>
     internal bool ProvesCheckpoint(ForkedBeaconState state, Hash256 anchorRoot, Checkpoint checkpoint) =>
-        anchorRoot == checkpoint.Root
-        && spec.GetEpoch(state.Slot) >= checkpoint.Epoch
-        && LatestBlockHeader(state).Slot <= checkpoint.Epoch * spec.SlotsPerEpoch;
+        WhyUnproven(anchorRoot, LatestBlockHeader(state).Slot, state.Slot, checkpoint) is null;
+
+    /// <returns><c>null</c> when block <paramref name="anchorRoot"/> at <paramref name="blockSlot"/>, the latest block of a state at <paramref name="stateSlot"/>, is <paramref name="checkpoint"/>'s block at the start of its epoch; otherwise the condition it fails.</returns>
+    private string? WhyUnproven(Hash256 anchorRoot, ulong blockSlot, ulong stateSlot, Checkpoint checkpoint)
+    {
+        if (anchorRoot != checkpoint.Root)
+        {
+            return $"has block {anchorRoot}, not the checkpoint block {checkpoint.Root}";
+        }
+
+        // The epoch is compared first: the epoch start slot of a checkpoint past the state's epoch can overflow.
+        if (spec.GetEpoch(stateSlot) < checkpoint.Epoch)
+        {
+            return $"has its state at slot {stateSlot}, before epoch {checkpoint.Epoch}";
+        }
+
+        ulong epochStartSlot = checkpoint.Epoch * spec.SlotsPerEpoch;
+        return blockSlot > epochStartSlot ? $"has its block at slot {blockSlot}, after the start of epoch {checkpoint.Epoch} at slot {epochStartSlot}" : null;
+    }
 
     private static byte[] EncodeCheckpointRecord(Checkpoint checkpoint)
     {
         byte[] record = new byte[Hash256.Size + sizeof(ulong)];
         checkpoint.Root!.Bytes.CopyTo(record);
         BinaryPrimitives.WriteUInt64BigEndian(record.AsSpan(Hash256.Size), checkpoint.Epoch);
+        return record;
+    }
+
+    private const int CheckpointSyncAnchorRecordLength = Hash256.Size + 2 * sizeof(ulong);
+
+    private static byte[] EncodeCheckpointSyncAnchorRecord(Hash256 blockRoot, ulong blockSlot, ulong stateSlot)
+    {
+        byte[] record = new byte[CheckpointSyncAnchorRecordLength];
+        blockRoot.Bytes.CopyTo(record);
+        BinaryPrimitives.WriteUInt64BigEndian(record.AsSpan(Hash256.Size), blockSlot);
+        BinaryPrimitives.WriteUInt64BigEndian(record.AsSpan(Hash256.Size + sizeof(ulong)), stateSlot);
         return record;
     }
 
