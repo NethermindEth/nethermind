@@ -463,6 +463,46 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
+    /// get_head picks the state gossip is checked with, and a slashing can move it without a tick or a block: once A's two voters
+    /// are slashed, B outweighs A. An aggregate for B right after must be checked against B as the head, building B's target
+    /// state, not against the head cached before the slashing.
+    /// </summary>
+    [Test]
+    public void Gossip_aggregate_right_after_a_slashing_moves_the_head_is_checked_against_the_new_head()
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
+        UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
+        UnsignedChain.ChainBlock b = ImportLine(chain, runner, parent.Root, 32)[0];
+        ulong[] aVoters = [.. new[] { 0, 1 }.Select(skip => (ulong)FirstCommitteeMember(a, targetEpoch - 1, skip).Member).Order()];
+        int bSkip = 0;
+        while (aVoters.Contains((ulong)FirstCommitteeMember(b, targetEpoch - 1, bSkip).Member))
+            bSkip++;
+        runner.OnAttestation(BodyVote(chain, a, targetEpoch - 1, skip: 0), isFromBlock: true, verifySignature: false);
+        runner.OnAttestation(BodyVote(chain, a, targetEpoch - 1, skip: 1), isFromBlock: true, verifySignature: false);
+        runner.OnAttestation(BodyVote(chain, b, targetEpoch - 1, bSkip), isFromBlock: true, verifySignature: false);
+        Hash256 headBeforeSlashing = runner.GetHead();
+        runner.OnAttesterSlashing(chain.DoubleVote(aVoters, slot: 1, a.Root, b.Root), verifySignatures: false);
+        (_, ulong voteSlot, int member) = FirstCommitteeMember(b, targetEpoch);
+        int buildsBefore = builds.Count;
+
+        Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, b.Root, targetEpoch, member, signingState: null)), Throws.InstanceOf<Exception>());
+        runner.GetCheckpointState(new CheckpointRef(targetEpoch, b.Root));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(aVoters.Distinct().Count(), Is.EqualTo(2), "fixture bug: A needs two distinct voters");
+            Assert.That(headBeforeSlashing, Is.EqualTo(a.Root), "fixture bug: two votes put A ahead before the slashing");
+            Assert.That(builds.Count - buildsBefore, Is.EqualTo(1), "the aggregate was checked against B's own target state, which the later lookup then finds");
+            Assert.That(runner.GetHead(), Is.EqualTo(b.Root), "fixture bug: the slashing makes B the head");
+        }
+    }
+
+    /// <summary>
     /// A held vote state stands in for every target of its shuffling, so only a vote that verified may leave one: two unsigned
     /// votes each build, a trusted body vote builds once and is held, and a later body vote of that shuffling builds nothing.
     /// </summary>
@@ -493,8 +533,9 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
-    /// Each held vote state is a whole checkpoint state, so at most eight are kept: nine shufflings (nine siblings at or before the
-    /// decision slot, each its own decision block) push the first out, and a later target of that shuffling builds again.
+    /// Each held vote state is a whole checkpoint state, so at most eight are kept: of nine shufflings (nine siblings at or before
+    /// the decision slot, each its own decision block) the least recently used goes. The first is used again through its own
+    /// cached checkpoint state before the ninth arrives, so the second is the one evicted and a later target of it builds again.
     /// </summary>
     [Test]
     public void Vote_states_are_bounded_and_the_least_recently_used_shuffling_goes_first()
@@ -512,22 +553,24 @@ public class ForkChoiceRunnerTests
         }
 
         UnsignedChain.ChainBlock firstChild = ImportLine(chain, runner, siblings[0].Root, 40)[0];
-        UnsignedChain.ChainBlock lastChild = ImportLine(chain, runner, siblings[^1].Root, 41)[0];
-        foreach (UnsignedChain.ChainBlock sibling in siblings)
+        UnsignedChain.ChainBlock secondChild = ImportLine(chain, runner, siblings[1].Root, 41)[0];
+        foreach (UnsignedChain.ChainBlock sibling in siblings.Take(MaxVoteStates))
         {
             runner.OnAttestation(BodyVote(chain, sibling, targetEpoch), isFromBlock: true, verifySignature: false);
         }
 
+        runner.OnAttestation(BodyVote(chain, siblings[0], targetEpoch), isFromBlock: true, verifySignature: false);
+        runner.OnAttestation(BodyVote(chain, siblings[^1], targetEpoch), isFromBlock: true, verifySignature: false);
         int afterSiblings = builds.Count;
-        runner.OnAttestation(BodyVote(chain, lastChild, targetEpoch), isFromBlock: true, verifySignature: false);
-        int afterLastChild = builds.Count;
         runner.OnAttestation(BodyVote(chain, firstChild, targetEpoch), isFromBlock: true, verifySignature: false);
+        int afterFirstChild = builds.Count;
+        runner.OnAttestation(BodyVote(chain, secondChild, targetEpoch), isFromBlock: true, verifySignature: false);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(afterSiblings, Is.EqualTo(MaxVoteStates + 1), "every sibling is its own shuffling");
-            Assert.That(afterLastChild, Is.EqualTo(afterSiblings), "the newest shuffling is still held");
-            Assert.That(builds.Count, Is.EqualTo(afterSiblings + 1), "the first shuffling was evicted");
+            Assert.That(afterSiblings, Is.EqualTo(MaxVoteStates + 1), "every sibling is its own shuffling, and the repeat is cached");
+            Assert.That(afterFirstChild, Is.EqualTo(afterSiblings), "the first shuffling, used again, is still held");
+            Assert.That(builds.Count, Is.EqualTo(afterSiblings + 1), "the second shuffling was the least recently used and was evicted");
         }
     }
 
@@ -1640,15 +1683,16 @@ public class ForkChoiceRunnerTests
         return blocks;
     }
 
-    /// <summary>The first slot of <paramref name="epoch"/> with a committee on <paramref name="tip"/>'s chain, its sole member, and the state that signs for it.</summary>
-    private static (BeaconStateFulu SigningState, ulong Slot, int Member) FirstCommitteeMember(UnsignedChain.ChainBlock tip, ulong epoch)
+    /// <summary>The first slot of <paramref name="epoch"/> past <paramref name="skip"/> others with a committee on <paramref name="tip"/>'s chain, its sole member, and the state that signs for it.</summary>
+    private static (BeaconStateFulu SigningState, ulong Slot, int Member) FirstCommitteeMember(UnsignedChain.ChainBlock tip, ulong epoch, int skip = 0)
     {
         BeaconStateFulu atEpochStart = tip.PostState.Clone();
         ulong epochStart = epoch * Presets.SlotsPerEpoch;
-        SlotProcessing.ProcessSlots(atEpochStart, epochStart, new EpochCache { Hasher = new CachedBeaconStateHasher() });
+        if (atEpochStart.Slot < epochStart)
+            SlotProcessing.ProcessSlots(atEpochStart, epochStart, new EpochCache { Hasher = new CachedBeaconStateHasher() });
         CommitteeCache committees = new EpochCache().GetCommitteeCache(atEpochStart, epoch);
         ulong slot = epochStart;
-        while (committees.GetBeaconCommittee(slot, 0).Length == 0)
+        while (committees.GetBeaconCommittee(slot, 0).Length == 0 || skip-- > 0)
             slot++;
         ReadOnlySpan<int> committee = committees.GetBeaconCommittee(slot, 0);
         Assert.That(committee.Length, Is.EqualTo(1), "fixture bug: the aggregation bits assume one-member committees");
@@ -1656,9 +1700,9 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>The unsigned vote of <paramref name="target"/>'s first committee of <paramref name="epoch"/> for that block as head and target.</summary>
-    private static Attestation BodyVote(UnsignedChain chain, UnsignedChain.ChainBlock target, ulong epoch)
+    private static Attestation BodyVote(UnsignedChain chain, UnsignedChain.ChainBlock target, ulong epoch, int skip = 0)
     {
-        (_, ulong slot, _) = FirstCommitteeMember(target, epoch);
+        (_, ulong slot, _) = FirstCommitteeMember(target, epoch, skip);
         return new Attestation
         {
             AggregationBits = new BitArray(1, true),
