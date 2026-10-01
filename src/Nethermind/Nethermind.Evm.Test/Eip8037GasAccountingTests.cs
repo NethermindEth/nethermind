@@ -96,7 +96,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         // Receipt accounting excludes gas_left on halt, so observe the settled policy as well.
         UInt256 gasPrice = UInt256.Zero;
         GasConsumed consumed = ((TransactionProcessorBase<EthereumGasPolicy>)_processor).CompleteEip8037Halt(
-            tx, Spec, ExecutionOptions.None, ref gas, in gasPrice, in intrinsic, 0, reservoir, executionRefund);
+            tx, Spec, ExecutionOptions.None, ref gas, in gasPrice, in intrinsic, 0, reservoir, executionRefund).Gas;
 
         using (Assert.EnterMultipleScope())
         {
@@ -169,7 +169,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             AssertStorage(new StorageCell(created, 1), UInt256.Zero);
             if (collision)
             {
-                Assert.That(TestState.GetCode(created), Is.EqualTo(new byte[] { 0x00 }));
+                Assert.That(TestState.GetCode(created).ToArray(), Is.EqualTo(new byte[] { 0x00 }));
                 AssertStorage(new StorageCell(created, 3), (UInt256)42);
             }
         }

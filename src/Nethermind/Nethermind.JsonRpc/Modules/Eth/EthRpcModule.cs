@@ -354,7 +354,7 @@ public partial class EthRpcModule(
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
     {
-        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
         {
             return Task.FromResult(ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput));
@@ -477,7 +477,7 @@ public partial class EthRpcModule(
             return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
 
         if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
-            return ResultWrapper<FillTransactionResult>.Fail($"invalid chain id (have={chainId}, want={requestedChainId})", ErrorCodes.InvalidInput);
+            return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.InvalidChainId(chainId, requestedChainId), ErrorCodes.InvalidInput);
 
         legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
@@ -510,7 +510,7 @@ public partial class EthRpcModule(
 
         legacyTx.ChainId ??= chainId;
 
-        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec);
         if (!txResult.Success(out Transaction tx, out string error))
             return ResultWrapper<FillTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
 
@@ -955,10 +955,9 @@ public partial class EthRpcModule(
         {
             CancellationToken cancellationToken = timeout.Token;
 
-            ulong? headNumber = _blockFinder.Head?.Number;
-            if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
+            if (_blockFinder.IsRangeInFuture(fromBlock, toBlock))
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
             }
             if (fromBlock.BlockNumber > toBlock.BlockNumber)
             {
@@ -1176,13 +1175,13 @@ public partial class EthRpcModule(
         return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, blockTimestamp, gasInfo.Value, logIndexStart));
     }
 
-    public virtual ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    public virtual ResultWrapper<IEnumerable<ReceiptForRpc>?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
         return searchResult switch
         {
-            { IsError: true } => ResultWrapper<ReceiptForRpc[]?>.Success(null),
-            _ => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider)
+            { IsError: true } => ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null),
+            _ => _receiptFinder.GetBlockReceipts(searchResult.Object, _specProvider)
         };
     }
 

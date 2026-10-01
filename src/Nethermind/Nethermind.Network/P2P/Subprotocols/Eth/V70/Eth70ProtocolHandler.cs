@@ -257,7 +257,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ulong totalResponseSize = 0;
 
         using ArrayPoolList<ulong> expectedGasUsed = new(blockHashes.Count);
-        using ArrayPoolList<ulong> blockGasLimits = new(blockHashes.Count);
+        using ArrayPoolList<ulong?> blockGasLimits = new(blockHashes.Count);
         using ArrayPoolList<Transaction[]?> blockTransactions = new(blockHashes.Count);
         using ArrayPoolList<RlpBehaviors> receiptRlpBehaviors = new(blockHashes.Count);
         using ArrayPoolList<bool> validateReceiptGasUpperBoundAgainstHeader = new(blockHashes.Count);
@@ -272,7 +272,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 if (header is null)
                 {
                     expectedGasUsed.Add(0);
-                    blockGasLimits.Add(0);
+                    blockGasLimits.Add(null);
                     blockTransactions.Add(null);
                     receiptRlpBehaviors.Add(RlpBehaviors.None);
                     validateReceiptGasUpperBoundAgainstHeader.Add(false);
@@ -335,7 +335,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                         bool isLast = i == txReceipts.Length - 1;
                         TxReceipt[] blockReceipts = txReceipts[i] ?? throw new SubprotocolException("Unexpected null receipt block payload");
                         ulong blockExpectedGasUsed = expectedGasUsed[blockIndex];
-                        ulong blockGasLimit = blockGasLimits[blockIndex];
+                        ulong? blockGasLimit = blockGasLimits[blockIndex];
                         Transaction[]? transactions = blockTransactions[blockIndex];
                         RlpBehaviors receiptBehaviors = receiptRlpBehaviors[blockIndex];
                         bool validateGasUpperBound = validateReceiptGasUpperBoundAgainstHeader[blockIndex];
@@ -387,6 +387,13 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             if (blockReceipts.Length == 0)
                             {
                                 throw new SubprotocolException("Peer returned no progress for partial receipts");
+                            }
+
+                            // Without a local header nothing bounds EIP-7975 paging of this block,
+                            // so stop at the complete prefix; callers treat the short tail as pending.
+                            if (blockGasLimit is null)
+                            {
+                                return (aggregated, (long)totalResponseSize);
                             }
 
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed,
@@ -516,7 +523,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private ReceiptsValidationResult ValidateBlockReceipts(
         TxReceipt[] blockReceipts,
         ulong expectedGasUsed,
-        ulong blockGasLimit,
+        ulong? blockGasLimit,
         Transaction[]? transactions,
         RlpBehaviors receiptBehaviors,
         bool validateReceiptGasUpperBoundAgainstHeader,
@@ -667,15 +674,16 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         }
     }
 
-    private static void ValidateTotalReceiptsSizeAgainstBlockGasLimit(ulong receiptsContentSize, ulong blockGasLimit)
+    private static void ValidateTotalReceiptsSizeAgainstBlockGasLimit(ulong receiptsContentSize, ulong? blockGasLimit)
     {
-        if (blockGasLimit == 0)
+        // No local header means no allowance to check; an empty list fits any allowance, even a zero gas limit's.
+        if (blockGasLimit is not { } gasLimit || receiptsContentSize == 0)
         {
             return;
         }
 
         ulong blockReceiptsSize = GetBlockReceiptsSize(receiptsContentSize);
-        ulong maxReceiptsSize = GetReceiptSizeLimit(blockGasLimit);
+        ulong maxReceiptsSize = GetReceiptSizeLimit(gasLimit);
         if (blockReceiptsSize > maxReceiptsSize)
         {
             throw new SubprotocolException("Block receipts size exceeds block gas limit allowance");

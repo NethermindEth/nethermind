@@ -86,6 +86,8 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingReturnData = value;
     }
 
+    public bool IsTracingCallOutputMemory => innerTracer.IsTracingCallOutputMemory;
+
     public bool IsTracingCode
     {
         get => _isTracingCode || innerTracer.IsTracingCode;
@@ -144,7 +146,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
         ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingState)
@@ -414,6 +416,16 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportActionRemainingGas(gas);
+        }
+    }
+
+    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
+        if (innerTracer.IsTracingActions)
+        {
+            innerTracer.ReportRejectedAction(gas, gasLeft, value, from, to, input, callType, error, isPrecompileCall);
         }
     }
 

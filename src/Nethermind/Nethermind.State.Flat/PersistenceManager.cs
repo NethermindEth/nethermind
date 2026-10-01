@@ -313,7 +313,7 @@ public class PersistenceManager(
 
     /// <summary>
     /// Branch A — boundary CompactSize compacted: convert every in-memory base in the range it
-    /// spans and queue them for batched compaction. The CompactSized snapshot is produced by the
+    /// spans whose parent is on disk or converted with it, and queue them for batched compaction. The CompactSized snapshot is produced by the
     /// batched compactor (a linked merge of the bases), not here, so the compacted in-memory
     /// snapshot is used only to delimit the block range. Disposes <paramref name="compacted"/>.
     /// </summary>
@@ -329,11 +329,20 @@ public class PersistenceManager(
             ulong start = compacted.From.BlockNumber + 1;
             ulong end = compacted.To.BlockNumber;
 
+            // A fork that branched below `start` after the range under it was converted still has an in-memory
+            // parent. A walk that crosses into the persisted tier cannot return to memory, so converting it would
+            // strand the fork's tip.
+            StateId currentPersistedState = GetCurrentPersistedStateId();
             for (ulong b = start; b <= end; b++)
             {
                 using ArrayPoolList<StateId> statesAtBlock = snapshotRepository.GetStatesAtBlockNumber(b);
                 foreach (StateId state in statesAtBlock)
-                    allStateIds.Add(state);
+                {
+                    if (!snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? baseSnap)) continue;
+                    using Snapshot _ = baseSnap;
+                    if (IsOnDisk(baseSnap.From, currentPersistedState) || allStateIds.Contains(baseSnap.From))
+                        allStateIds.Add(state);
+                }
             }
 
             Parallel.ForEach(

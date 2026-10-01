@@ -193,6 +193,13 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Hex_lookup_holds_both_lowercase_digits_of_every_byte([Range(0, 255)] int value)
+        {
+            string hex = value.ToString("x2");
+            Assert.That(Bytes.Lookup32[value], Is.EqualTo(hex[0] + ((uint)hex[1] << 16)));
+        }
+
+        [Test]
         public void Stream_hex_works()
         {
             byte[] bytes = new byte[] { 15, 16, 255 };
@@ -1343,5 +1350,27 @@ namespace Nethermind.Core.Test
         [TestCaseSource(nameof(WithoutLeadingZerosCases))]
         public byte[] WithoutLeadingZeros_cases(byte[] bytes) =>
             new ReadOnlySpan<byte>(bytes).WithoutLeadingZeros().ToArray();
+
+        [TestCase("default", true)]
+        [TestCase("null array", true)]
+        [TestCase("empty array", false)]
+        [TestCase("empty slice", false)]
+        [TestCase("memory manager", false)]
+        public void ReadOnlyMemory_IsNull_tells_missing_from_empty(string source, bool expected)
+        {
+            // Code reads return default when not served and empty memory for an account without code; confusing the
+            // two would skip the by-address fallback or run nothing.
+            byte[]? none = null;
+            ReadOnlyMemory<byte> memory = source switch
+            {
+                "default" => default,
+                "null array" => none,
+                "empty array" => Array.Empty<byte>(),
+                "empty slice" => new byte[] { 1, 2 }.AsMemory(2),
+                _ => Nethermind.Core.Buffers.ArrayMemoryManager.From([1])!.Memory,
+            };
+
+            Assert.That(memory.IsNull(), Is.EqualTo(expected));
+        }
     }
 }

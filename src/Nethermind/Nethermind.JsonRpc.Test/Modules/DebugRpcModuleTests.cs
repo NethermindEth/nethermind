@@ -151,6 +151,125 @@ public partial class DebugRpcModuleTests
         { TestName = "InsufficientFundsForGasPriceValue" };
     }
 
+    public static IEnumerable<TestCaseData> KeccakPreimageCases()
+    {
+        (string Name, string Code, string Expected, long Gas)[] cases =
+        [
+            ("none", "00", """{}""", 100_000),
+            ("empty", "600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("padded", "600160002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
+            ("byte", "602a600053600160002000", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
+            ("overlap", "602a601f536002601f2000", """{"0x71378d9bd65a614e4926f9fa621eae99b3f2a1cf19e8c22e41594dc15c16dd33":"0x2a00"}""", 100_000),
+            ("offset", "600160202000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
+            ("duplicate", "6000600020600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("revert", "602a600053600160002060006000fd", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
+            ("empty_stack", "20", """{}""", 100_000),
+            ("short_stack", "600020", """{}""", 100_000),
+            ("padding_limit", "6001621000012000", """{}""", 100_000),
+            ("negative_offset", "600167ffffffffffffffff2000", """{}""", 100_000),
+            ("signed_end_overflow", "6740000000000000006740000000000000002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("large_size", "63ffffffff60002000", """{}""", 100_000),
+            ("truncated_offset", "60007f01000000000000000000000000000000000000000000000000000000000000002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("distinct", "6000600020600160002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00","0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("out_of_gas", "6001620fffff2000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
+            ("nested_revert", "6000600060006000600073000000000000000000000000000000000000901261c350f150600160002000", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a","0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
+            ("unwritten_memory", "60016210080060006000600073000000000000000000000000000000000000901361c350f1506001621008002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 3_000_000),
+        ];
+        foreach ((string name, string code, string expected, long gas) in cases)
+        {
+            foreach (bool disableStack in new[] { false, true })
+            {
+                yield return new TestCaseData(code, expected, disableStack, gas)
+                    .SetName($"Debug_traceCall_keccak_preimages_{name}_disableStack_{disableStack}");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(KeccakPreimageCases))]
+    public async Task Debug_traceCall_keccak_preimages(string code, string expected, bool disableStack, long gas)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x" + code },
+            ["0x0000000000000000000000000000000000009012"] = new { code = "0x602a600053600160002060006000fd" }
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = $"0x{gas:x}" }, "latest",
+            new { tracer = "keccak256PreimageTracer", disableStack, enableMemory = false, stateOverrides });
+
+        JToken result = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null, response);
+            Assert.That(JToken.DeepEquals(result["result"], JToken.Parse(expected)), Is.True, response);
+        }
+    }
+
+    [TestCase(false, "60006000fd", 21006)]
+    [TestCase(true, "60006000fd", 21006)]
+    [TestCase(false, "fe", 100000)]
+    [TestCase(true, "fe", 100000)]
+    public async Task Debug_traceCall_failed_opcode_trace_reports_consumed_gas(bool streamMode, string code, long expectedGas)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        object? stateOverrides = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{TestItem.AddressC}}}":{"code":"0x{{{code}}}"}}""");
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest", new { streamMode, stateOverrides });
+
+        JToken result = JToken.Parse(response)["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool?)result["failed"], Is.True);
+            Assert.That((long?)result["gas"], Is.EqualTo(expectedGas));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Debug_traceCall_omits_empty_memory(bool streamMode)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        object? stateOverrides = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{TestItem.AddressC}}}":{"code":"0x602a60005200"}}""");
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
+            new { streamMode, enableMemory = true, stateOverrides });
+
+        JArray entries = (JArray)JToken.Parse(response)["result"]!["structLogs"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0]["memory"], Is.Null);
+            Assert.That(entries[1]["memory"], Is.Null);
+            Assert.That(entries[2]["memory"], Is.Null);
+            Assert.That((string?)entries[3]["memory"]?[0], Is.EqualTo("0x" + new string('0', 62) + "2a"));
+        }
+    }
+
+    [TestCase(false, null)]
+    [TestCase(true, null)]
+    [TestCase(false, "callTracer")]
+    [TestCase(true, "callTracer")]
+    public async Task Debug_traceCall_rejects_pending(bool useBlockObject, string? tracer)
+    {
+        using Context ctx = await Context.Create();
+        object blockParameter = useBlockObject ? new { blockNumber = "pending" } : "pending";
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, blockParameter, new { tracer });
+
+        JToken result = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["result"], Is.Null);
+            Assert.That((int?)result["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That((string?)result["error"]?["message"], Is.EqualTo("tracing on top of pending is not supported"));
+        }
+    }
+
     [Test]
     public async Task Debug_traceCall_runs_on_top_of_specified_block()
     {

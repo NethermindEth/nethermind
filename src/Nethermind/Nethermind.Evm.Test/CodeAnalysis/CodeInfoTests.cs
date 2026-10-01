@@ -6,10 +6,14 @@ using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
+using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -69,10 +73,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public async Task Analysis_failure_is_reported_to_every_reader()
+        public async Task Analysis_failure_is_reported_to_every_reader([Values(1, 23)] int length)
         {
             InvalidOperationException expected = new("analysis failed");
-            using GatedCodeMemory memory = new([(byte)Instruction.JUMPDEST], () => throw expected);
+            using GatedCodeMemory memory = new(new byte[length], () => throw expected);
             CodeInfo codeInfo = new(memory.Memory);
 
             for (int reader = 0; reader < 2; reader++)
@@ -92,6 +96,111 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 Assert.That(actual, Is.SameAs(expected));
             }
         }
+
+        [Test]
+        public async Task Concurrent_delegation_getter_returns_same_address_instance()
+        {
+            const int Workers = 4;
+            byte[] code = new byte[Eip7702Constants.DelegationHeaderLength + Address.Size];
+            Eip7702Constants.DelegationHeader.CopyTo(code);
+            using Barrier barrier = new(Workers);
+            using GatedCodeMemory memory = new(code, () =>
+            {
+                if (!barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
+                {
+                    throw new TimeoutException("delegation getters did not reach the span barrier");
+                }
+            });
+            CodeInfo codeInfo = new(memory.Memory);
+
+            Task<Address?>[] workers = new Task<Address?>[Workers];
+            for (int worker = 0; worker < workers.Length; worker++)
+            {
+                workers[worker] = Task.Factory.StartNew(
+                    () => codeInfo.DelegatedAddress,
+                    CancellationToken.None,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+            }
+
+            Address?[] addresses = await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(30));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(addresses, Is.All.SameAs(addresses[0]));
+                Assert.That(addresses[0], Is.EqualTo(Address.Zero));
+            }
+        }
+
+        [Test]
+        public void Execution_code_replaces_the_callers_code([Values] bool sliced)
+        {
+            byte[] source = [0xfe, 0x60, 0x01, 0x60, 0x02, 0x01, 0xfe];
+            ReadOnlyMemory<byte> code = sliced ? source.AsMemory(1, 5) : source;
+            CodeInfo codeInfo = new(code);
+            ReadOnlyMemory<byte> earlierView = codeInfo.Code;
+
+            ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
+            ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(execution.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(padding.ToArray(), Is.All.EqualTo(0));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.CodeSpan), ref MemoryMarshal.GetReference(execution)), Is.True,
+                    "Code must be served from the padded copy rather than keep the caller's array alongside it");
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.ExecutionCodeSpan), ref MemoryMarshal.GetReference(execution)), Is.True);
+                Assert.That(earlierView.ToArray(), Is.EqualTo(code.ToArray()));
+            }
+        }
+
+        [TestCase(5)]
+        [TestCase(0, TestName = "Empty code")]
+        public void Executable_code_memory_executes_without_a_copy(int length)
+        {
+            // Storage reads code straight into this memory, so first execution must not copy it a second time.
+            ReadOnlyMemory<byte> code = ExecutableCodeMemory.Allocate(length, out Span<byte> destination);
+            destination.Fill(0x5b);
+            CodeInfo codeInfo = new(code);
+
+            ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
+            ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(execution.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(padding.ToArray(), Is.All.EqualTo(0));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(code.Span), ref MemoryMarshal.GetReference(execution)), Is.True);
+            }
+        }
+
+        [Test]
+        public void A_slice_of_executable_code_memory_is_copied()
+        {
+            // Only the whole allocation is followed by zeroed padding; a slice's next bytes are more code.
+            ReadOnlyMemory<byte> code = ExecutableCodeMemory.Allocate(4, out Span<byte> destination);
+            destination.Fill(0x60);
+            CodeInfo codeInfo = new(code[..2]);
+
+            ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
+            ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(execution.ToArray(), Is.EqualTo(new byte[] { 0x60, 0x60 }));
+                Assert.That(padding.ToArray(), Is.All.EqualTo(0));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(code.Span), ref MemoryMarshal.GetReference(execution)), Is.False);
+            }
+        }
+
+        [Test]
+        public void Retains_a_whole_array_without_boxing()
+        {
+            byte[] source = [0x60, 0x01, 0x60, 0x02, 0x01];
+
+            Assert.That(CodeField(new CodeInfo(source)), Is.SameAs(source));
+        }
+
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_code")]
+        private static extern ref object CodeField(CodeInfo codeInfo);
 
         [TestCase(-1, false)]
         [TestCase(0, true)]

@@ -41,7 +41,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 
 ## Codebase Rules
 
-Detailed rules live in [`.agents/rules/`](./.agents/rules/). **You MUST read the relevant files before answering any query, reasoning, writing, reviewing, planning, or debugging any code read load additional files as soon as the task touches their domain. Do NOT skip loading a file because you think you already know the rules — always read from disk.**
+Detailed rules live in [`.agents/rules/`](./.agents/rules/). Read the files relevant to a task before starting it, and load more as the task reaches their domain. The rules change often, so read them from disk rather than relying on what you remember; files already imported into your context count as read.
 
 - [coding-style.md](./.agents/rules/coding-style.md) — Almost always. Load for any task requiring C#-specific reasoning. Covers syntax, coding patterns, documentation, and code quality.
 - [di-patterns.md](./.agents/rules/di-patterns.md) — Core dependency injection patterns. Load when working with DI registration, service wiring, or component architecture. Covers Autofac modules, WorldState architecture, lifetimes, and the custom DSL.
@@ -71,6 +71,10 @@ Before creating a pull request:
 ## Agent declaration
 
 - When creating a PR or commenting on GitHub under a human account, state that you are an AI agent acting on behalf of the user and name the harness and model, e.g. `🤖 AI agent (Claude Code / Opus 5) on behalf of @user` — this makes it easy to trace which configuration produced which behavior. Put it in the `Remarks` section of the PR body, or at the end of a comment. This does not apply to commit messages, nor to comments posted under a bot account, whose identity already discloses the agent.
+
+## Agent reviews
+
+- When submitting a GitHub review, use `APPROVE` or `COMMENT`, never `REQUEST_CHANGES`. Post blocking findings in a `COMMENT` review.
 
 ## Benchmark workflows
 

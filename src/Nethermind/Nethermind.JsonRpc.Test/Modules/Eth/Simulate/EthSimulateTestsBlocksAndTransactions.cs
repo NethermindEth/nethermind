@@ -192,7 +192,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
@@ -393,7 +393,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
@@ -434,7 +434,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
@@ -579,7 +579,7 @@ public class EthSimulateTestsBlocksAndTransactions
             ]
         };
 
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
@@ -597,6 +597,65 @@ public class EthSimulateTestsBlocksAndTransactions
         Log[] tx1Logs = calls[1].Logs.ToArray();
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
         Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_drops_logs_and_transfers_of_reverted_frames([Values] bool eip7708)
+    {
+        Address caller = new("0xc400000000000000000000000000000000000000");
+        Address reverter = new("0xc500000000000000000000000000000000000000");
+        Address logger = new("0xc600000000000000000000000000000000000000");
+
+        // CALL(gas, target, value, 0, 0, 0, 0) and discard the success flag.
+        static string Call(Address target, byte value) => $"600060006000600060{value:x2}73{target.Bytes.ToHexString()}5af150";
+        const string Log0 = "60006000a0";
+        // logger: LOG0, STOP. reverter: pays logger 1 wei, LOG0, REVERT. caller: pays reverter 5 wei and
+        // swallows its revert, pays logger 2 wei, LOG0, STOP.
+        string loggerCode = Log0 + "00";
+        string reverterCode = Call(logger, 1) + Log0 + "60006000fd";
+        string callerCode = Call(reverter, 5) + Call(logger, 2) + Log0 + "00";
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            TraceTransfers = true,
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } },
+                        { caller, new AccountOverride { Balance = 1.Ether, Code = Bytes.FromHexString(callerCode) } },
+                        { reverter, new AccountOverride { Code = Bytes.FromHexString(reverterCode) } },
+                        { logger, new AccountOverride { Code = Bytes.FromHexString(loggerCode) } }
+                    },
+                    Calls =
+                    [
+                        // As in geth, logs a revert drops still consume their log indices.
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = reverter, Gas = 200_000, GasPrice = 0 },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = caller, Gas = 200_000, GasPrice = 0 }
+                    ]
+                }
+            ]
+        };
+
+        OverridableReleaseSpec spec = new(London.Instance);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
+        spec.IsEip7708Enabled = eip7708;
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        SimulateCallResult[] calls = result.Data[0].Calls.ToArray();
+        Assert.That(calls[0].Status, Is.EqualTo(StatusCode.Failure));
+        Assert.That(calls[0].Logs, Is.Empty);
+        Assert.That(calls[1].Status, Is.EqualTo(StatusCode.Success));
+
+        Log[] logs = calls[1].Logs.ToArray();
+        Address transferSender = eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender;
+        Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { transferSender, logger, caller }));
+        Assert.That(logs[0].Topics, Is.EqualTo(new[] { TransferLog.TransferSignature, caller.ToHash().ToHash256(), logger.ToHash().ToHash256() }));
+        Assert.That(new UInt256(logs[0].Data, isBigEndian: true), Is.EqualTo((UInt256)2));
+        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 5, 6, 7 }));
     }
 
     [TestCase(
@@ -1246,7 +1305,7 @@ public class EthSimulateTestsBlocksAndTransactions
             Validation = true
         };
 
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig { GasCap = 20_000 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig { GasCap = 20_000, Timeout = -1 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         // With the budget enforced, the first call spends most of it and the second call's clamped
@@ -1512,7 +1571,7 @@ public class EthSimulateTestsBlocksAndTransactions
         // first and leaves the second short only while both dimensions deplete it; counting execution alone
         // would leave ~173k and let both writes through, spending ~250k against a 200k cap.
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
-            new JsonRpcConfig { GasCap = TwoSstoreRequestGasCap }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+            new JsonRpcConfig { GasCap = TwoSstoreRequestGasCap, Timeout = -1 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));

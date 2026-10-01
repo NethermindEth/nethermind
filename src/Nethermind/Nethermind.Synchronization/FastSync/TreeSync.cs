@@ -591,9 +591,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     foreach (DependentItem dependentItem in dependentItems)
                     {
-                        dependentItem.Counter--;
-
-                        if (dependentItem.Counter == 0)
+                        if (dependentItem.ResolveDependency())
                         {
                             nodesToSave.Add(dependentItem);
                         }
@@ -702,6 +700,7 @@ namespace Nethermind.Synchronization.FastSync
         private bool VerifyStorageUpdated(StateSyncItem item, byte[] value)
         {
             DependentItem dependentItem = new(item, value, _stateSyncPivot.UpdatedStorages.Count);
+            bool isComplete = dependentItem.Counter == 0;
 
             using ITreeSyncVerificationContext verificationContext = _store.CreateVerificationContext(value);
 
@@ -718,7 +717,7 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is empty or account deleted, ensuring flat storage cleared");
                     _store.EnsureStorageEmpty(updatedAddress);
-                    dependentItem.Counter--;
+                    isComplete |= dependentItem.ResolveDependency();
                 }
                 else if (AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
                 {
@@ -727,11 +726,11 @@ namespace Nethermind.Synchronization.FastSync
                 else
                 {
                     if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is ok");
-                    dependentItem.Counter--;
+                    isComplete |= dependentItem.ResolveDependency();
                 }
             }
 
-            if (dependentItem.Counter > 0)
+            if (!isComplete)
             {
                 if (_logger.IsDebug) _logger.Debug($"Queued extra {dependentItem.Counter} items for storage repair..");
             }
@@ -740,7 +739,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (_logger.IsDebug) _logger.Debug($"Storage OK");
             }
 
-            return dependentItem.Counter == 0;
+            return isComplete;
         }
 
         public void VerifyPostSyncCleanUp()
@@ -815,6 +814,7 @@ namespace Nethermind.Synchronization.FastSync
                     // Note the counter is set to 16 first before decrementing at each loop. This is because it is possible
                     // than the node is downloaded during the loop which may trigger a save on this node.
                     DependentItem dependentBranch = new(currentStateSyncItem, currentResponseItem, 16);
+                    bool isBranchComplete = false;
 
                     TreePath parentPath = currentStateSyncItem.Path;
 
@@ -841,17 +841,17 @@ namespace Nethermind.Synchronization.FastSync
                             else
                             {
                                 _branchProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.AlreadySaved);
-                                dependentBranch.Counter--;
+                                isBranchComplete |= dependentBranch.ResolveDependency();
                             }
                         }
                         else
                         {
                             _branchProgress.ReportSynced(currentStateSyncItem.Level + 1, currentStateSyncItem.BranchChildIndex, childIndex, currentStateSyncItem.NodeDataType, NodeProgressState.Empty);
-                            dependentBranch.Counter--;
+                            isBranchComplete |= dependentBranch.ResolveDependency();
                         }
                     }
 
-                    if (dependentBranch.Counter == 0)
+                    if (isBranchComplete)
                     {
                         SaveNode(currentStateSyncItem, currentResponseItem);
                     }
@@ -904,16 +904,17 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
+                        bool isAccountComplete = false;
                         RlpReader ctx = new(trieNode.Value.AsSpan());
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
                             AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, TreePath.Empty, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
-                            if (addCodeResult == AddNodeResult.AlreadySaved) dependentItem.Counter--;
+                            if (addCodeResult == AddNodeResult.AlreadySaved) isAccountComplete |= dependentItem.ResolveDependency();
                         }
                         else
                         {
-                            dependentItem.Counter--;
+                            isAccountComplete |= dependentItem.ResolveDependency();
                         }
 
                         if (storageRoot != Keccak.EmptyTreeHash)
@@ -928,7 +929,7 @@ namespace Nethermind.Synchronization.FastSync
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult == AddNodeResult.AlreadySaved)
                             {
-                                dependentItem.Counter--;
+                                isAccountComplete |= dependentItem.ResolveDependency();
                             }
                         }
                         else
@@ -936,10 +937,10 @@ namespace Nethermind.Synchronization.FastSync
                             TreePath finalPath = currentStateSyncItem.Path.Append(trieNode.Key);
                             Hash256 address = finalPath.Path.ToCommitment();
                             _store.EnsureStorageEmpty(address);
-                            dependentItem.Counter--;
+                            isAccountComplete |= dependentItem.ResolveDependency();
                         }
 
-                        if (dependentItem.Counter == 0)
+                        if (isAccountComplete)
                         {
                             Interlocked.Increment(ref _data.SavedAccounts);
                             SaveNode(currentStateSyncItem, currentResponseItem);

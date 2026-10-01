@@ -7,12 +7,12 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -154,7 +154,11 @@ namespace Nethermind.Trie
                 if (RootRef is not null && RootRef.IsDirty)
                 {
                     TreePath path = TreePath.Empty;
-                    newRoot = Commit(committer, ref path, RootRef, skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
+                    if (maxLevelForConcurrentCommit >= 0 && !Core.Cpu.RuntimeInformation.IsSingleProcessor)
+                    {
+                        CommitSubtrees(committer, RootRef, maxLevelForConcurrentCommit);
+                    }
+                    newRoot = Commit(committer, ref path, RootRef, skipSelf: skipRoot);
                 }
             }
 
@@ -165,7 +169,7 @@ namespace Nethermind.Trie
             SetRootHash(RootRef?.Keccak, true);
         }
 
-        private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
+        private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, bool skipSelf = false)
         {
             if (!_allowCommits)
             {
@@ -174,80 +178,35 @@ namespace Nethermind.Trie
 
             if (node!.IsBranch)
             {
-                if (path.Length > maxLevelForConcurrentCommit)
+                path.AppendMut(0);
+                for (int i = 0; i < 16; i++)
                 {
-                    path.AppendMut(0);
-                    for (int i = 0; i < 16; i++)
+                    if (node.TryGetDirtyChild(i, out TrieNode? childNode))
                     {
-                        if (node.TryGetDirtyChild(i, out TrieNode? childNode))
+                        path.SetLast(i);
+                        TrieNode newChildNode = Commit(committer, ref path, childNode);
+                        if (!ReferenceEquals(childNode, newChildNode))
+                        {
+                            node[i] = newChildNode;
+                        }
+                    }
+                    else
+                    {
+                        if (_logger.IsTrace)
                         {
                             path.SetLast(i);
-                            TrieNode newChildNode = Commit(committer, ref path, childNode, maxLevelForConcurrentCommit);
-                            if (!ReferenceEquals(childNode, newChildNode))
-                            {
-                                node[i] = newChildNode;
-                            }
+                            Trace(node, ref path, i);
                         }
-                        else
-                        {
-                            if (_logger.IsTrace)
-                            {
-                                path.SetLast(i);
-                                Trace(node, ref path, i);
-                            }
-                        }
-                    }
-                    path.TruncateOne();
-                }
-                else
-                {
-                    ArrayPoolList<Task>? childTasks = null;
-
-                    path.AppendMut(0);
-                    for (int i = 0; i < 16; i++)
-                    {
-                        if (node.TryGetDirtyChild(i, out TrieNode? childNode))
-                        {
-                            path.SetLast(i);
-                            if (i < 15 && committer.TryRequestConcurrentQuota())
-                            {
-                                childTasks ??= [with(15)];
-                                // path is copied here
-                                childTasks.Add(CreateTaskForPath(committer, node, maxLevelForConcurrentCommit, path, childNode, i));
-                            }
-                            else
-                            {
-                                TrieNode newChildNode = Commit(committer, ref path, childNode!, maxLevelForConcurrentCommit);
-                                if (!ReferenceEquals(childNode, newChildNode))
-                                {
-                                    node[i] = newChildNode;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (_logger.IsTrace)
-                            {
-                                path.SetLast(i);
-                                Trace(node, ref path, i);
-                            }
-                        }
-                    }
-                    path.TruncateOne();
-
-                    if (childTasks is not null)
-                    {
-                        Task.WaitAll(childTasks.AsSpan());
-                        childTasks.Dispose();
                     }
                 }
+                path.TruncateOne();
             }
             else if (node.NodeType == NodeType.Extension)
             {
                 int previousPathLength = node.AppendChildPath(ref path, 0);
                 if (node.TryGetDirtyChild(0, out TrieNode? extensionChild))
                 {
-                    TrieNode newExtensionChild = Commit(committer, ref path, extensionChild, maxLevelForConcurrentCommit);
+                    TrieNode newExtensionChild = Commit(committer, ref path, extensionChild);
                     if (!ReferenceEquals(newExtensionChild, extensionChild))
                     {
                         node[0] = newExtensionChild;
@@ -305,24 +264,48 @@ namespace Nethermind.Trie
             void TraceSkipInlineNode(TrieNode node) => _logger.Trace($"Skipping commit of an inlined {node}");
         }
 
-        private Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx) => Task.Factory.StartNew(
-            _ =>
+        private readonly record struct CommitSubtree(TrieNode Parent, int Index, TrieNode Node, TreePath Path);
+
+        private void CommitSubtrees(ICommitter committer, TrieNode root, int maxLevel)
+        {
+            ArrayPoolListRef<CommitSubtree> subtrees = new(16);
+            try
             {
-                try
+                Collect(root, TreePath.Empty, maxLevel, ref subtrees);
+                if (subtrees.Count < 2 || !committer.TryEnableParallelCommit()) return;
+
+                using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+                ParallelUnbalancedWork.For(0, subtrees.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+                    (Tree: this, Committer: committer, Subtrees: subtrees.AsMemory()), static (i, state) =>
+                    {
+                        CommitSubtree subtree = state.Subtrees.Span[i];
+                        TreePath path = subtree.Path;
+                        TrieNode committed = state.Tree.Commit(state.Committer, ref path, subtree.Node);
+                        if (!ReferenceEquals(subtree.Node, committed)) subtree.Parent[subtree.Index] = committed;
+                        return state;
+                    });
+            }
+            finally
+            {
+                subtrees.Dispose();
+            }
+
+            // Commit independent subtrees first; the serial walk then seals their ancestors.
+            static void Collect(TrieNode node, TreePath path, int maxLevel, ref ArrayPoolListRef<CommitSubtree> subtrees)
+            {
+                int children = node.IsBranch ? 16 : node.NodeType == NodeType.Extension ? 1 : 0;
+                for (int i = 0; i < children; i++)
                 {
-                    TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
-                    if (!ReferenceEquals(childNode, newChild))
-                        node[idx] = newChild;
+                    if (!node.TryGetDirtyChild(i, out TrieNode? child)) continue;
+                    TreePath childPath = path;
+                    node.AppendChildPath(ref childPath, i);
+                    if (path.Length >= maxLevel || child.NodeType == NodeType.Leaf)
+                        subtrees.Add(new(node, i, child, childPath));
+                    else
+                        Collect(child, childPath, maxLevel, ref subtrees);
                 }
-                finally
-                {
-                    committer.ReturnConcurrencyQuota();
-                }
-            },
-            state: null,
-            CancellationToken.None,
-            TaskCreationOptions.None,
-            TaskScheduler.Default);
+            }
+        }
 
         public void UpdateRootHash(bool canBeParallel = true)
         {
@@ -594,7 +577,8 @@ namespace Nethermind.Trie
 
                 node.ResolveNode(TrieStore, path);
 
-                if (node.IsLeaf || node.IsExtension)
+                // Resolved, so anything but a branch is a leaf or an extension.
+                if (!node.IsBranch)
                 {
                     int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                     if (commonPrefixLength == node.Key!.Length)
@@ -901,6 +885,7 @@ namespace Nethermind.Trie
 
             public void Push(TraverseStackFrame frame) => _entries[_count++] = frame;
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool TryPop(out TraverseStackFrame frame)
             {
                 if (_count == 0) { frame = default; return false; }
@@ -941,7 +926,8 @@ namespace Nethermind.Trie
                         return node.FullRlp;
                     }
 
-                    if (node.IsLeaf || node.IsExtension)
+                    // Resolved, so anything but a branch is a leaf or an extension.
+                    if (!node.IsBranch)
                     {
                         int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)

@@ -427,6 +427,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly Lock CellsLock = cellsLock;
         public readonly List<(int Index, Transaction Tx)> NextRoundCandidates = nextRoundCandidates;
         public readonly CancellationToken CancellationToken = cancellationToken;
+        public readonly CancellationTxTracer Tracer = new(NullTxTracer.Instance, cancellationToken);
     }
 
     /// <summary>
@@ -499,7 +500,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 // Access-list cells are not warmed here: the normal warm task covers them, and reading
                 // them under the capture would re-record already-covered cells as discovered.
-                scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                scope.TransactionProcessor.Warmup(tx, round.Tracer);
             }
             catch (Exception ex) when (ex is EvmException or OverflowException)
             {
@@ -672,7 +673,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken token)
+    private async Task RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken token)
     {
         // _warmedTxHashes is reused across sessions (cleared at session start); only the small marker is per-session.
         WarmMarker marker = new(headHash, spec, _warmedTxHashes);
@@ -718,7 +719,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 }
 
                 // Rate-limit every pass so a churning mempool can't keep tx selection continuously in flight.
-                if (token.WaitHandle.WaitOne(delay)) break;
+                await Task.Delay(delay, token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
         }
         catch (OperationCanceledException)
@@ -1148,6 +1149,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Transaction tx,
         int txIndex,
         BlockState blockState,
+        CancellationTxTracer tracer,
         CancellationToken cancellationToken)
     {
         try
@@ -1170,13 +1172,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, tracer);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
             // Ignore, regular tx processing exceptions
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The pass ended mid-transaction; the caller disposes the scope without running anything else on it.
         }
         catch (Exception ex)
         {
@@ -1451,6 +1457,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The loaded block. Cleared on unload so the queue pins nothing between blocks.
         public BlockState BlockState { get; private set; } = null!;
         public CancellationToken Token { get; private set; }
+        public CancellationTxTracer Tracer { get; private set; } = null!;
         public int Degree { get; private set; }
         private Transaction[] _txs = [];
         private ISet<Hash256>? _speculativelyWarmed;
@@ -1479,6 +1486,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             BlockState = blockState;
             Token = parallelOptions.CancellationToken;
+            Tracer = new(NullTxTracer.Instance, Token);
             int maxDegree = parallelOptions.MaxDegreeOfParallelism;
             Degree = maxDegree > 0 ? maxDegree : PreWarmer._concurrencyLevel;
             _txs = blockState.Block.Transactions;
@@ -1555,6 +1563,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             _scratch.ReturnJobs();
             BlockState = null!;
             Token = default;
+            Tracer = null!;
             _txs = [];
             _speculativelyWarmed = null;
             _claimed = [];
@@ -2007,11 +2016,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             using IReadOnlyTxProcessingScope scope = _env!.BuildAtTarget(blockState.Block.Header);
             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
             scope.TransactionProcessor.SetBlockExecutionContext(context);
+            CancellationTxTracer tracer = _queue.Tracer;
 
             foreach ((int txIndex, Transaction tx) in transactions)
             {
                 if (token.IsCancellationRequested) return;
-                WarmupSingleTransaction(scope, tx, txIndex, blockState, token);
+                WarmupSingleTransaction(scope, tx, txIndex, blockState, tracer, token);
             }
         }
 
