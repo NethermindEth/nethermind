@@ -5,7 +5,7 @@ using Nethermind.Core;
 
 namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
-/// <summary>Pass-through <see cref="ITrieNodeLog"/> used when <see cref="Db.TrieNodeLogScope.None"/> is configured.</summary>
+/// <summary>Pass-through <see cref="ITrieNodeLog"/> used when the trie node log is disabled.</summary>
 public sealed class NullTrieNodeLog : ITrieNodeLog, ITrieNodeLog.IView, ITrieNodeLog.IWriteBatch
 {
     public static readonly NullTrieNodeLog Instance = new();

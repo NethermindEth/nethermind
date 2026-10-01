@@ -41,7 +41,7 @@ public class TrieNodeLogTests(bool compression)
         _directory = TempPath.GetTempDirectory();
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // Two shards per partition, so every shard gets a 4 KiB generation.
-        _config = new FlatDbConfig { TrieNodeLogScope = TrieNodeLogScope.All, TrieNodeLogStateTopBytes = 8192, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192, TrieNodeLogCompression = compression };
+        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateTopBytes = 8192, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192, TrieNodeLogCompression = compression };
         Open();
     }
 
@@ -167,11 +167,8 @@ public class TrieNodeLogTests(bool compression)
     }
 
     [Test]
-    public void Scope_selects_the_logged_columns([Values(TrieNodeLogScope.StateTop, TrieNodeLogScope.State, TrieNodeLogScope.All)] TrieNodeLogScope scope)
+    public void Every_trie_column_is_logged()
     {
-        _config.TrieNodeLogScope = scope;
-        Reopen().GetAwaiter().GetResult();
-
         Hash256 address = TestItem.KeccakA;
         using (IPersistence.IWriteBatch batch = Batch(0, 1))
         {
@@ -187,8 +184,8 @@ public class TrieNodeLogTests(bool compression)
             Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
             Assert.That(reader.TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));
             Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), scope >= TrieNodeLogScope.State ? Is.Null : Is.EqualTo(Rlp2));
-            Assert.That(Raw().TryLoadStorageRlp(address, StoragePath, ReadFlags.None), scope == TrieNodeLogScope.All ? Is.Null : Is.EqualTo(Rlp3));
+            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.Null);
         }
 
         _log.Drain();

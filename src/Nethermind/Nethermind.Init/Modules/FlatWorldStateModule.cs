@@ -105,9 +105,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, ILogManager>((cfg, initConfig, db, logManager) =>
-                cfg.TrieNodeLogScope == TrieNodeLogScope.None
-                    ? NullTrieNodeLog.Instance
-                    : new TrieNodeLog(Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog"), db, cfg, logManager))
+                cfg.TrieNodeLogEnabled
+                    ? new TrieNodeLog(Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog"), db, cfg, logManager)
+                    : NullTrieNodeLog.Instance)
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .Add<CarryForwardCachingPersistence>()

@@ -64,7 +64,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         {
             Enabled = true,
             Layout = FlatLayout.Flat,
-            TrieNodeLogScope = TrieNodeLogScope.All,
+            TrieNodeLogEnabled = true,
             TrieNodeLogStateTopBytes = 8192,
             TrieNodeLogStateBytes = 8192,
             TrieNodeLogStorageBytes = 8192,
@@ -74,7 +74,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         {
             Enabled = true,
             Layout = FlatLayout.Flat,
-            TrieNodeLogScope = TrieNodeLogScope.All,
+            TrieNodeLogEnabled = true,
             TrieNodeLogStateTopBytes = 8192,
             TrieNodeLogStateBytes = 8192,
             TrieNodeLogStorageBytes = 8192,
@@ -88,7 +88,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     // are not found; sync batches, which issue the range deletes, bypass the log for this reason.
     private void IgnoreScanDeletesOverTrieNodeLog()
     {
-        if (configuration.FlatDbConfig.TrieNodeLogScope != TrieNodeLogScope.None)
+        if (configuration.FlatDbConfig.TrieNodeLogEnabled)
             Assert.Ignore("Scan-based trie node deletes do not see nodes held by the trie node log");
     }
 

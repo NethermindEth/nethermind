@@ -14,7 +14,7 @@ using Nethermind.Logging;
 namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
 /// <summary>
-/// <see cref="ITrieNodeLog"/> made of independent <see cref="TrieNodeLogShard"/>s: one partition per scope step
+/// <see cref="ITrieNodeLog"/> made of independent <see cref="TrieNodeLogShard"/>s: three partitions
 /// — state-top (<c>StateTopNodes</c>), state (<c>StateNodes</c>, state entries of <c>FallbackNodes</c>) and
 /// storage (<c>StorageNodes</c>, storage entries of <c>FallbackNodes</c>) — each with its own byte budget and
 /// shard count, sharded by the first byte of the column key. A batch's records are staged per shard and appended by one worker per shard, and the
@@ -26,7 +26,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private const int StagingQueueDepth = 4;
     private const int StagedRecordHeaderLength = 1 + 1 + 1 + 4; // column, delete flag, key length, value length
 
-    private readonly TrieNodeLogScope _scope;
     private readonly int[] _partitionOffset = new int[PartitionCount]; // index of a partition's first shard
     private readonly int[] _partitionShift = new int[PartitionCount]; // right shift of the shard byte selecting the shard
     private readonly TrieNodeLogShard[] _shards; // partition-major: state_top, state, storage
@@ -35,7 +34,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     public TrieNodeLog(string basePath, IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
     {
-        _scope = config.TrieNodeLogScope;
         if (config.TrieNodeLogMaxConcurrentMerges < 1)
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMaxConcurrentMerges)} must be at least 1, got {config.TrieNodeLogMaxConcurrentMerges}", -1);
         if (config.TrieNodeLogMergeBacklogMargin < 1)
@@ -43,7 +41,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _mergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _logger = logManager.GetClassLogger<TrieNodeLog>();
 
-        // Partition order matches the scope steps, so the scope's ordinal is the number of partitions in use.
         ReadOnlySpan<(string Name, long Budget, int ShardCount, string ShardCountSetting)> partitions =
         [
             ("state_top", config.TrieNodeLogStateTopBytes, config.TrieNodeLogStateTopShardCount, nameof(IFlatDbConfig.TrieNodeLogStateTopShardCount)),
@@ -51,7 +48,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             ("storage", config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IFlatDbConfig.TrieNodeLogStorageShardCount)),
         ];
         List<TrieNodeLogShard> shards = [];
-        for (int partition = 0; partition < (int)_scope; partition++)
+        for (int partition = 0; partition < PartitionCount; partition++)
         {
             (string partitionName, long budget, int shardCount, string shardCountSetting) = partitions[partition];
             if (shardCount < 1 || !BitOperations.IsPow2(shardCount))
@@ -67,21 +64,14 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
         _shards = shards.ToArray();
 
-        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
-        {
-            if (Covers(column)) db.GetColumnDb(column).SetWriteBuffer(WriteBufferAdjuster.MaxWriteBufferSize(column));
-        }
+        foreach (FlatDbColumns column in TrieColumns) db.GetColumnDb(column).SetWriteBuffer(WriteBufferAdjuster.MaxWriteBufferSize(column));
     }
+
+    private static readonly FlatDbColumns[] TrieColumns = [FlatDbColumns.StateTopNodes, FlatDbColumns.StateNodes, FlatDbColumns.StorageNodes, FlatDbColumns.FallbackNodes];
 
     internal IReadOnlyList<TrieNodeLogShard> Shards => _shards;
 
-    internal bool Covers(FlatDbColumns column) => column switch
-    {
-        FlatDbColumns.StateTopNodes => _scope >= TrieNodeLogScope.StateTop,
-        FlatDbColumns.StateNodes => _scope >= TrieNodeLogScope.State,
-        FlatDbColumns.StorageNodes or FlatDbColumns.FallbackNodes => _scope >= TrieNodeLogScope.All,
-        _ => false,
-    };
+    internal static bool Covers(FlatDbColumns column) => column is FlatDbColumns.StateTopNodes or FlatDbColumns.StateNodes or FlatDbColumns.StorageNodes or FlatDbColumns.FallbackNodes;
 
     private const int StateTopPartition = 0;
     private const int StatePartition = 1;
@@ -171,7 +161,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
 
         public IReadOnlyKeyValueStore Wrap(FlatDbColumns column, IReadOnlyKeyValueStore inner) =>
-            log.Covers(column) ? new Column(log, views, (byte)column, inner) : inner;
+            Covers(column) ? new Column(log, views, (byte)column, inner) : inner;
 
         public void Dispose()
         {
@@ -207,7 +197,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             for (int i = 0; i < batches.Length; i++) _writers[i] = new ShardWriter(batches[i]);
         }
 
-        public IWriteBatch Wrap(FlatDbColumns column, IWriteBatch inner) => _log.Covers(column) ? new Column(this, (byte)column) : inner;
+        public IWriteBatch Wrap(FlatDbColumns column, IWriteBatch inner) => Covers(column) ? new Column(this, (byte)column) : inner;
 
         private void Stage(byte column, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete) =>
             _writers[_log.ShardIndex(column, key)].Stage(column, key, value, delete);

@@ -62,7 +62,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong PersistedSnapshotMaxCompactSize { get; set; } = 1024 * 1024;
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
-    public TrieNodeLogScope TrieNodeLogScope { get; set; } = TrieNodeLogScope.None;
+    public bool TrieNodeLogEnabled { get; set; } = false;
     public long TrieNodeLogStateTopBytes { get; set; } = 500.MiB;
     public long TrieNodeLogStateBytes { get; set; } = 128.MiB;
     public long TrieNodeLogStorageBytes { get; set; } = 500.MiB;
