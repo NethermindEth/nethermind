@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -22,6 +23,7 @@ using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -85,6 +87,87 @@ public class BeaconChainServiceStartupTests
             Assert.That(errors, Is.Empty, "the background run never started");
             Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
         }
+    }
+
+    /// <summary>
+    /// weak-subjectivity.md, Weak Subjectivity Sync Procedure: a resumed database whose anchor does not prove the configured
+    /// checkpoint is refused, so startup fails instead of following a chain the operator did not choose.
+    /// </summary>
+    [Test]
+    public async Task A_resumed_anchor_that_does_not_prove_the_weak_subjectivity_checkpoint_fails_startup([Values(0, 1, 2, 3)] int proofRecord)
+    {
+        (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas: true, nextCommittee: false, key: null,
+            weakSubjectivityCheckpoint: $"{GloasTestFixtures.Hash(0x5A)}:1",
+            prepare: store =>
+            {
+                if (proofRecord == 0) return;
+                byte[] record = new byte[Hash256.Size + sizeof(ulong)];
+                Hash256 root = proofRecord == 1 ? ForkCrossingChain.Instance.First.Root : GloasTestFixtures.Hash(0x5A);
+                root.Bytes.CopyTo(record);
+                BinaryPrimitives.WriteUInt64BigEndian(record.AsSpan(Hash256.Size), proofRecord == 2 ? 2UL : 1UL);
+                store.PutMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint, proofRecord == 3 ? [1] : record);
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains("BeaconChain.WeakSubjectivityCheckpoint").And.Message.Contains("delete the beaconChain database"));
+            Assert.That(errors, Is.Empty, "the background run never started");
+            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
+        }
+    }
+
+    /// <summary>
+    /// The persisted anchor follows finality, so it stops being a checkpoint proven earlier at the next finalized block; the record
+    /// must keep startup going. A checkpoint the resumed anchor proves is recorded for the same reason.
+    /// </summary>
+    [Test]
+    public async Task A_resumed_anchor_goes_on_to_start_with_a_weak_subjectivity_checkpoint_it_proves_or_proved_before([Values] bool recordedBefore)
+    {
+        Hash256 root = recordedBefore ? GloasTestFixtures.Hash(0x5A) : ForkCrossingChain.Instance.First.Root;
+        ulong epoch = recordedBefore ? 1_000_000UL : 1UL;
+        byte[] record = new byte[Hash256.Size + sizeof(ulong)];
+        root.Bytes.CopyTo(record);
+        BinaryPrimitives.WriteUInt64BigEndian(record.AsSpan(Hash256.Size), epoch);
+        BeaconChainStore? resumed = null;
+
+        (Exception? refusal, _, int pubkeys) = await ResumeAsync(gloas: true, nextCommittee: false, key: null,
+            weakSubjectivityCheckpoint: $"{root}:{epoch}",
+            prepare: store =>
+            {
+                resumed = store;
+                if (recordedBefore) store.PutMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint, record);
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal, Is.Null);
+            Assert.That(pubkeys, Is.EqualTo(ForkCrossingChain.Instance.First.PostState.Validators!.Length), "the run went on past the pubkey cache");
+            Assert.That(resumed!.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.EqualTo(record));
+        }
+    }
+
+    /// <summary>The record follows the anchor it was proven for, so a checkpoint sync interrupted before its anchor leaves none to vouch for a later one.</summary>
+    [Test]
+    public void A_checkpoint_sync_interrupted_before_its_anchor_leaves_no_weak_subjectivity_record()
+    {
+        BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, new AnchorFailingMemDb()), GloasCheckpointFiles.Spec);
+        ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(first.PostState, null);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile, WeakSubjectivityCheckpoint = $"{first.Root}:1" },
+            GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None));
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+    }
+
+    /// <summary>A malformed checkpoint is an operator error that fails startup before any download or database read.</summary>
+    [Test]
+    public void A_malformed_weak_subjectivity_checkpoint_fails_startup()
+    {
+        using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { WeakSubjectivityCheckpoint = "0x01:1" }).Build();
+
+        Assert.That(() => container.Resolve<BeaconChainService>().Start(),
+            Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains("BeaconChain.WeakSubjectivityCheckpoint"));
     }
 
     /// <summary>A valid resumed anchor passes validation: nothing refuses it, and the pubkey cache is built from its registry.</summary>
@@ -701,6 +784,20 @@ public class BeaconChainServiceStartupTests
         }
     }
 
+    /// <summary>Fails the write of the anchor entry, as a crash between persisting a checkpoint's state and its anchor would.</summary>
+    private sealed class AnchorFailingMemDb : MemDb
+    {
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (key.SequenceEqual(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.Anchor)))
+            {
+                throw new IOException("anchor write interrupted");
+            }
+
+            base.Set(key, value, flags);
+        }
+    }
+
     /// <summary>Runs <see cref="OnRead"/> before each read.</summary>
     private sealed class OnReadMemDb : MemDb
     {
@@ -788,7 +885,8 @@ public class BeaconChainServiceStartupTests
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
-    private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, Hash256? genesisValidatorsRoot = null)
+    private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, Hash256? genesisValidatorsRoot = null,
+        string? weakSubjectivityCheckpoint = null, Action<BeaconChainStore>? prepare = null)
     {
         CacheWrittenMemDb metadata = new();
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
@@ -815,7 +913,8 @@ public class BeaconChainServiceStartupTests
         PubkeyCache pubkeyCache = new();
         KickEngine engine = new(pubkeyCache);
         using IContainer container = BeaconChainTestContainer.Builder().AddSingleton(GloasCheckpointFiles.Spec).AddSingleton<IEngineDriver>(engine).Build();
-        BeaconChainConfig config = new() { CheckpointSyncUrl = "http://invalid.localhost:1" };
+        prepare?.Invoke(store);
+        BeaconChainConfig config = new() { CheckpointSyncUrl = "http://invalid.localhost:1", WeakSubjectivityCheckpoint = weakSubjectivityCheckpoint };
         using CheckpointSync checkpointSync = new(config, GloasCheckpointFiles.Spec, store, logManager);
         using BeaconChainService service = new(config, GloasCheckpointFiles.Spec, store, pubkeyCache, checkpointSync,
             container.Resolve<BeaconSyncOrchestrator>(), container.Resolve<ExternalClDetector>(), logManager);

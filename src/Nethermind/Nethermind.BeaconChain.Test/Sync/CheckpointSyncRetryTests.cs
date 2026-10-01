@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.ForkChoice;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Db;
 using NUnit.Framework;
 
@@ -304,6 +305,122 @@ public class CheckpointSyncRetryTests
 
     private static BeaconChainStore NewStore() => new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
 
+    /// <summary>
+    /// A provider that keeps each pause under the stall timeout could otherwise hold startup without limit; the average rate is
+    /// enforced after the grace, and a body arriving well above it is read whole however long it takes.
+    /// </summary>
+    [Test]
+    public async Task A_body_below_the_minimum_rate_is_cut_and_one_above_it_is_not([Values] bool belowRate)
+    {
+        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.Trickle);
+        double trickleRate = BeaconStateGloas.Encode(ForkCrossingChain.Instance.First.PostState).Length / FlakyCheckpointProvider.TrickleDuration.TotalSeconds;
+        OutstandingArrayPool pool = new();
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        {
+            MaxDownloadAttempts = 1,
+            ReadStallTimeout = ReadStall,
+            MinThroughputBytesPerSecond = Math.Max(1, (int)(belowRate ? trickleRate * 8 : trickleRate / 8)),
+            MinThroughputGrace = TimeSpan.FromSeconds(1),
+            BufferPool = pool,
+        };
+
+        if (belowRate)
+        {
+            IOException refusal = Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None).WaitAsync(RunBound))!;
+            Assert.That(refusal.Message, Does.Contain("KiB/s"));
+        }
+        else
+        {
+            CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None).WaitAsync(RunBound);
+            Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
+        }
+
+        Assert.That(pool.Outstanding, Is.Zero);
+    }
+
+    [Test]
+    public async Task A_body_download_deadline_cancels_a_read_before_the_stall_timeout()
+    {
+        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.StallMidBody);
+        OutstandingArrayPool pool = new();
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        {
+            MaxDownloadAttempts = 1,
+            ReadStallTimeout = TimeSpan.FromHours(1),
+            BodyDownloadTimeout = TimeSpan.FromSeconds(2),
+            BufferPool = pool,
+        };
+
+        IOException refusal = Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None).WaitAsync(RunBound))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.Message, Does.Contain("download deadline"));
+            Assert.That(pool.Outstanding, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void An_oversized_local_state_is_refused_before_renting()
+    {
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, null);
+        OutstandingArrayPool pool = new();
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        {
+            MaxBodyBytes = 16,
+            BufferPool = pool,
+        };
+
+        Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
+        Assert.That(pool.Rented, Is.Zero);
+    }
+
+    /// <summary>A declared size beyond the body limit is rejected before any pooled allocation.</summary>
+    [Test]
+    public void An_oversized_declared_body_is_refused_before_renting([Values(17L, 2147483648L)] long declared)
+    {
+        OutstandingArrayPool pool = new();
+        using CheckpointSync sync = new(new BeaconChainConfig(), GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        {
+            MaxBodyBytes = 16,
+            BufferPool = pool,
+        };
+        using HttpResponseMessage response = new() { Content = new ByteArrayContent([]) };
+        response.Content.Headers.ContentLength = declared;
+
+        Assert.ThrowsAsync<InvalidDataException>(() => sync.ReadResponseBodyAsync(response, 8, CancellationToken.None));
+        Assert.That(pool.Rented, Is.Zero);
+    }
+
+    /// <summary>The byte limit constrains reads and growth even when a pooled array has extra capacity.</summary>
+    [Test]
+    public async Task Body_reads_respect_the_limit_even_when_the_pool_returns_a_larger_array([Values(17, 18)] int bytes)
+    {
+        OutstandingArrayPool pool = new();
+        using CheckpointSync sync = new(new BeaconChainConfig(), GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        {
+            MaxBodyBytes = 17,
+            BufferPool = pool,
+        };
+        using HttpResponseMessage response = new() { Content = new ByteArrayContent(new byte[bytes]) };
+        response.Content.Headers.ContentLength = 1;
+
+        if (bytes > 17)
+        {
+            Assert.ThrowsAsync<InvalidDataException>(() => sync.ReadResponseBodyAsync(response, 1, CancellationToken.None));
+        }
+        else
+        {
+            (byte[] buffer, int length) = await sync.ReadResponseBodyAsync(response, 1, CancellationToken.None);
+            Assert.That(length, Is.EqualTo(17));
+            pool.Return(buffer);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.Outstanding, Is.Zero);
+            Assert.That(pool.LargestRequest, Is.LessThanOrEqualTo(17));
+        }
+    }
+
     private static CheckpointSync NewSync(FlakyCheckpointProvider provider, BeaconChainStore store, LevelCapturingLogManager logs, int maxDownloadAttempts = 5, TimeSpan? retryBaseDelay = null, ArrayPool<byte>? bufferPool = null, TimeSpan? readStallTimeout = null, TimeSpan? responseHeadersTimeout = null) =>
         new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, store, logs)
         {
@@ -324,6 +441,8 @@ public class CheckpointSyncRetryTests
 
         public int Rented => Volatile.Read(ref _rented);
 
+        public int LargestRequest { get; private set; }
+
         public byte[]? LastRented => Volatile.Read(ref _lastRented);
 
         public int Outstanding
@@ -339,6 +458,7 @@ public class CheckpointSyncRetryTests
 
         public override byte[] Rent(int minimumLength)
         {
+            LargestRequest = Math.Max(LargestRequest, minimumLength);
             byte[] array = Shared.Rent(minimumLength);
             Array.Clear(array);
             Interlocked.Increment(ref _rented);

@@ -16,6 +16,9 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "A local SSZ-encoded beacon state file to bootstrap from instead of downloading from the checkpoint sync URL.", DefaultValue = "null")]
     string? CheckpointStateFile { get; set; }
 
+    [ConfigItem(Description = "An independently trusted weak subjectivity checkpoint as block_root:epoch_number, for example 0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9:9544. Checkpoint sync fails unless its anchor block is this checkpoint's block at the start of the epoch, so supply the checkpoint's state with CheckpointStateFile or a source serving it as finalized; a proven checkpoint stays accepted for the same database, and any other fails startup. When unset, no checkpoint is required.", DefaultValue = "null")]
+    string? WeakSubjectivityCheckpoint { get; set; }
+
     [ConfigItem(Description = "The TCP port for the beacon chain libp2p host.", DefaultValue = "9050")]
     int P2PPort { get; set; }
 
