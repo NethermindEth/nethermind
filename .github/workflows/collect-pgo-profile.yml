@@ -132,7 +132,7 @@ jobs:
           set +e
           timeout --signal=INT --kill-after=120s 30m expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
-            --per-payload-metrics --print-logs 2>&1 | tee "${COLLECTION_ROOT}/expb.log"
+            --per-payload-metrics --per-payload-metrics-logs --print-logs 2>&1 | tee "${COLLECTION_ROOT}/expb.log"
           statuses=("${PIPESTATUS[@]}")
           set -e
           if [[ "${statuses[1]}" != 0 ]]; then
