@@ -73,6 +73,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     // Cancelled when the library drops the session, so a request on it ends then instead of at its timeout.
     private readonly ConcurrentDictionary<ISession, SessionLifetime> _sessionClosed = new();
+    private readonly ConcurrentDictionary<SessionWatch, byte> _sessionWatches = new();
     private int _identifyTimeouts;
 
     private LocalPeer? _localPeer;
@@ -404,6 +405,28 @@ public sealed class BeaconP2P : IAsyncDisposable
     internal static bool IsNotDropped(ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> sessionInfo, ISession session) =>
         sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot) && !slot.Task.IsCanceled;
 
+    /// <summary>Counts the sessions with <paramref name="peerId"/> the libp2p layer opens in either direction until the watch is disposed.</summary>
+    internal SessionWatch WatchSessions(PeerId peerId)
+    {
+        SessionWatch watch = new(this, peerId);
+        _sessionWatches.TryAdd(watch, 0);
+        return watch;
+    }
+
+    /// <summary>Sessions opened with one peer since <see cref="WatchSessions"/>, including ones closed again.</summary>
+    internal sealed class SessionWatch(BeaconP2P owner, PeerId peerId) : IDisposable
+    {
+        private int _opened;
+
+        public PeerId PeerId => peerId;
+
+        public int Opened => Volatile.Read(ref _opened);
+
+        internal void Count() => Interlocked.Increment(ref _opened);
+
+        public void Dispose() => owner._sessionWatches.TryRemove(this, out _);
+    }
+
     /// <summary>Exchanges <c>status</c> with the peer, preferring v2 and falling back to v1 (with <c>earliest_available_slot</c> of 0).</summary>
     /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered
     /// within the request timeout, which is how the pinned multistream surfaces a protocol the peer does not support;
@@ -671,6 +694,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                     {
                         _sessionInfo.TryAdd(session, new TaskCompletionSource<SessionInfo>(TaskCreationOptions.RunContinuationsAsynchronously));
                         _sessionClosed.GetOrAdd(session, static _ => new SessionLifetime());
+                        CountSession(RemotePeerIdOf(session));
                     }
                 }
 
@@ -705,6 +729,17 @@ public sealed class BeaconP2P : IAsyncDisposable
 
                 _sessionClosed.Clear();
                 break;
+        }
+    }
+
+    private void CountSession(PeerId? remotePeerId)
+    {
+        foreach (KeyValuePair<SessionWatch, byte> watch in _sessionWatches)
+        {
+            if (watch.Key.PeerId.Equals(remotePeerId))
+            {
+                watch.Key.Count();
+            }
         }
     }
 
