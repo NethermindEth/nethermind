@@ -309,6 +309,11 @@ namespace Nethermind.Trie
 
         public void UpdateRootHash(bool canBeParallel = true)
         {
+            using ParallelUnbalancedWork.WorkerScope? workers = canBeParallel && !Core.Cpu.RuntimeInformation.IsSingleProcessor
+                && RootRef is { IsDirty: true }
+                ? ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount)
+                : null;
+
             TreePath path = TreePath.Empty;
             if (RootRef is not null && DirtyNodeHasher.HashBelowRoot(RootRef, TrieStore, _bufferPool, canBeParallel))
             {

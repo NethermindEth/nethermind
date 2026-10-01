@@ -2,22 +2,81 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Threading;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
 
 public class PatriciaTreeBulkSetterTests
 {
+    [Test]
+    public void Parallel_trie_operations_share_and_restore_worker_budget([Values] bool bulkSet, [Values(0, 1, 2)] int concurrency)
+    {
+        if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires parallel trie work.");
+
+        using MemDb db = new();
+        RawScopedTrieStore backing = new(db);
+        PatriciaTree initial = new(backing, LimboLogs.Instance);
+        List<(Hash256 key, byte[] value)> items = GenRandomOfLength(4096);
+        foreach ((Hash256 key, byte[] value) in items) initial.Set(key.Bytes, value);
+        initial.Commit();
+
+        ConcurrentBag<int> observedBudgets = [];
+        bool observing = false;
+        void RecordBudget()
+        {
+            if (observing) observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0);
+        }
+
+        IScopedTrieStore store = Substitute.For<IScopedTrieStore>();
+        store.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>())
+            .Returns(call => new TrieNode(NodeType.Unknown, call.Arg<Hash256>()));
+        store.LoadRlp(Arg.Any<TreePath>(), Arg.Any<Hash256>(), Arg.Any<ReadFlags>()).Returns(call =>
+        {
+            if (bulkSet) RecordBudget();
+            return backing.LoadRlp(call.Arg<TreePath>(), call.Arg<Hash256>(), call.Arg<ReadFlags>());
+        });
+        ICappedArrayPool pool = Substitute.For<ICappedArrayPool>();
+        pool.Rent(Arg.Any<int>()).Returns(call =>
+        {
+            if (!bulkSet) RecordBudget();
+            return new CappedArray<byte>(new byte[call.Arg<int>()]);
+        });
+        PatriciaTree tree = new(store, initial.RootHash, true, LimboLogs.Instance, pool);
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
+        foreach ((Hash256 key, _) in items)
+        {
+            entries.Add(new PatriciaTree.BulkSetEntry(key, [42]));
+            if (!bulkSet) tree.Set(key.Bytes, [42]);
+        }
+
+        using ParallelUnbalancedWork.WorkerScope outer = concurrency == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(concurrency);
+        observing = true;
+        if (bulkSet) tree.BulkSet(entries);
+        else tree.UpdateRootHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observedBudgets, Is.Not.Empty);
+            Assert.That(observedBudgets, Is.All.EqualTo(concurrency == 0 ? Core.Cpu.RuntimeInformation.ProcessorCount : concurrency));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer));
+        }
+    }
+
     public static IEnumerable<TestCaseData> NewBranchesGen()
     {
         Random rng = new(0);
