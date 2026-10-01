@@ -32,7 +32,6 @@ public class DebugModuleFactory(
             // Note: Not overriding `IReceiptStorage` to null.
             .AddModule(validationBlockProcessingModules)
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
-            .AddScoped<GethStyleTracer.TraceCallRequestState>()
             .AddScoped<IBlobBaseFeeOverrideProvider, TraceCallBlobBaseFeeOverrideProvider>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
 

@@ -78,13 +78,21 @@ public class GethStyleTracer(
 
         try
         {
-            if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
+            if (callRequestState is not null)
+            {
+                callRequestState.BlobBaseFee = blobBaseFee;
+                callRequestState.BlockhashLookup = CreateBlockhashLookup(block.Header, options);
+            }
             return TraceImpl(block, tx.Hash, cancellationToken, options, useBlockAsBase: true, writer, pipeWriter);
         }
         finally
         {
             transactionProcessorAdapter.CurrentAdapterFactory = previousAdapterFactory;
-            if (callRequestState is not null) callRequestState.BlobBaseFee = null;
+            if (callRequestState is not null)
+            {
+                callRequestState.BlobBaseFee = null;
+                callRequestState.BlockhashLookup = null;
+            }
         }
     }
 
@@ -102,7 +110,7 @@ public class GethStyleTracer(
         {
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
             CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(tracer.Token), callHeader, call,
-                tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
+                tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec, tracer.Token));
             IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, tracer.Token);
             if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
@@ -119,8 +127,26 @@ public class GethStyleTracer(
         finally
         {
             transactionProcessorAdapter.CurrentAdapterFactory = previous;
-            if (callRequestState is not null) callRequestState.BlobBaseFee = null;
+            if (callRequestState is not null)
+            {
+                callRequestState.BlobBaseFee = null;
+                callRequestState.BlockhashLookup = null;
+            }
         }
+    }
+
+    private static TraceCallBlockhashProvider.Lookup? CreateBlockhashLookup(BlockHeader header, GethTraceOptions options)
+    {
+        if (options.BlockOverrides?.Number is not { } number || number == header.Number) return null;
+
+        BlockHeader reference = header.Clone();
+        // Geth retains the selected header for GetHashFn, except when simulating its immediate successor.
+        if (header.Number != ulong.MaxValue && number == header.Number + 1)
+        {
+            reference.ParentHash = header.Hash;
+            reference.Number = number;
+        }
+        return new TraceCallBlockhashProvider.Lookup(reference, number);
     }
 
     private (BlockHeader Header, IReleaseSpec Spec) PrepareCallHeader(Block block, GethTraceOptions options)
@@ -153,10 +179,15 @@ public class GethStyleTracer(
         return block.WithReplacedBodyCloned(block.Body.WithChangedTransactions(transactions));
     }
 
-    private void PrepareIndexedCall(Block tracedBlock, Transaction call, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec)
+    private void PrepareIndexedCall(Block tracedBlock, Transaction call, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec, CancellationToken cancellationToken)
     {
         UInt256? blobBaseFee = GetCallBlobBaseFee(call, options);
-        if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
+        if (callRequestState is not null)
+        {
+            callRequestState.BlobBaseFee = blobBaseFee;
+            callRequestState.BlockhashLookup = CreateBlockhashLookup(tracedBlock.Header, options);
+            if (callRequestState.BlockhashLookup is { } lookup) lookup.Token = cancellationToken;
+        }
         options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
         if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
         IReleaseSpec overrideSpec = callSpec.WithoutEip158();
@@ -361,6 +392,7 @@ public class GethStyleTracer(
         using GethLikeBlockCallDeadlineTracer? deadline = useBlockAsBase ? new(filtered, cancellationToken, CreateTracer) : null;
         IBlockTracer<GethLikeTxTrace> tracer = deadline ?? CreateTracer(filtered);
         CancellationToken executionToken = deadline?.Token ?? cancellationToken;
+        if (useBlockAsBase && callRequestState?.BlockhashLookup is { } lookup) lookup.Token = executionToken;
 
         try
         {
@@ -496,11 +528,13 @@ public class GethStyleTracer(
         return block;
     }
 
-    /// <summary>Holds fee overrides while executing a synthetic trace call.</summary>
+    /// <summary>Holds overrides while executing a synthetic trace call.</summary>
     public sealed class TraceCallRequestState
     {
         /// <summary>The synthetic call blob fee, or null during canonical execution.</summary>
         public UInt256? BlobBaseFee { get; set; }
+
+        internal TraceCallBlockhashProvider.Lookup? BlockhashLookup { get; set; }
     }
 
     public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor);

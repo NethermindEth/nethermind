@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Evm;
 
 namespace Nethermind.Consensus.Tracing;
 
@@ -15,6 +16,9 @@ public sealed class TransactionTraceModule(IEnumerable<IBlockValidationModule> v
 {
     protected override void Load(ContainerBuilder builder)
     {
+        builder.AddScoped<GethStyleTracer.TraceCallRequestState>()
+            .AddDecorator<IBlockhashProvider, TraceCallBlockhashProvider>();
+
         IBlockValidationModule[] modules = validationModules.ToArray();
         if (modules.Length == 0 || !modules.All(static module => module.SupportsTransactionTracePrefix)) return;
 

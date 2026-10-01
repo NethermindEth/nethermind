@@ -40,8 +40,20 @@ same-block live comparisons; a passing selected corpus is not proof for every
 possible request. These diagnostic and streaming exceptions do not permit gas,
 state, callback-order or trace-result differences.
 
-One separately observed, unresolved result difference is Geth's serialization of
-some bare JavaScript string results (including long `toHex` results) as `{}`, while
-Nethermind returns the string. Wrapping the value in an object avoids that observed
-reference quirk. This is a result-serialization difference, **not** a diagnostic
-exception or a claimed parity pass.
+## Bare JavaScript string results
+
+Nethermind deliberately returns the actual string value from a custom tracer's
+`result()` callback rather than reproducing a pinned Geth serialization bug.
+Geth directly serializes Goja's internal root value, so equal JavaScript strings
+can produce different JSON depending on their internal representation:
+
+- `return toHex(new Uint8Array(8));` produces `{}` in the pinned Geth.
+- Adding `+ ""` to the same expression produces `"0x0000000000000000"`.
+- A bare Unicode literal such as `"é"` can produce `[65279,233]`.
+
+Nethermind returns the actual string in each case. This is an intentional result
+compatibility exception, separate from diagnostic-text differences; it is not
+reported as an exact-match pass. Returning an object or array, for example
+`return { value: toHex(new Uint8Array(8)) };`, avoids the observed Geth bug.
+Wrapped results remain subject to normal compatibility checks. Built-in native
+tracers and opcode traces are not affected by this exception.
