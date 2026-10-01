@@ -5,9 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
+using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -18,6 +20,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
 using NUnit.Framework;
@@ -25,11 +28,6 @@ using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Exercises the req/resp DoS limits directly against <see cref="ReqRespProtocolBase"/> and
-/// <see cref="BlocksProtocolBase"/>: no libp2p channel or real elapsed-time sleep is needed since
-/// every method under test already takes a <see cref="Stream"/> and/or a caller-supplied deadline.
-/// </summary>
 public class ReqRespLimitsTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
@@ -69,64 +67,109 @@ public class ReqRespLimitsTests
     }
 
     [Test]
-    public async Task Response_exceeding_the_chunk_limit_is_rejected_and_the_stream_closed()
+    public async Task Response_exceeding_the_chunk_limit_is_rejected_before_consuming_all_input()
     {
         const int maxBlocks = 3;
         TestBlocksProtocol protocol = new(Spec);
-        // Two more than maxBlocks, so bytes remain unread on the stream after the throw even though
-        // the chunk that trips the cap is itself fully consumed before the count check rejects it.
         (_, _, SignedBeaconBlock[] chain) =
             TestChain.BuildLinkedChain(1_000, 1_001, 1_002, 1_003, 1_004, 1_005);
 
-        using MemoryStream stream = new();
+        using MemoryStream wire = new();
         foreach (SignedBeaconBlock block in chain)
         {
-            await WriteBlockChunkAsync(stream, block);
+            await WriteBlockChunkAsync(wire, block);
         }
 
-        stream.Position = 0;
+        wire.Position = 0;
 
         long before = FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded);
 
-        // If the cap were not enforced, this would return all 5 blocks instead of throwing.
-        Eth2ReqRespException? thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadBlocksAsync(stream, maxBlocks));
-        Assert.That(thrown!.Message, Does.Contain(maxBlocks.ToString()));
-        Assert.That(FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
-
-        // The stream was abandoned mid-response: bytes for the trailing chunks are still unread,
-        // proving the caller stopped consuming rather than draining and discarding them.
-        Assert.That(stream.Position, Is.LessThan(stream.Length), "stream was closed to the peer before it was fully drained");
+        Eth2ReqRespException? thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadBlocksAsync(wire, maxBlocks));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown!.Message, Does.Contain(maxBlocks.ToString()));
+            Assert.That(FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
+            Assert.That(wire.Position, Is.LessThan(wire.Length), "trailing response bytes remain unread");
+        }
     }
 
     [Test]
-    public async Task Chunk_count_cap_is_enforced_for_a_range_request()
+    [CancelAfter(60_000)]
+    public async Task Range_request_caps_chunks_at_count_before_validating_slots(CancellationToken token)
     {
-        // Mirrors BeaconBlocksByRangeProtocolV2.DialAsync's own cap arithmetic: the smaller of the
-        // requested count and the spec's MaxRequestBlocks, not MaxRequestBlocks unconditionally.
-        const ulong requestedCount = 2;
-        int maxBlocks = (int)Math.Min(requestedCount, BlocksProtocolBase.MaxRequestBlocks);
-        Assert.That(maxBlocks, Is.LessThan((int)BlocksProtocolBase.MaxRequestBlocks), "test is only meaningful below the protocol-wide cap");
-
-        TestBlocksProtocol protocol = new(Spec);
-        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(3_000, 3_001, 3_002, 3_003); // more than requestedCount
-
-        using MemoryStream stream = new();
-        foreach (SignedBeaconBlock block in chain)
+        Channel channel = new();
+        BeaconBlocksByRangeProtocolV2 protocol = new(Spec, null!);
+        byte[] response = await EncodeRangeResponseAsync(4);
+        Task reply = ReplyRangeAsync(channel.Reverse, response, token);
+        long limitsBefore = FailureCount(protocol.Id, ReqRespFailureReason.LimitExceeded);
+        long invalidBefore = FailureCount(protocol.Id, ReqRespFailureReason.InvalidMessage);
+        try
         {
-            await WriteBlockChunkAsync(stream, block);
+            Eth2ReqRespException rejected = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!,
+                new BeaconBlocksByRangeRequest { StartSlot = 3_000, Count = 2, Step = 1 }).WaitAsync(token))!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected.Message, Is.EqualTo("Peer responded with more than the requested 2 blocks"));
+                Assert.That(FailureCount(protocol.Id, ReqRespFailureReason.LimitExceeded), Is.EqualTo(limitsBefore + 1));
+                Assert.That(FailureCount(protocol.Id, ReqRespFailureReason.InvalidMessage), Is.EqualTo(invalidBefore));
+            }
         }
+        finally
+        {
+            try
+            {
+                await channel.ReadAsync(0, ReadBlockingMode.DontWait, token);
+                await reply.WaitAsync(token);
+            }
+            finally
+            {
+                await channel.CloseAsync().AsTask().WaitAsync(token);
+            }
+        }
+    }
 
-        stream.Position = 0;
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Range_request_exceeding_count_closes_the_channel_while_the_responder_remains_open(CancellationToken token)
+    {
+        byte[] response = await EncodeRangeResponseAsync(3);
+        RangeResponder responder = new(response, token);
+        await using ServiceProvider serverServices = new ServiceCollection()
+            .AddSingleton(responder)
+            .AddLibp2p(static builder => builder.AddAppLayerProtocol<RangeResponder>())
+            .BuildServiceProvider();
+        await using ServiceProvider clientServices = new ServiceCollection()
+            .AddSingleton<RangeRequester>()
+            .AddLibp2p(static builder => builder.AddAppLayerProtocol<RangeRequester>())
+            .BuildServiceProvider();
+        await using ILocalPeer server = serverServices.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1));
+        await using ILocalPeer client = clientServices.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1));
+        await server.StartListenAsync([Multiaddress.Decode("/ip4/127.0.0.1/tcp/0")], token);
+        ISession session = await client.DialAsync(server.ListenAddresses[0], token).WaitAsync(token);
+        RangeRequester requester = clientServices.GetRequiredService<RangeRequester>();
+        long limitsBefore = FailureCount(requester.Id, ReqRespFailureReason.LimitExceeded);
+        long invalidBefore = FailureCount(requester.Id, ReqRespFailureReason.InvalidMessage);
+        try
+        {
+            Task<IReadOnlyList<ForkedSignedBeaconBlock>> request = session.DialAsync<RangeRequester, BeaconBlocksByRangeRequest, IReadOnlyList<ForkedSignedBeaconBlock>>(
+                new BeaconBlocksByRangeRequest { StartSlot = 3_000, Count = 2, Step = 1 }, token);
+            Exception failure = Assert.CatchAsync(() => request.WaitAsync(token))!;
+            Eth2ReqRespException rejected = (failure as AggregateException)?.InnerExceptions.OfType<Eth2ReqRespException>().Single() ?? (Eth2ReqRespException)failure;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected.Message, Is.EqualTo("Peer responded with more than the requested 2 blocks"));
+                Assert.That(FailureCount(requester.Id, ReqRespFailureReason.LimitExceeded), Is.EqualTo(limitsBefore + 1));
+                Assert.That(FailureCount(requester.Id, ReqRespFailureReason.InvalidMessage), Is.EqualTo(invalidBefore));
+            }
 
-        // If the range cap fell back to the protocol-wide MaxRequestBlocks (128) instead of the
-        // smaller requested count, this would return all 4 blocks instead of throwing.
-        Eth2ReqRespException ex = Assert.ThrowsAsync<Eth2ReqRespException>(
-            () => protocol.ReadBlocksAsync(stream, maxBlocks))!;
-
-        // Assert on the reason, not merely that something threw: a framing or decode fault would
-        // also surface as this exception type and would otherwise pass for enforcement.
-        Assert.That(ex.Message, Does.Contain(maxBlocks.ToString()),
-            "the rejection must name the cap it exceeded so an operator can attribute it");
+            await WaitForClosureAsync(requester.Channel!).WaitAsync(token);
+            ReadResult afterRejection = await requester.Channel!.ReadAsync(1, ReadBlockingMode.DontWait, token);
+            Assert.That(afterRejection.Result, Is.EqualTo(IOResult.Ended), "the requester closed its read side while the responder remained open");
+        }
+        finally
+        {
+            responder.Release.TrySetResult();
+        }
     }
 
     [Test]
@@ -288,6 +331,58 @@ public class ReqRespLimitsTests
         for (int i = 0; i < count; i++)
         {
             yield return start + (ulong)i;
+        }
+    }
+
+    private static async Task<byte[]> EncodeRangeResponseAsync(int count)
+    {
+        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_999, 3_000, 3_001);
+        using MemoryStream encoded = new();
+        for (int i = 0; i < count; i++)
+        {
+            await WriteBlockChunkAsync(encoded, chain[i % chain.Length]);
+        }
+
+        return encoded.ToArray();
+    }
+
+    private static async Task ReplyRangeAsync(IChannel channel, byte[] response, CancellationToken token)
+    {
+        using ChannelStreamAdapter wire = new(channel);
+        await ReqRespFraming.ReadRequestAsync(wire, 3 * sizeof(ulong), token);
+        await wire.WriteAsync(response, token);
+        await channel.WriteEofAsync(token);
+    }
+
+    private static async Task WaitForClosureAsync(IChannel channel) => await channel;
+
+    private sealed class RangeRequester : ISessionProtocol<BeaconBlocksByRangeRequest, IReadOnlyList<ForkedSignedBeaconBlock>>
+    {
+        private readonly BeaconBlocksByRangeProtocolV2 _protocol = new(Spec, null!);
+
+        public string Id => _protocol.Id;
+        public IChannel? Channel { get; private set; }
+
+        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, BeaconBlocksByRangeRequest request)
+        {
+            Channel = downChannel;
+            return _protocol.DialAsync(downChannel, context, request);
+        }
+
+        public Task ListenAsync(IChannel downChannel, ISessionContext context) => throw new NotSupportedException();
+    }
+
+    private sealed class RangeResponder(byte[] response, CancellationToken token) : ISessionListenerProtocol
+    {
+        public string Id => "/eth2/beacon_chain/req/beacon_blocks_by_range/2/ssz_snappy";
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task ListenAsync(IChannel downChannel, ISessionContext context)
+        {
+            using ChannelStreamAdapter wire = new(downChannel);
+            await ReqRespFraming.ReadRequestAsync(wire, 3 * sizeof(ulong), token);
+            await wire.WriteAsync(response, token);
+            await Release.Task.WaitAsync(token);
         }
     }
 

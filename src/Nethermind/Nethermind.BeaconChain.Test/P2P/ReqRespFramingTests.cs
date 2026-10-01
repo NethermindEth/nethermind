@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.Core.Extensions;
+using Nethermind.Libp2p.Core;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -280,28 +281,23 @@ public class ReqRespFramingTests
         Assert.That(stream.Position, Is.EqualTo(wire.Length - 1), "the byte past max_compressed_len(n) stays unread");
     }
 
-    // A requester that keeps its stream open after a complete request is answered; the request deadline still bounds the wait.
     [Test]
-    public void The_request_deadline_during_the_trailing_byte_probe_is_a_timeout_not_a_served_request()
+    public async Task Complete_request_on_an_open_channel_returns_without_waiting_for_more_bytes()
     {
-        using CancellationTokenSource deadline = new(TimeSpan.FromMilliseconds(100));
-        using StalledAfterStream stream = new(Bytes.FromHexString(PingRequestWire));
-
-        Assert.CatchAsync<OperationCanceledException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, deadline.Token));
-    }
-
-    /// <summary>Serves its bytes, then blocks like an open stream with nothing more to read until cancelled.</summary>
-    private sealed class StalledAfterStream(byte[] bytes) : MemoryStream(bytes)
-    {
-        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(5));
+        Channel channel = new();
+        using ChannelStreamAdapter input = new(channel);
+        using ChannelStreamAdapter output = new(channel.Reverse);
+        Task<byte[]> read = ReqRespFraming.ReadRequestAsync(input, maxSize: 8, deadline.Token);
+        try
         {
-            int read = await base.ReadAsync(buffer, cancellationToken);
-            if (read == 0)
-            {
-                await Task.Delay(Timeout.Infinite, cancellationToken);
-            }
-
-            return read;
+            await output.WriteAsync(Bytes.FromHexString(PingRequestWire), deadline.Token);
+            Assert.That(await read.WaitAsync(deadline.Token), Is.EqualTo(Bytes.FromHexString(PingSsz)));
+        }
+        finally
+        {
+            deadline.Cancel();
+            await channel.CloseAsync();
         }
     }
 
