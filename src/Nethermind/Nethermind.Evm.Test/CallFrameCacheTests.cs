@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -243,6 +244,61 @@ public class CallFrameCacheTests : VirtualMachineTestsBase
             Assert.That(orphanEnv.ExecutingAccount, Is.EqualTo(Probe));
             Assert.That(third.Frames.Single().Frame, Is.SameAs(second.Frames.Single().Frame), "the replacement is reused");
             Assert.That(third.ReturnValue, Is.EqualTo(second.ReturnValue));
+        }
+    }
+
+    /// <summary>
+    /// <see cref="VmState{TGasPolicy}.Dispose"/> marks a frame disposed before it resets anything. If a later step
+    /// throws - here the access-journal restore, with the journals recycled under the frame - the frame is left with
+    /// its memory still sized and written, and the cache must replace it rather than hand it to the next child.
+    /// </summary>
+    [Test]
+    public void Frame_whose_disposal_throws_midway_is_replaced_not_reused()
+    {
+        VmState<EthereumGasPolicy>?[] frames = new VmState<EthereumGasPolicy>?[VirtualMachineStatics.MaxCachedFrameDepth + 1];
+        ExecutionEnvironment?[] envs = new ExecutionEnvironment?[frames.Length];
+
+        StackAccessTracker tracker = new();
+        tracker.WarmUp(Probe);
+        VmState<EthereumGasPolicy> broken = RentChild(frames, envs, in tracker);
+        UInt256 location = 0x40;
+        Assert.That(broken.Memory.TrySaveWord(in location, DirtyWord), Is.True);
+        Assert.That(broken.Memory.Size, Is.EqualTo(0x60));
+
+        // Clearing the journals the frame snapshotted makes its restore throw inside Dispose.
+        tracker.Dispose();
+        Assert.Throws<InvalidOperationException>(broken.Dispose);
+        Assert.That(IsDisposed(broken), Is.True, "Dispose marked the frame before the step that threw");
+
+        StackAccessTracker next = new();
+        try
+        {
+            VmState<EthereumGasPolicy> child = RentChild(frames, envs, in next);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(child, Is.Not.SameAs(broken), "a frame whose disposal threw is not handed out again");
+                Assert.That(child.Memory.Size, Is.Zero, "the next child starts with empty memory");
+                Assert.That(frames[1], Is.SameAs(child), "the replacement takes the slot");
+            }
+
+            child.Dispose();
+            VmState<EthereumGasPolicy> reused = RentChild(frames, envs, in next);
+            Assert.That(reused, Is.SameAs(child), "a frame disposed to the end is reused");
+            reused.Dispose();
+        }
+        finally
+        {
+            next.Dispose();
+        }
+
+        static VmState<EthereumGasPolicy> RentChild(VmState<EthereumGasPolicy>?[] frames, ExecutionEnvironment?[] envs, in StackAccessTracker tracker)
+        {
+            ExecutionEnvironment env = ExecutionEnvironment.Rent(
+                envs, new CodeInfo(new byte[] { (byte)Instruction.STOP }), Probe, ProbeCaller, codeSource: null, callDepth: 1,
+                UInt256.Zero, ReadOnlyMemory<byte>.Empty);
+            return VmState<EthereumGasPolicy>.RentFrame(
+                frames, EthereumGasPolicy.FromULong(CallGas), outputDestination: 0, outputLength: 0, ExecutionType.CALL,
+                isStatic: false, isCreateOnPreExistingAccount: false, env, in tracker, Snapshot.Empty);
         }
     }
 

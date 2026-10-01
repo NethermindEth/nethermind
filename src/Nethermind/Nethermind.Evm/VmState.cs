@@ -61,6 +61,13 @@ public class VmState<TGasPolicy> : IDisposable
     /// </summary>
     private bool _isCached;
 
+    /// <summary>
+    /// Not rented, or <see cref="Dispose"/> has run to the end: it drops the environment as its last step, after
+    /// every call that can throw. <see cref="_isDisposed"/> cannot tell this apart from a disposal that threw
+    /// midway, with memory not reset, because <see cref="Dispose"/> sets it first as its re-entrancy guard.
+    /// </summary>
+    private bool IsReleased => _env is null;
+
     private EvmPooledMemory _memory;
     private readonly EvmFrameMemory _inlineMemory = new();
     private ExecutionEnvironment? _env;
@@ -138,9 +145,10 @@ public class VmState<TGasPolicy> : IDisposable
     /// </summary>
     /// <remarks>
     /// Child frames nest strictly, so the frame at a given depth has been disposed by the time its parent opens
-    /// the next one. A slot is still reused only once its frame is disposed: a frame still in use - one staged by
-    /// CALL or CREATE and then orphaned by an exception before it was entered - is abandoned to the GC and
-    /// replaced, so a live frame is never shared.
+    /// the next one. A slot is still reused only once its frame is released (<see cref="IsReleased"/>): a frame
+    /// still in use - one staged by CALL or CREATE and then orphaned by an exception before it was entered - or one
+    /// whose disposal threw before it finished is abandoned to the GC and replaced, so a live or half-reset frame
+    /// is never handed out.
     /// </remarks>
     internal static VmState<TGasPolicy> RentFrame(
         VmState<TGasPolicy>?[] frameCache,
@@ -158,7 +166,7 @@ public class VmState<TGasPolicy> : IDisposable
         int frameJournalCheckpoint = 0)
     {
         int depth = env.CallDepth;
-        VmState<TGasPolicy> state = (uint)depth < (uint)frameCache.Length && frameCache[depth] is { _isDisposed: true } cached
+        VmState<TGasPolicy> state = (uint)depth < (uint)frameCache.Length && frameCache[depth] is { IsReleased: true } cached
             ? cached
             : RentUncached(frameCache, depth);
         state.Initialize(
@@ -297,9 +305,10 @@ public class VmState<TGasPolicy> : IDisposable
         _memory.Dispose();
         _accessTracker = default;
         if (!IsTopLevel) _env?.Dispose();
-        _env = null;
         _snapshot = default;
         StateGasRefundAdvanced = 0;
+        // Last, after everything that can throw: this is what releases a cached frame for reuse (IsReleased).
+        _env = null;
 
         if (!_isCached) _statePool.Enqueue(this);
     }
