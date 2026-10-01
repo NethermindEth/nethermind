@@ -71,6 +71,9 @@ public sealed class ForkChoiceRunner
     /// <summary>Target states built this epoch for gossip aggregates of another shuffling than the head's.</summary>
     private int _offHeadBuilds;
 
+    /// <summary>The aggregators whose aggregates cost one of <see cref="_offHeadBuilds"/>, so one selected aggregator cannot spend them all.</summary>
+    private readonly HashSet<ulong> _offHeadAggregators = [];
+
     /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attestation and PTC deadlines, keyed by block root.</summary>
     private readonly Dictionary<Hash256, BlockTimeliness> _blockTimeliness = [];
 
@@ -1594,18 +1597,25 @@ public sealed class ForkChoiceRunner
     /// <c>store_target_checkpoint_state</c>. The committees and the fork of a target epoch are fixed by its shuffling decision
     /// block (<see cref="BeaconStateAccessors.GetShufflingDecisionRoot(BeaconStateFulu, ulong)"/>), and every index the vote names
     /// comes from those committees, so the head target's state stands in for every target with the same decision block.
-    /// p2p-interface.md validate_beacon_aggregate_and_proof_gossip authenticates an aggregate with the head state, so a target of another
-    /// shuffling costs a state only for an aggregate a selected aggregator signed, and at most <see cref="MaxOffHeadBuildsPerEpoch"/> per epoch.
+    /// p2p-interface.md validate_beacon_aggregate_and_proof_gossip reads the committees, the domain and the keys from
+    /// <c>store.block_states[get_head(store).root]</c>, so an aggregate of another shuffling is authenticated with the head target's
+    /// state first; only then does it cost a state of its own, at most one per aggregator and <see cref="MaxOffHeadBuildsPerEpoch"/> per epoch.
+    /// An ancestor of the head before its decision block lacks the RANDAO reveals of the blocks up to that block, so its committees
+    /// are another shuffling's and a vote for it is ignored without a build.
     /// </remarks>
-    /// <exception cref="ForkChoiceException">The aggregate does not authenticate with the head state, or the epoch's builds for other shufflings are spent.</exception>
+    /// <exception cref="ForkChoiceException">The target is such an ancestor, the aggregate does not authenticate with the head state, or the builds for other shufflings are spent.</exception>
     private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, ShufflingKey? key, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof)
     {
-        CheckpointRef headTarget = new(target.Epoch, GetCheckpointBlock(_lastHeadRoot ?? GetHead(), target.Epoch));
+        Hash256 head = _lastHeadRoot ?? GetHead();
+        CheckpointRef headTarget = new(target.Epoch, GetCheckpointBlock(head, target.Epoch));
         ShufflingKey? headKey = GetShufflingKey(headTarget);
-        ForkedBeaconState headState = HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
         if (target == headTarget || (key is not null && key == headKey))
-            return headState;
+            return HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
 
+        if (_protoArray.IsDescendant(target.Root, head))
+            throw new ForkChoiceException($"Aggregate target {target} is an ancestor of the head with another shuffling than the head's target {headTarget}");
+
+        ForkedBeaconState headState = HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
         ulong[] headIndices = AttestingIndices(headState, target.Epoch, data, aggregationBits, committeeBits, signature);
         VerifyAggregator(headState, target.Epoch, data.Slot, committeeBits, proof, new IndexedVote(headIndices, data, signature));
 
@@ -1614,9 +1624,10 @@ public sealed class ForkChoiceRunner
         {
             _offHeadBuildEpoch = epoch;
             _offHeadBuilds = 0;
+            _offHeadAggregators.Clear();
         }
 
-        if (_offHeadBuilds == MaxOffHeadBuildsPerEpoch)
+        if (_offHeadBuilds == MaxOffHeadBuildsPerEpoch || !_offHeadAggregators.Add(proof.AggregatorIndex))
             throw new ForkChoiceException($"Aggregate target {target} has another shuffling than the head's target {headTarget}, and this epoch's builds for those are spent");
 
         _offHeadBuilds++;
