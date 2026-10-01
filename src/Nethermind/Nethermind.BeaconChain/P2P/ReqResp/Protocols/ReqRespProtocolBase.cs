@@ -55,6 +55,12 @@ public abstract class ReqRespProtocolBase
     // to escape the per-peer cap.
     private int _unattributedInboundRequests;
 
+    /// <summary>Maximum completed requests awaiting requester closure per peer, or across unidentified sessions.</summary>
+    protected const int MaxLingeringRequests = 3 * MaxConcurrentRequests;
+
+    private readonly ConcurrentDictionary<PeerId, int> _lingeringByPeer = new();
+    private int _unattributedLingering;
+
     /// <summary>Creates a timeout source; re-arm with <see cref="CancellationTokenSource.CancelAfter(TimeSpan)"/> per chunk.</summary>
     /// <remarks>
     /// Deliberately not linked to the channel's own cancellation: channel teardown must surface as
@@ -150,6 +156,29 @@ public abstract class ReqRespProtocolBase
         return null;
     }
 
+    // Bound listeners awaiting requester closure after the response ends (consensus-specs networking, Req/Resp interaction).
+    private LingerSlot? TryEnterLinger(PeerId? peerId)
+    {
+        if (peerId is null)
+        {
+            if (Interlocked.Increment(ref _unattributedLingering) <= MaxLingeringRequests)
+            {
+                return new LingerSlot(this, null);
+            }
+
+            Interlocked.Decrement(ref _unattributedLingering);
+            return null;
+        }
+
+        if (_lingeringByPeer.AddOrUpdate(peerId, 1, static (_, existing) => existing + 1) <= MaxLingeringRequests)
+        {
+            return new LingerSlot(this, peerId);
+        }
+
+        Release(_lingeringByPeer, peerId);
+        return null;
+    }
+
     /// <summary>Decrements a peer's in-flight count, removing the entry at zero.</summary>
     /// <remarks>Leaving zero-count entries behind would grow this dictionary for as long as the
     /// process runs, which peer churn alone would then turn into an unbounded leak.</remarks>
@@ -192,7 +221,8 @@ public abstract class ReqRespProtocolBase
     /// A request is complete once its payload is read, so serving starts without waiting for the requester's EOF; bytes that arrive later are reported, not waited for.
     /// The channel is torn down when the listener returns, so disposing ends the response with an EOF and then holds the listener until the requester ends its side,
     /// at the longest <see cref="WatchLingerAfterServed"/>: a requester that reads to the end of the response ends its side at once, so the wait is over then.
-    /// The concurrency slot is held through the wait, so <see cref="MaxConcurrentRequests"/> also bounds the streams one peer can keep open by never ending its side.
+    /// The concurrency slot is released after response EOF, before awaiting requester closure (consensus-specs networking, Req/Resp interaction).
+    /// <see cref="MaxLingeringRequests"/> bounds completed requests awaiting closure; excess listeners return immediately.
     /// </remarks>
     protected sealed class InboundRequest(ReqRespProtocolBase owner, ISessionContext context, string protocolId, IDisposable slot) : IAsyncDisposable
     {
@@ -248,10 +278,17 @@ public abstract class ReqRespProtocolBase
             {
                 if (_watching is not null)
                 {
+                    using LingerSlot? linger = owner.TryEnterLinger(context.State.RemotePeerId);
                     _watchEnd.CancelAfter(owner.WatchLingerAfterServed);
                     if (_stream is ChannelStreamAdapter channel)
                     {
                         await channel.TryWriteEofAsync(_watchEnd.Token);
+                    }
+
+                    slot.Dispose();
+                    if (linger is null)
+                    {
+                        _watchEnd.Cancel();
                     }
 
                     await _watching;
@@ -261,6 +298,21 @@ public abstract class ReqRespProtocolBase
             {
                 _watchEnd.Dispose();
                 slot.Dispose();
+            }
+        }
+    }
+
+    private sealed class LingerSlot(ReqRespProtocolBase owner, PeerId? peerId) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (peerId is null)
+            {
+                Interlocked.Decrement(ref owner._unattributedLingering);
+            }
+            else
+            {
+                Release(owner._lingeringByPeer, peerId);
             }
         }
     }
