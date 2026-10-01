@@ -635,6 +635,7 @@ public static class GloasBlockProcessing
         }
         else
         {
+            RequireRegistryIndex(builderIndex, state.Builders!.Length, "Builder");
             if (!state.IsActiveBuilder(builderIndex))
                 throw new BeaconStateException($"Builder {builderIndex} is not active");
             if (state.Builders![(int)builderIndex].Version != Presets.PayloadBuilderVersion)
@@ -1106,6 +1107,8 @@ public static class GloasBlockProcessing
         }
 
         Builder builder = state.Builders![builderIndex];
+        if (request.Amount > ulong.MaxValue - builder.Balance)
+            throw new BeaconStateException("Builder deposit would overflow the balance");
         ulong withdrawableEpoch = builder.WithdrawableEpoch;
         if (withdrawableEpoch != Presets.FarFutureEpoch && builder.Balance == 0)
             withdrawableEpoch = state.GetCurrentEpoch() + Presets.MinBuilderWithdrawabilityDelay;
