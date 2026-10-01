@@ -5,6 +5,7 @@
 """Build matched Linux x64 runtime images from validated strict training inputs."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -97,7 +98,7 @@ def extract_assembly(log, output, diagnostic_method):
             "compiler_versions": sorted(compiler_versions), "sha256": digest(output)}
 
 
-def publish_script(source_sha, epoch, arm, diagnostic_method):
+def publish_script(source_sha, epoch, arm, diagnostic_method, owner):
     # All interpolated values are validated identifiers or fixed arm names.
     profile = f'cp /selected/target.mibc "{PROFILE_PATH}"\n' if arm == "one-method-profile" else ""
     return f'''#!/bin/bash
@@ -108,6 +109,7 @@ cd /nethermind/src/Nethermind/Nethermind.Runner
 if [ -f "{PROFILE_PATH}" ]; then mv "{PROFILE_PATH}" /tmp/historical-profile.mibc; fi
 {profile}dotnet msbuild -p:Configuration=release -p:RuntimeIdentifier=linux-x64 -p:PublishReadyToRun=true -p:SelfContained=false -getProperty:PublishReadyToRun,PublishReadyToRunComposite,PublishReadyToRunUseCrossgen2,TieredPGO -getItem:PublishReadyToRunPgoFiles > /output/evaluated-properties.json
 dotnet publish -c release -r linux-x64 -o /output/app --no-self-contained -p:PublishReadyToRun=true -p:SourceRevisionId={source_sha} '-p:PublishReadyToRunCrossgen2ExtraArgs=--codegenopt:JitDisasm={diagnostic_method} --codegenopt:JitDump={diagnostic_method}' -v:diag > /output/publish.log 2>&1
+chown -R {owner[0]}:{owner[1]} /output/app
 '''
 
 
@@ -196,6 +198,8 @@ def build(args):
          "--build-arg", "BUILD_CONFIG=release", "--build-arg", "CI=true", "--build-arg", f"COMMIT_HASH={args.source_sha}",
          "--build-arg", f"SOURCE_DATE_EPOCH={epoch}", "--build-arg", "TARGETARCH=amd64", "-t", sdk_image, "."],
         root / "sdk-build.log", cwd=source)
+    run(["docker", "pull", "--platform", "linux/amd64", RUNTIME_BASE], root / "runtime-pull.log")
+    base_environment = json.loads(run(["docker", "image", "inspect", RUNTIME_BASE]))[0]["Config"]["Env"]
     images = []
     environments = []
     for arm in ARMS:
@@ -213,7 +217,8 @@ def build(args):
         else:
             script = arm_root / "publish.sh"
             with script.open("w", encoding="utf-8", newline="\n") as stream:
-                stream.write(publish_script(args.source_sha, epoch, arm, args.diagnostic_method))
+                owner = (getattr(os, "getuid", lambda: 0)(), getattr(os, "getgid", lambda: 0)())
+                stream.write(publish_script(args.source_sha, epoch, arm, args.diagnostic_method, owner))
             run(["docker", "run", "--rm", "--platform", "linux/amd64", "--mount", f"type=bind,src={arm_root},dst=/output",
                  "--mount", f"type=bind,src={selected},dst=/selected,readonly", sdk_image, "bash", "/output/publish.sh"],
                 arm_root / "container.log")
@@ -244,7 +249,6 @@ def build(args):
         run(["docker", "build", "--platform", "linux/amd64", "-f", str(definition), "-t", tag, str(app)], arm_root / "image-build.log")
         info = json.loads(run(["docker", "image", "inspect", tag]))[0]
         environment = info["Config"]["Env"]
-        base_environment = json.loads(run(["docker", "image", "inspect", RUNTIME_BASE]))[0]["Config"]["Env"]
         if environment != base_environment:
             raise ValueError("runtime image has environment overrides beyond the pinned production base")
         if info["Config"]["Entrypoint"] != ["./entrypoint.sh"] or info["Architecture"] != "amd64":
