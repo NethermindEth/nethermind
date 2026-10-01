@@ -14,12 +14,12 @@ public sealed class NullTrieNodeLog : ITrieNodeLog, ITrieNodeLog.IWriteBatch
     private NullTrieNodeLog() { }
 
     public ITrieNodeLog.IView OpenView(IColumnsDb<FlatDbColumns> db, ReaderFlags flags) => new View(db.CreateSnapshot(flags));
-    public ITrieNodeLog.IWriteBatch StartWriteBatch(bool bypass) => this;
+    public ITrieNodeLog.IWriteBatch StartWriteBatch(IColumnsWriteBatch<FlatDbColumns> batch, bool bypass) => this;
     public void Drain() { }
     public void Clear() { }
 
     public IWriteBatch Wrap(FlatDbColumns column, IWriteBatch inner) => inner;
-    public void Commit(IWriteOnlyKeyValueStore metadataBatch) { }
+    public void Commit() { }
 
     public void Dispose() { }
 

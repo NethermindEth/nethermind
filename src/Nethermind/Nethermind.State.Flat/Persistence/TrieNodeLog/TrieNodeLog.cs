@@ -112,7 +112,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         return new View(this, snapshot, views);
     }
 
-    public ITrieNodeLog.IWriteBatch StartWriteBatch(bool bypass)
+    public ITrieNodeLog.IWriteBatch StartWriteBatch(IColumnsWriteBatch<FlatDbColumns> batch, bool bypass)
     {
         if (bypass)
         {
@@ -127,11 +127,11 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
         catch
         {
-            foreach (TrieNodeLogWriteBatch? batch in batches) batch?.Dispose();
+            foreach (TrieNodeLogWriteBatch? started in batches) started?.Dispose();
             throw;
         }
 
-        return new WriteBatch(this, batches);
+        return new WriteBatch(this, batch, batches);
     }
 
     public void Drain()
@@ -181,13 +181,15 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private sealed class WriteBatch : ITrieNodeLog.IWriteBatch
     {
         private readonly TrieNodeLog _log;
+        private readonly IColumnsWriteBatch<FlatDbColumns> _rocksDbBatch;
         private readonly TrieNodeLogWriteBatch[] _batches;
         private readonly ShardWriter[] _writers;
         private bool _committed;
 
-        public WriteBatch(TrieNodeLog log, TrieNodeLogWriteBatch[] batches)
+        public WriteBatch(TrieNodeLog log, IColumnsWriteBatch<FlatDbColumns> rocksDbBatch, TrieNodeLogWriteBatch[] batches)
         {
             _log = log;
+            _rocksDbBatch = rocksDbBatch;
             _batches = batches;
             _writers = new ShardWriter[batches.Length];
             for (int i = 0; i < batches.Length; i++) _writers[i] = new ShardWriter(batches[i]);
@@ -198,7 +200,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         private void Stage(byte column, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete) =>
             _writers[_log.ShardIndex(column, key)].Stage(key, value, delete);
 
-        public void Commit(IWriteOnlyKeyValueStore metadataBatch)
+        public void Commit()
         {
             long sw = Stopwatch.GetTimestamp();
             try
@@ -214,7 +216,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
             Parallel.ForEach(_batches, static batch => batch.Publish());
             // The RocksDB batch is not thread-safe.
-            foreach (TrieNodeLogWriteBatch batch in _batches) batch.WriteVersion(metadataBatch);
+            IWriteBatch metadata = _rocksDbBatch.GetColumnBatch(FlatDbColumns.Metadata);
+            foreach (TrieNodeLogWriteBatch batch in _batches) batch.WriteVersion(metadata);
             _committed = true;
             Metrics.TrieNodeLogCommitTime.Observe(Stopwatch.GetTimestamp() - sw);
         }

@@ -25,12 +25,12 @@ public interface ITrieNodeLog
     /// </summary>
     IView OpenView(IColumnsDb<FlatDbColumns> db, ReaderFlags flags);
 
-    /// <summary>Starts the log side of a persistence write batch; one log-backed batch may be open at a time.</summary>
+    /// <summary>Starts the log side of the persistence write batch <paramref name="batch"/>; one log-backed batch may be open at a time.</summary>
     /// <param name="bypass">
     /// When true the log is drained first and the returned batch passes every column through unchanged; used for
     /// sync and import batches, whose range scans must see every node in RocksDB.
     /// </param>
-    IWriteBatch StartWriteBatch(bool bypass);
+    IWriteBatch StartWriteBatch(IColumnsWriteBatch<FlatDbColumns> batch, bool bypass);
 
     /// <summary>Merges every generation into RocksDB synchronously.</summary>
     void Drain();
@@ -54,10 +54,10 @@ public interface ITrieNodeLog
         Core.IWriteBatch Wrap(FlatDbColumns column, Core.IWriteBatch inner);
 
         /// <summary>
-        /// Makes the batch's records durable and visible, and puts the log version into <paramref name="metadataBatch"/>
-        /// so RocksDB confirms it with the state pointer. Called before the RocksDB batch is written; the batch is
-        /// disposed after it.
+        /// Makes the batch's records durable and visible, and puts the log version into the RocksDB batch's metadata
+        /// column so RocksDB confirms it with the state pointer. Called before the RocksDB batch is written; the
+        /// batch is disposed after it.
         /// </summary>
-        void Commit(IWriteOnlyKeyValueStore metadataBatch);
+        void Commit();
     }
 }

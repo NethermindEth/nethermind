@@ -71,19 +71,20 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
+        IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         // Sync and import batches scan the trie columns for range deletes, so they go straight to RocksDB.
         ITrieNodeLog.IWriteBatch logBatch;
         try
         {
-            logBatch = trieNodeLog.StartWriteBatch(bypass: from == StateId.Sync || to == StateId.Sync || flags.HasFlag(WriteFlags.DisableWAL));
+            logBatch = trieNodeLog.StartWriteBatch(batch, bypass: from == StateId.Sync || to == StateId.Sync || flags.HasFlag(WriteFlags.DisableWAL));
         }
         catch
         {
+            batch.Clear();
+            batch.Dispose();
             dbSnap.Dispose();
             throw;
         }
-
-        IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
 
         IWriteBatch accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
         IWriteBatch storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
@@ -122,7 +123,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             {
                 // The log is made durable and its version put into this batch's metadata before RocksDB commits,
                 // and the log only seals generations once RocksDB has.
-                logBatch.Commit(batch.GetColumnBatch(FlatDbColumns.Metadata));
+                logBatch.Commit();
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                 if (_rlpWrapSlots)
