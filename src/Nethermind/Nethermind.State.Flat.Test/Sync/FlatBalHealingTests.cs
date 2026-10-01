@@ -217,11 +217,26 @@ public class FlatBalHealingTests
         _syncStore.Received(1).FinalizeSync(lastPivot);
     }
 
-    public enum RevivalBoundary { Transaction, RepeatedTransaction, Block, Chunk }
+    public static IEnumerable<TestCaseData> RevivalCases()
+    {
+        (string Name, BalanceChange[] Changes, uint ReviveIndex, int EmptyBlocks, bool SeparateDeletion)[] scenarios =
+        [
+            ("transaction", [new(1, 0), new(2, 100)], 2, 0, false),
+            ("repeated transaction", [new(1, 0), new(2, 100), new(3, 0), new(4, 100)], 4, 0, false),
+            ("block", [new(1, 100)], 1, 0, true),
+            ("chunk", [new(1, 100)], 1, 15, true)
+        ];
+        foreach ((string name, BalanceChange[] changes, uint reviveIndex, int emptyBlocks, bool separateDeletion) in scenarios)
+        {
+            foreach (bool writesStorageAfterRevival in new[] { false, true })
+                yield return new TestCaseData(changes, reviveIndex, emptyBlocks, separateDeletion, writesStorageAfterRevival)
+                    .SetName($"Revived account loses old storage across {name}, new storage: {writesStorageAfterRevival}");
+        }
+    }
 
-    [Test]
+    [TestCaseSource(nameof(RevivalCases))]
     public async Task Revived_account_loses_its_old_storage(
-        [Values] RevivalBoundary boundary, [Values] bool writesStorageAfterRevival)
+        BalanceChange[] balanceChanges, uint reviveIndex, int emptyBlocks, bool separateDeletion, bool writesStorageAfterRevival)
     {
         // A code-less, nonce-zero payer with positive balance and storage is a valid nonempty prestate.
         SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05])]), Acc(TestItem.AddressB, 200));
@@ -233,27 +248,13 @@ public class FlatBalHealingTests
 
         BlockHeader firstPivot = Pivot(0, TestItem.KeccakA);
         BlockHeader lastPivot = firstPivot;
-        if (boundary == RevivalBoundary.Chunk)
-            for (int i = 0; i < 15; i++) lastPivot = SetupBlock(lastPivot, TestItem.KeccakA, EmptyBal());
-
-        bool sameBlock = boundary is RevivalBoundary.Transaction or RevivalBoundary.RepeatedTransaction;
-        if (!sameBlock)
+        for (int i = 0; i < emptyBlocks; i++) lastPivot = SetupBlock(lastPivot, TestItem.KeccakA, EmptyBal());
+        if (separateDeletion)
             lastPivot = SetupBlock(lastPivot, TestItem.KeccakA, BalanceBal(TestItem.AddressA, 0));
 
-        uint reviveIndex = boundary switch
-        {
-            RevivalBoundary.Transaction => 2,
-            RevivalBoundary.RepeatedTransaction => 4,
-            _ => 1
-        };
         ReadOnlyAccountChanges changes = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithBalanceChanges(boundary switch
-            {
-                RevivalBoundary.Transaction => [new BalanceChange(1, 0), new BalanceChange(reviveIndex, 100)],
-                RevivalBoundary.RepeatedTransaction => [new BalanceChange(1, 0), new BalanceChange(2, 100), new BalanceChange(3, 0), new BalanceChange(reviveIndex, 100)],
-                _ => [new BalanceChange(reviveIndex, 100)]
-            })
+            .WithBalanceChanges(balanceChanges)
             .WithNonceChanges(writesStorageAfterRevival ? [new NonceChange(reviveIndex, 1)] : [])
             .WithCodeChanges(writesStorageAfterRevival ? [new CodeChange(reviveIndex, code!)] : [])
             .TestObject;
