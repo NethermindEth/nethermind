@@ -520,6 +520,44 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Router.IsProposalSeen(150, chain[0].Message!.ProposerIndex), "the engine is called only after the proposer signature verified");
     }
 
+    /// <summary>
+    /// fork-choice.md on_block: an early block from gossip or range sync waits for its slot tick and then imports.
+    /// Its verified proposer signature reserves the proposal while the retry waits.
+    /// </summary>
+    [Test]
+    public async Task Block_before_its_slot_imports_at_its_slot_tick_and_marks_its_proposer([Values] bool fromRange)
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, WallSlot + 1);
+        Hash256 root = SszRoots.HashTreeRoot(chain[0].Message!);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Early.Add(root);
+
+        if (fromRange)
+        {
+            harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0])));
+            await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        }
+        else
+        {
+            await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None);
+        }
+
+        bool seenEarly = harness.Router.IsProposalSeen(WallSlot + 1, chain[0].Message!.ProposerIndex);
+        ulong? heldSlot = harness.Orchestrator.RangeHeldSlot;
+        harness.Timestamper.Set(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + (WallSlot + 1) * Spec.SecondsPerSlot));
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seenEarly, Is.True);
+            Assert.That(heldSlot, Is.EqualTo(fromRange ? WallSlot + 1 : (ulong?)null));
+            Assert.That(harness.Orchestrator.RangeHeldSlot, Is.Null);
+            Assert.That(harness.Importer.Known, Does.Contain(root), "the retry set re-imports the block after its slot's tick");
+            Assert.That(harness.Importer.Imports.Select(static i => i.Root), Is.EqualTo(new[] { root, root }));
+        }
+    }
+
     [Test]
     public async Task Gloas_gossip_aggregate_and_attester_slashing_reach_the_importer()
     {
@@ -858,6 +896,9 @@ public partial class BeaconSyncOrchestratorTests
         /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.EngineUnavailable"/>.</summary>
         public HashSet<Hash256> EngineDown { get; } = [];
 
+        /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.FutureSlot"/> until a slot tick reaches their slot.</summary>
+        public HashSet<Hash256> Early { get; } = [];
+
         /// <summary>Parent roots whose payload is unverified, so a child <see cref="Import"/> answers <see cref="BlockImportResult.ParentPayloadUnverified"/> until <see cref="ImportEnvelope"/> records it.</summary>
         public HashSet<Hash256> UnverifiedPayloads { get; } = [];
 
@@ -910,6 +951,7 @@ public partial class BeaconSyncOrchestratorTests
             if (Unavailable.Contains(blockRoot)) return BlockImportResult.DataUnavailable;
             if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
             if (EngineDown.Contains(blockRoot)) return BlockImportResult.EngineUnavailable;
+            if (Early.Contains(blockRoot) && (Ticks.Count == 0 || Ticks[^1] < block.Slot)) return BlockImportResult.FutureSlot;
             Known.Add(blockRoot);
             return BlockImportResult.Imported;
         }

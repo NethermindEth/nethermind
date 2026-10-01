@@ -169,13 +169,11 @@ public class BlockImporterTests
     }
 
     /// <summary>
-    /// specs/phase0/fork-choice.md <c>on_block</c> asserts <c>get_current_slot(store) &gt;= block.slot</c> before
-    /// <c>state_transition</c>, whose <c>process_slots</c> is linear in the slot distance. The current slot is the node's
-    /// clock with <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>; fork-choice time is ticked to the clock, never below the block's own slot, on import, so
-    /// only the clock can refuse a block from the future, and a block the clock has reached (any older block) still imports.
+    /// fork-choice.md on_block: refuse distant future blocks before linear process_slots work.
+    /// A block within MAXIMUM_GOSSIP_CLOCK_DISPARITY waits for its slot; an older block still imports.
     /// </summary>
     [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs + 1, BlockImportResult.Invalid)]
-    [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs, BlockImportResult.Imported)]
+    [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs, BlockImportResult.FutureSlot)]
     [TestCase(1UL, -1_200_000L, BlockImportResult.Imported)]
     [TestCase(1UL << 40, -1_200_000L, BlockImportResult.Invalid)]
     public void Block_after_the_clock_slot_is_refused_before_its_state_transition(ulong slot, long millisecondsBeforeSlotOne, BlockImportResult expected)
@@ -200,12 +198,54 @@ public class BlockImporterTests
     }
 
     /// <summary>
+    /// fork-choice.md on_block: early blocks wait without moving fork-choice time or mutating a trusted replay's lineage.
+    /// Untrusted blocks verify their proposer signature before reserving a retry, so a forged copy cannot displace them.
+    /// </summary>
+    [Test]
+    public void Block_before_its_slot_starts_imports_once_the_slot_starts([Values] bool slotTickFirst, [Values] bool trusted)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        DateTime slotStart = TickFinalityFixture.SlotStart(chain.Spec, 1);
+        ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs));
+        FailedBlockRoots failed = new();
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), importClock: new SlotClock(chain.Spec, time), failedBlocks: failed);
+        BlsSignature genuine = chain.Block.Signature;
+        chain.Block.Signature = new BlsSignature(SignatureSets.G2PointAtInfinity);
+        BlockImportResult forged = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+        chain.Block.Signature = genuine;
+
+        BlockImportResult early = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: !trusted);
+        bool knownEarly = importer.IsKnown(chain.BlockRoot);
+        if (slotTickFirst)
+        {
+            importer.OnSlotTick(1);
+        }
+        else
+        {
+            time.Set(slotStart);
+        }
+
+        BlockImportResult onTime = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: !trusted);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forged, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(early, Is.EqualTo(BlockImportResult.FutureSlot));
+            Assert.That(knownEarly, Is.False, "fork choice has not seen the block before its slot");
+            Assert.That(failed.Contains(chain.BlockRoot), Is.False);
+            Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
+        }
+    }
+
+    /// <summary>
     /// specs/phase0/fork-choice.md <c>on_block</c> reads timeliness from <c>store.time</c>, which follows the node's clock: only a
     /// block of the current slot that arrives before <c>get_attestation_due_ms</c> (<c>ATTESTATION_DUE_BPS</c>, 3999 ms into a
     /// 12 s slot) is timely and takes the proposer boost. With no boost set before the import, a boost still unset after it
     /// means the block was recorded not timely. The node's own <c>engine_newPayload</c> latency is not lateness of the block,
     /// and <c>store.time</c> is whole seconds, so the fraction of a second past the last whole second never makes a block late.
     /// </summary>
+    [TestCase(0UL, 11500L, 1UL, true)]
+    [TestCase(0UL, 11500L, 5UL, true)]
     [TestCase(1UL, 1000L, 0UL, true)]
     [TestCase(1UL, 3500L, 0UL, true)]
     [TestCase(1UL, 3999L, 0UL, true)]

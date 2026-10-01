@@ -879,10 +879,8 @@ public class GloasBlockImporterTests
     }
 
     /// <summary>
-    /// specs/phase0/fork-choice.md and specs/gloas/fork-choice.md <c>on_block</c> assert these before <c>state_transition</c>,
-    /// whose <c>process_slots</c> is linear in the slot distance to the parent: a peer's block at slot 2^40 on a known parent
-    /// would keep the import worker busy for good. The current slot is the node's clock: fork-choice time is ticked to the
-    /// block's own slot on import, which would never refuse a block from the future.
+    /// fork-choice.md and specs/gloas/fork-choice.md on_block: refuse invalid blocks before linear process_slots work.
+    /// The node clock bounds future slots by MAXIMUM_GOSSIP_CLOCK_DISPARITY, so distant slots cannot hold the worker.
     /// </summary>
     [Test]
     public void Block_failing_an_on_block_assertion_is_refused_before_its_state_transition([Values] OnBlockAssertion assertion)
@@ -935,6 +933,37 @@ public class GloasBlockImporterTests
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
             Assert.That(logger.LogList, Has.One.Contains("before its state transition"));
             Assert.That(importer.IsKnown(root), Is.False);
+        }
+    }
+
+    /// <summary>
+    /// fork-choice.md <c>on_block</c>: a Gloas block up to <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> before its slot waits for
+    /// that slot, so fork-choice time stays in the previous slot for its PTC votes (specs/gloas/fork-choice.md <c>on_payload_attestation_message</c>).
+    /// </summary>
+    [Test]
+    public void Block_before_its_slot_starts_waits_for_the_slot()
+    {
+        SignedGloasChain chain = new();
+        DateTime slotStart = TickFinalityFixture.SlotStart(chain.Spec, ForkSlot + 1);
+        ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, time));
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        Import(importer, first);
+        SignedGloasChain.Block block = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+
+        BlockImportResult early = importer.Import(block.Forked, block.Root, verifySignatures: true);
+        bool knownEarly = importer.IsKnown(block.Root);
+        ulong member = first.PostState.GetPtc(ForkSlot, chain.Spec).Indices![0];
+        bool voteAccepted = importer.OnGossipPayloadAttestation(PtcVote(first, member, payloadPresent: true));
+        time.Set(slotStart);
+        BlockImportResult onTime = importer.Import(block.Forked, block.Root, verifySignatures: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(early, Is.EqualTo(BlockImportResult.FutureSlot));
+            Assert.That(knownEarly, Is.False);
+            Assert.That(voteAccepted, Is.True, "the previous slot's signed PTC vote still counts before the next slot starts");
+            Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
         }
     }
 

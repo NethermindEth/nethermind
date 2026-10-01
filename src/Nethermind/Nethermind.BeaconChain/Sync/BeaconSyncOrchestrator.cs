@@ -157,7 +157,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Gossip blocks waiting for their parent, keyed by the unknown parent root.</summary>
     private readonly Dictionary<Hash256, List<ForkedSignedBeaconBlock>> _pendingByParent = [];
 
-    /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/> or <see cref="BlockImportResult.ParentPayloadUnverified"/>, keyed by block root, awaiting a retry.</summary>
+    /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/> or <see cref="BlockImportResult.FutureSlot"/>, keyed by block root, awaiting a retry.</summary>
     private readonly Dictionary<Hash256, PendingRetry> _pendingRetry = [];
 
     /// <summary>The custodians asked for the missing columns of each block in <see cref="_pendingRetry"/>, kept across slots so every custodian is reached.</summary>
@@ -754,7 +754,7 @@ public sealed class BeaconSyncOrchestrator(
     private async Task ImportRangeBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token)
     {
         BlockImportResult result = await ImportBlockAsync(block, token);
-        if (result is not (BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified or BlockImportResult.UnknownParent))
+        if (result is not (BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified or BlockImportResult.FutureSlot or BlockImportResult.UnknownParent))
         {
             return;
         }
@@ -864,8 +864,8 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>
     /// Imports one block and, on success, drains any gossip blocks that were waiting for it. The
     /// single choke point for all four callers of <see cref="IBlockImporter.Import"/> that can import, so this is
-    /// also where a <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/> or
-    /// <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry -
+    /// also where a <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/>,
+    /// <see cref="BlockImportResult.FutureSlot"/> or <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry -
     /// wiring it in at only one call site would leave the other three silently dropping it.
     /// </summary>
     /// <param name="retryingOnColumns">Whether this import was woken by the columns it waited for, so a repeat deferral waits for the slot tick instead of watching and fetching again.</param>
@@ -876,7 +876,7 @@ public sealed class BeaconSyncOrchestrator(
         BlockImportResult result = await _importThread.RunAsync(() => _importer!.Import(block, root, verifySignatures: true));
 
         // These results come after the importer verified the proposer signature.
-        if (result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified)
+        if (result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified or BlockImportResult.FutureSlot)
         {
             gossipRouter.MarkProposalSeen(block.Slot, block.ProposerIndex);
         }
@@ -897,7 +897,7 @@ public sealed class BeaconSyncOrchestrator(
             // After the held children imported or deferred in turn, so a child that waits takes the chain over first.
             ReleaseRangeHeld(root);
         }
-        else if (result is BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified)
+        else if (result is BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified or BlockImportResult.FutureSlot)
         {
             if (!QueuePendingRetry(root, block))
             {
