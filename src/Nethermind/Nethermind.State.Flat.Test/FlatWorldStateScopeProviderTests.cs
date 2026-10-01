@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +19,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -25,6 +27,7 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
@@ -727,9 +730,9 @@ public class FlatWorldStateScopeProviderTests
         => Assert.That(released.Wait(TimeSpan.FromSeconds(10)), Is.True, "speculation worker released the trie");
 
     [Test]
-    public void SpeculativeStorageRoots_MatchBlockEndRoot([Values] bool speculative)
+    public void SpeculativeStorageRoots_MatchBlockEndRoot([Values] bool speculative, [Values] bool deferStorageTrieCommit)
     {
-        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = speculative });
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = speculative, DeferStorageTrieCommit = deferStorageTrieCommit });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -763,9 +766,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void SpeculativeStorageRoots_RestoreSlotWrittenBackToPreBlockValue()
+    public void SpeculativeStorageRoots_RestoreSlotWrittenBackToPreBlockValue([Values] bool deferStorageTrieCommit)
     {
-        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true });
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, DeferStorageTrieCommit = deferStorageTrieCommit });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -800,9 +803,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void SpeculativeStorageRoots_ClearDropsSpeculativeWrites()
+    public void SpeculativeStorageRoots_ClearDropsSpeculativeWrites([Values] bool deferStorageTrieCommit)
     {
-        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true });
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, DeferStorageTrieCommit = deferStorageTrieCommit });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -826,9 +829,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void SpeculativeStorageRoots_WriteQueuedAcrossRunnerRelease_IsOwnedByFinalization()
+    public void SpeculativeStorageRoots_WriteQueuedAcrossRunnerRelease_IsOwnedByFinalization([Values] bool deferStorageTrieCommit)
     {
-        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true });
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, DeferStorageTrieCommit = deferStorageTrieCommit });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -865,9 +868,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void SpeculativeStorageRoots_ContractCapHandsTheRestToBlockEnd()
+    public void SpeculativeStorageRoots_ContractCapHandsTheRestToBlockEnd([Values] bool deferStorageTrieCommit)
     {
-        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeStorageRootContractCap = 2 });
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeStorageRootContractCap = 2, DeferStorageTrieCommit = deferStorageTrieCommit });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -889,9 +892,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void SpeculativeStorageRoots_StreamedStorageRootReachesTheAccountLeaf()
+    public void SpeculativeStorageRoots_StreamedStorageRootReachesTheAccountLeaf([Values] bool deferStorageTrieCommit)
     {
-        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeAccountTrie = true });
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeAccountTrie = true, DeferStorageTrieCommit = deferStorageTrieCommit });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         Account account = TestItem.GenerateRandomAccount();
@@ -936,9 +939,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void SpeculativeStorageRoots_WideDrainMatchesBlockEndRoot()
+    public void SpeculativeStorageRoots_WideDrainMatchesBlockEndRoot([Values] bool deferStorageTrieCommit)
     {
-        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true });
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, DeferStorageTrieCommit = deferStorageTrieCommit });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -1017,6 +1020,268 @@ public class FlatWorldStateScopeProviderTests
         expected.Set(TestItem.AddressC, lateOnly);
         expected.UpdateRootHash();
         Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_CommitNoNodesOfATrieNoBatchTookOver([Values] bool deferStorageTrieCommit)
+    {
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeStorageRootMinDrainToHash = 1, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        // The workers apply and hash the write, but no write batch ever takes the contract, as for one whose writes all
+        // went back to their pre-block values.
+        IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
+        Hash256 preBlockRoot = tree.RootHash;
+        long hashPasses = Db.Metrics.SpeculativeStorageHashPasses;
+        using ManualResetEventSlim released = ObserveSpeculationRelease(tree);
+        tree.HintSet(1, 1);
+        WaitForSpeculativeRelease(released);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Db.Metrics.SpeculativeStorageHashPasses, Is.GreaterThan(hashPasses), "the workers must have hashed the write");
+            Assert.That(tree.RootHash, Is.EqualTo(preBlockRoot), "a trie no batch took over reports the pre-block root");
+        }
+
+        scope.Commit(1);
+
+        Assert.That(ctx.LastCommittedSnapshot!.StorageNodes, Is.Empty);
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_LaterBatchOfTheBlockWritesBackAnAppliedSlot([Values] bool deferStorageTrieCommit)
+    {
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
+        using ManualResetEventSlim released = ObserveSpeculationRelease(tree);
+        tree.HintSet(1, 0xA);
+        WaitForSpeculativeRelease(released);
+
+        // Per-transaction root commits: the first batch moves slot 1 on, the second writes it back to the applied value.
+        foreach (UInt256 value in (UInt256[])[0xB, 0xA])
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Set(1, value);
+        }
+
+        scope.Commit(1);
+
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot((1, 0xA))));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_LaterBatchOfTheBlockWritesBackAnAppliedAccount()
+    {
+        using TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeAccountTrie = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        using ManualResetEventSlim released = new();
+        scope.OnAccountSpeculationReleased = released.Set;
+        Account applied = TestItem.GenerateRandomAccount();
+        Account other = TestItem.GenerateRandomAccount();
+
+        scope.HintAccountSet(TestItem.AddressB, applied);
+        Assert.That(released.Wait(TimeSpan.FromSeconds(10)), Is.True, "speculation worker released the state trie");
+
+        // Per-transaction root commits: the first batch leaves B out, so restores it, and the second writes the applied value.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressA, other);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressB, applied);
+        }
+
+        scope.Commit(1);
+
+        StateTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expected.Set(TestItem.AddressA, other);
+        expected.Set(TestItem.AddressB, applied);
+        expected.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_ThroughTheWorldState_ReachTheSerialRootAndNodes([Values] bool deferStorageTrieCommit, [Values] bool speculativeAccountTrie)
+    {
+        SpeculativeBlock speculative = ProcessSpeculativeBlock(new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeAccountTrie = speculativeAccountTrie, DeferStorageTrieCommit = deferStorageTrieCommit });
+        SpeculativeBlock serial = ProcessSpeculativeBlock(new FlatDbConfig { ApplyStorageWritesOnIdleThread = false, DeferStorageTrieCommit = deferStorageTrieCommit });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(speculative.UsedSpeculation, Is.True);
+            Assert.That(serial.UsedSpeculation, Is.False);
+            Assert.That(speculative.StateRoot, Is.EqualTo(serial.StateRoot));
+            AssertSameStorageTries(speculative, serial);
+        }
+    }
+
+    // A slot the workers changed and a later transaction put back leaves its path dirty, so its unchanged nodes are
+    // written again. Every node the serial block writes must be there, and every other one must be a pre-block node.
+    private static void AssertSameStorageTries(SpeculativeBlock block, SpeculativeBlock serial)
+    {
+        Assert.That(serial.StorageNodes, Is.Not.Empty);
+        Assert.That(serial.StorageNodes, Is.SubsetOf(block.StorageNodes));
+        Assert.That(block.StorageNodes.Except(serial.StorageNodes), Is.SubsetOf(serial.PreBlockStorageNodes));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_WithTheEarlyApplyOn_NeverUseTheEarlyTree([Values] bool deferStorageTrieCommit)
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        SpeculativeBlock speculative = ProcessSpeculativeBlock(new FlatDbConfig { SpeculativeStorageRoots = true, ApplyStorageWritesOnIdleThread = true, DeferStorageTrieCommit = deferStorageTrieCommit });
+        SpeculativeBlock reference = ProcessSpeculativeBlock(new FlatDbConfig { ApplyStorageWritesOnIdleThread = true, DeferStorageTrieCommit = deferStorageTrieCommit });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(speculative.UsedEarlyApply, Is.False);
+            Assert.That(speculative.UsedSpeculation, Is.True);
+            Assert.That(reference.UsedEarlyApply, Is.True, "the reference block must have run with the early apply");
+            Assert.That(speculative.StateRoot, Is.EqualTo(reference.StateRoot));
+            AssertSameStorageTries(speculative, reference);
+        }
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_AreOffByDefaultAndNotWithVerifyWithTrie()
+    {
+        using (TestContext ctx = new())
+        {
+            Assert.That(ctx.Scope.SpeculatesStorageRoots, Is.False);
+        }
+
+        using (TestContext ctx = new(config: new FlatDbConfig { SpeculativeStorageRoots = true }))
+        {
+            Assert.That(ctx.Scope.SpeculatesStorageRoots, Is.True);
+        }
+
+        using TestContext verifying = new(config: new FlatDbConfig { SpeculativeStorageRoots = true, VerifyWithTrie = true });
+        Assert.That(verifying.Scope.SpeculatesStorageRoots, Is.False);
+    }
+
+    private sealed record SpeculativeBlock(Hash256 StateRoot, HashSet<string> StorageNodes, HashSet<string> PreBlockStorageNodes, bool UsedSpeculation, bool UsedEarlyApply);
+
+    // Block 1 gives the contracts storage. Block 2's transactions update, insert, delete and clear it, create a contract
+    // and write a slot back to its pre-block value; the workers drain each transaction before the next one commits.
+    private static SpeculativeBlock ProcessSpeculativeBlock(FlatDbConfig config)
+    {
+        const int slotCount = 40;
+        IReleaseSpec spec = Prague.Instance;
+        Address updated = TestItem.AddressA;
+        Address rewritten = TestItem.AddressB;
+        Address cleared = TestItem.AddressC;
+        Address touched = TestItem.AddressD;
+        Address created = TestItem.Addresses[10];
+        Address[] existing = [updated, rewritten, cleared, touched];
+        Address[] written = [.. existing, created];
+
+        using TestContext ctx = new(config: config);
+        FlatWorldStateScope scope = ctx.Scope;
+        WorldState worldState = new(new SingleScopeProvider(scope), LimboLogs.Instance);
+        Assert.That(worldState.TryBeginScope(IWorldState.PreGenesis, out IDisposable? scopeCloser), Is.True);
+        using IDisposable closer = scopeCloser!;
+
+        foreach (Address address in existing)
+        {
+            worldState.CreateAccount(address, 1, 1);
+            for (int slot = 0; slot < slotCount; slot++) worldState.Set(new StorageCell(address, (UInt256)slot), SlotValue(address, slot, 1));
+        }
+
+        worldState.Commit(spec);
+        worldState.RecalculateStateRoot();
+        worldState.CommitTree(1);
+        HashSet<string> preBlockNodes = StorageNodes(ctx.LastCommittedSnapshot!);
+
+        // Block 2, first transaction.
+        for (int slot = 0; slot < 10; slot++) worldState.Set(new StorageCell(updated, (UInt256)slot), SlotValue(updated, slot, 2));
+        for (int slot = 10; slot < 15; slot++) worldState.Set(new StorageCell(updated, (UInt256)slot), UInt256.Zero);
+        for (int slot = slotCount; slot < slotCount + 10; slot++) worldState.Set(new StorageCell(updated, (UInt256)slot), SlotValue(updated, slot, 2));
+        for (int slot = 0; slot < slotCount; slot++) worldState.Set(new StorageCell(rewritten, (UInt256)slot), SlotValue(rewritten, slot, 2));
+        worldState.ClearStorage(cleared);
+        for (int slot = 0; slot < 3; slot++) worldState.Set(new StorageCell(cleared, (UInt256)slot), SlotValue(cleared, slot, 2));
+        worldState.Set(new StorageCell(touched, 0), SlotValue(touched, 0, 2));
+        worldState.CreateAccount(created, 1, 1);
+        for (int slot = 0; slot < 20; slot++) worldState.Set(new StorageCell(created, (UInt256)slot), SlotValue(created, slot, 2));
+        worldState.Commit(spec, commitRoots: false);
+        WaitForSpeculationDrained(scope, written);
+
+        // Second transaction: slot 0 of the first contract and the only slot of the fourth go back to their pre-block
+        // values, which the block-end flush skips, so whatever the workers applied for them has to be put back.
+        worldState.Set(new StorageCell(updated, 0), SlotValue(updated, 0, 1));
+        worldState.Set(new StorageCell(updated, 20), SlotValue(updated, 20, 3));
+        worldState.Set(new StorageCell(touched, 0), SlotValue(touched, 0, 1));
+        worldState.AddToBalance(rewritten, 5, spec);
+        worldState.Commit(spec, commitRoots: false);
+        WaitForSpeculationDrained(scope, written);
+
+        worldState.Commit(spec);
+        worldState.RecalculateStateRoot();
+        Hash256 stateRoot = worldState.StateRoot;
+
+        bool usedSpeculation = false;
+        bool usedEarlyApply = scope.AppliesStorageWritesEarly || scope.EarlyApplyCounts != (0, 0, 0, 0);
+        foreach (Address address in written)
+        {
+            FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
+            usedSpeculation |= tree.UsedSpeculation;
+            usedEarlyApply |= tree.UsedEarlyApply;
+        }
+
+        worldState.CommitTree(2);
+
+        return new SpeculativeBlock(stateRoot, StorageNodes(ctx.LastCommittedSnapshot!), preBlockNodes, usedSpeculation, usedEarlyApply);
+
+        static UInt256 SlotValue(Address address, int slot, int version) => new((ulong)(address.Bytes[19] * 1_000_000 + slot * 100 + version));
+
+        static HashSet<string> StorageNodes(Snapshot snapshot)
+        {
+            HashSet<string> nodes = [];
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> node in snapshot.StorageNodes)
+            {
+                nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{node.Value.Keccak}");
+            }
+
+            return nodes;
+        }
+    }
+
+    // So the block-end batch finds the workers' writes in the tries rather than dropping them from the queue.
+    private static void WaitForSpeculationDrained(FlatWorldStateScope scope, Address[] addresses)
+    {
+        if (!scope.SpeculatesStorageRoots) return;
+        foreach (Address address in addresses)
+        {
+            FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
+            Assert.That(() => tree.SpeculationDrained, Is.True.After(10000, 5), $"speculation of {address} drained");
+        }
+    }
+
+    // Hands the world state the test's scope.
+    private sealed class SingleScopeProvider(IWorldStateScopeProvider.IScope inner) : IWorldStateScopeProvider
+    {
+        public bool HasRoot(BlockHeader? baseBlock) => true;
+
+        public bool HasStateForTargetBlock(BlockHeader targetBlock) => true;
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            scope = inner;
+            return true;
+        }
+
+        public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            scope = inner;
+            return true;
+        }
     }
 
     [Test]

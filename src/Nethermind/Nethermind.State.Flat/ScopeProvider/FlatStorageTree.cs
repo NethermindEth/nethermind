@@ -520,6 +520,15 @@ public sealed class FlatStorageTree(
     /// <summary>Whether finalization has claimed the trie from the runner.</summary>
     internal bool SpeculationOwnedByFinalization => Volatile.Read(ref _speculationState) == SpeculationState.Owned;
 
+    /// <summary>Whether a write was ever handed to the speculation workers. For tests.</summary>
+    internal bool UsedSpeculation => Volatile.Read(ref _speculativeQueue) is not null;
+
+    /// <summary>Whether every write handed to the speculation workers has been drained. For tests.</summary>
+    internal bool SpeculationDrained => Volatile.Read(ref _speculativeQueue) is not { IsEmpty: false } && Volatile.Read(ref _speculationState) == SpeculationState.Idle;
+
+    /// <summary>Whether a write was ever handed to the early apply. For tests.</summary>
+    internal bool UsedEarlyApply => Volatile.Read(ref _earlyWrites) is not null;
+
     private readonly struct SpeculativeWrite(in UInt256 index, in UInt256 value)
     {
         public readonly UInt256 Index = index;
