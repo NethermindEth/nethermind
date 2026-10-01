@@ -78,13 +78,21 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
-        ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
-        for (int i = 1; current == tx.Nonce && i < nonceKeys.Length; i++)
+        foreach (UInt256 nonceKey in nonceKeys)
         {
-            current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[i]);
+            if (tx.Nonce != 0 && KeyedNonceManager.IsBinary(nonceKey))
+            {
+                return FrameTxNonceMismatch(tooLow: false);
+            }
+
+            ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKey);
+            if (current != tx.Nonce)
+            {
+                return FrameTxNonceMismatch(tx.Nonce < current);
+            }
         }
 
-        return FrameTxNonceMismatch(tx.Nonce < current);
+        return FrameTxNonceMismatch(tooLow: false);
     }
 
     private static TransactionResult FrameTxNonceMismatch(bool tooLow) => tooLow

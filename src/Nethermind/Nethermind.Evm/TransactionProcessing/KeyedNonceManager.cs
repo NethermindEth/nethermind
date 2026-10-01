@@ -134,7 +134,8 @@ public static class KeyedNonceManager
     /// <summary>Checks whether <paramref name="nonceKeys"/> is a well-formed <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> nonce-key set.</summary>
     /// <remarks>
     /// Well-formed means: length in <c>[1, <see cref="Eip8250Constants.MaxNonceKeys"/>]</c>; key 0 appears only as the
-    /// singleton set <c>[0]</c>; and any multi-key set is strictly increasing, which also excludes a later 0.
+    /// singleton set <c>[0]</c>; any multi-key set is strictly increasing, which also excludes a later 0; and no key
+    /// carries a nonce type above <see cref="Eip8250Constants.MaxNonceType"/>, which only the last and largest key needs checking for.
     /// </remarks>
     public static bool AreNonceKeysWellFormed(ReadOnlySpan<UInt256> nonceKeys)
     {
@@ -158,14 +159,24 @@ public static class KeyedNonceManager
             }
         }
 
-        return true;
+        return NonceType(nonceKeys[^1]) <= Eip8250Constants.MaxNonceType;
     }
+
+    /// <summary>The nonce type of <paramref name="nonceKey"/>, held in its most significant byte.</summary>
+    public static byte NonceType(in UInt256 nonceKey) => (byte)(nonceKey.u3 >> 56);
+
+    /// <summary>Whether <paramref name="nonceKey"/> is single use: valid only at sequence 0 while unused.</summary>
+    public static bool IsBinary(in UInt256 nonceKey) => NonceType(nonceKey) == Eip8250Constants.NonceTypeBinary;
+
+    /// <summary>Whether <paramref name="nonceKeys"/> selects a binary key, which only <c>nonce_seq == 0</c> can match.</summary>
+    /// <remarks>The keys of a well-formed set strictly increase, so the last key carries the highest type.</remarks>
+    private static bool HasBinaryKey(ReadOnlySpan<UInt256> nonceKeys) => IsBinary(nonceKeys[^1]);
 
     /// <summary>Checks whether <paramref name="nonceKeys"/>/<paramref name="nonceSeq"/> is a valid set to consume against <paramref name="sender"/>'s current state.</summary>
     /// <remarks>
     /// Requires all of: <paramref name="nonceKeys"/> is well-formed (see <see cref="AreNonceKeysWellFormed"/>),
-    /// <paramref name="nonceSeq"/> is below <see cref="Eip8250Constants.MaxNonceSeq"/>, and every key in the set is
-    /// currently at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>). Safe to call on undecoded/untrusted input.
+    /// <paramref name="nonceSeq"/> is below <see cref="Eip8250Constants.MaxNonceSeq"/>, <paramref name="nonceSeq"/> is 0 if any key
+    /// is binary, and every key in the set is currently at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>). Safe to call on undecoded/untrusted input.
     /// </remarks>
     [SkipLocalsInit]
     public static bool IsNonceSetValid(IReadOnlyStateProvider state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
@@ -176,6 +187,11 @@ public static class KeyedNonceManager
         }
 
         if (nonceSeq >= Eip8250Constants.MaxNonceSeq)
+        {
+            return false;
+        }
+
+        if (nonceSeq != 0 && HasBinaryKey(nonceKeys))
         {
             return false;
         }

@@ -190,8 +190,12 @@ public class KeyedNonceManagerTests
         [UInt256.Zero],
         [(UInt256)5],
         [(UInt256)5, (UInt256)9],
-        [(UInt256)1, (UInt256)2, (UInt256)3]
+        [(UInt256)1, (UInt256)2, (UInt256)3],
+        [BinaryKey],
+        [(UInt256)5, BinaryKey]
     ];
+
+    private static readonly UInt256 BinaryKey = new(5, 0, 0, (ulong)Eip8250Constants.NonceTypeBinary << 56);
 
     [TestCaseSource(nameof(MalformedKeySets))]
     public void AreNonceKeysWellFormed_rejects_invalid_sets(UInt256[] nonceKeys) =>
@@ -203,8 +207,24 @@ public class KeyedNonceManagerTests
         [UInt256.Zero, (UInt256)5],
         [(UInt256)5, (UInt256)5],
         [(UInt256)9, (UInt256)5],
-        [(UInt256)5, UInt256.Zero]
+        [(UInt256)5, UInt256.Zero],
+        [new UInt256(5, 0, 0, (ulong)(Eip8250Constants.MaxNonceType + 1) << 56)],
+        [(UInt256)5, UInt256.MaxValue]
     ];
+
+    [TestCase(false, 0UL, true)]
+    [TestCase(false, 1UL, false)]
+    [TestCase(true, 0UL, false)]
+    [TestCase(true, 1UL, false)]
+    public void IsNonceSetValid_admits_a_binary_key_only_unused_at_sequence_zero(bool spent, ulong nonceSeq, bool expected)
+    {
+        if (spent)
+        {
+            KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [BinaryKey], nonceSeq: 0);
+        }
+
+        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [BinaryKey], nonceSeq), Is.EqualTo(expected));
+    }
 
     [Test]
     public void IsNonceSetValid_true_when_every_key_matches_seq()

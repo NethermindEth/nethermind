@@ -1830,9 +1830,9 @@ public partial class FrameTxProcessorTests
             .SetName("Execute_KeyedNoncePayload_ChargesASingleByteKey");
         yield return new TestCaseData(new UInt256[] { 0x0100 }, 4 + 1)
             .SetName("Execute_KeyedNoncePayload_ChargesAKeyCarryingAZeroByte");
-        yield return new TestCaseData(FullWidthKeys(2), 2 + 2 * 33 + 1)
+        yield return new TestCaseData(WidestGeneralKeys(2), 2 + 2 * 32 + 1)
             .SetName("Execute_KeyedNoncePayload_ChargesALongFormSequenceHeader");
-        yield return new TestCaseData(FullWidthKeys(Eip8250Constants.MaxNonceKeys), 3 + Eip8250Constants.MaxNonceKeys * 33 + 1)
+        yield return new TestCaseData(WidestGeneralKeys(Eip8250Constants.MaxNonceKeys), 3 + Eip8250Constants.MaxNonceKeys * 32 + 1)
             .SetName("Execute_KeyedNoncePayload_ChargesTheLargestAdmissibleSet");
     }
 
@@ -1842,13 +1842,14 @@ public partial class FrameTxProcessorTests
         public override bool IsEip8250Enabled => true;
     }
 
-    /// <summary>A strictly increasing set of <paramref name="count"/> keys, each occupying all 32 bytes with no zero byte.</summary>
-    private static UInt256[] FullWidthKeys(int count)
+    /// <summary>A strictly increasing set of <paramref name="count"/> general keys, each occupying the 31 bytes below
+    /// the type byte with no zero byte.</summary>
+    private static UInt256[] WidestGeneralKeys(int count)
     {
         UInt256[] keys = new UInt256[count];
         for (int i = 0; i < count; i++)
         {
-            keys[i] = UInt256.MaxValue - (UInt256)(count - 1 - i);
+            keys[i] = (UInt256.MaxValue >> 8) - (UInt256)(count - 1 - i);
         }
 
         return keys;
@@ -3060,6 +3061,26 @@ public partial class FrameTxProcessorTests
         tx.NonceKeys = keys;
 
         Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
+    }
+
+    [TestCase(true, 0UL, TransactionResult.ErrorType.TransactionNonceTooLow, TestName = "a spent binary key reports too low")]
+    [TestCase(true, 1UL, TransactionResult.ErrorType.TransactionNonceTooHigh, TestName = "a spent binary key at its stored sequence reports too high")]
+    [TestCase(false, 1UL, TransactionResult.ErrorType.TransactionNonceTooHigh, TestName = "an unused binary key at a non-zero sequence reports too high")]
+    public void Execute_BinaryKey_IsSingleUse(bool spent, ulong nonceSeq, TransactionResult.ErrorType expectedError)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        UInt256 binaryKey = new(5, 0, 0, (ulong)Eip8250Constants.NonceTypeBinary << 56);
+        if (spent)
+        {
+            KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, [binaryKey], nonceSeq: 0);
+        }
+
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonceSeq, SelfVerifyFrame());
+        tx.NonceKeys = [binaryKey];
+
+        Assert.That(Process(tx).Error, Is.EqualTo(expectedError));
     }
 
     [TestCase(4UL, TransactionResult.ErrorType.TransactionNonceTooLow, "nonce too low", TestName = "a later key ahead of the sequence reports too low")]
