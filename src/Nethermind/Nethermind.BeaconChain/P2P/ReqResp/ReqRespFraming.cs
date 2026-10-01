@@ -7,7 +7,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.Network.Libp2p;
 using Snappier;
 
 namespace Nethermind.BeaconChain.P2P.ReqResp;

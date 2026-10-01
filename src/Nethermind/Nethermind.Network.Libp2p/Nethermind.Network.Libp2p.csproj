@@ -12,5 +12,6 @@
     <PackageReference Include="Nethermind.Libp2p.Protocols.Ping" />
     <PackageReference Include="Nethermind.Libp2p.Protocols.Pubsub" />
     <PackageReference Include="Nethermind.Libp2p.Protocols.Yamux" />
+    <PackageReference Include="Snappier" />
   </ItemGroup>
 </Project>

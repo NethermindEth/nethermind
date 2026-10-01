@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
+using Nethermind.Network.Libp2p;
 using NSubstitute;
 using NUnit.Framework;
 using Snappier;

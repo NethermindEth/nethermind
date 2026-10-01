@@ -21,6 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
+using Nethermind.Network.Libp2p;
 
 namespace Nethermind.BeaconChain.P2P.Gossip;
 
