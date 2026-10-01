@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
@@ -28,7 +29,8 @@ namespace Nethermind.BeaconChain.Sync;
 /// states), which are epoch-boundary blocks of recent epochs, so a small LRU of the states retained
 /// around epoch boundaries suffices. States falling out of all tiers make the corresponding (old or
 /// exotic-fork) roots unprocessable, which is acceptable below finality. Not thread-safe; owned by
-/// the import worker.
+/// the import worker. Fulu checkpoint candidates also go to an epoch-boundary tier that persists what it evicts above
+/// finality, as the Gloas one below does, so a missing state is regenerated from at most one epoch of stored blocks.
 /// <para/>
 /// Post-Gloas states live in a tier of their own (<see cref="RetainGloas"/>): every recent Gloas
 /// block's post-state, not only epoch boundaries, because an execution payload envelope is verified
@@ -79,8 +81,9 @@ internal sealed class PostStateCache(
 
     private readonly LruCache<Hash256, BeaconStateFulu> _retained = new(RetainedStateCount, nameof(PostStateCache));
     private readonly LruCache<Hash256, BeaconStateFulu> _regenerated = new(RegeneratedStateCount, nameof(PostStateCache) + "Regenerated");
+    private readonly BoundaryTier<BeaconStateFulu> _retainedBoundaries = new(store, isAboveFinalized, BeaconStateFulu.Encode, nameof(PostStateCache) + "Boundaries", (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>());
     private readonly LruCache<Hash256, BeaconStateGloas> _retainedGloas = new(RetainedGloasStateCount, nameof(PostStateCache) + "Gloas");
-    private readonly GloasBoundaryTier _retainedGloasBoundaries = new(store, isAboveFinalized, (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>());
+    private readonly BoundaryTier<BeaconStateGloas> _retainedGloasBoundaries = new(store, isAboveFinalized, BeaconStateGloas.Encode, nameof(PostStateCache) + "GloasBoundaries", (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>());
 
     private Hash256? _pinnedGloasRoot;
     private BeaconStateGloas? _pinnedGloasState;
@@ -103,18 +106,36 @@ internal sealed class PostStateCache(
     }
 
     /// <summary>Adds a post-state to the retained LRU. The state must not be mutated afterwards.</summary>
-    public void Retain(Hash256 blockRoot, BeaconStateFulu state) => _retained.Set(blockRoot, state);
+    /// <param name="checkpointCandidate">Whether the block can be an epoch's checkpoint block, so its state also goes to the epoch-boundary tier.</param>
+    public void Retain(Hash256 blockRoot, BeaconStateFulu state, bool checkpointCandidate = false)
+    {
+        _retained.Set(blockRoot, state);
+        if (checkpointCandidate)
+        {
+            _retainedBoundaries.Set(blockRoot, new RetainedState<BeaconStateFulu>(blockRoot, state));
+        }
+    }
 
     /// <inheritdoc/>
     public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot) ?? Regenerate(blockRoot, hold: true);
 
     /// <summary>The post-state of <paramref name="blockRoot"/> if it is held, without regenerating it from stored blocks.</summary>
-    /// <remarks>A retained copy of the lineage root comes first: a trusted import advances the lineage state to its child before fork choice replays the child's body votes.</remarks>
+    /// <remarks>A held copy of the lineage root comes first: a trusted import advances the lineage state to its child before fork choice replays the child's body votes.</remarks>
     internal BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot)
     {
-        if (_retained.TryGet(blockRoot, out BeaconStateFulu? retained) || _regenerated.TryGet(blockRoot, out retained))
+        if (_retained.TryGet(blockRoot, out BeaconStateFulu? retained))
         {
             return retained;
+        }
+
+        if (_retainedBoundaries.TryGet(blockRoot, out RetainedState<BeaconStateFulu> boundary))
+        {
+            return boundary.State;
+        }
+
+        if (_regenerated.TryGet(blockRoot, out BeaconStateFulu? regenerated))
+        {
+            return regenerated;
         }
 
         if (blockRoot == LineageRoot)
@@ -132,24 +153,45 @@ internal sealed class PostStateCache(
         return null;
     }
 
+    /// <summary>The post-state of the Gloas block <paramref name="blockRoot"/>, regenerated from stored blocks when it is not held.</summary>
+    /// <remarks>For block import only; gossip validation reads held states through <see cref="GetGloasBlockState"/>.</remarks>
+    internal BeaconStateGloas? GetOrRegenerateGloasBlockState(Hash256 blockRoot) =>
+        GetGloasBlockState(blockRoot) ?? (isGloasBlock?.Invoke(blockRoot) == true ? (RegenerateForked(blockRoot, hold: true) as ForkedBeaconState.OfGloas)?.State : null);
+
+    private BeaconStateFulu? Regenerate(Hash256 blockRoot, bool hold) =>
+        isGloasBlock?.Invoke(blockRoot) == true ? null : (RegenerateForked(blockRoot, hold) as ForkedBeaconState.OfFulu)?.State;
+
     /// <summary>consensus-specs v1.7.0-beta.2 fork choice <c>on_block</c> requires every known parent's post-state.
-    /// Replays already validated stored blocks on a clone of the nearest held ancestor, bounded by the fork-choice root.</summary>
+    /// Replays at most <see cref="BeaconChainSpec.SlotsPerEpoch"/> already validated stored blocks on a clone of the nearest held ancestor, bounded by the fork-choice root.</summary>
+    /// <remarks>
+    /// specs/gloas/fork-choice.md <c>on_block</c> keeps one state per block, the same for a full or an empty parent: a child
+    /// applies its parent's payload from its own body (specs/gloas/beacon-chain.md <c>process_parent_execution_payload</c>),
+    /// so stored blocks alone rebuild a Gloas state, across the Fulu-to-Gloas upgrade when the held ancestor is a Fulu state.
+    /// The bound holds because the checkpoint block state of every epoch above finality stays in a boundary tier or the store,
+    /// so only the blocks after the checkpoint block of the target's epoch need replay.
+    /// </remarks>
     /// <param name="hold">Whether the regenerated state joins the tier block import reads, or is only handed to the caller.</param>
-    private BeaconStateFulu? Regenerate(Hash256 blockRoot, bool hold)
+    private ForkedBeaconState? RegenerateForked(Hash256 blockRoot, bool hold)
     {
-        if (ancestors is null || pubkeys is null || isGloasBlock?.Invoke(blockRoot) == true)
+        if (ancestors is null || pubkeys is null)
         {
             return null;
         }
 
         List<Hash256> replay = [];
-        BeaconStateFulu? ancestorState = null;
+        ForkedBeaconState? ancestorState = null;
         foreach (Hash256 root in ancestors(blockRoot))
         {
-            if (root != blockRoot && GetHeldBlockState(root) is { } held)
+            if (root != blockRoot && GetHeldForkedState(root) is { } held)
             {
                 ancestorState = held;
                 break;
+            }
+
+            if ((ulong)replay.Count == spec.SlotsPerEpoch)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot regenerate the post-state of {blockRoot}: no ancestor state is held within {spec.SlotsPerEpoch} blocks");
+                return null;
             }
 
             replay.Add(root);
@@ -161,19 +203,26 @@ internal sealed class PostStateCache(
             return null;
         }
 
-        BeaconStateFulu state = ancestorState.Clone();
+        long started = Stopwatch.GetTimestamp();
+        // A held state is frozen, and upgrade_to_gloas aliases the Fulu state's arrays.
+        ForkedBeaconState state = ancestorState switch
+        {
+            ForkedBeaconState.OfGloas gloas => new ForkedBeaconState.OfGloas(gloas.State.Clone()),
+            ForkedBeaconState.OfFulu fulu => new ForkedBeaconState.OfFulu(fulu.State.Clone()),
+            _ => throw new NotSupportedException($"Unhandled state {ancestorState.GetType().Name}"),
+        };
         EpochCache cache = new() { Hasher = new CachedBeaconStateHasher() };
         try
         {
             for (int i = replay.Count - 1; i >= 0; i--)
             {
-                if (!store.TryGetBlock(replay[i], out SignedBeaconBlock? block))
+                if (!store.TryGetForkedBlock(replay[i], out ForkedSignedBeaconBlock? block))
                 {
                     if (_logger.IsWarn) _logger.Warn($"Cannot regenerate the post-state of {blockRoot}: its ancestor {replay[i]} is not stored");
                     return null;
                 }
 
-                StateTransition.StateTransition.Apply(state, block, cache, pubkeys, ReplayedPayload.Instance, spec, validateResult: true, verifySignatures: false);
+                state = ForkedStateTransition.Apply(state, block, cache, pubkeys, ReplayedPayload.Instance, spec, validateResult: true, verifySignatures: false);
             }
         }
         catch (Exception e) when (e is BeaconStateException or InvalidOperationException)
@@ -184,12 +233,26 @@ internal sealed class PostStateCache(
 
         if (hold)
         {
-            _regenerated.Set(blockRoot, state);
+            switch (state)
+            {
+                case ForkedBeaconState.OfGloas { State: BeaconStateGloas gloasState }:
+                    RetainGloas(blockRoot, gloasState);
+                    break;
+                case ForkedBeaconState.OfFulu { State: BeaconStateFulu fuluState }:
+                    _regenerated.Set(blockRoot, fuluState);
+                    break;
+            }
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Regenerated the post-state of {blockRoot} at slot {state.Slot} by replaying {replay.Count} stored blocks");
+        if (_logger.IsDebug) _logger.Debug($"Regenerated the post-state of {blockRoot} at slot {state.Slot} by replaying {replay.Count} stored blocks in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms");
         return state;
     }
+
+    /// <summary>The held post-state of <paramref name="blockRoot"/> in the shape of its fork, without regenerating it.</summary>
+    private ForkedBeaconState? GetHeldForkedState(Hash256 blockRoot) =>
+        isGloasBlock?.Invoke(blockRoot) == true
+            ? GetGloasBlockState(blockRoot) is { } gloas ? new ForkedBeaconState.OfGloas(gloas) : null
+            : GetHeldBlockState(blockRoot) is { } fulu ? new ForkedBeaconState.OfFulu(fulu) : null;
 
     private bool IsGloasSnapshot(byte[] ssz) =>
         ssz.Length >= StateSlotOffset + sizeof(ulong) && SignedBeaconBlockCodec.IsGloasSlot(BinaryPrimitives.ReadUInt64LittleEndian(ssz.AsSpan(StateSlotOffset)), spec);
@@ -210,7 +273,7 @@ internal sealed class PostStateCache(
         if (checkpointCandidate)
         {
             PinJustified();
-            _retainedGloasBoundaries.Set(blockRoot, new RetainedGloasState(blockRoot, state));
+            _retainedGloasBoundaries.Set(blockRoot, new RetainedState<BeaconStateGloas>(blockRoot, state));
         }
     }
 
@@ -269,7 +332,7 @@ internal sealed class PostStateCache(
             return retained;
         }
 
-        if (_retainedGloasBoundaries.TryGet(blockRoot, out RetainedGloasState boundary))
+        if (_retainedGloasBoundaries.TryGet(blockRoot, out RetainedState<BeaconStateGloas> boundary))
         {
             return boundary.State;
         }
@@ -299,7 +362,7 @@ internal sealed class PostStateCache(
         }
     }
 
-    private readonly record struct RetainedGloasState(Hash256 Root, BeaconStateGloas State);
+    private readonly record struct RetainedState<TState>(Hash256 Root, TState State);
 
     private sealed class ReplayedPayload : INewPayloadNotifier
     {
@@ -308,11 +371,11 @@ internal sealed class PostStateCache(
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Optimistic;
     }
 
-    /// <summary>The Gloas epoch-boundary tier, which persists a checkpoint candidate it evicts while that root can still become justified.</summary>
-    private sealed class GloasBoundaryTier(BeaconChainStore store, Func<Hash256, bool>? isAboveFinalized, ILogger logger)
-        : LruCache<Hash256, RetainedGloasState>(RetainedStateCount, nameof(PostStateCache) + "GloasBoundaries")
+    /// <summary>An epoch-boundary tier, which persists a checkpoint candidate it evicts while that root can still become justified.</summary>
+    private sealed class BoundaryTier<TState>(BeaconChainStore store, Func<Hash256, bool>? isAboveFinalized, Func<TState, byte[]> encode, string name, ILogger logger)
+        : LruCache<Hash256, RetainedState<TState>>(RetainedStateCount, name)
     {
-        protected override void Evict(RetainedGloasState evicted)
+        protected override void Evict(RetainedState<TState> evicted)
         {
             // Also raised when a retained root is set again, which evicts nothing.
             if (Contains(evicted.Root) || isAboveFinalized?.Invoke(evicted.Root) != true)
@@ -320,8 +383,8 @@ internal sealed class PostStateCache(
                 return;
             }
 
-            store.PutState(evicted.Root, BeaconStateGloas.Encode(evicted.State));
-            if (logger.IsDebug) logger.Debug($"Persisted the evicted Gloas checkpoint candidate state of {evicted.Root} at slot {evicted.State.Slot}");
+            store.PutState(evicted.Root, encode(evicted.State));
+            if (logger.IsDebug) logger.Debug($"Persisted the evicted checkpoint candidate state of {evicted.Root}");
         }
     }
 }

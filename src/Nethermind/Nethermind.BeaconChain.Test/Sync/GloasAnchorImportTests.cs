@@ -286,27 +286,44 @@ public class GloasAnchorImportTests
     /// <summary>
     /// The boundary tier persists a checkpoint candidate it evicts only while the root can still become justified; with
     /// finality keeping up it is finalized by then, and nothing is written. Retaining a held root again evicts nothing.
+    /// The Fulu tier does the same, so a Fulu regeneration also starts at most one epoch below its target.
     /// </summary>
     [Test]
-    public void Evicted_checkpoint_candidate_is_persisted_only_while_above_the_finalized_checkpoint([Values] bool aboveFinalized)
+    public void Evicted_checkpoint_candidate_is_persisted_only_while_above_the_finalized_checkpoint([Values] bool aboveFinalized, [Values] bool gloas)
     {
         SignedGloasChain chain = new();
         SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
         BeaconChainStore store = chain.CreateStore();
         PostStateCache states = new(store, chain.Spec, null, null, isAboveFinalized: _ => aboveFinalized);
+        Hash256 root = gloas ? block.Root : chain.AnchorRoot;
+        void Retain(Hash256 retainedRoot)
+        {
+            if (gloas)
+                states.RetainGloas(retainedRoot, block.PostState, checkpointCandidate: true);
+            else
+                states.Retain(retainedRoot, chain.AnchorState, checkpointCandidate: true);
+        }
 
-        states.RetainGloas(block.Root, block.PostState, checkpointCandidate: true);
-        states.RetainGloas(block.Root, block.PostState, checkpointCandidate: true);
-        bool persistedWhileHeld = store.TryGetState(block.Root, out _);
-        RetainDistinct(states, block.PostState, 8, checkpointCandidate: true, seed: 0);
-        bool persisted = store.TryGetState(block.Root, out byte[]? ssz);
+        Retain(root);
+        Retain(root);
+        bool persistedWhileHeld = store.TryGetState(root, out _);
+        for (int i = 0; i < 8; i++)
+        {
+            Retain(Keccak.Compute(BitConverter.GetBytes(i)));
+        }
+
+        bool persisted = store.TryGetState(root, out byte[]? ssz);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(persistedWhileHeld, Is.False);
             Assert.That(persisted, Is.EqualTo(aboveFinalized));
-            Assert.That(ssz is null ? null : BeaconStateCodec.DecodeForked(ssz, chain.Spec) is ForkedBeaconState.OfGloas { State: { } gloas } ? SszRoots.HashTreeRoot(gloas) : null,
-                Is.EqualTo(aboveFinalized ? block.Signed.Message!.StateRoot : null));
+            Assert.That(ssz is null ? null : BeaconStateCodec.DecodeForked(ssz, chain.Spec) switch
+            {
+                ForkedBeaconState.OfGloas { State: { } gloasState } => SszRoots.HashTreeRoot(gloasState),
+                ForkedBeaconState.OfFulu { State: { } fuluState } => SszRoots.HashTreeRoot(fuluState),
+                _ => null,
+            }, Is.EqualTo(aboveFinalized ? gloas ? block.Signed.Message!.StateRoot : SszRoots.HashTreeRoot(chain.AnchorState) : null));
         }
     }
 
