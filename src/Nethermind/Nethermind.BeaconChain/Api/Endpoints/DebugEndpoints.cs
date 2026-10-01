@@ -23,7 +23,7 @@ internal static class DebugEndpoints
 {
     public static void Map(WebApplication app, BeaconApiContext ctx)
     {
-        app.MapGet("/eth/v2/debug/beacon/states/{state_id}", (HttpContext c, string state_id) => State(c, state_id, ctx));
+        app.MapGet("/eth/v2/debug/beacon/states/{state_id}", (HttpContext c, string state_id) => State(c, state_id, ctx.ForRequest()));
         app.MapGet("/eth/v1/debug/beacon/fork_choice", c => ForkChoice(c, ctx));
     }
 

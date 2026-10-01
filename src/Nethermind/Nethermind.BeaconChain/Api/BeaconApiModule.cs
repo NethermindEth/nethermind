@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 
 namespace Nethermind.BeaconChain.Api;
@@ -19,6 +20,7 @@ public class BeaconApiModule : Module
         base.Load(builder);
 
         builder
+            .AddSingleton<HeadSnapshotHolder>()
             .AddSingleton<BeaconApiHost>()
             .AddStep(typeof(StartBeaconApi));
     }

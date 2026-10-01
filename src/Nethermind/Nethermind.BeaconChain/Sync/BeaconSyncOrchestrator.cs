@@ -61,7 +61,8 @@ public sealed class BeaconSyncOrchestrator(
     BeaconDiscovery? discovery = null,
     ColumnGossipRouter? columnRouter = null,
     DataColumnSidecarPool? columnPool = null,
-    ExecutionPayloadEnvelopePool? envelopePool = null)
+    ExecutionPayloadEnvelopePool? envelopePool = null,
+    HeadSnapshotHolder? headSnapshots = null)
 {
     /// <summary>Maximum parent-chain depth fetched by root for a gossip block with an unknown parent.</summary>
     private const int MaxBackfillDepth = 32;
@@ -425,7 +426,7 @@ public sealed class BeaconSyncOrchestrator(
 
         importer.OnSlotTick(slotClock.CurrentSlot);
         statusHolder.EarliestAvailableSlotSource = EarliestAvailableSlot;
-        statusHolder.CurrentStatus = new StatusMessageV2
+        StatusMessageV2 anchorStatus = new()
         {
             ForkDigest = _currentDigest,
             FinalizedRoot = anchorRoot,
@@ -433,6 +434,8 @@ public sealed class BeaconSyncOrchestrator(
             HeadRoot = anchorRoot,
             HeadSlot = _anchorSlot,
         };
+        statusHolder.CurrentStatus = anchorStatus;
+        if (headSnapshots is not null) headSnapshots.Current = new HeadSnapshot(anchorStatus, null, Hash256.Zero, false);
     }
 
     /// <summary>The <c>earliest_available_slot</c> to advertise in Status v2.</summary>
@@ -1943,16 +1946,17 @@ public sealed class BeaconSyncOrchestrator(
         Metrics.BeaconChainElInSync = _elInSync ? 1 : 0;
         statusHolder.JustifiedRoot = head.Justified.Root;
         statusHolder.ExecutionInSync = _elInSync;
-        statusHolder.Publish(
-            new StatusMessageV2
-            {
-                ForkDigest = _currentDigest,
-                FinalizedRoot = head.Finalized.Root,
-                FinalizedEpoch = head.Finalized.Epoch,
-                HeadRoot = head.HeadRoot,
-                HeadSlot = head.HeadSlot,
-            },
-            head.HeadPayloadFull ? head.HeadRoot : null);
+        StatusMessageV2 headStatus = new()
+        {
+            ForkDigest = _currentDigest,
+            FinalizedRoot = head.Finalized.Root,
+            FinalizedEpoch = head.Finalized.Epoch,
+            HeadRoot = head.HeadRoot,
+            HeadSlot = head.HeadSlot,
+        };
+        Hash256? fullHeadRoot = head.HeadPayloadFull ? head.HeadRoot : null;
+        statusHolder.Publish(headStatus, fullHeadRoot);
+        if (headSnapshots is not null) headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync);
 
         // A payload attestation is accepted for the wall slot and, within the clock disparity, its neighbours.
         ulong wallSlot = slotClock.CurrentSlot;

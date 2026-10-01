@@ -8,6 +8,8 @@ using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api;
@@ -17,8 +19,8 @@ namespace Nethermind.BeaconChain.Api;
 /// and <see cref="Discovery"/> are nullable: the sync orchestrator treats them the same way (see its
 /// own optional constructor parameters) because they only exist once the driver has actually started
 /// networking, and unit tests exercise the host without a live libp2p stack.
-/// <see cref="ForkChoiceSnapshots"/> is nullable for the same reason on the test side; the container
-/// always supplies it.
+/// <see cref="ForkChoiceSnapshots"/> and <see cref="HeadSnapshots"/> are nullable for the same reason on the test
+/// side; the container always supplies them.
 /// </summary>
 internal sealed record BeaconApiContext(
     IBeaconChainConfig ChainConfig,
@@ -32,4 +34,32 @@ internal sealed record BeaconApiContext(
     BeaconP2P? P2P,
     PeerManager? PeerManager,
     BeaconDiscovery? Discovery,
-    ForkChoiceSnapshotHolder? ForkChoiceSnapshots = null);
+    ForkChoiceSnapshotHolder? ForkChoiceSnapshots = null,
+    HeadSnapshotHolder? HeadSnapshots = null)
+{
+    /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
+    public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead() };
+
+    /// <summary>Freezes the published get_head view, or the startup status before publication (fork-choice.md).</summary>
+    public IBeaconChainStatusSource CaptureHead()
+    {
+        if (HeadSnapshots?.Current is { } snapshot)
+        {
+            return new FrozenHead(snapshot);
+        }
+
+        (StatusMessageV2 status, Hash256? fullHeadRoot) = StatusSource.CurrentHead;
+        return new FrozenHead(new HeadSnapshot(status, fullHeadRoot, StatusSource.JustifiedRoot, StatusSource.ExecutionInSync));
+    }
+
+    private sealed class FrozenHead(HeadSnapshot snapshot) : IBeaconChainStatusSource
+    {
+        public StatusMessageV2 CurrentStatus => snapshot.Status;
+
+        public Hash256 JustifiedRoot => snapshot.JustifiedRoot;
+
+        public bool ExecutionInSync => snapshot.ExecutionInSync;
+
+        public (StatusMessageV2 Status, Hash256? FullHeadRoot) CurrentHead => (snapshot.Status, snapshot.FullHeadRoot);
+    }
+}
