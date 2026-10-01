@@ -826,6 +826,10 @@ public sealed class ForkChoiceRunner
         if (GetCheckpointBlock(beaconBlockRoot, target.Epoch) != target.Root)
             throw new ForkChoiceException($"Attestation target {target.Root} is not the head block's ancestor at the target epoch start");
 
+        // p2p-interface.md beacon_aggregate_and_proof: IGNORE unless the finalized checkpoint is an ancestor of the voted block.
+        if (aggregator is not null && !_protoArray.IsFinalizedCheckpointOrDescendant(beaconBlockRoot, _store.FinalizedCheckpoint))
+            throw new ForkChoiceException($"Aggregate head block {beaconBlockRoot} does not descend from the finalized checkpoint {_store.FinalizedCheckpoint}");
+
         ForkedBeaconState targetState = GetVoteTargetState(target, gossip: aggregator is not null, out ShufflingKey? key, out bool unheld);
         ulong[] attestingIndices = targetState switch
         {
