@@ -661,6 +661,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return;
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
+        NewPayloadTrace.Stamp(NewPayloadTrace.RecDecoded);
         if (transactions.IsError || transactions.Data.Length == 0)
             // TryGetBlock reports the decoding error; nothing to recover otherwise.
             return;
@@ -669,6 +670,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+            NewPayloadTrace.Stamp(NewPayloadTrace.RecStarted);
         }
         catch (Exception e)
         {

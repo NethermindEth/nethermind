@@ -15,6 +15,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -221,10 +222,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         byte[][] encodedTransactions = Transactions;
 
         Result<Transaction[]> transactions = TryGetTransactions();
+        NewPayloadTrace.Stamp(NewPayloadTrace.TxsDecoded);
         if (transactions.IsError)
         {
             return transactions.Error;
         }
+
+        Hash256 txRoot = TransactionsRoot ??= TxTrie.CalculateRoot(encodedTransactions);
+        NewPayloadTrace.Stamp(NewPayloadTrace.TxRootJoined);
 
         BlockHeader header = new(
             ParentHash,
@@ -247,7 +252,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = TransactionsRoot ??= TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = txRoot,
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
