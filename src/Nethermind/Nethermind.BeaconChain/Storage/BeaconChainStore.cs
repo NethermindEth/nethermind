@@ -64,7 +64,7 @@ public static class BeaconChainMetadataKeys
 public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSpec? spec = null)
 {
     /// <summary>Layout version of every column; bump it whenever a change needs an existing database migrated or refused.</summary>
-    public const uint CurrentSchemaVersion = DataColumnSidecarsSchemaVersion;
+    public const uint CurrentSchemaVersion = StateSlotIndexSchemaVersion;
 
     /// <summary>The first version whose children index is known to cover every stored block; an older database gets the index rebuilt.</summary>
     private const uint ChildrenIndexSchemaVersion = 2;
@@ -75,6 +75,9 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// <summary>The first version stamped by a build that knows <see cref="BeaconChainDbColumns.DataColumnSidecars"/>, so a build that does not prune it refuses the database.</summary>
     private const uint DataColumnSidecarsSchemaVersion = 4;
 
+    /// <summary>The first version whose <see cref="BeaconChainDbColumns.StateSlotIndex"/> column holds a slot index entry for every state whose slot is readable, so a build that does not maintain it refuses the database.</summary>
+    private const uint StateSlotIndexSchemaVersion = 5;
+
     /// <summary>Offset of <c>parent_root</c> in a serialized <c>SignedBeaconBlock</c>: the message offset and signature precede the message, whose slot and proposer index precede the root; the same in every fork.</summary>
     private const int ParentRootOffset = sizeof(uint) + BlsSignature.Length + sizeof(ulong) + sizeof(ulong);
 
@@ -83,6 +86,9 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
 
     /// <summary>Byte offset of <c>slot</c> in a stored state, the same in the Fulu and Gloas layouts: <c>genesis_time</c> (8) plus <c>genesis_validators_root</c> (32).</summary>
     private const int StateSlotOffset = 40;
+
+    /// <summary>A state slot index entry is the 8-byte big-endian slot followed by the block root, with an empty value, in a separate column sorted by slot.</summary>
+    private const int StateSlotIndexKeyLength = sizeof(ulong) + Hash256.Size;
     private const int AnchorValueLength = Hash256.Size + sizeof(ulong);
     private const byte ChildrenKeyPrefix = 0x01;
     private const int ChildrenKeyLength = 1 + Hash256.Size;
@@ -120,6 +126,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     // Legacy gossip backfills must not outlive block deletion (gloas/p2p-interface.md block-seen check).
     private readonly Lock _blockSummaryLock = new();
     private readonly IDb _states = db.GetColumnDb(BeaconChainDbColumns.States);
+    private readonly IDb _stateSlotIndex = db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex);
     private readonly IDb _metadata = db.GetColumnDb(BeaconChainDbColumns.Metadata);
     private readonly IDb _envelopes = db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
     private readonly Lock _envelopeIndexLock = new();
@@ -622,6 +629,11 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     {
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         IWriteBatch states = batch.GetColumnBatch(BeaconChainDbColumns.States);
+        IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex);
+        if (_states.Get(blockRoot.Bytes) is { } previousManifest && TryGetStateSlot(blockRoot, previousManifest, out ulong previousSlot))
+        {
+            index.Remove(StateSlotIndexKey(previousSlot, blockRoot));
+        }
 
         int chunkCount = (sszBytes.Length + StateChunkSize - 1) / StateChunkSize;
         Span<byte> chunkKey = stackalloc byte[Hash256.Size + sizeof(uint)];
@@ -637,6 +649,19 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         BinaryPrimitives.WriteUInt32BigEndian(manifest, (uint)chunkCount);
         BinaryPrimitives.WriteUInt64BigEndian(manifest.AsSpan(sizeof(uint)), (ulong)sszBytes.Length);
         states.Set(blockRoot.Bytes, manifest);
+
+        if (sszBytes.Length >= StateSlotOffset + sizeof(ulong))
+        {
+            index.Set(StateSlotIndexKey(BinaryPrimitives.ReadUInt64LittleEndian(sszBytes[StateSlotOffset..]), blockRoot), []);
+        }
+    }
+
+    private static byte[] StateSlotIndexKey(ulong slot, Hash256 blockRoot)
+    {
+        byte[] key = new byte[StateSlotIndexKeyLength];
+        BinaryPrimitives.WriteUInt64BigEndian(key, slot);
+        blockRoot.Bytes.CopyTo(key.AsSpan(sizeof(ulong)));
+        return key;
     }
 
     /// <returns><c>true</c> with the uncompressed SSZ bytes, or <c>false</c> when the state is missing or incomplete.</returns>
@@ -685,8 +710,14 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
             return;
         }
 
+        bool slotKnown = TryGetStateSlot(blockRoot, manifest, out ulong slot);
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
-        RemoveState(blockRoot, manifest, batch.GetColumnBatch(BeaconChainDbColumns.States));
+        IWriteBatch states = batch.GetColumnBatch(BeaconChainDbColumns.States);
+        RemoveState(blockRoot, manifest, states);
+        if (slotKnown)
+        {
+            batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex).Remove(StateSlotIndexKey(slot, blockRoot));
+        }
     }
 
     private static void RemoveState(Hash256 blockRoot, byte[] manifest, IWriteBatch states)
@@ -739,30 +770,103 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     }
 
     /// <summary>Queues the removal of every stored state at or below <paramref name="throughSlot"/> other than <paramref name="keepRoot"/>.</summary>
-    /// <remarks>A state whose slot cannot be read is not known to be at or below <paramref name="throughSlot"/>, so it is kept.</remarks>
-    private void RemoveStatesThroughSlot(ulong throughSlot, Hash256 keepRoot, IWriteBatch states)
+    /// <remarks>Only finalized index entries nominate states; a readable state slot must also be finalized before removal (fork-choice.md Store).</remarks>
+    private void RemoveStatesThroughSlot(ulong throughSlot, Hash256 keepRoot, IWriteBatch states, IWriteBatch index)
     {
-        List<byte[]> manifestKeys = [];
-        foreach (byte[] key in _states.GetAllKeys())
+        foreach (byte[] indexKey in StateSlotIndexKeysThrough(throughSlot))
         {
-            if (key.Length == Hash256.Size)
-            {
-                manifestKeys.Add(key);
-            }
-        }
-
-        foreach (byte[] key in manifestKeys)
-        {
-            Hash256 root = new(key);
-            if (root == keepRoot || _states.Get(key) is not { } manifest)
+            Hash256 root = new(indexKey.AsSpan(sizeof(ulong)));
+            if (root == keepRoot)
             {
                 continue;
             }
 
-            if (TryGetStateSlot(root, manifest, out ulong slot) && slot <= throughSlot)
+            if (_states.Get(root.Bytes) is { } manifest
+                && TryGetStateSlot(root, manifest, out ulong slot)
+                && slot <= throughSlot)
             {
                 RemoveState(root, manifest, states);
             }
+
+            index.Remove(indexKey);
+        }
+    }
+
+    /// <summary>The state slot index keys from slot 0 through <paramref name="throughSlot"/>, ascending.</summary>
+    /// <remarks>A sorted store reads no key above the range; one that cannot seek is walked in key order and left at the first key past it.</remarks>
+    private List<byte[]> StateSlotIndexKeysThrough(ulong throughSlot)
+    {
+        byte[] upper = new byte[StateSlotIndexKeyLength + 1];
+        BinaryPrimitives.WriteUInt64BigEndian(upper, throughSlot);
+        upper.AsSpan(sizeof(ulong), Hash256.Size).Fill(byte.MaxValue);
+
+        List<byte[]> keys = [];
+        if (_stateSlotIndex is ISortedKeyValueStore sorted)
+        {
+            using ISortedView view = sorted.GetViewBetween(new byte[sizeof(ulong)], upper);
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length == StateSlotIndexKeyLength)
+                {
+                    keys.Add(view.CurrentKey.ToArray());
+                }
+            }
+
+            return keys;
+        }
+
+        foreach (byte[] key in _stateSlotIndex.GetAllKeys(ordered: true))
+        {
+            if (key.AsSpan().SequenceCompareTo(upper) >= 0)
+            {
+                break;
+            }
+
+            if (key.Length == StateSlotIndexKeyLength)
+            {
+                keys.Add(key);
+            }
+        }
+
+        return keys;
+    }
+
+    /// <summary>Writes a state slot index entry for every stored state whose slot is readable.</summary>
+    /// <remarks>Reads only the first chunk prefix of each state and writes <see cref="ChildrenRebuildBatchSize"/> entries at a time. Idempotent: it runs before the version stamp, and a crash in between only makes it run again.</remarks>
+    private void RebuildStateSlotIndex()
+    {
+        List<byte[]> entries = new(ChildrenRebuildBatchSize);
+        foreach (byte[] key in _states.GetAllKeys())
+        {
+            if (key.Length != Hash256.Size || _states.Get(key) is not { } manifest)
+            {
+                continue;
+            }
+
+            Hash256 root = new(key);
+            if (TryGetStateSlot(root, manifest, out ulong slot))
+            {
+                entries.Add(StateSlotIndexKey(slot, root));
+                if (entries.Count == ChildrenRebuildBatchSize)
+                {
+                    WriteStateSlotIndexEntries(entries);
+                    entries.Clear();
+                }
+            }
+        }
+
+        WriteStateSlotIndexEntries(entries);
+    }
+
+    private void WriteStateSlotIndexEntries(List<byte[]> entries)
+    {
+        if (entries.Count == 0) return;
+
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        IWriteBatch states = batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex);
+        foreach (byte[] entry in entries)
+        {
+            states.Set(entry, []);
         }
     }
 
@@ -1202,8 +1306,10 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// </remarks>
     /// <param name="currentEpoch">The wall-clock epoch that sets the retention window; <c>null</c> does not bound the scan by it.</param>
     /// <param name="required">The columns such a block must have, bit <c>i</c> for column <c>i</c>; <c>null</c> fails the first block that needs columns.</param>
+    /// <param name="cancellationToken">Checked before each slot, so a stopped node does not finish a scan of the whole window.</param>
     /// <returns>The slot, or <c>null</c> when every visited slot is complete.</returns>
-    internal ulong? FindIncompleteDataColumnSlot(ulong from, ulong through, ulong? currentEpoch, UInt128? required, out DataColumnShortfall shortfall)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    internal ulong? FindIncompleteDataColumnSlot(ulong from, ulong through, ulong? currentEpoch, UInt128? required, out DataColumnShortfall shortfall, CancellationToken cancellationToken = default)
     {
         if (spec is not null)
         {
@@ -1223,7 +1329,9 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         Span<byte> key = stackalloc byte[ColumnKeyLength];
         for (ulong slot = through; ; slot--)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             shortfall = CheckStoredDataColumns(slot, required, key);
+            cancellationToken.ThrowIfCancellationRequested();
             if (shortfall != DataColumnShortfall.None)
             {
                 return slot;
@@ -1626,6 +1734,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// queries as complete. Version 3 rewrites nothing, since the envelope column keeps its layout; the
     /// stamp makes a version-2 build, which never prunes that column, refuse the database.
     /// Version 4 rewrites nothing either: the data column table starts empty, and the stamp makes an older build, which never prunes it, refuse the database.
+    /// Version 5 indexes every stored state by slot, so a state stored before the index existed is pruned by slot too, and a build that does not maintain the index refuses the database.
     /// A newer version may hold key shapes this build does not know, so it is
     /// refused rather than reinterpreted, and left unstamped.
     /// </remarks>
@@ -1641,6 +1750,11 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         if (version < ChildrenIndexSchemaVersion)
         {
             RebuildChildrenIndex();
+        }
+
+        if (version < StateSlotIndexSchemaVersion)
+        {
+            RebuildStateSlotIndex();
         }
 
         if (version != CurrentSchemaVersion)
@@ -1836,7 +1950,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
 
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.Anchor), value);
-        RemoveStatesThroughSlot(slot, blockRoot, batch.GetColumnBatch(BeaconChainDbColumns.States));
+        RemoveStatesThroughSlot(slot, blockRoot, batch.GetColumnBatch(BeaconChainDbColumns.States), batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex));
     }
 
     public bool TryGetAnchor([NotNullWhen(true)] out Hash256? blockRoot, out ulong slot)

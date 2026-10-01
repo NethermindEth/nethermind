@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.StateTransition;
@@ -53,6 +54,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     private ulong _seededFloor;
     private ulong _writeFailedBelow;
     private ulong _writeFailedPersisted;
+    private ulong _storedRangeUncheckedBelow;
     private int _storeReadFaultReported;
     private ulong? _storedFloor = store is not null && store.TryGetDataColumnFloor(out ulong storedFloor) ? storedFloor : null;
     private long _lastPrunedEpoch = -1;
@@ -92,7 +94,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     /// </summary>
     /// <remarks>
     /// A lower slot either lost or was refused a sidecar, or is below the slot of the first sidecar this process received,
-    /// so its columns cannot be assumed complete. Never decreases. A block that carried no blobs has no sidecars, so its
+    /// so its columns cannot be assumed complete. The temporary start-up floor is released only after the stored range is checked. A block that carried no blobs has no sidecars, so its
     /// slot never counts against this. With a store, memory eviction loses nothing, so the floor is the one the store recorded
     /// when the first sidecar was given, raised by pruning and by a failed write, and it survives a restart.
     /// </remarks>
@@ -105,14 +107,14 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
                 ulong held = store is null
                     ? Math.Max(_firstGivenSlot ?? ulong.MaxValue, Math.Max(_byRootAndColumn.IncompleteBelow, _gloasByRootAndColumn.IncompleteBelow))
                     : _storedFloor ?? ulong.MaxValue;
-                return Math.Max(held, Math.Max(_seededFloor, _writeFailedBelow));
+                return Math.Max(held, Math.Max(Math.Max(_seededFloor, _writeFailedBelow), _storedRangeUncheckedBelow));
             }
         }
     }
 
     /// <summary>
     /// Floors <see cref="EarliestCompletelyServableSlot"/> one past the canonical index top at start-up, unless the store already recorded a floor;
-    /// a recorded floor is raised above the highest stored canonical slot that is missing a column.
+    /// A recorded floor is checked in the background and stays above the top until complete (fulu/p2p-interface.md DataColumnSidecarsByRange).
     /// </summary>
     /// <param name="canonicalIndexTopSlot">The highest slot the canonical index may hold, or <c>null</c> for a database that has none.</param>
     /// <remarks>
@@ -120,11 +122,13 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     /// complete. A recorded store floor already says which slots the store holds, so it is not overridden, only checked: a write the store
     /// refused together with the floor it would have raised leaves a slot incomplete that the recorded floor still covers.
     /// </remarks>
-    internal void SeedCompletelyServableFloor(ulong? canonicalIndexTopSlot)
+    /// <param name="cancellationToken">Stops the stored range check, which then leaves the floor at its conservative value.</param>
+    /// <returns>The stored range check, which runs off the caller's thread; already complete when there is none. It never faults.</returns>
+    internal Task SeedCompletelyServableFloor(ulong? canonicalIndexTopSlot, CancellationToken cancellationToken = default)
     {
         if (canonicalIndexTopSlot is not { } top)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         ulong storedFloor;
@@ -133,30 +137,48 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
             if (_storedFloor is null)
             {
                 _seededFloor = Math.Max(_seededFloor, top == ulong.MaxValue ? top : top + 1);
-                return;
+                return Task.CompletedTask;
             }
 
             storedFloor = _storedFloor.Value;
+            _storedRangeUncheckedBelow = top == ulong.MaxValue ? top : top + 1;
         }
 
-        RaiseFloorAboveIncompleteStoredSlot(storedFloor, top);
+        return Task.Run(() => RaiseFloorAboveIncompleteStoredSlot(storedFloor, top, cancellationToken), CancellationToken.None);
     }
 
-    private void RaiseFloorAboveIncompleteStoredSlot(ulong storedFloor, ulong top)
+    /// <summary>Checks the stored range and lifts the floor held back for it; a check that cannot finish leaves that floor in place, so nothing below the top is claimed complete unchecked.</summary>
+    private void RaiseFloorAboveIncompleteStoredSlot(ulong storedFloor, ulong top, CancellationToken cancellationToken)
     {
-        if (store!.FindIncompleteDataColumnSlot(storedFloor, top, clock?.CurrentEpoch, StoredSampledColumns(), out BeaconChainStore.DataColumnShortfall shortfall) is not { } slot)
+        ulong? incomplete;
+        BeaconChainStore.DataColumnShortfall shortfall;
+        try
+        {
+            incomplete = store!.FindIncompleteDataColumnSlot(storedFloor, top, clock?.CurrentEpoch, StoredSampledColumns(), out shortfall, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return;
         }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            if (_logger.IsError) _logger.Error($"Could not check the stored data column sidecars ({e.GetType().Name.Replace(nameof(Exception), string.Empty, StringComparison.Ordinal)}); DataColumnSidecarsByRange is served as complete only above slot {top}");
+            return;
+        }
 
-        ulong servedFrom = slot == ulong.MaxValue ? slot : slot + 1;
+        ulong servedFrom = incomplete is { } slot ? (slot == ulong.MaxValue ? slot : slot + 1) : 0;
         lock (_servedLock)
         {
             _writeFailedBelow = Math.Max(_writeFailedBelow, servedFrom);
+            _storedRangeUncheckedBelow = 0;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Stored data column sidecars at slot {slot} are incomplete ({shortfall}); DataColumnSidecarsByRange is served as complete from slot {servedFrom}");
-        PersistWriteFailedFloor();
+        if (incomplete is { } incompleteSlot)
+        {
+            if (_logger.IsInfo) _logger.Info($"Stored data column sidecars at slot {incompleteSlot} are incomplete ({shortfall}); DataColumnSidecarsByRange is served as complete from slot {servedFrom}");
+            PersistWriteFailedFloor();
+        }
     }
 
     // Discovery derives the node id from this stored key with CUSTODY_REQUIREMENT groups; import needed every sampled column, which includes the custody ones (fulu/das-core.md).
