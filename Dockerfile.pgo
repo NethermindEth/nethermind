@@ -49,7 +49,7 @@ ENV DOTNET_EnableEventPipe=1
 ENV DOTNET_EventPipeCircularMB=256
 ENV DOTNET_EventPipeOutputPath=/nethermind/pgo/nethermind-{pid}.nettrace
 ENV DOTNET_EventPipeConfig=Microsoft-Windows-DotNETRuntime:0x1E000080018:5
-# Write edge/block profiling data after Tier-1 compilation for branch optimization
+# Retain dynamic PGO counters for export at shutdown.
 ENV DOTNET_TieredPGO=1
 ENV DOTNET_WritePGOData=1
 ENV DOTNET_PGODataPath=/nethermind/pgo/nethermind.jit

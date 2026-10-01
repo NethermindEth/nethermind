@@ -12,6 +12,27 @@ import yaml
 from replay_window import validate_window
 
 
+def without_startup_warmup(flags):
+    if not isinstance(flags, list) or any(not isinstance(flag, str) for flag in flags):
+        raise ValueError("collection flags must be a list of strings")
+    options = {"initpipelinewarmupenabled", "initevmwarmupenabled"}
+    retained = []
+    for flag in flags:
+        tokens = flag.split()
+        matches = [token for token in tokens
+                   if token.startswith("--")
+                   and token.split("=", 1)[0].lstrip("-").replace(".", "").replace("-", "").lower() in options]
+        if matches:
+            if len(matches) != 1 or tokens[0] != matches[0] or len(tokens) > 2:
+                raise ValueError("startup warmup flags must be separate options")
+            value = tokens[0].split("=", 1)[1] if "=" in tokens[0] else tokens[1] if len(tokens) == 2 else "true"
+            if value.lower() not in ("true", "false") or "=" in tokens[0] and len(tokens) != 1:
+                raise ValueError("invalid startup warmup flag")
+        else:
+            retained.append(flag)
+    return retained + ["--Init.PipelineWarmupEnabled=false", "--Init.EvmWarmupEnabled=false"]
+
+
 def render(config_path, root, image, amount, delay=0):
     config_path = Path(config_path).resolve(strict=True)
     root = Path(root).resolve()
@@ -32,6 +53,7 @@ def render(config_path, root, image, amount, delay=0):
     scenario = config["scenarios"]["nethermind"]
     if scenario.get("client", "nethermind") != "nethermind":
         raise ValueError("collection requires client=nethermind")
+    scenario["extra_flags"] = without_startup_warmup(scenario.get("extra_flags", []))
     for key in ("payloads", "fcus", "snapshot_source"):
         path = Path(scenario[key])
         if not path.is_absolute():
@@ -65,6 +87,7 @@ def render(config_path, root, image, amount, delay=0):
     (root / "config.yaml").write_text(text, encoding="utf-8")
     (root / "manifest.json").write_text(json.dumps({"config_source": str(config_path),
         "image": image, "amount": amount, "delay_seconds": delay, "warmup_delay_seconds": 0,
+        "startup_warmup_disabled": True,
         "payloads": scenario["payloads"], "fcus": scenario["fcus"],
         "snapshot_source": scenario["snapshot_source"], "snapshot_backend": "overlay",
         "raw_profile_directory": str(root / "pgo"), "replay_window": window,

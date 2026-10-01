@@ -52,6 +52,14 @@ class CollectionValidationTests(unittest.TestCase):
                 "".join(f"EXPB_ENGINE_RESULT idx=0 warmup=0 kind={kind} status=VALID "
                         f"latest_valid_hash={block_hash}\n" for kind in ("newPayload", "forkchoiceUpdated")))
             window = {"warmup": 0, "amount": 1, "headers": [{"index": 0, "hash": block_hash}]}
+            original_log = log.read_text()
+            for declaration, valid in ((True, True), (False, False), (1, False), ("true", False), (None, False)):
+                manifest.write_text(json.dumps({"replay_window": window, "startup_warmup_disabled": declaration}))
+                self.assertEqual(validate(log, 1, 0, manifest)["status"] == "valid", valid)
+            manifest.write_text(json.dumps({"replay_window": window, "startup_warmup_disabled": True}))
+            log.write_text(original_log + "Startup payload pipeline warmup complete.\n")
+            self.assertEqual(validate(log, 1, 0, manifest)["status"], "failed")
+            log.write_text(original_log)
             for declared in (0, 1):
                 manifest.write_text(json.dumps({"replay_window": window, "delay_seconds": declared,
                                                 "warmup_delay_seconds": 0}))

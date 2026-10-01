@@ -158,6 +158,7 @@ def validate_bundle(root, run, source_sha):
             "image": manifest["image"], "engine_api_results": replay["engine_api_results"],
             "measured_payloads": 1000, "reference_files": len(files),
             "training_delay_seconds": delay,
+            "training_startup_warmup_disabled": manifest.get("startup_warmup_disabled"),
             "profile_sha256": digest(profile), "trace_sha256": digest(trace),
             "reference_manifest_sha256": digest(references / "manifest.json"), "artifacts": artifacts}
 

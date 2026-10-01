@@ -7,7 +7,7 @@ import unittest
 
 import yaml
 
-from render_collection import render
+from render_collection import render, without_startup_warmup
 
 
 class CollectionRenderTests(unittest.TestCase):
@@ -42,6 +42,11 @@ class CollectionRenderTests(unittest.TestCase):
             scenario = config["scenarios"]["nethermind-pgo-collect"]
             self.assertEqual(scenario["amount"], 10)
             self.assertEqual(scenario["warmup"], 11)
+            self.assertEqual(scenario["extra_flags"], ["--FlatDb.PersistenceWriteBufferFloor=67108864",
+                "--Init.PipelineWarmupEnabled=false", "--Init.EvmWarmupEnabled=false"])
+            self.assertEqual(scenario["extra_env"]["DOTNET_TieredPGO"], "1")
+            self.assertEqual(scenario["extra_env"]["DOTNET_ReadPGOData"], "0")
+            self.assertIs(json.loads((root / "run/manifest.json").read_text())["startup_warmup_disabled"], True)
             window = json.loads((root / "run/manifest.json").read_text())["replay_window"]
             self.assertEqual((window["training_first_number"], window["training_last_number"]), (101, 110))
             self.assertEqual(scenario["delay"], 0)
@@ -55,6 +60,41 @@ class CollectionRenderTests(unittest.TestCase):
             self.assertEqual(config_path.read_bytes(), original)
             with self.assertRaisesRegex(ValueError, "already exists"):
                 render(config_path, root / "run", scenario["image"], 10)
+
+    def test_existing_startup_flags_are_replaced_without_changing_other_flags(self):
+        replacements = ["--Init.PipelineWarmupEnabled=true", "--Init.EvmWarmupEnabled false",
+                        "--init-pipelinewarmupenabled", "--INIT-EVMWARMUPENABLED=TRUE"]
+        retained = ["--Other.Value=private-test-value", "--Other.Value initpipelinewarmupenabled"]
+        expected = retained + ["--Init.PipelineWarmupEnabled=false", "--Init.EvmWarmupEnabled=false"]
+        self.assertEqual(without_startup_warmup(retained + replacements), expected)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.fixture(root)
+            source = yaml.safe_load(path.read_text())
+            source["scenarios"]["nethermind"]["extra_flags"] = retained + replacements
+            path.write_text(yaml.safe_dump(source))
+            original = path.read_bytes()
+            rendered = render(path, root / "run", "nethermindeth/nethermind@sha256:" + "a" * 64, 10)
+            self.assertEqual(rendered["scenarios"]["nethermind-pgo-collect"]["extra_flags"], expected)
+            self.assertEqual(path.read_bytes(), original)
+
+    def test_invalid_startup_flags_fail_before_output_creation(self):
+        cases = (None, "--Init.EvmWarmupEnabled=true", [False],
+                 ["--Init.EvmWarmupEnabled=private-test-value"],
+                 ["--Init.EvmWarmupEnabled=true false"],
+                 ["--Other.Value=private-test-value --Init.EvmWarmupEnabled=true"],
+                 ["--Init.EvmWarmupEnabled false --Init.PipelineWarmupEnabled false"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.fixture(root)
+            source = yaml.safe_load(path.read_text())
+            for flags in cases:
+                source["scenarios"]["nethermind"]["extra_flags"] = flags
+                path.write_text(yaml.safe_dump(source))
+                with self.subTest(flags=flags), self.assertRaises(ValueError) as error:
+                    render(path, root / "run", "nethermindeth/nethermind@sha256:" + "a" * 64, 10)
+                self.assertNotIn("private-test-value", str(error.exception))
+                self.assertFalse((root / "run").exists())
 
     def test_inputs_and_output_cannot_overlap(self):
         with tempfile.TemporaryDirectory() as directory:

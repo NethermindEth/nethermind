@@ -32,6 +32,11 @@ def validate(log_path, amount, exit_code, manifest=None, delay=None):
         reasons.append("replay manifest is required for Engine API validation")
     else:
         declared = json.loads(Path(manifest).read_text(encoding="utf-8"))
+        if "startup_warmup_disabled" in declared:
+            if declared["startup_warmup_disabled"] is not True:
+                reasons.append("collection must disable synthetic startup warmup")
+            if "Startup payload pipeline warmup complete." in Path(log_path).read_text(encoding="utf-8", errors="replace"):
+                reasons.append("synthetic startup pipeline warmup ran during collection")
         if "delay_seconds" in declared:
             if (type(declared["delay_seconds"]) is not int or declared["delay_seconds"] not in (0, 1)
                     or type(declared.get("warmup_delay_seconds")) is not int

@@ -110,6 +110,17 @@ class BenchmarkBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "full commit SHA"):
             validate_run(self.run, "short")
 
+    def test_startup_warmup_policy_is_explicit_without_upgrading_legacy_provenance(self):
+        self.assertIsNone(validate_bundle(self.root, self.run, self.sha)["training_startup_warmup_disabled"])
+        self.manifest["startup_warmup_disabled"] = True
+        self.save_manifest()
+        self.assertIs(validate_bundle(self.root, self.run, self.sha)["training_startup_warmup_disabled"], True)
+        for declaration in (False, 1, "true", None):
+            self.manifest["startup_warmup_disabled"] = declaration
+            self.save_manifest()
+            with self.subTest(declaration=declaration), self.assertRaises(ValueError):
+                validate_bundle(self.root, self.run, self.sha)
+
     def test_training_pacing_is_projected_and_invalid_declarations_rejected(self):
         self.assertEqual(validate_bundle(self.root, self.run, self.sha)["training_delay_seconds"], 0)
         for delay in (0, 1):
