@@ -189,9 +189,10 @@ public sealed class BeaconP2P : IAsyncDisposable
             .BuildServiceProvider();
     }
 
-    /// <summary>The seen and limbo cache capacity: every distinct message the subscribed topics can carry within the two-epoch seen_ttl.</summary>
-    /// <remarks>Per slot at most one aggregate per aggregator of every committee, one vote per PTC member, one column per subnet and one block, envelope and slashing.
-    /// A smaller cap evicts ids before seen_ttl ends, so a late duplicate is validated again.</remarks>
+    /// <summary>The seen and limbo cache capacity, sized for the honest traffic of the subscribed topics over the two-epoch seen_ttl.</summary>
+    /// <remarks>Per slot: the target aggregators of every committee, one vote per PTC member, one column per subnet and one block, envelope and slashing.
+    /// Aggregator selection is probabilistic and invalid traffic is unbounded, so this is an estimate: past it the library evicts the oldest id early
+    /// and a late duplicate is validated again (phase0 p2p-interface.md: clients SHOULD bound their queues).</remarks>
     internal static int MaxSeenMessageIds(BeaconChainSpec spec) =>
         checked((int)((Presets.MaxCommitteesPerSlot * Presets.TargetAggregatorsPerCommittee + Presets.PtcSize + Eip7594DasConstants.DataColumnSidecarSubnetCount
             + (ulong)(GossipTopics.SubscribedTopicNames.Length + GossipTopics.GloasTopicNames.Length)) * spec.SlotsPerEpoch * 2));
