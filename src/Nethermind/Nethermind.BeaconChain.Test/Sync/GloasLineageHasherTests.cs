@@ -25,7 +25,7 @@ public class GloasLineageHasherTests
     [Test]
     public void Lineage_keeps_a_cached_hasher_and_a_fork_branch_adopts_a_fresh_one()
     {
-        SignedGloasChain chain = new();
+        SignedGloasChain chain = new(new FullBeaconStateHasher());
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
         SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
         SignedGloasChain.Block second = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
@@ -58,7 +58,7 @@ public class GloasLineageHasherTests
     [Test]
     public void Cached_roots_equal_the_full_hasher_across_a_forked_chain()
     {
-        SignedGloasChain chain = new();
+        SignedGloasChain chain = new(new FullBeaconStateHasher());
         SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
         SignedGloasChain.Block second = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
         SignedGloasChain.Block fork = chain.Next(first, ForkSlot + 2, full: false, 0xA3);
@@ -78,7 +78,7 @@ public class GloasLineageHasherTests
     [Test]
     public void Envelope_of_the_lineage_block_is_verified_through_the_lineage_hasher()
     {
-        SignedGloasChain chain = new();
+        SignedGloasChain chain = new(new FullBeaconStateHasher());
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
         SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
         Assert.That(importer.Import(first.Forked, first.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));

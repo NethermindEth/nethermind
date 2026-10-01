@@ -28,11 +28,12 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
     private readonly Dictionary<Hash256, BeaconStateFulu> _postStates = [];
     private readonly CommitteeCache _committees;
 
-    // Every state here descends from the anchor, so one incremental hasher serves them all; a full root of a mainnet-preset state costs ~15 ms per slot.
-    private readonly CachedBeaconStateHasher _hasher = new();
+    // The importer hashes incrementally, so a test of its roots passes a full hasher to compare against.
+    private readonly IBeaconStateHasher _hasher;
 
-    private UnsignedChain(ImportableBlobBlock anchor)
+    private UnsignedChain(ImportableBlobBlock anchor, IBeaconStateHasher hasher)
     {
+        _hasher = hasher;
         Anchor = anchor;
         _postStates[anchor.AnchorRoot] = anchor.AnchorState;
         _committees = new EpochCache().GetCommitteeCache(anchor.AnchorState, 0);
@@ -51,7 +52,10 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
 
     public Hash256 AnchorRoot => Anchor.AnchorRoot;
 
-    public static UnsignedChain Create(ImportableBlobBlock? anchor = null) => new(anchor ?? ImportableBlobBlock.CreateWithoutBlobs());
+    /// <param name="hasher">Seals the blocks' state roots and hashes slots; one incremental hasher by default, as every state descends from the anchor
+    /// and a full root of a mainnet-preset state costs ~15 ms per slot.</param>
+    public static UnsignedChain Create(ImportableBlobBlock? anchor = null, IBeaconStateHasher? hasher = null) =>
+        new(anchor ?? ImportableBlobBlock.CreateWithoutBlobs(), hasher ?? new CachedBeaconStateHasher());
 
     public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => _postStates.GetValueOrDefault(blockRoot);
 
