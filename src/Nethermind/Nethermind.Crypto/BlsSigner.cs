@@ -63,7 +63,8 @@ public static class BlsSigner
         G2 p = new(stackalloc long[G2.Sz]);
         Signature s = new(p);
 
-        if (!p.TryDecode(sigBytes, out _))
+        // IETF BLS draft v4, CoreVerify (section 2.7): signatures must be in the prime-order subgroup.
+        if (!p.TryDecode(sigBytes, out _) || !p.ToAffine().InGroup())
         {
             return false;
         }
