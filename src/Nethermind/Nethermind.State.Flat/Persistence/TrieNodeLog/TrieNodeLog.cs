@@ -14,11 +14,10 @@ using Nethermind.Logging;
 namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
 /// <summary>
-/// <see cref="ITrieNodeLog"/> made of independent <see cref="TrieNodeLogShard"/>s: a state partition
-/// (<c>StateTopNodes</c>, <c>StateNodes</c>, state entries of <c>FallbackNodes</c>) and, with
-/// <see cref="TrieNodeLogScope.All"/>, a storage partition (<c>StorageNodes</c>, storage entries of
-/// <c>FallbackNodes</c>), each split into <see cref="IFlatDbConfig.TrieNodeLogShardCount"/> shards by the first
-/// byte of the column key. A batch's records are staged per shard and appended by one worker per shard, and the
+/// <see cref="ITrieNodeLog"/> made of independent <see cref="TrieNodeLogShard"/>s: one partition per scope step
+/// — state-top (<c>StateTopNodes</c>), state (<c>StateNodes</c>, state entries of <c>FallbackNodes</c>) and
+/// storage (<c>StorageNodes</c>, storage entries of <c>FallbackNodes</c>) — each with its own byte budget and
+/// shard count, sharded by the first byte of the column key. A batch's records are staged per shard and appended by one worker per shard, and the
 /// shards are made durable and merged in parallel.
 /// </summary>
 public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
@@ -28,19 +27,15 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private const int StagedRecordHeaderLength = 1 + 1 + 1 + 4; // column, delete flag, key length, value length
 
     private readonly TrieNodeLogScope _scope;
-    private readonly int _shardCount;
-    private readonly int _shardBits;
-    private readonly TrieNodeLogShard[] _shards; // state shards first, then storage shards
+    private readonly int[] _partitionOffset = new int[PartitionCount]; // index of a partition's first shard
+    private readonly int[] _partitionShift = new int[PartitionCount]; // right shift of the shard byte selecting the shard
+    private readonly TrieNodeLogShard[] _shards; // partition-major: state_top, state, storage
     private readonly SemaphoreSlim _mergeLimiter;
     private readonly ILogger _logger;
 
     public TrieNodeLog(string basePath, IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
     {
         _scope = config.TrieNodeLogScope;
-        _shardCount = config.TrieNodeLogShardCount;
-        if (_shardCount < 1 || !BitOperations.IsPow2(_shardCount))
-            throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogShardCount)} must be a power of two, got {_shardCount}", -1);
-        _shardBits = BitOperations.Log2((uint)_shardCount);
         if (config.TrieNodeLogMaxConcurrentMerges < 1)
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMaxConcurrentMerges)} must be at least 1, got {config.TrieNodeLogMaxConcurrentMerges}", -1);
         if (config.TrieNodeLogMergeBacklogMargin < 1)
@@ -48,18 +43,29 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _mergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _logger = logManager.GetClassLogger<TrieNodeLog>();
 
-        int partitions = _scope == TrieNodeLogScope.All ? 2 : 1;
-        _shards = new TrieNodeLogShard[partitions * _shardCount];
-        for (int partition = 0; partition < partitions; partition++)
+        // Partition order matches the scope steps, so the scope's ordinal is the number of partitions in use.
+        ReadOnlySpan<(string Name, long Budget, int ShardCount, string ShardCountSetting)> partitions =
+        [
+            ("state_top", config.TrieNodeLogStateTopBytes, config.TrieNodeLogStateTopShardCount, nameof(IFlatDbConfig.TrieNodeLogStateTopShardCount)),
+            ("state", config.TrieNodeLogStateBytes, config.TrieNodeLogStateShardCount, nameof(IFlatDbConfig.TrieNodeLogStateShardCount)),
+            ("storage", config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IFlatDbConfig.TrieNodeLogStorageShardCount)),
+        ];
+        List<TrieNodeLogShard> shards = [];
+        for (int partition = 0; partition < (int)_scope; partition++)
         {
-            string partitionName = partition == 0 ? "state" : "storage";
-            long budget = partition == 0 ? config.TrieNodeLogStateBytes : config.TrieNodeLogStorageBytes;
-            for (int shard = 0; shard < _shardCount; shard++)
+            (string partitionName, long budget, int shardCount, string shardCountSetting) = partitions[partition];
+            if (shardCount < 1 || !BitOperations.IsPow2(shardCount))
+                throw new InvalidConfigurationException($"{shardCountSetting} must be a power of two, got {shardCount}", -1);
+
+            _partitionOffset[partition] = shards.Count;
+            _partitionShift[partition] = 8 - BitOperations.Log2((uint)shardCount);
+            for (int shard = 0; shard < shardCount; shard++)
             {
                 string name = $"{partitionName}-{shard}";
-                _shards[partition * _shardCount + shard] = new TrieNodeLogShard(name, Path.Combine(basePath, name), db, budget / _shardCount, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, logManager);
+                shards.Add(new TrieNodeLogShard(name, Path.Combine(basePath, name), db, budget / shardCount, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, logManager));
             }
         }
+        _shards = shards.ToArray();
 
         foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
         {
@@ -77,29 +83,38 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _ => false,
     };
 
+    private const int StateTopPartition = 0;
+    private const int StatePartition = 1;
+    private const int StoragePartition = 2;
+    private const int PartitionCount = 3;
+
     /// <summary>Shard of a column key: its partition, then the top bits of its first byte (after the fallback column's partition prefix).</summary>
     internal int ShardIndex(byte column, ReadOnlySpan<byte> key)
     {
-        bool storage;
+        int partition;
         int shardByte;
         switch ((FlatDbColumns)column)
         {
             case FlatDbColumns.FallbackNodes:
                 // BaseTriePersistence prefixes fallback keys with 0 for state and 1 for storage nodes.
-                storage = key[0] == 1;
+                partition = key[0] == 1 ? StoragePartition : StatePartition;
                 shardByte = key[1];
                 break;
             case FlatDbColumns.StorageNodes:
-                storage = true;
+                partition = StoragePartition;
+                shardByte = key[0];
+                break;
+            case FlatDbColumns.StateNodes:
+                partition = StatePartition;
                 shardByte = key[0];
                 break;
             default:
-                storage = false;
+                partition = StateTopPartition;
                 shardByte = key[0];
                 break;
         }
 
-        return (storage ? _shardCount : 0) + (shardByte >> (8 - _shardBits));
+        return _partitionOffset[partition] + (shardByte >> _partitionShift[partition]);
     }
 
     public ITrieNodeLog.IView PinLiveGenerations()

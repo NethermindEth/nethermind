@@ -39,7 +39,7 @@ public class TrieNodeLogTests
         _directory = TempPath.GetTempDirectory();
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // Two shards per partition, so every shard gets a 4 KiB generation.
-        _config = new FlatDbConfig { TrieNodeLogScope = TrieNodeLogScope.All, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
+        _config = new FlatDbConfig { TrieNodeLogScope = TrieNodeLogScope.All, TrieNodeLogStateTopBytes = 8192, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
         Open();
     }
 
@@ -284,18 +284,19 @@ public class TrieNodeLogTests
             return value;
         }
 
+        TreePath coldPath = TreePath.FromHexString("1234"); // same partition and shard as TopPath, written once
         using (IPersistence.IWriteBatch batch = Batch(0, 1))
         {
             batch.SetStateTrieNode(TopPath, Value(1));
-            batch.SetStateTrieNode(MediumPath, Rlp1);
+            batch.SetStateTrieNode(coldPath, Rlp1);
         }
         WriteTop(1, 2, Value(2)); // seals generation 1
         WriteTop(2, 3, Value(3)); // generation 2
 
-        Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "a lag of one keeps generation 1 unmerged until generation 2 is sealed");
+        Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a lag of one keeps generation 1 unmerged until generation 2 is sealed");
 
         WriteTop(3, 4, Value(4)); // seals generation 2, so generation 1 is merged
-        Assert.That(() => Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
+        Assert.That(() => Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in generation 2, so not merged from generation 1");
@@ -320,8 +321,10 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-0")), Is.Not.Empty);
-            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-1")), Is.Not.Empty);
+            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state_top-0")), Is.Not.Empty);
+            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state_top-1")), Is.Not.Empty);
+            Assert.That(Directory.GetFiles(Path.Combine(_directory.Path, "state-0")), Is.Empty, "StateNodes keys have their own partition");
+            Assert.That(Directory.Exists(Path.Combine(_directory.Path, "state-1")), Is.False, "the state partition has one shard by default");
             Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
             Assert.That(reader.TryLoadStateRlp(highPath, ReadFlags.None), Is.EqualTo(Rlp2));
         }
