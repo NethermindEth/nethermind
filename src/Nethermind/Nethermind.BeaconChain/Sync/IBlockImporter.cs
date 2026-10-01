@@ -9,7 +9,6 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.BeaconChain.Sync;
 
-/// <summary>The outcome of running a block through the import pipeline.</summary>
 /// <summary>The cause of an import refusal that its <see cref="BlockImportResult"/> does not tell apart.</summary>
 public enum ImportRefusal
 {
@@ -25,6 +24,7 @@ public enum ImportRefusal
     LocalAdmission,
 }
 
+/// <summary>The outcome of running a block through the import pipeline.</summary>
 public enum BlockImportResult
 {
     Imported,
