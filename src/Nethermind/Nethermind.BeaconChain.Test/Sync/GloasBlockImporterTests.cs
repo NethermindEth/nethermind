@@ -867,6 +867,49 @@ public class GloasBlockImporterTests
     }
 
     /// <summary>
+    /// Any gossip block can make this node fetch its parent by root, so a fetched block on an evicted parent regenerates within
+    /// a small per-slot budget of its own, apart from the one gossip blocks share. The next slot allows more.
+    /// </summary>
+    [Test]
+    public void Blocks_fetched_by_root_regenerate_within_their_own_per_slot_budget()
+    {
+        SignedGloasChain chain = new();
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (ulong slot = ForkSlot; slot < 3 * ForkSlot + 8; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            blocks.Add(tip);
+        }
+
+        ulong wallSlot = tip!.Signed.Message!.Slot + 2;
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        Import(importer, [.. blocks]);
+        SignedGloasChain.Block[] fetched = [.. Enumerable.Range(1, 5).Select(i => chain.Next(blocks[i], 3 * ForkSlot + (ulong)i, full: false, (byte)(0xF0 + i)))];
+        SignedGloasChain.Block gossip = chain.Next(blocks[6], 3 * ForkSlot + 6, full: false, 0xF6);
+
+        BlockImportResult[] sameSlot = [.. fetched.Select(f => importer.ImportRequested(f.Forked, f.Root, fetchedByRoot: true))];
+        BlockImportResult gossipResult = importer.Import(gossip.Forked, gossip.Root, verifySignatures: true);
+        timestamper.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
+        BlockImportResult nextSlot = importer.ImportRequested(fetched[2].Forked, fetched[2].Root, fetchedByRoot: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sameSlot, Is.EqualTo(new[]
+            {
+                BlockImportResult.Imported,
+                BlockImportResult.Imported,
+                BlockImportResult.UnknownParent,
+                BlockImportResult.UnknownParent,
+                BlockImportResult.UnknownParent,
+            }));
+            Assert.That(gossipResult, Is.EqualTo(BlockImportResult.Imported), "the gossip budget is apart");
+            Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
+        }
+    }
+
+    /// <summary>
     /// A Gloas replay is bounded like a Fulu one: one epoch of stored blocks above the nearest held state, here the Fulu
     /// anchor's, so the replay crosses the fork, builds on full and empty parents, and leaves the Fulu state unchanged.
     /// One block more is refused with a warning before any replay.
