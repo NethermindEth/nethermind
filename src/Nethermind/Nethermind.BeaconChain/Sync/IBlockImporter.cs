@@ -96,8 +96,12 @@ public interface IBlockImporter
     BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures);
 
     /// <summary>Imports, with signatures verified, a block this node requested from a peer: by range sync or by a by-root backfill.</summary>
-    /// <remarks>Such a block is not charged to the per-slot budget for regenerating missing states that blocks from gossip share.</remarks>
-    BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot) => Import(block, blockRoot, verifySignatures: true);
+    /// <remarks>
+    /// Such a block is not charged to the per-slot budget for regenerating missing states that blocks from gossip share. A
+    /// range-sync block regenerates freely; a block fetched by root, which a gossip block can name, has a small budget of its own.
+    /// </remarks>
+    /// <param name="fetchedByRoot">Whether the block was fetched by root rather than by range sync.</param>
+    BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool fetchedByRoot = false) => Import(block, blockRoot, verifySignatures: true);
 
     /// <summary>
     /// Spec <c>on_execution_payload_envelope</c> (specs/gloas/fork-choice.md): verifies the envelope
