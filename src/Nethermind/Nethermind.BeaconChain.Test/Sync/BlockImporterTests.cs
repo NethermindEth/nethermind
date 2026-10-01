@@ -1401,7 +1401,7 @@ public class BlockImporterTests
             Assert.That(importer.Import(head.Block, head.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
             Assert.That(runner.GetHead(), Is.EqualTo(head.Root));
             states.SetLineage(UnknownBlockRoot, chain.Anchor.AnchorState);
-            Assert.That(states.GetBlockState(head.Root), Is.Null);
+            Assert.That(states.GetHeldBlockState(head.Root), Is.Null);
         }
 
         // p2p-interface.md attester_slashing reads the retained head state; set the flag after anchoring to preserve the fixture root.
