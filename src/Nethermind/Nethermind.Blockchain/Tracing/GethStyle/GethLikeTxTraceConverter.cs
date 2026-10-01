@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Collections.Pooled;
@@ -157,61 +155,13 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         writer.WriteEndArray();
     }
 
-    private static readonly SearchValues<char> UnescapedCharacters = SearchValues.Create("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _");
+    /// <summary>Estimates opcode JSON size from lengths and counts without inspecting field contents.</summary>
+    internal static long EstimateEntrySize(GethTxTraceEntry entry, int? storageCount) =>
+        // Fixed fields fit within 256 bytes; strings allow six bytes per escaped UTF-16 code unit.
+        256L + 6L * ((long)(entry.Opcode?.Length ?? 0) + (entry.Error?.Length ?? 0) + (entry.ReturnData?.Length ?? 0))
+        + 69L * ((entry.Stack?.Length ?? 0) / EvmStack.WordSize + (long)(entry.Memory?.Length ?? 0) / EvmPooledMemory.WordSize)
+        + 140L * (storageCount ?? entry.Storage?.Count ?? 0);
 
-    /// <summary>Counts compact opcode JSON bytes using the capture budget's default encoder.</summary>
-    internal static long GetEntrySize(GethTxTraceEntry entry, int? storageCount)
-    {
-        int hexWordLength = "\"0x\""u8.Length + EvmPooledMemory.WordSize * 2;
-        long size = "{\"pc\":"u8.Length + DecimalLength(entry.ProgramCounter)
-            + ",\"op\":"u8.Length + StringLength(entry.Opcode)
-            + ",\"gas\":"u8.Length + DecimalLength(entry.Gas)
-            + ",\"gasCost\":"u8.Length + DecimalLength(entry.GasCost)
-            + ",\"depth\":"u8.Length + DecimalLength((long)entry.Depth) + "}"u8.Length;
-        if (entry.Error is not null) size += ",\"error\":"u8.Length + StringLength(entry.Error);
-        if (entry.Refund is { } refund) size += ",\"refund\":"u8.Length + DecimalLength(refund);
-        if (entry.Stack is { } stack)
-        {
-            size += ",\"stack\":[]"u8.Length;
-            ReadOnlySpan<byte> bytes = stack.Span;
-            for (int i = 0; i < bytes.Length; i += EvmStack.WordSize)
-            {
-                UInt256 word = new(bytes.Slice(i, EvmStack.WordSize), isBigEndian: true);
-                size += "\"0x\""u8.Length + Math.Max(1, (256 - word.CountLeadingZeros() + 3) / 4);
-            }
-            size += Math.Max(0, bytes.Length / EvmStack.WordSize - 1);
-        }
-        if (entry.Memory is { IsEmpty: false } memory)
-        {
-            long words = memory.Length / EvmPooledMemory.WordSize;
-            size += ",\"memory\":[]"u8.Length + words * hexWordLength + words - 1;
-        }
-        if ((storageCount ?? entry.Storage?.Count) is { } slots)
-            size += ",\"storage\":{}"u8.Length + (long)slots * (hexWordLength * 2 + 1) + Math.Max(0, slots - 1);
-        if (entry.ReturnData is not null) size += ",\"returnData\":"u8.Length + StringLength(entry.ReturnData);
-        return size;
-    }
-
-    private static long StringLength(string? value) => value is null ? 4
-        : value.AsSpan().IndexOfAnyExcept(UnescapedCharacters) < 0 ? (long)value.Length + 2
-        : (long)JavaScriptEncoder.Default.Encode(value).Length + 2;
-
-    private static int DecimalLength(long value) => value < 0
-        ? 1 + DecimalLength((ulong)(-(value + 1)) + 1)
-        : DecimalLength((ulong)value);
-
-    private static int DecimalLength(ulong value)
-    {
-        int length = 1;
-        while (value >= 10)
-        {
-            value /= 10;
-            length++;
-        }
-        return length;
-    }
-
-    /// <remarks>Keep in sync with <see cref="GetEntrySize"/>; GethLikeTxTraceSizeTests verifies the size against this output.</remarks>
     internal static void WriteEntry(
         Utf8JsonWriter writer,
         GethTxTraceEntry entry,

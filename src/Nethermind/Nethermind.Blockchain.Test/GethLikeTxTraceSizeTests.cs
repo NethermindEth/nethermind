@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Test;
 public class GethLikeTxTraceSizeTests
 {
     [TestCaseSource(nameof(Entries))]
-    public void Size_matches_compact_serialization(GethTxTraceEntry entry)
+    public void Estimate_does_not_underestimate_compact_serialization(GethTxTraceEntry entry)
     {
         AssertSize(entry, null);
         AssertSize(entry, new Dictionary<UInt256, UInt256>());
@@ -26,7 +26,7 @@ public class GethLikeTxTraceSizeTests
     }
 
     private static void AssertSize(GethTxTraceEntry entry, IDictionary<UInt256, UInt256>? storage) =>
-        Assert.That(GethLikeTxTraceConverter.GetEntrySize(entry, storage?.Count), Is.EqualTo(SerializedSize(entry, storage)));
+        Assert.That(GethLikeTxTraceConverter.EstimateEntrySize(entry, storage?.Count), Is.GreaterThanOrEqualTo(SerializedSize(entry, storage)));
 
     private static long SerializedSize(GethTxTraceEntry entry, IDictionary<UInt256, UInt256>? storage)
     {
@@ -49,6 +49,7 @@ public class GethLikeTxTraceSizeTests
         string?[] strings = [null, "", "STOP", "opcode 0xc not defined", "0x0123456789abcdef", "\"\\\n\r\t\0", "<>&'+", "é漢", "😀", "\ud800", "\udc00"];
         foreach (string? text in strings)
             yield return new() { Opcode = text, Error = text, ReturnData = text };
+        yield return new() { Opcode = new string('漢', 1024), Error = new string('\n', 1024), ReturnData = new string('\"', 1024) };
         yield return new() { Stack = Array.Empty<byte>(), Memory = Array.Empty<byte>(), Storage = new Dictionary<UInt256, UInt256>() };
         yield return new() { Stack = new byte[32] };
         byte[] maximum = new byte[32];
@@ -89,7 +90,7 @@ public class GethLikeTxTraceSizeTests
     }
 
     [Test]
-    public void Storage_budget_counts_distinct_slots_per_address([Values(-1, 0)] int boundaryOffset)
+    public void Storage_budget_counts_updates_without_deduplicating_slots([Values(-1, 0)] int boundaryOffset)
     {
         (Address Address, UInt256 Key, UInt256 Value)?[] deltas =
         [
@@ -101,7 +102,7 @@ public class GethLikeTxTraceSizeTests
             (TestItem.AddressB, UInt256.One, UInt256.Zero),
             (TestItem.AddressA, UInt256.Zero, UInt256.Zero)
         ];
-        Dictionary<AddressAsKey, Dictionary<UInt256, UInt256>> maps = [];
+        int updates = 0;
         List<GethTxMemoryTraceEntry> entries = [];
         long size = 0;
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
@@ -109,14 +110,8 @@ public class GethLikeTxTraceSizeTests
         foreach ((Address Address, UInt256 Key, UInt256 Value)? delta in deltas)
         {
             GethTxMemoryTraceEntry entry = new() { Opcode = "SSTORE", StorageDelta = delta };
-            Dictionary<UInt256, UInt256>? storage = null;
-            if (delta is { } update)
-            {
-                if (!maps.TryGetValue(update.Address, out storage)) maps[update.Address] = storage = [];
-                storage[update.Key] = update.Value;
-            }
             entries.Add(entry);
-            size += SerializedSize(entry, storage);
+            size += GethLikeTxTraceConverter.EstimateEntrySize(entry, delta.HasValue ? ++updates : null);
             using ProbeTracer tracer = new(size + boundaryOffset);
             foreach (GethTxMemoryTraceEntry captured in entries) tracer.Append(captured);
             tracer.StartOperation(0, Instruction.STOP, 0, in environment);

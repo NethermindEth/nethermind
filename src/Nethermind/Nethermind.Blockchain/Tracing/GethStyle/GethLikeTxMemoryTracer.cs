@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Collections.Pooled;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core;
@@ -17,8 +16,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     private readonly Transaction? _transaction;
     private readonly long _limit;
     private long _resultSize;
-    private readonly PooledSet<StorageCell>? _sizeStorageSlots;
-    private readonly PooledDictionary<AddressAsKey, int>? _sizeStorageCounts;
+    private int _storageUpdates;
 
     private bool LimitReached => _limit != 0 && _resultSize > _limit;
 
@@ -26,11 +24,6 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     {
         _transaction = transaction;
         _limit = options.Limit;
-        if (_limit > 0 && !options.DisableStorage)
-        {
-            _sizeStorageSlots = new(4);
-            _sizeStorageCounts = new(4);
-        }
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -50,16 +43,8 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         base.AddTraceEntry(entry);
         if (_limit <= 0) return;
 
-        int? storageCount = null;
-        if (_sizeStorageCounts is not null && entry.StorageDelta is { } delta)
-        {
-            _sizeStorageCounts.TryGetValue(delta.Address, out int count);
-            if (_sizeStorageSlots!.Add(new StorageCell(delta.Address, delta.Key)))
-                _sizeStorageCounts[delta.Address] = ++count;
-            storageCount = count;
-        }
-
-        _resultSize += GethLikeTxTraceConverter.GetEntrySize(entry, storageCount);
+        int? storageCount = entry.StorageDelta.HasValue ? ++_storageUpdates : null;
+        _resultSize += GethLikeTxTraceConverter.EstimateEntrySize(entry, storageCount);
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -104,12 +89,5 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     {
         if (CurrentTraceEntry is not null && !returnData.IsEmpty)
             CurrentTraceEntry.ReturnData = returnData.ToHexString(true);
-    }
-
-    public override void Dispose()
-    {
-        _sizeStorageSlots?.Dispose();
-        _sizeStorageCounts?.Dispose();
-        base.Dispose();
     }
 }
