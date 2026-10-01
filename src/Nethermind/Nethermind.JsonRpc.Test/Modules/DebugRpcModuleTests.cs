@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -905,28 +906,63 @@ public partial class DebugRpcModuleTests
 
     [Test]
     [NonParallelizable]
-    public async Task Debug_traceCall_mux_releases_engines_when_a_child_fails([Values] bool resultFailure)
+    public void Debug_traceCall_mux_releases_engines_when_a_child_fails([Values] bool resultFailure)
     {
-        using Context ctx = await Context.Create();
         const string first = "{step:function(){},fault:function(){},result:function(){return {};}}";
         const string failing = "{step:function(){},fault:function(){},result:function(){throw Error('mux child result failure');}}";
-        System.Reflection.FieldInfo liveEngines = typeof(Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Engine)
-            .GetField("_liveEngines", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
-        int before = (int)liveEngines.GetValue(null)!;
-        Dictionary<string, object> children = new()
+        List<GethLikeBlockJavaScriptTracer> children = [];
+        List<Microsoft.ClearScript.V8.V8Runtime> runtimes = [];
+        List<Engine> engines = [];
+        GethTraceOptions options = new()
         {
-            [first] = new { },
-            [resultFailure ? failing : "prestateTracer"] = resultFailure ? new { } : new { diffMode = true, includeEmpty = true }
+            TracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [first] = new { }, [failing] = new { } })
         };
-
-        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = TestItem.AddressC.ToString() }, "latest", new { tracer = "muxTracer", tracerConfig = children });
+        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createChild = childOptions =>
+        {
+            if (!resultFailure && children.Count == 1) throw new ArgumentException("child construction failure");
+            GethLikeBlockJavaScriptTracer child = new(NSubstitute.Substitute.For<Nethermind.Evm.State.IWorldState>(), Cancun.Instance, childOptions);
+            children.Add(child);
+            runtimes.Add(Field<Microsoft.ClearScript.V8.V8Runtime>(Field<object>(child, "_runtime"), "_runtime"));
+            return child;
+        };
+        Type muxType = typeof(Nethermind.Consensus.Tracing.GethStyleTracer).Assembly.GetType("Nethermind.Consensus.Tracing.GethLikeBlockMuxTracer", throwOnError: true)!;
+        IBlockTracer<GethLikeTxTrace>? mux = null;
+        try
+        {
+            if (!resultFailure)
+            {
+                System.Reflection.TargetInvocationException? failure = Assert.Throws<System.Reflection.TargetInvocationException>(() => CreateMux());
+                Assert.That(failure!.InnerException, Is.TypeOf<ArgumentException>().With.Message.EqualTo("child construction failure"));
+            }
+            else
+            {
+                mux = CreateMux();
+                mux.StartNewBlockTrace(Build.A.Block.TestObject);
+                mux.StartNewTxTrace(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB).TestObject);
+                foreach (GethLikeBlockJavaScriptTracer child in children)
+                    engines.Add(Field<Engine>(Field<object>(child, "_currentTxTracer"), "_engine"));
+                Assert.That(() => mux.EndTxTrace(), Throws.Exception.With.Message.Contains("mux child result failure"));
+            }
+        }
+        finally
+        {
+            (mux as IDisposable)?.Dispose();
+        }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JToken.Parse(response)["error"], Is.Not.Null);
-            Assert.That((int)liveEngines.GetValue(null)!, Is.EqualTo(before));
+            Assert.That(runtimes.Count, Is.EqualTo(resultFailure ? 2 : 1));
+            Assert.That(engines.Count, Is.EqualTo(resultFailure ? 2 : 0));
+            foreach (Microsoft.ClearScript.V8.V8Runtime runtime in runtimes)
+                Assert.That(() => { using Microsoft.ClearScript.V8.V8ScriptEngine engine = runtime.CreateScriptEngine(); }, Throws.TypeOf<ObjectDisposedException>());
+            foreach (Engine engine in engines)
+                Assert.That(() => engine.CreateTracer(first), Throws.TypeOf<ObjectDisposedException>());
         }
+
+        IBlockTracer<GethLikeTxTrace> CreateMux() => (IBlockTracer<GethLikeTxTrace>)Activator.CreateInstance(muxType,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [options, createChild], null)!;
+        static T Field<T>(object instance, string name) => (T)instance.GetType()
+            .GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(instance)!;
     }
 
     [TestCase(null)]
