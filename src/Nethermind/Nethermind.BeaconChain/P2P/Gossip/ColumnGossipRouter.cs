@@ -161,8 +161,9 @@ public sealed class ColumnGossipRouter(
     /// </remarks>
     internal const int KzgBatchesPerColumn = 2;
 
-    /// <summary>The most stored blocks decoded per slot for sidecars whose block is not cached and not canonical at a recent slot.</summary>
+    /// <summary>The most stored blocks decoded per slot for sidecars whose block is not cached, has no block summary and is not canonical at a recent slot.</summary>
     /// <remarks>
+    /// The slot and bid required by gloas/p2p-interface.md are indexed with new blocks; only legacy records spend this budget.
     /// The pinned pubsub library has no peer scoring, so a REJECT costs its sender nothing and cannot bound decode work.
     /// A sidecar whose root is the canonical block at its own slot, for the current or previous slot, is decoded outside
     /// the budget: that is the honest case, and such a root is decoded once and then cached. A record the store does not
@@ -218,7 +219,12 @@ public sealed class ColumnGossipRouter(
     private readonly Dictionary<string, List<(ulong Subnet, ITopic Topic)>> _subscriptions = [];
 
     private readonly LruKeyCache<Hash256> _reconstructedBlockRoots = new(SeenCacheSize, "beacon column reconstruction completed blocks");
+    private readonly HashSet<Hash256> _reconstructionsInFlight = [];
     private readonly Lock _reconstructionLock = new();
+
+    internal DataColumnReconstructor Reconstruct { private get; init; } = DataColumnReconstruction.TryReconstruct;
+
+    internal delegate bool DataColumnReconstructor(IReadOnlyList<DataColumnSidecar> heldColumns, out DataColumnSidecar[] fullMatrix);
 
     private Func<string, ITopic>? _getTopic;
     private IReadOnlyList<ulong> _subnets = [];
@@ -1033,6 +1039,11 @@ public sealed class ColumnGossipRouter(
             return GloasBlockLookup.Unknown;
         }
 
+        if (store.TryGetBlockSummary(blockRoot, out StoredBlockSummary summary))
+        {
+            return CacheSummary(blockRoot, summary, out block);
+        }
+
         if (!IsCanonicalAtRecentSlot(blockRoot, sidecarSlot) && !_storeDecodes.TryTake(slotClock.CurrentSlot))
         {
             return GloasBlockLookup.BudgetSpent;
@@ -1053,14 +1064,20 @@ public sealed class ColumnGossipRouter(
             return GloasBlockLookup.Unreadable;
         }
 
-        if (forked is not ForkedSignedBeaconBlock.OfGloas { Block.Message: { } message })
+        // Persist the slot and bid used by gloas/p2p-interface.md sidecar validation after a legacy decode.
+        return CacheSummary(blockRoot, store.PutBlockSummary(blockRoot, forked), out block);
+    }
+
+    private GloasBlockLookup CacheSummary(Hash256 blockRoot, StoredBlockSummary summary, out GloasBlockColumns block)
+    {
+        block = default;
+        if (!summary.IsGloas)
         {
-            GloasBlockLookup lookup = forked is ForkedSignedBeaconBlock.OfFulu ? GloasBlockLookup.PreGloas : GloasBlockLookup.Unreadable;
-            _nonGloasBlocks.Set(blockRoot, lookup);
-            return lookup;
+            _nonGloasBlocks.Set(blockRoot, GloasBlockLookup.PreGloas);
+            return GloasBlockLookup.PreGloas;
         }
 
-        block = new GloasBlockColumns(message.Slot, message.Body?.SignedExecutionPayloadBid?.Message?.BlobKzgCommitments ?? []);
+        block = new GloasBlockColumns(summary.Slot, summary.Commitments);
         _gloasBlocks.Set(blockRoot, block);
         return GloasBlockLookup.Found;
     }
@@ -1090,57 +1107,77 @@ public sealed class ColumnGossipRouter(
         return false;
     }
 
-    /// <summary>
-    /// Accumulates <paramref name="sidecar"/> under <paramref name="blockRoot"/> and, once this
-    /// block's held columns cross <see cref="Eip7594DasConstants.RequiredColumnsForReconstruction"/>,
-    /// reconstructs the full matrix and exposes the columns this node did not itself receive. Runs at
-    /// most once per block: a completed root is never revisited, so a later gossip arrival for the
-    /// same block cannot re-reconstruct or re-expose. The held columns are the pool's, so ones range sync
-    /// added or an earlier run stored count too. Different subnets' validator calls can run concurrently on separate threads for the
-    /// very columns reconstruction watches, so the check-then-mark sequence over
-    /// <see cref="_reconstructedBlockRoots"/> runs under <see cref="_reconstructionLock"/>.
-    /// </summary>
+    /// <summary>Recovers and exposes missing columns once enough are held (fulu/das-core.md recover_matrix).</summary>
+    /// <remarks>A root stays claimed through publication; cell recovery and subscriber callbacks run outside the lock.</remarks>
     private void TrackHeldColumnAndMaybeReconstruct(Hash256 blockRoot, ulong slot)
     {
         DataColumnSidecar[] held;
-        DataColumnSidecar[] fullMatrix;
         lock (_reconstructionLock)
         {
-            if (pool is null || _reconstructedBlockRoots.Get(blockRoot)
-                || !pool.TryGetHeldColumns(blockRoot, slot, Eip7594DasConstants.RequiredColumnsForReconstruction, out held!)
-                || !DataColumnReconstruction.TryReconstruct(held, out fullMatrix))
+            if (pool is null || _reconstructedBlockRoots.Get(blockRoot) || _reconstructionsInFlight.Contains(blockRoot)
+                || !pool.TryGetHeldColumns(blockRoot, slot, Eip7594DasConstants.RequiredColumnsForReconstruction, out held!))
             {
                 return;
             }
 
-            _reconstructedBlockRoots.Set(blockRoot);
+            _reconstructionsInFlight.Add(blockRoot);
         }
 
-        foreach (ReconstructedSidecarToPublish entry in ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix))
+        List<DataColumnSidecar> exposed = [];
+        try
         {
-            ExposeReconstructed(entry, blockRoot);
+            if (!Reconstruct(held, out DataColumnSidecar[] fullMatrix))
+            {
+                return;
+            }
+
+            IReadOnlyList<ReconstructedSidecarToPublish> entries = ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix);
+            lock (_reconstructionLock)
+            {
+                foreach (ReconstructedSidecarToPublish entry in entries)
+                {
+                    if (ExposeReconstructed(entry, blockRoot))
+                    {
+                        exposed.Add(entry.Sidecar);
+                    }
+                }
+
+                _reconstructedBlockRoots.Set(blockRoot);
+            }
+        }
+        finally
+        {
+            lock (_reconstructionLock)
+            {
+                _reconstructionsInFlight.Remove(blockRoot);
+            }
+        }
+
+        foreach (DataColumnSidecar sidecar in exposed)
+        {
+            DataColumnSidecarReceived?.Invoke(sidecar);
         }
     }
 
     /// <summary>
-    /// Adds a locally reconstructed sidecar to the serving pool and raises <see cref="DataColumnSidecarReceived"/>, unless a
+    /// Adds a locally reconstructed sidecar to the serving pool, unless a
     /// gossip copy of its (block root, index) already did.
     /// </summary>
     /// <remarks>
     /// It is not published, so its (slot, proposer_index, index) stays unmarked: the next gossip copy equal to it is
     /// forwarded without KZG work, which is the only way this node relays the column to its mesh.
     /// </remarks>
-    private void ExposeReconstructed(ReconstructedSidecarToPublish entry, Hash256 blockRoot)
+    private bool ExposeReconstructed(ReconstructedSidecarToPublish entry, Hash256 blockRoot)
     {
         if (!_verifiedColumns.Set((blockRoot, entry.Sidecar.Index)))
         {
-            return;
+            return false;
         }
 
         // Not published: Nethermind.Libp2p preview.45 signs every Publish, which StrictNoSign peers drop.
         // Publish again once the library omits from, seqno, signature and key under SignaturePolicy.StrictNoSign.
         pool?.Add(blockRoot, entry.Slot, entry.Sidecar);
-        DataColumnSidecarReceived?.Invoke(entry.Sidecar);
+        return true;
     }
 
     private ColumnGossipDropReason? ValidateNotFromFuture(ulong slot)
