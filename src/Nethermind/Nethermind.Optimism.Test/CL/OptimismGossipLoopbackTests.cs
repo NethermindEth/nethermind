@@ -10,6 +10,7 @@ using Multiformats.Address;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
+using Nethermind.Logging;
 using Nethermind.Network.Libp2p;
 using Nethermind.Optimism.CL.P2P;
 using NUnit.Framework;
@@ -63,20 +64,57 @@ public class OptimismGossipLoopbackTests
         Assert.That(await received.Task, Is.EqualTo(block));
     }
 
+    /// <summary>A static peer the router holds no gossip connection to, as after any disconnect it does not redial, is connected by the static peer check.</summary>
+    /// <remarks>The router never redials a peer whose reconnection it suppressed, and discovering a known peer again does nothing.</remarks>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_static_peer_without_a_gossip_connection_is_connected_by_the_static_peer_check(CancellationToken token)
+    {
+        // Both routers' own redials are off and nothing is discovered, so only the static peer check can connect the peer.
+        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
+        IRoutingStateContainer routing = node.Router;
+        Assert.That(routing.ConnectedPeers, Does.Not.Contain(sequencerId), "fixture: the peer starts unconnected");
+
+        await KeepUntilConnectedAsync(node, routing, sequencer.Address, sequencerId, token);
+    }
+
+    // Runs the static peer check as its timer does, more often: the peer can refuse a dial while it still holds an earlier session.
+    private static async Task KeepUntilConnectedAsync(Host node, IRoutingStateContainer routing, Multiaddress address, PeerId peerId, CancellationToken token)
+    {
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bounded.CancelAfter(TimeSpan.FromSeconds(20));
+        while (!routing.ConnectedPeers.Contains(peerId))
+        {
+            if (bounded.IsCancellationRequested)
+            {
+                Assert.Fail($"the static peer check never connected the peer ({((LocalPeer)node.Peer).Sessions.Count} sessions)");
+            }
+
+            await OptimismCLP2P.ReconnectStaticPeersAsync(node.Peer, routing, [address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(), bounded.Token);
+            await Task.Delay(200, CancellationToken.None);
+        }
+    }
+
     private sealed class Host(ServiceProvider services, ILocalPeer peer) : IAsyncDisposable
     {
         public ServiceProvider Services => services;
+
+        public ILocalPeer Peer => peer;
 
         public PubsubRouter Router => services.GetRequiredService<PubsubRouter>();
 
         // The libp2p dial needs the peer id, which a listen address may not carry.
         public Multiaddress Address => Multiaddress.Decode($"{peer.ListenAddresses.First().ToString().Split("/p2p/")[0]}/p2p/{peer.Identity.PeerId}");
 
-        public static async Task<Host> StartAsync(CancellationToken token)
+        public static async Task<Host> StartAsync(CancellationToken token, Action<PubsubSettings>? configure = null)
         {
+            PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings(BlocksTopic);
+            configure?.Invoke(settings);
             ServiceProvider services = new ServiceCollection()
                 .AddLibp2p(static builder => builder.WithPubsub())
-                .AddSingleton(OptimismCLP2P.CreatePubsubSettings(BlocksTopic))
+                .AddSingleton(settings)
                 .BuildServiceProvider();
             ILocalPeer peer = services.GetRequiredService<IPeerFactory>().Create();
             await peer.StartListenAsync([Multiaddress.Decode("/ip4/127.0.0.1/tcp/0")], token);
