@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
@@ -1554,7 +1555,7 @@ public sealed class ForkChoiceRunner
     /// <summary>A mutable copy of <paramref name="blockState"/> advanced to <paramref name="targetSlot"/>, crossing into <paramref name="targetFork"/> on the way when needed.</summary>
     private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ForkedBeaconState blockState, ulong targetSlot, BeaconFork targetFork)
     {
-        EpochCache cache = new() { Hasher = CheckpointStateHasher() };
+        EpochCache cache = new() { Hasher = new BlockStateRootFirst(_protoArray.EnumerateAncestorNodes(blockRoot).First().StateRoot, CheckpointStateHasher()) };
         ForkedBeaconState state = blockState switch
         {
             ForkedBeaconState.OfFulu => new ForkedBeaconState.OfFulu(_stateProvider.CopyBlockState(blockRoot)
@@ -1576,6 +1577,26 @@ public sealed class ForkChoiceRunner
         }
 
         return state;
+    }
+
+    /// <summary>Answers the first <c>process_slot</c> root of a checkpoint advance with the block's own <c>state_root</c>, and hashes every later slot with <paramref name="next"/>.</summary>
+    /// <remarks>
+    /// The advance starts from <c>store.block_states[root]</c>, the post-state whose root the block's <c>state_root</c> commits to (specs/phase0/beacon-chain.md
+    /// <c>state_transition</c>; the anchor's is checked at construction), so a one-slot advance needs no merkleization.
+    /// </remarks>
+    private sealed class BlockStateRootFirst(Hash256 blockStateRoot, IBeaconStateHasher next) : IBeaconStateHasher
+    {
+        private bool _started;
+
+        public Hash256 HashTreeRoot(BeaconStateFulu state) => _started ? next.HashTreeRoot(state) : Start();
+
+        public Hash256 HashTreeRoot(BeaconStateGloas state) => _started ? next.HashTreeRoot(state) : Start();
+
+        private Hash256 Start()
+        {
+            _started = true;
+            return blockStateRoot;
+        }
     }
 
     private static Validator[] ValidatorsOf(ForkedBeaconState state) => state switch
