@@ -118,7 +118,7 @@ jobs:
             exit 1
           fi
           environment="${COLLECTION_ROOT}/expb-env"
-          uv venv "${environment}" --python 3.12
+          uv venv "${environment}" --python 3.13
           uv pip install --python "${environment}/bin/python" \
             "git+https://github.com/NethermindEth/execution-payloads-benchmarks@56f83b112a93436a66468b863ed9e47bcd5feba6"
           template=$("${environment}/bin/python" -c 'import expb; from pathlib import Path; print(Path(expb.__file__).parent / "payloads/executor/services/templates/k6-script.js.j2")')

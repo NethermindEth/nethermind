@@ -55,6 +55,14 @@ class InventoryTests(unittest.TestCase):
         render = next(step["run"] for step in steps if step["name"] == "Render benchmark config")
         self.assertNotIn("cat ", render)
 
+    def test_isolated_expb_uses_supported_python(self):
+        workflow = Path(__file__).resolve().parents[2] / ".github/workflows/collect-pgo-profile.yml"
+        config = yaml.load(workflow.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        prepare = next(step["run"] for step in config["jobs"]["collect"]["steps"]
+                       if step["name"] == "Prepare isolated EXPB with strict Engine API validation")
+        self.assertIn('uv venv "${environment}" --python 3.13', prepare)
+        self.assertIn('uv pip install --python "${environment}/bin/python"', prepare)
+
     def test_resolves_inputs_and_keeps_snapshot_unchanged(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
