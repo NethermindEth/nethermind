@@ -88,6 +88,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     // Not a goodbye code: a closed session exchanged no goodbye, so its disconnect record reads "Other".
     private const ulong SessionClosedReason = 0;
+    private const string SessionClosedLabel = "SessionClosed";
+    private const string SessionClosedDetail = "its libp2p session closed";
 
     // Bounds the canonical index walk back over empty slots to a peer's finalized checkpoint block; not a spec value.
     private const ulong FinalizedCheckpointSearchEpochs = 4;
@@ -1323,6 +1325,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
         await RefreshCustodyAsync(peer, token, AdmissionMetadataTimeout);
+        // The dial then records a failure: a success would clear the backoff the close of a peer that broke the protocol set (see RecordClosedSession).
+        if (peer.RemovedOnClose)
+        {
+            return false;
+        }
+
         PeerAdmitted?.Invoke(peer);
         return true;
     }
@@ -1460,8 +1468,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     {
         if (e is OperationCanceledException && token.IsCancellationRequested) return;
         ManagedPeer peer = (ManagedPeer)failedPeer;
-        // A closed session removes the peer (see RemoveClosedSession) and is never a failure of it.
-        if (peer.IsSessionClosed) return;
+        // A closed session removes the peer (see RemoveClosedSession) and is never a failure of it; a bad reply sent before it closed still counts.
+        if (peer.IsSessionClosed)
+        {
+            if (!IsSilence(e)) peer.RecordFailedHealthCheck(violation: true);
+            return;
+        }
+
         bool timeout = e is OperationCanceledException or TimeoutException;
         bool independentSuccess = false;
         foreach (KeyValuePair<string, ManagedPeer> other in _peers)
@@ -1667,6 +1680,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return;
         }
 
+        // A drop that began before the peer's session closed finds it removed and recorded by RemoveClosedSession already, with no session left to say goodbye on.
+        if (!removed && peer.RemovedOnClose)
+        {
+            return;
+        }
+
         if (_logger.IsInfo) _logger.Info($"Dropping beacon chain peer {peer.Id}: {detail}");
         Interlocked.Increment(ref Metrics.PeersDroppedCount);
         Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(GoodbyeReasonName(reason)));
@@ -1699,6 +1718,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <summary>Removes a peer whose libp2p session closed and wakes <see cref="WaitForAdmissionCapacityAsync"/>, so the dial loop can replace it.</summary>
     /// <remarks>
     /// A lost session is not a fault of the peer or its address: no failure is counted, its fault-disconnect streak is left as it is and its address gets no dial backoff.
+    /// A peer that sent a reply failing a content check since its last passing health check is the exception: its close is a fault disconnect,
+    /// so closing and reconnecting does not escape a ban (see <see cref="RecordClosedSession"/>).
     /// Its waiting and running requests end as disconnects on the same session token (see <see cref="ManagedPeer.ExchangeAsync{T}"/>).
     /// </remarks>
     private void RemoveClosedSession(ManagedPeer peer)
@@ -1707,6 +1728,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         lock (_admissionLock)
         {
             removed = _peers.TryRemove(new KeyValuePair<string, ManagedPeer>(peer.Id, peer));
+            if (removed)
+            {
+                peer.MarkRemovedOnClose();
+            }
+
             Metrics.BeaconChainPeerCount = _peers.Count;
         }
 
@@ -1715,12 +1741,24 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return;
         }
 
-        const string detail = "its libp2p session closed";
-        if (_logger.IsInfo) _logger.Info($"Beacon chain peer {peer.Id} disconnected: {detail}");
+        if (_logger.IsInfo) _logger.Info($"Beacon chain peer {peer.Id} disconnected: {SessionClosedDetail}");
         Interlocked.Increment(ref Metrics.PeersDroppedCount);
-        RecordDisconnect(peer.PeerId, peer.MessagesSent, peer.FailuresReported, SessionClosedReason, detail, unresponsive: true);
+        Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(SessionClosedLabel));
+        peer.RecordClose();
         WakeAdmissionWaiters();
         PublishCustodyShortfall();
+    }
+
+    /// <summary>Records the close of a peer's session in its peer id's history; as a fault disconnect when <paramref name="fault"/>, which also backs its address off.</summary>
+    /// <param name="newDisconnect">The close was not recorded yet; <c>false</c> when a violation reported after the removal turns it into a fault.</param>
+    private void RecordClosedSession(ManagedPeer peer, bool fault, bool newDisconnect)
+    {
+        if (fault)
+        {
+            _dialHistory.Record(peer.Id, connected: false);
+        }
+
+        RecordDisconnect(peer.PeerId, peer.MessagesSent, peer.FailuresReported, fault ? GoodbyeReason.Fault : SessionClosedReason, SessionClosedDetail, unresponsive: !fault, newDisconnect);
     }
 
     /// <summary>
@@ -1739,7 +1777,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// live libp2p session for every one of <see cref="IBeaconChainConfig.FaultDisconnectsBeforeBan"/>
     /// fault disconnects.
     /// </summary>
-    internal void RecordDisconnect(string peerId, long messagesSent, long failuresReported, ulong reason, string detail, bool unresponsive = false)
+    /// <param name="newDisconnect">Counts a disconnect; <c>false</c> when this one was recorded already and only its reason changes.</param>
+    internal void RecordDisconnect(string peerId, long messagesSent, long failuresReported, ulong reason, string detail, bool unresponsive = false, bool newDisconnect = true)
     {
         DateTimeOffset now = _timestamper.UtcNowOffset;
         BanRecord record = GetOrCreateRecord(peerId);
@@ -1747,7 +1786,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         record.LastDisconnectDetail = detail;
         record.MessagesSent = messagesSent;
         record.FailuresReported = failuresReported;
-        Interlocked.Increment(ref record.DisconnectCount);
+        if (newDisconnect)
+        {
+            Interlocked.Increment(ref record.DisconnectCount);
+        }
 
         if (unresponsive)
         {
@@ -1812,6 +1854,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return peer;
     }
 
+    /// <summary>Internal so a test can run a drop that began before the peer's session closed, as the band trim can.</summary>
+    internal Task DropForTest(IBeaconSyncPeer peer, ulong reason, string detail) => DropAsync((ManagedPeer)peer, reason, detail, CancellationToken.None);
+
     internal static int RequestsInFlightForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).RequestsInFlight;
 
     internal static int ConsecutiveFailuresForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).ConsecutiveFailures;
@@ -1873,6 +1918,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private long _statusRequestedTicks;
         private int _statusRequestsInFlight;
         private int _statusRefreshClaimed;
+        private readonly Lock _closeLock = new();
+        private bool _removedOnClose;
+        private bool _closeRecorded;
+        private bool _closeCountedAsFault;
 
         public ISession Session { get; } = session;
         public StatusMessageV2? Status => _status;
@@ -2061,10 +2110,57 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             if (violation)
             {
-                Volatile.Write(ref _violatedProtocol, true);
+                RecordViolation();
             }
 
             return Interlocked.Increment(ref _consecutiveFailures);
+        }
+
+        /// <summary>Whether this peer left the pool because its session closed (see <see cref="PeerManager.RemoveClosedSession"/>).</summary>
+        public bool RemovedOnClose
+        {
+            get
+            {
+                lock (_closeLock)
+                {
+                    return _removedOnClose;
+                }
+            }
+        }
+
+        /// <summary>Marks the peer as removed for its closed session; called under the pool's admission lock with the removal, so a drop that misses the peer sees why.</summary>
+        public void MarkRemovedOnClose()
+        {
+            lock (_closeLock)
+            {
+                _removedOnClose = true;
+            }
+        }
+
+        /// <summary>Records the close in the peer id's history, as a fault disconnect when a reply failed a content check since the last passing health check.</summary>
+        public void RecordClose()
+        {
+            // Under the same lock as RecordViolation, so a violation is either seen here or turns this record into a fault afterwards.
+            lock (_closeLock)
+            {
+                _closeRecorded = true;
+                _closeCountedAsFault = ViolatedProtocolSinceLastHealthyCheck;
+                manager.RecordClosedSession(this, _closeCountedAsFault, newDisconnect: true);
+            }
+        }
+
+        // A violation reported after the close was recorded still turns that close into a fault disconnect, once.
+        private void RecordViolation()
+        {
+            lock (_closeLock)
+            {
+                Volatile.Write(ref _violatedProtocol, true);
+                if (_closeRecorded && !_closeCountedAsFault)
+                {
+                    _closeCountedAsFault = true;
+                    manager.RecordClosedSession(this, fault: true, newDisconnect: false);
+                }
+            }
         }
 
         public long MessagesSent => Interlocked.Read(ref _messagesSent);
@@ -2266,7 +2362,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 failures = Interlocked.Increment(ref _consecutiveFailures);
                 if (reason == PeerFailureReason.ProtocolViolation)
                 {
-                    Volatile.Write(ref _violatedProtocol, true);
+                    RecordViolation();
                 }
 
                 // A violation takes back the credit the reply that carried it just earned.
