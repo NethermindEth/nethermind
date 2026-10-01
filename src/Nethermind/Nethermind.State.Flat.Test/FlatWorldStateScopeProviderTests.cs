@@ -175,7 +175,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null)
         {
             config ??= new FlatDbConfig();
 
@@ -231,6 +231,11 @@ public class FlatWorldStateScopeProviderTests
             if (trieWarmer is not null)
             {
                 _containerBuilder.AddSingleton(trieWarmer);
+            }
+
+            if (trieNodeCache is not null)
+            {
+                _containerBuilder.AddSingleton(trieNodeCache);
             }
 
             // Externally owned because snapshot bundle take ownership
@@ -809,6 +814,49 @@ public class FlatWorldStateScopeProviderTests
 
         using TestContext verifying = new(config: new FlatDbConfig { VerifyWithTrie = true });
         Assert.That(verifying.Scope.AppliesStorageWritesEarly, Is.False);
+    }
+
+    [Test]
+    public void EarlyStorageApply_InitializesMutableTrieBeforeQueueing()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        ITrieNodeCache nodeCache = Substitute.For<ITrieNodeCache>();
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true },
+            trieWarmer: Substitute.For<ITrieWarmer>(), trieNodeCache: nodeCache);
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Set(1, 1);
+        }
+        scope.Commit(1);
+
+        int ownerThread = Environment.CurrentManagedThreadId;
+        bool backgroundRootLookup = false;
+        nodeCache.TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<Hash256>(), out Arg.Any<TrieNode?>())
+            .Returns(call =>
+            {
+                call[3] = null;
+                if (call.ArgAt<TreePath>(1).Length == 0 && Environment.CurrentManagedThreadId != ownerThread)
+                {
+                    backgroundRootLookup = true;
+                    // Dispose after the mutable lookup's guard, before it reads the snapshot list.
+                    scope.Dispose();
+                }
+                return false;
+            });
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+
+        storageTree.HintSet(1, 2);
+        Assert.That(() => storageTree.EarlyWritesDrained, Is.True.After(5000, 10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(backgroundRootLookup, Is.False);
+            Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1));
+        }
     }
 
     [Test]

@@ -111,6 +111,8 @@ public sealed class FlatStorageTree(
         WarmUpSlot(index);
         if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) == EarlyClaimed) return;
 
+        // Capture the pre-block root while the owning thread can still read the mutable bundle.
+        _ = GetTrees();
         ConcurrentQueue<(UInt256 Slot, UInt256 Value)> writes = Volatile.Read(ref _earlyWrites) ?? CreateEarlyWrites();
         writes.Enqueue((index, value));
         // A set flag means a pass that has yet to clear it will see this write.

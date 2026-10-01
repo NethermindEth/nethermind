@@ -17,6 +17,6 @@ public interface IInclusionListComplianceEvaluator
     /// <paramref name="inclusionListTransactions"/>, without re-executing it.</summary>
     /// <param name="blockHash">Hash of a block this node has committed.</param>
     /// <param name="inclusionListTransactions">Aggregate inclusion list as RLP-encoded EIP-2718 entries.</param>
-    /// <returns><c>null</c> when the block is unknown or its state is no longer readable.</returns>
+    /// <returns><c>null</c> when the block, state, or execution gas dimensions needed to judge compliance are unavailable.</returns>
     bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions);
 }
