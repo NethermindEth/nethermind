@@ -59,6 +59,13 @@
       "upstream_commit": null,
       "upstream_url": null,
       "purpose": "Retain successfully smoothed sample profiles meeting the sample threshold even when methods compiled before the selected sample window."
+    },
+    {
+      "file": "patches/runtime-universal-call-weights.patch",
+      "sha256": "509dbfbe1605ed6bb950d93488584ca0cefba5221f456a7313da6358c2e3c56a",
+      "upstream_commit": null,
+      "upstream_url": null,
+      "purpose": "Extract checked process/window-scoped Linux Universal CPU exclusive and adjacent call weights, preferring one source without bridging native gaps; retain legacy sampling with corrected inclusive windows."
     }
   ],
   "purpose": "Isolated offline profile conversion; never included in production runtime images."

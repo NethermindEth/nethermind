@@ -1,0 +1,139 @@
+diff --git a/src/coreclr/tools/dotnet-pgo/Program.cs b/src/coreclr/tools/dotnet-pgo/Program.cs
+--- a/src/coreclr/tools/dotnet-pgo/Program.cs
++++ b/src/coreclr/tools/dotnet-pgo/Program.cs
+@@ -1582,64 +1582,78 @@
+                     exclusiveSamples = new Dictionary<MethodDesc, int>();
+ 
+                     MethodMemoryMap mmap = GetMethodMemMap();
+-                    foreach (var e in p.EventsInProcess.ByEventType<SampledProfileTraceData>())
+-                    {
+-                        if ((e.TimeStampRelativeMSec < excludeEventsBefore) && (e.TimeStampRelativeMSec > excludeEventsAfter))
+-                            continue;
+-
+-                        var callstack = e.CallStack();
++                    bool useUniversal = p.EventsInProcess.ByEventType<SampleTraceData>().Any(e => e.EventName == "cpu");
++                    long inputWeight = 0;
++                    long missingStackWeight = 0;
++                    long unmappedLeafWeight = 0;
++                    long mappedLeafWeight = 0;
++                    long adjacentEdgeWeight = 0;
++                    if (useUniversal)
++                    {
++                        foreach (SampleTraceData e in p.EventsInProcess.ByEventType<SampleTraceData>())
++                        {
++                            if (e.EventName == "cpu" && InWindow(e))
++                                AttributeCallSample(e, checked((long)e.Value));
++                        }
++                    }
++                    else
++                    {
++                        foreach (SampledProfileTraceData e in p.EventsInProcess.ByEventType<SampledProfileTraceData>())
++                        {
++                            if (InWindow(e))
++                                AttributeCallSample(e, 1);
++                        }
++                    }
++                    PrintOutput($"Call weight source: {(useUniversal ? "Universal CPU" : "SampledProfile")}");
++                    PrintOutput($"Call weight process: {p.ProcessID}");
++                    PrintOutput($"Call weight window start: {excludeEventsBefore.ToString("R", CultureInfo.InvariantCulture)}");
++                    PrintOutput($"Call weight window end: {excludeEventsAfter.ToString("R", CultureInfo.InvariantCulture)}");
++                    PrintOutput($"Call weight input: {inputWeight}");
++                    PrintOutput($"Call weight without stacks: {missingStackWeight}");
++                    PrintOutput($"Call weight without mapped leaf: {unmappedLeafWeight}");
++                    PrintOutput($"Call weight mapped leaf: {mappedLeafWeight}");
++                    PrintOutput($"Call weight adjacent edges: {adjacentEdgeWeight}");
++
++                    bool InWindow(TraceEvent e) => e.TimeStampRelativeMSec >= excludeEventsBefore && e.TimeStampRelativeMSec <= excludeEventsAfter;
++
++                    void AttributeCallSample(TraceEvent e, long weight)
++                    {
++                        inputWeight = checked(inputWeight + weight);
++                        if (weight == 0)
++                            return;
++                        TraceCallStack callstack = e.CallStack();
+                         if (callstack == null)
+-                            continue;
+-
+-                        ulong address1 = callstack.CodeAddress.Address;
+-                        MethodDesc topOfStackMethod = mmap.GetMethod(address1);
+-                        MethodDesc nextMethod = null;
+-                        if (callstack.Caller != null)
+-                        {
+-                            ulong address2 = callstack.Caller.CodeAddress.Address;
+-                            nextMethod = mmap.GetMethod(address2);
+-                        }
+-
+-                        if (topOfStackMethod != null)
+-                        {
+-                            if (!methodsListedToPrepare.Contains(topOfStackMethod))
+-                            {
+-                                methodsListedToPrepare.Add(topOfStackMethod);
+-                                methodsToAttemptToPrepare.Add((int)e.EventIndex, new ProcessedMethodData(e.TimeStampRelativeMSec, topOfStackMethod, "SampleMethod"));
+-                            }
+-
+-                            if (exclusiveSamples.TryGetValue(topOfStackMethod, out int count))
+-                            {
+-                                exclusiveSamples[topOfStackMethod] = count + 1;
+-                            }
+-                            else
+-                            {
+-                                exclusiveSamples[topOfStackMethod] = 1;
+-                            }
+-                        }
+-
+-                        if (topOfStackMethod != null && nextMethod != null)
+-                        {
+-                            if (!methodsListedToPrepare.Contains(nextMethod))
+-                            {
+-                                methodsListedToPrepare.Add(nextMethod);
+-                                methodsToAttemptToPrepare.Add(0x100000000 + (int)e.EventIndex, new ProcessedMethodData(e.TimeStampRelativeMSec, nextMethod, "SampleMethodCaller"));
+-                            }
+-
+-                            if (!callGraph.TryGetValue(nextMethod, out var innerDictionary))
+-                            {
+-                                innerDictionary = new Dictionary<MethodDesc, int>();
+-                                callGraph[nextMethod] = innerDictionary;
+-                            }
+-                            if (innerDictionary.TryGetValue(topOfStackMethod, out int count))
+-                            {
+-                                innerDictionary[topOfStackMethod] = count + 1;
+-                            }
+-                            else
+-                            {
+-                                innerDictionary[topOfStackMethod] = 1;
+-                            }
+-                        }
++                        {
++                            missingStackWeight = checked(missingStackWeight + weight);
++                            return;
++                        }
++
++                        MethodDesc topOfStackMethod = mmap.GetMethod(callstack.CodeAddress.Address);
++                        if (topOfStackMethod == null)
++                        {
++                            unmappedLeafWeight = checked(unmappedLeafWeight + weight);
++                            return;
++                        }
++                        mappedLeafWeight = checked(mappedLeafWeight + weight);
++                        int methodWeight = checked((int)weight);
++                        if (methodsListedToPrepare.Add(topOfStackMethod))
++                            methodsToAttemptToPrepare.Add((int)e.EventIndex, new ProcessedMethodData(e.TimeStampRelativeMSec, topOfStackMethod, "SampleMethod"));
++                        exclusiveSamples.TryGetValue(topOfStackMethod, out int exclusiveCount);
++                        exclusiveSamples[topOfStackMethod] = checked(exclusiveCount + methodWeight);
++
++                        MethodDesc nextMethod = callstack.Caller == null ? null : mmap.GetMethod(callstack.Caller.CodeAddress.Address);
++                        if (nextMethod == null)
++                            return;
++                        if (methodsListedToPrepare.Add(nextMethod))
++                            methodsToAttemptToPrepare.Add(0x100000000 + (int)e.EventIndex, new ProcessedMethodData(e.TimeStampRelativeMSec, nextMethod, "SampleMethodCaller"));
++                        if (!callGraph.TryGetValue(nextMethod, out Dictionary<MethodDesc, int> innerDictionary))
++                        {
++                            innerDictionary = new Dictionary<MethodDesc, int>();
++                            callGraph.Add(nextMethod, innerDictionary);
++                        }
++                        innerDictionary.TryGetValue(topOfStackMethod, out int edgeCount);
++                        innerDictionary[topOfStackMethod] = checked(edgeCount + methodWeight);
++                        adjacentEdgeWeight = checked(adjacentEdgeWeight + weight);
+                     }
+                 }
+ 
