@@ -49,29 +49,36 @@ public class BeaconChainStatusHolder(BeaconChainSpec spec, ITimestamper timestam
 
     public StatusMessageV2 CurrentStatus
     {
-        get => WithEarliestAvailableSlot(_head?.Status) ?? new StatusMessageV2
+        get => WithWallClockFields(_head?.Status) ?? new StatusMessageV2
         {
-            ForkDigest = ForkDigest.Compute(spec, spec.GetEpoch(spec.GetSlotAtTime((ulong)timestamper.UnixTime.Seconds))),
+            ForkDigest = WallClockForkDigest(),
             FinalizedRoot = Hash256.Zero,
             HeadRoot = Hash256.Zero,
         };
         set => _head = new HeadSnapshot(value, null);
     }
 
-    public (StatusMessageV2 Status, Hash256? FullHeadRoot) CurrentHead => _head is { } head ? (WithEarliestAvailableSlot(head.Status)!, head.FullHeadRoot) : (CurrentStatus, null);
+    public (StatusMessageV2 Status, Hash256? FullHeadRoot) CurrentHead => _head is { } head ? (WithWallClockFields(head.Status)!, head.FullHeadRoot) : (CurrentStatus, null);
 
-    private StatusMessageV2? WithEarliestAvailableSlot(StatusMessageV2? status) =>
-        status is not null && _earliestAvailableSlotSource is { } source
-            ? new StatusMessageV2
-            {
-                ForkDigest = status.ForkDigest,
-                FinalizedRoot = status.FinalizedRoot,
-                FinalizedEpoch = status.FinalizedEpoch,
-                HeadRoot = status.HeadRoot,
-                HeadSlot = status.HeadSlot,
-                EarliestAvailableSlot = source(),
-            }
-            : status;
+    // p2p-interface.md Status: fork_digest follows the wall-clock epoch, so a read after a fork or BPO boundary never repeats the published one.
+    private StatusMessageV2? WithWallClockFields(StatusMessageV2? status)
+    {
+        if (status is null) return null;
+        byte[] digest = WallClockForkDigest();
+        Func<ulong>? source = _earliestAvailableSlotSource;
+        if (source is null && status.ForkDigest.AsSpan().SequenceEqual(digest)) return status;
+        return new StatusMessageV2
+        {
+            ForkDigest = digest,
+            FinalizedRoot = status.FinalizedRoot,
+            FinalizedEpoch = status.FinalizedEpoch,
+            HeadRoot = status.HeadRoot,
+            HeadSlot = status.HeadSlot,
+            EarliestAvailableSlot = source?.Invoke() ?? status.EarliestAvailableSlot,
+        };
+    }
+
+    private byte[] WallClockForkDigest() => ForkDigest.Compute(spec, spec.GetEpoch(spec.GetSlotAtTime((ulong)timestamper.UnixTime.Seconds)));
 
     /// <summary>Replaces the status and the FULL head root in one step, so a reader never pairs a head with another head's payload status.</summary>
     public void Publish(StatusMessageV2 status, Hash256? fullHeadRoot) => _head = new HeadSnapshot(status, fullHeadRoot);

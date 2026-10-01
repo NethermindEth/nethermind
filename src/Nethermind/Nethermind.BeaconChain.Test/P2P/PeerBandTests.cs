@@ -952,7 +952,7 @@ public class PeerBandTests
 
     internal static void SetMatchingStatus(params Node[] nodes)
     {
-        byte[] forkDigest = ForkDigest.Compute(Spec, Spec.GetEpoch(AnchorSlot));
+        byte[] forkDigest = ForkDigest.Compute(Spec, Spec.GetEpoch(Spec.GetSlotAtTime((ulong)Timestamper.Default.UnixTime.Seconds)));
         foreach (Node node in nodes)
         {
             node.StatusHolder.CurrentStatus = new StatusMessageV2

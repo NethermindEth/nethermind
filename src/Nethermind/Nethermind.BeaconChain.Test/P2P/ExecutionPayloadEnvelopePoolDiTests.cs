@@ -37,6 +37,8 @@ public class ExecutionPayloadEnvelopePoolDiTests
         child.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash = block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlockHash;
         Hash256 childRoot = SszRoots.HashTreeRoot(child.Message);
         store.PutForkedBlock(childRoot, new ForkedSignedBeaconBlock.OfGloas(child));
+        store.SetCanonicalRoot(FirstGloasSlot, root);
+        store.SetCanonicalRoot(FirstGloasSlot + 1, childRoot);
         status.CurrentStatus = new StatusMessageV2
         {
             ForkDigest = ForkDigest.Compute(Sepolia, Sepolia.GloasForkEpoch),

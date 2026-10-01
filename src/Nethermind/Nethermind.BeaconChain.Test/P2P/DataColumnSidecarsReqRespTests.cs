@@ -153,7 +153,7 @@ public class DataColumnSidecarsReqRespTests
     }
 
     [Test]
-    public async Task By_range_serves_at_most_MaxRequestBlocks_slots([Values(BlocksProtocolBase.MaxRequestBlocks + 1, ulong.MaxValue)] ulong requestedCount)
+    public async Task By_range_serves_past_MaxRequestBlocks_slots_since_only_sidecars_are_capped([Values(BlocksProtocolBase.MaxRequestBlocks + 1, ulong.MaxValue)] ulong requestedCount)
     {
         const ulong startSlot = 13_410_304;
         const ulong column = 5;
@@ -170,7 +170,24 @@ public class DataColumnSidecarsReqRespTests
 
         IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, startSlot, requestedCount, [column]);
 
-        Assert.That(served, Has.Count.EqualTo(BlocksProtocolBase.MaxRequestBlocks));
+        Assert.That(served, Has.Count.EqualTo(slotCount));
+    }
+
+    [Test]
+    public void By_range_is_resource_unavailable_when_no_sidecar_lies_in_the_slots_it_walks()
+    {
+        const ulong startSlot = 13_410_304;
+        const ulong column = 5;
+        ulong heldSlot = startSlot + DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars;
+        DataColumnSidecarPool pool = new();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        Hash256 root = Keccak.Compute("past the walk");
+        pool.Add(root, heldSlot, DataColumnSidecarTestFixture.BuildValidSidecar(column, heldSlot, blobCount: 1));
+        store.SetCanonicalRoot(heldSlot, root);
+
+        Eth2ReqRespException? refused = Assert.ThrowsAsync<Eth2ReqRespException>(() => RequestRangeAsync(pool, store, startSlot, heldSlot - startSlot + 1, [column]));
+
+        Assert.That(refused!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "an empty reply would claim the held sidecar's slot is empty");
     }
 
     /// <summary>
@@ -223,17 +240,49 @@ public class DataColumnSidecarsReqRespTests
         }
     }
 
+    // fulu/p2p-interface.md DataColumnSidecarsByRange: held sidecars below the required serve range may still be served.
+    [Test]
+    public async Task By_range_serves_held_columns_below_the_serve_range()
+    {
+        const ulong serveFrom = 13_410_304;
+        const ulong column = 5;
+        DataColumnSidecarPool pool = new();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        for (ulong slot = serveFrom - 1; slot <= serveFrom; slot++)
+        {
+            Hash256 root = Keccak.Compute($"canonical {slot}");
+            pool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
+            store.SetCanonicalRoot(slot, root);
+        }
+
+        ulong currentEpoch = Spec.GetEpoch(serveFrom) + Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests;
+        SlotClock clock = new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + currentEpoch * Spec.SlotsPerEpoch * Spec.SecondsPerSlot)).UtcDateTime));
+
+        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, serveFrom - 1, 2, [column], clock);
+
+        Assert.That(served.Select(static s => s.SignedBlockHeader!.Message!.Slot), Is.EqualTo(new[] { serveFrom - 1, serveFrom }));
+    }
+
     /// <summary>
     /// <c>data_column_serve_range</c> ends at the current slot, so a request wholly after it asks nothing this node must serve:
     /// even a node that holds no columns answers it with an empty response, not ResourceUnavailable.
     /// </summary>
     [Test]
-    public async Task By_range_serves_a_request_wholly_after_the_current_slot_empty_even_with_no_columns_held()
+    public async Task By_range_serves_a_request_wholly_after_the_current_slot_empty([Values] bool held)
     {
         const ulong currentSlot = 13_410_304;
         SlotClock clock = new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + currentSlot * Spec.SecondsPerSlot)).UtcDateTime));
 
-        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(new DataColumnSidecarPool(), new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), currentSlot + 1, 4, [5], clock);
+        DataColumnSidecarPool pool = new();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        if (held)
+        {
+            Hash256 root = Keccak.Compute("future columns");
+            pool.Add(root, currentSlot + 1, DataColumnSidecarTestFixture.BuildValidSidecar(5, currentSlot + 1, blobCount: 1));
+            store.SetCanonicalRoot(currentSlot + 1, root);
+        }
+
+        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, currentSlot + 1, 4, [5], clock);
 
         Assert.That(served, Is.Empty);
     }

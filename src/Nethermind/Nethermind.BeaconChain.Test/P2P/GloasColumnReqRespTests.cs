@@ -148,7 +148,8 @@ public class GloasColumnReqRespTests
     }
 
     [TestCase(2UL, 2, TestName = "More chunks than count times columns")]
-    [TestCase(5000UL, 128, TestName = "More chunks than MAX_REQUEST_BLOCKS_DENEB slots times columns")]
+    [TestCase(200UL, 200, TestName = "More chunks than count times columns past MAX_REQUEST_BLOCKS_DENEB slots")]
+    [TestCase(20_000UL, 16_384, TestName = "More chunks than MAX_REQUEST_DATA_COLUMN_SIDECARS")]
     public void The_Gloas_range_dial_refuses_more_chunks_than_the_request_allows(ulong count, int allowed)
     {
         ulong start = GloasStartSlot + 10;
