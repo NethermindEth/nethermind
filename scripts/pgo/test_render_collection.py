@@ -21,7 +21,10 @@ class CollectionRenderTests(unittest.TestCase):
             "params": [{"headBlockHash": body["blockHash"]}]}) + "\n" for body in payloads))
         (root / "snapshot/_snapshot_eth_getBlockByNumber.json").write_text(json.dumps({"result": {
             "number": "0x64", "hash": "100", "stateRoot": "root100"}}))
-        config = {"paths": {"work": "shared", "outputs": "old-outputs"}, "scenarios": {"nethermind": {
+        config = {"paths": {"work": "shared", "outputs": "old-outputs"},
+            "export": {"prometheus_remote_write": {"endpoint": "https://metrics.example.invalid",
+                "basic_auth": {"username": "collection-export-user", "password": "collection-export-secret"}}},
+            "scenarios": {"nethermind": {
             "payloads": "payloads", "fcus": "fcus", "snapshot_source": "snapshot",
             "image": "nethermindeth/nethermind:<<DOCKER_TAG>>", "delay": "<<DELAY>>",
             "amount": "<<AMOUNT>>", "warmup": 11,
@@ -45,6 +48,10 @@ class CollectionRenderTests(unittest.TestCase):
             self.assertEqual(scenario["snapshot_backend"], "overlay")
             self.assertEqual(scenario["extra_volumes"]["pgo"]["source"], str(root / "run/pgo"))
             self.assertEqual(config["paths"]["outputs"], str(root / "run/outputs"))
+            self.assertNotIn("export", config)
+            rendered = (root / "run/config.yaml").read_text()
+            for value in ("metrics.example.invalid", "collection-export-user", "collection-export-secret"):
+                self.assertNotIn(value, rendered)
             self.assertEqual(config_path.read_bytes(), original)
             with self.assertRaisesRegex(ValueError, "already exists"):
                 render(config_path, root / "run", scenario["image"], 10)

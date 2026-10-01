@@ -52,6 +52,7 @@ def render(config_path, root, image, amount):
         raise ValueError("ambiguous PGO volume binding")
     volumes["pgo"] = {"source": str(root / "pgo"), "bind": "/nethermind/pgo", "mode": "rw"}
     scenario.setdefault("extra_env", {}).update({"DOTNET_ReadPGOData": "0", "DOTNET_TieredPGO": "1"})
+    config.pop("export", None)
     config["scenarios"] = {"nethermind-pgo-collect": scenario}
     config["paths"] = {"work": str(root / "work"), "outputs": str(root / "outputs")}
     text = yaml.safe_dump(config, sort_keys=False)
