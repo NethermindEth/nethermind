@@ -29,12 +29,13 @@ public record GethTraceOptions
     public bool DisableStack { get; init; }
 
     /// <summary>
-    /// Byte limit for serialized opcode logs or JSON Lines file records. Zero is unlimited; a negative value suppresses all records.
-    /// The entry that exceeds the limit is included. Execution and named tracers are unaffected.
+    /// Byte budget for opcode logs. Buffered traces use a conservative estimate; streamed traces count emitted bytes.
+    /// Zero is unlimited; a negative value suppresses all logs.
+    /// The entry that exceeds the budget is included. Execution and named tracers are unaffected.
     /// </summary>
-    /// <remarks>
-    /// File budgets include each record's terminating line feed; ordinary opcode log budgets count only the serialized entries.
-    /// </remarks>
+    /// <remarks>Buffered traces can stop earlier than Geth or streamed traces, especially for repeated storage accesses
+    /// and small stack values. Storage updates are counted without tracking distinct slots for the estimate.
+    /// File budgets count JSON Lines records including each terminating line feed.</remarks>
     [JsonConverter(typeof(LimitConverter))]
     public long Limit { get; init; }
 

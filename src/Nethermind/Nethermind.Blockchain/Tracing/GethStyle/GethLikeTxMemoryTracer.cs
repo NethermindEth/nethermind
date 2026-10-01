@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Text.Json;
-using Collections.Pooled;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Evm;
@@ -18,8 +15,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     private readonly Transaction? _transaction;
     private readonly long _limit;
     private long _resultSize;
-    private Utf8JsonWriter? _sizeWriter;
-    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>>? _sizeStorageByAddress;
+    private int _storageUpdates;
 
     private bool LimitReached => _limit != 0 && _resultSize > _limit;
 
@@ -27,8 +23,6 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     {
         _transaction = transaction;
         _limit = options.Limit;
-        if (_limit > 0 && !options.DisableStorage)
-            _sizeStorageByAddress = new(4);
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -48,18 +42,8 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         base.AddTraceEntry(entry);
         if (_limit <= 0) return;
 
-        PooledDictionary<UInt256, UInt256>? storage = null;
-        if (_sizeStorageByAddress is not null && entry.StorageDelta is { } delta)
-        {
-            if (!_sizeStorageByAddress.TryGetValue(delta.Address, out storage))
-                _sizeStorageByAddress[delta.Address] = storage = new(4);
-            storage[delta.Key] = delta.Value;
-        }
-
-        _sizeWriter ??= new(Stream.Null, new JsonWriterOptions { SkipValidation = true });
-        _sizeWriter.Reset();
-        GethLikeTxTraceConverter.WriteEntry(_sizeWriter, entry, storage);
-        _resultSize += _sizeWriter.BytesCommitted + _sizeWriter.BytesPending;
+        int? storageCount = entry.StorageDelta.HasValue ? ++_storageUpdates : null;
+        _resultSize += GethLikeTxTraceConverter.EstimateEntrySize(entry, storageCount);
     }
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -112,18 +96,6 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             return;
 
         CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
-    }
-
-    public override void Dispose()
-    {
-        if (_sizeStorageByAddress is not null)
-        {
-            foreach (PooledDictionary<UInt256, UInt256> storage in _sizeStorageByAddress.Values)
-                storage.Dispose();
-            _sizeStorageByAddress.Dispose();
-        }
-        _sizeWriter?.Dispose();
-        base.Dispose();
     }
 
 }
