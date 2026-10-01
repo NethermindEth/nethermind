@@ -43,8 +43,13 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         : _codeOverrides.TryGetValue(codeSource, out CodeInfo? result) ? result.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        // Code written while the call runs replaces an override there. The override's code is in the world state
+        // as well, so a revert of this write brings it back through the inner repository.
+        _codeOverrides.Remove(codeOwner);
         codeInfoRepository.InsertCode(code, codeOwner, spec);
+    }
 
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
@@ -57,8 +62,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverrides[precompileAddr] = new CodeInfo(worldState.GetCode(precompileAddr));
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    {
+        // As in InsertCode: an authorization replaces an overridden delegation.
+        _codeOverrides.Remove(authority);
         codeInfoRepository.SetDelegation(codeSource, authority, spec);
+    }
 
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>
