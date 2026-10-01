@@ -222,8 +222,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             current = Volatile.Read(ref _chainAhead);
         }
 
-        RefreshStatuses(peer => peer.HeadSlot < slot, reason);
+        RefreshStatusesBelow(slot, reason);
     }
+
+    /// <inheritdoc/>
+    public void RefreshStatusesBelow(ulong slot, string reason) => RefreshStatuses(peer => peer.HeadSlot < slot, reason);
 
     /// <summary>Asks every connected peer that is <paramref name="due"/>, has no <c>status</c> request outstanding and was not asked within <see cref="MinStatusRefreshInterval"/>; logs once when any is asked.</summary>
     /// <remarks>Runs off the caller's thread, at most <see cref="MaxConcurrentStatusRefreshes"/> requests at once; a failure only marks the peer's status stale.</remarks>

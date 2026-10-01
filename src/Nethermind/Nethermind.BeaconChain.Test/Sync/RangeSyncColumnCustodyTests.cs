@@ -327,11 +327,13 @@ public class RangeSyncColumnCustodyTests
 
     /// <summary>
     /// A later round's first missing slot can lie past every peer's last status although the batch's blocks came from those peers (phase0/p2p-interface.md Status),
-    /// so its custodians are sought among the peers reaching the batch start, as the blocks were; otherwise the column is never asked for and the block waits on it.
+    /// so when no custodian's status reaches that slot one reaching the batch start is asked, as the blocks were; otherwise the column is never asked for.
+    /// A custodian whose status reaches the slot is still asked first: one behind it may answer the range empty, which by-range allows, and waste the round.
     /// </summary>
-    [Test]
+    [TestCase(false, TestName = "A later round asks a custodian whose status reaches the batch start when none reaches the slot missing a column")]
+    [TestCase(true, TestName = "A later round asks a custodian whose status reaches the slot missing a column before one reaching only the batch start")]
     [CancelAfter(30_000)]
-    public async Task A_later_round_asks_a_custodian_whose_status_reaches_the_batch_start_but_not_the_slot_missing_a_column(CancellationToken token)
+    public async Task A_later_round_seeks_custodians_reaching_the_missing_slot_then_the_batch_start(bool custodianReachingTheSlot, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
         BeaconBlock first = fixture.Chain.Block.Message!;
@@ -347,19 +349,23 @@ public class RangeSyncColumnCustodyTests
             }
         }
 
+        Func<ulong, ulong, ulong[], DataColumnSidecar[]> serveSecond = (_, _, columns) => [.. columns.Select(c => secondColumns[(int)c])];
         StubPeer blockSource = new("blocks", second.Message!.Slot, (_, _) => blocks, custody: PeerColumnCustody.None);
-        // Advertised, so round 0 prefers it; it leaves the column unserved and is not asked again.
+        // Advertised and listed first, so round 0 prefers it; it leaves the column unserved and is not asked again.
         StubPeer unserving = new("unserving", second.Message.Slot, (_, _) => blocks, static (_, _, _) => [], custody: StubPeer.AllColumns);
-        StubPeer stale = new("stale", first.Slot, (_, _) => blocks, (_, _, columns) => [.. columns.Select(c => secondColumns[(int)c])], custody: new PeerColumnCustody(fixture.Sampled, isAdvertised: false));
+        // Advertised, so custody alone would rank it above the custodian reaching the slot.
+        StubPeer stale = new("stale", first.Slot, (_, _) => blocks, serveSecond, custody: new PeerColumnCustody(fixture.Sampled, isAdvertised: true));
+        StubPeer reaching = new("reaching", second.Message.Slot, (_, _) => blocks, serveSecond, custody: new PeerColumnCustody(fixture.Sampled, isAdvertised: false));
+        IBeaconSyncPeer[] peers = custodianReachingTheSlot ? [blockSource, unserving, stale, reaching] : [blockSource, unserving, stale];
 
-        await foreach (ForkedSignedBeaconBlock _ in fixture.CreateRangeSync([blockSource, unserving, stale]).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Message.Slot, token))
+        await foreach (ForkedSignedBeaconBlock _ in fixture.CreateRangeSync(peers).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Message.Slot, token))
         {
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(unserving.ColumnRequests, Is.EqualTo(1), "fixture: round 0 asked the advertised custodian");
-            Assert.That(stale.ColumnRequests, Is.EqualTo(1));
+            Assert.That(unserving.ColumnRequests, Is.EqualTo(1), "fixture: round 0 asked the advertised custodian listed first");
+            Assert.That((stale.ColumnRequests, reaching.ColumnRequests), Is.EqualTo(custodianReachingTheSlot ? (0, 1) : (1, 0)));
             Assert.That(fixture.SidecarPool.TryGet(secondRoot, lackingColumn, out _), Is.True);
         }
     }
