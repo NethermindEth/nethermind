@@ -206,8 +206,12 @@ public class NetworkEntryFuzzTests
             {
                 Topic = topic,
                 Data = ByteString.CopyFrom(data),
-                Signature = signed ? ByteString.CopyFrom([1]) : ByteString.Empty,
             };
+            if (signed)
+            {
+                message.Signature = ByteString.CopyFrom([1]);
+            }
+
             long invalidSszBefore = InvalidSszDrops();
             long unknownTopicBefore = router.GetDropCount(GossipDropReason.UnknownTopic);
             MessageValidity validity = validator.Verify(message);
@@ -284,7 +288,7 @@ public class NetworkEntryFuzzTests
             e.Message.Payload!.SlotNumber = WallSlot;
             e.Message.ExecutionRequests = new ExecutionRequestsGloas();
         })[0];
-        Message message = new() { Topic = Topic(GloasDigest, GossipTopics.ExecutionPayload), Data = ByteString.CopyFrom(Snappy.CompressToArray(envelope)), Signature = ByteString.Empty };
+        Message message = new() { Topic = Topic(GloasDigest, GossipTopics.ExecutionPayload), Data = ByteString.CopyFrom(Snappy.CompressToArray(envelope)) };
 
         Assert.That(validator.Verify(message), Is.EqualTo(MessageValidity.Rejected));
         Assert.That(blocks.FaultedReads, Is.GreaterThan(0), "the validator read the faulting block");
@@ -297,8 +301,8 @@ public class NetworkEntryFuzzTests
         (GossipMessageValidator validator, _, _) = CreateValidator();
         string topic = Topic(GloasDigest, GossipTopics.BeaconBlock);
         byte[] bomb = [0x80, 0x80, 0x80, 0x05, 0x00];
-        Message message = new() { Topic = topic, Data = ByteString.CopyFrom(bomb), Signature = ByteString.Empty };
-        validator.Verify(new Message { Topic = topic, Data = ByteString.CopyFrom([0x01, 0x00]), Signature = ByteString.Empty });
+        Message message = new() { Topic = topic, Data = ByteString.CopyFrom(bomb) };
+        validator.Verify(new Message { Topic = topic, Data = ByteString.CopyFrom([0x01, 0x00]) });
         Eth2MessageId.Compute(topic, [0x01, 0x00]);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
