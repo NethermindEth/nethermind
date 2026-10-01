@@ -34,6 +34,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -128,6 +129,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
         // Every wait this request takes comes out of one budget, taken here.
+        NewPayloadTrace.Stamp(NewPayloadTrace.HandleStart);
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
         using ExecutionPayloadPreparation preparation = new(request);
@@ -144,6 +146,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         Block block = decodingResult.Data;
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
+        NewPayloadTrace.Stamp(NewPayloadTrace.Decoded);
+        NewPayloadTrace.SetBlock((long)block.Number);
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
@@ -748,7 +752,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
 
+            NewPayloadTrace.Stamp(NewPayloadTrace.PreSuggest);
             AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask().TimeoutOn(timeoutTask);
+            NewPayloadTrace.Stamp(NewPayloadTrace.Suggested);
 
             // A payload sent again while its first copy is between verdict and removal is known, and marked processed
             // only part way through that window. Queued again before the copy is gone it would be skipped as not
@@ -810,6 +816,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
                 _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
+                NewPayloadTrace.Stamp(NewPayloadTrace.HandlerResumed);
             }
             else
             {
@@ -867,6 +874,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         try
         {
+            NewPayloadTrace.Stamp(NewPayloadTrace.EnqueueStart);
             ValueTask enqueue;
             using (workers.Enter()) enqueue = _processingQueue.Enqueue(block, processingOptions);
             await enqueue;
