@@ -439,7 +439,7 @@ public static class Metrics
     private static long _trieNodeLogStoredBytes;
 
     [CounterMetric]
-    [Description("Bytes written to trie node log files: records with their headers plus block headers")]
+    [Description("Bytes written to trie node log files: records with their headers")]
     public static long TrieNodeLogStoredBytes
     {
         get => Volatile.Read(ref _trieNodeLogStoredBytes);

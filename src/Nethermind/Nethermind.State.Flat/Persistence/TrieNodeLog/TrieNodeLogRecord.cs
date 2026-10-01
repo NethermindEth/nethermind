@@ -11,8 +11,8 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// <c>u8 type | u8 column | u8 keyLength | u32 valueLength | u64 version | u64 prev | key | value</c>.
 /// </summary>
 /// <remarks>
-/// <see cref="Prev"/> is the <see cref="PackLocation">packed location</see> of the block holding the previous record of
-/// the same key (0 when none), which lets a reader walk back to the version it needs. A commit record has no key or value and
+/// <see cref="Prev"/> is the <see cref="PackLocation">packed location</see> of the previous record of the same key
+/// (0 when none), which lets a reader walk back to the version it needs. A commit record has no key or value and
 /// stores <c>~version</c> in <see cref="Prev"/> so a torn (zero-filled) tail cannot pass as a commit.
 /// </remarks>
 internal readonly record struct TrieNodeLogRecord(byte Type, byte Column, int KeyLength, int ValueLength, ulong Version, ulong Prev)
@@ -20,8 +20,6 @@ internal readonly record struct TrieNodeLogRecord(byte Type, byte Column, int Ke
     public const byte Put = 0;
     public const byte Delete = 1;
     public const byte Commit = 2;
-    /// <summary>A put or delete overwritten by a later record of the same key in the same block; readers and merges skip it.</summary>
-    public const byte Superseded = 3;
 
     public const int HeaderLength = 1 + 1 + 1 + 4 + 8 + 8;
     public const int MaxKeyLength = byte.MaxValue;
@@ -59,7 +57,7 @@ internal readonly record struct TrieNodeLogRecord(byte Type, byte Column, int Ke
     /// <summary>Whether the header can be a record written by this log (a zero-filled tail fails this).</summary>
     public bool IsPlausible => Type switch
     {
-        Put or Superseded => KeyLength > 0 && ValueLength >= 0,
+        Put => KeyLength > 0 && ValueLength >= 0,
         Delete => KeyLength > 0 && ValueLength == 0,
         Commit => IsValidCommit,
         _ => false,

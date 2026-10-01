@@ -364,29 +364,6 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public void Blocks_round_trip()
-    {
-        byte[] raw = Value(3, TrieNodeLogBlock.Size);
-        byte[] stored = new byte[TrieNodeLogBlock.MaxStoredLength];
-        byte[] decoded = new byte[TrieNodeLogBlock.Size];
-
-        foreach (byte[] payload in new[] { raw, raw[..100] })
-        {
-            int written = TrieNodeLogBlock.Write(stored, payload);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(written, Is.EqualTo(TrieNodeLogBlock.HeaderLength + payload.Length));
-                Assert.That(TrieNodeLogBlock.StoredLength(stored), Is.EqualTo(written));
-                Assert.That(TrieNodeLogBlock.Read(stored.AsSpan(0, written), decoded), Is.EqualTo(payload.Length));
-                Assert.That(decoded.AsSpan(0, payload.Length).ToArray(), Is.EqualTo(payload));
-                Assert.That(TrieNodeLogBlock.Read(stored.AsSpan(0, written - 1), decoded), Is.EqualTo(-1), "a truncated block does not read");
-            }
-        }
-
-        Assert.That(TrieNodeLogBlock.Read(new byte[TrieNodeLogBlock.MaxStoredLength], decoded), Is.EqualTo(-1), "a zero-filled tail is not a block");
-    }
-
-    [Test]
     public void Only_one_log_backed_batch_may_be_open()
     {
         using IPersistence.IWriteBatch open = Batch(0, 1);
