@@ -4,12 +4,19 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Multiformats.Address;
+using Multiformats.Address.Protocols;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Core.Dto;
+using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.Pubsub;
 
@@ -52,19 +59,107 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     }
 }
 
+/// <summary>Resolves a DNS host name to its addresses of <paramref name="family"/>.</summary>
+public delegate Task<IPAddress[]> HostResolver(string host, AddressFamily family, CancellationToken token);
+
 /// <summary>Creates peers that run identify on every new session and push it when their listen addresses change.</summary>
-public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings, PeerStore peerStore, IdentifyNotifier identifyNotifier, ILoggerFactory? loggerFactory = null)
+/// <param name="resolveHost">Resolves DNS names in dialed addresses; the system resolver when null.</param>
+public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings, PeerStore peerStore, IdentifyNotifier identifyNotifier, ILoggerFactory? loggerFactory = null,
+    HostResolver? resolveHost = null)
     : PeerFactory(protocolStackSettings, peerStore, loggerFactory: loggerFactory)
 {
     public override ILocalPeer Create(Identity? identity = null) =>
-        new IdentifyingPeer(identity ?? new Identity(privateKey: null, KeyType.Secp256K1), PeerStore, protocolStackSettings, identifyNotifier, LoggerFactory);
+        new IdentifyingPeer(identity ?? new Identity(privateKey: null, KeyType.Secp256K1), PeerStore, protocolStackSettings, identifyNotifier, LoggerFactory,
+            resolveHost ?? (static (host, family, token) => Dns.GetHostAddressesAsync(host, family, token)));
 
-    private sealed class IdentifyingPeer : LocalPeer
+    /// <remarks>A dial through <see cref="ILocalPeer"/> reaches the library only with resolved TCP addresses of one peer id: Nethermind.Libp2p 1.0.0
+    /// keeps a dial that fails before its first await as the pending dial of that peer id for good, and a failed DNS lookup, an address of a
+    /// transport this stack lacks, or addresses of several peer ids fail that way. Any peer can announce such addresses for any peer id
+    /// through pubsub peer discovery.</remarks>
+    private sealed class IdentifyingPeer : LocalPeer, ILocalPeer
     {
-        public IdentifyingPeer(Identity identity, PeerStore peerStore, IProtocolStackSettings settings, IdentifyNotifier notifier, ILoggerFactory? loggerFactory)
-            : base(identity, peerStore, settings, loggerFactory: loggerFactory) => notifier.TrackChanges(this);
+        private readonly HostResolver _resolveHost;
+
+        public IdentifyingPeer(Identity identity, PeerStore peerStore, IProtocolStackSettings settings, IdentifyNotifier notifier, ILoggerFactory? loggerFactory,
+            HostResolver resolveHost)
+            : base(identity, peerStore, settings, loggerFactory: loggerFactory)
+        {
+            _resolveHost = resolveHost;
+            notifier.TrackChanges(this);
+        }
 
         protected override Task ConnectedTo(ISession session, bool isDialer) => session.DialAsync<IdentifyProtocol>();
+
+        Task<ISession> ILocalPeer.DialAsync(Multiaddress addr, CancellationToken token) => DialTcpAsync([addr], token);
+
+        Task<ISession> ILocalPeer.DialAsync(Multiaddress[] samePeerAddrs, CancellationToken token) => DialTcpAsync(samePeerAddrs, token);
+
+        Task<ISession> ILocalPeer.DialAsync(PeerId peerId, CancellationToken token) =>
+            _peerStore?.GetPeerInfo(peerId).Addrs is { Count: > 0 } addrs ? DialTcpAsync([.. addrs], token) : DialAsync(peerId, token);
+
+        private async Task<ISession> DialTcpAsync(Multiaddress[] addrs, CancellationToken token)
+        {
+            PeerId? peerId = addrs.FirstOrDefault()?.GetPeerId();
+            if (peerId is null || addrs.Any(addr => addr.GetPeerId() != peerId))
+            {
+                throw new Libp2pException("A dial needs addresses of one peer id");
+            }
+
+            if (Sessions.FirstOrDefault(session => session.State.RemotePeerId == peerId) is { } existing)
+            {
+                return existing;
+            }
+
+            List<Multiaddress> tcp = [];
+            foreach (Multiaddress addr in addrs)
+            {
+                foreach (Multiaddress resolved in await ResolveAsync(addr, token))
+                {
+                    if (resolved.Has<TCP>() && (resolved.Has<IP4>() || resolved.Has<IP6>()) && !resolved.Has<WebSocket>() && !resolved.Has<WebSocketSecure>())
+                    {
+                        tcp.Add(resolved);
+                    }
+                }
+            }
+
+            if (tcp.Count == 0)
+            {
+                throw new Libp2pException($"No TCP address to dial {peerId}");
+            }
+
+            return await DialAsync([.. tcp], token);
+        }
+
+        // A name that does not resolve leaves the other addresses of the peer to dial.
+        private async Task<Multiaddress[]> ResolveAsync(Multiaddress addr, CancellationToken token)
+        {
+            try
+            {
+                if (addr.Has<DNS4>())
+                {
+                    IPAddress[] ips = await _resolveHost(addr.Get<DNS4>().ToString(), AddressFamily.InterNetwork, token);
+                    return [.. ips.Select(ip => addr.Clone().Replace<DNS4, IP4>(ip))];
+                }
+
+                if (addr.Has<DNS6>())
+                {
+                    IPAddress[] ips = await _resolveHost(addr.Get<DNS6>().ToString(), AddressFamily.InterNetworkV6, token);
+                    return [.. ips.Select(ip => addr.Clone().Replace<DNS6, IP6>(ip))];
+                }
+
+                if (addr.Has<DNS>())
+                {
+                    IPAddress[] ips = await _resolveHost(addr.Get<DNS>().ToString(), AddressFamily.Unspecified, token);
+                    return [.. ips.Select(ip => ip.AddressFamily == AddressFamily.InterNetworkV6 ? addr.Clone().Replace<DNS, IP6>(ip) : addr.Clone().Replace<DNS, IP4>(ip))];
+                }
+
+                return [addr];
+            }
+            catch (SocketException)
+            {
+                return [];
+            }
+        }
     }
 }
 
