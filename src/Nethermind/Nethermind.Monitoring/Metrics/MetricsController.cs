@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.Metrics;
@@ -120,6 +121,9 @@ namespace Nethermind.Monitoring.Metrics
 
         public class SummaryMetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
         {
+            // Stable labels only: any other labels can be a new instance per call, which a reference-keyed cache would hoard.
+            private readonly ConcurrentDictionary<IMetricLabels, Summary.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -127,7 +131,13 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    if (!_stableChildren.TryGetValue(labels, out Summary.Child? child))
+                        child = _stableChildren.GetOrAdd(labels, static (l, s) => s.WithLabels(l.Labels), summary);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     summary.WithLabels(labels.Labels).Observe(value);
                 }
@@ -140,6 +150,9 @@ namespace Nethermind.Monitoring.Metrics
 
         public class HistogramMetricUpdater(Histogram histogram) : IMetricUpdater, IMetricObserver
         {
+            // Stable labels only: any other labels can be a new instance per call, which a reference-keyed cache would hoard.
+            private readonly ConcurrentDictionary<IMetricLabels, Histogram.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -147,7 +160,14 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    // Resolving the child hashes every label string; the prewarmer observes on every state read.
+                    if (!_stableChildren.TryGetValue(labels, out Histogram.Child? child))
+                        child = _stableChildren.GetOrAdd(labels, static (l, h) => h.WithLabels(l.Labels), histogram);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     histogram.WithLabels(labels.Labels).Observe(value);
                 }
