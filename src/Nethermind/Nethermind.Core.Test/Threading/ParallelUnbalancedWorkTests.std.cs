@@ -13,6 +13,9 @@ namespace Nethermind.Core.Test.Threading;
 
 public partial class ParallelUnbalancedWorkTests
 {
+    private const string BoundedPoolChildArgument = "--nethermind-bounded-parallel-pool";
+    private const int BoundedPoolWorkerCount = 4;
+
     [Test]
     public void Worker_scope_assisting_restores_the_callers_scope([Values] bool nested, [Values] bool throws)
     {
@@ -334,74 +337,81 @@ public partial class ParallelUnbalancedWorkTests
     public async Task For_returns_without_a_free_pool_thread_once_the_caller_claims_the_range()
     {
         if (Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires queued workers.");
-        const string childMarker = "NETHERMIND_TEST_BOUNDED_PARALLEL_POOL";
-        string? variant = Environment.GetEnvironmentVariable(childMarker);
-        if (variant is not ("plain" or "local"))
+        foreach (string childVariant in new[] { "plain", "local" })
         {
-            foreach (string childVariant in new[] { "plain", "local" })
+            ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
             {
-                ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
-                {
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false
-                };
-                start.ArgumentList.Add(typeof(ParallelUnbalancedWorkTests).Assembly.Location);
-                start.ArgumentList.Add("--filter");
-                start.ArgumentList.Add($"FullyQualifiedName~{nameof(For_returns_without_a_free_pool_thread_once_the_caller_claims_the_range)}");
-                start.Environment[childMarker] = childVariant;
-                using Process child = new() { StartInfo = start };
-                Assert.That(child.Start(), Is.True);
-                Task<string> output = child.StandardOutput.ReadToEndAsync();
-                Task<string> error = child.StandardError.ReadToEndAsync();
-                using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
-                try
-                {
-                    await child.WaitForExitAsync(timeout.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    child.Kill(entireProcessTree: true);
-                    await child.WaitForExitAsync();
-                    Assert.Fail($"The bounded-pool test did not return.\n{await output}\n{await error}");
-                }
-                Assert.That(child.ExitCode, Is.Zero, $"{childVariant}: {await output}\n{await error}");
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            start.ArgumentList.Add(typeof(ParallelUnbalancedWorkTests).Assembly.Location);
+            start.ArgumentList.Add(BoundedPoolChildArgument);
+            start.ArgumentList.Add(childVariant);
+            using Process child = new() { StartInfo = start };
+            Assert.That(child.Start(), Is.True);
+            Task<string> output = child.StandardOutput.ReadToEndAsync();
+            Task<string> error = child.StandardError.ReadToEndAsync();
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+            try
+            {
+                await child.WaitForExitAsync(timeout.Token);
             }
-            return;
+            catch (OperationCanceledException)
+            {
+                child.Kill(entireProcessTree: true);
+                await child.WaitForExitAsync();
+                Assert.Fail($"The bounded-pool test did not return.\n{await output}\n{await error}");
+            }
+            Assert.That(child.ExitCode, Is.Zero, $"{childVariant}: {await output}\n{await error}");
         }
-
-        // Pool limits belong to the child process so other tests retain their scheduling environment.
-        ThreadPool.GetMaxThreads(out _, out int completionPortThreads);
-        Assert.That(ThreadPool.SetMinThreads(1, 1), Is.True);
-        Assert.That(ThreadPool.SetMaxThreads(4, completionPortThreads), Is.True);
-        Assert.That(ThreadPool.SetMinThreads(4, 1), Is.True);
-        // The runner also occupies pool threads while it waits for this test to return.
-        ThreadPool.GetAvailableThreads(out int blockers, out _);
-        Assert.That(blockers, Is.GreaterThan(0));
-        RunWithOccupiedPool(withLocal: variant == "local", blockers);
     }
 
-    private static void RunWithOccupiedPool(bool withLocal, int blockers)
+    private static Task<int> Main(string[] args)
+    {
+        if (args is not [BoundedPoolChildArgument, string variant] || variant is not ("plain" or "local"))
+            return MicrosoftTestingPlatformEntryPoint.Main(args);
+
+        // Run before the test host starts so all bounded pool slots can be held by confirmed blockers.
+        try
+        {
+            Assert.That(Thread.CurrentThread.IsThreadPoolThread, Is.False);
+            ThreadPool.GetMaxThreads(out _, out int completionPortThreads);
+            Assert.That(ThreadPool.SetMinThreads(1, 1), Is.True);
+            Assert.That(ThreadPool.SetMaxThreads(BoundedPoolWorkerCount, completionPortThreads), Is.True);
+            Assert.That(ThreadPool.SetMinThreads(BoundedPoolWorkerCount, 1), Is.True);
+            RunWithOccupiedPool(withLocal: variant == "local");
+            return Task.FromResult(0);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(exception);
+            return Task.FromResult(1);
+        }
+    }
+
+    private static void RunWithOccupiedPool(bool withLocal)
     {
         using ManualResetEventSlim release = new();
-        using CountdownEvent occupied = new(blockers);
-        using CountdownEvent finished = new(blockers);
+        using CountdownEvent occupied = new(BoundedPoolWorkerCount);
+        using CountdownEvent finished = new(BoundedPoolWorkerCount);
 
         int[] calls = new int[64];
         int inits = 0;
         try
         {
-            for (int i = 0; i < blockers; i++)
+            for (int i = 0; i < BoundedPoolWorkerCount; i++)
+            {
                 ThreadPool.UnsafeQueueUserWorkItem(_ =>
                 {
                     occupied.Signal();
                     release.Wait();
                     finished.Signal();
                 }, 0, preferLocal: false);
-            Assert.That(occupied.Wait(TimeSpan.FromSeconds(10)), Is.True, "Every pool worker must enter its blocker before the loop starts.");
-            ThreadPool.GetAvailableThreads(out int available, out _);
-            Assert.That(available, Is.Zero);
-            ParallelOptions options = new() { MaxDegreeOfParallelism = 4 };
+            }
+            Assert.That(occupied.Wait(TimeSpan.FromSeconds(10)), Is.True, $"All {BoundedPoolWorkerCount} pool workers must enter their blockers before the loop starts.");
+            Console.WriteLine("All bounded-pool workers entered.");
+            ParallelOptions options = new() { MaxDegreeOfParallelism = BoundedPoolWorkerCount };
             if (withLocal)
             {
                 ParallelUnbalancedWork.For(0, calls.Length, options, () =>
