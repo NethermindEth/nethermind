@@ -1398,6 +1398,7 @@ public class BlockImporterTests
         Assert.Multiple(() =>
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.None), "a slot not after the parent's is invalid data, whatever the finalized slot");
             Assert.That(failed.Contains(root), Is.EqualTo(recorded));
         });
     }
@@ -1435,6 +1436,7 @@ public class BlockImporterTests
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
             Assert.That(warnings.Warnings, Has.Some.Contains("does not descend from the finalized checkpoint"), "fixture: refused for its ancestry");
+            Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "descent from this node's finalized checkpoint says nothing of the block's data");
             Assert.That(failed.Contains(child.Root), Is.True);
         });
     }
@@ -1466,6 +1468,7 @@ public class BlockImporterTests
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
             Assert.That(warnings.Warnings, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
+            Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "on_block refused it against this node's own store");
             Assert.That(failed.Contains(child.Root), Is.EqualTo(recorded));
         });
     }
@@ -1536,6 +1539,7 @@ public class BlockImporterTests
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
             Assert.That(warnings.Warnings, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
+            Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "on_block refused it against this node's own store");
             Assert.That(failed.Contains(child.Root), Is.True);
         });
     }

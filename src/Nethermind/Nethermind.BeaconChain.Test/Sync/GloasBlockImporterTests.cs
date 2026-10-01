@@ -805,6 +805,7 @@ public class GloasBlockImporterTests
             Gossip(siblings[1].Forked, siblings[1].Root),
             Gossip(siblings[2].Forked, siblings[2].Root),
         ];
+        ImportRefusal spentRefusal = importer.LastRefusal;
         timestamper.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
         BlockImportResult nextSlot = Gossip(siblings[2].Forked, siblings[2].Root);
 
@@ -818,6 +819,7 @@ public class GloasBlockImporterTests
                 BlockImportResult.UnknownParent,
             }));
             Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(spentRefusal, Is.EqualTo(ImportRefusal.RegenerationBudget));
         }
     }
 
@@ -890,6 +892,12 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block gossip = chain.Next(blocks[6], 3 * ForkSlot + 6, full: false, 0xF6);
 
         BlockImportResult[] sameSlot = [.. fetched.Select(f => importer.ImportRequested(f.Forked, f.Root, fetchedByRoot: true))];
+        ImportRefusal budgetRefusal = importer.LastRefusal;
+        // A proposer with no cached key is refused before any budget, and no later slot changes that.
+        BeaconBlockGloas keyless = chain.Next(blocks[7], 3 * ForkSlot + 7, full: false, 0xF7).Signed.Message!;
+        keyless.ProposerIndex = 1UL << 40;
+        BlockImportResult keylessResult = importer.ImportRequested(new ForkedSignedBeaconBlock.OfGloas(new SignedBeaconBlockGloas { Message = keyless }), SszRoots.HashTreeRoot(keyless), fetchedByRoot: true);
+        ImportRefusal keylessRefusal = importer.LastRefusal;
         BlockImportResult gossipResult = importer.Import(gossip.Forked, gossip.Root, verifySignatures: true);
         timestamper.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
         BlockImportResult nextSlot = importer.ImportRequested(fetched[2].Forked, fetched[2].Root, fetchedByRoot: true);
@@ -904,6 +912,8 @@ public class GloasBlockImporterTests
                 BlockImportResult.UnknownParent,
                 BlockImportResult.UnknownParent,
             }));
+            Assert.That(budgetRefusal, Is.EqualTo(ImportRefusal.RegenerationBudget));
+            Assert.That((keylessResult, keylessRefusal), Is.EqualTo((BlockImportResult.UnknownParent, ImportRefusal.None)));
             Assert.That(gossipResult, Is.EqualTo(BlockImportResult.Imported), "the gossip budget is apart");
             Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
         }
@@ -1096,6 +1106,8 @@ public class GloasBlockImporterTests
         }
 
         Assert.That(importer.Import(held.Forked, SszRoots.HashTreeRoot(message), verifySignatures: true), Is.EqualTo(expected));
+        Assert.That(importer.LastRefusal == ImportRefusal.LocalAdmission, Is.EqualTo(proposal is HeldProposal.FromTheFuture),
+            "the on_block checks against this node's store are told apart from a forged proposal and from a slot not after the parent's");
     }
 
     /// <summary>
@@ -1356,6 +1368,8 @@ public class GloasBlockImporterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(importer.LastRefusal, Is.EqualTo(assertion == OnBlockAssertion.AfterParentSlot ? ImportRefusal.None : ImportRefusal.LocalAdmission),
+                "a refusal by this node's own store says nothing of the block's data, while a slot not after the parent's is invalid data");
             Assert.That(logger.LogList, Has.One.Contains("before its state transition"));
             Assert.That(importer.IsKnown(root), Is.False);
         }
