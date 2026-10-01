@@ -1637,7 +1637,7 @@ public partial class BlockProcessorTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
-                    Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(code));
+                    Assert.That(stateProvider.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(code));
                 }
             });
     }
@@ -1924,12 +1924,12 @@ public partial class BlockProcessorTests
         Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
+        Assert.That(stateProvider.GetCode(predeploy).ToArray(), Is.EqualTo(code));
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         if (!spec.IsEip8250Enabled)
         {
             // An unrelated predeploy must stay absent: only what the spec activates is installed.
-            Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress), Is.Empty);
+            Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress).ToArray(), Is.Empty);
         }
 
         GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(predeploy);
@@ -1954,7 +1954,7 @@ public partial class BlockProcessorTests
         Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
+        Assert.That(stateProvider.GetCode(predeploy).ToArray(), Is.EqualTo(code));
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
             "a re-install must not churn state or the BAL once the code is already present");
@@ -3389,6 +3389,33 @@ public partial class BlockProcessorTests
             LimboLogs.Instance);
 
         return new(block, stateHeaderProvider.Parent!, balManager, handler, executor, branchProcessor, container);
+    }
+
+    [Test]
+    public void Parallel_validation_shares_and_restores_worker_budget([Range(0, 2)] int budget)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable stateScope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        ConcurrentBag<int> observedBudgets = [];
+        ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
+        adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(call =>
+        {
+            observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0);
+            call.Arg<Transaction>().BlockGasUsed = 21_000;
+            call.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, 21_000, [], []);
+            return TransactionResult.Ok;
+        });
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = CreateParallelValidationExecutor(stateProvider, adapter);
+        using ParallelUnbalancedWork.WorkerScope? outer = budget == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(budget);
+
+        ProcessParallelValidationBlock(executor, 8);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observedBudgets, Has.Count.EqualTo(8));
+            Assert.That(observedBudgets, Is.All.EqualTo(budget == 0 ? Environment.ProcessorCount : budget));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer));
+        }
     }
 
     [Test]

@@ -154,6 +154,43 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
 
+        [TestCase(5)]
+        [TestCase(0, TestName = "Empty code")]
+        public void Executable_code_memory_executes_without_a_copy(int length)
+        {
+            // Storage reads code straight into this memory, so first execution must not copy it a second time.
+            ReadOnlyMemory<byte> code = ExecutableCodeMemory.Allocate(length, out Span<byte> destination);
+            destination.Fill(0x5b);
+            CodeInfo codeInfo = new(code);
+
+            ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
+            ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(execution.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(padding.ToArray(), Is.All.EqualTo(0));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(code.Span), ref MemoryMarshal.GetReference(execution)), Is.True);
+            }
+        }
+
+        [Test]
+        public void A_slice_of_executable_code_memory_is_copied()
+        {
+            // Only the whole allocation is followed by zeroed padding; a slice's next bytes are more code.
+            ReadOnlyMemory<byte> code = ExecutableCodeMemory.Allocate(4, out Span<byte> destination);
+            destination.Fill(0x60);
+            CodeInfo codeInfo = new(code[..2]);
+
+            ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
+            ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(execution.ToArray(), Is.EqualTo(new byte[] { 0x60, 0x60 }));
+                Assert.That(padding.ToArray(), Is.All.EqualTo(0));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(code.Span), ref MemoryMarshal.GetReference(execution)), Is.False);
+            }
+        }
+
         [Test]
         public void Retains_a_whole_array_without_boxing()
         {
