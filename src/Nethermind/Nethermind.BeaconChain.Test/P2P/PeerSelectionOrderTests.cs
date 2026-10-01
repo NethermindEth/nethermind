@@ -28,12 +28,13 @@ public class PeerSelectionOrderTests
         Assert.DoesNotThrow(() => ordered = PeerManager.OrderForSelection(
             peers,
             peer => { readsPerPeer[peer]++; return peer == 0 && changed(); },
+            peer => { readsPerPeer[peer]++; return peer == 1 && changed() ? 1 : 0; },
             peer => { readsPerPeer[peer]++; return heads[peer]; }));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ordered, Is.EquivalentTo(peers));
-            Assert.That(readsPerPeer, Has.All.EqualTo(2), "one reading of the cooldown and one of the head slot per peer");
+            Assert.That(readsPerPeer, Has.All.EqualTo(3), "one reading of the cooldown, one of the requests in flight and one of the head slot per peer");
         }
     }
 
@@ -43,8 +44,21 @@ public class PeerSelectionOrderTests
         int[] peers = [0, 1, 2, 3, 4];
         ulong[] heads = [500, 40, 30, 20, 10];
 
-        int[] ordered = PeerManager.OrderForSelection(peers, static peer => peer is 0 or 2, peer => heads[peer]);
+        int[] ordered = PeerManager.OrderForSelection(peers, static peer => peer is 0 or 2, static _ => 0, peer => heads[peer]);
 
         Assert.That(ordered, Is.EqualTo(new List<int> { 1, 3, 4, 0, 2 }));
+    }
+
+    // Held blocks start their column fetches together, so a fetch that took the best peers must leave the next one the idle custodians.
+    [Test]
+    public void Among_peers_not_in_cooldown_the_one_with_fewer_requests_in_flight_comes_first_whatever_its_head_slot()
+    {
+        int[] peers = [0, 1, 2, 3, 4];
+        ulong[] heads = [500, 40, 30, 20, 10];
+        int[] inFlight = [2, 0, 1, 0, 0];
+
+        int[] ordered = PeerManager.OrderForSelection(peers, static peer => peer is 4, peer => inFlight[peer], peer => heads[peer]);
+
+        Assert.That(ordered, Is.EqualTo(new List<int> { 1, 3, 2, 0, 4 }), "idle by head slot, then busier, and a peer in cooldown last even when idle");
     }
 }

@@ -33,15 +33,19 @@ public sealed class DataColumnSidecarsByRootProtocol(BeaconChainSpec spec, DataC
     public string Id => "/eth2/beacon_chain/req/data_column_sidecars_by_root/1/ssz_snappy";
 
     /// <exception cref="ArgumentOutOfRangeException">Too many roots, an identifier with no or too many columns, too many columns in total, or a repeated (root, column).</exception>
-    public async Task<ForkedDataColumnSidecars> DialAsync(IChannel downChannel, ISessionContext context, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]> dial) =>
-        dial.Gloas
-            ? new ForkedDataColumnSidecars([], await DialGloasAsync(downChannel, dial.Request))
-            : new ForkedDataColumnSidecars(await DialFuluAsync(downChannel, dial.Request), []);
+    public async Task<ForkedDataColumnSidecars> DialAsync(IChannel downChannel, ISessionContext context, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]> dial)
+    {
+        using RequestTiming.Exchange exchange = RequestTiming.Open(dial.Request);
+        RequestTiming? timing = exchange.Timing;
+        return dial.Gloas
+            ? new ForkedDataColumnSidecars([], await DialGloasAsync(downChannel, dial.Request, timing))
+            : new ForkedDataColumnSidecars(await DialFuluAsync(downChannel, dial.Request, timing), []);
+    }
 
-    private async Task<IReadOnlyList<DataColumnSidecar>> DialFuluAsync(IChannel downChannel, DataColumnsByRootIdentifier[] request)
+    private async Task<IReadOnlyList<DataColumnSidecar>> DialFuluAsync(IChannel downChannel, DataColumnsByRootIdentifier[] request, RequestTiming? timing)
     {
         (Stream stream, int totalRequestedColumns, Dictionary<Hash256, HashSet<ulong>> requested) = await WriteRequestAsync(downChannel, request);
-        IReadOnlyList<DataColumnSidecar> sidecars = await ReadSidecarChunksAsync(stream, totalRequestedColumns, Id);
+        IReadOnlyList<DataColumnSidecar> sidecars = await ReadSidecarChunksAsync(stream, totalRequestedColumns, Id, timing: timing);
 
         foreach (DataColumnSidecar sidecar in sidecars)
         {
@@ -51,10 +55,10 @@ public sealed class DataColumnSidecarsByRootProtocol(BeaconChainSpec spec, DataC
         return sidecars;
     }
 
-    private async Task<IReadOnlyList<DataColumnSidecarGloas>> DialGloasAsync(IChannel downChannel, DataColumnsByRootIdentifier[] request)
+    private async Task<IReadOnlyList<DataColumnSidecarGloas>> DialGloasAsync(IChannel downChannel, DataColumnsByRootIdentifier[] request, RequestTiming? timing)
     {
         (Stream stream, int totalRequestedColumns, Dictionary<Hash256, HashSet<ulong>> requested) = await WriteRequestAsync(downChannel, request);
-        IReadOnlyList<DataColumnSidecarGloas> sidecars = await ReadGloasSidecarChunksAsync(stream, totalRequestedColumns, Id);
+        IReadOnlyList<DataColumnSidecarGloas> sidecars = await ReadGloasSidecarChunksAsync(stream, totalRequestedColumns, Id, timing: timing);
 
         foreach (DataColumnSidecarGloas sidecar in sidecars)
         {
@@ -104,10 +108,7 @@ public sealed class DataColumnSidecarsByRootProtocol(BeaconChainSpec spec, DataC
         }
 
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using (CancellationTokenSource cts = StartTimeout(RespTimeout))
-        {
-            await WriteRequestAndEofAsync(downChannel, stream, DataColumnSidecarsByRootRequest.Encode(new DataColumnSidecarsByRootRequest { Identifiers = request }), cts.Token);
-        }
+        await WriteRequestAndEofAsync(downChannel, stream, DataColumnSidecarsByRootRequest.Encode(new DataColumnSidecarsByRootRequest { Identifiers = request }), RespTimeout);
 
         return (stream, (int)totalRequestedColumns, requested);
     }

@@ -334,8 +334,13 @@ public class GloasColumnReqRespTests
     {
         private const string ProtocolId = "/test/gloas-data-column-sidecars/1";
 
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> ReadGloasAsync(Stream stream, int maxSidecars) =>
-            ReadGloasSidecarChunksAsync(stream, maxSidecars, ProtocolId);
+        public async Task<IReadOnlyList<DataColumnSidecarGloas>> ReadGloasAsync(Stream response, int maxSidecars)
+        {
+            RequestTiming timing = new();
+            IReadOnlyList<DataColumnSidecarGloas> sidecars = await ReadGloasSidecarChunksAsync(response, maxSidecars, ProtocolId, timing: timing);
+            Assert.That(timing.Chunks, Is.EqualTo(sidecars.Count));
+            return sidecars;
+        }
 
         public Task<IReadOnlyList<DataColumnSidecar>> ReadFuluAsync(Stream stream, int maxSidecars) =>
             ReadSidecarChunksAsync(stream, maxSidecars, ProtocolId);

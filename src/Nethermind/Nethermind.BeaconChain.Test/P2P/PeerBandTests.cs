@@ -45,10 +45,11 @@ public class PeerBandTests
     [TestCase(typeof(TaskCanceledException), ExpectedResult = "request timed out")]
     [TestCase(typeof(OperationCanceledException), ExpectedResult = "request timed out")]
     [TestCase(typeof(TimeoutException), ExpectedResult = "request timed out")]
+    [TestCase(typeof(ReqRespTimeoutException), ExpectedResult = "timed out after 16 s waiting for the channel to open: the request budget ran out")]
     [TestCase(typeof(InvalidOperationException), ExpectedResult = "the peer sent garbage")]
     public string A_drop_names_its_cause_rather_than_the_exception_type(Type exceptionType) =>
-        PeerManager.DescribeFailure(exceptionType == typeof(InvalidOperationException)
-            ? new InvalidOperationException("the peer sent garbage")
+        PeerManager.DescribeFailure(exceptionType == typeof(InvalidOperationException) ? new InvalidOperationException("the peer sent garbage")
+            : exceptionType == typeof(ReqRespTimeoutException) ? new ReqRespTimeoutException("timed out after 16 s waiting for the channel to open: the request budget ran out")
             : (Exception)Activator.CreateInstance(exceptionType)!);
 
     [Test]

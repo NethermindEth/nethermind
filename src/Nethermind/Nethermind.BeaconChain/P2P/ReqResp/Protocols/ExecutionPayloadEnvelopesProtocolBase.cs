@@ -37,7 +37,9 @@ public abstract class ExecutionPayloadEnvelopesProtocolBase(BeaconChainSpec spec
         ForkDigest.Compute(Spec, Spec.GetEpoch(envelope.Message!.Payload!.SlotNumber));
 
     /// <param name="overallTimeout">Overrides <see cref="MaxEnvelopesResponseDuration"/>; test-only seam, production call sites omit it.</param>
-    protected async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> ReadEnvelopeChunksAsync(Stream stream, int maxEnvelopes, string protocolId, TimeSpan? overallTimeout = null)
+    /// <param name="timing">Counts the chunks read, when the request is timed.</param>
+    /// <exception cref="ReqRespTimeoutException">A bound fired, named in the message.</exception>
+    protected async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> ReadEnvelopeChunksAsync(Stream stream, int maxEnvelopes, string protocolId, TimeSpan? overallTimeout = null, RequestTiming? timing = null)
     {
         List<SignedExecutionPayloadEnvelope> envelopes = [];
         using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxEnvelopesResponseDuration);
@@ -82,13 +84,14 @@ public abstract class ExecutionPayloadEnvelopesProtocolBase(BeaconChainSpec spec
                 }
 
                 envelopes.Add(envelope);
+                timing?.ChunkRead();
                 cts.CancelAfter(RespTimeout);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException e) when (cts.IsCancellationRequested)
         {
             RecordFailure(protocolId, ReqRespFailureReason.Timeout);
-            throw;
+            throw timeout.Expired(envelopes.Count, e);
         }
 
         return envelopes;
