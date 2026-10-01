@@ -848,8 +848,8 @@ public sealed class ForkChoiceRunner
 
         ShufflingKey? key = GetShufflingKey(target);
         ForkedBeaconState? targetState = HeldVoteState(target, key);
-        if (targetState is null && aggregator is { } gossipProof)
-            targetState = GetGossipTargetState(target, data, aggregationBits, committeeBits, signature, gossipProof);
+        if (aggregator is { } gossipProof)
+            targetState = GetGossipTargetState(target, targetState, data, aggregationBits, committeeBits, signature, gossipProof);
 
         bool unheld = targetState is null;
         targetState ??= ComputeCheckpointState(target);
@@ -1590,8 +1590,9 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>
-    /// The target state a gossip aggregate is checked against when no state of its shuffling is held: the head's own target state,
-    /// or, for a target of another shuffling, <c>null</c> once the aggregate authenticated with that head state, so the caller builds its own.
+    /// The target state a gossip aggregate is checked against: <paramref name="held"/> or the head's own target state when either has the
+    /// head's shuffling, or, for a target of another shuffling, <paramref name="held"/> or <c>null</c> once the aggregate authenticated with
+    /// that head state, so the caller builds its own.
     /// </summary>
     /// <remarks>
     /// specs/phase0/fork-choice.md on_attestation reads only the committees, the signing domain and the registry size from
@@ -1600,18 +1601,20 @@ public sealed class ForkChoiceRunner
     /// comes from those committees, so the head target's state stands in for every target with the same decision block.
     /// p2p-interface.md validate_beacon_aggregate_and_proof_gossip reads the committees, the domain and the keys from
     /// <c>store.block_states[get_head(store).root]</c>, so an aggregate of another shuffling is authenticated with the head target's
-    /// state first; only then does it cost a state of its own, at most one per aggregator and <see cref="MaxOffHeadBuildsPerEpoch"/> per epoch.
+    /// state first, even when a state of its target is held; only then does it cost a state of its own, at most one per aggregator and
+    /// <see cref="MaxOffHeadBuildsPerEpoch"/> per epoch.
     /// An ancestor of the head before its decision block lacks the RANDAO reveals of the blocks up to that block, so its committees
     /// are another shuffling's and a vote for it is ignored without a build.
     /// </remarks>
     /// <exception cref="ForkChoiceException">The target is such an ancestor, the aggregate does not authenticate with the head state, or the builds for other shufflings are spent.</exception>
-    private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof)
+    /// <param name="held">A state held for the target's shuffling, which stands in for the head's only when the shuffling is the head's.</param>
+    private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, ForkedBeaconState? held, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof)
     {
         Hash256 head = _lastHeadRoot ?? GetHead();
         CheckpointRef headTarget = new(target.Epoch, GetCheckpointBlock(head, target.Epoch));
         ShufflingKey? headKey = GetShufflingKey(headTarget);
         if (target == headTarget || HasShufflingOf(head, target))
-            return HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
+            return held ?? HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
 
         if (_protoArray.IsDescendant(target.Root, head))
             throw new ForkChoiceException($"Aggregate target {target} is an ancestor of the head with another shuffling than the head's target {headTarget}");
@@ -1619,6 +1622,8 @@ public sealed class ForkChoiceRunner
         ForkedBeaconState headState = HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
         ulong[] headIndices = AttestingIndices(headState, target.Epoch, data, aggregationBits, committeeBits, signature);
         VerifyAggregator(headState, target.Epoch, data.Slot, committeeBits, proof, new IndexedVote(headIndices, data, signature));
+        if (held is not null)
+            return held;
 
         ulong epoch = _store.CurrentEpoch;
         if (epoch != _offHeadBuildEpoch)
