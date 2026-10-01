@@ -25,6 +25,37 @@ internal sealed record DependencySpec(string Path, string Role, string ExpectedS
 
 internal sealed record SourceIdentity(string Path, string Role, string Sha256);
 
+internal sealed record StageASourcePlan(
+    string Scope,
+    string ReceiptAdapterProjectionSha256,
+    string[] ExternalPremises,
+    StageAMethodPlan[] Methods);
+
+internal sealed record StageAMethodPlan(
+    string Path,
+    string Owner,
+    string Member,
+    int ParameterCount,
+    string BodySha256,
+    StageAStatementPlan[] Statements,
+    StageAOperationPlan[] Effects,
+    StageAOperationPlan[] Branches,
+    StageAOperationPlan[] Operands);
+
+internal sealed record StageAStatementPlan(
+    int Ordinal,
+    int ParentOrdinal,
+    string SyntaxKind,
+    string CanonicalSha256,
+    TypedAstNode Operation);
+
+internal sealed record StageAOperationPlan(
+    int StatementOrdinal,
+    string OperationKind,
+    string SymbolIdentity,
+    string CanonicalSha256,
+    TypedAstNode Operation);
+
 internal sealed record DependencyIdentity(string Path, string Role, string Sha256);
 
 /// <summary>One Roslyn-bound source admission node and its resolved operation/symbol identity.</summary>
@@ -200,7 +231,6 @@ internal sealed record CompletionLowering(
     bool AccessUsesCoinbase,
     bool AccessUsesRecipient,
     bool AccessUsesSender,
-    bool AccessSetDeduplicates,
     string TransferLogPayloadGrammar,
     string TransferLogAddress,
     string TransferSignature,
@@ -224,7 +254,10 @@ internal sealed record IrDocument(
     CompletionShape Completion,
     string[] ArithmeticRules,
     string[] ExternalCorrespondence,
-    string[] Exclusions);
+    string[] Exclusions,
+    SourceIdentity[] CompilerSources,
+    ReferenceIdentity[] CompilerReferences,
+    StageASourcePlan StageAPlan);
 
 internal sealed record ArtifactIdentity(string Path, string Sha256);
 
@@ -242,7 +275,10 @@ internal sealed record Manifest(
     ArtifactIdentity Ir,
     ArtifactIdentity Lean,
     string CombinedSourceSha256,
-    string SemanticIrSha256);
+    string SemanticIrSha256,
+    SourceIdentity[] CompilerSources,
+    ReferenceIdentity[] CompilerReferences,
+    string StageAPlanSha256);
 
 internal sealed record SourceFile(
     string RelativePath,

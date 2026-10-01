@@ -78,8 +78,8 @@
     { "path": "tools/Evm/Lean/SynchronousBlockPipelineMachineExtractor/Specification/MetadataMirror.lean", "role": "checked hook metadata mirror", "kind": "lean", "sha256": "8414af5df57d06690749102e5047e82e3de9d064141d7a67a78ad1f07d9e0054" }
   ],
   "compositionPins": [
-    { "artifact": "BlockSystemComposition", "path": "tools/Evm/Lean/BlockProcessorExtractor/Extractor.cs", "role": "block extractor dependency", "sha256": "bedd71f88356bf2ae2d6adb057aeeb3446b13b9b611411a8a4d71c56989d6e44", "acceptedByteIdentity": true },
-    { "artifact": "BlockSystemComposition", "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BlockProcessorControl.lean", "role": "block control projection dependency", "sha256": "16f4b7e1de21cc7676e0b9d5c3d1ac7b709d1103d9ddd83c99c4851882018512", "acceptedByteIdentity": true },
+    { "artifact": "BlockSystemComposition", "path": "tools/Evm/Lean/BlockProcessorExtractor/Extractor.cs", "role": "block extractor dependency", "sha256": "9538b683dc98d5b9b7e6efd5f9563fb4211641ec812532a06d117333485339a6", "acceptedByteIdentity": true },
+    { "artifact": "BlockSystemComposition", "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BlockProcessorControl.lean", "role": "block control projection dependency", "sha256": "e8a76c0a189d72e96c114638ca1bedbd2df3400d1a5f1e47e714874b482652da", "acceptedByteIdentity": true },
     { "artifact": "BlockSystemComposition", "path": "tools/Evm/Lean/Eip803x/BlockReference.lean", "role": "block reference dependency", "sha256": "3a3d59de2ec953e93fa73422ad6d43bb65dd6c5fe1c83d44d996340749857a9c", "acceptedByteIdentity": true },
     { "artifact": "BlockSystemComposition", "path": "tools/Evm/Lean/Eip803x/BlockSystemComposition.lean", "role": "block-system composition dependency", "sha256": "28df3ff9c31f3f2dd2b3dea236c881e910885dc2dfd8bcf511b3dbd720d8e7d2", "acceptedByteIdentity": true },
     { "artifact": "ParallelBlockReference", "path": "tools/Evm/Lean/Eip803x/BranchReference.lean", "role": "branch reference dependency", "sha256": "8a374ec233134b49044288fa5107d6f7e3c041fb23a1dabd7333e6fae4a2c969", "acceptedByteIdentity": true },

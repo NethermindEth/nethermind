@@ -5,19 +5,28 @@ param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../../../..')),
     [string]$Configuration = 'Release',
     [switch]$SkipBuild,
-    [switch]$SkipLean
+    [switch]$SkipLean,
+    [switch]$SkipCompilerMaterialization
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $package = [IO.Path]::GetFullPath($PSScriptRoot)
 $repo = [IO.Path]::GetFullPath($RepoRoot)
+$verificationManifest = Get-Content -Raw -LiteralPath (Join-Path $repo 'tools/Evm/Lean/verification-manifest.json') | ConvertFrom-Json
+$sourceRevisionId = [string] $verificationManifest.pins.nethermindCommit
+if ($verificationManifest.schemaVersion -ne 1 -or $sourceRevisionId -notmatch '^[0-9a-f]{40}$') { throw 'Invalid verification manifest Nethermind pin.' }
+$pathMapRoot = $repo.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+if ($pathMapRoot.IndexOfAny([char[]] @(',', ';', '=')) -ge 0) { throw "Repository path cannot be represented by PathMap: $pathMapRoot" }
+$deterministicBuildProperties = @(
+    "-p:SourceRevisionId=$sourceRevisionId", '-p:SourceDateEpoch=1789035784', '-p:EnableSourceLink=false',
+    '-p:EmbedUntrackedSources=false', '-p:ContinuousIntegrationBuild=false', '-p:BuildingInsideVisualStudio=false', '-p:Deterministic=true',
+    '-p:DeterministicSourcePaths=true', "-p:PathMap=$pathMapRoot=/_/"
+)
 $project = Join-Path $package 'OrdinaryTransactionRefundAdapterExtractor.csproj'
 $tests = Join-Path $package 'Test/OrdinaryTransactionRefundAdapterExtractor.Test.csproj'
 $previousEpoch = $env:SOURCE_DATE_EPOCH
 $previousNodeReuse = $env:MSBUILDDISABLENODEREUSE
-$env:SOURCE_DATE_EPOCH = '1789035784'
-$env:MSBUILDDISABLENODEREUSE = '1'
 
 function Invoke-RefundChecked([string]$Command, [string[]]$Arguments) {
     & $Command @Arguments
@@ -89,9 +98,15 @@ function Test-RefundArtifactSchemas {
 }
 
 try {
+    $env:SOURCE_DATE_EPOCH = '1789035784'
+    $env:MSBUILDDISABLENODEREUSE = '1'
     if (-not $SkipBuild) {
-        Invoke-RefundChecked dotnet @('build', $project, '-c', $Configuration, '-p:SaveDiskSpace=true', '-warnaserror', '-nr:false', '-m:1')
-        Invoke-RefundChecked dotnet @('build', $tests, '-c', $Configuration, '-p:SaveDiskSpace=true', '-warnaserror', '-nr:false', '-m:1')
+        if (-not $SkipCompilerMaterialization) {
+            Invoke-RefundChecked dotnet (@('build', (Join-Path $repo 'tools/Evm/Evm.csproj'), '-c', $Configuration,
+                '-p:SaveDiskSpace=true', '-warnaserror', '-nr:false', '-m:1') + $deterministicBuildProperties)
+        }
+        Invoke-RefundChecked dotnet (@('build', $project, '-c', $Configuration, '-p:SaveDiskSpace=true', '-warnaserror', '-nr:false', '-m:1') + $deterministicBuildProperties)
+        Invoke-RefundChecked dotnet (@('build', $tests, '-c', $Configuration, '-p:SaveDiskSpace=true', '-warnaserror', '-nr:false', '-m:1') + $deterministicBuildProperties)
     }
     Invoke-RefundChecked dotnet @('run', '--project', $project, '-c', $Configuration, '--no-build', '--', '--check', $repo)
     if (-not $SkipBuild) {

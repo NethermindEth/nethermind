@@ -11,8 +11,8 @@ namespace Nethermind.Evm.Lean.BlockProcessorExtractor;
 
 internal static partial class BranchAcceptedIterationExtractor
 {
-    private const string InventoryHash = "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c";
-    private const string InventoryAggregate = "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2";
+    private const string InventoryHash = "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3";
+    private const string InventoryAggregate = "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553";
     private const string PromotionPins = Package + "/BRANCH_PROMOTION_PINS.json";
     internal sealed record Reference(string Path, string AssemblyName, string Sha256, string Mvid, bool Selected);
     internal sealed record CompilerClosure(int SchemaVersion, Identity Inventory, int Count, int SelectedCount,

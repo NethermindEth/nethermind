@@ -6,7 +6,7 @@
 namespace SequentialBlockPostTransactionFinalizationExtractor.Generated.ProcessOneValidatedPublication
 
 def acceptanceState : String := "source-admitted"
-def semanticIrSha256 : String := "201d8d2e6163d3a75b439cebf0e5fa7754792c3ba63de70b246939bc9d4cad3a"
+def semanticIrSha256 : String := "82a471fbd85dad8fb9d64265e73b6b461fa8c2a12459fcc6144205eaa0bfcc13"
 def sourceClosureSha256 : String := "c4f8fe9960f5d8205b0a89fd4ecaeb9df06c790c23f02680d253d3bd4b28bc85"
 
 structure SourceSite where

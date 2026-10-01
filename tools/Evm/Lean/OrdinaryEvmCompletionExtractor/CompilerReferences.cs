@@ -13,10 +13,12 @@ namespace Nethermind.Evm.Lean.OrdinaryEvmCompletionExtractor;
 
 internal static class CompilerReferences
 {
+    internal const string SourceDateEpoch = "1789035784";
     internal const string InventoryPath = SourceAdmission.UpstreamPackagePath + "/Admission/COMPILER_REFERENCE_PINS.json";
-    internal const string InventorySha256 = "751d3ffff1427c2d751c8baaa023220cc847d88c839ec41792800f1c9fe57796";
+    internal const string InventorySha256 = "b36eeb0db516d68842159d34b9b9b730e83460e385de87dc35110db9a756b84c";
     internal static readonly JsonSerializerOptions JsonOptions = new()
     {
+        NewLine = "\n",
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         RespectRequiredConstructorParameters = true,
@@ -74,6 +76,13 @@ internal static class CompilerReferences
 
     private static Dictionary<string, string> ResolveBuildInputs(string root, SourceAdmission.SourcePins pins)
     {
+        string canonicalRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (canonicalRoot.IndexOfAny([',', ';', '=']) >= 0)
+        {
+            throw new AdmissionException($"The repository path cannot be represented by PathMap: {canonicalRoot}.");
+        }
+        string sourceRevisionId = ReadSourceRevisionId(root);
+        string pathMap = canonicalRoot + "=/_/";
         ProcessStartInfo start = new("dotnet")
         {
             WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true,
@@ -81,13 +90,25 @@ internal static class CompilerReferences
         };
         start.Environment["SOURCE_DATE_EPOCH"] = "1789035784";
         start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        start.Environment["SourceRevisionId"] = sourceRevisionId;
+        start.Environment["SourceDateEpoch"] = SourceDateEpoch;
+        start.Environment["EnableSourceLink"] = "false";
+        start.Environment["EmbedUntrackedSources"] = "false";
+        start.Environment["ContinuousIntegrationBuild"] = "false";
+        start.Environment["BuildingInsideVisualStudio"] = "false";
+        start.Environment["Deterministic"] = "true";
+        start.Environment["DeterministicSourcePaths"] = "true";
+        start.Environment["PathMap"] = pathMap;
         foreach (string argument in new[]
         {
             "msbuild", "src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj",
             "-t:ResolveReferences;GenerateAssemblyInfo;GenerateTargetFrameworkMonikerAttribute;GenerateGlobalUsings",
             "-p:Configuration=Release", "-p:SaveDiskSpace=true", "-p:EnableZkEvm=false", "-p:BuildProjectReferences=false",
+            $"-p:SourceRevisionId={sourceRevisionId}", $"-p:SourceDateEpoch={SourceDateEpoch}",
+            "-p:EnableSourceLink=false", "-p:EmbedUntrackedSources=false", "-p:ContinuousIntegrationBuild=false", "-p:BuildingInsideVisualStudio=false",
+            "-p:Deterministic=true", "-p:DeterministicSourcePaths=true", $"-p:PathMap={pathMap}",
             "-getItem:ReferencePath,Compile",
-            "-getProperty:DefineConstants,AssemblyName,TargetFramework,LangVersion,AllowUnsafeBlocks,CheckForOverflowUnderflow,Nullable,NuGetPackageRoot,NetCoreTargetingPackRoot",
+            "-getProperty:DefineConstants,AssemblyName,TargetFramework,LangVersion,AllowUnsafeBlocks,CheckForOverflowUnderflow,Nullable,NuGetPackageRoot,NetCoreTargetingPackRoot,SourceRevisionId,SourceDateEpoch,EnableSourceLink,EmbedUntrackedSources,ContinuousIntegrationBuild,BuildingInsideVisualStudio,Deterministic,DeterministicSourcePaths,PathMap",
             "-nr:false", "-m:1",
         }) start.ArgumentList.Add(argument);
         using Process process = Process.Start(start) ?? throw new AdmissionException("Cannot resolve real EVM compiler inputs.");
@@ -101,6 +122,10 @@ internal static class CompilerReferences
         string Property(string name) => properties.GetProperty(name).GetString() ?? throw new AdmissionException("Null compiler property: " + name);
         if (Property("AssemblyName") != pins.AssemblyName || Property("TargetFramework") != "net10.0" || Property("LangVersion") != "14.0" ||
             Property("AllowUnsafeBlocks") != "true" || Property("CheckForOverflowUnderflow") != "false" || Property("Nullable") != "enable" ||
+            Property("SourceRevisionId") != sourceRevisionId || Property("SourceDateEpoch") != SourceDateEpoch ||
+            Property("EnableSourceLink") != "false" || Property("EmbedUntrackedSources") != "false" ||
+            Property("ContinuousIntegrationBuild") != "false" || Property("BuildingInsideVisualStudio") != "false" || Property("Deterministic") != "true" ||
+            Property("DeterministicSourcePaths") != "true" || Property("PathMap") != pathMap ||
             !Property("DefineConstants").Split(';').SequenceEqual(pins.DefineConstants, StringComparer.Ordinal))
         {
             throw new AdmissionException("The real EVM compilation properties changed.");
@@ -128,6 +153,19 @@ internal static class CompilerReferences
             if (!paths.TryAdd(identity, path)) throw new AdmissionException("Duplicate resolved compiler reference identity.");
         }
         return paths;
+    }
+
+    private static string ReadSourceRevisionId(string root)
+    {
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllBytes(Within(root, "tools/Evm/Lean/verification-manifest.json")));
+        JsonElement document = manifest.RootElement;
+        string? revision = document.GetProperty("pins").GetProperty("nethermindCommit").GetString();
+        if (document.GetProperty("schemaVersion").GetInt32() != 1 || revision is null || revision.Length != 40 ||
+            revision.Any(static character => character is not (>= '0' and <= '9') and not (>= 'a' and <= 'f')))
+        {
+            throw new AdmissionException("The verification manifest has an invalid Nethermind commit pin.");
+        }
+        return revision;
     }
 
     internal static string Within(string root, string relative)

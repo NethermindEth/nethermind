@@ -8,17 +8,6 @@ namespace SimpleTransferCompletionExtractor.Refinement
 
 open SimpleTransferCompletionExtractor.Generated
 
-def handoffIdentity : String := "OrdinaryPostNonceDispatchExtractor.SimpleHandoff"
-def settlementIdentity : String := "Eip803x.Generated.TransactionSettlementKernel.calculate"
-def stateChargeIdentity : String := "Eip803x.Generated.StateGasChargeKernel.tryCharge"
-def receiptBoundary : String := "receipt-continuation-input-only"
-
-def sourceIdentityCoherent : Prop :=
-  handoffIdentity = "OrdinaryPostNonceDispatchExtractor.SimpleHandoff" ∧
-    settlementIdentity = "Eip803x.Generated.TransactionSettlementKernel.calculate" ∧
-    stateChargeIdentity = "Eip803x.Generated.StateGasChargeKernel.tryCharge" ∧
-    receiptBoundary = "receipt-continuation-input-only"
-
 def fitsUInt64 (value : Nat) : Prop := value ≤ Eip803x.Generated.StateGasChargeKernel.uint64Max
 
 def uint256Max : Nat := 2 ^ 256 - 1
@@ -1641,9 +1630,6 @@ theorem gas_after_stage_bridge (input : CompletionInput) (h : AdapterCoherent in
       simpa [mapInput, Generated.sameAddress] using hGuard
     simpa [charge, hReference, Generated.clearExecutionGas, Reference.clearExecution,
       mapStateCharge] using (gas_state_bridge input).symm
-
-theorem source_identity_bridge : sourceIdentityCoherent := by
-  simp [sourceIdentityCoherent, handoffIdentity, settlementIdentity, stateChargeIdentity, receiptBoundary]
 
 theorem append_write_value (write : Bool) (value : Nat)
     (subtract add : Reference.JournalEvent) :

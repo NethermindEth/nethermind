@@ -9,8 +9,8 @@ namespace F
 export BlockProcessorExtractor.Generated.NormalFiniteBranchCompletion (Input Result run suggested containsFlag)
 end F
 def acceptanceState : String := "source-admitted"
-def sourceClosureSha256 : String := "24d85c0b6c0a42dc1c950ff8056e0f87f81103b9c59c61ebfb14dfc5118b80e6"
-def semanticIrSha256 : String := "38e3e21037eac7ac664e4aadf74d17111baf99ff4184ed78fa6984907b076d43"
+def sourceClosureSha256 : String := "1d71e1b80d8c8b6e7db1810fa10f71248479d1f9af3c61ffa777270117528562"
+def semanticIrSha256 : String := "1021965fb513138eed5f199da3ec297cad289d4709bb0a869024ec6169e41b38"
 
 inductive Site where
   | stop | stats | head | mark | metrics | disposeBlocks | disposeInputs

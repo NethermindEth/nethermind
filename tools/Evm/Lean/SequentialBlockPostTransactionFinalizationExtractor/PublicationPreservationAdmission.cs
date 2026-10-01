@@ -29,8 +29,8 @@ internal static partial class ProcessOneValidatedPublicationExtractor
     private static void ValidatePublicationCompilerClosure(CompilerClosureIdentity closure)
     {
         if (closure is null || closure.InventoryPath != "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json" ||
-            closure.Count != 434 || closure.AggregateSha256 != "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2" ||
-            closure.InventorySha256 != "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c" ||
+            closure.Count != 434 || closure.AggregateSha256 != "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553" ||
+            closure.InventorySha256 != "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3" ||
             closure.SupportSources is null || !closure.SupportSources.SequenceEqual(Extractor.CompilerSupportSources))
             throw new ExtractionException("Publication compiler-reference/support closure changed.");
     }

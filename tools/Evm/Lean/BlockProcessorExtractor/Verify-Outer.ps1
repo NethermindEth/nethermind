@@ -6,7 +6,8 @@ param(
     [string]$Configuration = "Release",
     [ValidateSet("finite", "publication", "all")][string]$Slice = "finite",
     [switch]$SkipBuild,
-    [switch]$SkipLean
+    [switch]$SkipLean,
+    [switch]$SkipCompilerMaterialization
 )
 
 Set-StrictMode -Version Latest
@@ -14,10 +15,18 @@ $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 $previousEpoch = $env:SOURCE_DATE_EPOCH
 $previousNodeReuse = $env:MSBUILDDISABLENODEREUSE
-$env:SOURCE_DATE_EPOCH = "1789035784"
-$env:MSBUILDDISABLENODEREUSE = "1"
 $package = [IO.Path]::GetFullPath($PSScriptRoot)
 $repo = [IO.Path]::GetFullPath($RepoRoot)
+$verificationManifest = Get-Content -Raw -LiteralPath (Join-Path $repo 'tools/Evm/Lean/verification-manifest.json') | ConvertFrom-Json
+$sourceRevisionId = [string] $verificationManifest.pins.nethermindCommit
+if ($verificationManifest.schemaVersion -ne 1 -or $sourceRevisionId -notmatch '^[0-9a-f]{40}$') { throw 'Invalid verification manifest Nethermind pin.' }
+$pathMapRoot = $repo.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+if ($pathMapRoot.IndexOfAny([char[]] @(',', ';', '=')) -ge 0) { throw "Repository path cannot be represented by PathMap: $pathMapRoot" }
+$deterministicBuildProperties = @(
+    "-p:SourceRevisionId=$sourceRevisionId", '-p:SourceDateEpoch=1789035784', '-p:EnableSourceLink=false',
+    '-p:EmbedUntrackedSources=false', '-p:ContinuousIntegrationBuild=false', '-p:BuildingInsideVisualStudio=false', '-p:Deterministic=true',
+    '-p:DeterministicSourcePaths=true', "-p:PathMap=$pathMapRoot=/_/"
+)
 $project = Join-Path $package "BlockProcessorExtractor.csproj"
 $tests = Join-Path $package "Test/BlockProcessorExtractor.Test.csproj"
 $modes = if ($Slice -eq "all") { @("finite", "publication") } else { @($Slice) }
@@ -110,9 +119,18 @@ function Test-OuterSchemas([string]$Mode) {
 }
 
 try {
+    $env:SOURCE_DATE_EPOCH = "1789035784"
+    $env:MSBUILDDISABLENODEREUSE = "1"
     if (-not $SkipBuild) {
-        Invoke-OuterChecked dotnet @("build", $project, "-c", $Configuration, "-p:SaveDiskSpace=true", "-warnaserror", "-nr:false", "-m:1")
-        Invoke-OuterChecked dotnet @("build", $tests, "-c", $Configuration, "-p:SaveDiskSpace=true", "-warnaserror", "-nr:false", "-m:1")
+        if (-not $SkipCompilerMaterialization) {
+            foreach ($compilerProject in @('src/Nethermind/Nethermind.Init/Nethermind.Init.csproj', 'tools/Evm/Evm.csproj',
+                'src/Nethermind/Nethermind.Network.Enr.Test/Nethermind.Network.Enr.Test.csproj')) {
+                Invoke-OuterChecked dotnet (@('build', (Join-Path $repo $compilerProject), '-c', $Configuration,
+                    '-p:SaveDiskSpace=true', '-warnaserror', '-nr:false', '-m:1') + $deterministicBuildProperties)
+            }
+        }
+        Invoke-OuterChecked dotnet (@("build", $project, "-c", $Configuration, "-p:SaveDiskSpace=true", "-warnaserror", "-nr:false", "-m:1") + $deterministicBuildProperties)
+        Invoke-OuterChecked dotnet (@("build", $tests, "-c", $Configuration, "-p:SaveDiskSpace=true", "-warnaserror", "-nr:false", "-m:1") + $deterministicBuildProperties)
         $filter = if ($Slice -eq "all") { "FullyQualifiedName~OuterBlockTests" } else {
             "(FullyQualifiedName~OuterBlockTests)&(TestCategory=OuterShared|TestCategory=$($names[$Slice]))"
         }

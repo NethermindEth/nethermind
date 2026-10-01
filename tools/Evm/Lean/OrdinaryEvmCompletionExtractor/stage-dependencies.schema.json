@@ -145,7 +145,7 @@
         },
         {
           "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.lean",
-          "sha256": "471e789607e8a294c6deb2148291578a185c77d970360e16e1fa0958f3987930",
+          "sha256": "1b85964c03014b3d9b2033514dbfc256ed18fdeb60bde26e3301bd5720366bb6",
           "role": "lean-stage-dependency"
         },
         {
@@ -210,7 +210,7 @@
         },
         {
           "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.lean",
-          "sha256": "b7b21ec284183b073ff1a3f603471b156c07624de3270bc63189b7f7d6600f23",
+          "sha256": "367d0e3b71860d2bdb572cc0e9e7fd1951e02625b64200650e35e5085ca7b059",
           "role": "lean-stage-dependency"
         },
         {

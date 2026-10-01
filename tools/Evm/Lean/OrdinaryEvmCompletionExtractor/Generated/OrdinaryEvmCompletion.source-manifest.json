@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "extractorVersion": "1.0.0",
   "acceptanceState": "accepted-conditional-source-audited-refinement",
-  "sourceClosure": "50d54c1db38d1045465503a3fc40faee3642f0fbd390f68339843f864b4ad148",
+  "sourceClosure": "cac28c7e9fa55dcf355c7fbea5c3ca38e109ec4514904152bbaadee696cfa7ee",
   "dependencies": [
     {
       "path": "Directory.Build.props",
@@ -322,17 +322,17 @@
     {
       "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.ir.json",
       "role": "pinned-boundary-or-stage",
-      "sha256": "e0f24be598e3bf88505fe6b5550e5c46dd504c9e69115e3c7a18f95a5bdc5a7e"
+      "sha256": "540fb20a5677d01a7d6cf8ddcf11f715490d63dc0f1e7f209fc8c0bea0393f6c"
     },
     {
       "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.lean",
       "role": "pinned-boundary-or-stage",
-      "sha256": "471e789607e8a294c6deb2148291578a185c77d970360e16e1fa0958f3987930"
+      "sha256": "1b85964c03014b3d9b2033514dbfc256ed18fdeb60bde26e3301bd5720366bb6"
     },
     {
       "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.source-manifest.json",
       "role": "pinned-boundary-or-stage",
-      "sha256": "b3f88923311ec963d40768bf34f22a0e15ca6807a12ade85a846d2815eafb9c1"
+      "sha256": "a7b2fcefc85d9e1135f460aff0b02a3999fb9813d49a72ef61fc3f24802ec445"
     },
     {
       "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/IMPORTED_THEOREMS.txt",
@@ -372,17 +372,17 @@
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Admission/REVIEWED_BINDINGS.json",
       "role": "candidate-tool-or-proof",
-      "sha256": "71794b8c220e0b645f7a373d6a35c9b8ea2434b192cb1bac6f36769226d2c4db"
+      "sha256": "14d560460ede1f7b50c6e712af659482454cb011834fed3d945e22d237a3ca39"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Artifacts.cs",
       "role": "candidate-tool-or-proof",
-      "sha256": "79018da2996a82e39d8402abffe7db68fa6be570c2399994837b2d232211f880"
+      "sha256": "473671c189c1e1341a92706f536ac6b7f424d9ab800c21e88bedd40eb1cd3dcb"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/CompilerReferences.cs",
       "role": "candidate-tool-or-proof",
-      "sha256": "df2751c9b3adbddd1760feab6f3eff799285e55427456c51ee948604f287cb32"
+      "sha256": "8a3a8470bcd67d0851e63362425df7ad771491cf453edb84b6394c0d07681a6c"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/CompletionKernel.lean.template",
@@ -437,17 +437,17 @@
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Schema/ordinary-evm-completion.ir.schema.json",
       "role": "candidate-tool-or-proof",
-      "sha256": "55bf93f8e739a0d6b82303c520aae77fb568692ef876378b3f0f2601f7fbec6c"
+      "sha256": "a6ed4a8164166afdc7d5c519e6e7b5627ae90be36e7f7dc47658fa1dc6d7b5e9"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Schema/ordinary-evm-completion.source-manifest.schema.json",
       "role": "candidate-tool-or-proof",
-      "sha256": "20313bcf7c765b31f22a6acacdf49bb18922e471f766ef2059ab5dd3fa824ff2"
+      "sha256": "38569df1970399028d1306f16f714fc2a841d1890219f5d324a96d03a7859f9c"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/SemanticBindings.cs",
       "role": "candidate-tool-or-proof",
-      "sha256": "934703c9e31d4fb2f81d1327b09fa93bcad0405b7237e81200b5617d6203c9b5"
+      "sha256": "06b7f4dcbde79c50bfb75edec8a8e214df4e44f8d058cf611d7f41c6757918c3"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/SourceAdmission.cs",
@@ -482,7 +482,7 @@
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-Candidate.ps1",
       "role": "candidate-tool-or-proof",
-      "sha256": "1ee7e67a117abe7d9b94e544703f768661ca74e064a4e51f3683c80cfeb4e56e"
+      "sha256": "38b4261c82c602bb29c187eae0ecce16e2e5ae10a40f2d036b8c0dd709ac7ce4"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-CandidateSchemas.ps1",
@@ -532,22 +532,22 @@
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/stage-dependencies.json",
       "role": "candidate-tool-or-proof",
-      "sha256": "319528119ff5797ad1cfb16fec0731b2d03cb08c47ba20cc52329bcfea1dc142"
+      "sha256": "4b1c7cf355df9b1655d2a3219e6dd8362d3533caa73bad427dedbcbfb46f69bb"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/stage-dependencies.schema.json",
       "role": "candidate-tool-or-proof",
-      "sha256": "80d58de2c0b6e7eb43b13a7e03eea80729c95f1f969b1db1b1155971675677b1"
+      "sha256": "9b7fa903cdf3d4c08a4cafb096aee977b1609529e510c4b1db59c15e5ca07382"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/upstream-artifacts.json",
       "role": "candidate-tool-or-proof",
-      "sha256": "b0e4dfb571456a1edb6e588610f5ad697aa533db4b2aa936936bd9aa1b27b9f1"
+      "sha256": "cfb2531e7487f75c3363f1377ed9dd1d4f98a1c20c3a8dced0fc0589b566db8a"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/upstream-artifacts.schema.json",
       "role": "candidate-tool-or-proof",
-      "sha256": "79019ac63a2b803a927a001d1a6741eee9c2b021fe7f7b78e89e09b206a801e6"
+      "sha256": "4cb3e6af29447d8b5d23525b76111215e44f86ae72197135f81c0cc20588404b"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Generated/OrdinaryPostNonceDispatch.lean",
@@ -572,7 +572,7 @@
     {
       "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Admission/COMPILER_REFERENCE_PINS.json",
       "role": "accepted-compiler-input",
-      "sha256": "751d3ffff1427c2d751c8baaa023220cc847d88c839ec41792800f1c9fe57796"
+      "sha256": "b36eeb0db516d68842159d34b9b9b730e83460e385de87dc35110db9a756b84c"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Admission/SOURCE_PINS.json",
@@ -587,17 +587,17 @@
     {
       "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.ir.json",
       "role": "pinned-boundary-or-stage",
-      "sha256": "53f6a24671a917e2675a1a45eb1b49e812b91283fc1c78bf49014f2ad08a1666"
+      "sha256": "b198837b7f2aaddd2f3d7c8653532d7a0ebc58dfd9566e6d7459121a0c051527"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.lean",
       "role": "pinned-boundary-or-stage",
-      "sha256": "b7b21ec284183b073ff1a3f603471b156c07624de3270bc63189b7f7d6600f23"
+      "sha256": "367d0e3b71860d2bdb572cc0e9e7fd1951e02625b64200650e35e5085ca7b059"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.source-manifest.json",
       "role": "pinned-boundary-or-stage",
-      "sha256": "527ee805b9be85e57898863fd618fa1ede84862a0cd78ef02083c37ed88278bb"
+      "sha256": "a0dd398a94994b65c3ea6bc59b6d62cd77958025208c423237e14a44d1ce30a1"
     },
     {
       "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Refinement/OrdinaryTransactionRefund.lean",
@@ -637,7 +637,7 @@
     {
       "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json",
       "role": "pinned-boundary-or-stage",
-      "sha256": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e"
+      "sha256": "c1637a38190eb1fdd74b8d0fccaa52f7151d9e8dfc657c5844b27cb8fd1afa6c"
     },
     {
       "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean",
@@ -1449,10 +1449,10 @@
   ],
   "ir": {
     "path": "OrdinaryEvmCompletion.ir.json",
-    "sha256": "7b8b6b3ae5964c1e4c0740550e7d18756473529834cdaf60027fcb3c7de81601"
+    "sha256": "c21cb971b85a24115eebe54cf5b4def18b3b6ff049752a427363b952aae02292"
   },
   "lean": {
     "path": "OrdinaryEvmCompletion.lean",
-    "sha256": "5865a04c4acb8322a3ee7dc9c3638287bec1f7a5ac74069a71562d79df13df98"
+    "sha256": "ea61c5d977ad0d9a5fa62e4a44ed834588fa6daca943da2f4e01c20b19c86e97"
   }
 }

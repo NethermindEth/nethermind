@@ -87,7 +87,7 @@ internal static class Extractor
     private const string DefaultLeanPath = "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.lean";
     private const string AdmissionClosurePath = "tools/Evm/Lean/EvmTransactionPreparationExtractor/Admission/ProductionClosure.txt";
     private const string CompilerInventoryPath = "tools/Evm/Lean/EvmTransactionPreparationExtractor/COMPILER_REFERENCE_PINS.json";
-    private const string AdmissionClosureSha256 = "dc3e652e6489ed33b922ebfd291833420ab437e42fb3b7664942746f8420780e";
+    private const string AdmissionClosureSha256 = "4b335a844f1fd7dc4edd9b3829872299ca75c08f58e78def9c2defd5131daf60";
     private const string Kernel = "Nethermind standard-mainnet Amsterdam ordinary EVM transaction preparation";
     private const string AcceptanceState = "bounded-source-extraction-and-universal-refinement-only";
     private const string BoundaryMember = "ExecuteEvmTransaction";

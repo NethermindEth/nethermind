@@ -4,7 +4,18 @@ defaultTargets = [
   "SimpleTransferCompletionExtractor.Generated.SimpleTransferCompletion",
   "SimpleTransferCompletionExtractor.Reference.SimpleTransferCompletionReference",
   "SimpleTransferCompletionExtractor.Refinement.SimpleTransferCompletionRefinement",
-  "SimpleTransferCompletionExtractor.Vectors.SimpleTransferCompletionVectors"
+  "SimpleTransferCompletionExtractor.Vectors.SimpleTransferCompletionVectors",
+  "SimpleTransferCompletionExtractor.StageB.Syntax",
+  "SimpleTransferCompletionExtractor.StageB.Generated.PrefixProgram",
+  "SimpleTransferCompletionExtractor.StageB.RuntimeSyntax",
+  "SimpleTransferCompletionExtractor.StageB.Dispatch.Generated.StandardMainnetRefundDispatch",
+  "SimpleTransferCompletionExtractor.StageB.Dispatch.Specification",
+  "SimpleTransferCompletionExtractor.StageB.Dispatch.Refinement",
+  "SimpleTransferCompletionExtractor.StageB.RefundBridge",
+  "SimpleTransferCompletionExtractor.StageB.Semantics",
+  "SimpleTransferCompletionExtractor.StageB.Admission",
+  "SimpleTransferCompletionExtractor.StageB.Vectors",
+  "SimpleTransferCompletionExtractor.StageB.Control.Refinement"
 ]
 
 # This package owns its manifest and package file. The parent Lean root is deliberately not
@@ -14,5 +25,14 @@ name = "Eip803x"
 srcDir = ".."
 
 [[lean_lib]]
+name = "OrdinaryTransactionRefundAdapterExtractor"
+srcDir = ".."
+
+[[lean_lib]]
 name = "SimpleTransferCompletionExtractor"
+srcDir = ".."
+
+[[lean_exe]]
+name = "stage-b-replay"
+root = "SimpleTransferCompletionExtractor.StageB.Replay"
 srcDir = ".."

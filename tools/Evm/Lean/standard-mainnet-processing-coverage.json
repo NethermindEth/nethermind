@@ -2116,7 +2116,7 @@
     },
     {
       "path": "tools/Evm/Lean/verification-manifest.json",
-      "sha256": "b4a1c086591ecb14845005c008093c0d61ed60e4d303fdfbc6de07394625988d"
+      "sha256": "6288de7b5e374feac655bd67fd05f178117c285c3070adfc1a46f0a8539952fc"
     }
   ],
   "checks": {

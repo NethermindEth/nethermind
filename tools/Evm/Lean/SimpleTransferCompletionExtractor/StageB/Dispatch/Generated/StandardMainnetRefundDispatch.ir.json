@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "stage-b-standard-mainnet-refund-dispatch",
+  "gasPolicy": "global::Nethermind.Evm.GasPolicy.EthereumGasPolicy",
+  "baseProcessor": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003Cglobal::Nethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+  "receivers": [
+    {
+      "kind": "ethereumTransactionProcessor",
+      "runtimeType": "global::Nethermind.Evm.TransactionProcessing.EthereumTransactionProcessor",
+      "lineage": [
+        "global::Nethermind.Evm.TransactionProcessing.EthereumTransactionProcessor",
+        "global::Nethermind.Evm.TransactionProcessing.EthereumTransactionProcessorBase",
+        "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003Cglobal::Nethermind.Evm.GasPolicy.EthereumGasPolicy\u003E"
+      ],
+      "isSealed": true,
+      "declaresRefund": false,
+      "declaresPayRefund": false,
+      "refundDeclaringType": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003Cglobal::Nethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+      "payRefundDeclaringType": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003Cglobal::Nethermind.Evm.GasPolicy.EthereumGasPolicy\u003E"
+    },
+    {
+      "kind": "balTransactionProcessor",
+      "runtimeType": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessor\u003Cglobal::Nethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+      "lineage": [
+        "global::Nethermind.Evm.TransactionProcessing.TransactionProcessor\u003Cglobal::Nethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+        "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003Cglobal::Nethermind.Evm.GasPolicy.EthereumGasPolicy\u003E"
+      ],
+      "isSealed": true,
+      "declaresRefund": false,
+      "declaresPayRefund": false,
+      "refundDeclaringType": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003Cglobal::Nethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+      "payRefundDeclaringType": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003Cglobal::Nethermind.Evm.GasPolicy.EthereumGasPolicy\u003E"
+    }
+  ],
+  "calls": [
+    {
+      "role": "executeSimpleTransferRefund",
+      "caller": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteSimpleTransfer/15",
+      "callee": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.Refund/12",
+      "receiver": "containingInstance",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "spanStart": 25624,
+      "spanLength": 159,
+      "syntaxSha256": "acd70f59fe634d9147c7f67c33c5e0a7c72520f4527624b5ca9d0bc59427a4df"
+    },
+    {
+      "role": "refundPayRefund",
+      "caller": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.Refund/12",
+      "callee": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayRefund/3",
+      "receiver": "containingInstance",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "spanStart": 89065,
+      "spanLength": 67,
+      "syntaxSha256": "fc5079a4f348d3a81b8d2a4ce897dac6f13ecdbcb9576585e2dc3ad7835a5702"
+    }
+  ],
+  "upstreams": [
+    {
+      "name": "stageBPrefix",
+      "manifest": {
+        "path": "tools/Evm/Lean/SimpleTransferCompletionExtractor/StageB/Generated/PrefixProgram.source-manifest.json",
+        "sha256": "d7eb0fedb1ed7f97e18ba030325441e05a8b27d06158aef003808a497b1030ee"
+      },
+      "artifacts": [
+        {
+          "path": "tools/Evm/Lean/SimpleTransferCompletionExtractor/StageB/Generated/PrefixProgram.ir.json",
+          "sha256": "cee63f1e8f07cbfcf8214cfd73e7c3bcbfd45053c7a4d5655a1f1355243df29c"
+        },
+        {
+          "path": "tools/Evm/Lean/SimpleTransferCompletionExtractor/StageB/Generated/PrefixProgram.lean",
+          "sha256": "8bd2416b6cb74174174af6213ffdd35460b02d42b8095a75456e1cacd9729256"
+        },
+        {
+          "path": "tools/Evm/Lean/SimpleTransferCompletionExtractor/StageB/Syntax.lean",
+          "sha256": "92a06204e71474508650eb1da52e8b11eff057d76f17ac1d9406ffad76d5a282"
+        }
+      ]
+    },
+    {
+      "name": "ordinaryRefund",
+      "manifest": {
+        "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.source-manifest.json",
+        "sha256": "a0dd398a94994b65c3ea6bc59b6d62cd77958025208c423237e14a44d1ce30a1"
+      },
+      "artifacts": [
+        {
+          "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.ir.json",
+          "sha256": "b198837b7f2aaddd2f3d7c8653532d7a0ebc58dfd9566e6d7459121a0c051527"
+        },
+        {
+          "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.lean",
+          "sha256": "367d0e3b71860d2bdb572cc0e9e7fd1951e02625b64200650e35e5085ca7b059"
+        }
+      ]
+    }
+  ],
+  "exclusions": [
+    "autofac-resolution",
+    "plugin-module-selection",
+    "host-execution",
+    "refund-return",
+    "caller-result-assignment",
+    "pay-refund-world-state-effect",
+    "stage-b-resume",
+    "system-transaction-processor",
+    "optimism-transaction-processor",
+    "taiko-transaction-processor"
+  ]
+}

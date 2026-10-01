@@ -150,7 +150,7 @@
                   "const": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.ir.json"
                 },
                 "sha256": {
-                  "const": "ebccc9751bc3f65dc577ad78e9202497b9eeb38d410ec43c0c5d8808e7a15816"
+                  "const": "5cabd18b8004f0be0408245ed1c2ce1e0c7d4e8e4bab9bf65c4ef0f5519c3f94"
                 }
               }
             }
@@ -167,7 +167,7 @@
                   "const": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.lean"
                 },
                 "sha256": {
-                  "const": "71fb06de4352ff82041687051bf3fa72968fbd351a88068ced427f9011ba7638"
+                  "const": "62d7c8b7c8500f87b308398d62f47a3a40e095c66e192bf654b09559dca13c62"
                 }
               }
             }
@@ -184,7 +184,7 @@
                   "const": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.source-manifest.json"
                 },
                 "sha256": {
-                  "const": "5de2e5fe4d00d76f944806b5bf0044226011ead1f3a1a11ee99c80653dc01463"
+                  "const": "82af4f511d8a263ddb499e2544b70d72eee2448128439fd481156475fcd9c218"
                 }
               }
             }

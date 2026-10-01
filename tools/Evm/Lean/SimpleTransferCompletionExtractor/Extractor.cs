@@ -6,7 +6,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -67,7 +66,6 @@ internal static class Extractor
     internal const string EvmObjectPoolPath = "src/Nethermind/Nethermind.Evm/EvmObjectPool.std.cs";
     internal const string LogEntryPath = "src/Nethermind/Nethermind.Core/LogEntry.cs";
     internal const string JournalCollectionPath = "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs";
-    internal const string JournalSetPath = "src/Nethermind/Nethermind.Core/Collections/JournalSet.cs";
     internal const string AccessListPath = "src/Nethermind/Nethermind.Core/Eip2930/AccessList.cs";
     internal const string GasConsumedPath =
         "src/Nethermind/Nethermind.Evm/TransactionProcessing/GasConsumed.cs";
@@ -78,6 +76,9 @@ internal static class Extractor
     internal const string ExecutionTypePath = "src/Nethermind/Nethermind.Evm/ExecutionType.cs";
     internal const string ITransactionProcessorPath =
         "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs";
+    internal const string ReceiptAdapterPath =
+        "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs";
+    private const string ReceiptAdapterSha256 = "910820a7e8bba91c30b052f5818707c46d625a2fbf12727e2aa869512120aa9e";
     internal const string SystemTransactionProcessorPath =
         "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs";
     internal const string CodeRepositoryInterfacePath = "src/Nethermind/Nethermind.Evm/ICodeInfoRepository.cs";
@@ -98,8 +99,6 @@ internal static class Extractor
     internal const string CacheCodeRepositoryPath = "src/Nethermind/Nethermind.Evm/CacheCodeInfoRepository.cs";
     internal const string VirtualMachineInterfacePath = "src/Nethermind/Nethermind.Evm/IVirtualMachine.cs";
     internal const string VirtualMachineSignaturePath = "src/Nethermind/Nethermind.Evm/VirtualMachine.cs";
-    internal const string VirtualMachineAdapterPath =
-        "tools/Evm/Lean/SimpleTransferCompletionExtractor/Admission/VirtualMachineStaticsAdapter.cs";
     internal const string VmStatePath = "src/Nethermind/Nethermind.Evm/VmState.cs";
     internal const string PartialStorageProviderPath = "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs";
     internal const string PersistentStorageProviderPath = "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs";
@@ -110,14 +109,8 @@ internal static class Extractor
     internal const string MetricsStandardPath = "src/Nethermind/Nethermind.Evm/Metrics.std.cs";
     internal const string LocalMetricsFlushStandardPath = "src/Nethermind/Nethermind.State/LocalMetricsFlush.std.cs";
 
-    // Byte-pinned dependencies are identities, not imported proof obligations. Their bytes are
-    // checked exactly, while the composition theorem below remains handwritten in this package.
-    internal const string HandoffIrPath =
-        "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Generated/OrdinaryPostNonceDispatch.ir.json";
-    internal const string HandoffManifestPath =
-        "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Generated/OrdinaryPostNonceDispatch.source-manifest.json";
-    internal const string HandoffLeanPath =
-        "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Generated/OrdinaryPostNonceDispatch.lean";
+    // Byte-pinned kernel dependencies are identities, not imported proof obligations. Their bytes
+    // are checked exactly, while the composition theorem below remains handwritten in this package.
     internal const string SettlementLeanPath = "tools/Evm/Lean/Eip803x/Generated/TransactionSettlementKernel.lean";
     internal const string SettlementRefinementPath = "tools/Evm/Lean/Eip803x/Refinement/TransactionSettlement.lean";
     internal const string StateChargeLeanPath = "tools/Evm/Lean/Eip803x/Generated/StateGasChargeKernel.lean";
@@ -125,8 +118,8 @@ internal static class Extractor
     internal const string RoutingLeanPath = "tools/Evm/Lean/Eip803x/Generated/SystemTransactionRoutingKernel.lean";
     internal const string RoutingRefinementPath = "tools/Evm/Lean/Eip803x/Refinement/SystemTransactionRouting.lean";
 
-    private const int SchemaVersion = 1;
-    private const string ExtractorVersion = "1.0.0";
+    private const int SchemaVersion = 2;
+    private const string ExtractorVersion = "2.0.0";
     private const string RoslynVersion = "5.6.0.0";
     private const string LanguageVersionText = "14.0";
     private const string Kernel = "Nethermind ordinary standard-mainnet simple-transfer completion";
@@ -135,14 +128,6 @@ internal static class Extractor
     private const string ManifestFileName = "SimpleTransferCompletion.source-manifest.json";
     private const string DefaultLeanRelativePath =
         "tools/Evm/Lean/SimpleTransferCompletionExtractor/Generated/SimpleTransferCompletion.lean";
-    private const string ReferenceClosureRelativePath = "src/Nethermind/artifacts/bin/Nethermind.Init/release";
-    internal const string ProjectAssetsRelativePath = "src/Nethermind/artifacts/obj/Nethermind.Init/project.assets.json";
-    private const string PinnedProjectAssetsSha256 = "57104e09d1d1032fe5afd9e63d3db01602f120631e09f63f049d71c21bd84bfd";
-    private const string PinnedPackageClosureSha256 = "10df409530dac656eae1199fa97a87706da648936769643bb28c02663284c49d";
-    // The closure is selected by this source-correspondent path, never by file timestamps. This
-    // aggregate identity pins every project metadata byte used by Roslyn; any artifact replacement
-    // fails closed before a semantic model can be built.
-    private const string PinnedProjectReferenceClosureSha256 = "6843b5559ab0a212397ce21eebdb93666bc944ca94375051e92c267972030d3a";
 
     private static readonly SourceSpec[] SourceSpecs =
     [
@@ -178,7 +163,6 @@ internal static class Extractor
         new(EvmObjectPoolPath, "EVM object pool implementation", "e38caf1904887b647b11b63bfe241c184958796b9fc3f1446c456a9373daadd8"),
         new(LogEntryPath, "transfer log value type", "e57411211976798af161df83a2cc338972d5846336603004f9eecc5e862a748a"),
         new(JournalCollectionPath, "substate log collection", "5c1395b025da5a03749a5b64da804e53c6ff0a7aec4c02d30fd4b1c0e059c720"),
-        new(JournalSetPath, "substate destroy-list collection", "1ec1cff208a23cbde6f4352663061a3c3ecd517ebf1c96e789ab6ce97a150397"),
         new(AccessListPath, "transaction access-list value type", "0e40456ef7dd5b34056b92e1d81cba8b82787a6b4108772579d93bedbe710a0f"),
         new(GasConsumedPath, "gas-consumed result value type", "1dc4e78d5a17056dcb00d496136a32a899245f3a7b3e5a9eef74c4760ef68686"),
         new(StatusCodePath, "transaction status values", "e896f55406c9fc1ce99199d80bea69b87fa8891c23afef59712b87cadb971190"),
@@ -200,7 +184,6 @@ internal static class Extractor
         new(CacheCodeRepositoryPath, "cached code repository route", "498e32be24e098f1540273f9780e548b52fbbbbc8cb55fbf7b8335eb7743d0f3"),
         new(VirtualMachineInterfacePath, "virtual-machine generic contract", "330da5f31bd7aca4f4212a42c912c33cf0ac5b3def0689b7f9985cd6510aa56d"),
         new(VirtualMachineSignaturePath, "virtual-machine static signature closure", "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"),
-        new(VirtualMachineAdapterPath, "checked-in compiler-only VM adapter", "f5d7279e8e0d627277c436ab2f76d0447b47e46c05b33eb4050327b0fc480847"),
         new(PartialStorageProviderPath, "partial storage provider contract", "0ade22ba2312b9ac665ca03afa2547f6f884232f20d3a58867b2c00402daa085"),
         new(PersistentStorageProviderPath, "persistent storage provider implementation", "fd04e010e7088473b3a007f2cb8d688cf1d389f42866c60af8baa8860202683a"),
         new(PersistentStorageProviderStandardPath, "persistent storage standard implementation", "c7fd031ff5561de32af150234720b9d41d509bc2f007b8ef743cf6e28862a0d9"),
@@ -213,25 +196,13 @@ internal static class Extractor
 
     private static readonly DependencySpec[] DependencySpecs =
     [
-        new(HandoffIrPath, "byte-pinned OrdinaryPostNonceDispatchExtractor IR identity", "850ca2852786e8978f046d7b7b3999d8624108cf3e8aee04cab7baaee274432d"),
-        new(HandoffManifestPath, "byte-pinned OrdinaryPostNonceDispatchExtractor manifest identity", "df941ccbc98cbf479f1b8accfff2f2ad67fd0076f98975e0042e4bb8e1f505f3"),
-        new(HandoffLeanPath, "byte-pinned OrdinaryPostNonceDispatchExtractor generated Lean identity", "645ee68e4edf2e4d81d3e27da202a588d57b9f8ffdc883f035e3c55a0c1f475c"),
+        new(ReceiptAdapterPath, "exact Consensus receipt adapter source projection", ReceiptAdapterSha256),
         new(SettlementLeanPath, "byte-pinned generated settlement kernel identity", "21e4c3ef135618a96bd5e7d2111e0be0bb272840b7d9ca427f17ef7777e2401c"),
         new(SettlementRefinementPath, "byte-pinned settlement refinement identity", "bb34d4962f22231ae1d466dfe0302ebaa40ba07624e6f43e28f282b9700b0f25"),
         new(StateChargeLeanPath, "byte-pinned generated state-charge kernel identity", "d6a09be29c449e3f005d84cde988a619e03c4d2b0a69fcf0989f879b2fc87337"),
         new(StateChargeRefinementPath, "byte-pinned state-charge refinement identity", "4cb359f611ef04300618f9109ac89ca6b32c857c8e9e6c2305e11a0323d57ead"),
         new(RoutingLeanPath, "byte-pinned generated routing predicate identity", "8d4f20165c64a4ec0f04739b54275976aef72d3c7889e7b474823617d6fc30b3"),
         new(RoutingRefinementPath, "byte-pinned routing refinement identity", "c72acd94a1d8c1fe62101330213fca9c2cd65595f306c13c96b19fc89b951937"),
-        new(ProjectAssetsRelativePath, "pinned Nethermind.Init compile-assets closure", PinnedProjectAssetsSha256),
-    ];
-
-    private static readonly PackageMetadataSpec[] PackageMetadataSpecs =
-    [
-        new("Autofac", "9.3.1", "lib/net10.0/Autofac.dll", "86c2e93f89f6790b705c95d064e57586ad12864bf4169d8ffc2aceacbc17c569"),
-        new("Autofac.Extensions.DependencyInjection", "11.0.2", "lib/net10.0/Autofac.Extensions.DependencyInjection.dll", "2e2068946736a779cd990b46601731275952fd66e50ad1ad538a68310631bcb9"),
-        new("Microsoft.Extensions.ObjectPool", "10.0.12", "lib/net10.0/Microsoft.Extensions.ObjectPool.dll", "634cca4d69263df34f856a45d6f0eea0fbd82929ba410718254bdbdb03e12b70"),
-        new("Microsoft.Extensions.DependencyInjection.Abstractions", "10.0.12", "lib/net10.0/Microsoft.Extensions.DependencyInjection.Abstractions.dll", "da04edc338d5aa0f38a1f5fa5ff3ee7e36affe9c961daf3ea724a428bd746bc6"),
-        new("Microsoft.Extensions.DependencyInjection", "10.0.12", "lib/net10.0/Microsoft.Extensions.DependencyInjection.dll", "2d0e268bf76b4ce36a55ebb2767354db956c6660de65d6cccfc35c957fb12cfc"),
     ];
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -242,6 +213,7 @@ internal static class Extractor
         RespectRequiredConstructorParameters = true,
         MaxDepth = 1024,
         WriteIndented = true,
+        NewLine = "\n",
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false) },
     };
@@ -251,89 +223,118 @@ internal static class Extractor
         .WithDocumentationMode(DocumentationMode.Parse)
         .WithKind(SourceCodeKind.Regular);
 
-    private static readonly HashSet<string> ProcessorSemanticSourcePaths =
+    private static readonly HashSet<SyntaxKind> ForbiddenNodeKinds =
     [
-        TransactionProcessorPath,
-        ExecutionOptionsPath,
-        RoutingKernelPath,
-        ITransactionProcessorPath,
-        SystemTransactionProcessorPath,
-        DispatchFlagsStandardPath,
-        MetricsPath,
-        MetricsStandardPath,
-        TransactionSubstatePath,
-        SettlementKernelPath,
-        VirtualMachineInterfacePath,
-    ];
-
-    private static readonly HashSet<string> CodeInfoSemanticSourcePaths =
-    [
-        CodeInfoPath,
-        JumpDestinationAnalyzerPath,
-        JumpDestinationAnalyzerStandardPath,
-    ];
-
-    private static readonly HashSet<string> CodeRepositorySemanticSourcePaths =
-    [
-        CodeRepositoryPath,
-        CacheCodeRepositoryPath,
-        MetricsPath,
-        MetricsStandardPath,
-    ];
-
-    private static readonly HashSet<string> GasPolicySemanticSourcePaths =
-    [
-        GasPolicyInterfacePath,
-        EthereumGasPolicyPath,
-        IntrinsicGasCalculatorPath,
-        AccountAccessPricingKernelPath,
-        PrecompileGasPricingKernelPath,
-        SStorePricingKernelPath,
-        StateGasChargeKernelPath,
-        StateGasTransitionAdapterKernelPath,
-        StateGasTransitionKernelPath,
-        TransactionGasInitializationKernelPath,
-    ];
-
-    private static readonly HashSet<string> WorldStateSemanticSourcePaths =
-    [
-        WorldStatePath,
-        StateProviderPath,
-        PartialStorageProviderPath,
-        PersistentStorageProviderPath,
-        PersistentStorageProviderStandardPath,
-        TransientStorageProviderPath,
-        LocalMetricsFlushStandardPath,
-        ChangeTypePath,
-    ];
-
-    private static readonly HashSet<string> AccessSemanticSourcePaths =
-    [
-        StackAccessTrackerPath,
-        EvmObjectPoolPath,
-    ];
-
-    private static readonly string[] ForbiddenNodeKinds =
-    [
-        nameof(WhileStatementSyntax),
-        nameof(DoStatementSyntax),
-        nameof(ForStatementSyntax),
-        nameof(ForEachStatementSyntax),
-        nameof(SwitchStatementSyntax),
-        nameof(TryStatementSyntax),
-        nameof(GotoStatementSyntax),
-        nameof(YieldStatementSyntax),
+        SyntaxKind.WhileStatement,
+        SyntaxKind.DoStatement,
+        SyntaxKind.ForStatement,
+        SyntaxKind.ForEachStatement,
+        SyntaxKind.ForEachVariableStatement,
+        SyntaxKind.SwitchStatement,
+        SyntaxKind.TryStatement,
+        SyntaxKind.GotoStatement,
+        SyntaxKind.YieldReturnStatement,
+        SyntaxKind.YieldBreakStatement,
     ];
 
     internal static ExtractionResult Extract(string repoRoot, string outputDirectory, string? leanOutputPath = null) =>
         ExtractCore(repoRoot, outputDirectory, leanOutputPath, requirePinnedSources: true, write: true);
 
+    internal static ExtractionResult ExtractPinnedSourcesForTest(
+        string repoRoot, string outputDirectory, string leanOutputPath, IReadOnlyDictionary<string, string> overrides) =>
+        ExtractCore(repoRoot, outputDirectory, leanOutputPath, requirePinnedSources: true, write: true, overrides);
+
     /// <summary>Extracts a test fixture while allowing a deliberately mutated production source.</summary>
     internal static ExtractionResult ExtractWithoutPinnedSourcesForTest(
         string repoRoot,
         string outputDirectory,
-        string? leanOutputPath = null) =>
-        ExtractCore(repoRoot, outputDirectory, leanOutputPath, requirePinnedSources: false, write: true);
+        string? leanOutputPath = null,
+        IReadOnlyDictionary<string, string>? overrides = null) =>
+        ExtractCore(repoRoot, outputDirectory, leanOutputPath, requirePinnedSources: false, write: true, overrides);
+
+    internal static void RequireSemanticCompilationForTest(string repoRoot, IReadOnlyDictionary<string, string>? overrides = null)
+    {
+        string root = Path.GetFullPath(repoRoot);
+        ValidateOverrideKeys(root, overrides);
+        _ = LoadCompilerClosure(root, ReadSources(root, overrides), overrides);
+    }
+
+    internal static StageASourcePlan RequireStageASourcePlanForTest(
+        string repoRoot, IReadOnlyDictionary<string, string>? overrides = null)
+    {
+        string root = Path.GetFullPath(repoRoot);
+        ValidateOverrideKeys(root, overrides);
+        string adapterHash = ValidateReceiptAdapterProjection(root);
+        CompilerClosure accepted = CompilerSources.Load(root);
+        StageAMethodPlan[] expected = LowerStageAMethods(accepted);
+        CompilerClosure candidate = overrides is null ? accepted : CompilerSources.Load(root, overrides);
+        StageAMethodPlan[] actual = overrides is null ? expected : LowerStageAMethods(candidate);
+        if (expected.Length != actual.Length)
+            throw new ExtractionException("Stage-A source plan method roster changed.");
+        for (int index = 0; index < actual.Length; index++)
+        {
+            StageAMethodPlan source = expected[index];
+            StageAMethodPlan plan = actual[index];
+            if (source.Path != plan.Path || source.Owner != plan.Owner || source.Member != plan.Member ||
+                source.ParameterCount != plan.ParameterCount || source.BodySha256 != plan.BodySha256 ||
+                !StageAStatementLedger(source.Statements).SequenceEqual(StageAStatementLedger(plan.Statements)) ||
+                !StageAOperationLedger(source.Effects).SequenceEqual(StageAOperationLedger(plan.Effects)) ||
+                !StageAOperationLedger(source.Branches).SequenceEqual(StageAOperationLedger(plan.Branches)) ||
+                !StageAOperationLedger(source.Operands).SequenceEqual(StageAOperationLedger(plan.Operands)))
+                throw new ExtractionException($"Stage-A typed source plan changed: {plan.Owner}.{plan.Member}/{plan.ParameterCount}.");
+        }
+        return new StageASourcePlan(
+            "standard-mainnet sequential Commit, no restore, tracing-state=false, simple-recipient, post-successful-nonce",
+            adapterHash,
+            [
+                "Consensus receipt adapter exact source projection; runtime selection and normal-return hooks are external premises",
+                "receipt adapter passes receiptsTracer itself to Execute after StartNewTxTrace",
+                "ITransactionProcessorExtensions.Execute passes exact ExecutionOptions.Commit",
+                "Process/ExecuteCore excludes the system processor for the selected ordinary transaction",
+                "tracer.IsTracingState=false; no pre-execution commit request on the selected simple-recipient path",
+                "the selected AuthorizationList-null route has a zero intrinsic state baseline; its prefix provenance remains an explicit obligation",
+            ],
+            actual);
+    }
+
+    internal static void RequireMissingCompiledEvmTreeForTest(string repoRoot)
+    {
+        SourceFile[] observed = ReadSources(repoRoot);
+        CompilerClosure compiler = LoadCompilerClosure(repoRoot, observed);
+        CompilerClosure missing = compiler with
+        {
+            Sources = compiler.Sources.Where(static source => source.RelativePath != TransactionProcessorPath).ToArray(),
+        };
+        SourceFile[] sources = observed.Select(source =>
+            missing.Sources.FirstOrDefault(compiled => compiled.RelativePath == source.RelativePath) is SourceFile compiled
+                ? compiled with { Role = source.Role } : source).ToArray();
+        _ = BuildSemanticContext(sources, missing);
+    }
+
+    internal static void RequireOwnedExpressionForTest(string methodSource, string expression) =>
+        _ = FindExactExpression(ParseTestMethod(methodSource), expression);
+
+    internal static void RequireOwnedInvocationForTest(string methodSource, string name) =>
+        _ = FindInvocation(ParseTestMethod(methodSource), name);
+
+    internal static void RequireCfgOwnershipForTest(string methodSource, string name)
+    {
+        MethodDeclarationSyntax method = ParseTestMethod(methodSource);
+        InvocationExpressionSyntax invocation = method.DescendantNodes().OfType<InvocationExpressionSyntax>()
+            .Single(node => InvocationName(node) == name);
+        _ = RequireMethodCfgOwner(invocation, "Required test source node");
+    }
+
+    internal static void RequireFiniteSyntaxForTest(string methodSource) =>
+        RejectForbiddenSyntax(ParseTestMethod(methodSource));
+
+    private static MethodDeclarationSyntax ParseTestMethod(string source) =>
+        SyntaxFactory.ParseCompilationUnit("class C { " + source + " }").DescendantNodes()
+            .OfType<MethodDeclarationSyntax>().Single();
+
+    internal static void PublishArtifactsForTest(string repoRoot, string outputDirectory, string leanOutputPath,
+        byte[] ir, byte[] lean, byte[] manifest, Action? afterIr = null) =>
+        PublishArtifacts(Paths(Path.GetFullPath(repoRoot), outputDirectory, leanOutputPath), ir, lean, manifest, afterIr);
 
     internal static void ValidateExistingArtifacts(string repoRoot, string outputDirectory, string? leanOutputPath)
     {
@@ -372,17 +373,14 @@ internal static class Extractor
         string outputDirectory,
         string? leanOutputPath,
         bool requirePinnedSources,
-        bool write)
+        bool write,
+        IReadOnlyDictionary<string, string>? overrides = null)
     {
         string root = Path.GetFullPath(repoRoot);
-        BuiltArtifacts built = BuildArtifacts(root, requirePinnedSources);
+        BuiltArtifacts built = BuildArtifacts(root, requirePinnedSources, overrides);
         ArtifactPaths paths = Paths(root, outputDirectory, leanOutputPath);
         if (write)
-        {
-            Write(paths.IrPath, built.IrBytes);
-            Write(paths.ManifestPath, built.ManifestBytes);
-            Write(paths.LeanPath, built.LeanBytes);
-        }
+            PublishArtifacts(paths, built.IrBytes, built.LeanBytes, built.ManifestBytes);
 
         return new ExtractionResult(
             paths.IrPath,
@@ -396,12 +394,13 @@ internal static class Extractor
             Sha256(built.LeanBytes));
     }
 
-    private static BuiltArtifacts BuildArtifacts(string root, bool requirePinnedSources)
+    private static BuiltArtifacts BuildArtifacts(string root, bool requirePinnedSources, IReadOnlyDictionary<string, string>? overrides = null)
     {
-        SourceFile[] sources = SourceSpecs.Select(spec => ReadSource(root, spec)).ToArray();
+        ValidateOverrideKeys(root, overrides);
+        SourceFile[] observed = ReadSources(root, overrides);
         if (requirePinnedSources)
         {
-            foreach ((SourceFile source, SourceSpec spec) in sources.Zip(SourceSpecs))
+            foreach ((SourceFile source, SourceSpec spec) in observed.Zip(SourceSpecs))
             {
                 if (!string.Equals(source.Sha256, spec.ExpectedSha256, StringComparison.OrdinalIgnoreCase))
                     throw new ExtractionException($"Source drift in {source.RelativePath}: expected {spec.ExpectedSha256}, found {source.Sha256}.");
@@ -409,15 +408,20 @@ internal static class Extractor
         }
 
         DependencyIdentity[] dependencies = ReadDependencies(root);
-        SemanticContext context = BuildSemanticContext(root, sources, FindSource(sources, VirtualMachineAdapterPath));
+        CompilerClosure compiler = LoadCompilerClosure(root, observed, overrides);
+        SourceFile[] sources = observed.Select(source =>
+            compiler.Sources.FirstOrDefault(compiled => compiled.RelativePath == source.RelativePath) is SourceFile compiled
+                ? compiled with { Role = source.Role } : source).ToArray();
+        SemanticContext context = BuildSemanticContext(sources, compiler);
         (CompletionShape completion, RouteShape route) = LowerCompletion(sources, context);
         ValidateCompletion(completion);
         ValidateRoute(route);
+        StageASourcePlan stageAPlan = BuildStageASourcePlan(root, compiler);
 
         SourceIdentity[] sourceIdentities = sources
             .Select(static source => new SourceIdentity(source.RelativePath, source.Role, source.Sha256))
             .ToArray();
-        string sourceClosureHash = SourceClosureHash(sourceIdentities);
+        string sourceClosureHash = SourceClosureHash(sourceIdentities, compiler.EffectiveSources, compiler.References);
         IrDocument document = new(
             SchemaVersion,
             ExtractorVersion,
@@ -443,18 +447,22 @@ internal static class Extractor
                 "production bodies after the admitted call/order boundary are not semantically lowered; the theorem is model-to-model only",
                 "world-state reads/writes/roots and tracer values are normal-return request/oracle inputs, not proved live adapter results",
                 "ReportAccess is interpreted extensionally as address/storage sets; live HashSet enumeration order is outside this boundary",
-                "transfer topic fields are derived in the generated boundary by a bounded Address.ToHash().ToHash256() projection abstraction; no Keccak correctness is claimed",
+                "transfer topic fields use a scalar Address.ToHash().ToHash256() projection; production zero-left-padding needs an explicit UInt160/byte-encoding bridge",
                 "TransactionResult is reduced to the status/receipt projection; CLR exception and description fields are outside this boundary",
                 "the Lean universal theorem requires TraceAdapter.normalReturn=true; callback exceptions and partial callback prefixes are outside this normal-return request-issuance boundary",
-                "ExecuteEvmCall.CompleteWithoutFrame is source-bound as the no-frame ReportAccess reachability branch; SimpleTransfer.run does not execute the VM path",
+                "ExecuteEvmCall.CompleteWithoutFrame goto sites are source-bound without a CFG-edge claim; SimpleTransfer.run does not execute the VM path",
                 "receipt continuation carries MarkAsFailed/MarkAsSuccess inputs; receipt folding and roots are erased",
-                "byte-pinned handoff and settlement bytes are identities only and do not prove composition",
+                "the direct caller and byte-pinned kernel identities do not by themselves prove production-body composition",
+                "standard-mainnet Init registrations are exact source-order projections; runtime DI resolution is an external route premise",
             ],
             [
                 "receipt encoding, receipt roots, state-root calculation internals",
                 "VM execution, crypto, CLR, database, trie, system, XDC, Taiko, parallel, and BAL paths",
-            ]);
-        ValidateIr(document);
+            ],
+            compiler.EffectiveSources,
+            compiler.References,
+            stageAPlan);
+        ValidateIr(document, compiler);
         byte[] irBytes = Serialize(document);
         byte[] leanBytes = LeanEmitter.Emit(document, Sha256(irBytes));
         SourceBinding[] allBindings = completion.MethodBindings
@@ -481,7 +489,11 @@ internal static class Extractor
             new(IrFileName, irSha),
             new(Path.GetFileName(DefaultLeanRelativePath), Sha256(leanBytes)),
             CombinedSourceHash(sourceIdentities, dependencies),
-            irSha);
+            irSha,
+            compiler.EffectiveSources,
+            compiler.References,
+            Sha256(Serialize(stageAPlan)));
+        ValidateManifest(manifest, compiler);
         byte[] manifestBytes = Serialize(manifest);
         return new BuiltArtifacts(document, irBytes, manifestBytes, leanBytes);
     }
@@ -491,6 +503,7 @@ internal static class Extractor
         SemanticContext context)
     {
         SourceFile processor = FindSource(sources, TransactionProcessorPath);
+        MethodDeclarationSyntax process = FindMethod(processor, "TransactionProcessorBase", "Process", 3);
         SourceFile gasPolicy = FindSource(sources, EthereumGasPolicyPath);
         SourceFile gasInterface = FindSource(sources, GasPolicyInterfacePath);
         SourceFile gasCost = FindSource(sources, GasCostOfPath);
@@ -511,9 +524,9 @@ internal static class Extractor
         SourceFile transactionGasInitializationKernel = FindSource(sources, TransactionGasInitializationKernelPath);
         SourceFile evmException = FindSource(sources, EvmExceptionPath);
         SourceFile accessTracker = FindSource(sources, StackAccessTrackerPath);
-        SourceFile journalSet = FindSource(sources, JournalSetPath);
 
         MethodDeclarationSyntax simple = FindMethod(processor, "TransactionProcessorBase", "ExecuteSimpleTransfer", 15);
+        SourceBinding[] callerBindings = AdmitSimpleTransferCaller(processor, context);
         MethodDeclarationSyntax executeEvmCall = FindUniqueMethod(processor, "ExecuteEvmCall");
         MethodDeclarationSyntax actionStart = FindMethod(processor, "TransactionProcessorBase", "TraceSimpleTransferActionStart", 5);
         MethodDeclarationSyntax accessReport = FindMethod(processor, "TransactionProcessorBase", "ReportSimpleTransferAccess", 4);
@@ -568,23 +581,24 @@ internal static class Extractor
         PropertyDeclarationSyntax substateError = FindProperty(txSubstate, "TransactionSubstate", "Error");
         MethodDeclarationSyntax accessListWarmup = FindMethodWithParameterToken(accessTracker, "StackAccessTracker", "WarmUp", 1, "AccessList");
         MethodDeclarationSyntax addressWarmup = FindMethodWithParameterToken(accessTracker, "StackAccessTracker", "WarmUp", 1, "Address");
-        MethodDeclarationSyntax journalSetAdd = FindMethod(journalSet, "JournalSet", "Add", 1);
         MethodDeclarationSyntax route = FindMethod(routingKernel, "SystemTransactionRoutingKernel", "ParticipatesInNormalBlockCounters", 2);
         ValidateFiniteSyntax(simple, actionStart, accessReport, warmAccesses, headerFees, finalize, payValue, payFees, refund, payRefund, shouldRefund);
         ValidateAccessWarmup(warmAccesses, context);
         ValidateHeaderAndReceiptCompletion(headerFees, finalize, context);
-        ValidateNewAccountStateCost(interfaceStateCost, context);
+        ValidateNewAccountStateCost(interfaceStateCost, newAccountStateCost, context);
         (string transferLogPayloadGrammar, string transferLogAddress, string transferSignature) =
             ValidateTransferLogPayload(transferLog, createTransfer, createTransferInternal, systemUserHex, context);
         NoFrameProof noFrameProof = ValidateNoFrameCompletion(executeEvmCall, context);
 
         List<SourceBinding> methodBindings = [];
+        methodBindings.AddRange(callerBindings);
         void AddMember(SourceFile source, string owner, string member, SyntaxNode node, string role) =>
             methodBindings.Add(Bind(source, owner, member, role, node, context, requireSymbol: true));
         void AddMethod(SourceFile source, string owner, MethodDeclarationSyntax method, string role) =>
             AddMember(source, owner, method.Identifier.ValueText, method, role);
 
         AddMethod(processor, "TransactionProcessorBase<TGasPolicy>", simple, "target completion body");
+        AddMethod(processor, "TransactionProcessorBase<TGasPolicy>", process, "standard ITransactionProcessor.Process entry body");
         AddMethod(processor, "TransactionProcessorBase<TGasPolicy>", executeEvmCall, "no-frame CFG source body");
         AddMethod(processor, "TransactionProcessorBase<TGasPolicy>", actionStart, "action-start body");
         AddMethod(processor, "TransactionProcessorBase<TGasPolicy>", accessReport, "access-report body");
@@ -634,13 +648,10 @@ internal static class Extractor
         AddMethod(settlement, "TransactionSettlementKernel", settlementCalculate, "settlement kernel body");
         AddMethod(evmException, "EvmExceptionTypeExtensions", fastToString, "reflection-free exception name body");
         AddMethod(accessTracker, "StackAccessTracker", accessListWarmup, "access-list warming body");
-        AddMethod(journalSet, "JournalSet", journalSetAdd, "access-set deduplication body");
         AddMethod(routingKernel, "SystemTransactionRoutingKernel", route, "normal-counter predicate");
 
         SourceBinding BindInvocation(SourceFile source, SyntaxNode parent, string name, string role, int occurrence = 0, bool requireSymbol = true) =>
             Bind(source, "TransactionProcessorBase<TGasPolicy>", name, role, FindInvocation(parent, name, occurrence), context, requireSymbol);
-        SourceBinding BindInvocationOnField(SourceFile source, string owner, SyntaxNode parent, string name, string field, string role, int occurrence = 0) =>
-            Bind(source, owner, name, role, FindInvocationOnField(parent, name, field, occurrence), context, requireSymbol: true);
         SourceBinding BindObject(SourceFile source, SyntaxNode parent, string name, string role) =>
             Bind(source, "TransactionProcessorBase<TGasPolicy>", name, role, FindObject(parent, name), context, requireSymbol: true);
         SourceBinding BindMember(SourceFile source, SyntaxNode parent, string name, string role, int occurrence = 0) =>
@@ -711,7 +722,6 @@ internal static class Extractor
         Add("coinbaseWarmup", BindInvocation(processor, warmAccesses, "WarmUp", "coinbase warming", occurrence: 1));
         Add("recipientWarmup", BindInvocation(processor, warmAccesses, "WarmUp", "recipient warming", occurrence: 2));
         Add("senderWarmup", BindInvocation(processor, warmAccesses, "WarmUp", "sender warming", occurrence: 3));
-        Add("journalSetAdd", BindInvocationOnField(journalSet, "JournalSet", journalSetAdd, "Add", "_set", "access-set insertion"));
         Add("headerCounterGuard", BindCondition(processor, headerFees, static ast => HasInvocation(ast, "ParticipatesInNormalBlockCounters"), "normal-counter-condition", "normal-counter branch"));
         Add("eip8037Counter", BindCondition(processor, headerFees, static ast => HasReference(ast, "IsEip8037Enabled"), "EIP-8037-counter-condition", "state-counter branch"));
         Add("restoreBranch", BindCondition(processor, finalize, static ast => IsExactReference(ast, "restore"), "restore-condition", "restore branch"));
@@ -730,7 +740,9 @@ internal static class Extractor
 
         string DeclarationIdentity(SourceFile source, SyntaxNode declaration, string role)
         {
-            SemanticModel model = context.Model(source.Tree);
+            if (!context.TryModel(source.Tree, out SemanticModel? found))
+                return BindExternalProjection(source, "external", role, role, declaration, context.Compilation).TargetSymbolIdentity;
+            SemanticModel model = found ?? throw new ExtractionException("Missing semantic model for " + source.RelativePath);
             ISymbol? symbol = declaration switch
             {
                 MethodDeclarationSyntax method => model.GetDeclaredSymbol(method),
@@ -841,6 +853,7 @@ internal static class Extractor
                 throw new ExtractionException($"Expected one bound method {path}/{member}, found {matches.Length}. Bound members: {string.Join("; ", methodBindings.Select(binding => binding.Path + "/" + binding.Member))}.");
             return matches[0];
         }
+        ValidateInitRegistrationProjection(routeSource);
         List<SourceBinding> routeBindings =
         [
             Bind(routeSource, "BlockProcessingModule", "Load", "standard DI body", FindMethod(routeSource, "BlockProcessingModule", "Load", 1), context, requireSymbol: true),
@@ -928,8 +941,8 @@ internal static class Extractor
             new("gas", "gas-policy", EthereumGasPolicyPath, "TryConsumeStateGas/GetRemainingGas/ClearExecutionGas/CombineBlockGas", "ref gas response plus result bool", "the numeric model assumes the byte-pinned kernel response and no-wrap premises; production policy composition is outside the model-to-model theorem", [b["stateCharge"], b["clearExecutionGas"], b["remainingGas"], b["stateReservoir"], MethodBinding(StateGasChargeKernelPath, "TryCharge"), MethodBinding(StateGasChargeKernelPath, "CalculateSpill"), MethodBinding(TransactionGasInitializationKernelPath, "Combine")]),
             new("settlement", "settlement-request-boundary", SettlementKernelPath, "TransactionSettlementKernel.Calculate", "settlement result fields", "the model consumes the imported kernel projection as an adapter input; no production Refund/PayRefund composition is claimed", [b["refund"], MethodBinding(SettlementKernelPath, "Calculate")]),
             new("tracer", "tracer-request-boundary", TxTracerPath, "ITxTracer callbacks", "typed normal-return callback requests", "the model records typed callback requests and guards; callback effects, exceptions, partial prefixes, and live HashSet order are outside the boundary", [b["actionStart"], b["actionError"], b["actionEnd"], b["accessReport"], b["completeWithoutFrameAccess"], b["reportLog"], b["payFees"], b["receiptFailed"], b["receiptSuccess"], b["fastToString"], b["buildUpBranch"], b["commitBranch"], b["accessHotGuard"], b["accessListGuard"], b["accessCoinbaseGuard"], b["accessRecipientGuard"]]),
-            new("di", "reachability", MainnetDiPath, "BlockProcessingModule.Load", "standard-mainnet registrations", "resolution selects EthereumTransactionProcessor, WorldState, CacheCodeInfoRepository", routeBindings.ToArray()),
-            new("handoff", "handoff", HandoffLeanPath, "OrdinaryPostNonceDispatchExtractor.SimpleHandoff", "typed completion input", "handoff fields are mapped by name from byte-pinned artifacts; those bytes do not prove this composition or any production body semantics", [b["finalize"]]),
+            new("di", "source-projection-and-runtime-route-premise", MainnetDiPath, "BlockProcessingModule.Load", "exact ordered registration syntax", "runtime DI selection of EthereumTransactionProcessor, WorldState, and CacheCodeInfoRepository is an external premise", routeBindings.ToArray()),
+            new("caller", "post-nonce-caller", TransactionProcessorPath, "Execute/6 and PrepareSimpleTransferFastPath/4", "typed completion input", "caller facts are admitted from the exact Execute and Prepare source; the earlier validation, gas purchase, and nonce update are external prefix premises", callerBindings),
         ];
 
         string[] receiptForbiddenMembers = ["FoldReceipt", "EncodeReceipt", "CalculateReceiptRoot", "ReceiptRoot"];
@@ -953,7 +966,6 @@ internal static class Extractor
             b["accessListGuard"],
             b["accessCoinbaseGuard"],
             b["accessRecipientGuard"],
-            b["journalSetAdd"],
             MethodBinding(TransactionSubstatePath, ".ctor"),
             MethodBinding(TransactionSubstatePath, "IsError"),
             MethodBinding(GasCostOfPath, "NewAccountState"),
@@ -963,7 +975,7 @@ internal static class Extractor
             noFrameProof);
 
         CompletionShape completion = new(
-            "OrdinaryPostNonceDispatchExtractor.SimpleHandoff",
+            "TransactionProcessorBase.Execute/6 -> ExecuteSimpleTransfer/15",
             "receipt-continuation-input-only",
             stages,
             branches,
@@ -984,17 +996,279 @@ internal static class Extractor
         return (completion, routeShape);
     }
 
+    private static SourceBinding[] AdmitSimpleTransferCaller(SourceFile processor, SemanticContext context)
+    {
+        MethodDeclarationSyntax execute = FindMethod(processor, "TransactionProcessorBase", "Execute", 6);
+        MethodDeclarationSyntax prepare = FindMethod(processor, "TransactionProcessorBase", "PrepareSimpleTransferFastPath", 4);
+        MethodDeclarationSyntax candidate = FindMethod(processor, "TransactionProcessorBase", "IsSimpleTransferFastPathCandidate", 2);
+        MethodDeclarationSyntax noCode = FindMethod(processor, "TransactionProcessorBase", "HasNoExecutableCode", 2);
+        MethodDeclarationSyntax available = FindMethod(processor, "TransactionProcessorBase", "CalculateAvailableGas", 4);
+        foreach (MethodDeclarationSyntax method in new[] { execute, prepare, candidate, noCode })
+            RejectNestedCallables(method);
+        List<SourceBinding> bindings =
+        [
+            Bind(processor, "TransactionProcessorBase<TGasPolicy>", "Execute", "simple-transfer caller", execute, context, requireSymbol: true),
+            Bind(processor, "TransactionProcessorBase<TGasPolicy>", "PrepareSimpleTransferFastPath", "simple-transfer candidate preparation", prepare, context, requireSymbol: true),
+            Bind(processor, "TransactionProcessorBase<TGasPolicy>", "IsSimpleTransferFastPathCandidate", "simple-transfer candidate guard", candidate, context, requireSymbol: true),
+            Bind(processor, "TransactionProcessorBase<TGasPolicy>", "HasNoExecutableCode", "simple-transfer code/delegation guard", noCode, context, requireSymbol: true),
+            Bind(processor, "TransactionProcessorBase<TGasPolicy>", "CalculateAvailableGas", "available-gas caller boundary", available, context, requireSymbol: true),
+        ];
+
+        SourceBinding AddExpression(MethodDeclarationSyntax method, string role, string expected)
+        {
+            ExpressionSyntax expression = FindExactExpression(method, expected);
+            SourceBinding binding = Bind(processor, "TransactionProcessorBase<TGasPolicy>", method.Identifier.ValueText,
+                role, expression, context, requireSymbol: false);
+            bindings.Add(binding);
+            return binding;
+        }
+
+        SourceBinding restore = AddExpression(execute, "caller restore flag", "opts.HasFlag(ExecutionOptions.Restore)");
+        SourceBinding commit = AddExpression(execute, "caller effective commit flag",
+            "opts.HasFlag(ExecutionOptions.Commit)||(!opts.HasFlag(ExecutionOptions.SkipValidation)&&!spec.IsEip658Enabled)");
+        SourceBinding prepareCall = AddExpression(execute, "caller candidate lookup",
+            "PrepareSimpleTransferFastPath(tx,spec,out CodeInfo? preloadedCodeInfo,out Address? preloadedDelegationAddress)");
+        SourceBinding precommit = AddExpression(execute, "caller pre-execution commit guard",
+            "commit&&(simpleTransferRecipient is null||restore||tracer.IsTracingState)");
+        SourceBinding precommitCall = AddExpression(execute, "caller guarded pre-execution commit",
+            "WorldState.Commit(spec,tracer.IsTracingState?tracer:NullTxTracer.Instance,commitRoots:false)");
+        SourceBinding availableCall = AddExpression(execute, "caller available-gas result",
+            "CalculateAvailableGas(tx,spec,in intrinsicGas,out TGasPolicy gasAvailable)");
+        AddExpression(execute, "caller available-gas failure exit",
+            "!(result=CalculateAvailableGas(tx,spec,in intrinsicGas,out TGasPolicy gasAvailable))");
+        SourceBinding simpleArm = AddExpression(execute, "caller selected simple-transfer arm", "simpleTransferRecipient is not null");
+        SourceBinding dispatch = AddExpression(execute, "caller simple-transfer dispatch",
+            "ExecuteSimpleTransfer(tx,header,spec,tracer,opts,restore,commit,deleteCallerAccount,simpleTransferRecipient,in intrinsicGas,gasAvailable,in opcodeGasPrice,in premiumPerGas,in senderReservedGasPayment,in blobBaseFee)");
+
+        AddExpression(candidate, "candidate exclusions",
+            "!isCodeOverridable&&tx.AuthorizationList is null&&!ForceSimpleTransferDisabled");
+        AddExpression(noCode, "code and delegation exclusion", "delegationAddress is null&&codeInfo.IsEmpty");
+        SourceBinding candidateGuard = AddExpression(prepare, "recipient and candidate guard",
+            "recipient is null||!IsSimpleTransferFastPathCandidate(tx,_isCodeOverridable)");
+        SourceBinding codeLookup = AddExpression(prepare, "normal code lookup with fork-selected delegation",
+            "_codeInfoRepository.GetCachedCodeInfo(recipient,followDelegation:!spec.IsEip8037Enabled,spec,out preloadedDelegationAddress)");
+        SourceBinding noCodeSelection = AddExpression(prepare, "selected recipient after code lookup",
+            "HasNoExecutableCode(preloadedCodeInfo,preloadedDelegationAddress)?recipient:null");
+
+        string[] expectedPreparationStatements =
+        [
+            "preloadedCodeInfo = null;",
+            "preloadedDelegationAddress = null;",
+            "Address? recipient = tx.To;",
+            "if (recipient is null || !IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return null;",
+            "preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);",
+            "return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress) ? recipient : null;",
+        ];
+        if (prepare.Body is not { Statements: { Count: 6 } preparationStatements } ||
+            !preparationStatements.Select(Canonical).SequenceEqual(
+                expectedPreparationStatements.Select(statement => Canonical(SyntaxFactory.ParseStatement(statement))),
+                StringComparer.Ordinal))
+            throw new ExtractionException("Simple-transfer preparation has an unmodeled return, path, or effect.");
+
+        if (candidate.ExpressionBody is null ||
+            Canonical(candidate.ExpressionBody.Expression) != Canonical(FindExactExpression(candidate,
+                "!isCodeOverridable&&tx.AuthorizationList is null&&!ForceSimpleTransferDisabled")) ||
+            noCode.ExpressionBody is null ||
+            Canonical(noCode.ExpressionBody.Expression) != Canonical(FindExactExpression(noCode,
+                "delegationAddress is null&&codeInfo.IsEmpty")) ||
+            prepare.Body?.Statements.LastOrDefault() is not ReturnStatementSyntax { Expression: ExpressionSyntax finalSelection } ||
+            Canonical(finalSelection) != noCodeSelection.CanonicalSyntax)
+            throw new ExtractionException("Simple-transfer candidate or no-code predicate is not the complete returned expression.");
+
+        if (!(restore.StartLine <= commit.StartLine && commit.StartLine < prepareCall.StartLine &&
+            prepareCall.StartLine < precommit.StartLine && precommit.StartLine < precommitCall.StartLine &&
+            precommitCall.StartLine < availableCall.StartLine &&
+            availableCall.StartLine < simpleArm.StartLine && simpleArm.StartLine < dispatch.StartLine &&
+            candidateGuard.StartLine < codeLookup.StartLine && codeLookup.StartLine < noCodeSelection.StartLine))
+            throw new ExtractionException("Simple-transfer caller order changed.");
+
+        IfStatementSyntax ExactIf(MethodDeclarationSyntax method, string expected)
+        {
+            string canonical = Canonical(SyntaxFactory.ParseExpression(expected));
+            IfStatementSyntax[] statements = OwnedDescendants(method).OfType<IfStatementSyntax>()
+                .Where(statement => Canonical(statement.Condition) == canonical).ToArray();
+            if (statements.Length != 1) throw new ExtractionException("Simple-transfer caller branch changed: " + expected);
+            return statements[0];
+        }
+
+        IfStatementSyntax candidateExit = ExactIf(prepare,
+            "recipient is null||!IsSimpleTransferFastPathCandidate(tx,_isCodeOverridable)");
+        IfStatementSyntax commitBranch = ExactIf(execute, "commitBeforeExecution");
+        IfStatementSyntax gasExit = ExactIf(execute,
+            "!(result=CalculateAvailableGas(tx,spec,in intrinsicGas,out TGasPolicy gasAvailable))");
+        IfStatementSyntax simpleBranch = ExactIf(execute, "simpleTransferRecipient is not null");
+        if (candidateExit.Statement is not ReturnStatementSyntax { Expression: LiteralExpressionSyntax candidateNull } ||
+            !candidateNull.IsKind(SyntaxKind.NullLiteralExpression) ||
+            commitBranch.Statement is not ExpressionStatementSyntax commitStatement ||
+            Canonical(commitStatement.Expression) != precommitCall.CanonicalSyntax ||
+            gasExit.Statement is not ReturnStatementSyntax { Expression: IdentifierNameSyntax gasResult } ||
+            gasResult.Identifier.ValueText != "result" ||
+            simpleBranch.Statement is not BlockSyntax { Statements.Count: 1 } simpleBlock ||
+            simpleBlock.Statements[0] is not ReturnStatementSyntax simpleReturn ||
+            simpleReturn.Expression is null || Canonical(simpleReturn.Expression) != dispatch.CanonicalSyntax)
+            throw new ExtractionException("Simple-transfer caller guard no longer controls the expected exit or dispatch.");
+
+        if (context.Model(execute.SyntaxTree).GetOperation(
+                FindInvocation(execute, "ExecuteSimpleTransfer")) is not IInvocationOperation call ||
+            call.TargetMethod.Name != "ExecuteSimpleTransfer" ||
+            call.TargetMethod.ContainingType.OriginalDefinition.ToDisplayString() !=
+                "Nethermind.Evm.TransactionProcessing.TransactionProcessorBase<TGasPolicy>" ||
+            !call.TargetMethod.Parameters.Select(static parameter => parameter.Name).SequenceEqual(
+                ["tx", "header", "spec", "tracer", "opts", "restore", "commit", "deleteCallerAccount", "recipient",
+                 "intrinsicGas", "gasAvailable", "opcodeGasPrice", "premiumPerGas", "senderReservedGasPayment", "blobBaseFee"],
+                StringComparer.Ordinal) ||
+            !call.Arguments.Select(static argument => argument.Parameter!.RefKind).SequenceEqual(
+                [RefKind.None, RefKind.None, RefKind.None, RefKind.None, RefKind.None, RefKind.None, RefKind.None,
+                 RefKind.None, RefKind.None, RefKind.In, RefKind.None, RefKind.In, RefKind.In, RefKind.In, RefKind.In]))
+            throw new ExtractionException("The simple-transfer caller no longer passes the exact typed arguments and ref kinds.");
+
+        SyntaxNode dispatchNode = FindInvocation(execute, "ExecuteSimpleTransfer");
+        ExpressionSyntax precommitInitializer = FindExactExpression(execute,
+            "commit&&(simpleTransferRecipient is null||restore||tracer.IsTracingState)");
+        SyntaxNode prepareNode = FindInvocation(execute, "PrepareSimpleTransferFastPath");
+        SyntaxNode gasNode = FindInvocation(execute, "CalculateAvailableGas");
+        SyntaxNode priceNode = FindInvocation(execute, "CalculateEffectiveGasPrice");
+        SyntaxNode buyNode = FindInvocation(execute, "BuyGas");
+        SyntaxNode deleteNode = FindInvocation(execute, "RecoverSenderIfNeeded");
+        SyntaxNode lookupNode = FindInvocation(prepare, "GetCachedCodeInfo");
+        SyntaxNode selectedNode = FindExactExpression(prepare,
+            "HasNoExecutableCode(preloadedCodeInfo,preloadedDelegationAddress)?recipient:null");
+        VariableDeclaratorSyntax[] preparedRecipients = OwnedDescendants(prepare).OfType<VariableDeclaratorSyntax>()
+            .Where(variable => variable.Identifier.ValueText == "recipient").ToArray();
+        if (preparedRecipients.Length != 1 || preparedRecipients[0].Initializer is not { Value: ExpressionSyntax recipientInitializer } ||
+            Canonical(recipientInitializer) != Canonical(FindExactExpression(prepare, "tx.To")))
+            throw new ExtractionException("Candidate recipient is no longer defined directly by tx.To.");
+        context.RequireDominates(recipientInitializer, lookupNode, "recipient before code lookup");
+        context.RequireDominates(FindExactExpression(prepare, "recipient is null||!IsSimpleTransferFastPathCandidate(tx,_isCodeOverridable)"),
+            lookupNode, "candidate guard before code lookup");
+        context.RequireDominates(lookupNode, selectedNode, "code lookup before candidate selection");
+        context.RequireDominates(prepareNode, dispatchNode, "candidate preparation before simple dispatch");
+        context.RequireDominates(gasNode, dispatchNode, "available gas before simple dispatch");
+
+        SemanticModel prepareModel = context.Model(prepare.SyntaxTree);
+        foreach (string name in new[] { "recipient", "preloadedCodeInfo", "preloadedDelegationAddress" })
+        {
+            IParameterSymbol? parameter = prepare.ParameterList.Parameters
+                .Where(item => item.Identifier.ValueText == name)
+                .Select(item => prepareModel.GetDeclaredSymbol(item))
+                .OfType<IParameterSymbol>().SingleOrDefault();
+            ISymbol symbol = parameter ?? OwnedDescendants(prepare).OfType<VariableDeclaratorSyntax>()
+                .Where(item => item.Identifier.ValueText == name)
+                .Select(item => prepareModel.GetDeclaredSymbol(item))
+                .SingleOrDefault() ?? throw new ExtractionException("Candidate preparation declaration changed: " + name);
+            foreach (IdentifierNameSyntax reference in OwnedDescendants(prepare).OfType<IdentifierNameSyntax>())
+            {
+                if (!SymbolEqualityComparer.Default.Equals(prepareModel.GetSymbolInfo(reference).Symbol, symbol) ||
+                    !IsWritableReference(reference)) continue;
+                bool expected = name switch
+                {
+                    "recipient" => false,
+                    "preloadedCodeInfo" => reference.Ancestors().OfType<AssignmentExpressionSyntax>()
+                        .Any(assignment => assignment.Left.Span.Contains(reference.Span) &&
+                            (assignment.Right.IsKind(SyntaxKind.NullLiteralExpression) ||
+                             Canonical(assignment.Right) == Canonical(lookupNode))),
+                    "preloadedDelegationAddress" => reference.Ancestors().OfType<AssignmentExpressionSyntax>()
+                        .Any(assignment => assignment.Left.Span.Contains(reference.Span) &&
+                            assignment.Right.IsKind(SyntaxKind.NullLiteralExpression)) ||
+                        lookupNode.Span.Contains(reference.Span) && reference.Parent is ArgumentSyntax argument &&
+                        argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword),
+                    _ => false,
+                };
+                if (!expected) throw new ExtractionException("Candidate preparation has an untracked write: " + name);
+            }
+        }
+
+        ILocalSymbol RequireReachingLocal(string name, SyntaxNode definition, SyntaxNode use)
+        {
+            SyntaxNode[] declarations = OwnedDescendants(execute).Where(node => node switch
+            {
+                VariableDeclaratorSyntax variable => variable.Identifier.ValueText == name,
+                SingleVariableDesignationSyntax designation => designation.Identifier.ValueText == name,
+                _ => false,
+            }).ToArray();
+            if (declarations.Length != 1 || context.Model(execute.SyntaxTree).GetDeclaredSymbol(declarations[0]) is not ILocalSymbol symbol)
+                throw new ExtractionException("Caller local declaration changed: " + name);
+            if (declarations[0] is VariableDeclaratorSyntax variable &&
+                (variable.Initializer is null || Canonical(variable.Initializer.Value) != Canonical(definition)) ||
+                declarations[0] is SingleVariableDesignationSyntax designation &&
+                !definition.Span.Contains(designation.Span))
+                throw new ExtractionException("Caller local definition changed: " + name);
+            context.RequireDominates(definition, use, name);
+            SemanticModel model = context.Model(execute.SyntaxTree);
+            foreach (IdentifierNameSyntax reference in OwnedDescendants(execute).OfType<IdentifierNameSyntax>())
+            {
+                if (!SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(reference).Symbol, symbol)) continue;
+                if (IsWritableReference(reference))
+                    throw new ExtractionException("Caller local has a second reaching definition or an escaping alias: " + name);
+            }
+            return symbol;
+        }
+
+        ILocalSymbol restoreLocal = RequireReachingLocal("restore", FindExactExpression(execute,
+            "opts.HasFlag(ExecutionOptions.Restore)"), dispatchNode);
+        ILocalSymbol commitLocal = RequireReachingLocal("commit", FindExactExpression(execute,
+            "opts.HasFlag(ExecutionOptions.Commit)||(!opts.HasFlag(ExecutionOptions.SkipValidation)&&!spec.IsEip658Enabled)"), dispatchNode);
+        ILocalSymbol precommitLocal = RequireReachingLocal("commitBeforeExecution", precommitInitializer,
+            commitBranch.Condition);
+        if (!SymbolEqualityComparer.Default.Equals(context.Model(execute.SyntaxTree)
+                .GetSymbolInfo(commitBranch.Condition).Symbol, precommitLocal))
+            throw new ExtractionException("Pre-execution commit branch no longer reads the exact guard definition.");
+        ILocalSymbol recipientLocal = RequireReachingLocal("simpleTransferRecipient", prepareNode, dispatchNode);
+        ILocalSymbol availableLocal = RequireReachingLocal("gasAvailable", gasNode, dispatchNode);
+        ILocalSymbol priceLocal = RequireReachingLocal("opcodeGasPrice", priceNode, dispatchNode);
+        ILocalSymbol premiumLocal = RequireReachingLocal("premiumPerGas", buyNode, dispatchNode);
+        ILocalSymbol paymentLocal = RequireReachingLocal("senderReservedGasPayment", buyNode, dispatchNode);
+        ILocalSymbol blobLocal = RequireReachingLocal("blobBaseFee", buyNode, dispatchNode);
+        ILocalSymbol deleteLocal = RequireReachingLocal("deleteCallerAccount", deleteNode, dispatchNode);
+        _ = RequireReachingLocal("preloadedCodeInfo", prepareNode, dispatchNode);
+        _ = RequireReachingLocal("preloadedDelegationAddress", prepareNode, dispatchNode);
+
+        (int Index, ILocalSymbol Symbol)[] dispatchLocals =
+        [
+            (5, restoreLocal), (6, commitLocal), (7, deleteLocal), (8, recipientLocal),
+            (10, availableLocal), (11, priceLocal), (12, premiumLocal), (13, paymentLocal), (14, blobLocal),
+        ];
+        foreach ((int index, ILocalSymbol symbol) in dispatchLocals)
+        {
+            ILocalReferenceOperation[] references = Descendants(call.Arguments[index].Value)
+                .OfType<ILocalReferenceOperation>().ToArray();
+            if (references.Length != 1 || !SymbolEqualityComparer.Default.Equals(references[0].Local, symbol))
+                throw new ExtractionException("Caller dispatch argument no longer reads its unique source definition: " + symbol.Name);
+        }
+
+        return bindings.ToArray();
+    }
+
+    private static IEnumerable<IOperation> Descendants(IOperation operation)
+    {
+        yield return operation;
+        foreach (IOperation child in operation.ChildOperations)
+            foreach (IOperation descendant in Descendants(child)) yield return descendant;
+    }
+
+    private static bool IsWritableReference(IdentifierNameSyntax reference) =>
+        reference.Ancestors().OfType<AssignmentExpressionSyntax>()
+            .Any(assignment => assignment.Left.Span.Contains(reference.Span)) ||
+        reference.Ancestors().OfType<ArgumentSyntax>()
+            .Any(argument => argument.Expression.Span.Contains(reference.Span) &&
+                (argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword) ||
+                 argument.RefKindKeyword.IsKind(SyntaxKind.RefKeyword))) ||
+        reference.Ancestors().OfType<PrefixUnaryExpressionSyntax>()
+            .Any(unary => unary.Operand.Span.Contains(reference.Span) &&
+                (unary.IsKind(SyntaxKind.PreIncrementExpression) ||
+                 unary.IsKind(SyntaxKind.PreDecrementExpression) ||
+                 unary.IsKind(SyntaxKind.AddressOfExpression))) ||
+        reference.Ancestors().OfType<PostfixUnaryExpressionSyntax>()
+            .Any(unary => unary.Operand.Span.Contains(reference.Span) &&
+                (unary.IsKind(SyntaxKind.PostIncrementExpression) ||
+                 unary.IsKind(SyntaxKind.PostDecrementExpression))) ||
+        reference.Ancestors().OfType<RefExpressionSyntax>()
+            .Any(expression => expression.Expression.Span.Contains(reference.Span));
+
     private static void ValidateFiniteSyntax(params MethodDeclarationSyntax[] methods)
     {
         foreach (MethodDeclarationSyntax method in methods)
-        {
-            SyntaxNode body = Body(method);
-            foreach (SyntaxNode node in body.DescendantNodes())
-            {
-                if (ForbiddenNodeKinds.Contains(node.Kind().ToString(), StringComparer.Ordinal))
-                    throw new ExtractionException($"Unsupported syntax {node.Kind()} in admitted completion member {method.Identifier.ValueText}.");
-            }
-        }
+            RejectForbiddenSyntax(method);
 
         RequireSourceOrder(methods[0],
             FindInvocation(methods[0], "IncrementEmptyCalls"),
@@ -1011,9 +1285,26 @@ internal static class Extractor
             FindInvocation(methods[0], "FinalizeTransaction"));
     }
 
+    private static void RejectForbiddenSyntax(MethodDeclarationSyntax method)
+    {
+        foreach (SyntaxNode node in Body(method).DescendantNodes())
+        {
+            if (ForbiddenNodeKinds.Contains(node.Kind()))
+                throw new ExtractionException($"Unsupported syntax {node.Kind()} in admitted completion member {method.Identifier.ValueText}.");
+        }
+    }
+
+    private static void RejectNestedCallables(MethodDeclarationSyntax method)
+    {
+        SyntaxNode? nested = Body(method).DescendantNodes().FirstOrDefault(static node =>
+            node is LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax);
+        if (nested is not null)
+            throw new ExtractionException($"Nested callable {nested.Kind()} in admitted caller member {method.Identifier.ValueText}.");
+    }
+
     private static void ValidateAccessWarmup(MethodDeclarationSyntax warmAccesses, SemanticContext context)
     {
-        InvocationExpressionSyntax[] calls = warmAccesses.DescendantNodes().OfType<InvocationExpressionSyntax>()
+        InvocationExpressionSyntax[] calls = OwnedDescendants(warmAccesses).OfType<InvocationExpressionSyntax>()
             .Where(static invocation => InvocationName(invocation) == "WarmUp")
             .ToArray();
         if (calls.Length != 4)
@@ -1021,7 +1312,7 @@ internal static class Extractor
         RequireSourceOrder(warmAccesses, calls);
 
         SemanticModel model = context.Model(warmAccesses.SyntaxTree);
-        IfStatementSyntax[] conditionals = warmAccesses.DescendantNodes().OfType<IfStatementSyntax>().ToArray();
+        IfStatementSyntax[] conditionals = OwnedDescendants(warmAccesses).OfType<IfStatementSyntax>().ToArray();
         if (conditionals.Length != 4 || conditionals[0].Statement is not ReturnStatementSyntax ||
             !IsNegatedReference(LowerTypedAst(model.GetOperation(conditionals[0].Condition)), "UseHotAndColdStorage"))
             throw new ExtractionException("WarmUpTxAccesses lost its typed hot/cold early-return guard.");
@@ -1071,6 +1362,7 @@ internal static class Extractor
             !HasReference(headerBody, "GasUsed") ||
             !HasInvocation(headerBody, "PayFees"))
             throw new ExtractionException("UpdateHeaderGasUsedAndPayFees lost a required typed counter or fee transition.");
+        ValidateEip8037CumulativeCounters(headerFees, headerModel, context.Compilation);
         RequireSourceOrder(headerFees,
             FindInvocation(headerFees, "ParticipatesInNormalBlockCounters"),
             FindMemberAccess(headerFees, "EffectiveBlockGas", 0),
@@ -1092,12 +1384,42 @@ internal static class Extractor
             FindInvocation(finalize, "MarkAsSuccess"));
     }
 
-    private static void ValidateNewAccountStateCost(MethodDeclarationSyntax method, SemanticContext context)
+    private static void ValidateEip8037CumulativeCounters(
+        MethodDeclarationSyntax method, SemanticModel model, Compilation compilation)
+    {
+        const string diagnostic = "UpdateHeaderGasUsedAndPayFees EIP-8037 cumulative counter guard or true-arm effects changed.";
+        IPropertySymbol? expectedProperty = compilation.GetTypeByMetadataName("Nethermind.Core.Specs.IReleaseSpec")?
+            .GetMembers("IsEip8037Enabled").OfType<IPropertySymbol>().SingleOrDefault();
+        ParameterSyntax? specParameter = method.ParameterList.Parameters.SingleOrDefault(static parameter => parameter.Identifier.ValueText == "spec");
+        IParameterSymbol? expectedParameter = specParameter is null ? null : model.GetDeclaredSymbol(specParameter);
+        if (expectedProperty is null || expectedParameter is null || method.Body is not { Statements.Count: 2 } body ||
+            body.Statements[0] is not IfStatementSyntax { Statement: BlockSyntax { Statements.Count: 1 } normalCounters } ||
+            normalCounters.Statements[0] is not IfStatementSyntax eip8037 ||
+            eip8037.Condition is not MemberAccessExpressionSyntax ||
+            Canonical(eip8037.Condition) != "spec.IsEip8037Enabled" ||
+            model.GetOperation(eip8037.Condition) is not IPropertyReferenceOperation condition ||
+            !SymbolEqualityComparer.Default.Equals(condition.Property, expectedProperty) ||
+            condition.Instance is not IParameterReferenceOperation receiver ||
+            !SymbolEqualityComparer.Default.Equals(receiver.Parameter, expectedParameter) ||
+            eip8037.Statement is not BlockSyntax { Statements.Count: 3 } trueArm ||
+            eip8037.Else?.Statement is not BlockSyntax { Statements.Count: 1 } falseArm ||
+            Canonical(trueArm.Statements[0]) != "_blockCumulativeExecutionGas+=spentGas.EffectiveBlockGas;" ||
+            Canonical(trueArm.Statements[1]) != "_blockCumulativeStateGas+=spentGas.BlockStateGas;" ||
+            Canonical(trueArm.Statements[2]) != "header.GasUsed=TGasPolicy.CombineBlockGas(_blockCumulativeExecutionGas,_blockCumulativeStateGas);" ||
+            Canonical(falseArm.Statements[0]) != "header.GasUsed+=spentGas.EffectiveBlockGas;")
+            throw new ExtractionException(diagnostic);
+    }
+
+    private static void ValidateNewAccountStateCost(
+        MethodDeclarationSyntax method, VariableDeclaratorSyntax sourceConstant, SemanticContext context)
     {
         SemanticModel model = context.Model(method.SyntaxTree);
         TypedAstNode body = UnwrapTyped(LowerTypedAst(model.GetOperation(Body(method))));
+        IFieldSymbol field = RequireCoreConstant(context.Compilation, "Nethermind.Core.GasCostOf", "NewAccountState", sourceConstant);
         if (!IsReferenceOnly(body, "NewAccountState") || body.Kind != "FieldReference" ||
-            !TypeMatches(body.Type, ["long", "Int64"]))
+            !TypeMatches(body.Type, ["long", "Int64"]) ||
+            method.ExpressionBody is null || model.GetOperation(method.ExpressionBody.Expression) is not IFieldReferenceOperation reference ||
+            !SymbolEqualityComparer.Default.Equals(reference.Field, field))
             throw new ExtractionException("IGasPolicy.GetNewAccountStateCost no longer returns the exact GasCostOf.NewAccountState schedule field.");
     }
 
@@ -1109,6 +1431,8 @@ internal static class Extractor
         SemanticContext context)
     {
         string transferAddress = ReadHexFieldConstant(systemUserHex, "Address.SystemUserHex", expectedDigits: 40);
+        ValidateAddressMetadataProjection(systemUserHex, transferAddress, context.Compilation);
+        ValidateTransferSenderProjection(transferLogSource, context);
         VariableDeclaratorSyntax transferSignature = FindField(transferLogSource, "TransferLog", "TransferSignature");
         string transferSignatureValue = ReadHexInitializer(transferSignature, context, "TransferLog.TransferSignature", expectedDigits: 64);
         SemanticModel model = context.Model(createTransfer.SyntaxTree);
@@ -1181,6 +1505,34 @@ internal static class Extractor
         return NormalizeHex(literal.Token.ValueText, role, expectedDigits);
     }
 
+    private static void ValidateAddressMetadataProjection(
+        VariableDeclaratorSyntax systemUserHex, string sourceHex, CSharpCompilation compilation)
+    {
+        INamedTypeSymbol? type = compilation.GetTypeByMetadataName("Nethermind.Core.Address");
+        IFieldSymbol? hex = type?.GetMembers("SystemUserHex").OfType<IFieldSymbol>().SingleOrDefault();
+        IPropertySymbol? address = type?.GetMembers("SystemUser").OfType<IPropertySymbol>().SingleOrDefault();
+        PropertyDeclarationSyntax? declaration = systemUserHex.SyntaxTree.GetCompilationUnitRoot().DescendantNodes()
+            .OfType<PropertyDeclarationSyntax>().SingleOrDefault(static property => property.Identifier.ValueText == "SystemUser");
+        if (hex is not { HasConstantValue: true, IsStatic: true } || hex.ConstantValue is not string metadataHex ||
+            !string.Equals(sourceHex, metadataHex, StringComparison.OrdinalIgnoreCase) ||
+            address is not { IsStatic: true } || !SymbolEqualityComparer.Default.Equals(address.Type, type) ||
+            declaration is null || !declaration.Modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.StaticKeyword)) ||
+            declaration.Initializer is null || Canonical(declaration.Initializer.Value) != "new(SystemUserHex)")
+            throw new ExtractionException("Address.SystemUser source initializer and accepted Core metadata disagree.");
+    }
+
+    private static void ValidateTransferSenderProjection(SourceFile source, SemanticContext context)
+    {
+        VariableDeclaratorSyntax sender = FindField(source, "TransferLog", "Sender");
+        IPropertySymbol? systemUser = context.Compilation.GetTypeByMetadataName("Nethermind.Core.Address")?
+            .GetMembers("SystemUser").OfType<IPropertySymbol>().SingleOrDefault();
+        SemanticModel model = context.Model(source.Tree);
+        if (sender.Initializer is null || Canonical(sender.Initializer.Value) != "Address.SystemUser" ||
+            systemUser is null || model.GetOperation(sender.Initializer.Value) is not IPropertyReferenceOperation reference ||
+            !SymbolEqualityComparer.Default.Equals(reference.Property, systemUser))
+            throw new ExtractionException("TransferLog.Sender no longer binds the exact Address.SystemUser metadata property.");
+    }
+
     private static string ReadHexInitializer(
         VariableDeclaratorSyntax field,
         SemanticContext context,
@@ -1227,7 +1579,7 @@ internal static class Extractor
 
     private static NoFrameProof ValidateNoFrameCompletion(MethodDeclarationSyntax method, SemanticContext context)
     {
-        LabeledStatementSyntax[] labels = method.DescendantNodes().OfType<LabeledStatementSyntax>().ToArray();
+        LabeledStatementSyntax[] labels = OwnedDescendants(method).OfType<LabeledStatementSyntax>().ToArray();
         LabeledStatementSyntax noFrame = labels.SingleOrDefault(label => label.Identifier.ValueText == "CompleteWithoutFrame")
             ?? throw new ExtractionException("ExecuteEvmCall lost the CompleteWithoutFrame label.");
         LabeledStatementSyntax complete = labels.SingleOrDefault(label => label.Identifier.ValueText == "Complete")
@@ -1235,37 +1587,83 @@ internal static class Extractor
         LabeledStatementSyntax fail = labels.SingleOrDefault(label => label.Identifier.ValueText == "FailContractCreate")
             ?? throw new ExtractionException("ExecuteEvmCall lost the FailContractCreate label.");
 
-        GotoStatementSyntax[] noFrameGotos = method.DescendantNodes().OfType<GotoStatementSyntax>()
+        GotoStatementSyntax[] noFrameGotos = OwnedDescendants(method).OfType<GotoStatementSyntax>()
             .Where(static statement => statement.Expression is IdentifierNameSyntax identifier && identifier.Identifier.ValueText == "CompleteWithoutFrame")
             .OrderBy(static statement => statement.SpanStart)
             .ToArray();
-        if (noFrameGotos.Length != 4)
-            throw new ExtractionException($"ExecuteEvmCall must retain exactly four no-frame gotos, found {noFrameGotos.Length}.");
-
-        GotoStatementSyntax[] failGotos = method.DescendantNodes().OfType<GotoStatementSyntax>()
+        GotoStatementSyntax[] failGotos = OwnedDescendants(method).OfType<GotoStatementSyntax>()
             .Where(statement => statement.SpanStart > fail.SpanStart && statement.SpanStart < noFrame.SpanStart &&
                 statement.Expression is IdentifierNameSyntax identifier && identifier.Identifier.ValueText == "Complete")
             .ToArray();
         if (failGotos.Length != 1)
             throw new ExtractionException($"FailContractCreate must retain exactly one goto Complete bypass, found {failGotos.Length}.");
         GotoStatementSyntax failGoto = failGotos[0];
+        if (noFrameGotos.Length != 4)
+            throw new ExtractionException($"ExecuteEvmCall must retain exactly four no-frame gotos, found {noFrameGotos.Length}.");
 
         if (noFrameGotos.Any(statement => statement.SpanStart >= noFrame.SpanStart) ||
             !(failGoto.SpanStart < noFrame.SpanStart && noFrame.SpanStart < complete.SpanStart))
             throw new ExtractionException("ExecuteEvmCall no-frame and FailContractCreate labels changed order.");
 
-        string[] paths = noFrameGotos
-            .Select((statement, index) => context.RequireCfgPath(statement, noFrame.Statement, $"no-frame goto {index + 1}"))
-            .ToArray();
-        _ = context.RequireCfgPath(failGoto, complete.Statement, "FailContractCreate goto Complete");
-        int failBlock = context.BlockFor(failGoto, "FailContractCreate goto Complete");
-        int noFrameBlock = context.BlockFor(noFrame.Statement, "CompleteWithoutFrame label");
-        int completeBlock = context.BlockFor(complete.Statement, "Complete label");
-        if (failBlock == noFrameBlock || failBlock == completeBlock ||
-            context.CanReach(failGoto, noFrame.Statement) || !context.HasDirectCfgSuccessor(failGoto, complete.Statement))
-            throw new ExtractionException("FailContractCreate goto Complete is not a direct CFG bypass of CompleteWithoutFrame.");
+        SemanticModel model = context.Model(method.SyntaxTree);
+        if (method.Body is not { } methodBody ||
+            model.GetDeclaredSymbol(noFrame) is not ILabelSymbol noFrameSymbol ||
+            model.GetDeclaredSymbol(complete) is not ILabelSymbol completeSymbol ||
+            model.GetDeclaredSymbol(fail) is null ||
+            model.GetOperation(complete.Statement) is not IReturnOperation returnOperation ||
+            returnOperation.ReturnedValue is null || Canonical(complete.Statement) != "returnstatusCode;" ||
+            noFrame.Statement is not IfStatementSyntax { Else: null } accessReport ||
+            Canonical(accessReport.Condition) != "tracer.IsTracingAccess" ||
+            accessReport.Statement is not BlockSyntax { Statements.Count: 1 } accessBlock ||
+            accessBlock.Statements[0] is not ExpressionStatementSyntax accessStatement ||
+            !Canonical(accessStatement).StartsWith("tracer.ReportAccess(", StringComparison.Ordinal) ||
+            fail.Parent != methodBody || noFrame.Parent != methodBody || complete.Parent != methodBody)
+            throw new ExtractionException("ExecuteEvmCall no-frame labels or final return changed their direct source contract.");
 
-        return new NoFrameProof(noFrameGotos.Length, true, true, paths);
+        string[] guards =
+        [
+            "topFrameOutOfGas",
+            "!TGasPolicy.TryConsumeCreateStateGas(refgasAvailable)",
+            "!deploymentPrepared",
+            "env.CodeInfoisnull",
+        ];
+        string[][] effects =
+        [
+            ["TraceHaltedTopFrameAction(", "substate=newTransactionSubstate(", "TGasPolicyoogIntrinsicGasStandard=gas.Standard;", "gasConsumed=CompleteEip8037Halt("],
+            ["TraceHaltedTopFrameAction(", "substate=newTransactionSubstate(", "WorldState.Restore(snapshot);", "TGasPolicycreateStateOogIntrinsicGasStandard=gas.Standard;", "gasConsumed=CompleteEip8037Halt("],
+            ["if(Logger.IsTrace)Logger.Trace(", "WorldState.Restore(snapshot);", "substate=newTransactionSubstate(", "TGasPolicycollisionIntrinsicGasStandard=gas.Standard;", "gasConsumed=RefundOnContractCollision("],
+            ["ulongminimalGasLong=TGasPolicy.GetRemainingGas(gas.MinimalGas);", "gasConsumed=minimalGasLong;", "if(!opts.HasFlag(ExecutionOptions.SkipValidation))WorldState.AddToBalance("],
+        ];
+        for (int index = 0; index < noFrameGotos.Length; index++)
+        {
+            GotoStatementSyntax statement = noFrameGotos[index];
+            IfStatementSyntax? guard = statement.Ancestors().OfType<IfStatementSyntax>().FirstOrDefault();
+            if (guard is null || Canonical(guard.Condition) != guards[index] ||
+                statement.Parent is not BlockSyntax block || block.Statements.LastOrDefault() != statement ||
+                !ReferenceEquals(guard.Statement, block) ||
+                model.AnalyzeControlFlow(statement) is not { Succeeded: true, StartPointIsReachable: true })
+                throw new ExtractionException($"no-frame goto {index + 1} lost its direct final guard/effect position.");
+            if (block.Statements.Count != effects[index].Length + 1 ||
+                block.Statements.Take(effects[index].Length).Select(Canonical)
+                    .Where((effect, effectIndex) => !effect.StartsWith(effects[index][effectIndex], StringComparison.Ordinal)).Any())
+                throw new ExtractionException($"no-frame goto {index + 1} changed its ordered direct effects.");
+            RequireGotoTarget(model, statement, noFrameSymbol, $"no-frame goto {index + 1}");
+        }
+
+        if (failGoto.Parent != methodBody ||
+            model.AnalyzeControlFlow(failGoto) is not { Succeeded: true, StartPointIsReachable: true } ||
+            !ReferenceEquals(methodBody.Statements.LastOrDefault(statement => statement.SpanStart < noFrame.SpanStart), failGoto))
+            throw new ExtractionException("FailContractCreate goto Complete lost its direct bypass position.");
+        RequireGotoTarget(model, failGoto, completeSymbol, "FailContractCreate goto Complete");
+
+        return new NoFrameProof(noFrameGotos.Length, false, true, []);
+    }
+
+    private static void RequireGotoTarget(SemanticModel model, GotoStatementSyntax statement, ILabelSymbol target, string role)
+    {
+        if (model.GetOperation(statement) is not IBranchOperation { BranchKind: BranchKind.GoTo } branch ||
+            !SymbolEqualityComparer.Default.Equals(branch.Target, target))
+            throw new ExtractionException($"{role} no longer branches to its declared label.");
     }
 
     private static CompletionLowering LowerCompletionSemantics(
@@ -1282,7 +1680,6 @@ internal static class Extractor
         SourceBinding accessListGuard,
         SourceBinding accessCoinbaseGuard,
         SourceBinding accessRecipientGuard,
-        SourceBinding journalSetAdd,
         SourceBinding substateCtor,
         SourceBinding substateIsError,
         SourceBinding newAccountStateCost,
@@ -1304,7 +1701,6 @@ internal static class Extractor
         bool accessCoinbaseCall = IsWarmUpCall(coinbaseWarmup.TypedAst, "address", "GasBeneficiary", "Address");
         bool accessRecipientCall = IsWarmUpCall(recipientWarmup.TypedAst, "address", "recipient", "Address");
         bool accessSender = IsWarmUpCall(senderWarmup.TypedAst, "address", "SenderAddress", "Address");
-        bool accessDedup = HasInvocationOnField(journalSetAdd.TypedAst, "Add", "_set");
         bool substateCtorPreservesNullError = HasReference(substateCtor.TypedAst, "ShouldRevert") &&
             HasConstant(substateCtor.TypedAst, "<null>");
         bool substateIsErrorExact = IsSubstateIsErrorAst(substateIsError.TypedAst);
@@ -1313,11 +1709,11 @@ internal static class Extractor
             throw new ExtractionException("GasCostOf.NewAccountState did not lower to a positive resolved constant.");
         if (!combineMax || !effectiveFallback || !buildUpExact || !fastToStringEnumName ||
             !accessHot || !accessTxList || !accessCoinbase || !accessRecipient || !accessListCall ||
-            !accessCoinbaseCall || !accessRecipientCall || !accessSender || !accessDedup ||
+            !accessCoinbaseCall || !accessRecipientCall || !accessSender ||
             !substateCtorPreservesNullError || !substateIsErrorExact)
             throw new ExtractionException("A closed typed source lowering for simple-transfer completion is incomplete.");
         return new CompletionLowering(combineMax, effectiveFallback, buildUpExact, fastToStringEnumName,
-            accessHot, accessTxList, accessCoinbase, accessRecipient, accessSender, accessDedup,
+            accessHot, accessTxList, accessCoinbase, accessRecipient, accessSender,
             transferLogPayloadGrammar,
             transferLogAddress,
             transferSignature,
@@ -1407,16 +1803,31 @@ internal static class Extractor
     {
         if (completion.Stages.Length != 13 || completion.Branches.Length != 8 || completion.Effects.Length != 19 ||
             completion.Operations.Length != 15 || completion.Adapters.Length != 6 ||
-            completion.Lowering is null || completion.Handoff != "OrdinaryPostNonceDispatchExtractor.SimpleHandoff" ||
+            completion.Lowering is null || completion.Handoff != "TransactionProcessorBase.Execute/6 -> ExecuteSimpleTransfer/15" ||
             completion.ReceiptMode != "receipt-continuation-input-only" ||
             string.IsNullOrWhiteSpace(completion.Lowering.TransferLogPayloadGrammar) ||
             string.IsNullOrWhiteSpace(completion.Lowering.TransferLogAddress) ||
             string.IsNullOrWhiteSpace(completion.Lowering.TransferSignature) ||
             completion.Lowering.NewAccountStateCost <= 0 ||
-            completion.Lowering.NoFrameGotoCount != 4 || !completion.Lowering.NoFrameCfgProven ||
+            completion.Lowering.NoFrameGotoCount != 4 ||
             !completion.Lowering.FailContractCreateBypassesNoFrame || completion.Lowering.NoFrameCfgPaths is null ||
-            completion.Lowering.NoFrameCfgPaths.Length != completion.Lowering.NoFrameGotoCount)
+            completion.Lowering.NoFrameCfgPaths.Length != (completion.Lowering.NoFrameCfgProven ? completion.Lowering.NoFrameGotoCount : 0))
             throw new ExtractionException("Simple-transfer completion cardinality or boundary changed.");
+
+        string[] callerRoles =
+        [
+            "simple-transfer caller", "simple-transfer candidate preparation", "simple-transfer candidate guard",
+            "simple-transfer code/delegation guard", "available-gas caller boundary", "caller restore flag",
+            "caller effective commit flag", "caller candidate lookup", "caller pre-execution commit guard",
+            "caller guarded pre-execution commit", "caller available-gas result", "caller available-gas failure exit",
+            "caller selected simple-transfer arm", "caller simple-transfer dispatch", "candidate exclusions",
+            "code and delegation exclusion", "recipient and candidate guard",
+            "normal code lookup with fork-selected delegation", "selected recipient after code lookup",
+        ];
+        if (completion.MethodBindings is null || callerRoles.Any(role =>
+                completion.MethodBindings.Count(binding => binding.Role == role && binding.Path == TransactionProcessorPath) != 1))
+            throw new ExtractionException("Simple-transfer caller provenance is incomplete.");
+        foreach (SourceBinding binding in completion.MethodBindings) ValidateBinding(binding);
 
         for (int index = 0; index < completion.Stages.Length; index++)
         {
@@ -1467,20 +1878,26 @@ internal static class Extractor
 
     private static void ValidateRoute(RouteShape route)
     {
-        if (route.Bindings is null || route.Bindings.Length == 0 ||
-            route.Bindings.Any(static binding => binding is null || !binding.IsReachable))
-            throw new ExtractionException("Standard mainnet DI/reachability bindings are not on reachable source paths.");
+        if (route.Bindings is null || route.Bindings.Length != 6 ||
+            route.Bindings.Take(5).Any(static binding => binding is null ||
+                binding.Path != MainnetDiPath || binding.OperationKind != "ExactExternalSourceProjection" || binding.IsReachable) ||
+            route.Bindings[0].Member != "Load" ||
+            route.Bindings.Skip(1).Take(4).Any(static binding => binding.NodeKind != "InvocationExpression") ||
+            route.Bindings[5].Path != TransactionProcessorPath || !route.Bindings[5].SymbolResolved)
+            throw new ExtractionException("Standard mainnet DI source projection or processor lineage changed.");
         foreach (SourceBinding binding in route.Bindings)
-            ValidateBinding(binding, requireReachable: binding.NodeKind is "InvocationExpression" or "ObjectCreationExpression");
+            ValidateBinding(binding, requireReachable: binding.Path == TransactionProcessorPath);
     }
 
-    private static void ValidateIr(IrDocument document)
+    private static void ValidateIr(IrDocument document, CompilerClosure compiler)
     {
         if (document.SchemaVersion != SchemaVersion || document.ExtractorVersion != ExtractorVersion ||
             document.RoslynVersion != RoslynVersion || document.LanguageVersion != LanguageVersionText ||
             document.Kernel != Kernel || document.AcceptanceState != AcceptanceState || !IsSha256(document.SourceClosureSha256) ||
-            document.Sources.Length != SourceSpecs.Length || document.Dependencies.Length != DependencySpecs.Length)
+            document.Sources.Length != SourceSpecs.Length || document.Dependencies.Length != DependencySpecs.Length + 4 ||
+            document.CompilerSources is not { Length: 157 } || document.CompilerReferences is not { Length: 226 })
             throw new ExtractionException("Simple-transfer IR header or source closure changed.");
+        ValidateStageASourcePlan(document.StageAPlan);
 
         foreach (SourceIdentity source in document.Sources)
         {
@@ -1493,22 +1910,42 @@ internal static class Extractor
                 throw new ExtractionException("Simple-transfer IR contains an invalid dependency identity.");
         }
 
+        ValidateCompilerRoster(document.CompilerSources, document.CompilerReferences, compiler);
+        if (document.SourceClosureSha256 != SourceClosureHash(document.Sources, document.CompilerSources, document.CompilerReferences))
+            throw new ExtractionException("Simple-transfer IR source closure hash does not match effective compiler inputs.");
         ValidateCompletion(document.Completion);
         if (document.Route.ExcludedRoutes.Length == 0 || document.Exclusions.Length == 0 || document.ArithmeticRules.Length == 0 || document.ExternalCorrespondence.Length == 0)
             throw new ExtractionException("Simple-transfer IR lost its explicit boundary declarations.");
     }
 
-    private static void ValidateManifest(Manifest manifest)
+    private static void ValidateManifest(Manifest manifest, CompilerClosure compiler)
     {
         if (manifest.SchemaVersion != SchemaVersion || manifest.ExtractorVersion != ExtractorVersion ||
             manifest.RoslynVersion != RoslynVersion || manifest.LanguageVersion != LanguageVersionText ||
             manifest.Kernel != Kernel || manifest.AcceptanceState != AcceptanceState ||
             !IsSha256(manifest.SourceClosureSha256) || !IsSha256(manifest.CombinedSourceSha256) ||
-            !IsSha256(manifest.SemanticIrSha256) || manifest.Sources.Length != SourceSpecs.Length || manifest.Dependencies.Length != DependencySpecs.Length)
+            !IsSha256(manifest.SemanticIrSha256) || manifest.Sources.Length != SourceSpecs.Length ||
+            manifest.Dependencies.Length != DependencySpecs.Length + 4 ||
+            manifest.CompilerSources is not { Length: 157 } || manifest.CompilerReferences is not { Length: 226 } ||
+            !IsSha256(manifest.StageAPlanSha256))
             throw new ExtractionException("Simple-transfer source manifest header changed.");
         foreach (SourceBinding binding in manifest.Bindings) ValidateBinding(binding);
+        ValidateCompilerRoster(manifest.CompilerSources, manifest.CompilerReferences, compiler);
+        if (manifest.SourceClosureSha256 != SourceClosureHash(manifest.Sources, manifest.CompilerSources, manifest.CompilerReferences))
+            throw new ExtractionException("Simple-transfer manifest source closure hash does not match effective compiler inputs.");
         if (!IsSha256(manifest.Ir.Sha256) || !IsSha256(manifest.Lean.Sha256))
             throw new ExtractionException("Simple-transfer source manifest artifact identities are incomplete.");
+    }
+
+    private static void ValidateCompilerRoster(
+        SourceIdentity[] sources, ReferenceIdentity[] references, CompilerClosure compiler)
+    {
+        if (sources is not { Length: 157 } || references is not { Length: 226 } ||
+            !sources.SequenceEqual(compiler.EffectiveSources) || !references.SequenceEqual(compiler.References) ||
+            sources.Count(static source => source.Role is "semantic" or "compiler-support" or "compiler-generated") != 146 ||
+            references.Any(static reference => !reference.Selected || !IsSha256(reference.Sha256) ||
+                string.IsNullOrWhiteSpace(reference.Mvid) || string.IsNullOrWhiteSpace(reference.AssemblyName)))
+            throw new ExtractionException("Simple-transfer compiler source or reference roster differs from accepted Release inputs.");
     }
 
     private static void ValidateBinding(SourceBinding? binding, bool requireReachable = false)
@@ -1520,11 +1957,26 @@ internal static class Extractor
             binding.Receiver is null || binding.TargetSymbol is null || binding.StatementOrdinal < 0 || binding.ControlFlowBlock < -1 ||
             string.IsNullOrWhiteSpace(binding.TargetSymbolIdentity) ||
             binding.StartLine <= 0 || binding.StartColumn <= 0 || binding.EndLine <= 0 || binding.EndColumn <= 0 ||
-            !binding.SymbolResolved || !IsClosedTypedAst(binding.TypedAst) ||
+            !binding.SymbolResolved && binding.OperationKind is not ("ExactExternalSourceProjection" or "ExternalHookPremise") || !IsClosedTypedAst(binding.TypedAst) ||
             !IsSha256(binding.TokenSha256) || !IsSha256(binding.CanonicalSyntaxSha256) ||
             binding.CanonicalSyntaxSha256 != Sha256(Encoding.UTF8.GetBytes(binding.CanonicalSyntax)) ||
-            requireReachable && !binding.IsReachable)
+            requireReachable && !binding.IsReachable && binding.OperationKind is not ("ExactExternalSourceProjection" or "ExternalHookPremise" or "CoreMetadataConstant"))
              throw new ExtractionException($"Simple-transfer IR contains an incomplete or tampered source binding: {binding?.Path}/{binding?.Member} ({binding?.Role}), node={binding?.NodeKind}, operation={binding?.OperationKind}, symbolResolved={binding?.SymbolResolved}, target={binding?.TargetSymbolIdentity}, typed={(binding is null ? "null" : TypedShape(binding.TypedAst))}.");
+        if (binding.Path.StartsWith("src/Nethermind/Nethermind.Evm/", StringComparison.Ordinal))
+        {
+            if (!binding.SymbolResolved || binding.OperationKind is "CoreMetadataConstant" or "ExactExternalSourceProjection" or "ExternalHookPremise")
+                throw new ExtractionException($"Required compiled EVM binding was replaced by an external projection: {binding.Path}/{binding.Member}.");
+            return;
+        }
+        string mode = ExternalBindingMode(binding.Path, binding.Member);
+        if (binding.OperationKind != mode || binding.IsReachable || binding.ControlFlowBlock != -1 ||
+            mode == "CoreMetadataConstant" && (!binding.SymbolResolved || binding.TypedAst.Kind != "FieldDeclaration" ||
+                binding.TypedAst.Symbol != binding.TargetSymbolIdentity) ||
+            mode != "CoreMetadataConstant" && (binding.SymbolResolved || binding.TypedAst.Kind != mode ||
+                binding.TargetSymbolIdentity != mode + "|" + binding.Path + "|" + binding.CanonicalSyntaxSha256 ||
+                binding.TypedAst.Symbol != binding.TargetSymbolIdentity) ||
+            mode == "ExternalHookPremise" && !binding.Role.StartsWith("normal-return external hook premise: ", StringComparison.Ordinal))
+            throw new ExtractionException($"External source binding mode or identity changed: {binding.Path}/{binding.Member}.");
     }
 
     private static bool IsClosedTypedAst(TypedAstNode? node) =>
@@ -1537,14 +1989,303 @@ internal static class Extractor
         node.ArgumentKind is not null && node.RefKind is not null && node.Children is not null &&
         node.Children.All(IsClosedTypedAst);
 
-    private static SourceFile[] ReadSources(string root) => SourceSpecs.Select(spec => ReadSource(root, spec)).ToArray();
+    private static SourceFile[] ReadSources(string root, IReadOnlyDictionary<string, string>? overrides = null) =>
+        SourceSpecs.Select(spec => ReadSource(root, spec, overrides)).ToArray();
 
-    private static SourceFile ReadSource(string root, SourceSpec spec)
+    private static StageASourcePlan BuildStageASourcePlan(string root, CompilerClosure compiler) =>
+        new(
+            "standard-mainnet sequential Commit, no restore, tracing-state=false, simple-recipient, post-successful-nonce",
+            ValidateReceiptAdapterProjection(root),
+            [
+                "Consensus receipt adapter exact source projection; runtime selection and normal-return hooks are external premises",
+                "receipt adapter passes receiptsTracer itself to Execute after StartNewTxTrace",
+                "ITransactionProcessorExtensions.Execute passes exact ExecutionOptions.Commit",
+                "Process/ExecuteCore excludes the system processor for the selected ordinary transaction",
+                "tracer.IsTracingState=false; no pre-execution commit request on the selected simple-recipient path",
+                "the selected AuthorizationList-null route has a zero intrinsic state baseline; its prefix provenance remains an explicit obligation",
+            ],
+            LowerStageAMethods(compiler));
+
+    private static void ValidateStageASourcePlan(StageASourcePlan? plan)
+    {
+        if (plan is null || string.IsNullOrWhiteSpace(plan.Scope) ||
+            plan.ReceiptAdapterProjectionSha256 != ReceiptAdapterSha256 ||
+            plan.ExternalPremises is not { Length: 6 } || plan.Methods is not { Length: 19 })
+            throw new ExtractionException("Stage-A typed source plan header or external route projection changed.");
+        foreach (StageAMethodPlan method in plan.Methods)
+        {
+            if (method is null || string.IsNullOrWhiteSpace(method.Path) ||
+                string.IsNullOrWhiteSpace(method.Owner) || string.IsNullOrWhiteSpace(method.Member) ||
+                method.ParameterCount < 0 || !IsSha256(method.BodySha256) ||
+                method.Statements is not { Length: > 0 } || method.Effects is null ||
+                method.Branches is null || method.Operands is not { Length: > 0 } ||
+                method.Statements.Any(static statement => statement is null || !IsSha256(statement.CanonicalSha256) ||
+                    !IsClosedTypedAst(statement.Operation)) ||
+                method.Effects.Concat(method.Branches).Concat(method.Operands).Any(static operation =>
+                    operation is null || !IsSha256(operation.CanonicalSha256) || !IsClosedTypedAst(operation.Operation)))
+                throw new ExtractionException($"Stage-A typed source plan is incomplete: {method?.Owner}.{method?.Member}.");
+        }
+    }
+
+    private static StageAMethodPlan[] LowerStageAMethods(CompilerClosure compiler)
+    {
+        (string Path, string Owner, string Member, int Arity, int TopLevel, int Returns)[] admitted =
+        [
+            (ITransactionProcessorPath, "ITransactionProcessorExtensions", "Execute", 2, 1, 0),
+            (TransactionProcessorPath, "TransactionProcessorBase", "Process", 3, -1, -1),
+            (TransactionProcessorPath, "TransactionProcessorBase", "ExecuteCore", 3, -1, -1),
+            (TransactionProcessorPath, "TransactionProcessorBase", "Execute", 3, -1, -1),
+            (TransactionProcessorPath, "TransactionProcessorBase", "Execute", 6, 14, 5),
+            (TransactionProcessorPath, "TransactionProcessorBase", "PrepareSimpleTransferFastPath", 4, 6, 2),
+            (TransactionProcessorPath, "TransactionProcessorBase", "IsSimpleTransferFastPathCandidate", 2, 1, 0),
+            (TransactionProcessorPath, "TransactionProcessorBase", "HasNoExecutableCode", 2, 1, 0),
+            (TransactionProcessorPath, "TransactionProcessorBase", "CalculateAvailableGas", 4, 1, 0),
+            (TransactionProcessorPath, "TransactionProcessorBase", "ExecuteSimpleTransfer", 15, 22, 1),
+            (TransactionProcessorPath, "TransactionProcessorBase", "Refund", 12, -1, -1),
+            (TransactionProcessorPath, "TransactionProcessorBase", "UpdateHeaderGasUsedAndPayFees", 11, -1, -1),
+            (TransactionProcessorPath, "TransactionProcessorBase", "PayFees", 10, -1, -1),
+            (TransactionProcessorPath, "TransactionProcessorBase", "FinalizeTransaction", 12, -1, -1),
+            (EthereumGasPolicyPath, "EthereumGasPolicy", "TryCreateAvailableFromIntrinsic", 4, -1, -1),
+            (EthereumGasPolicyPath, "EthereumGasPolicy", "TryConsumeStateGas", 2, -1, -1),
+            (EthereumGasPolicyPath, "EthereumGasPolicy", "ClearExecutionGas", 1, 1, 0),
+            (TransactionGasInitializationKernelPath, "TransactionGasInitializationKernel", "TryCreate", 5, -1, -1),
+            (StateGasChargeKernelPath, "StateGasChargeKernel", "TryCharge", 6, -1, -1),
+        ];
+        List<StageAMethodPlan> plans = [];
+        foreach ((string path, string owner, string member, int arity, int topLevel, int returns) in admitted)
+        {
+            SourceFile source = FindSource(compiler.Sources, path);
+            MethodDeclarationSyntax method = owner == "ITransactionProcessorExtensions"
+                ? FindCommitExecuteExtension(source, compiler.Compilation)
+                : FindMethod(source, owner, member, arity);
+            RejectNestedCallables(method);
+            if (topLevel >= 0 && (method.Body?.Statements.Count ?? 1) != topLevel ||
+                returns >= 0 && (method.Body?.DescendantNodes().OfType<ReturnStatementSyntax>().Count() ?? 0) != returns)
+                throw new ExtractionException($"Stage-A {owner}.{member}/{arity} lost its complete statement or return skeleton.");
+            if (owner == "ITransactionProcessorExtensions" &&
+                (method.ExpressionBody is null || Canonical(method.ExpressionBody.Expression) !=
+                    "transactionProcessor.Process(transaction,txTracer,ExecutionOptions.Commit)"))
+                throw new ExtractionException("Stage-A standard Execute adapter changed its exact Commit dispatch.");
+            plans.Add(LowerStageAMethod(source, method, compiler.Compilation.GetSemanticModel(source.Tree), owner));
+        }
+        return plans.ToArray();
+    }
+
+    private static MethodDeclarationSyntax FindCommitExecuteExtension(SourceFile source, CSharpCompilation compilation)
+    {
+        const string identity = "Nethermind.Evm.TransactionProcessing.ITransactionProcessorExtensions.Execute/2";
+        ClassDeclarationSyntax[] owners = source.Root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .Where(static declaration => SyntaxTypeIdentity(declaration) ==
+                "Nethermind.Evm.TransactionProcessing.ITransactionProcessorExtensions").ToArray();
+        if (owners is not [ClassDeclarationSyntax owner] ||
+            !owner.Modifiers.Any(static token => token.IsKind(SyntaxKind.PublicKeyword)) ||
+            !owner.Modifiers.Any(static token => token.IsKind(SyntaxKind.StaticKeyword)))
+            throw new ExtractionException($"Stage-A {identity} lost its exact public static owner.");
+        ExtensionBlockDeclarationSyntax[] blocks = owner.Members.OfType<ExtensionBlockDeclarationSyntax>().ToArray();
+        if (blocks is not [ExtensionBlockDeclarationSyntax block])
+            throw new ExtractionException($"Stage-A {identity} lost its single extension block.");
+        ParameterListSyntax[] receiverLists = block.ChildNodes().OfType<ParameterListSyntax>().ToArray();
+        if (receiverLists is not [ParameterListSyntax { Parameters: [ParameterSyntax receiver] }] ||
+            receiver.Identifier.ValueText != "transactionProcessor" ||
+            receiver.Type is null || TypeName(receiver.Type) != "ITransactionProcessor" ||
+            receiver.Modifiers.Count != 0)
+            throw new ExtractionException($"Stage-A {identity} lost its exact ITransactionProcessor receiver.");
+        MethodDeclarationSyntax[] methods = block.Members.OfType<MethodDeclarationSyntax>()
+            .Where(static method => method.Identifier.ValueText == "Execute" &&
+                method.ParameterList.Parameters.Count == 2).ToArray();
+        if (methods is not [MethodDeclarationSyntax method] ||
+            !method.Modifiers.Any(static token => token.IsKind(SyntaxKind.PublicKeyword)) ||
+            method.Body is not null || method.ExpressionBody is null ||
+            method.ParameterList.Parameters[0].Identifier.ValueText != "transaction" ||
+            method.ParameterList.Parameters[1].Identifier.ValueText != "txTracer")
+            throw new ExtractionException($"Stage-A {identity} lost its unique public expression-bodied declaration.");
+
+        SemanticModel model = compilation.GetSemanticModel(source.Tree);
+        INamedTypeSymbol? ownerSymbol = model.GetDeclaredSymbol(owner);
+        INamedTypeSymbol? processor = compilation.GetTypeByMetadataName(
+            "Nethermind.Evm.TransactionProcessing.ITransactionProcessor");
+        INamedTypeSymbol? transaction = compilation.GetTypeByMetadataName("Nethermind.Core.Transaction");
+        INamedTypeSymbol? tracer = compilation.GetTypeByMetadataName("Nethermind.Evm.Tracing.ITxTracer");
+        INamedTypeSymbol? result = compilation.GetTypeByMetadataName(
+            "Nethermind.Evm.TransactionProcessing.TransactionResult");
+        INamedTypeSymbol? options = compilation.GetTypeByMetadataName(
+            "Nethermind.Evm.TransactionProcessing.ExecutionOptions");
+        IParameterSymbol? receiverSymbol = model.GetDeclaredSymbol(receiver);
+        IParameterSymbol? transactionSymbol = model.GetDeclaredSymbol(method.ParameterList.Parameters[0]);
+        IParameterSymbol? tracerSymbol = model.GetDeclaredSymbol(method.ParameterList.Parameters[1]);
+        IMethodSymbol? methodSymbol = model.GetDeclaredSymbol(method);
+        IMethodSymbol? processSymbol = processor?.GetMembers("Process").OfType<IMethodSymbol>()
+            .SingleOrDefault(static member => member.Parameters.Length == 3);
+        IFieldSymbol? commitSymbol = options?.GetMembers("Commit").OfType<IFieldSymbol>().SingleOrDefault();
+        if (ownerSymbol is null || !ownerSymbol.IsStatic || processor is null ||
+            receiverSymbol is null || !SymbolEqualityComparer.Default.Equals(receiverSymbol.Type, processor) ||
+            transactionSymbol is null || !SymbolEqualityComparer.Default.Equals(transactionSymbol.Type, transaction) ||
+            tracerSymbol is null || !SymbolEqualityComparer.Default.Equals(tracerSymbol.Type, tracer) ||
+            methodSymbol is null || methodSymbol.DeclaredAccessibility != Accessibility.Public ||
+            !SymbolEqualityComparer.Default.Equals(methodSymbol.ReturnType, result) ||
+            methodSymbol.Locations.Length != 1 || !ReferenceEquals(methodSymbol.Locations[0].SourceTree, source.Tree) ||
+            processSymbol is null || commitSymbol is null ||
+            model.GetOperation(method.ExpressionBody.Expression) is not IInvocationOperation invocation ||
+            !SymbolEqualityComparer.Default.Equals(invocation.TargetMethod, processSymbol) ||
+            invocation.Instance is not IParameterReferenceOperation instance ||
+            !SymbolEqualityComparer.Default.Equals(instance.Parameter, receiverSymbol) ||
+            invocation.Arguments is not [IArgumentOperation first, IArgumentOperation second, IArgumentOperation third] ||
+            first.Value is not IParameterReferenceOperation firstReference ||
+            !SymbolEqualityComparer.Default.Equals(firstReference.Parameter, transactionSymbol) ||
+            second.Value is not IParameterReferenceOperation secondReference ||
+            !SymbolEqualityComparer.Default.Equals(secondReference.Parameter, tracerSymbol) ||
+            third.Value is not IFieldReferenceOperation field ||
+            !SymbolEqualityComparer.Default.Equals(field.Field, commitSymbol))
+            throw new ExtractionException($"Stage-A {identity} lost its resolved Commit-to-Process route.");
+        return method;
+    }
+
+    private static StageAMethodPlan LowerStageAMethod(
+        SourceFile source, MethodDeclarationSyntax method, SemanticModel model, string owner)
+    {
+        SyntaxNode body = Body(method);
+        StatementSyntax[] syntaxStatements = method.Body is null ? [] : method.Body.DescendantNodesAndSelf()
+            .OfType<StatementSyntax>().Where(static statement => statement is not BlockSyntax).ToArray();
+        Dictionary<SyntaxNode, int> ordinals = new(ReferenceEqualityComparer.Instance);
+        List<StageAStatementPlan> statements = [];
+        if (method.ExpressionBody is not null)
+        {
+            TypedAstNode expression = LowerTypedAst(model.GetOperation(method.ExpressionBody.Expression));
+            if (!IsClosedTypedAst(expression) || expression.Kind == "Absent")
+                throw new ExtractionException($"Stage-A {owner}.{method.Identifier.ValueText} has an unresolved expression body.");
+            statements.Add(new(0, -1, method.ExpressionBody.Expression.Kind().ToString(),
+                Sha256(Encoding.UTF8.GetBytes(Canonical(body))), expression));
+        }
+        else
+        {
+            foreach (StatementSyntax statement in syntaxStatements)
+            {
+                int ordinal = statements.Count;
+                int parent = statement.Ancestors().OfType<StatementSyntax>()
+                    .Where(static ancestor => ancestor is not BlockSyntax)
+                    .Select(ancestor => ordinals.TryGetValue(ancestor, out int index) ? index : -1)
+                    .FirstOrDefault(static index => index >= 0, -1);
+                TypedAstNode operation = LowerTypedAst(model.GetOperation(statement));
+                if (!IsClosedTypedAst(operation) || operation.Kind == "Absent")
+                    throw new ExtractionException($"Stage-A {owner}.{method.Identifier.ValueText} has an unresolved statement {ordinal}.");
+                statements.Add(new(ordinal, parent, statement.Kind().ToString(),
+                    Sha256(Encoding.UTF8.GetBytes(Canonical(statement))), operation));
+                ordinals.Add(statement, ordinal);
+            }
+        }
+
+        IOperation rootOperation = model.GetOperation(body)
+            ?? throw new ExtractionException($"Stage-A {owner}.{method.Identifier.ValueText} has no typed body operation.");
+        List<StageAOperationPlan> effects = [];
+        List<StageAOperationPlan> branches = [];
+        List<StageAOperationPlan> operands = [];
+        foreach (IOperation operation in StageAOperations(rootOperation))
+        {
+            if (operation is IAnonymousFunctionOperation or ILocalFunctionOperation or IDelegateCreationOperation or
+                ITranslatedQueryOperation or IAwaitOperation or IDynamicInvocationOperation or
+                IDynamicMemberReferenceOperation or IDynamicIndexerAccessOperation or IDynamicObjectCreationOperation)
+                throw new ExtractionException($"Stage-A {owner}.{method.Identifier.ValueText} contains unsupported deferred, callable, or dynamic operation {operation.Kind}.");
+            bool effect = operation is IInvocationOperation or IObjectCreationOperation or IArrayCreationOperation or
+                ICollectionExpressionOperation or ICoalesceAssignmentOperation or
+                IAssignmentOperation or IIncrementOrDecrementOperation or IReturnOperation ||
+                operation is IArgumentOperation { Parameter.RefKind: RefKind.Ref or RefKind.Out };
+            bool branch = operation is IConditionalOperation or IConditionalAccessOperation or
+                ICoalesceOperation or ICoalesceAssignmentOperation or ISwitchOperation or ILoopOperation ||
+                operation is IBinaryOperation { OperatorKind: BinaryOperatorKind.ConditionalAnd or BinaryOperatorKind.ConditionalOr };
+            bool operand = operation is IFieldReferenceOperation or IPropertyReferenceOperation or
+                ILocalReferenceOperation or IParameterReferenceOperation or IBinaryOperation or IUnaryOperation or ILiteralOperation;
+            if (!effect && !branch && !operand) continue;
+            int ordinal = method.ExpressionBody is not null ? 0 : operation.Syntax.AncestorsAndSelf()
+                .OfType<StatementSyntax>().Where(static statement => statement is not BlockSyntax)
+                .Select(statement => ordinals.TryGetValue(statement, out int index) ? index : -1)
+                .FirstOrDefault(static index => index >= 0, -1);
+            if (ordinal < 0)
+                throw new ExtractionException($"Stage-A {owner}.{method.Identifier.ValueText} has an unowned typed operation {operation.Kind}.");
+            TypedAstNode typed = LowerTypedAst(operation);
+            if (!IsClosedTypedAst(typed))
+                throw new ExtractionException($"Stage-A {owner}.{method.Identifier.ValueText} has an open typed operation {operation.Kind}.");
+            StageAOperationPlan item = new(ordinal, operation.Kind.ToString(),
+                SymbolIdentity(FirstResolvedOperationSymbol(operation)),
+                Sha256(Encoding.UTF8.GetBytes(Canonical(operation.Syntax))), typed);
+            if (effect) effects.Add(item);
+            if (branch) branches.Add(item);
+            if (operand) operands.Add(item);
+        }
+        if (statements.Count == 0 || operands.Count == 0)
+            throw new ExtractionException($"Stage-A {owner}.{method.Identifier.ValueText} has an incomplete typed statement/effect/operand ledger.");
+        return new StageAMethodPlan(source.RelativePath, owner, method.Identifier.ValueText,
+            method.ParameterList.Parameters.Count, Sha256(Encoding.UTF8.GetBytes(Canonical(body))),
+            statements.ToArray(), effects.ToArray(), branches.ToArray(), operands.ToArray());
+    }
+
+    private static IEnumerable<IOperation> StageAOperations(IOperation root)
+    {
+        yield return root;
+        foreach (IOperation child in root.ChildOperations)
+            foreach (IOperation operation in StageAOperations(child)) yield return operation;
+    }
+
+    private static IEnumerable<string> StageAStatementLedger(IEnumerable<StageAStatementPlan> statements) =>
+        statements.Select(static statement => $"{statement.Ordinal}|{statement.ParentOrdinal}|{statement.SyntaxKind}|{statement.CanonicalSha256}|{TypedShape(statement.Operation)}");
+
+    private static IEnumerable<string> StageAOperationLedger(IEnumerable<StageAOperationPlan> operations) =>
+        operations.Select(static operation => $"{operation.StatementOrdinal}|{operation.OperationKind}|{operation.SymbolIdentity}|{operation.CanonicalSha256}|{TypedShape(operation.Operation)}");
+
+    private static string ValidateReceiptAdapterProjection(string root)
+    {
+        byte[] bytes = File.ReadAllBytes(CompilerReferences.Within(root, ReceiptAdapterPath));
+        string sha = Sha256(bytes);
+        if (sha != ReceiptAdapterSha256)
+            throw new ExtractionException("Stage-A Consensus receipt adapter source projection changed.");
+        CompilationUnitSyntax syntax = CSharpSyntaxTree.ParseText(Encoding.UTF8.GetString(bytes), ParseOptions).GetCompilationUnitRoot();
+        MethodDeclarationSyntax[] methods = syntax.DescendantNodes().OfType<MethodDeclarationSyntax>()
+            .Where(static method => method.Identifier.ValueText == "ProcessTransaction").ToArray();
+        if (methods is not [{ Body: { Statements.Count: 5 } body }] ||
+            Canonical(body.Statements[1]) != "usingITxTracertracer=receiptsTracer.StartNewTxTrace(currentTx);" ||
+            Canonical(body.Statements[2]) != "TransactionResultresult=transactionProcessor.Execute(currentTx,receiptsTracer);" ||
+            Canonical(body.Statements[3]) != "receiptsTracer.EndTxTrace();" ||
+            Canonical(body.Statements[4]) != "returnresult;")
+            throw new ExtractionException("Stage-A receipt adapter must pass receiptsTracer itself after StartNewTxTrace.");
+        return sha;
+    }
+
+    private static void ValidateOverrideKeys(string root, IReadOnlyDictionary<string, string>? overrides)
+    {
+        if (overrides is null) return;
+        HashSet<string> compiledPaths = CompilerSources.CompiledPaths(root);
+        HashSet<string> admittedPaths = SourceSpecs
+            .Where(static spec => !spec.Path.StartsWith("src/Nethermind/Nethermind.Evm/", StringComparison.Ordinal))
+            .Select(static spec => spec.Path).ToHashSet(StringComparer.Ordinal);
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string path in overrides.Keys)
+        {
+            if (!seen.Add(path) || !compiledPaths.Contains(path) && !admittedPaths.Contains(path))
+                throw new ExtractionException("A source override is unknown, duplicated, or differs in case from the admitted compiler/projection roster: " + path);
+        }
+    }
+
+    private static CompilerClosure LoadCompilerClosure(
+        string sourceRoot, SourceFile[] observed, IReadOnlyDictionary<string, string>? overrides = null)
+    {
+        Dictionary<string, string> compilerOverrides = observed
+            .Where(static source => source.RelativePath.StartsWith("src/Nethermind/Nethermind.Evm/", StringComparison.Ordinal))
+            .ToDictionary(static source => source.RelativePath, static source => Encoding.UTF8.GetString(source.Bytes), StringComparer.Ordinal);
+        if (overrides is not null)
+        {
+            foreach ((string path, string replacement) in overrides)
+                if (path.StartsWith("src/Nethermind/Nethermind.Evm/", StringComparison.Ordinal))
+                    compilerOverrides[path] = replacement;
+        }
+        return CompilerSources.Load(sourceRoot, compilerOverrides);
+    }
+
+    private static SourceFile ReadSource(string root, SourceSpec spec, IReadOnlyDictionary<string, string>? overrides)
     {
         string path = Path.GetFullPath(Path.Combine(root, spec.Path));
         EnsureWithin(root, path);
         if (!File.Exists(path)) throw new ExtractionException($"Missing {spec.Role}: {spec.Path}.");
-        byte[] bytes = File.ReadAllBytes(path);
+        byte[] bytes = overrides is not null && overrides.TryGetValue(spec.Path, out string? replacement)
+            ? Encoding.UTF8.GetBytes(replacement) : File.ReadAllBytes(path);
         SourceText text;
         try
         {
@@ -1576,122 +2317,89 @@ internal static class Extractor
                 throw new ExtractionException($"Pinned dependency drift in {spec.Path}: expected {spec.ExpectedSha256}, found {sha}.");
             dependencies.Add(new DependencyIdentity(spec.Path, spec.Role, sha));
         }
+        foreach ((string path, string role, string? expected) in new[]
+        {
+            ("tools/Evm/Lean/SimpleTransferCompletionExtractor/CompilerReferences.cs", "package-local real compiler-reference helper", (string?)null),
+            ("tools/Evm/Lean/SimpleTransferCompletionExtractor/CompilerSources.cs", "package-local real compiler-source helper", (string?)null),
+            (CompilerSources.PinsPath, "accepted Refund source roster pin", CompilerSources.PinsSha256),
+            (CompilerReferences.InventoryPath, "accepted Refund compiler-reference roster pin", CompilerReferences.InventorySha256),
+        })
+        {
+            string absolute = Path.GetFullPath(Path.Combine(root, path));
+            EnsureWithin(root, absolute);
+            string sha = Sha256(File.ReadAllBytes(absolute));
+            if (expected is not null && sha != expected)
+                throw new ExtractionException($"Pinned compiler dependency drift in {path}.");
+            dependencies.Add(new DependencyIdentity(path, role, sha));
+        }
         return dependencies.ToArray();
     }
 
-    private static SemanticContext BuildSemanticContext(string root, SourceFile[] sources, SourceFile virtualMachineAdapter)
+    private static SemanticContext BuildSemanticContext(SourceFile[] sources, CompilerClosure compiler)
     {
-        MetadataReference[] references = MetadataReferences(root).ToArray();
-        Dictionary<SyntaxTree, SemanticModel> models = [];
+        Dictionary<SyntaxTree, SemanticModel> models = compiler.Sources.ToDictionary(
+            static source => source.Tree,
+            source => compiler.Compilation.GetSemanticModel(source.Tree));
+        foreach (SourceFile source in sources.Where(static source =>
+                     source.RelativePath.StartsWith("src/Nethermind/Nethermind.Evm/", StringComparison.Ordinal)))
+            if (!models.ContainsKey(source.Tree))
+                throw new ExtractionException("Required EVM source missing from compiled Roslyn tree roster: " + source.RelativePath);
+        SourceFile processor = FindSource(sources, TransactionProcessorPath);
         SourceFile virtualMachine = FindSource(sources, VirtualMachineSignaturePath);
         ValidateVirtualMachineStaticsSignature(virtualMachine);
-        ValidateVirtualMachineStaticsAdapter(virtualMachineAdapter);
-        foreach (SourceFile[] group in SemanticGroups(sources))
-        {
-            IEnumerable<SyntaxTree> trees = group.Any(static source => source.RelativePath == TransactionProcessorPath)
-                ? group.Select(static source => source.Tree).Append(virtualMachineAdapter.Tree)
-                : group.Select(static source => source.Tree);
-            CSharpCompilation compilation = CSharpCompilation.Create(
-                CompilationAssemblyName(group[0].RelativePath),
-                trees,
-                references,
-                new CSharpCompilationOptions(
-                    OutputKind.DynamicallyLinkedLibrary,
-                    nullableContextOptions: NullableContextOptions.Enable,
-                    allowUnsafe: true,
-                    optimizationLevel: OptimizationLevel.Debug,
-                    metadataImportOptions: MetadataImportOptions.All));
-            Diagnostic[] errors = compilation.GetDiagnostics()
-                .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-                .ToArray();
-            if (errors.Length != 0)
-            {
-                throw new ExtractionException($"The production source closure has compilation errors in {string.Join(", ", group.Select(static source => source.RelativePath))}: " +
-                    string.Join("; ", errors.Take(200).Select(static diagnostic => diagnostic.ToString())));
-            }
-
-            if (group.Any(static source => source.RelativePath == TransactionProcessorPath))
-            {
-                SourceFile processor = FindSource(group, TransactionProcessorPath);
-                ValidateVirtualMachineStaticsBindings(
-                    processor,
-                    virtualMachineAdapter,
-                    compilation.GetSemanticModel(processor.Tree, ignoreAccessibility: true));
-                ValidateVirtualMachineStaticsMetadata(compilation, references);
-            }
-
-            foreach (SourceFile source in group)
-                models.TryAdd(source.Tree, compilation.GetSemanticModel(source.Tree, ignoreAccessibility: true));
-        }
-        return new SemanticContext(models);
+        ValidateVirtualMachineStaticsBindings(processor, virtualMachine, models[processor.Tree]);
+        ValidateStandardProcessorLineage(processor, compiler.Compilation, models[processor.Tree]);
+        return new SemanticContext(models, compiler.Compilation);
     }
 
-    private static IEnumerable<SourceFile[]> SemanticGroups(SourceFile[] sources)
+    private static void ValidateStandardProcessorLineage(
+        SourceFile processor, CSharpCompilation compilation, SemanticModel model)
     {
-        SourceFile[] processorUnit = sources.Where(source => ProcessorSemanticSourcePaths.Contains(source.RelativePath)).ToArray();
-        SourceFile[] codeInfoUnit = sources.Where(source => CodeInfoSemanticSourcePaths.Contains(source.RelativePath)).ToArray();
-        SourceFile[] codeRepositoryUnit = sources.Where(source => CodeRepositorySemanticSourcePaths.Contains(source.RelativePath)).ToArray();
-        SourceFile[] gasPolicyUnit = sources.Where(source => GasPolicySemanticSourcePaths.Contains(source.RelativePath)).ToArray();
-        SourceFile[] worldStateUnit = sources.Where(source => WorldStateSemanticSourcePaths.Contains(source.RelativePath)).ToArray();
-        SourceFile[] accessUnit = sources.Where(source => AccessSemanticSourcePaths.Contains(source.RelativePath)).ToArray();
-        SourceFile[] transactionParts = sources.Where(source => source.RelativePath is TransactionPath or TransactionStdPath).ToArray();
-        bool processorEmitted = false;
-        bool codeInfoEmitted = false;
-        bool codeRepositoryEmitted = false;
-        bool gasPolicyEmitted = false;
-        bool worldStateEmitted = false;
-        bool accessEmitted = false;
-        bool transactionEmitted = false;
-        foreach (SourceFile source in sources)
-        {
-            if (source.RelativePath is VirtualMachineSignaturePath or VirtualMachineAdapterPath or AddressPath)
-                continue;
-            if (CodeInfoSemanticSourcePaths.Contains(source.RelativePath))
-            {
-                if (!codeInfoEmitted) { codeInfoEmitted = true; yield return codeInfoUnit; }
-                continue;
-            }
-            if (CodeRepositorySemanticSourcePaths.Contains(source.RelativePath))
-            {
-                if (!codeRepositoryEmitted) { codeRepositoryEmitted = true; yield return codeRepositoryUnit; }
-                continue;
-            }
-            if (GasPolicySemanticSourcePaths.Contains(source.RelativePath))
-            {
-                if (!gasPolicyEmitted) { gasPolicyEmitted = true; yield return gasPolicyUnit; }
-                continue;
-            }
-            if (WorldStateSemanticSourcePaths.Contains(source.RelativePath))
-            {
-                if (!worldStateEmitted) { worldStateEmitted = true; yield return worldStateUnit; }
-                continue;
-            }
-            if (AccessSemanticSourcePaths.Contains(source.RelativePath))
-            {
-                if (!accessEmitted) { accessEmitted = true; yield return accessUnit; }
-                continue;
-            }
-            if (ProcessorSemanticSourcePaths.Contains(source.RelativePath))
-            {
-                if (!processorEmitted) { processorEmitted = true; yield return processorUnit; }
-                continue;
-            }
-            if (source.RelativePath is TransactionPath or TransactionStdPath)
-            {
-                if (!transactionEmitted) { transactionEmitted = true; yield return transactionParts; }
-                continue;
-            }
-            yield return [source];
-        }
+        TypeDeclarationSyntax genericDeclaration = processor.Root.DescendantNodes().OfType<TypeDeclarationSyntax>()
+            .Single(type => type.Identifier.ValueText == "TransactionProcessorBase" && type.TypeParameterList?.Parameters.Count == 1);
+        TypeDeclarationSyntax standardDeclaration = FindType(processor, "EthereumTransactionProcessorBase");
+        TypeDeclarationSyntax concreteDeclaration = FindType(processor, "EthereumTransactionProcessor");
+        INamedTypeSymbol? generic = model.GetDeclaredSymbol(genericDeclaration);
+        INamedTypeSymbol? standard = model.GetDeclaredSymbol(standardDeclaration);
+        INamedTypeSymbol? concrete = model.GetDeclaredSymbol(concreteDeclaration);
+        INamedTypeSymbol? gasPolicy = compilation.GetTypeByMetadataName("Nethermind.Evm.GasPolicy.EthereumGasPolicy");
+        INamedTypeSymbol? processorInterface = compilation.GetTypeByMetadataName("Nethermind.Evm.TransactionProcessing.ITransactionProcessor");
+        if (generic is not { Arity: 1 } || standard is null || concrete is null || gasPolicy is null ||
+            generic.ContainingNamespace.ToDisplayString() != "Nethermind.Evm.TransactionProcessing" ||
+            standard.ContainingNamespace.ToDisplayString() != "Nethermind.Evm.TransactionProcessing" ||
+            concrete.ContainingNamespace.ToDisplayString() != "Nethermind.Evm.TransactionProcessing" ||
+            standard.BaseType is not { } standardBase ||
+            !SymbolEqualityComparer.Default.Equals(standardBase.OriginalDefinition, generic) ||
+            standardBase.TypeArguments.Length != 1 ||
+            !SymbolEqualityComparer.Default.Equals(standardBase.TypeArguments[0], gasPolicy) ||
+            !SymbolEqualityComparer.Default.Equals(concrete.BaseType, standard) || !concrete.IsSealed ||
+            concrete.Locations.Length != 1 || !ReferenceEquals(concrete.Locations[0].SourceTree, processor.Tree))
+            throw new ExtractionException("Standard Ethereum processor source lineage or shadow identity changed.");
+        MethodDeclarationSyntax processDeclaration = FindMethod(processor, "TransactionProcessorBase", "Process", 3);
+        IMethodSymbol? declaredProcess = model.GetDeclaredSymbol(processDeclaration);
+        IMethodSymbol? genericProcess = generic.GetMembers("Process").OfType<IMethodSymbol>()
+            .SingleOrDefault(static method => method.Parameters.Length == 3);
+        IMethodSymbol? interfaceProcess = processorInterface?.GetMembers("Process").OfType<IMethodSymbol>()
+            .SingleOrDefault(static method => method.Parameters.Length == 3);
+        IMethodSymbol? inheritedProcess = standardBase.GetMembers("Process").OfType<IMethodSymbol>()
+            .SingleOrDefault(static method => method.Parameters.Length == 3);
+        if (genericProcess is null || declaredProcess is null || interfaceProcess is null || inheritedProcess is null ||
+            !SymbolEqualityComparer.Default.Equals(declaredProcess, genericProcess) ||
+            !SymbolEqualityComparer.Default.Equals(inheritedProcess.OriginalDefinition, genericProcess) ||
+            !SymbolEqualityComparer.Default.Equals(standard.FindImplementationForInterfaceMember(interfaceProcess), inheritedProcess) ||
+            !SymbolEqualityComparer.Default.Equals(concrete.FindImplementationForInterfaceMember(interfaceProcess), inheritedProcess))
+            throw new ExtractionException("Standard ITransactionProcessor.Process/3 no longer dispatches to the inherited generic Process source.");
+        string[] ownedMethods =
+        [
+            "Process", "Execute", "PrepareSimpleTransferFastPath", "IsSimpleTransferFastPathCandidate", "HasNoExecutableCode",
+            "CalculateAvailableGas", "ExecuteSimpleTransfer", "ExecuteEvmCall", "PayValue", "PayFees", "Refund",
+            "PayRefund", "ShouldRefundGas", "FinalizeTransaction", "UpdateHeaderGasUsedAndPayFees",
+            "ReportSimpleTransferAccess", "WarmUpTxAccesses", "RefundOnContractCollision",
+        ];
+        foreach (INamedTypeSymbol derived in new[] { standard, concrete })
+            if (derived.GetMembers().OfType<IMethodSymbol>().Any(method => ownedMethods.Contains(method.Name, StringComparer.Ordinal)))
+                throw new ExtractionException("Standard Ethereum processor lineage shadows an admitted completion helper.");
     }
-
-    private static string CompilationAssemblyName(string sourcePath) => sourcePath switch
-    {
-        MainnetDiPath => "Nethermind.Init",
-        WorldStatePath or StateProviderPath => "Nethermind.State",
-        TransactionPath or TransactionStdPath => "Nethermind.Core",
-        _ => "Nethermind.Evm",
-    };
 
     private static void ValidateVirtualMachineStaticsSignature(SourceFile source)
     {
@@ -1718,49 +2426,20 @@ internal static class Extractor
             throw new ExtractionException("VirtualMachineStatics.RestoreRipemdTouch source accessibility changed.");
     }
 
-    private static void ValidateVirtualMachineStaticsAdapter(SourceFile source)
-    {
-        ClassDeclarationSyntax[] classes = source.Root.DescendantNodes().OfType<ClassDeclarationSyntax>()
-            .Where(declaration => SyntaxTypeIdentity(declaration) == "Nethermind.Evm.VirtualMachineStatics").ToArray();
-        MethodDeclarationSyntax[] methods = source.Root.DescendantNodes().OfType<MethodDeclarationSyntax>()
-            .Where(method => method.Identifier.ValueText == "RestoreRipemdTouch" &&
-                SyntaxTypeIdentity(method.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault()) ==
-                "Nethermind.Evm.VirtualMachineStatics").ToArray();
-        BaseNamespaceDeclarationSyntax[] namespaces = source.Root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().ToArray();
-        if (namespaces.Length != 1 || Canonical(namespaces[0].Name) != "Nethermind.Evm" || classes.Length != 1 || methods.Length != 1)
-            throw new ExtractionException("VirtualMachineStatics compiler adapter must contain exactly one declaration.");
-        ClassDeclarationSyntax type = classes[0];
-        MethodDeclarationSyntax method = methods[0];
-        if (type.Members.Count != 1 || !ReferenceEquals(type.Members[0], method) ||
-            !type.Modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.PublicKeyword)) ||
-            !type.Modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.StaticKeyword)) ||
-            type.TypeParameterList is not null ||
-            type.Modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.AbstractKeyword) || modifier.IsKind(SyntaxKind.SealedKeyword) ||
-                modifier.IsKind(SyntaxKind.PartialKeyword) || modifier.IsKind(SyntaxKind.FileKeyword)) ||
-            Canonical(method.ReturnType) != "void" ||
-            Canonical(method.ParameterList) != "(IWorldStateworldState,IReleaseSpecspec,boolshouldRestore)" ||
-            !method.Modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.InternalKeyword)) ||
-            !method.Modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.StaticKeyword)) ||
-            method.Modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.PublicKeyword) || modifier.IsKind(SyntaxKind.PrivateKeyword) ||
-                modifier.IsKind(SyntaxKind.ProtectedKeyword) || modifier.IsKind(SyntaxKind.FileKeyword)) ||
-            method.ExpressionBody is not null || method.Body is not { Statements.Count: 0 })
-            throw new ExtractionException("VirtualMachineStatics compiler adapter signature/body changed.");
-    }
-
-    private static void ValidateVirtualMachineStaticsBindings(SourceFile processor, SourceFile adapter, SemanticModel model)
+    private static void ValidateVirtualMachineStaticsBindings(SourceFile processor, SourceFile virtualMachine, SemanticModel model)
     {
         InvocationExpressionSyntax[] invocations = processor.Root.DescendantNodes().OfType<InvocationExpressionSyntax>()
             .Where(static invocation => InvocationName(invocation) == "RestoreRipemdTouch" &&
                 Canonical(invocation.Expression) == "VirtualMachineStatics.RestoreRipemdTouch").ToArray();
         if (invocations.Length != 2)
-            throw new ExtractionException("TransactionProcessor must retain exactly two direct VM adapter calls.");
+            throw new ExtractionException("TransactionProcessor must retain exactly two direct VM source calls.");
         foreach (InvocationExpressionSyntax invocation in invocations)
         {
             SymbolInfo symbolInfo = model.GetSymbolInfo(invocation);
             if (symbolInfo.CandidateReason != CandidateReason.None || symbolInfo.CandidateSymbols.Length != 0)
-                throw new ExtractionException("VM adapter invocation resolved through a candidate or ambiguous symbol.");
+                throw new ExtractionException("VM source invocation resolved through a candidate or ambiguous symbol.");
             if (model.GetOperation(invocation) is not IInvocationOperation operation)
-                throw new ExtractionException("VM adapter invocation did not resolve to an invocation operation.");
+                throw new ExtractionException("VM source invocation did not resolve to an invocation operation.");
             IMethodSymbol method = operation.TargetMethod;
             if (IsErrorSymbol(method) || method.ContainingType is null || IsErrorSymbol(method.ContainingType) ||
                 method.Name != "RestoreRipemdTouch" ||
@@ -1772,41 +2451,10 @@ internal static class Extractor
                 method.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) != "Nethermind.Evm.State.IWorldState" ||
                 method.Parameters[1].Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) != "Nethermind.Core.Specs.IReleaseSpec" ||
                 method.Parameters[2].Type.SpecialType != SpecialType.System_Boolean || method.Locations.Length != 1 ||
-                !method.Locations[0].IsInSource || !ReferenceEquals(method.Locations[0].SourceTree, adapter.Tree))
-                throw new ExtractionException("VM adapter invocation did not bind to the exact checked-in adapter signature.");
+                !method.Locations[0].IsInSource || !ReferenceEquals(method.Locations[0].SourceTree, virtualMachine.Tree))
+                throw new ExtractionException("VM source invocation did not bind to the exact production declaration.");
         }
     }
-
-    private static void ValidateVirtualMachineStaticsMetadata(CSharpCompilation compilation, MetadataReference[] references)
-    {
-        MetadataReference[] matches = references.Where(reference =>
-            string.Equals(Path.GetFileName(MetadataReferencePath(reference)), "Nethermind.Evm.dll", StringComparison.OrdinalIgnoreCase) &&
-            MetadataReferencePath(reference) is string path && path.Contains(ReferenceClosureRelativePath.Replace('/', Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (matches.Length != 1 || compilation.GetAssemblyOrModuleSymbol(matches[0]) is not IAssemblySymbol assembly ||
-            assembly.Identity.Name != "Nethermind.Evm" || IsErrorSymbol(assembly))
-            throw new ExtractionException("The VM adapter requires exactly one admitted hash-pinned Nethermind.Evm metadata reference.");
-        INamedTypeSymbol? type = assembly.GetTypeByMetadataName("Nethermind.Evm.VirtualMachineStatics");
-        if (type is null || IsErrorSymbol(type) || type.TypeKind != TypeKind.Class || !type.IsStatic || type.Arity != 0 ||
-            type.ContainingType is not null || type.DeclaredAccessibility != Accessibility.Public ||
-            type.ContainingAssembly.Identity.Name != "Nethermind.Evm")
-            throw new ExtractionException("The admitted VirtualMachineStatics metadata type changed.");
-        IMethodSymbol[] methods = type.GetMembers("RestoreRipemdTouch").OfType<IMethodSymbol>().ToArray();
-        if (methods.Length != 1)
-            throw new ExtractionException("The admitted VirtualMachineStatics.RestoreRipemdTouch metadata symbol is ambiguous.");
-        IMethodSymbol method = methods[0];
-        if (IsErrorSymbol(method) || method.MethodKind != MethodKind.Ordinary || !method.IsStatic ||
-            method.DeclaredAccessibility != Accessibility.Internal || !method.ReturnsVoid || method.Parameters.Length != 3 ||
-            method.Parameters[0].Name != "worldState" || method.Parameters[1].Name != "spec" || method.Parameters[2].Name != "shouldRestore" ||
-            method.Parameters.Any(static parameter => parameter.RefKind != RefKind.None) ||
-            method.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) != "Nethermind.Evm.State.IWorldState" ||
-            method.Parameters[1].Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) != "Nethermind.Core.Specs.IReleaseSpec" ||
-            method.Parameters[2].Type.SpecialType != SpecialType.System_Boolean || method.Locations.Length == 0 ||
-            method.Locations.Any(static location => location.Kind != LocationKind.MetadataFile))
-            throw new ExtractionException("The admitted VM metadata method changed.");
-    }
-
-    private static string? MetadataReferencePath(MetadataReference reference) =>
-        string.IsNullOrWhiteSpace(reference.Display) ? null : Path.GetFullPath(reference.Display);
 
     private static string SyntaxTypeIdentity(TypeDeclarationSyntax? type)
     {
@@ -1818,132 +2466,6 @@ internal static class Extractor
             .ToArray();
         string typeName = string.Join('.', containingTypes);
         return namespaceName.Length == 0 ? typeName : namespaceName + "." + typeName;
-    }
-
-    private static IEnumerable<MetadataReference> MetadataReferences(string root)
-    {
-        Dictionary<string, (string Path, string Identity)> seenFiles = new(StringComparer.OrdinalIgnoreCase);
-        HashSet<string> seenAssemblyIdentities = new(StringComparer.Ordinal);
-        List<MetadataReference> references = [];
-
-        void Add(string path, string role)
-        {
-            string identity = MetadataAssemblyIdentity(path);
-            string fileName = Path.GetFileName(path);
-            if (seenFiles.TryGetValue(fileName, out (string Path, string Identity) existing))
-            {
-                if (!string.Equals(existing.Identity, identity, StringComparison.Ordinal))
-                    throw new ExtractionException($"Metadata file {fileName} resolved to conflicting identities {existing.Identity} and {identity}.");
-                return;
-            }
-            seenFiles.Add(fileName, (path, identity));
-            if (!seenAssemblyIdentities.Add(identity))
-                throw new ExtractionException($"Duplicate {role} metadata identity {identity} at {path}.");
-            references.Add(MetadataReference.CreateFromFile(path));
-        }
-
-        if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string paths && !string.IsNullOrWhiteSpace(paths))
-        {
-            foreach (string path in paths.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-                Add(path, "runtime");
-        }
-
-        string closure = FindReferenceClosure(root);
-        foreach (string path in Directory.EnumerateFiles(closure, "*.dll", SearchOption.TopDirectoryOnly)
-                     .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase))
-            Add(path, "project");
-
-        foreach (string path in PackageMetadataPaths(root))
-            Add(path, "pinned package");
-
-        return references;
-    }
-
-    private static IEnumerable<string> PackageMetadataPaths(string root)
-    {
-        string assetsPath = Path.GetFullPath(Path.Combine(root, ProjectAssetsRelativePath.Replace('/', Path.DirectorySeparatorChar)));
-        EnsureWithin(root, assetsPath);
-        if (!File.Exists(assetsPath))
-            throw new ExtractionException($"The source closure is missing pinned compile assets {ProjectAssetsRelativePath}.");
-        byte[] assetsBytes = File.ReadAllBytes(assetsPath);
-        string assetsSha = Sha256(assetsBytes);
-        if (!string.Equals(assetsSha, PinnedProjectAssetsSha256, StringComparison.OrdinalIgnoreCase))
-            throw new ExtractionException($"Pinned compile-assets closure drifted at {ProjectAssetsRelativePath}: expected {PinnedProjectAssetsSha256}, found {assetsSha}.");
-
-        using JsonDocument document = JsonDocument.Parse(assetsBytes);
-        if (!document.RootElement.TryGetProperty("targets", out JsonElement targets) ||
-            !targets.TryGetProperty("net10.0", out JsonElement target) ||
-            !document.RootElement.TryGetProperty("packageFolders", out JsonElement packageFolders))
-            throw new ExtractionException("Pinned compile-assets closure has no net10.0 target/packageFolders metadata.");
-
-        string[] folders = packageFolders.EnumerateObject().Select(static property => property.Name).ToArray();
-        List<string> paths = [];
-        StringBuilder identity = new();
-        foreach (PackageMetadataSpec spec in PackageMetadataSpecs)
-        {
-            string key = spec.PackageId + "/" + spec.Version;
-            if (!target.TryGetProperty(key, out JsonElement package) ||
-                !package.TryGetProperty("compile", out JsonElement compile) ||
-                !compile.TryGetProperty(spec.AssetPath, out _))
-                throw new ExtractionException($"Pinned compile-assets closure does not resolve {key}:{spec.AssetPath}.");
-
-            string[] candidatePaths = folders
-                .Select(folder => Path.GetFullPath(Path.Combine(folder, spec.PackageId, spec.Version, spec.AssetPath.Replace('/', Path.DirectorySeparatorChar))))
-                .ToArray();
-            string path = candidatePaths
-                .FirstOrDefault(File.Exists)
-                ?? throw new ExtractionException($"Pinned package asset is missing for {key}:{spec.AssetPath}; candidates: {string.Join(", ", candidatePaths)}.");
-            string sha = Sha256(File.ReadAllBytes(path));
-            if (!string.Equals(sha, spec.Sha256, StringComparison.OrdinalIgnoreCase))
-                throw new ExtractionException($"Pinned package asset drifted at {spec.AssetPath}: expected {spec.Sha256}, found {sha}.");
-            paths.Add(path);
-            identity.Append(spec.PackageId).Append('/').Append(spec.Version).Append('/').Append(spec.AssetPath)
-                .Append('|').Append(sha).Append('\n');
-        }
-
-        string aggregate = Sha256(Encoding.UTF8.GetBytes(identity.ToString()));
-        if (!string.Equals(aggregate, PinnedPackageClosureSha256, StringComparison.OrdinalIgnoreCase))
-            throw new ExtractionException($"Pinned package metadata closure drifted: expected {PinnedPackageClosureSha256}, found {aggregate}.");
-        return paths;
-    }
-
-    private static string MetadataAssemblyIdentity(string path)
-    {
-        AssemblyName identity;
-        try { identity = AssemblyName.GetAssemblyName(path); }
-        catch (Exception exception) when (exception is BadImageFormatException or FileLoadException or IOException or ArgumentException or UnauthorizedAccessException)
-        {
-            throw new ExtractionException($"Metadata reference is not a readable managed assembly: {path} ({exception.Message}).");
-        }
-        string expectedName = Path.GetFileNameWithoutExtension(path);
-        if (!string.Equals(identity.Name, expectedName, StringComparison.Ordinal))
-            throw new ExtractionException($"Metadata reference identity {identity.FullName} does not match its pinned file name {expectedName}.");
-        return identity.FullName ?? throw new ExtractionException($"Metadata reference {path} has no assembly identity.");
-    }
-
-    private static string FindReferenceClosure(string root)
-    {
-        string closure = Path.Combine(root, ReferenceClosureRelativePath.Replace('/', Path.DirectorySeparatorChar));
-        if (!Directory.Exists(closure) || !HasProjectReferences(closure))
-            throw new ExtractionException($"The source closure is missing the pinned project-reference directory {ReferenceClosureRelativePath}.");
-        string identity = ReferenceClosureIdentity(closure);
-        if (!string.Equals(identity, PinnedProjectReferenceClosureSha256, StringComparison.OrdinalIgnoreCase))
-            throw new ExtractionException($"Pinned metadata closure drifted at {ReferenceClosureRelativePath}: expected {PinnedProjectReferenceClosureSha256}, found {identity}.");
-        return closure;
-
-        static bool HasProjectReferences(string directory) =>
-            File.Exists(Path.Combine(directory, "Nethermind.Evm.dll")) &&
-            File.Exists(Path.Combine(directory, "Nethermind.Init.dll")) &&
-            File.Exists(Path.Combine(directory, "Nethermind.Core.dll"));
-    }
-
-    private static string ReferenceClosureIdentity(string directory)
-    {
-        StringBuilder identity = new();
-        foreach (string path in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly)
-                     .OrderBy(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase))
-            identity.Append(Path.GetFileName(path)).Append('|').Append(Sha256(File.ReadAllBytes(path))).Append('\n');
-        return Sha256(Encoding.UTF8.GetBytes(identity.ToString()));
     }
 
     private static SourceFile FindSource(SourceFile[] sources, string path) =>
@@ -2026,11 +2548,34 @@ internal static class Extractor
 
     private static InvocationExpressionSyntax FindInvocation(SyntaxNode parent, string name, int occurrence = 0)
     {
-        InvocationExpressionSyntax[] invocations = parent.DescendantNodes().OfType<InvocationExpressionSyntax>()
+        InvocationExpressionSyntax[] invocations = OwnedDescendants(parent).OfType<InvocationExpressionSyntax>()
             .Where(invocation => InvocationName(invocation) == name).ToArray();
         if ((uint)occurrence >= (uint)invocations.Length)
             throw new ExtractionException($"Expected invocation {name}/{occurrence} in {ContainingName(parent)}, found {invocations.Length}.");
         return invocations[occurrence];
+    }
+
+    private static IEnumerable<SyntaxNode> OwnedDescendants(SyntaxNode owner) =>
+        owner.DescendantNodes(descendIntoChildren: static node =>
+            node is not LocalFunctionStatementSyntax and not AnonymousFunctionExpressionSyntax);
+
+    private static ExpressionSyntax FindExactExpression(MethodDeclarationSyntax method, string expected)
+    {
+        string expectedCanonical = Canonical(SyntaxFactory.ParseExpression(expected));
+        ExpressionSyntax[] matches = OwnedDescendants(method).OfType<ExpressionSyntax>()
+            .Where(expression => Canonical(expression) == expectedCanonical).ToArray();
+        if (matches.Length != 1)
+            throw new ExtractionException($"Simple-transfer caller expression changed: {method.Identifier.ValueText}/{expected}.");
+        return matches[0];
+    }
+
+    private static MethodDeclarationSyntax RequireMethodCfgOwner(SyntaxNode node, string role)
+    {
+        if (node.AncestorsAndSelf().Any(static ancestor =>
+                ancestor is LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax))
+            throw new ExtractionException($"{role} is inside a nested callable.");
+        return node.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault()
+            ?? throw new ExtractionException($"{role} is not inside a method CFG.");
     }
 
     private static InvocationExpressionSyntax FindInvocationOnField(
@@ -2039,7 +2584,7 @@ internal static class Extractor
         string field,
         int occurrence = 0)
     {
-        InvocationExpressionSyntax[] invocations = parent.DescendantNodes().OfType<InvocationExpressionSyntax>()
+        InvocationExpressionSyntax[] invocations = OwnedDescendants(parent).OfType<InvocationExpressionSyntax>()
             .Where(invocation => invocation.Expression is MemberAccessExpressionSyntax member &&
                 member.Name.Identifier.ValueText == name &&
                 member.Expression is IdentifierNameSyntax identifier &&
@@ -2057,7 +2602,7 @@ internal static class Extractor
             .ToArray();
         if (labels.Length != 1)
             throw new ExtractionException($"Expected one {label}: label in {source.RelativePath}, found {labels.Length}.");
-        InvocationExpressionSyntax[] invocations = labels[0].Statement.DescendantNodesAndSelf()
+        InvocationExpressionSyntax[] invocations = OwnedDescendants(labels[0].Statement)
             .OfType<InvocationExpressionSyntax>()
             .Where(invocation => InvocationName(invocation) == name)
             .ToArray();
@@ -2070,20 +2615,81 @@ internal static class Extractor
     {
         InvocationExpressionSyntax[] invocations = source.Root.DescendantNodes().OfType<InvocationExpressionSyntax>()
             .Where(invocation => invocation.Expression is MemberAccessExpressionSyntax member &&
-                Canonical(member.Name) + "()" == canonical).ToArray();
+                Canonical(member.Name) + "()" == canonical && invocation.ArgumentList.Arguments.Count == 0 &&
+                invocation.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault()?.Identifier.ValueText == "Load").ToArray();
         if (invocations.Length != 1)
-            throw new ExtractionException($"Expected one DI registration {canonical}, found {invocations.Length}. Available: " +
-                string.Join(";", source.Root.DescendantNodes().OfType<InvocationExpressionSyntax>()
-                    .Where(static invocation => InvocationName(invocation) == "AddScoped")
-                    .Select(Canonical)));
+            throw new ExtractionException($"Expected one DI registration {canonical}, found {invocations.Length}.");
         return invocations[0];
+    }
+
+    private static void ValidateInitRegistrationProjection(SourceFile source)
+    {
+        MethodDeclarationSyntax load = FindMethod(source, "BlockProcessingModule", "Load", 1);
+        string[] requiredNamespaces =
+        [
+            "Nethermind.Evm.TransactionProcessing", "Nethermind.Evm.State", "Nethermind.State",
+        ];
+        string[] registeredTypeNames =
+        [
+            "EthereumTransactionProcessor", "ITransactionProcessor", "WorldState", "IWorldState",
+            "CacheCodeInfoRepository", "ICodeInfoRepository", "BlobBaseFeeCalculator",
+        ];
+        if (requiredNamespaces.Any(name => !source.Root.Usings.Any(usingDirective =>
+                usingDirective.Alias is null && Canonical(usingDirective.Name!) == name)) ||
+            source.Root.Usings.Any(usingDirective => usingDirective.Alias is not null &&
+                registeredTypeNames.Contains(usingDirective.Alias.Name.Identifier.ValueText, StringComparer.Ordinal)) ||
+            source.Root.DescendantNodes().OfType<TypeDeclarationSyntax>().Any(type =>
+                registeredTypeNames.Contains(type.Identifier.ValueText, StringComparer.Ordinal)))
+            throw new ExtractionException("Standard mainnet Init registration type imports or shadow declarations changed.");
+        string[] registrations =
+        [
+            "AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator,BlobBaseFeeCalculator>()",
+            "AddScoped<ITransactionProcessor,EthereumTransactionProcessor>()",
+            "AddScoped<ICodeInfoRepository,CacheCodeInfoRepository>()",
+            "AddScoped<IWorldState,WorldState>()",
+        ];
+        int previous = load.SpanStart;
+        List<InvocationExpressionSyntax> selected = [];
+        foreach (string registration in registrations)
+        {
+            InvocationExpressionSyntax invocation = FindRouteInvocation(source, registration);
+            if (invocation.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault() != load ||
+                invocation.Expression is not MemberAccessExpressionSyntax member || member.Name.SpanStart <= previous ||
+                !IsBuilderChain(member.Expression))
+                throw new ExtractionException("Standard mainnet Init registration source order changed.");
+            previous = member.Name.SpanStart;
+            selected.Add(invocation);
+        }
+        string[] services =
+        [
+            "ITransactionProcessor.IBlobBaseFeeCalculator", "ITransactionProcessor", "ICodeInfoRepository", "IWorldState",
+        ];
+        foreach (string service in services)
+        {
+            InvocationExpressionSyntax[] registrationsForService = OwnedDescendants(load).OfType<InvocationExpressionSyntax>()
+                .Where(invocation => invocation.Expression is MemberAccessExpressionSyntax
+                {
+                    Name: GenericNameSyntax { TypeArgumentList.Arguments.Count: > 0 } generic
+                } && generic.Identifier.ValueText.StartsWith("Add", StringComparison.Ordinal) &&
+                    Canonical(generic.TypeArgumentList.Arguments[0]) == service)
+                .ToArray();
+            if (registrationsForService.Length != 1 || !selected.Contains(registrationsForService[0]))
+                throw new ExtractionException($"Standard mainnet Init registration for {service} is shadowed or overridden.");
+        }
+
+        static bool IsBuilderChain(ExpressionSyntax expression)
+        {
+            while (expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax nested })
+                expression = nested.Expression;
+            return expression is IdentifierNameSyntax { Identifier.ValueText: "builder" };
+        }
     }
 
     private static SyntaxNode FindObject(SyntaxNode parent, string typeName)
     {
-        ObjectCreationExpressionSyntax[] objects = parent.DescendantNodes().OfType<ObjectCreationExpressionSyntax>()
+        ObjectCreationExpressionSyntax[] objects = OwnedDescendants(parent).OfType<ObjectCreationExpressionSyntax>()
             .Where(objectCreation => TypeName(objectCreation.Type) == typeName).ToArray();
-        ImplicitObjectCreationExpressionSyntax[] implicitObjects = parent.DescendantNodes().OfType<ImplicitObjectCreationExpressionSyntax>().ToArray();
+        ImplicitObjectCreationExpressionSyntax[] implicitObjects = OwnedDescendants(parent).OfType<ImplicitObjectCreationExpressionSyntax>().ToArray();
         int count = objects.Length + implicitObjects.Length;
         if (count != 1) throw new ExtractionException($"Expected one object construction {typeName} in {ContainingName(parent)}, found {count}.");
         return objects.Length == 1 ? objects[0] : implicitObjects[0];
@@ -2091,7 +2697,7 @@ internal static class Extractor
 
     private static SyntaxNode FindMemberAccess(SyntaxNode parent, string name, int occurrence)
     {
-        SyntaxNode[] accesses = parent.DescendantNodes().Where(node => node switch
+        SyntaxNode[] accesses = OwnedDescendants(parent).Where(node => node switch
         {
             MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText == name,
             IdentifierNameSyntax identifier => identifier.Identifier.ValueText == name,
@@ -2108,7 +2714,7 @@ internal static class Extractor
         Func<TypedAstNode, bool> predicate,
         int occurrence)
     {
-        IfStatementSyntax[] statements = parent.DescendantNodes().OfType<IfStatementSyntax>().ToArray();
+        IfStatementSyntax[] statements = OwnedDescendants(parent).OfType<IfStatementSyntax>().ToArray();
         ExpressionSyntax[] roots = statements.Select(static statement => statement.Condition)
             .Where(condition => predicate(LowerTypedAst(context.Model(condition.SyntaxTree).GetOperation(condition))))
             .ToArray();
@@ -2730,7 +3336,9 @@ internal static class Extractor
         SemanticContext context,
         bool requireSymbol)
     {
-        SemanticModel model = context.Model(source.Tree);
+        if (!context.TryModel(source.Tree, out SemanticModel? found))
+            return BindExternalProjection(source, owner, member, role, node, context.Compilation);
+        SemanticModel model = found ?? throw new ExtractionException("Missing semantic model for " + source.RelativePath);
         IOperation? operation = null;
         if (node is not VariableDeclaratorSyntax)
         {
@@ -2825,6 +3433,84 @@ internal static class Extractor
             span.EndLinePosition.Character + 1,
             operation is null ? LowerDeclaredAst(node, model) : LowerTypedAst(operation));
     }
+
+    private static SourceBinding BindExternalProjection(
+        SourceFile source, string owner, string member, string role, SyntaxNode node, CSharpCompilation compilation)
+    {
+        string mode = ExternalBindingMode(source.RelativePath, member);
+        string canonical = Canonical(node);
+        IFieldSymbol? constant = mode == "CoreMetadataConstant"
+            ? RequireCoreConstant(compilation, "Nethermind.Core.GasCostOf", "NewAccountState", node)
+            : null;
+        string identity = constant is null ? ExternalSourceIdentity(source, node, mode) : SymbolIdentity(constant);
+        FileLinePositionSpan span = node.GetLocation().GetLineSpan();
+        return new SourceBinding(
+            source.RelativePath, owner, member,
+            mode == "ExternalHookPremise" ? "normal-return external hook premise: " + role : role,
+            node.Kind().ToString(), mode,
+            canonical, TokenFingerprint(node), Sha256(Encoding.UTF8.GetBytes(canonical)),
+            ContainingMember(node), string.Empty, constant?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ?? identity, identity, constant is not null,
+            StatementOrdinal(node), ControlFlowPath(node), -1, false,
+            span.StartLinePosition.Line + 1, span.StartLinePosition.Character + 1,
+            span.EndLinePosition.Line + 1, span.EndLinePosition.Character + 1,
+            constant is null
+                ? new TypedAstNode(mode, member, identity, string.Empty, [])
+                : new TypedAstNode("FieldDeclaration", member, identity,
+                    Convert.ToString(constant.ConstantValue, CultureInfo.InvariantCulture) ?? string.Empty, [],
+                    constant.Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
+                    TypeIdentity: SymbolIdentity(constant.Type)));
+    }
+
+    private static IFieldSymbol RequireCoreConstant(CSharpCompilation compilation, string typeName, string member, SyntaxNode declaration)
+    {
+        if (declaration is not VariableDeclaratorSyntax variable || variable.Identifier.ValueText != member ||
+            variable.Parent?.Parent is not FieldDeclarationSyntax { Modifiers: var modifiers } ||
+            !modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.ConstKeyword)) ||
+            variable.Initializer is null)
+            throw new ExtractionException($"Core metadata constant {typeName}.{member} lost its exact source declaration.");
+        IFieldSymbol? field = compilation.GetTypeByMetadataName(typeName)?.GetMembers(member).OfType<IFieldSymbol>().SingleOrDefault();
+        if (field is not { HasConstantValue: true } || IsErrorSymbol(field))
+            throw new ExtractionException($"Core metadata constant {typeName}.{member} is missing from the accepted reference closure.");
+        if (member == "NewAccountState")
+        {
+            CompilationUnitSyntax syntax = variable.SyntaxTree.GetCompilationUnitRoot();
+            VariableDeclaratorSyntax Factor(string name) => syntax.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+                .SingleOrDefault(candidate => candidate.Identifier.ValueText == name)
+                ?? throw new ExtractionException($"GasCostOf.NewAccountState lost source factor {name}.");
+            VariableDeclaratorSyntax stateBytes = Factor("StateBytesPerNewAccount");
+            VariableDeclaratorSyntax costPerByte = Factor("CostPerStateByte");
+            if (Canonical(variable.Initializer.Value) != "StateBytesPerNewAccount*CostPerStateByte" ||
+                stateBytes.Initializer?.Value is not LiteralExpressionSyntax stateBytesValue ||
+                costPerByte.Initializer?.Value is not LiteralExpressionSyntax costPerByteValue ||
+                !long.TryParse(stateBytesValue.Token.ValueText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long sourceStateBytes) ||
+                !long.TryParse(costPerByteValue.Token.ValueText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long sourceCostPerByte) ||
+                compilation.GetTypeByMetadataName(typeName)?.GetMembers("StateBytesPerNewAccount").OfType<IFieldSymbol>().SingleOrDefault()?.ConstantValue is not long metadataStateBytes ||
+                compilation.GetTypeByMetadataName(typeName)?.GetMembers("CostPerStateByte").OfType<IFieldSymbol>().SingleOrDefault()?.ConstantValue is not long metadataCostPerByte ||
+                sourceStateBytes != metadataStateBytes || sourceCostPerByte != metadataCostPerByte ||
+                field.ConstantValue is not long cost || cost != checked(sourceStateBytes * sourceCostPerByte))
+                throw new ExtractionException("GasCostOf.NewAccountState source formula and accepted Core metadata disagree.");
+        }
+        return field;
+    }
+
+    private static string ExternalSourceIdentity(SourceFile source, SyntaxNode declaration, string mode) =>
+        mode + "|" + source.RelativePath + "|" +
+        Sha256(Encoding.UTF8.GetBytes(Canonical(declaration)));
+
+    private static string ExternalBindingMode(string path, string member) => (path, member) switch
+    {
+        (GasCostOfPath, "NewAccountState") => "CoreMetadataConstant",
+        (MainnetDiPath, "Load") => "ExactExternalSourceProjection",
+        (MainnetDiPath, "AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator,BlobBaseFeeCalculator>") => "ExactExternalSourceProjection",
+        (MainnetDiPath, "AddScoped<ITransactionProcessor,EthereumTransactionProcessor>") => "ExactExternalSourceProjection",
+        (MainnetDiPath, "AddScoped<ICodeInfoRepository,CacheCodeInfoRepository>") => "ExactExternalSourceProjection",
+        (MainnetDiPath, "AddScoped<IWorldState,WorldState>") => "ExactExternalSourceProjection",
+        (WorldStatePath, "Reset" or "AddToBalanceAndCreateIfNotExists" or "SubtractFromBalance" or "Commit" or
+            "RecalculateStateRoot" or "StateRoot" or "IsDeadAccount" or "ResetTransient" or "ReapEmptyAccounts") => "ExternalHookPremise",
+        (StateProviderPath, "Commit" or "RecalculateStateRoot" or "StateRoot" or "IsDeadAccount" or
+            "AddToBalanceAndCreateIfNotExists" or "SubtractFromBalance") => "ExternalHookPremise",
+        _ => throw new ExtractionException($"Required compiled EVM source or unadmitted external projection is missing: {path}/{member}."),
+    };
 
     private static ISymbol? FirstResolvedOperationSymbol(IOperation? operation)
     {
@@ -3075,10 +3761,19 @@ internal static class Extractor
 
     private static string Canonical(SyntaxNode node) => string.Concat(node.DescendantTokens(descendIntoTrivia: false).Select(static token => token.Text));
 
-    private static string SourceClosureHash(IEnumerable<SourceIdentity> sources)
+    private static string SourceClosureHash(
+        IEnumerable<SourceIdentity> sources,
+        IEnumerable<SourceIdentity> compilerSources,
+        IEnumerable<ReferenceIdentity> compilerReferences)
     {
         StringBuilder builder = new();
-        foreach (SourceIdentity source in sources) builder.Append(source.Path).Append('\n').Append(source.Role).Append('\n').Append(source.Sha256).Append('\n');
+        foreach (SourceIdentity source in sources)
+            builder.Append("projection|").Append(source.Path).Append('|').Append(source.Role).Append('|').Append(source.Sha256).Append('\n');
+        foreach (SourceIdentity source in compilerSources)
+            builder.Append("compiler-source|").Append(source.Path).Append('|').Append(source.Role).Append('|').Append(source.Sha256).Append('\n');
+        foreach (ReferenceIdentity reference in compilerReferences)
+            builder.Append("compiler-reference|").Append(reference.Path).Append('|').Append(reference.AssemblyName)
+                .Append('|').Append(reference.Sha256).Append('|').Append(reference.Mvid).Append('|').Append(reference.Selected).Append('\n');
         return Sha256(Encoding.UTF8.GetBytes(builder.ToString()));
     }
 
@@ -3103,14 +3798,105 @@ internal static class Extractor
 
     private static IrDocument DeserializeIr(byte[] bytes)
     {
-        try { return JsonSerializer.Deserialize<IrDocument>(bytes, JsonOptions) ?? throw new ExtractionException("Simple-transfer IR is empty."); }
+        try
+        {
+            RejectDuplicateProperties(bytes);
+            RequireCompleteTypedAstNodes(bytes);
+            IrDocument document = JsonSerializer.Deserialize<IrDocument>(bytes, JsonOptions)
+                ?? throw new ExtractionException("Simple-transfer IR is empty.");
+            ValidateStageASourcePlan(document.StageAPlan);
+            if (document.SourceClosureSha256 != SourceClosureHash(document.Sources, document.CompilerSources, document.CompilerReferences))
+                throw new ExtractionException("Simple-transfer IR source closure hash does not match effective compiler inputs.");
+            foreach (SourceBinding binding in document.Completion.MethodBindings
+                         .Concat(document.Completion.RouteBindings)
+                         .Concat(document.Completion.Stages.Select(static stage => stage.Binding))
+                         .Concat(document.Completion.Branches.Select(static branch => branch.Binding))
+                         .Concat(document.Completion.Effects.Select(static effect => effect.Binding))
+                         .Concat(document.Completion.Operations.Select(static operation => operation.Binding))
+                         .Concat(document.Completion.Adapters.SelectMany(static adapter => adapter.Bindings)))
+                ValidateBinding(binding);
+            return document;
+        }
         catch (JsonException exception) { throw new ExtractionException("Simple-transfer IR is not valid JSON: " + exception.Message); }
+    }
+
+    private static void RequireCompleteTypedAstNodes(byte[] bytes)
+    {
+        using JsonDocument document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 1024 });
+        Visit(document.RootElement, inStageAPlan: false);
+
+        static void Visit(JsonElement element, bool inStageAPlan)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (JsonProperty property in element.EnumerateObject())
+                {
+                    if (property.NameEquals("typedAst") || inStageAPlan && property.NameEquals("operation"))
+                        RequireNode(property.Value);
+                    else Visit(property.Value, inStageAPlan || property.NameEquals("stageAPlan"));
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement item in element.EnumerateArray()) Visit(item, inStageAPlan);
+            }
+        }
+
+        static void RequireNode(JsonElement node)
+        {
+            if (node.ValueKind != JsonValueKind.Object)
+                throw new ExtractionException("Simple-transfer typed AST node must be an object.");
+            foreach (string name in new[] { "kind", "name", "symbol", "constant", "type", "parameterName", "argumentKind", "refKind", "typeIdentity" })
+            {
+                if (!node.TryGetProperty(name, out JsonElement property) || property.ValueKind != JsonValueKind.String)
+                    throw new ExtractionException("Simple-transfer typed AST node has a missing or wrongly typed property: " + name);
+            }
+            if (!node.TryGetProperty("children", out JsonElement children) || children.ValueKind != JsonValueKind.Array)
+                throw new ExtractionException("Simple-transfer typed AST node has missing or wrongly typed children.");
+            foreach (JsonElement child in children.EnumerateArray()) RequireNode(child);
+        }
     }
 
     private static Manifest DeserializeManifest(byte[] bytes)
     {
-        try { return JsonSerializer.Deserialize<Manifest>(bytes, JsonOptions) ?? throw new ExtractionException("Simple-transfer manifest is empty."); }
+        try
+        {
+            RejectDuplicateProperties(bytes);
+            RequireCompleteTypedAstNodes(bytes);
+            Manifest document = JsonSerializer.Deserialize<Manifest>(bytes, JsonOptions)
+                ?? throw new ExtractionException("Simple-transfer manifest is empty.");
+            if (!IsSha256(document.StageAPlanSha256))
+                throw new ExtractionException("Simple-transfer manifest lost its Stage-A typed source plan identity.");
+            if (document.SourceClosureSha256 != SourceClosureHash(document.Sources, document.CompilerSources, document.CompilerReferences))
+                throw new ExtractionException("Simple-transfer manifest source closure hash does not match effective compiler inputs.");
+            foreach (SourceBinding binding in document.Bindings) ValidateBinding(binding);
+            return document;
+        }
         catch (JsonException exception) { throw new ExtractionException("Simple-transfer manifest is not valid JSON: " + exception.Message); }
+    }
+
+    private static void RejectDuplicateProperties(byte[] bytes)
+    {
+        using JsonDocument document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 1024 });
+        Visit(document.RootElement);
+
+        static void Visit(JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+                foreach (JsonProperty property in element.EnumerateObject())
+                {
+                    if (!names.Add(property.Name))
+                        throw new ExtractionException("Duplicate simple-transfer JSON property: " + property.Name);
+                    Visit(property.Value);
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement item in element.EnumerateArray()) Visit(item);
+            }
+        }
     }
 
     private static ArtifactPaths Paths(string root, string outputDirectory, string? leanOutputPath)
@@ -3135,7 +3921,29 @@ internal static class Extractor
     private static void Write(string path, byte[] bytes)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllBytes(path, bytes);
+        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            using (FileStream stream = new(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+            {
+                stream.Write(bytes);
+                stream.Flush(flushToDisk: true);
+            }
+            if (File.Exists(path)) File.Replace(temporary, path, null);
+            else File.Move(temporary, path);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+    }
+
+    private static void PublishArtifacts(ArtifactPaths paths, byte[] ir, byte[] lean, byte[] manifest, Action? afterIr = null)
+    {
+        Write(paths.IrPath, ir);
+        afterIr?.Invoke();
+        Write(paths.LeanPath, lean);
+        Write(paths.ManifestPath, manifest);
     }
 
     private static void EnsureWithin(string parent, string child)
@@ -3179,18 +3987,22 @@ internal static class Extractor
         }
     }
 
-    private sealed class SemanticContext(Dictionary<SyntaxTree, SemanticModel> models)
+    private sealed class SemanticContext(Dictionary<SyntaxTree, SemanticModel> models, CSharpCompilation? compilation = null)
     {
         private readonly Dictionary<SyntaxTree, SemanticModel> _models = models;
         private readonly Dictionary<MethodDeclarationSyntax, ControlFlowGraph> _graphs = [];
+        internal CSharpCompilation Compilation => compilation ?? throw new ExtractionException("The EVM compiler closure is unavailable.");
         internal SemanticModel Model(SyntaxTree tree) => _models[tree];
+        internal bool TryModel(SyntaxTree tree, out SemanticModel? model) => _models.TryGetValue(tree, out model);
 
         internal FlowInfo Flow(SyntaxNode node)
         {
+            if (node.AncestorsAndSelf().Any(static ancestor =>
+                    ancestor is LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax))
+                throw new ExtractionException($"Required source node {node.Kind()} is inside a nested callable.");
             if (node is MethodDeclarationSyntax or ConstructorDeclarationSyntax or PropertyDeclarationSyntax or VariableDeclaratorSyntax or TypeDeclarationSyntax)
                 return new FlowInfo(ControlFlowPath(node), -1, true);
-            MethodDeclarationSyntax method = node.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault()
-                ?? throw new ExtractionException($"Required source node {node.Kind()} is not inside a method CFG.");
+            MethodDeclarationSyntax method = RequireMethodCfgOwner(node, $"Required source node {node.Kind()}");
             if (!_graphs.TryGetValue(method, out ControlFlowGraph? graph))
             {
                 graph = TryGraph(Model(method.SyntaxTree), method);
@@ -3207,37 +4019,31 @@ internal static class Extractor
                 throw new ExtractionException($"Required method {role} has an empty CFG.");
         }
 
-        internal string RequireCfgPath(SyntaxNode from, SyntaxNode to, string role)
+        internal void RequireDominates(SyntaxNode before, SyntaxNode after, string role)
         {
-            (MethodDeclarationSyntax method, ControlFlowGraph graph, BasicBlock source, BasicBlock target) = ResolveBlocks(from, to, role);
-            if (!source.IsReachable || !target.IsReachable || !CanReach(graph, source, target))
-                throw new ExtractionException($"CFG does not prove {role}: block {source.Ordinal} cannot reach block {target.Ordinal}.");
-            return method.Identifier.ValueText + ":" + source.Ordinal + "->" + target.Ordinal;
-        }
+            (_, ControlFlowGraph graph, BasicBlock source, BasicBlock target) = ResolveBlocks(before, after, role);
+            if (!source.IsReachable || !target.IsReachable || source.Ordinal == target.Ordinal && before.SpanStart >= after.SpanStart)
+                throw new ExtractionException("CFG cannot establish caller definition before use: " + role);
+            if (source.Ordinal == target.Ordinal) return;
 
-        internal bool CanReach(SyntaxNode from, SyntaxNode to)
-        {
-            (_, ControlFlowGraph graph, BasicBlock source, BasicBlock target) = ResolveBlocks(from, to, "CFG reachability query");
-            return CanReach(graph, source, target);
+            HashSet<int> visited = [];
+            Stack<BasicBlock> pending = new([graph.Blocks[0]]);
+            while (pending.TryPop(out BasicBlock? block))
+            {
+                if (block.Ordinal == source.Ordinal || !block.IsReachable || !visited.Add(block.Ordinal)) continue;
+                if (block.Ordinal == target.Ordinal)
+                    throw new ExtractionException("Caller definition does not dominate use: " + role);
+                foreach (BasicBlock successor in Successors(block)) pending.Push(successor);
+            }
         }
-
-        internal bool HasDirectCfgSuccessor(SyntaxNode from, SyntaxNode to)
-        {
-            (_, _, BasicBlock source, BasicBlock target) = ResolveBlocks(from, to, "CFG successor query");
-            return Successors(source).Any(successor => successor.Ordinal == target.Ordinal);
-        }
-
-        internal int BlockFor(SyntaxNode node, string role) => ResolveBlocks(node, node, role).Source.Ordinal;
 
         private (MethodDeclarationSyntax Method, ControlFlowGraph Graph, BasicBlock Source, BasicBlock Target) ResolveBlocks(
             SyntaxNode from,
             SyntaxNode to,
             string role)
         {
-            MethodDeclarationSyntax method = from.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault()
-                ?? throw new ExtractionException($"{role} crosses method boundaries.");
-            MethodDeclarationSyntax targetMethod = to.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault()
-                ?? throw new ExtractionException($"{role} crosses method boundaries.");
+            MethodDeclarationSyntax method = RequireMethodCfgOwner(from, role);
+            MethodDeclarationSyntax targetMethod = RequireMethodCfgOwner(to, role);
             if (!ReferenceEquals(method, targetMethod))
                 throw new ExtractionException($"{role} crosses method boundaries.");
             if (!_graphs.TryGetValue(method, out ControlFlowGraph? graph))
@@ -3271,31 +4077,7 @@ internal static class Extractor
                     candidate.BranchValue is not null && Contains(candidate.BranchValue, descendant));
                 if (nested is not null) return nested;
             }
-            BasicBlock? preceding = graph.Blocks
-                .Select(block => (Block: block, End: block.Operations
-                    .Select(operation => operation.Syntax?.Span.End ?? -1)
-                    .Where(end => end <= node.SpanStart)
-                    .DefaultIfEmpty(-1)
-                    .Max()))
-                .Where(candidate => candidate.End >= 0)
-                .OrderByDescending(candidate => candidate.End)
-                .Select(static candidate => candidate.Block)
-                .FirstOrDefault();
-            if (preceding is not null) return preceding;
             throw new ExtractionException($"{role} has no CFG block for syntax {node.Kind()}.");
-        }
-
-        private static bool CanReach(ControlFlowGraph graph, BasicBlock source, BasicBlock target)
-        {
-            HashSet<int> visited = [];
-            Stack<BasicBlock> pending = new([source]);
-            while (pending.TryPop(out BasicBlock? current))
-            {
-                if (!visited.Add(current.Ordinal)) continue;
-                if (current.Ordinal == target.Ordinal) return true;
-                foreach (BasicBlock successor in Successors(current)) pending.Push(successor);
-            }
-            return false;
         }
 
         private static IEnumerable<BasicBlock> Successors(BasicBlock block)
@@ -3311,8 +4093,6 @@ internal static class Extractor
     private sealed record FlowInfo(string Path, int Block, bool Reachable);
 
     private sealed record NoFrameProof(int GotoCount, bool CfgProven, bool FailContractCreateBypassesNoFrame, string[] Paths);
-
-    private sealed record PackageMetadataSpec(string PackageId, string Version, string AssetPath, string Sha256);
 
     private sealed record ArtifactPaths(string IrPath, string ManifestPath, string LeanPath);
 

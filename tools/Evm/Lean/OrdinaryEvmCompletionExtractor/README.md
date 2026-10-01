@@ -2,7 +2,7 @@
 
 This package designs the first ordinary transaction composition slice from a **computed final preparation result**, through an externally observed VM return, to refund, processor counters, fees, commit and the sequential receipt terminal.
 
-Status: **independently accepted conditional source-audited refinement** (schema 1, extractor 1.0.0; artifact state `accepted-conditional-source-audited-refinement`). Both whole-package candidate reviews passed, and final independent reconciliation recovered the exact earlier candidate artifacts by reversing only promotion metadata. The repeated full gate, shared solution build and all four upstream/completion postchecks pass. A production differential adapter remains open. The global verification claim remains incomplete.
+Status: **independently accepted conditional source-audited refinement** (schema 1, extractor 1.0.0; artifact state `accepted-conditional-source-audited-refinement`). Both whole-package candidate reviews passed for the earlier accepted triplet. The current deterministic compiler-input refresh and refund dependency repin passed the complete focused gate, the nested gate in the fresh aggregate Root2 run, and final independent rereview. A production differential adapter remains open. The global verification claim remains incomplete.
 
 Read [DESIGN.md](DESIGN.md), [SCOPE.md](SCOPE.md), [SOURCE_AUDIT.md](SOURCE_AUDIT.md) and [TEST_PLAN.md](TEST_PLAN.md). The independent Lean specification and stage refinement are in `Specification/` and `Refinement/`; the source-attached bridge relates the restricted generated continuation to that specification without upgrading preparation's model-to-model boundary.
 
@@ -31,10 +31,16 @@ Unchanged specification/proof source hashes (SHA-256):
 - Vectors: `629d1311acc8ea56b9259b867b5b4fe580f656b5038ef15ad0743839fa8fb5f1`.
 - Conditional source-attached bridge: `34eaba4b1f1b51790480972d222d1b4fac6494892065888c3343fef8ede06012`.
 
-Accepted artifact hashes (SHA-256):
+Current checked-in artifact hashes after the deterministic compiler-input refresh (SHA-256):
 
-- IR: `7b8b6b3ae5964c1e4c0740550e7d18756473529834cdaf60027fcb3c7de81601`.
-- Source manifest: `c46d9bafd3b48294b41a457ddc242aa0f235fb4969da9d6bcb3f622558f76c4f`.
-- Generated Lean: `5865a04c4acb8322a3ee7dc9c3638287bec1f7a5ac74069a71562d79df13df98`.
+- IR: `c21cb971b85a24115eebe54cf5b4def18b3b6ff049752a427363b952aae02292`.
+- Source manifest: `a760ee5916cca8bc064d7bdbb5ff5e22aee1b5f8ba1f606c2143156036581081`.
+- Generated Lean: `ea61c5d977ad0d9a5fa62e4a44ed834588fa6daca943da2f4e01c20b19c86e97`.
 
-Run `pwsh -File tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-Candidate.ps1` from the repository root. The historical script name is retained; it is the complete package gate, not a reduced draft check. A green gate does not discharge external VM/hook provenance, signed-gas/no-wrap conditions or preparation's model-to-production correspondence gap. Fresh aggregate root verification remains a separate milestone.
+The refreshed triplet passed 46/46 tests without skips, 30 identity-schema and 866
+artifact-schema negatives, 43 Lake jobs, all 13 generated semantic mutations and the
+42-module/13,336-declaration standard-only census with 17 negative controls. Evidence:
+`D:/tmp/formal-verify/resume-completion-20260922.log` and
+`D:/tmp/formal-verify/resume-root2-20260922.log`.
+
+Run `pwsh -File tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-Candidate.ps1` from the repository root. The historical script name is retained; it is the complete package gate, not a reduced draft check. A green gate does not discharge external VM/hook provenance, signed-gas/no-wrap conditions or preparation's model-to-production correspondence gap. The aggregate Root2 gate passed, but the global verification claim remains incomplete.

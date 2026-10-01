@@ -8,7 +8,7 @@ namespace Nethermind.Evm.Lean.OrdinaryEvmCompletionExtractor;
 internal static class SemanticBindings
 {
     internal const string Path = SourceAdmission.PackagePath + "/Admission/REVIEWED_BINDINGS.json";
-    internal const string Sha256 = "71794b8c220e0b645f7a373d6a35c9b8ea2434b192cb1bac6f36769226d2c4db";
+    internal const string Sha256 = "14d560460ede1f7b50c6e712af659482454cb011834fed3d945e22d237a3ca39";
     internal sealed record MethodBinding(string Symbol, ParameterIdentity[] Parameters);
     internal sealed record SiteBinding(string Role, string Owner, string OperationSha256);
     internal sealed record BindingInventory(int SchemaVersion, MethodBinding[] Methods, SiteBinding[] Sites, string[] OperationKinds);

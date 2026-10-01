@@ -39,6 +39,7 @@ internal static class Extractor
     ];
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        NewLine = "\n",
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = false,

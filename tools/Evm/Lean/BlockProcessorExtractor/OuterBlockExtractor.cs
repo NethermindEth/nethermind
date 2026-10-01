@@ -26,6 +26,7 @@ internal static class OuterBlockExtractor
     private const string ChainOwner = "global::Nethermind.Consensus.Processing.BlockchainProcessor";
     private static readonly JsonSerializerOptions Json = new()
     {
+        NewLine = "\n",
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,

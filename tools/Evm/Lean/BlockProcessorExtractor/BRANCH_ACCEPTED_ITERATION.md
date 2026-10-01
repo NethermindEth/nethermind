@@ -23,15 +23,20 @@ controls. The Release `Evm.slnx` build passed with zero warnings/errors; post-so
 branch, Lean and diff checks passed. The root verifier invokes the complete nonrecursive
 `Verify-Branch.ps1` gate without selecting the downstream draft targets.
 
-Accepted SHA-256 identities:
+Current checked-in SHA-256 identities after the deterministic compiler-input refresh:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `BranchAcceptedIteration.ir.json` | `a4ef55d283e20e63999710c9e3edecc046e1e3d23367c89a34ad463bee21e96d` |
-| `BranchAcceptedIteration.source-manifest.json` | `3609aac9ae2eee30ec0936173336cd65da0582d8909995e077f9557967930074` |
-| `BranchAcceptedIteration.lean` | `07abf81a2b3885b3e7baadabf2d72f13e4766841ba5725254b16d760a4dc49c9` |
+| `BranchAcceptedIteration.ir.json` | `c515fdae0951e324314529f88779f808012fc4edf05df465b439d9efc85c66f8` |
+| `BranchAcceptedIteration.source-manifest.json` | `eb8970d04da93072683870aa4b619cee1dc28c4dbf572fd88afe3d48c2ca24a3` |
+| `BranchAcceptedIteration.lean` | `c452d754043b7bd79a91cdf9312f56f307acac5975557fa3726385aab817bee9` |
 
-The global verification manifest records these identities and the gate/build/postcheck logs.
+The global verification manifest records these identities. The gate/build/postcheck evidence above
+belongs to the earlier accepted triplet. The refreshed triplet passed `Verify-Branch.ps1`
+again (106/106 tests, 290 schema negatives, seven semantic mutations and the complete
+2,144-export axiom gate) and passed the same nested gate in the fresh aggregate Root2 run
+(`D:/tmp/formal-verify/resume-root2-20260922.log`). Final independent rereview cleared
+the current artifact identities; the global verification claim remains incomplete.
 
 ## Admission and artifacts
 

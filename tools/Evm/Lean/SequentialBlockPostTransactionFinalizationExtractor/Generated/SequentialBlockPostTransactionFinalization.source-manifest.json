@@ -37,8 +37,8 @@
   "compilerClosure": {
     "inventoryPath": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
     "count": 434,
-    "aggregateSha256": "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2",
-    "inventorySha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c",
+    "aggregateSha256": "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553",
+    "inventorySha256": "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3",
     "supportSources": [
       {
         "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
@@ -127,8 +127,8 @@
     "block.processBlock.standard-exact-base-adapter"
   ],
   "taskFlowVariable": "bloomsAndReceiptsRootTask",
-  "irSha256": "1d599ef71c083c5aa4a80fbc0e44d99f807d09dc0fa17f9e2d5b94047e45145a",
-  "leanSha256": "f84cd3be1182df43429d6ea75ec8df360059c2fc4a183270748118cc78a8064b",
+  "irSha256": "f068e32c14c4f34c9bade6ba4f3559914aed815679f4064f6462d5b861eac031",
+  "leanSha256": "a4079557035c93b673334760e4464f8c3b05f747577b7e6440ad474121b947d6",
   "dependencies": [
     {
       "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/LeanEmitter.cs",
@@ -160,7 +160,7 @@
     },
     {
       "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROMOTION_PINS.json",
-      "sha256": "72adccc0226124a32633dd820f51a8f127237c539ac6f166a0693fccd4556e9d"
+      "sha256": "155c648ae0c7e72221557491cd1476660b97d06e001638f63860b950013edcfe"
     },
     {
       "path": "src/Nethermind/Nethermind.Core/Metric/MetricsTimer.cs",
@@ -188,11 +188,11 @@
     },
     {
       "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.ir.json",
-      "sha256": "0580b07867d42ffcd210a2044cf15f6e30193ba4170486c97b20caad54cbdda5"
+      "sha256": "33836c0784566ef863666184da6176e24e1527afb868181c8a85467651715229"
     },
     {
       "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.source-manifest.json",
-      "sha256": "f531d9ca1bf15382ef74b2c055ad45ca8352163815a35b07e382a20f257c5a56"
+      "sha256": "4d2499f014e8ffb8d27f1ae3e54fe8c30c9084f560f37d32a1c6be23fb486593"
     },
     {
       "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.lean",
@@ -224,7 +224,7 @@
     },
     {
       "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
-      "sha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c"
+      "sha256": "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3"
     },
     {
       "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json",
@@ -232,7 +232,7 @@
     },
     {
       "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json",
-      "sha256": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e"
+      "sha256": "c1637a38190eb1fdd74b8d0fccaa52f7151d9e8dfc657c5844b27cb8fd1afa6c"
     },
     {
       "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean",

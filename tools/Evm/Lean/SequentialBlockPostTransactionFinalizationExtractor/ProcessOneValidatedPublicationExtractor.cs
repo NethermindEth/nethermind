@@ -191,6 +191,7 @@ internal static partial class ProcessOneValidatedPublicationExtractor
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        NewLine = "\n",
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,

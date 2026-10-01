@@ -64,8 +64,8 @@
   "compilerClosure": {
     "inventoryPath": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
     "count": 434,
-    "aggregateSha256": "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2",
-    "inventorySha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c",
+    "aggregateSha256": "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553",
+    "inventorySha256": "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3",
     "supportSources": [
       {
         "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
@@ -1799,7 +1799,7 @@
           "finallyExits": []
         }
       ],
-      "shapeSha256": "603a1a4a21ed2a24e13408905f4b3ff2d9a7e692d0097e1a1cf8ebc8656500b8",
+      "shapeSha256": "970468d42d4407fbeb8a4ced3ad3051f7c056c41f0b67d87d0e5b1177b9029ca",
       "binding": {
         "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
         "owner": "BlockProcessor",
@@ -1931,7 +1931,7 @@
           "finallyExits": []
         }
       ],
-      "shapeSha256": "9b7bec2e523da6906997400b2aba7ce7137f1551f32a480f069677831cf0c63b",
+      "shapeSha256": "fcd78f8c7fac2bc2e27c9dc977ea214719c6ab45d6ef154132309b2975c4833f",
       "binding": {
         "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
         "owner": "BlockProcessor",
@@ -2054,7 +2054,7 @@
           "finallyExits": []
         }
       ],
-      "shapeSha256": "810b6213cfbab37d400c259074a6947b0f47912177142bb84cd1dba07128a0d3",
+      "shapeSha256": "e6295e30f4f3002b7d3f2e3d1beeb0230fb508d07f722ce746ccb139db5a5cba",
       "binding": {
         "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
         "owner": "BlockProcessor",
@@ -2190,7 +2190,7 @@
           "finallyExits": []
         }
       ],
-      "shapeSha256": "deb921d48efc6bed5175e03d9d63475a38a98f9969b3f37870b925306657d02f",
+      "shapeSha256": "33c65131a54cf213eaad065ea404ce613e1cac4626903de4d82063f0c230e4fc",
       "binding": {
         "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
         "owner": "BlockProcessor",
@@ -2276,7 +2276,7 @@
           "finallyExits": []
         }
       ],
-      "shapeSha256": "33ea0843fe3a0b39da410050ee4659b53299e44c38d3d3f91ef650bff48b11bd",
+      "shapeSha256": "6e4b96e49ac8046ddd02d1dabbcbf71dc0d8ce9a871a1f0a04478403312499ca",
       "binding": {
         "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
         "owner": "BlockProcessor",

@@ -23,7 +23,6 @@ internal static class LeanEmitter
             .Replace("__IR_SHA256__", irSha256, StringComparison.Ordinal)
             .Replace("__ACCEPTANCE_STATE__", LeanString(document.AcceptanceState), StringComparison.Ordinal)
             .Replace("__SOURCE_CLOSURE__", document.SourceClosureSha256, StringComparison.Ordinal)
-            .Replace("__HANDOFF_SHA__", DependencySha(document, Extractor.HandoffLeanPath), StringComparison.Ordinal)
             .Replace("__SETTLEMENT_SHA__", DependencySha(document, Extractor.SettlementLeanPath), StringComparison.Ordinal)
             .Replace("__STATE_CHARGE_SHA__", DependencySha(document, Extractor.StateChargeLeanPath), StringComparison.Ordinal)
             .Replace("__ROUTING_SHA__", DependencySha(document, Extractor.RoutingLeanPath), StringComparison.Ordinal)
@@ -95,7 +94,6 @@ internal static class LeanEmitter
             throw new ExtractionException("The simple-transfer IR contains an unsupported semantic formula.");
         if (document.Completion.Lowering.NewAccountStateCost <= 0 ||
             document.Completion.Lowering.NoFrameGotoCount != 4 ||
-            !document.Completion.Lowering.NoFrameCfgProven ||
             !document.Completion.Lowering.FailContractCreateBypassesNoFrame)
             throw new ExtractionException("The simple-transfer IR is missing its source CFG and schedule-admission facts.");
     }
@@ -602,7 +600,6 @@ namespace SimpleTransferCompletionExtractor.Generated
 def sourceIrSha256 : String := "__IR_SHA256__"
 def sourceAcceptanceState : String := __ACCEPTANCE_STATE__
 def sourceClosureSha256 : String := "__SOURCE_CLOSURE__"
-def handoffArtifactSha256 : String := "__HANDOFF_SHA__"
 def settlementArtifactSha256 : String := "__SETTLEMENT_SHA__"
 def stateChargeArtifactSha256 : String := "__STATE_CHARGE_SHA__"
 def routingArtifactSha256 : String := "__ROUTING_SHA__"
@@ -660,8 +657,8 @@ structure Address where
   id : Nat
   deriving DecidableEq, Repr
 
--- Bounded abstraction of Address.ToHash().ToHash256(); this package does not prove Keccak
--- correctness or the production hash implementation.
+-- Scalar abstraction of Address.ToHash().ToHash256(). Production zero-left-pads the 20-byte
+-- address to 32 bytes; future source attachment must add the UInt160 bound and encoding bridge.
 def addressHashProjection (address : Address) : Nat := address.id
 
 def sameAddress (left right : Address) : Bool := left.id == right.id

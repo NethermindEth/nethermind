@@ -536,6 +536,7 @@ internal static partial class Extractor
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        NewLine = "\n",
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,

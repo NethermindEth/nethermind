@@ -11,10 +11,10 @@ namespace Nethermind.Evm.Lean.SequentialBlockTransactionFoldExtractor;
 
 internal static class ReceiptDependencyAudit
 {
-    private const string PromotedPinsSha256 = "cf36cbbe50bb9e7a7578a59966acb7b39ca361fd1ddc5171f19a863ad5a0bf69";
-    private const string PromotedArtifactsSha256 = "03b3d1d96ac31df4888e60b5e5446a588bbdc71a01052837709d7f9034d4bbe3";
+    private const string PromotedPinsSha256 = "9a998b196b89454e048345e819a6df8dca61d9b5ee5760bf5dde5e08f0acca8a";
+    private const string PromotedArtifactsSha256 = "a1a7c0c022006029782569147343031da5d97591acb206b384b91b52344f669a";
     private const string PromotedSourcePinsSha256 = "0223aadf196cc74051d632260693eeb607fde202fa612caee59d3ddaca886c6f";
-    private const string PromotedManifestSha256 = "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e";
+    private const string PromotedManifestSha256 = "c1637a38190eb1fdd74b8d0fccaa52f7151d9e8dfc657c5844b27cb8fd1afa6c";
 
     internal const string PinsPath = "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/RECEIPT_DEPENDENCY_PINS.json";
     internal const string ReceiptRoot = "tools/Evm/Lean/ReceiptTerminalFoldExtractor/";

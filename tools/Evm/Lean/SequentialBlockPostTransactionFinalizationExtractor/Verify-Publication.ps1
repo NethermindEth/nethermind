@@ -5,7 +5,8 @@ param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../../../..")),
     [string]$Configuration = "Release",
     [string]$Dotnet = "dotnet",
-    [string]$Lake = "lake"
+    [string]$Lake = "lake",
+    [switch]$SkipCompilerMaterialization
 )
 
 Set-StrictMode -Version Latest
@@ -16,12 +17,13 @@ $repo = [IO.Path]::GetFullPath($RepoRoot)
 $project = Join-Path $package "SequentialBlockPostTransactionFinalizationExtractor.csproj"
 $previousEpoch = $env:SOURCE_DATE_EPOCH
 $previousNodeReuse = $env:MSBUILDDISABLENODEREUSE
-$env:SOURCE_DATE_EPOCH = "1789035784"
-$env:MSBUILDDISABLENODEREUSE = "1"
 $scratchRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $scratch = Join-Path $scratchRoot ("process-one-publication-verify-" + [Guid]::NewGuid().ToString("N"))
 try {
-    & (Join-Path $package "Verify.ps1") -RepoRoot $repo -Configuration $Configuration -Dotnet $Dotnet -Lake $Lake
+    $env:SOURCE_DATE_EPOCH = "1789035784"
+    $env:MSBUILDDISABLENODEREUSE = "1"
+    & (Join-Path $package "Verify.ps1") -RepoRoot $repo -Configuration $Configuration -Dotnet $Dotnet -Lake $Lake `
+        -SkipCompilerMaterialization:$SkipCompilerMaterialization
     & $Dotnet run --project $project -c $Configuration -p:SaveDiskSpace=true --no-build -- --publication-check --repo-root $repo
     if ($LASTEXITCODE -ne 0) { throw "Publication checked source/artifact validation failed." }
     New-Item -ItemType Directory -Path $scratch | Out-Null

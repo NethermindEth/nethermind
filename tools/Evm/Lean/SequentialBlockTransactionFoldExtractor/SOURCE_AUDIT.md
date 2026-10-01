@@ -17,9 +17,9 @@ The generated snapshot is frozen at these SHA-256 values:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `Generated/SequentialBlockTransactionFold.ir.json` | `0580b07867d42ffcd210a2044cf15f6e30193ba4170486c97b20caad54cbdda5` |
+| `Generated/SequentialBlockTransactionFold.ir.json` | `33836c0784566ef863666184da6176e24e1527afb868181c8a85467651715229` |
 | `Generated/SequentialBlockTransactionFold.lean` | `e1c7c38d5f90662a649fff77b8fa7bbc2543ea25e8eea1ac845a4d15ffbf5516` |
-| `Generated/SequentialBlockTransactionFold.source-manifest.json` | `f531d9ca1bf15382ef74b2c055ad45ca8352163815a35b07e382a20f257c5a56` |
+| `Generated/SequentialBlockTransactionFold.source-manifest.json` | `4d2499f014e8ffb8d27f1ae3e54fe8c30c9084f560f37d32a1c6be23fb486593` |
 
 The audit is against the pinned source files and is intentionally limited to the exact-base
 direct-inner executor slice under an explicit BAL-disabled route premise and to source

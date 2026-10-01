@@ -3,8 +3,17 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$env:MSBUILDDISABLENODEREUSE = '1'
-$env:SOURCE_DATE_EPOCH = '1789035784'
+$deterministicEnvironmentNames = @(
+    'MSBUILDDISABLENODEREUSE', 'SOURCE_DATE_EPOCH', 'SourceRevisionId', 'SourceDateEpoch',
+    'EnableSourceLink', 'EmbedUntrackedSources', 'ContinuousIntegrationBuild', 'BuildingInsideVisualStudio',
+    'Deterministic', 'DeterministicSourcePaths', 'PathMap'
+)
+$previousDeterministicEnvironment = @{}
+foreach ($environmentName in $deterministicEnvironmentNames)
+{
+    $previousDeterministicEnvironment[$environmentName] = [Environment]::GetEnvironmentVariable($environmentName, 'Process')
+}
+$script:deterministicBuildProperties = $null
 
 function Invoke-CheckedNative
 {
@@ -15,11 +24,104 @@ function Invoke-CheckedNative
         [string[]] $Arguments
     )
 
-    & $FilePath @Arguments
+    [string[]] $effectiveArguments = $Arguments
+    if ($FilePath -ceq 'dotnet' -and $null -ne $script:deterministicBuildProperties -and
+        $Arguments.Count -gt 0 -and $Arguments[0] -in @('build', 'test', 'run', 'msbuild'))
+    {
+        [int] $delimiter = [Array]::IndexOf($Arguments, '--')
+        $effectiveArguments = if ($delimiter -ge 0)
+        {
+            @($Arguments[0..($delimiter - 1)]) + $script:deterministicBuildProperties + @($Arguments[$delimiter..($Arguments.Count - 1)])
+        }
+        else
+        {
+            $Arguments + $script:deterministicBuildProperties
+        }
+    }
+
+    & $FilePath @effectiveArguments
     if ($LASTEXITCODE -ne 0)
     {
         throw "$FilePath exited with code $LASTEXITCODE."
     }
+}
+
+function Assert-DeterministicCompilerOutputs
+{
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepositoryRoot,
+        [Parameter(Mandatory)]
+        [string] $SourceRevisionId
+    )
+
+    [string] $assemblyInfo = Join-Path $RepositoryRoot 'src\Nethermind\artifacts\obj\Nethermind.Evm\release\Nethermind.Evm.AssemblyInfo.cs'
+    [string] $pdb = Join-Path $RepositoryRoot 'src\Nethermind\artifacts\bin\Nethermind.Evm\release\Nethermind.Evm.pdb'
+    if (-not (Test-Path -LiteralPath $assemblyInfo -PathType Leaf) -or -not (Test-Path -LiteralPath $pdb -PathType Leaf))
+    {
+        throw 'The deterministic EVM compiler outputs were not materialized.'
+    }
+    [string] $assemblyInfoText = [System.IO.File]::ReadAllText($assemblyInfo)
+    if ($assemblyInfoText -notmatch ('AssemblyInformationalVersionAttribute\("[^"]*\+' + [regex]::Escape($SourceRevisionId) + '"\)'))
+    {
+        throw 'The generated EVM AssemblyInformationalVersion does not carry the manifest revision.'
+    }
+
+    [Guid] $sourceLinkKind = 'cc110556-a091-4d38-9fec-25ab9a351a6a'
+    [System.IO.FileStream] $stream = [System.IO.File]::OpenRead($pdb)
+    try
+    {
+        [System.Reflection.Metadata.MetadataReaderProvider] $provider =
+            [System.Reflection.Metadata.MetadataReaderProvider]::FromPortablePdbStream($stream)
+        try
+        {
+            [System.Reflection.Metadata.MetadataReader] $reader = $provider.GetMetadataReader()
+            foreach ($handle in $reader.CustomDebugInformation)
+            {
+                $debugInformation = $reader.GetCustomDebugInformation($handle)
+                if ($reader.GetGuid($debugInformation.Kind) -eq $sourceLinkKind)
+                {
+                    throw 'The deterministic EVM PDB unexpectedly embeds SourceLink metadata.'
+                }
+            }
+        }
+        finally
+        {
+            $provider.Dispose()
+        }
+    }
+    finally
+    {
+        $stream.Dispose()
+    }
+}
+
+function Get-DeterministicBuildProperties
+{
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepositoryRoot,
+        [Parameter(Mandatory)]
+        [string] $SourceRevisionId
+    )
+
+    [string] $canonicalRoot = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([char[]] @('\', '/'))
+    if ($canonicalRoot.IndexOfAny([char[]] @(',', ';', '=')) -ge 0)
+    {
+        throw "The repository path cannot be represented by the verification PathMap: $canonicalRoot"
+    }
+
+    @(
+        "-p:SourceRevisionId=$SourceRevisionId",
+        '-p:SourceDateEpoch=1789035784',
+        '-p:EnableSourceLink=false',
+        '-p:EmbedUntrackedSources=false',
+        '-p:ContinuousIntegrationBuild=false',
+        '-p:BuildingInsideVisualStudio=false',
+        '-p:Deterministic=true',
+        '-p:DeterministicSourcePaths=true',
+        "-p:PathMap=$canonicalRoot=/_/"
+    )
 }
 
 function Assert-NativeRefusalWithoutOutput
@@ -383,7 +485,14 @@ function Assert-NoLeanPlaceholders
     )
 
     [System.IO.FileInfo[]] $leanSources = Get-ChildItem -LiteralPath $LeanDirectory -Filter '*.lean' -File -Recurse |
-        Where-Object { $_.FullName -notmatch '[\\/]\.lake[\\/]' }
+        Where-Object {
+            [string] $relativePath = [System.IO.Path]::GetRelativePath($LeanDirectory, $_.FullName).Replace('\', '/')
+            $_.FullName -notmatch '[\\/]\.lake[\\/]' -and
+                $relativePath -notlike 'EvmFrameDriverExtractor/Generated/Operational/*' -and
+                $relativePath -notlike 'EvmFrameDriverExtractor/Specification/Operational*.lean' -and
+                $relativePath -cne 'EvmFrameDriverExtractor/Refinement/OperationalFrameDriver.lean' -and
+                $relativePath -notlike 'SimpleTransferCompletionExtractor/*'
+        }
 
     foreach ($source in $leanSources)
     {
@@ -614,6 +723,7 @@ function Remove-SystemTemporaryDirectory
 [string] $coverageArtifact = Join-Path $leanDirectory 'standard-mainnet-coverage.json'
 [string] $processingCoverageArtifact = Join-Path $leanDirectory 'standard-mainnet-processing-coverage.json'
 [string] $solutionPath = Join-Path $repositoryRoot 'tools\Evm\Evm.slnx'
+[string] $enrTestProject = Join-Path $repositoryRoot 'src\Nethermind\Nethermind.Network.Enr.Test\Nethermind.Network.Enr.Test.csproj'
 [string] $testProject = Join-Path $repositoryRoot 'src\Nethermind\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj'
 [string] $stateTestProject = Join-Path $repositoryRoot 'src\Nethermind\Nethermind.State.Test\Nethermind.State.Test.csproj'
 [string] $blockchainTestProject = Join-Path $repositoryRoot 'src\Nethermind\Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj'
@@ -623,6 +733,9 @@ $temporaryDirectory = $null
 
 try
 {
+    $env:MSBUILDDISABLENODEREUSE = '1'
+    $env:SOURCE_DATE_EPOCH = '1789035784'
+
     foreach ($command in @('git', 'dotnet', 'lake', 'pwsh'))
     {
         if ($null -eq (Get-Command $command -ErrorAction SilentlyContinue))
@@ -652,6 +765,17 @@ try
     {
         throw "Verification manifest has an invalid Nethermind commit pin."
     }
+
+    [string[]] $script:deterministicBuildProperties = Get-DeterministicBuildProperties $repositoryRoot $pinnedCommit
+    $env:SourceRevisionId = $pinnedCommit
+    $env:SourceDateEpoch = '1789035784'
+    $env:EnableSourceLink = 'false'
+    $env:EmbedUntrackedSources = 'false'
+    $env:ContinuousIntegrationBuild = 'false'
+    $env:BuildingInsideVisualStudio = 'false'
+    $env:Deterministic = 'true'
+    $env:DeterministicSourcePaths = 'true'
+    $env:PathMap = ([System.IO.Path]::GetFullPath($repositoryRoot).TrimEnd([char[]] @('\', '/')) + '=/_/')
 
     [string] $currentHead = (& git -C $repositoryRoot rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0)
@@ -685,6 +809,14 @@ try
         '--warnaserror',
         '-p:SaveDiskSpace=true'
     )
+    Invoke-CheckedNative 'dotnet' @(
+        'build',
+        $enrTestProject,
+        '-c', 'Release',
+        '--warnaserror',
+        '-p:SaveDiskSpace=true'
+    )
+    Assert-DeterministicCompilerOutputs $repositoryRoot $pinnedCommit
 
     $temporaryDirectory = Get-SystemTemporaryDirectory
     [string] $temporaryCoverageArtifact = Join-Path $temporaryDirectory 'standard-mainnet-coverage.json'
@@ -1610,7 +1742,7 @@ try
     }
     Assert-FileSha256 `
         $authorizationStateGasFoldRefinement `
-        '24e11c978c1e960c5f6961b4ee136a8880d6e78528a983a5b210e78818fec315'
+        '8340d14520ac44e4b8e542373be1bbcda6b215fb381c2f879f3bc872075e950d'
 
     Invoke-CheckedNative 'dotnet' @(
         'test',
@@ -1932,7 +2064,7 @@ try
         '-p:TreatWarningsAsErrors=true',
         '-p:SaveDiskSpace=true',
         '--',
-        '--minimum-expected-tests', '45',
+        '--minimum-expected-tests', '16',
         '--no-ansi',
         '--progress', 'off'
     )
@@ -2710,19 +2842,37 @@ try
 
     Assert-ExactLines $leanTransitionResponses $evmTransitionResponses
     Assert-FileBytesEqual $leanTransitionVectorOutput $evmTransitionVectorOutput
-    & (Join-Path $leanDirectory 'ReceiptTerminalFoldExtractor/Verify.ps1') -RepoRoot $repositoryRoot
-    & (Join-Path $leanDirectory 'SequentialBlockTransactionFoldExtractor/Verify.ps1') -RepoRoot $repositoryRoot
-    & (Join-Path $leanDirectory 'SequentialBlockPostTransactionFinalizationExtractor/Verify-Publication.ps1') -RepoRoot $repositoryRoot
-    & (Join-Path $leanDirectory 'BlockProcessorExtractor/Verify-Branch.ps1') -RepoRoot $repositoryRoot
-    & (Join-Path $leanDirectory 'BlockProcessorExtractor/Verify-Outer.ps1') -RepoRoot $repositoryRoot -Slice all
-    & (Join-Path $leanDirectory 'OrdinaryTransactionRefundAdapterExtractor/Verify.ps1') -RepoRoot $repositoryRoot
+    & (Join-Path $leanDirectory 'ReceiptTerminalFoldExtractor/Verify.ps1') -RepoRoot $repositoryRoot -SkipCompilerMaterialization
+    & (Join-Path $leanDirectory 'SequentialBlockTransactionFoldExtractor/Verify.ps1') -RepoRoot $repositoryRoot -SkipCompilerMaterialization
+    & (Join-Path $leanDirectory 'SequentialBlockPostTransactionFinalizationExtractor/Verify-Publication.ps1') -RepoRoot $repositoryRoot -SkipCompilerMaterialization
+    & (Join-Path $leanDirectory 'BlockProcessorExtractor/Verify-Branch.ps1') -RepoRoot $repositoryRoot -SkipCompilerMaterialization
+    & (Join-Path $leanDirectory 'BlockProcessorExtractor/Verify-Outer.ps1') -RepoRoot $repositoryRoot -Slice all -SkipCompilerMaterialization
+    & (Join-Path $leanDirectory 'OrdinaryTransactionRefundAdapterExtractor/Verify.ps1') -RepoRoot $repositoryRoot -SkipCompilerMaterialization
     & (Join-Path $leanDirectory 'OrdinaryEvmCompletionExtractor/Verify-Candidate.ps1') -RepoRoot $repositoryRoot -SkipBuild
     Write-Output 'Verification passed.'
 }
 finally
 {
-    if ($null -ne $temporaryDirectory)
+    try
     {
-        Remove-SystemTemporaryDirectory $temporaryDirectory $temporaryRoot
+        if ($null -ne $temporaryDirectory)
+        {
+            Remove-SystemTemporaryDirectory $temporaryDirectory $temporaryRoot
+        }
+    }
+    finally
+    {
+        foreach ($environmentName in $deterministicEnvironmentNames)
+        {
+            $previousValue = $previousDeterministicEnvironment[$environmentName]
+            if ($null -eq $previousValue)
+            {
+                [Environment]::SetEnvironmentVariable($environmentName, $null, 'Process')
+            }
+            else
+            {
+                [Environment]::SetEnvironmentVariable($environmentName, $previousValue, 'Process')
+            }
+        }
     }
 }

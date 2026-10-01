@@ -153,12 +153,13 @@ returning true must not be read as a proof that the head changed. This is not a 
 ## Separate finite and publication acceptance
 
 The accepted BranchAcceptedIteration triplet is frozen in `FINITE_PROMOTION_PINS.json`.
-The independently accepted finite triplet is:
+The current checked-in finite triplet after the deterministic compiler-input refresh is:
 
-- IR: `ebccc9751bc3f65dc577ad78e9202497b9eeb38d410ec43c0c5d8808e7a15816`.
-- Source manifest: `5de2e5fe4d00d76f944806b5bf0044226011ead1f3a1a11ee99c80653dc01463`.
-- Generated Lean: `71fb06de4352ff82041687051bf3fa72968fbd351a88068ced427f9011ba7638`.
+- IR: `5cabd18b8004f0be0408245ed1c2ce1e0c7d4e8e4bab9bf65c4ef0f5519c3f94`.
+- Source manifest: `82af4f511d8a263ddb499e2544b70d72eee2448128439fd481156475fcd9c218`.
+- Generated Lean: `62d7c8b7c8500f87b308398d62f47a3a40e095c66e192bf654b09559dca13c62`.
 
+The following full-gate evidence belongs to the earlier accepted finite identities.
 The full finite gate passed 72/72 tests without failures or skips, both strict schemas and
 185 negative controls, deterministic extraction, 31 warning-failing Lake jobs and four
 direct Lean checks, four independently compile-valid semantic mutations, and all 2,317
@@ -168,13 +169,14 @@ ProcessOne, Branch, finite and refund postchecks passed. Evidence is in
 `D:/tmp/formal-verify/finite-full-gate3.log`, `finite-final-evm-build.log` and
 `finite-final-postchecks.log` under that same directory.
 
-This accepted finite triplet is pinned in `PUBLICATION_PROMOTION_PINS.json`.
-The separately accepted publication triplet is:
+This finite triplet is pinned in `PUBLICATION_PROMOTION_PINS.json`.
+The current checked-in publication triplet is:
 
-- IR: `38e3e21037eac7ac664e4aadf74d17111baf99ff4184ed78fa6984907b076d43`.
-- Source manifest: `1f1f004187b2fa216a1f912f8a50cabba228500a74de4b73bd6176c200fa6291`.
-- Generated Lean: `dc4889bf20e1a497b37a603b60c603ae61b1273c14f9c4618e617691276c2225`.
+- IR: `1021965fb513138eed5f199da3ec297cad289d4709bb0a869024ec6169e41b38`.
+- Source manifest: `6f889d7b174ef1b700edacbf761dc66a063177e45c0afde7290d89bfe2e80356`.
+- Generated Lean: `c6a1582dca38c82e876ab381276db1dcb18d4fdab83e0cf478f29c641d0395b9`.
 
+The following full-gate evidence belongs to the earlier accepted publication identities.
 The complete combined gate passed 104/104 tests without failures or skips, 368 strict-schema
 negative controls (185 finite and 183 publication), byte-identical regeneration, 35
 warning-failing Lake jobs and eight direct Lean checks, all seventeen independently
@@ -182,11 +184,16 @@ compile-valid semantic mutations, and both complete standard-only descendant cen
 with their negative/completeness controls. The shared Release `Evm.slnx` build passed
 with zero warnings/errors, followed by successful live ProcessOne, Branch, finite,
 publication and refund checks with unchanged artifact identities. Independent executable
-review accepted the exact triplet above. Evidence is in
+review accepted the earlier triplet. Evidence is in
 `D:/tmp/formal-verify/outer-publication-full-gate1.log`,
 `outer-publication-final-evm-build.log`, `outer-publication-final-postchecks2.log` and
-`publication-independent-final-review.log` under that same directory. The overall
-pipeline claim remains incomplete; these are conditional caller-control refinements.
+`publication-independent-final-review.log` under that same directory. The refreshed finite
+and publication triplets then passed the complete `Verify-Outer.ps1 -Slice all` focused
+gate and its nested gate in the fresh aggregate Root2 run
+(`D:/tmp/formal-verify/resume-root2-20260922.log`): 104/104 tests, 368 schema negatives,
+35 Lake jobs, 17 semantic mutations and both complete descendant axiom censuses. Final
+independent rereview cleared the current identities. The overall pipeline claim remains
+incomplete; these are conditional caller-control refinements.
 All modes require `--repo-root` and `--output`.
 No template markers or draft metadata should be hand-edited into accepted artifacts.
 

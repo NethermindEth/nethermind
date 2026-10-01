@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: LGPL-3.0-only
 
 -- Generated from admitted C# syntax. External calls are observations, not proved implementations.
--- IR SHA-256: b1ec3e5e069d7638d3fdb972f9d9653188b2f0afaa8c55ff50c6aae084457f04
+-- IR SHA-256: 288c12688eb01e345accb92444b2c238f3b2a680787bb7a6614d70376c5ae1b5
 namespace BlockProcessorExtractor.Generated
 
 inductive Phase where

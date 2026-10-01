@@ -1866,7 +1866,7 @@
           ]
         },
         "referenceInventorySha256": {
-          "const": "751d3ffff1427c2d751c8baaa023220cc847d88c839ec41792800f1c9fe57796"
+          "const": "b36eeb0db516d68842159d34b9b9b730e83460e385de87dc35110db9a756b84c"
         },
         "references": {
           "$ref": "#/$defs/references"
@@ -5037,64 +5037,64 @@
         {
           "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Config/release/Nethermind.Config.dll",
           "assemblyName": "Nethermind.Config",
-          "sha256": "d7453c6ec79c45940a12d8453e7328c5b0cbed79ae151223a38a01a5506daf56",
-          "mvid": "63037d2e-3e19-423f-8d1a-0dbd096141cc",
+          "sha256": "5dc84fe34f81253e46816b029a77bdc2078ec003f26ba4fed8c202d0fca2a8d1",
+          "mvid": "8cfbc9b1-7d02-4702-9cd3-ac3c19af5ba4",
           "selected": true
         },
         {
           "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Core/release/Nethermind.Core.dll",
           "assemblyName": "Nethermind.Core",
-          "sha256": "4b0f6f2aa62ce87e145c37f413b44273f97be23152471ab16baae1799668d5af",
-          "mvid": "b73d2976-e252-4153-8c9f-e55c23ec10db",
+          "sha256": "9bd0517e656bb4607780db580465264f35113764669c743c71e9bd24f8c994cb",
+          "mvid": "80fcaea9-6e00-44d9-aa59-8d91d56fc0ab",
           "selected": true
         },
         {
           "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Crypto/release/Nethermind.Crypto.dll",
           "assemblyName": "Nethermind.Crypto",
-          "sha256": "18a935010d3aaa04ed76daf66b0f1dfc84e37147c0efec6ba385692cca9c427d",
-          "mvid": "9fe9d438-7ef9-49ea-8b3e-86ca79f31544",
+          "sha256": "9445159fe136980277fd274b7c81eb39f571bd6a6afeefe2297548b5cdd47721",
+          "mvid": "d9061186-4f3c-4772-ad1f-d92345ed8c7b",
           "selected": true
         },
         {
           "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Logging/release/Nethermind.Logging.dll",
           "assemblyName": "Nethermind.Logging",
-          "sha256": "2f47d04e9cf5dfcdd0f421772ac6c78f0229a3456fd26d17582b76cb6249b39b",
-          "mvid": "d8d265a2-3c87-4f4c-aeb6-e3ef28af8518",
+          "sha256": "535f59708984fe14e421964e473cf741b9e7a1524ab40c1ab741494f2687de5d",
+          "mvid": "05461213-513e-4020-a4d9-f5cef7ad9e32",
           "selected": true
         },
         {
           "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Network.Enr/release/Nethermind.Network.Enr.dll",
           "assemblyName": "Nethermind.Network.Enr",
-          "sha256": "e155eece8bb398aac76e5933db89aa43cf519ddc64541dba70e539a4079c2e09",
-          "mvid": "5632722e-bddc-4670-b91a-637476e1b1bf",
+          "sha256": "790e6d0e213215092ef61ffd1b74a3979b825f68183bb26bb0efb12a1f3ab771",
+          "mvid": "802a0898-4e67-43d7-90c9-8229b0e5a3f8",
           "selected": true
         },
         {
           "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Serialization.Json/release/Nethermind.Serialization.Json.dll",
           "assemblyName": "Nethermind.Serialization.Json",
-          "sha256": "9053c279596379d79b2101af616c6ac8a22ea6ead70e1fac5b894a6e9e800439",
-          "mvid": "d832b156-df16-4f2a-aa26-f2b5cc95df9b",
+          "sha256": "49ddc28c6f6d58a049126d6221ceaaf6476b02557c2f2c6cb8c6e1c6e2a9547e",
+          "mvid": "4797daa4-e0f5-4463-81d3-196b8fd88094",
           "selected": true
         },
         {
           "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Serialization.Rlp/release/Nethermind.Serialization.Rlp.dll",
           "assemblyName": "Nethermind.Serialization.Rlp",
-          "sha256": "406c3a7bc6db190db429db0339a835e5d30f6f65be0e3a1a2367487d8f24ae0a",
-          "mvid": "520f4a28-057c-4eb9-85a3-5e5b6f7cfddb",
+          "sha256": "5cc5769fc9df5407ca14580830f63f9ef55a76b0869377b2ea0e359a4fae5ef1",
+          "mvid": "45c3110e-2e74-4194-b634-da471872b88c",
           "selected": true
         },
         {
           "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Serialization.Ssz/release/Nethermind.Serialization.Ssz.dll",
           "assemblyName": "Nethermind.Serialization.Ssz",
-          "sha256": "939abd6896d44e9571ed7cc20ae288d8b8b73a85d791fbbad669115efae7ca19",
-          "mvid": "edded8b2-32e6-40ac-a828-faed66e09685",
+          "sha256": "984ed7989c64e1f62e63f153cb151806fb61a1007b6644dfc44d4aaa06c244c7",
+          "mvid": "611f593b-6db0-48ba-88fd-b62672530de6",
           "selected": true
         },
         {
           "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Specs/release/Nethermind.Specs.dll",
           "assemblyName": "Nethermind.Specs",
-          "sha256": "2236a1f7b2f5f6fa28925abd6d1d443d8c976f22c5c3b14cbefc97f2ea410d95",
-          "mvid": "1bc25b6d-b8b2-4433-a7e3-b12f788dcab7",
+          "sha256": "af664e5db0f20bd1c9a7f6a6d707d43d56c3bee4f4012119f984086be3b1a1a9",
+          "mvid": "290d46fc-b538-477d-9bc8-8f1f5d766a78",
           "selected": true
         }
       ]

@@ -327,21 +327,24 @@ The inventory SHA-256 is `dea78ac75c216204477c271343fedacf453649ca3097f77e92867f
 Accepted SHA-256 identities:
 
 The current publication promotion includes the independently reviewed shared directive-admission
-and gate-dependency cascade. Finalization's IR and Lean bytes are unchanged; its manifest is refreshed.
+and gate-dependency cascade. The deterministic compiler-input refresh changed finalization's
+IR, source-manifest, and generated Lean identities; the checked-in artifacts below passed
+the full finalization and ProcessOne publication gates in the fresh root run
+(`D:/tmp/formal-verify/resume-root2-20260922.log`).
 
 | Artifact | SHA-256 |
 | --- | --- |
-| Finalization IR | `1d599ef71c083c5aa4a80fbc0e44d99f807d09dc0fa17f9e2d5b94047e45145a` |
-| Finalization manifest | `99823606ef2143b4fb00aeb6af02994d4f707dc757ae719d9df6ccdb34ce0e7b` |
-| Finalization Lean | `f84cd3be1182df43429d6ea75ec8df360059c2fc4a183270748118cc78a8064b` |
-| ProcessOne IR | `201d8d2e6163d3a75b439cebf0e5fa7754792c3ba63de70b246939bc9d4cad3a` |
-| ProcessOne manifest | `547dbea87c2c26539a11b4e3db1f2d22db4d7590a6a68c1695a46f70518bdf3d` |
-| ProcessOne Lean | `7f47700c2f38717b37c6f8bb7e187021d9af8e6a641389fa0bd27865122eec5d` |
-| Fold IR | `0580b07867d42ffcd210a2044cf15f6e30193ba4170486c97b20caad54cbdda5` |
-| Fold manifest | `f531d9ca1bf15382ef74b2c055ad45ca8352163815a35b07e382a20f257c5a56` |
+| Finalization IR | `f068e32c14c4f34c9bade6ba4f3559914aed815679f4064f6462d5b861eac031` |
+| Finalization manifest | `a07921efd59aaeecf2469799dbceb9cd63f48700c309871f963103f60a22cad3` |
+| Finalization Lean | `a4079557035c93b673334760e4464f8c3b05f747577b7e6440ad474121b947d6` |
+| ProcessOne IR | `82a471fbd85dad8fb9d64265e73b6b461fa8c2a12459fcc6144205eaa0bfcc13` |
+| ProcessOne manifest | `a6f45e8fe87cae4668d68431ffba77c8f2772961b7e3979437c484e2e7be0a89` |
+| ProcessOne Lean | `cd0670c7e538826d8b5d5409d42b116efe733eea483bf30665caa30b72788821` |
+| Fold IR | `33836c0784566ef863666184da6176e24e1527afb868181c8a85467651715229` |
+| Fold manifest | `4d2499f014e8ffb8d27f1ae3e54fe8c30c9084f560f37d32a1c6be23fb486593` |
 | Fold Lean | `e1c7c38d5f90662a649fff77b8fa7bbc2543ea25e8eea1ac845a4d15ffbf5516` |
 | Receipt IR | `0bf061d43d54e3eb9bdc7ccff4d0541d6dee189ac1ccea7f139095d3e1b7945a` |
-| Receipt manifest | `3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e` |
+| Receipt manifest | `c1637a38190eb1fdd74b8d0fccaa52f7151d9e8dfc657c5844b27cb8fd1afa6c` |
 | Receipt Lean | `028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180` |
 
 Executable evidence from 2026-09-16 is in `D:/tmp/formal-verify/`:

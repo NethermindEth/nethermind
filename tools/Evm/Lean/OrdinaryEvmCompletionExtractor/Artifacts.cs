@@ -27,8 +27,8 @@ internal static class Artifacts
     private static readonly (string File, string Hash)[] IdentityMaps =
     [
         ("source-map.json", "a8e4923970747350ff2958aa76d637fad88f77428d7c4615a6eb54e94c5ebf12"),
-        ("upstream-artifacts.json", "b0e4dfb571456a1edb6e588610f5ad697aa533db4b2aa936936bd9aa1b27b9f1"),
-        ("stage-dependencies.json", "319528119ff5797ad1cfb16fec0731b2d03cb08c47ba20cc52329bcfea1dc142"),
+        ("upstream-artifacts.json", "cfb2531e7487f75c3363f1377ed9dd1d4f98a1c20c3a8dced0fc0589b566db8a"),
+        ("stage-dependencies.json", "4b1c7cf355df9b1655d2a3219e6dd8362d3533caa73bad427dedbcbfb46f69bb"),
     ];
 
     internal sealed record ArtifactIdentity(string Path, string Sha256);

@@ -5,16 +5,26 @@ param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../../../..")),
     [string]$Configuration = "Release",
     [string]$Dotnet = "dotnet",
-    [string]$Lake = "lake"
+    [string]$Lake = "lake",
+    [switch]$SkipCompilerMaterialization
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $false
 $previousSourceDateEpoch = $env:SOURCE_DATE_EPOCH
-$env:SOURCE_DATE_EPOCH = "1789035784"
 $package = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $repo = [System.IO.Path]::GetFullPath($RepoRoot)
+$verificationManifest = Get-Content -Raw -LiteralPath (Join-Path $repo "tools/Evm/Lean/verification-manifest.json") | ConvertFrom-Json
+$sourceRevisionId = [string] $verificationManifest.pins.nethermindCommit
+if ($verificationManifest.schemaVersion -ne 1 -or $sourceRevisionId -notmatch '^[0-9a-f]{40}$') { throw "Invalid verification manifest Nethermind pin." }
+$pathMapRoot = $repo.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+if ($pathMapRoot.IndexOfAny([char[]] @(',', ';', '=')) -ge 0) { throw "Repository path cannot be represented by PathMap: $pathMapRoot" }
+$deterministicBuildProperties = @(
+    "-p:SourceRevisionId=$sourceRevisionId", '-p:SourceDateEpoch=1789035784', '-p:EnableSourceLink=false',
+    '-p:EmbedUntrackedSources=false', '-p:ContinuousIntegrationBuild=false', '-p:BuildingInsideVisualStudio=false', '-p:Deterministic=true',
+    '-p:DeterministicSourcePaths=true', "-p:PathMap=$pathMapRoot=/_/"
+)
 $project = Join-Path $package "SequentialBlockTransactionFoldExtractor.csproj"
 $tests = Join-Path $package "Test/SequentialBlockTransactionFoldExtractor.Test.csproj"
 $checkedIn = Join-Path $package "Generated"
@@ -28,16 +38,28 @@ if (-not $scratch.StartsWith($scratchRoot + [System.IO.Path]::DirectorySeparator
 }
 
 try {
+    $env:SOURCE_DATE_EPOCH = "1789035784"
     New-Item -ItemType Directory -Path $scratch | Out-Null
 
-    & $Dotnet build $project -c $Configuration -p:SaveDiskSpace=true -warnaserror
+    if (-not $SkipCompilerMaterialization) {
+        foreach ($compilerProject in @(
+            "src/Nethermind/Nethermind.Init/Nethermind.Init.csproj",
+            "tools/Evm/Evm.csproj",
+            "src/Nethermind/Nethermind.Network.Enr.Test/Nethermind.Network.Enr.Test.csproj"
+        )) {
+            & $Dotnet build (Join-Path $repo $compilerProject) -c $Configuration -p:SaveDiskSpace=true -warnaserror -nr:false -m:1 @deterministicBuildProperties
+            if ($LASTEXITCODE -ne 0) { throw "Compiler reference build failed: $compilerProject." }
+        }
+    }
+
+    & $Dotnet build $project -c $Configuration -p:SaveDiskSpace=true -warnaserror -nr:false -m:1 @deterministicBuildProperties
     if ($LASTEXITCODE -ne 0) { throw "Sequential transaction-fold extractor build failed." }
 
     & $Dotnet run --project $project -c $Configuration -p:SaveDiskSpace=true --no-build -- `
         --check --repo-root $repo
     if ($LASTEXITCODE -ne 0) { throw "Checked-in source/artifact validation failed." }
 
-    & $Dotnet build $tests -c $Configuration -p:SaveDiskSpace=true -warnaserror
+    & $Dotnet build $tests -c $Configuration -p:SaveDiskSpace=true -warnaserror -nr:false -m:1 @deterministicBuildProperties
     if ($LASTEXITCODE -ne 0) { throw "Sequential transaction-fold test build failed." }
 
     & $Dotnet test --project $tests -c $Configuration -p:SaveDiskSpace=true --no-build -- `

@@ -9,7 +9,8 @@ The test project covers:
 5. unsupported syntax fail-closed behavior;
 6. paired admission mutations: guard polarity, `PayValue` order, schedule/policy, access-list
    overload/order/deduplication, max/effective-block, counter gating, receipt-root request,
-   transfer-log topic order, exact-build-up equality, receiver, argument order, and no-frame CFG;
+   transfer-log topic order, exact-build-up equality, receiver, argument order, and no-frame
+   branch-site identity without a CFG-edge claim;
 7. model-boundary mutations for the generated address-hash projection and derived transfer-log topics/data,
    extensional access-set interpretation (including reordered carriers versus reordered events),
    status/receipt projection, opaque world-root inputs, and the explicit normal-return domain;

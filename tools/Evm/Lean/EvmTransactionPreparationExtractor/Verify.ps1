@@ -7,10 +7,26 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$env:MSBUILDDISABLENODEREUSE = "1"
-$env:SOURCE_DATE_EPOCH = "1789035784"
+$previousMsbuildNodeReuse = [Environment]::GetEnvironmentVariable("MSBUILDDISABLENODEREUSE", "Process")
+$previousSourceDateEpoch = [Environment]::GetEnvironmentVariable("SOURCE_DATE_EPOCH", "Process")
 $package = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $repo = [System.IO.Path]::GetFullPath($RepoRoot)
+$verificationManifest = Get-Content -Raw -LiteralPath (Join-Path $repo "tools/Evm/Lean/verification-manifest.json") | ConvertFrom-Json
+$sourceRevisionId = [string] $verificationManifest.pins.nethermindCommit
+if ($verificationManifest.schemaVersion -ne 1 -or $sourceRevisionId -notmatch '^[0-9a-f]{40}$') { throw "Invalid verification manifest Nethermind pin." }
+$pathMapRoot = $repo.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+if ($pathMapRoot.IndexOfAny([char[]] @(',', ';', '=')) -ge 0) { throw "Repository path cannot be represented by PathMap: $pathMapRoot" }
+$deterministicBuildProperties = @(
+    "-p:SourceRevisionId=$sourceRevisionId",
+    "-p:SourceDateEpoch=1789035784",
+    "-p:EnableSourceLink=false",
+    "-p:EmbedUntrackedSources=false",
+    "-p:ContinuousIntegrationBuild=false",
+    "-p:BuildingInsideVisualStudio=false",
+    "-p:Deterministic=true",
+    "-p:DeterministicSourcePaths=true",
+    "-p:PathMap=$pathMapRoot=/_/"
+)
 $scratchBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 $scratch = [System.IO.Path]::GetFullPath((Join-Path $scratchBase ("evm-transaction-preparation-" + [Guid]::NewGuid().ToString("N"))))
 $scratchGenerated = Join-Path $scratch "Generated"
@@ -32,6 +48,8 @@ if (-not $scratch.StartsWith($scratchPrefix, [StringComparison]::OrdinalIgnoreCa
 }
 
 try {
+    $env:MSBUILDDISABLENODEREUSE = "1"
+    $env:SOURCE_DATE_EPOCH = "1789035784"
     foreach ($artifact in $requiredArtifacts) {
         if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) {
             throw "Missing checked-in generated artifact $artifact. The serialized artifact lane must generate all three exact artifacts."
@@ -39,15 +57,16 @@ try {
     }
     New-Item -ItemType Directory -Path $scratchGenerated -Force | Out-Null
     foreach ($compilerProject in @(
+        "src/Nethermind/Nethermind.Init/Nethermind.Init.csproj",
         "tools/Evm/Evm.csproj",
         "src/Nethermind/Nethermind.Network.Enr.Test/Nethermind.Network.Enr.Test.csproj"
     )) {
-        dotnet build (Join-Path $repo $compilerProject) -c $Configuration -warnaserror -p:SaveDiskSpace=true
+        dotnet build (Join-Path $repo $compilerProject) -c $Configuration -warnaserror -p:SaveDiskSpace=true -nr:false -m:1 @deterministicBuildProperties
         if ($LASTEXITCODE -ne 0) { throw "Compiler reference build failed: $compilerProject." }
     }
-    dotnet build $project -c $Configuration -warnaserror -p:SaveDiskSpace=true
+    dotnet build $project -c $Configuration -warnaserror -p:SaveDiskSpace=true -nr:false -m:1 @deterministicBuildProperties
     if ($LASTEXITCODE -ne 0) { throw "Extractor build failed." }
-    dotnet build $testProject -c $Configuration -warnaserror -p:SaveDiskSpace=true
+    dotnet build $testProject -c $Configuration -warnaserror -p:SaveDiskSpace=true -nr:false -m:1 @deterministicBuildProperties
     if ($LASTEXITCODE -ne 0) { throw "Extractor test build failed." }
 
     $freshLean = Join-Path $scratchGenerated "EvmTransactionPreparation.lean"
@@ -122,5 +141,11 @@ try {
     Write-Host "Verified the source closure, deterministic artifacts, mutation tests, and Lean targets."
 }
 finally {
-    if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force }
+    try {
+        if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force }
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable("MSBUILDDISABLENODEREUSE", $previousMsbuildNodeReuse, "Process")
+        [Environment]::SetEnvironmentVariable("SOURCE_DATE_EPOCH", $previousSourceDateEpoch, "Process")
+    }
 }

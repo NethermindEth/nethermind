@@ -11,8 +11,8 @@ end U
 abbrev PublicationInput := SequentialBlockPostTransactionFinalizationExtractor.Generated.ProcessOneValidatedPublication.PublicationInput
 
 def acceptanceState : String := "source-admitted"
-def sourceClosureSha256 : String := "71b9785c50347536614e595dd9d3ddf1cc6c3a8e36062acd2831f30510fcaa8f"
-def semanticIrSha256 : String := "ebccc9751bc3f65dc577ad78e9202497b9eeb38d410ec43c0c5d8808e7a15816"
+def sourceClosureSha256 : String := "62d9465b62f2b1a50e5d8374da9fb7f8f2ce3a76f73332e2c465a9b1eef89507"
+def semanticIrSha256 : String := "5cabd18b8004f0be0408245ed1c2ce1e0c7d4e8e4bab9bf65c4ef0f5519c3f94"
 def loopIncrement : Nat := 1
 def containsFlag (options flag : Nat) : Bool := options &&& flag == flag
 

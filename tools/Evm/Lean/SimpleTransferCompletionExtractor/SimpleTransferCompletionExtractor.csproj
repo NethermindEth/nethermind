@@ -10,7 +10,8 @@
 
   <ItemGroup>
     <Compile Remove="Test/**/*.cs" />
-    <Compile Remove="Admission/VirtualMachineStaticsAdapter.cs" />
+    <Compile Include="../../../../src/Nethermind/Nethermind.Evm/GasPolicy/TransactionGasInitializationKernel.cs" Link="Production/TransactionGasInitializationKernel.cs" />
+    <Compile Include="../../../../src/Nethermind/Nethermind.Evm/GasPolicy/StateGasChargeKernel.cs" Link="Production/StateGasChargeKernel.cs" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
   </ItemGroup>
 

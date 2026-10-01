@@ -1069,7 +1069,7 @@
         "The adapter supplies the standard BlockValidationTransactionsExecutor result as a normal ProcessBlock result.",
         "The adapter supplies standard sequential, BAL-disabled, and nonparallel premises; BAL retry catches are excluded.",
         "Validator observation includes normal return, Boolean acceptance, and the proposed GeneratedBlockAccessList post-call value; NoValidation requires before=after.",
-        "The validator's root/hash/BAL-size diagnostics and all external validator implementations remain outside this suffix.",
+        "The validator\u0027s root/hash/BAL-size diagnostics and all external validator implementations remain outside this suffix.",
         "Rejection disposal/diagnostics, PostValidation, and IReceiptStorage.InsertDeferred normal return are separate adapter premises.",
         "InsertDeferred is observed as synchronous visibility only; durable receipt write and canonical publication remain outside.",
         "No CommitTree, reset, or chain-head effect is admitted; BranchProcessor and BlockchainProcessor remain downstream.",

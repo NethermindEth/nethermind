@@ -31,6 +31,7 @@ internal static partial class BranchAcceptedIterationExtractor
     private const string WorldPath = "src/Nethermind/Nethermind.State/WorldState.cs";
     private static readonly JsonSerializerOptions Json = new()
     {
+        NewLine = "\n",
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,

@@ -81,9 +81,9 @@ internal static partial class Extractor
     private const int CompilerReferenceInventorySchemaVersion = 2;
     private const int CompilerReferenceInventoryCount = 434;
     private const string CompilerReferenceInventoryAggregateSha256 =
-        "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2";
+        "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553";
     private const string CompilerReferenceInventorySha256 =
-        "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c";
+        "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3";
     private static readonly SourcePin[] ExpectedReceiptSourcePins =
     [
         new("src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",

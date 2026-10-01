@@ -11,8 +11,8 @@ export SequentialBlockPostTransactionFinalizationExtractor.Generated.ProcessOneV
 end U
 
 def acceptanceState : String := "source-admitted"
-def semanticIrSha256 : String := "a4ef55d283e20e63999710c9e3edecc046e1e3d23367c89a34ad463bee21e96d"
-def sourceClosureSha256 : String := "e914545f6271bf5136c6c02724b34eddace24662d3bfbaa2ba2094bdc2ea42af"
+def semanticIrSha256 : String := "c515fdae0951e324314529f88779f808012fc4edf05df465b439d9efc85c66f8"
+def sourceClosureSha256 : String := "595a89c97e3c6fbe9143678881b878748d95d5ed3b973533253717b960a880c0"
 
 inductive Route where
   | normalSequential | balRetry | parallel | externallyOwnedGenesis

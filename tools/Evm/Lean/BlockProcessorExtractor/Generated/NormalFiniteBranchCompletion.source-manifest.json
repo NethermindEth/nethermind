@@ -3,14 +3,14 @@
   "extractorVersion": "1.0.0",
   "name": "NormalFiniteBranchCompletion",
   "acceptanceState": "source-admitted",
-  "sourceClosureSha256": "71b9785c50347536614e595dd9d3ddf1cc6c3a8e36062acd2831f30510fcaa8f",
+  "sourceClosureSha256": "62d9465b62f2b1a50e5d8374da9fb7f8f2ce3a76f73332e2c465a9b1eef89507",
   "ir": {
     "path": "NormalFiniteBranchCompletion.ir.json",
-    "sha256": "ebccc9751bc3f65dc577ad78e9202497b9eeb38d410ec43c0c5d8808e7a15816"
+    "sha256": "5cabd18b8004f0be0408245ed1c2ce1e0c7d4e8e4bab9bf65c4ef0f5519c3f94"
   },
   "lean": {
     "path": "NormalFiniteBranchCompletion.lean",
-    "sha256": "71fb06de4352ff82041687051bf3fa72968fbd351a88068ced427f9011ba7638"
+    "sha256": "62d7c8b7c8500f87b308398d62f47a3a40e095c66e192bf654b09559dca13c62"
   },
   "sources": [
     {
@@ -109,15 +109,15 @@
   "dependencies": [
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BranchAcceptedIteration.ir.json",
-      "sha256": "a4ef55d283e20e63999710c9e3edecc046e1e3d23367c89a34ad463bee21e96d"
+      "sha256": "c515fdae0951e324314529f88779f808012fc4edf05df465b439d9efc85c66f8"
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BranchAcceptedIteration.lean",
-      "sha256": "07abf81a2b3885b3e7baadabf2d72f13e4766841ba5725254b16d760a4dc49c9"
+      "sha256": "c452d754043b7bd79a91cdf9312f56f307acac5975557fa3726385aab817bee9"
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BranchAcceptedIteration.source-manifest.json",
-      "sha256": "3609aac9ae2eee30ec0936173336cd65da0582d8909995e077f9557967930074"
+      "sha256": "eb8970d04da93072683870aa4b619cee1dc28c4dbf572fd88afe3d48c2ca24a3"
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Specification/BranchAcceptedIteration.lean",
@@ -133,11 +133,11 @@
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/BranchAcceptedIterationExtractor.cs",
-      "sha256": "329d6a39b26ccc6b5adfec009aa6642356cec18e96598d2d8b89be010f98cb28"
+      "sha256": "b0fbfe926f15fa2df3aa02e6512afbb083b8da1a4669e552282b5dce190d9fab"
     },
     {
       "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
-      "sha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c"
+      "sha256": "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3"
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/NormalFiniteBranchCompletion.lean.template",
@@ -153,7 +153,7 @@
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/OuterBlockExtractor.cs",
-      "sha256": "14582b7692b50ba60316a4a1d2cb7d71fb9c11e313da5fe1bb4c9eca4a59ca30"
+      "sha256": "6d6c17d1a7230d22815e7d8fbb03b60e70fcba2febd50717f135c33dc5076192"
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Vectors/FiniteBranchVectors.lean",
@@ -173,7 +173,7 @@
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Verify-Outer.ps1",
-      "sha256": "a56ec6ac907384e9394fceb74d50231d9256d5920af66d797d402ac9d4bdc514"
+      "sha256": "6023b1e7b01028d58ef68a527aaca873186cfad3f781ce3da05dbddea7756247"
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Verify-OuterMutationGates.ps1",
@@ -181,15 +181,15 @@
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Schema/normal-finite-branch.ir.schema.json",
-      "sha256": "e62136d57b5a4ee60dea8f062023a939246617e7ffb3694a7d12ea77c61a89d1"
+      "sha256": "1191a59c0e8feb35bdaf378d6d10a32ae8565384418594220a410ca411498bb6"
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Schema/normal-finite-branch.source-manifest.schema.json",
-      "sha256": "acf0d1ebbb01a96dfecfec1559b3774cd58733f91ac8d5b71b5629335d91440b"
+      "sha256": "918c940819ad80a4bb7622082773117efaefa8e95026727d5ee34f624fc2f5b6"
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/FINITE_PROMOTION_PINS.json",
-      "sha256": "73b8b0159f255c69327934ea0be384423d02406042bd098b9286423be8b78065"
+      "sha256": "236437dd2a22e2b286c108429e6820dd0d6552f6607a4e30dd60671fcdde0426"
     },
     {
       "path": "tools/Evm/Lean/BlockProcessorExtractor/Admission/BlockchainOuter.cs.txt",

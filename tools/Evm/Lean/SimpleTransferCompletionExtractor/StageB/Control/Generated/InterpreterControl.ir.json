@@ -1,0 +1,822 @@
+{
+  "schemaVersion": 2,
+  "artifactKind": "stage-b-interpreter-control-kernel",
+  "methods": [
+    {
+      "name": "Tick",
+      "result": "TickResult",
+      "generic": false,
+      "parameters": [
+        {
+          "name": "remainingFuel",
+          "type": "Int"
+        }
+      ],
+      "body": {
+        "kind": "if",
+        "value": "",
+        "arguments": [
+          {
+            "kind": "eq",
+            "value": "",
+            "arguments": [
+              {
+                "kind": "variable",
+                "value": "remainingFuel",
+                "arguments": []
+              },
+              {
+                "kind": "literal",
+                "value": "Int:0",
+                "arguments": []
+              }
+            ]
+          },
+          {
+            "kind": "construct",
+            "value": "TickResult",
+            "arguments": [
+              {
+                "kind": "literal",
+                "value": "Bool:True",
+                "arguments": []
+              },
+              {
+                "kind": "literal",
+                "value": "Int:0",
+                "arguments": []
+              }
+            ]
+          },
+          {
+            "kind": "construct",
+            "value": "TickResult",
+            "arguments": [
+              {
+                "kind": "literal",
+                "value": "Bool:False",
+                "arguments": []
+              },
+              {
+                "kind": "sub64",
+                "value": "",
+                "arguments": [
+                  {
+                    "kind": "variable",
+                    "value": "remainingFuel",
+                    "arguments": []
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "Int:1",
+                    "arguments": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "SelectEdge",
+      "result": "EdgeResult",
+      "generic": false,
+      "parameters": [
+        {
+          "name": "conditionKind",
+          "type": "String"
+        },
+        {
+          "name": "valueIsBoolean",
+          "type": "Bool"
+        },
+        {
+          "name": "booleanValue",
+          "type": "Bool"
+        },
+        {
+          "name": "hasFallThrough",
+          "type": "Bool"
+        },
+        {
+          "name": "fallThroughDestination",
+          "type": "Int"
+        },
+        {
+          "name": "fallThroughReturns",
+          "type": "Bool"
+        },
+        {
+          "name": "hasConditional",
+          "type": "Bool"
+        },
+        {
+          "name": "conditionalDestination",
+          "type": "Int"
+        },
+        {
+          "name": "conditionalReturns",
+          "type": "Bool"
+        }
+      ],
+      "body": {
+        "kind": "if",
+        "value": "",
+        "arguments": [
+          {
+            "kind": "and",
+            "value": "",
+            "arguments": [
+              {
+                "kind": "ne",
+                "value": "",
+                "arguments": [
+                  {
+                    "kind": "variable",
+                    "value": "conditionKind",
+                    "arguments": []
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "String:None",
+                    "arguments": []
+                  }
+                ]
+              },
+              {
+                "kind": "not",
+                "value": "",
+                "arguments": [
+                  {
+                    "kind": "variable",
+                    "value": "valueIsBoolean",
+                    "arguments": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "construct",
+            "value": "EdgeResult",
+            "arguments": [
+              {
+                "kind": "literal",
+                "value": "Int:2",
+                "arguments": []
+              },
+              {
+                "kind": "neg",
+                "value": "",
+                "arguments": [
+                  {
+                    "kind": "literal",
+                    "value": "Int:1",
+                    "arguments": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "let",
+            "value": "takeConditional",
+            "arguments": [
+              {
+                "kind": "and",
+                "value": "",
+                "arguments": [
+                  {
+                    "kind": "variable",
+                    "value": "hasConditional",
+                    "arguments": []
+                  },
+                  {
+                    "kind": "or",
+                    "value": "",
+                    "arguments": [
+                      {
+                        "kind": "and",
+                        "value": "",
+                        "arguments": [
+                          {
+                            "kind": "eq",
+                            "value": "",
+                            "arguments": [
+                              {
+                                "kind": "variable",
+                                "value": "conditionKind",
+                                "arguments": []
+                              },
+                              {
+                                "kind": "literal",
+                                "value": "String:WhenTrue",
+                                "arguments": []
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "variable",
+                            "value": "booleanValue",
+                            "arguments": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "and",
+                        "value": "",
+                        "arguments": [
+                          {
+                            "kind": "eq",
+                            "value": "",
+                            "arguments": [
+                              {
+                                "kind": "variable",
+                                "value": "conditionKind",
+                                "arguments": []
+                              },
+                              {
+                                "kind": "literal",
+                                "value": "String:WhenFalse",
+                                "arguments": []
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "not",
+                            "value": "",
+                            "arguments": [
+                              {
+                                "kind": "variable",
+                                "value": "booleanValue",
+                                "arguments": []
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "let",
+                "value": "hasEdge",
+                "arguments": [
+                  {
+                    "kind": "if",
+                    "value": "",
+                    "arguments": [
+                      {
+                        "kind": "variable",
+                        "value": "takeConditional",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "hasConditional",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "hasFallThrough",
+                        "arguments": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "if",
+                    "value": "",
+                    "arguments": [
+                      {
+                        "kind": "not",
+                        "value": "",
+                        "arguments": [
+                          {
+                            "kind": "variable",
+                            "value": "hasEdge",
+                            "arguments": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "construct",
+                        "value": "EdgeResult",
+                        "arguments": [
+                          {
+                            "kind": "literal",
+                            "value": "Int:3",
+                            "arguments": []
+                          },
+                          {
+                            "kind": "neg",
+                            "value": "",
+                            "arguments": [
+                              {
+                                "kind": "literal",
+                                "value": "Int:1",
+                                "arguments": []
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "let",
+                        "value": "destination",
+                        "arguments": [
+                          {
+                            "kind": "if",
+                            "value": "",
+                            "arguments": [
+                              {
+                                "kind": "variable",
+                                "value": "takeConditional",
+                                "arguments": []
+                              },
+                              {
+                                "kind": "variable",
+                                "value": "conditionalDestination",
+                                "arguments": []
+                              },
+                              {
+                                "kind": "variable",
+                                "value": "fallThroughDestination",
+                                "arguments": []
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "let",
+                            "value": "returns",
+                            "arguments": [
+                              {
+                                "kind": "if",
+                                "value": "",
+                                "arguments": [
+                                  {
+                                    "kind": "variable",
+                                    "value": "takeConditional",
+                                    "arguments": []
+                                  },
+                                  {
+                                    "kind": "variable",
+                                    "value": "conditionalReturns",
+                                    "arguments": []
+                                  },
+                                  {
+                                    "kind": "variable",
+                                    "value": "fallThroughReturns",
+                                    "arguments": []
+                                  }
+                                ]
+                              },
+                              {
+                                "kind": "if",
+                                "value": "",
+                                "arguments": [
+                                  {
+                                    "kind": "lt",
+                                    "value": "",
+                                    "arguments": [
+                                      {
+                                        "kind": "variable",
+                                        "value": "destination",
+                                        "arguments": []
+                                      },
+                                      {
+                                        "kind": "literal",
+                                        "value": "Int:0",
+                                        "arguments": []
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "kind": "construct",
+                                    "value": "EdgeResult",
+                                    "arguments": [
+                                      {
+                                        "kind": "if",
+                                        "value": "",
+                                        "arguments": [
+                                          {
+                                            "kind": "variable",
+                                            "value": "returns",
+                                            "arguments": []
+                                          },
+                                          {
+                                            "kind": "literal",
+                                            "value": "Int:1",
+                                            "arguments": []
+                                          },
+                                          {
+                                            "kind": "literal",
+                                            "value": "Int:4",
+                                            "arguments": []
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "kind": "neg",
+                                        "value": "",
+                                        "arguments": [
+                                          {
+                                            "kind": "literal",
+                                            "value": "Int:1",
+                                            "arguments": []
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "kind": "construct",
+                                    "value": "EdgeResult",
+                                    "arguments": [
+                                      {
+                                        "kind": "literal",
+                                        "value": "Int:0",
+                                        "arguments": []
+                                      },
+                                      {
+                                        "kind": "variable",
+                                        "value": "destination",
+                                        "arguments": []
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "FinishBlock",
+      "result": "FinishResult \u03B1",
+      "generic": true,
+      "parameters": [
+        {
+          "name": "exit",
+          "type": "Int"
+        },
+        {
+          "name": "cursor",
+          "type": "BlockCursor \u03B1"
+        },
+        {
+          "name": "conditionKind",
+          "type": "String"
+        },
+        {
+          "name": "valueIsBoolean",
+          "type": "Bool"
+        },
+        {
+          "name": "booleanValue",
+          "type": "Bool"
+        },
+        {
+          "name": "hasFallThrough",
+          "type": "Bool"
+        },
+        {
+          "name": "fallThroughDestination",
+          "type": "Int"
+        },
+        {
+          "name": "fallThroughReturns",
+          "type": "Bool"
+        },
+        {
+          "name": "hasConditional",
+          "type": "Bool"
+        },
+        {
+          "name": "conditionalDestination",
+          "type": "Int"
+        },
+        {
+          "name": "conditionalReturns",
+          "type": "Bool"
+        }
+      ],
+      "body": {
+        "kind": "if",
+        "value": "",
+        "arguments": [
+          {
+            "kind": "eq",
+            "value": "",
+            "arguments": [
+              {
+                "kind": "variable",
+                "value": "exit",
+                "arguments": []
+              },
+              {
+                "kind": "literal",
+                "value": "Int:1",
+                "arguments": []
+              }
+            ]
+          },
+          {
+            "kind": "construct",
+            "value": "FinishResult",
+            "arguments": [
+              {
+                "kind": "literal",
+                "value": "Int:1",
+                "arguments": []
+              },
+              {
+                "kind": "variable",
+                "value": "cursor",
+                "arguments": []
+              }
+            ]
+          },
+          {
+            "kind": "if",
+            "value": "",
+            "arguments": [
+              {
+                "kind": "eq",
+                "value": "",
+                "arguments": [
+                  {
+                    "kind": "variable",
+                    "value": "exit",
+                    "arguments": []
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "Int:2",
+                    "arguments": []
+                  }
+                ]
+              },
+              {
+                "kind": "construct",
+                "value": "FinishResult",
+                "arguments": [
+                  {
+                    "kind": "literal",
+                    "value": "Int:5",
+                    "arguments": []
+                  },
+                  {
+                    "kind": "variable",
+                    "value": "cursor",
+                    "arguments": []
+                  }
+                ]
+              },
+              {
+                "kind": "let",
+                "value": "edge",
+                "arguments": [
+                  {
+                    "kind": "call",
+                    "value": "SelectEdge",
+                    "arguments": [
+                      {
+                        "kind": "variable",
+                        "value": "conditionKind",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "valueIsBoolean",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "booleanValue",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "hasFallThrough",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "fallThroughDestination",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "fallThroughReturns",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "hasConditional",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "conditionalDestination",
+                        "arguments": []
+                      },
+                      {
+                        "kind": "variable",
+                        "value": "conditionalReturns",
+                        "arguments": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "construct",
+                    "value": "FinishResult",
+                    "arguments": [
+                      {
+                        "kind": "property",
+                        "value": "kind",
+                        "arguments": [
+                          {
+                            "kind": "variable",
+                            "value": "edge",
+                            "arguments": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "if",
+                        "value": "",
+                        "arguments": [
+                          {
+                            "kind": "eq",
+                            "value": "",
+                            "arguments": [
+                              {
+                                "kind": "property",
+                                "value": "kind",
+                                "arguments": [
+                                  {
+                                    "kind": "variable",
+                                    "value": "edge",
+                                    "arguments": []
+                                  }
+                                ]
+                              },
+                              {
+                                "kind": "literal",
+                                "value": "Int:0",
+                                "arguments": []
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "construct",
+                            "value": "BlockCursor",
+                            "arguments": [
+                              {
+                                "kind": "property",
+                                "value": "destination",
+                                "arguments": [
+                                  {
+                                    "kind": "variable",
+                                    "value": "edge",
+                                    "arguments": []
+                                  }
+                                ]
+                              },
+                              {
+                                "kind": "property",
+                                "value": "carried",
+                                "arguments": [
+                                  {
+                                    "kind": "variable",
+                                    "value": "cursor",
+                                    "arguments": []
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "variable",
+                            "value": "cursor",
+                            "arguments": []
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "SelectLocalReturn",
+      "result": "Int",
+      "generic": false,
+      "parameters": [
+        {
+          "name": "constructing",
+          "type": "Bool"
+        },
+        {
+          "name": "valueMode",
+          "type": "Bool"
+        }
+      ],
+      "body": {
+        "kind": "if",
+        "value": "",
+        "arguments": [
+          {
+            "kind": "not",
+            "value": "",
+            "arguments": [
+              {
+                "kind": "variable",
+                "value": "constructing",
+                "arguments": []
+              }
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "Int:0",
+            "arguments": []
+          },
+          {
+            "kind": "if",
+            "value": "",
+            "arguments": [
+              {
+                "kind": "variable",
+                "value": "valueMode",
+                "arguments": []
+              },
+              {
+                "kind": "literal",
+                "value": "Int:1",
+                "arguments": []
+              },
+              {
+                "kind": "literal",
+                "value": "Int:2",
+                "arguments": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ShouldReadTransparent",
+      "result": "Bool",
+      "generic": false,
+      "parameters": [
+        {
+          "name": "preservesOperand",
+          "type": "Bool"
+        },
+        {
+          "name": "valueMode",
+          "type": "Bool"
+        }
+      ],
+      "body": {
+        "kind": "and",
+        "value": "",
+        "arguments": [
+          {
+            "kind": "not",
+            "value": "",
+            "arguments": [
+              {
+                "kind": "variable",
+                "value": "preservesOperand",
+                "arguments": []
+              }
+            ]
+          },
+          {
+            "kind": "variable",
+            "value": "valueMode",
+            "arguments": []
+          }
+        ]
+      }
+    }
+  ]
+}

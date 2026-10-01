@@ -12,8 +12,8 @@ export Eip803x.Generated.TransactionSettlementKernel
    saturatingSubUInt64 TransactionSettlementResult calculate)
 end T
 
-def sourceClosureSha256 : String := "6e86b85a492ff232caf31cdb126f75266350349b0c16112bd40ed0d3f99ee809"
-def semanticIrSha256 : String := "53f6a24671a917e2675a1a45eb1b49e812b91283fc1c78bf49014f2ad08a1666"
+def sourceClosureSha256 : String := "8e753ccf7f150729d60d0fa31c7b3720865057cd556084d405c3dba1cb283734"
+def semanticIrSha256 : String := "b198837b7f2aaddd2f3d7c8653532d7a0ebc58dfd9566e6d7459121a0c051527"
 def acceptanceState : String := "source-admitted"
 def uint256Modulus : Nat := 2 ^ 256
 

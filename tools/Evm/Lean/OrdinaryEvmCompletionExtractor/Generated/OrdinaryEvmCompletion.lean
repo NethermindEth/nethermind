@@ -8,8 +8,8 @@ namespace OrdinaryEvmCompletionExtractor.Generated.OrdinaryEvmCompletion
 open OrdinaryEvmCompletionExtractor.Specification.OrdinaryEvmCompletion
 
 /-- Conditional restricted-source continuation; upstream preparation remains a model stage. -/
-def sourceClosure : String := "50d54c1db38d1045465503a3fc40faee3642f0fbd390f68339843f864b4ad148"
-def sourceIr : String := "7b8b6b3ae5964c1e4c0740550e7d18756473529834cdaf60027fcb3c7de81601"
+def sourceClosure : String := "cac28c7e9fa55dcf355c7fbea5c3ca38e109ec4514904152bbaadee696cfa7ee"
+def sourceIr : String := "c21cb971b85a24115eebe54cf5b4def18b3b6ff049752a427363b952aae02292"
 def compilerAssembly : String := "Nethermind.Evm"
 def compilerConfiguration : String := "Release"
 def compilerEpoch : String := "1789035784"

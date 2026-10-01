@@ -121,19 +121,19 @@
         {
           "const": {
             "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.source-manifest.json",
-            "sha256": "547dbea87c2c26539a11b4e3db1f2d22db4d7590a6a68c1695a46f70518bdf3d"
+            "sha256": "a6f45e8fe87cae4668d68431ffba77c8f2772961b7e3979437c484e2e7be0a89"
           }
         },
         {
           "const": {
             "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.ir.json",
-            "sha256": "201d8d2e6163d3a75b439cebf0e5fa7754792c3ba63de70b246939bc9d4cad3a"
+            "sha256": "82a471fbd85dad8fb9d64265e73b6b461fa8c2a12459fcc6144205eaa0bfcc13"
           }
         },
         {
           "const": {
             "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.lean",
-            "sha256": "7f47700c2f38717b37c6f8bb7e187021d9af8e6a641389fa0bd27865122eec5d"
+            "sha256": "cd0670c7e538826d8b5d5409d42b116efe733eea483bf30665caa30b72788821"
           }
         },
         {
@@ -1320,7 +1320,7 @@
         "inventory": {
           "const": {
             "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
-            "sha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c"
+            "sha256": "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3"
           }
         },
         "count": {
@@ -1330,7 +1330,7 @@
           "const": 329
         },
         "aggregateSha256": {
-          "const": "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2"
+          "const": "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553"
         },
         "references": {
           "type": "array",

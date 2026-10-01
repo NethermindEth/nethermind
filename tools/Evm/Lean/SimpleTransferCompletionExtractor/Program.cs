@@ -10,7 +10,29 @@ internal static class Program
         try
         {
             Arguments arguments = Arguments.Parse(args);
-            if (arguments.Check)
+            if (arguments.StageBRefundDispatch)
+            {
+                StageBRefundDispatchExtractor.Extract(arguments.RepoRoot, arguments.OutputDirectory, arguments.Check);
+                Console.WriteLine("Checked/extracted source-attached standard-mainnet refund dispatch.");
+            }
+            else if (arguments.StageBControl)
+            {
+                StageBControlExtractor.Extract(arguments.RepoRoot, arguments.OutputDirectory, arguments.Check);
+                Console.WriteLine("Checked/extracted source-attached Stage-B control kernel.");
+            }
+            else if (arguments.StageB)
+            {
+                if (arguments.Check)
+                    StageBArtifact.ValidateExisting(arguments.RepoRoot, arguments.OutputDirectory);
+                else
+                {
+                    StageBArtifactResult result = StageBArtifact.Extract(arguments.RepoRoot, arguments.OutputDirectory);
+                    Console.WriteLine($"Stage-B IR: {result.IrPath} ({result.IrSha256})");
+                    Console.WriteLine($"Stage-B manifest: {result.ManifestPath} ({result.ManifestSha256})");
+                    Console.WriteLine($"Stage-B Lean: {result.LeanPath} ({result.LeanSha256})");
+                }
+            }
+            else if (arguments.Check)
             {
                 Extractor.ValidateExistingArtifacts(arguments.RepoRoot, arguments.OutputDirectory, arguments.LeanOutputPath);
                 Console.WriteLine("Checked admitted simple-transfer model-boundary artifacts.");
@@ -33,7 +55,8 @@ internal static class Program
         }
     }
 
-    private sealed record Arguments(string RepoRoot, string OutputDirectory, string? LeanOutputPath, bool Check)
+    private sealed record Arguments(string RepoRoot, string OutputDirectory, string? LeanOutputPath, bool Check, bool StageB,
+        bool StageBControl, bool StageBRefundDispatch)
     {
         internal static Arguments Parse(string[] args)
         {
@@ -41,12 +64,36 @@ internal static class Program
             string? output = null;
             string? leanOutput = null;
             bool check = false;
+            bool stageB = false;
+            bool stageBControl = false;
+            bool stageBRefundDispatch = false;
             for (int index = 0; index < args.Length;)
             {
                 if (args[index] == "--check")
                 {
                     if (check) throw new ArgumentException("Argument '--check' was provided more than once.");
                     check = true;
+                    index++;
+                    continue;
+                }
+                if (args[index] == "--stage-b")
+                {
+                    if (stageB) throw new ArgumentException("Argument '--stage-b' was provided more than once.");
+                    stageB = true;
+                    index++;
+                    continue;
+                }
+                if (args[index] == "--stage-b-control")
+                {
+                    if (stageBControl) throw new ArgumentException("Argument '--stage-b-control' was provided more than once.");
+                    stageBControl = true;
+                    index++;
+                    continue;
+                }
+                if (args[index] == "--stage-b-refund-dispatch")
+                {
+                    if (stageBRefundDispatch) throw new ArgumentException("Argument '--stage-b-refund-dispatch' was provided more than once.");
+                    stageBRefundDispatch = true;
                     index++;
                     continue;
                 }
@@ -77,8 +124,12 @@ internal static class Program
 
             if (string.IsNullOrWhiteSpace(repoRoot)) throw new ArgumentException("Missing required argument '--repo-root'.");
             if (string.IsNullOrWhiteSpace(output)) throw new ArgumentException("Missing required argument '--output'.");
+            if ((stageB ? 1 : 0) + (stageBControl ? 1 : 0) + (stageBRefundDispatch ? 1 : 0) > 1)
+                throw new ArgumentException("Stage-B modes are mutually exclusive.");
+            if ((stageB || stageBControl || stageBRefundDispatch) && leanOutput is not null)
+                throw new ArgumentException("Argument '--lean-output' is not used by Stage-B modes.");
             return new Arguments(Path.GetFullPath(repoRoot), Path.GetFullPath(output),
-                leanOutput is null ? null : Path.GetFullPath(leanOutput), check);
+                leanOutput is null ? null : Path.GetFullPath(leanOutput), check, stageB, stageBControl, stageBRefundDispatch);
         }
     }
 }
