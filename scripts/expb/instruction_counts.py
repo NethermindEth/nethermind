@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import re
 import statistics
 import sys
@@ -120,14 +121,10 @@ def is_valid(row: dict) -> bool:
     return row.get("gc") in ("", "0/0/0") and not row.get("mux")
 
 
-def total(rows: list[dict], key: str) -> int | None:
-    values = [row.get(key) for row in rows]
-    return None if not values or any(value is None for value in values) else sum(values)
-
-
 def per_block(rows: list[dict], key: str) -> float | None:
-    value = total(rows, key)
-    return None if value is None or not rows else value / len(rows)
+    """The mean over the blocks that have the value; a block whose counter read failed lacks its phase split."""
+    values = [row[key] for row in rows if row.get(key) is not None]
+    return sum(values) / len(values) if values else None
 
 
 def change(before: float | None, after: float | None) -> str:
@@ -145,8 +142,9 @@ def megabytes(value: float | None) -> str:
 
 
 def percentile(values: list[float], share: float) -> float:
+    """The nearest-rank percentile: the smallest value that `share` of the values do not exceed."""
     ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int(share * len(ordered)))]
+    return ordered[max(0, math.ceil(share * len(ordered)) - 1)]
 
 
 def render(
@@ -170,10 +168,23 @@ def render(
         return "\n".join(lines) + "\n"
 
     shared = bool(master)
+    no_overlap = False
     if shared:
         by_block = {row["block"]: row for row in master}
-        pr = [row for row in pr if row["block"] in by_block]
-        master = [by_block[row["block"]] for row in pr]
+        paired = [(by_block[row["block"]], row) for row in pr if row["block"] in by_block]
+        if paired:
+            master = [before for before, _ in paired]
+            pr = [after for _, after in paired]
+        else:
+            # A baseline cached from other blocks, such as an older payload set, has nothing to compare with.
+            shared, master, no_overlap = False, None, True
+
+    # A window with a collection or multiplexed counters is left out on both sides, unless every block has one.
+    keep = [index for index, row in enumerate(pr) if is_valid(row) and (not shared or is_valid(master[index]))]
+    excluded = len(pr) - len(keep)
+    if keep and excluded:
+        pr = [pr[index] for index in keep]
+        master = [master[index] for index in keep] if shared else master
 
     lines.append(NOISE_NOTE)
     lines.append("")
@@ -236,12 +247,14 @@ def render(
             lines.append("</details>")
             lines.append("")
 
-    invalid = sum(1 for item in pr if not is_valid(item)) + (sum(1 for item in master if not is_valid(item)) if shared else 0)
-    if invalid:
+    if excluded and keep:
         lines.append(
-            f"⚠️ {invalid} block windows ran a garbage collection or had multiplexed counters, "
-            "so their counts are not representative."
+            f"⚠️ {excluded} block{'s' if excluded != 1 else ''} ran a garbage collection or had multiplexed counters in either run, "
+            "so " + ("they are" if excluded != 1 else "it is") + " left out of the means."
         )
+        lines.append("")
+    elif excluded:
+        lines.append("⚠️ Every block ran a garbage collection or had multiplexed counters, so these counts are not representative.")
         lines.append("")
 
     if shared and master_sha:
@@ -252,6 +265,12 @@ def render(
             )
         else:
             lines.append(f"Baseline: master `{master_sha[:12]}`, the PR's base.")
+        lines.append("")
+    elif no_overlap:
+        lines.append(
+            f"The {before_label} counts share no blocks with this run, as after a change of payload set or snapshot, "
+            f"so this shows {after_label} alone."
+        )
         lines.append("")
     elif baseline_missing and labels == ("master", "PR"):
         lines.append(

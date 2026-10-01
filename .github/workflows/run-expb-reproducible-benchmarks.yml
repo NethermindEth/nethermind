@@ -1699,9 +1699,13 @@ jobs:
           counts_status="not-requested"
           if [[ "${CELL_MODE:-}" == "instructions" ]]; then
             grep -a 'EXPB-COUNT' "${clean_log}" > "${counts_file}" || true
-            counted="$(grep -c 'EXPB-COUNT block=' "${counts_file}" || true)"
-            echo "Instruction counts: ${counted:-0} blocks."
-            if [[ "${EXPECTED_AMOUNT}" =~ ^[0-9]+$ && "${counted:-0}" -ge "${EXPECTED_AMOUNT}" ]]; then
+            # Distinct block numbers in order. The measured payloads are the last EXPECTED_AMOUNT of them and follow one
+            # another, so they must span exactly that many numbers; warm-up blocks and repeats don't count towards it.
+            mapfile -t counted_blocks < <(grep -oa 'EXPB-COUNT block=[0-9]*' "${counts_file}" | cut -d= -f2 | sort -nu)
+            counted=${#counted_blocks[@]}
+            echo "Instruction counts: ${counted} blocks."
+            if [[ "${EXPECTED_AMOUNT}" =~ ^[1-9][0-9]*$ ]] && (( counted >= EXPECTED_AMOUNT )) \
+              && (( counted_blocks[counted - 1] - counted_blocks[counted - EXPECTED_AMOUNT] + 1 == EXPECTED_AMOUNT )); then
               counts_status="ok"
             else
               counts_status="missing"

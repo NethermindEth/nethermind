@@ -132,9 +132,35 @@ class ReportTests(unittest.TestCase):
         self.assertIn("run 1 has no counts to compare with, so this shows run 2 alone.", missing)
         self.assertNotIn("master", missing)
 
-    def test_warns_about_windows_with_a_collection_or_multiplexed_counters(self):
+    def test_windows_with_a_collection_or_multiplexed_counters_are_left_out_on_both_sides(self):
+        master = self.write("master.log", [count_line(100, 1_000_000), count_line(101, 9_000_000, gc="1/0/0"), count_line(102, 1_000_000)])
+        pr = self.write("pr.log", [count_line(100, 1_000_000), count_line(101, 1_000_000), count_line(102, 1_000_000, mux=1)])
+        text = report("--pr", pr, "--master", master)
+        # Block 101 is invalid in master and 102 in the PR: only 100 is compared, so the means match.
+        self.assertIn("| per block, mean of 1 blocks | master | PR | Δ |", text)
+        self.assertIn("| **Instructions, whole block** | 1.00M | 1.00M | +0.00% |", text)
+        self.assertIn("⚠️ 2 blocks ran a garbage collection or had multiplexed counters in either run, so they are left out", text)
+
+    def test_every_window_invalid_keeps_the_blocks_and_says_so(self):
         pr = self.write("pr.log", [count_line(100, 1_000_000, gc="1/0/0"), count_line(101, 1_000_000, mux=1)])
-        self.assertIn("⚠️ 2 block windows", report("--pr", pr))
+        text = report("--pr", pr)
+        self.assertIn("| per block, mean of 2 blocks | PR |", text)
+        self.assertIn("⚠️ Every block ran a garbage collection or had multiplexed counters", text)
+
+    def test_a_baseline_of_other_blocks_shows_the_pr_run_alone(self):
+        # A master run cached from another payload set or snapshot shares no block numbers with the PR run.
+        master = self.write("master.log", [count_line(500, 1_000_000)])
+        pr = self.write("pr.log", [count_line(100, 1_000_000), count_line(101, 1_000_000)])
+        text = report("--pr", pr, "--master", master, "--master-sha", "b" * 40)
+        self.assertIn("| per block, mean of 2 blocks | PR |", text)
+        self.assertIn("The master counts share no blocks with this run", text)
+        self.assertNotIn("Baseline: master", text)
+
+    def test_nine_in_ten_is_the_ninetieth_percentile(self):
+        # Ten blocks changed by 1% to 10%: nine of them are within 9%, not the maximum of 10%.
+        master = self.write("master.log", [count_line(100 + i, 1_000_000) for i in range(10)])
+        pr = self.write("pr.log", [count_line(100 + i, 1_000_000 + (i + 1) * 10_000) for i in range(10)])
+        self.assertIn("9 in 10 within 9.00%.", report("--pr", pr, "--master", master))
 
     def test_a_run_without_counts_says_so(self):
         self.assertIn("No instruction counts were produced", report("--pr", self.root / "absent.log"))

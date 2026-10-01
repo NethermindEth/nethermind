@@ -774,18 +774,26 @@ fi
             self.assertNotIn("cpu1", proc.stdout)
 
     def test_an_instruction_cell_needs_a_count_for_every_measured_block(self):
-        counts = ["EXPB-COUNT block={} instr=1000 cycles=500\n".format(100 + index) for index in range(3)]
+        def counts(*blocks):
+            return "".join("EXPB-COUNT block={} instr=1000 cycles=500\n".format(block) for block in blocks)
+
         for analyzer in self.analyzers:
-            for blocks, status in ((3, "ok"), (2, "missing")):
-                with self.subTest(blocks=blocks):
-                    log = "".join(counts[:blocks]) + self.k6_table(3)
+            for label, blocks, status in (
+                ("every measured block", (100, 101, 102), "ok"),
+                ("a warm-up block before them", (50, 100, 101, 102), "ok"),
+                ("one short", (100, 101), "missing"),
+                ("a gap among the last three", (100, 101, 103), "missing"),
+                ("a block counted twice", (100, 101, 101), "missing"),
+            ):
+                with self.subTest(case=label):
+                    log = counts(*blocks) + self.k6_table(3)
                     proc, output = self.run_analyzer(analyzer, log, metrics_name="github-output", CELL_MODE="instructions")
                     self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
                     self.assertIn("counts_status={}\n".format(status), output)
                     _, kept = self.run_analyzer(analyzer, log, metrics_name="expb-counts.log", CELL_MODE="instructions")
-                    self.assertEqual(blocks, kept.count("EXPB-COUNT block="))
+                    self.assertEqual(len(blocks), kept.count("EXPB-COUNT block="))
             with self.subTest(cell="timing"):
-                _, kept = self.run_analyzer(analyzer, "".join(counts) + self.k6_table(3), metrics_name="expb-counts.log")
+                _, kept = self.run_analyzer(analyzer, counts(100, 101, 102) + self.k6_table(3), metrics_name="expb-counts.log")
                 self.assertEqual("", kept)
 
     def run_snapshot_preflight(self, client, build):
