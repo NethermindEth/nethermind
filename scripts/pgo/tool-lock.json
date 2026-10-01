@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/dotnet/runtime.git",
+  "ref": "v10.0.12",
+  "commit": "4271d88e0aebf3d04f188f1334c2220d80555ef6",
+  "runtime_version": "10.0.12",
+  "bootstrap_sdk_version": "10.0.110",
+  "traceevent_version": "3.2.8",
+  "patches": [
+    {
+      "file": "patches/traceevent-3.2.8.patch",
+      "sha256": "c69f4f6dac2f12bd6c6ae2fc179f1a8f6b3bbc42b644ce91b4afa2fd86a47e53",
+      "upstream_commit": null,
+      "upstream_url": "https://github.com/dotnet/runtime/pull/134989"
+    },
+    {
+      "file": "patches/runtime-125896.patch",
+      "sha256": "8bb318bdd711a8f8e65c524197c3dba35d7e93d9c0c233eb1a37b65382025244",
+      "upstream_commit": "8970fe8a2fb3301d03a9de8e75892fb31b49291d",
+      "upstream_url": "https://github.com/dotnet/runtime/pull/125896"
+    },
+    {
+      "file": "patches/runtime-125936.patch",
+      "sha256": "fe4af344b6cf141fd2a2cacaeb8f2ce17eac0117bfe5816e8f59b7eef260c111",
+      "upstream_commit": "875672f5ce661b791d58bf8506fffe9c8c4a4a78",
+      "upstream_url": "https://github.com/dotnet/runtime/pull/125936"
+    }
+  ],
+  "purpose": "Isolated offline profile conversion; never included in production runtime images."
+}

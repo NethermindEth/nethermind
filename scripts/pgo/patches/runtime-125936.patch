@@ -1,0 +1,15 @@
+diff --git a/src/coreclr/tools/dotnet-pgo/Program.cs b/src/coreclr/tools/dotnet-pgo/Program.cs
+index 19971296c16..e44994c8c1e 100644
+--- a/src/coreclr/tools/dotnet-pgo/Program.cs
++++ b/src/coreclr/tools/dotnet-pgo/Program.cs
+@@ -311,8 +311,10 @@ private int InnerDumpMain()
+                         jsonWriter.WriteStartArray("CallWeights");
+                         foreach (var callWeight in data.CallWeights)
+                         {
++                            jsonWriter.WriteStartObject();
+                             jsonWriter.WriteString("Method", callWeight.Key.ToString());
+                             jsonWriter.WriteNumber("Weight", callWeight.Value);
++                            jsonWriter.WriteEndObject();
+                         }
+                         jsonWriter.WriteEndArray();
+                     }

@@ -1,0 +1,42 @@
+diff --git a/src/coreclr/tools/dotnet-pgo/Program.cs b/src/coreclr/tools/dotnet-pgo/Program.cs
+index e44994c8c1e..5a0e2d1fe14 100644
+--- a/src/coreclr/tools/dotnet-pgo/Program.cs
++++ b/src/coreclr/tools/dotnet-pgo/Program.cs
+@@ -1747,7 +1747,7 @@ void AddToInstrumentationData(int eventClrInstanceId, long methodID, int methodF
+                         PrintOutput($"Profile is based on {numLbrRecords} LBR records");
+                     }
+ 
+-                    correlator.SmoothAllProfiles();
++                    correlator.SmoothAllProfiles(_command.Warnings ? PrintWarning : null);
+                 }
+ 
+                 if (_command.DisplayProcessedEvents)
+diff --git a/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs b/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs
+index 608094a61bb..eaeb7078b53 100644
+--- a/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs
++++ b/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs
+@@ -63,10 +63,21 @@ private PerMethodInfo GetOrCreateInfo(MethodDesc md)
+         public SampleProfile GetProfile(MethodDesc md)
+             => _methodInf.GetValueOrDefault(md)?.Profile;
+ 
+-        public void SmoothAllProfiles()
++        public void SmoothAllProfiles(Action<string> warningLogger)
+         {
+-            foreach (PerMethodInfo pmi in _methodInf.Values)
+-                pmi.Profile.SmoothFlow();
++            foreach ((MethodDesc method, PerMethodInfo pmi) in _methodInf)
++            {
++                try
++                {
++                    pmi.Profile.SmoothFlow();
++                }
++                catch (InvalidOperationException ex)
++                {
++                    // Do not expose an unsmoothed profile to schema generation.
++                    _methodInf.Remove(method);
++                    warningLogger?.Invoke($"Skipping sample profile for {method}: flow smoothing failed: {ex.Message}");
++                }
++            }
+         }
+ 
+         public void AttributeSamplesToIP(ulong ip, long numSamples)

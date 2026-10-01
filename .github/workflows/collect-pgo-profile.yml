@@ -264,30 +264,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Pin to v10.0.5 — matches the SDK/runtime in our Docker base images
-          git clone --depth 1 --branch v10.0.5 \
-            https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
-          cd "${RUNNER_TEMP}/dotnet-runtime"
-          # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
+          tool_root="${RUNNER_TEMP}/pgo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/tool"
+          mkdir -p "${tool_root}"
+          python3 scripts/pgo/prepare_tool.py --destination "${tool_root}/runtime"
+          cd "${tool_root}/runtime"
           ./build.sh -c Release \
             --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
 
-          dotnet_pgo_dir=$(find "${RUNNER_TEMP}/dotnet-runtime/artifacts" -type d -name "dotnet-pgo" -path "*/bin/*" | head -1)
-          if [[ -z "${dotnet_pgo_dir}" ]] || [[ ! -f "${dotnet_pgo_dir}/dotnet-pgo.dll" ]]; then
-            echo "dotnet-pgo was not produced under artifacts/"
-            exit 1
-          fi
+          dotnet_pgo_dir="${tool_root}/runtime/artifacts/bin/coreclr/linux.x64.Release/dotnet-pgo"
+          test -f "${dotnet_pgo_dir}/dotnet-pgo.dll"
+          printf '#!/usr/bin/env bash\nset -euo pipefail\nexec "%s" "%s" "$@"\n' \
+            "${tool_root}/runtime/.dotnet/dotnet" "${dotnet_pgo_dir}/dotnet-pgo.dll" \
+            > "${dotnet_pgo_dir}/dotnet-pgo"
+          chmod +x "${dotnet_pgo_dir}/dotnet-pgo"
+          find "${dotnet_pgo_dir}" -type f -print0 | sort -z | xargs -0 sha256sum > "${tool_root}/tool-binaries.sha256"
+          echo "${dotnet_pgo_dir}" >> "${GITHUB_PATH}"
 
-          cp -a "${dotnet_pgo_dir}" "${RUNNER_TEMP}/dotnet-pgo-bin"
-          # Add a wrapper script so dotnet-pgo is callable by name
-          cat > "${RUNNER_TEMP}/dotnet-pgo-bin/dotnet-pgo" <<'WRAPPER'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          exec dotnet "${script_dir}/dotnet-pgo.dll" "$@"
-          WRAPPER
-          chmod +x "${RUNNER_TEMP}/dotnet-pgo-bin/dotnet-pgo"
-          echo "${RUNNER_TEMP}/dotnet-pgo-bin" >> "${GITHUB_PATH}"
+      - name: Upload offline tool identities
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pgo-tool-identities-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/tool/*-source-manifest.json
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/tool/tool-binaries.sha256
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Convert traces to .mibc and merge with edge profiling
         id: convert

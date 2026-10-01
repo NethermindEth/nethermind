@@ -1,0 +1,13 @@
+diff --git a/eng/Versions.props b/eng/Versions.props
+index 99810b8a1..a0a15d649 100644
+--- a/eng/Versions.props
++++ b/eng/Versions.props
+@@ -121,7 +121,7 @@
+     <!-- Not auto-updated. -->
+     <MicrosoftDiaSymReaderVersion>2.0.0</MicrosoftDiaSymReaderVersion>
+     <MicrosoftDiaSymReaderNativeVersion>17.12.0-beta1.24603.5</MicrosoftDiaSymReaderNativeVersion>
+-    <TraceEventVersion>3.1.16</TraceEventVersion>
++    <TraceEventVersion>3.2.8</TraceEventVersion>
+     <NETStandardLibraryRefVersion>2.1.0</NETStandardLibraryRefVersion>
+     <NetStandardLibraryVersion>2.0.3</NetStandardLibraryVersion>
+     <MicrosoftDiagnosticsToolsRuntimeClientVersion>1.0.4-preview6.19326.1</MicrosoftDiagnosticsToolsRuntimeClientVersion>
