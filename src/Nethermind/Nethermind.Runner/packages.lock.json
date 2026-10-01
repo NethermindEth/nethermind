@@ -934,6 +934,7 @@
           "Nethermind.Libp2p.Protocols.Ping": "[1.0.0, )",
           "Nethermind.Libp2p.Protocols.Pubsub": "[1.0.0, )",
           "Nethermind.Libp2p.Protocols.Yamux": "[1.0.0, )",
+          "Nethermind.Logging": "[2.2.0-preview, )",
           "Snappier": "[1.3.1, )"
         }
       },
