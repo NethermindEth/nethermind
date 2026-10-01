@@ -799,7 +799,7 @@ public class RequestFailureCauseTests
         }
     }
 
-    private static DataColumnsByRootIdentifier[] Identifiers(int root) =>
+    internal static DataColumnsByRootIdentifier[] Identifiers(int root) =>
         [new DataColumnsByRootIdentifier { BlockRoot = Keccak.Compute(root.ToString()), Columns = [(ulong)root] }];
 
     private static BeaconP2P CreateHost(TimeSpan requestTimeout) =>
@@ -807,7 +807,7 @@ public class RequestFailureCauseTests
             new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance)
         { RequestTimeout = requestTimeout };
 
-    private static LocalPeer.Session AddWedgedSession(BeaconP2P node)
+    internal static LocalPeer.Session AddWedgedSession(BeaconP2P node)
     {
         LocalPeer localPeer = node.LocalPeerForTest!;
         LocalPeer.Session session = new(localPeer);
