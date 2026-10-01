@@ -463,12 +463,12 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
-    /// get_head picks the state gossip is checked with, and a slashing can move it without a tick or a block: once A's two voters
-    /// are slashed, B outweighs A. An aggregate for B right after must be checked against B as the head, building B's target
-    /// state, not against the head cached before the slashing.
+    /// get_head picks the state gossip is checked with, and a slashing or an invalid payload can move it without a tick or a
+    /// block: once A's two voters are slashed, or A's payload is invalid, B is the head. An aggregate for B right after must be
+    /// checked against B as the head, building B's target state, not against the head cached before.
     /// </summary>
     [Test]
-    public void Gossip_aggregate_right_after_a_slashing_moves_the_head_is_checked_against_the_new_head()
+    public void Gossip_aggregate_right_after_the_head_moves_without_a_tick_is_checked_against_the_new_head([Values] bool invalidPayload)
     {
         const ulong targetEpoch = 2;
         UnsignedChain chain = UnsignedChain.Create();
@@ -476,8 +476,10 @@ public class ForkChoiceRunnerTests
         BuildCounter builds = new(runner);
         TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
         UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
-        UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
-        UnsignedChain.ChainBlock b = ImportLine(chain, runner, parent.Root, 32)[0];
+        UnsignedChain.ChainBlock a = chain.Extend(parent.Root, 31, payloadHashByte: 31);
+        UnsignedChain.ChainBlock b = chain.Extend(parent.Root, 32, payloadHashByte: 32);
+        runner.OnBlock(a.Block, a.PostState, ExecutionStatus.Optimistic, (IReadOnlyList<DataColumnSidecar>?)null);
+        runner.OnBlock(b.Block, b.PostState, ExecutionStatus.Optimistic, (IReadOnlyList<DataColumnSidecar>?)null);
         ulong[] aVoters = [.. new[] { 0, 1 }.Select(skip => (ulong)FirstCommitteeMember(a, targetEpoch - 1, skip).Member).Order()];
         int bSkip = 0;
         while (aVoters.Contains((ulong)FirstCommitteeMember(b, targetEpoch - 1, bSkip).Member))
@@ -485,8 +487,11 @@ public class ForkChoiceRunnerTests
         runner.OnAttestation(BodyVote(chain, a, targetEpoch - 1, skip: 0), isFromBlock: true, verifySignature: false);
         runner.OnAttestation(BodyVote(chain, a, targetEpoch - 1, skip: 1), isFromBlock: true, verifySignature: false);
         runner.OnAttestation(BodyVote(chain, b, targetEpoch - 1, bSkip), isFromBlock: true, verifySignature: false);
-        Hash256 headBeforeSlashing = runner.GetHead();
-        runner.OnAttesterSlashing(chain.DoubleVote(aVoters, slot: 1, a.Root, b.Root), verifySignatures: false);
+        Hash256 headBefore = runner.GetHead();
+        if (invalidPayload)
+            runner.OnInvalidExecutionPayload(a.Root);
+        else
+            runner.OnAttesterSlashing(chain.DoubleVote(aVoters, slot: 1, a.Root, b.Root), verifySignatures: false);
         (_, ulong voteSlot, int member) = FirstCommitteeMember(b, targetEpoch);
         int buildsBefore = builds.Count;
 
@@ -496,9 +501,9 @@ public class ForkChoiceRunnerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(aVoters.Distinct().Count(), Is.EqualTo(2), "fixture bug: A needs two distinct voters");
-            Assert.That(headBeforeSlashing, Is.EqualTo(a.Root), "fixture bug: two votes put A ahead before the slashing");
+            Assert.That(headBefore, Is.EqualTo(a.Root), "fixture bug: two votes put A ahead before");
             Assert.That(builds.Count - buildsBefore, Is.EqualTo(1), "the aggregate was checked against B's own target state, which the later lookup then finds");
-            Assert.That(runner.GetHead(), Is.EqualTo(b.Root), "fixture bug: the slashing makes B the head");
+            Assert.That(runner.GetHead(), Is.EqualTo(b.Root), "fixture bug: B is the head after");
         }
     }
 
