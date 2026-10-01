@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -73,7 +74,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         {
             NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
             NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, childFrame.To!, InnerValue, 0UL);
-            Assert.That(childFrame.Logs, Is.EqualTo([expectedInner]).UsingPropertiesComparer(c => c.Excluding(nameof(NativeCallTracerLogEntry.Index))));
+            Eip7708SelfDestructScenario.AssertLogs(childFrame.Logs!, [expectedInner], firstIndex: 1);
             Assert.That(childFrame.Logs[0].Index, Is.EqualTo(1));
         }
     }
@@ -150,10 +151,10 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Calls, Has.Count.EqualTo(3), "factory must create then call twice");
-            Assert.That(topFrame.Calls[0].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, initBalance, 0UL)]).UsingPropertiesComparer(), "CREATE endowment log on create frame");
-            Assert.That(topFrame.Calls[1].Logs, Is.EqualTo([ExpectedTransferLog(contractA, inheritor, initBalance, 1UL)]).UsingPropertiesComparer(), "SELFDESTRUCT transfer log on call frame (position follows the SELFDESTRUCT child frame recorded first; geth records AddLog before the child frame, so cross-client position differs here)");
-            Assert.That(topFrame.Calls[2].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, fundedAfter, 0UL)]).UsingPropertiesComparer(), "post-destruct funding log on call frame");
-            Assert.That(topFrame.Logs, Is.EqualTo([ExpectedSelfDestructLog(contractA, fundedAfter, 3UL)]).UsingPropertiesComparer(), "finalization log must be reported to log tracers on the top frame");
+            Eip7708SelfDestructScenario.AssertLogs(topFrame.Calls[0].Logs!, [ExpectedTransferLog(Recipient, contractA, initBalance, 0UL)], firstIndex: 0);
+            Eip7708SelfDestructScenario.AssertLogs(topFrame.Calls[1].Logs!, [ExpectedTransferLog(contractA, inheritor, initBalance, 1UL)], firstIndex: 1);
+            Eip7708SelfDestructScenario.AssertLogs(topFrame.Calls[2].Logs!, [ExpectedTransferLog(Recipient, contractA, fundedAfter, 0UL)], firstIndex: 2);
+            Eip7708SelfDestructScenario.AssertLogs(topFrame.Logs!, [ExpectedSelfDestructLog(contractA, fundedAfter, 3UL)], firstIndex: 3);
         }
     }
 
@@ -175,7 +176,8 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         NativeCallTracerLogEntry[] expected = Array.ConvertAll(scenario.InDestroyOrder, static destroyed =>
             ExpectedSelfDestructLog(destroyed.Account, destroyed.Funds, MultiDestroyFinalizationPosition));
 
-        Assert.That(topFrame.Logs, Is.EqualTo(expected).UsingPropertiesComparer(), "finalization logs must be reported in destroy order");
+        // Each of the three contracts emits endowment, self-destruct transfer and subsequent funding before finalization.
+        Eip7708SelfDestructScenario.AssertLogs(topFrame.Logs!, expected, firstIndex: 9);
     }
 
     [Test(Description = "The receipt logs, not just the tracer stream, must carry finalization logs in destroy order")]
@@ -245,7 +247,7 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Calls, Has.Count.EqualTo(3), "factory must create then call twice");
-            Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
+            Eip7708SelfDestructScenario.AssertLogs(topFrame.Logs!, [ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL)], firstIndex: 3);
         }
     }
 
@@ -263,6 +265,23 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
 
 file static class Eip7708SelfDestructScenario
 {
+    internal static void AssertLogs(IEnumerable<NativeCallTracerLogEntry> logs, NativeCallTracerLogEntry[] expected, ulong firstIndex)
+    {
+        NativeCallTracerLogEntry[] actual = logs.ToArray();
+        Assert.That(actual, Has.Length.EqualTo(expected.Length));
+        for (int i = 0; i < expected.Length; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address));
+                Assert.That(actual[i].Data, Is.EqualTo(expected[i].Data));
+                Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics));
+                Assert.That(actual[i].Position, Is.EqualTo(expected[i].Position));
+                Assert.That(actual[i].Index, Is.EqualTo(firstIndex + (ulong)i));
+            }
+        }
+    }
+
     public const byte InitBalance = 5;
     public const byte FundedAfter = 7;
 
@@ -338,7 +357,8 @@ file static class Eip7708SelfDestructScenario
     /// <summary>Asserts that the receipt's finalization logs carrying <paramref name="signature"/> follow destroy order.</summary>
     public static void AssertReceiptFinalizationOrder(TxReceipt receipt, Hash256 signature, MultiDestroy scenario)
     {
-        LogEntry[] finalizationLogs = Array.FindAll(receipt.Logs!, log => log.Topics[0] == signature);
+        Assert.That(receipt.Logs, Has.Length.EqualTo(12));
+        LogEntry[] finalizationLogs = receipt.Logs![9..];
         LogEntry[] expected = Array.ConvertAll(scenario.InDestroyOrder, destroyed => new LogEntry(
             TransferLog.Sender, Hash256.FromBytesWithPadding([destroyed.Funds]).BytesToArray(),
             [signature, destroyed.Account.ToHash().ToHash256()]));

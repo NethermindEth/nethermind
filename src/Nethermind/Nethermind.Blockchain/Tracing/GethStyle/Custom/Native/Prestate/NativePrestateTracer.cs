@@ -41,6 +41,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly bool _isEip7702Enabled;
     private readonly bool _diffMode;
     private readonly bool _includeEmpty;
+    private readonly bool _isFrameTx;
     private readonly bool _disableCode;
     private readonly bool _disableStorage;
 
@@ -75,6 +76,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         IsTracingReturnData = false;
 
         _worldState = worldState;
+        _isFrameTx = transaction?.Frames is not null;
         _txHash = txHash;
         _isEip6780Enabled = spec?.IsEip6780Enabled ?? false;
         _isEip7702Enabled = spec?.IsEip7702Enabled ?? false;
@@ -177,7 +179,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         GethLikeTxTrace result = base.BuildResult();
 
-        if (!_includeEmpty)
+        // Frame replay needs its entry point and storage-only protocol accounts even when their account fields are empty.
+        if (!_includeEmpty && !_isFrameTx)
         {
             foreach ((AddressAsKey address, NativePrestateTracerAccount account) in _prestate)
             {

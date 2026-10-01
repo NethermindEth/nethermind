@@ -613,11 +613,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5f5f205000", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:POP,P3:POP,S4:STOP,P4:STOP", 0, TestName = "Callbacks_ordered_mid_code_opcode")]
     [TestCase("00", "S0:STOP,P0:STOP", 0, TestName = "Callbacks_ordered_explicit_stop")]
     [TestCase("5f5ff3", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:RETURN,P2:RETURN", 0, TestName = "Callbacks_ordered_explicit_return")]
-    // REVERT faults from SetOperationStack, so its marker lands between step and postStep;
-    // every other failure faults from EndInstructionTrace, i.e. after postStep.
-    [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,F2:REVERT,P2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
+    // REVERT executes after step; Geth's deferred fault follows execution (and Nethermind's postStep extension).
+    [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,P2:REVERT,F2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
     [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_explicit_self_destruct")]
-    // Other implementations call only step (with the error set) and no fault for stack underflow and out of gas; these rows pin current behaviour.
+    // Geth reports pre-execution failures through step with an error, without a second fault callback.
     [TestCase("20", "S0:KECCAK256,P0:KECCAK256,F0:KECCAK256", 1, TestName = "Callbacks_ordered_stack_underflow")]
     [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256,F6:KECCAK256", 1, TestName = "Callbacks_ordered_out_of_gas")]
     [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_jumpi_falls_off_code")]
@@ -1830,17 +1829,17 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
     private static IEnumerable<TestCaseData> CallCases()
     {
         foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL })
-        for (ulong fork = 0; fork <= 3; fork++)
-        foreach (bool warm in new[] { false, true })
-        foreach (bool newAccount in new[] { false, true })
-        foreach (int value in opcode == Instruction.DELEGATECALL ? new[] { 0 } : new[] { 0, 1 })
-        foreach (int memory in new[] { 0, 32 })
-        foreach (bool maximum in fork == 0 ? new[] { false } : new[] { false, true })
-            yield return new TestCaseData(opcode, fork, warm, newAccount, value, memory, maximum, 250000UL, false);
+            for (ulong fork = 0; fork <= 3; fork++)
+                foreach (bool warm in new[] { false, true })
+                    foreach (bool newAccount in new[] { false, true })
+                        foreach (int value in opcode == Instruction.DELEGATECALL ? new[] { 0 } : new[] { 0, 1 })
+                            foreach (int memory in new[] { 0, 32 })
+                                foreach (bool maximum in fork == 0 ? new[] { false } : new[] { false, true })
+                                    yield return new TestCaseData(opcode, fork, warm, newAccount, value, memory, maximum, 250000UL, false);
 
         foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL })
-        foreach (ulong fork in new[] { 0UL, 2UL, 3UL })
-            yield return new TestCaseData(opcode, fork, false, false, 0, 32, false, 250000UL, true);
+            foreach (ulong fork in new[] { 0UL, 2UL, 3UL })
+                yield return new TestCaseData(opcode, fork, false, false, 0, 32, false, 250000UL, true);
         yield return new TestCaseData(Instruction.CALL, 3UL, false, true, 1, 32, true, 20000000UL, false);
         yield return new TestCaseData(Instruction.CALL, 3UL, false, true, 1, 32, false, 20000000UL, false);
     }
