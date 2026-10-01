@@ -26,7 +26,6 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Core.Dto;
@@ -34,6 +33,7 @@ using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Logging.Microsoft;
+using Nethermind.Network.Libp2p;
 using ILogger = Nethermind.Logging.ILogger;
 using ILoggerFactory = Microsoft.Extensions.Logging.ILoggerFactory;
 
@@ -148,7 +148,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton<IdentifyAgentVersionProbe>()
             // The library's peer class is internal; this one does the same identify handshake and also
             // records the session direction and agent string (see BeaconLocalPeer).
-            .AddSingleton<Libp2pPeerFactory>(sp =>
+            .AddSingleton<Libp2pStackPeerFactory>(sp =>
             {
                 IProtocolStackSettings settings = sp.GetRequiredService<IProtocolStackSettings>();
                 PeerStore peerStore = sp.GetRequiredService<PeerStore>();
@@ -858,7 +858,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>Only the creation delegate is captured: the stack settings and peer store go to the base
     /// class alone, which is what lets this stay a primary constructor without double-capturing them.</summary>
     private sealed class BeaconPeerFactory(IProtocolStackSettings settings, PeerStore peerStore, IdentifyNotifier notifier, ILoggerFactory? loggerFactory, Func<Identity, ILocalPeer> create)
-        : Libp2pPeerFactory(settings, peerStore, notifier, loggerFactory: loggerFactory)
+        : Libp2pStackPeerFactory(settings, peerStore, notifier, loggerFactory)
     {
         public override ILocalPeer Create(Identity? identity = null) => create(identity ?? new Identity(privateKey: null, KeyType.Secp256K1));
     }

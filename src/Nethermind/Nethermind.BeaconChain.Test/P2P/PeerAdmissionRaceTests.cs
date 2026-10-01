@@ -13,9 +13,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
-using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
+using Nethermind.Network.Libp2p;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
