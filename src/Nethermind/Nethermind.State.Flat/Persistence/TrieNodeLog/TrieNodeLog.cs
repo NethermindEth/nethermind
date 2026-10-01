@@ -90,11 +90,26 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         return _partitionOffset[partition] + (shardByte >> _partitionShift[partition]);
     }
 
-    public ITrieNodeLog.IView PinLiveGenerations()
+    public ITrieNodeLog.IView OpenView(IColumnsDb<FlatDbColumns> db, ReaderFlags flags)
     {
+        // Pinned before the snapshot so a generation merged and deleted in between stays readable, bound after it
+        // so the view serves exactly the log version the snapshot's metadata confirms.
         TrieNodeLogView[] views = new TrieNodeLogView[_shards.Length];
         for (int i = 0; i < views.Length; i++) views[i] = _shards[i].PinLiveGenerations();
-        return new View(this, views);
+        IColumnDbSnapshot<FlatDbColumns> snapshot;
+        try
+        {
+            snapshot = db.CreateSnapshot(flags);
+        }
+        catch
+        {
+            foreach (TrieNodeLogView view in views) view.Dispose();
+            throw;
+        }
+
+        IReadOnlyKeyValueStore metadata = snapshot.GetColumn(FlatDbColumns.Metadata);
+        foreach (TrieNodeLogView view in views) view.Bind(metadata);
+        return new View(this, snapshot, views);
     }
 
     public ITrieNodeLog.IWriteBatch StartWriteBatch(bool bypass)
@@ -136,18 +151,16 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _mergeLimiter.Dispose();
     }
 
-    private sealed class View(TrieNodeLog log, TrieNodeLogView[] views) : ITrieNodeLog.IView
+    private sealed class View(TrieNodeLog log, IColumnDbSnapshot<FlatDbColumns> snapshot, TrieNodeLogView[] views) : ITrieNodeLog.IView
     {
-        public void Bind(IReadOnlyKeyValueStore metadata)
-        {
-            foreach (TrieNodeLogView view in views) view.Bind(metadata);
-        }
+        public IColumnDbSnapshot<FlatDbColumns> Snapshot => snapshot;
 
-        public IReadOnlyKeyValueStore Wrap(FlatDbColumns column, IReadOnlyKeyValueStore inner) =>
-            Covers(column) ? new Column(log, views, (byte)column, inner) : inner;
+        public IReadOnlyKeyValueStore GetColumn(FlatDbColumns column) =>
+            Covers(column) ? new Column(log, views, (byte)column, snapshot.GetColumn(column)) : snapshot.GetColumn(column);
 
         public void Dispose()
         {
+            snapshot.Dispose();
             foreach (TrieNodeLogView view in views) view.Dispose();
         }
 

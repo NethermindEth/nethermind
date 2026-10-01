@@ -28,44 +28,35 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        // Pinned before the snapshot so a generation merged and deleted in between stays readable, bound after it
-        // so the view serves exactly the log version the snapshot's metadata confirms.
-        ITrieNodeLog.IView logView = trieNodeLog.PinLiveGenerations();
-        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot(flags);
+        ITrieNodeLog.IView view = trieNodeLog.OpenView(db, flags);
         try
         {
-            logView.Bind(snapshot.GetColumn(FlatDbColumns.Metadata));
             BaseTriePersistence.Reader trieReader = new(
-                logView.Wrap(FlatDbColumns.StateTopNodes, snapshot.GetColumn(FlatDbColumns.StateTopNodes)),
-                logView.Wrap(FlatDbColumns.StateNodes, snapshot.GetColumn(FlatDbColumns.StateNodes)),
-                logView.Wrap(FlatDbColumns.StorageNodes, snapshot.GetColumn(FlatDbColumns.StorageNodes)),
-                logView.Wrap(FlatDbColumns.FallbackNodes, snapshot.GetColumn(FlatDbColumns.FallbackNodes))
+                view.GetColumn(FlatDbColumns.StateTopNodes),
+                view.GetColumn(FlatDbColumns.StateNodes),
+                view.GetColumn(FlatDbColumns.StorageNodes),
+                view.GetColumn(FlatDbColumns.FallbackNodes)
             );
 
-            StateId currentState = BasePersistence.ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
+            StateId currentState = BasePersistence.ReadCurrentState(view.Snapshot.GetColumn(FlatDbColumns.Metadata));
 
             return new BasePersistence.Reader<BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
                 new BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader>(
                     new BaseFlatPersistence.Reader(
-                        (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account),
-                        (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage),
+                        (ISortedKeyValueStore)view.Snapshot.GetColumn(FlatDbColumns.Account),
+                        (ISortedKeyValueStore)view.Snapshot.GetColumn(FlatDbColumns.Storage),
                         isPreimageMode: false,
                         rlpWrapSlots: _rlpWrapSlots
                     )
                 ),
                 trieReader,
                 currentState,
-                new Reactive.AnonymousDisposable(() =>
-                {
-                    snapshot.Dispose();
-                    logView.Dispose();
-                })
+                view
             );
         }
         catch
         {
-            snapshot.Dispose();
-            logView.Dispose();
+            view.Dispose();
             throw;
         }
     }

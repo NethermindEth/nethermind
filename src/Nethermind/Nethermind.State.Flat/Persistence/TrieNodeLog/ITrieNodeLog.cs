@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Db;
 
 namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 
@@ -11,19 +12,18 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// RocksDB one generation at a time, so a node rewritten several times within a generation reaches RocksDB once.
 /// </summary>
 /// <remarks>
-/// Reader creation is a three-step handshake so the log view is consistent with the RocksDB snapshot without a
-/// lock spanning both: <see cref="PinLiveGenerations"/>, then create the RocksDB snapshot, then
-/// <see cref="IView.Bind"/> with that snapshot's metadata column. Write batches are committed by
-/// <see cref="IWriteBatch.Commit"/> before the RocksDB batch is written and disposed after it.
+/// A reader goes through <see cref="OpenView"/>, which creates the RocksDB snapshot itself so the generations it
+/// may need are pinned before the snapshot exists and the view serves exactly the log version the snapshot's
+/// metadata confirms. Write batches are committed by <see cref="IWriteBatch.Commit"/> before the RocksDB batch is
+/// written and disposed after it.
 /// </remarks>
 public interface ITrieNodeLog
 {
     /// <summary>
-    /// First step of creating a reader: leases every generation currently in memory, before the caller creates its
-    /// RocksDB snapshot, so a generation merged and deleted in between stays readable. The returned view is
-    /// completed with <see cref="IView.Bind"/> once the snapshot exists.
+    /// Opens a reader's view: a snapshot of <paramref name="db"/> together with the log generations whose records that
+    /// snapshot does not yet contain, pinned so a merge cannot delete them while the view is open.
     /// </summary>
-    IView PinLiveGenerations();
+    IView OpenView(IColumnsDb<FlatDbColumns> db, ReaderFlags flags);
 
     /// <summary>Starts the log side of a persistence write batch; one log-backed batch may be open at a time.</summary>
     /// <param name="bypass">
@@ -38,18 +38,13 @@ public interface ITrieNodeLog
     /// <summary>Discards every generation without merging it; pairs with a wipe of the trie columns.</summary>
     void Clear();
 
-    /// <summary>The log as seen by one reader: the generations it pinned, at the version its RocksDB snapshot confirms.</summary>
+    /// <summary>A RocksDB snapshot and the log as seen at its version.</summary>
     public interface IView : IDisposable
     {
-        /// <summary>
-        /// Completes the view from the RocksDB snapshot's metadata column: reads the log version and the merged-generation
-        /// marker the snapshot confirms, pins any generation started since <see cref="PinLiveGenerations"/>, and
-        /// releases the pins on generations the snapshot already contains.
-        /// </summary>
-        void Bind(IReadOnlyKeyValueStore metadata);
+        IColumnDbSnapshot<FlatDbColumns> Snapshot { get; }
 
-        /// <summary>Wraps a column of the snapshot so reads consult the log before it; returns <paramref name="inner"/> for a column the log does not cover.</summary>
-        IReadOnlyKeyValueStore Wrap(FlatDbColumns column, IReadOnlyKeyValueStore inner);
+        /// <summary>The snapshot's column, with the log consulted first for a column the log covers.</summary>
+        IReadOnlyKeyValueStore GetColumn(FlatDbColumns column);
     }
 
     /// <summary>The log side of one persistence write batch.</summary>
