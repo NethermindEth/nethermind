@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -19,7 +20,7 @@ public class TxPoolConfig : ITxPoolConfig
     public int BlobCacheSize { get; set; } = 256;
     public int InMemoryBlobPoolSize { get; set; } = 512; // it is used when persistent pool is disabled
     public int MaxPendingTxsPerSender { get; set; } = 0;
-    public ulong FrameTxMaxVerifyGas { get; set; } = 300_000;
+    public ulong FrameTxMaxVerifyGas { get; set; } = Eip8141Constants.MaxVerifyGas;
     public ulong FrameTxMaxVerifyStateGas { get; set; } = 500_000;
     public int FrameTxSimulationTimeoutMs { get; set; } = 250;
     public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
