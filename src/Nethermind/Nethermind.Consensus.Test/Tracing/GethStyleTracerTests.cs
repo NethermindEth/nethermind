@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
@@ -42,7 +43,8 @@ public class GethStyleTracerTests
             new ChangeableTransactionProcessorAdapter(Substitute.For<ITransactionProcessor>()),
             Substitute.For<IFileSystem>(),
             Substitute.For<IOverridableEnv<GethStyleTracer.BlockProcessingComponents>>(),
-            NullPrefixStateSeedSource.Instance);
+            NullPrefixStateSeedSource.Instance,
+            Substitute.For<IOverridableCodeInfoRepository>());
 
 #pragma warning disable CS0618
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>

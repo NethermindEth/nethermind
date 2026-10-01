@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -25,9 +27,12 @@ public record GethTraceOptions
     public bool DisableStack { get; init; }
 
     /// <summary>
-    /// Byte limit for serialized opcode logs. Zero is unlimited; a negative value suppresses all logs.
+    /// Byte limit for serialized opcode logs or JSON Lines file records. Zero is unlimited; a negative value suppresses all records.
     /// The entry that exceeds the limit is included. Execution and named tracers are unaffected.
     /// </summary>
+    /// <remarks>
+    /// File budgets include each record's terminating line feed; ordinary opcode log budgets count only the serialized entries.
+    /// </remarks>
     [JsonConverter(typeof(LimitConverter))]
     public long Limit { get; init; }
 
@@ -37,6 +42,10 @@ public record GethTraceOptions
     public string Tracer { get; init; }
 
     public Hash256? TxHash { get; init; }
+
+    /// <summary>For traceCall, selects state before this transaction in the requested block.</summary>
+    [JsonConverter(typeof(TransactionIndexConverter))]
+    public ulong? TxIndex { get; init; }
 
     public JsonElement? TracerConfig { get; init; }
 
@@ -53,6 +62,43 @@ public record GethTraceOptions
     public bool? StreamMode { get; init; }
 
     public static GethTraceOptions Default { get; } = new();
+
+    /// <summary>Reads a transaction index as an unsigned hexadecimal JSON quantity.</summary>
+    public sealed class TransactionIndexConverter : JsonConverter<ulong>
+    {
+        /// <inheritdoc/>
+        public override ulong Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.String) ThrowInvalidToken();
+            if (!reader.HasValueSequence && !reader.ValueIsEscaped) return ParseQuantity(reader.ValueSpan);
+            const int maxQuantityLength = 18;
+            const int maxEscapedLength = maxQuantityLength * 6;
+            long length = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
+            if (length > maxEscapedLength) ThrowInvalidQuantity();
+            Span<byte> buffer = stackalloc byte[maxEscapedLength];
+            return ParseQuantity(buffer[..reader.CopyString(buffer)]);
+        }
+
+        private static ulong ParseQuantity(ReadOnlySpan<byte> value)
+        {
+            const int maxQuantityLength = 18;
+            if (value.Length is < 3 or > maxQuantityLength || value[0] != '0' || (value[1] != 'x' && value[1] != 'X')
+                || (value.Length > 3 && value[2] == '0'))
+                ThrowInvalidQuantity();
+            if (!ulong.TryParse(value[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out ulong index))
+                ThrowInvalidQuantity();
+            return index;
+        }
+
+        [DoesNotReturn]
+        private static void ThrowInvalidToken() => throw new JsonException("Transaction index must be a hex quantity string.");
+
+        [DoesNotReturn]
+        private static void ThrowInvalidQuantity() => throw new JsonException("Invalid transaction index hex quantity.");
+
+        /// <inheritdoc/>
+        public override void Write(Utf8JsonWriter writer, ulong value, JsonSerializerOptions options) => Nethermind.Serialization.Json.HexWriter.WriteUlongHexStringValue(writer, value);
+    }
 
     /// <summary>
     /// Reads a signed JSON integer or null for the opcode logger byte limit.
