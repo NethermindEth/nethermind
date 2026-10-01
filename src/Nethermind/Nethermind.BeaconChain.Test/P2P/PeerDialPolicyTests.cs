@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -225,6 +226,64 @@ public class PeerDialPolicyTests
 
             await local.P2P.DisposeAsync();
             await remote.P2P.DisposeAsync();
+        }
+    }
+
+    /// <summary>A connection that closes before any session forms is no sign of a crossing dial, so it is made once and the address backs off.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_dial_to_an_address_that_drops_every_connection_is_made_once_then_backs_off(CancellationToken token)
+    {
+        Node local = CreateNode();
+        using TcpListener dead = new(IPAddress.Loopback, 0);
+        dead.Start();
+        int connections = 0;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task accepting = Task.Run(async () =>
+        {
+            while (true)
+            {
+                using Socket socket = await dead.AcceptSocketAsync(stop.Token);
+                Interlocked.Increment(ref connections);
+            }
+        }, stop.Token);
+        try
+        {
+            await local.P2P.StartAsync(token);
+            PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: new ManualTimestamper());
+            // Only the side with the lower peer id redials after a crossing dial, so this node would redial this peer.
+            Nethermind.Libp2p.Core.PeerId remote;
+            do
+            {
+                remote = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+            }
+            while (string.CompareOrdinal(local.P2P.LocalPeerId!.ToString(), remote.ToString()) >= 0);
+
+            string address = $"/ip4/127.0.0.1/tcp/{((IPEndPoint)dead.LocalEndpoint).Port}/p2p/{remote}";
+            bool first = await manager.TryAddPeerAsync(address, token);
+            bool second = await manager.TryAddPeerAsync(address, token);
+            // A redial would have connected within its backoff of at most a few hundred milliseconds.
+            await Task.Delay(TimeSpan.FromSeconds(1), token);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first, Is.False);
+                Assert.That(second, Is.False, "the failed address is dialed again before its backoff ends");
+                Assert.That(Volatile.Read(ref connections), Is.EqualTo(1), "the failed dial was repeated");
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            try
+            {
+                await accepting;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            await local.P2P.DisposeAsync();
         }
     }
 
