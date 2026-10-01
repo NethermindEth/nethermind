@@ -729,7 +729,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.UnionWith([anchorRoot, fullRoot]);
         harness.Importer.UnverifiedPayloads.Add(fullRoot);
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(gossip, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(gossip, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {

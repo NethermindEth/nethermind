@@ -121,12 +121,12 @@ public partial class BeaconSyncOrchestratorTests
 
         if (parentAlreadyHeld)
         {
-            await orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
+            await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Parent, CancellationToken.None);
         }
 
-        await orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Child, CancellationToken.None);
         await orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), CancellationToken.None);
-        await orchestrator.ProcessGossipBlockAsync(scenario.Grandchild, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Grandchild, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -149,9 +149,9 @@ public partial class BeaconSyncOrchestratorTests
         ParkedParentScenario scenario = CreateParkedParentScenario();
         Harness harness = scenario.Harness;
         harness.Orchestrator.GossipStarted = true;
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Grandchild, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Parent, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Child, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Grandchild, CancellationToken.None);
         int heldBefore = harness.Orchestrator.PendingGossipBlockCount;
 
         switch (fate)
@@ -171,7 +171,7 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
         int heldAfterRelease = harness.Orchestrator.PendingGossipBlockCount;
         ForkedSignedBeaconBlock lateSibling = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(scenario.Grandchild.Slot + 1, scenario.Child.ComputeMessageRoot()));
-        await harness.Orchestrator.ProcessGossipBlockAsync(lateSibling, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(lateSibling, CancellationToken.None);
 
         // A late child is fetched for like any unknown-parent block and, when no peer returns its parent, kept only in that bounded hold.
         bool lateChildKept = fate != ParkedBlockFate.FinalizedAway;
@@ -208,10 +208,10 @@ public partial class BeaconSyncOrchestratorTests
         ForkedSignedBeaconBlock greatGrandchild = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(scenario.Grandchild.Slot + 1, grandchildRoot));
         scenario.Peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == childRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([scenario.Child]));
         scenario.Peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == grandchildRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([scenario.Grandchild]));
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Parent, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Child, CancellationToken.None);
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(parentUnknown ? greatGrandchild : scenario.Grandchild, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(parentUnknown ? greatGrandchild : scenario.Grandchild, CancellationToken.None);
         int heldBeforeEnvelope = harness.Orchestrator.PendingGossipBlockCount;
         await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), CancellationToken.None);
 
@@ -390,7 +390,7 @@ public partial class BeaconSyncOrchestratorTests
         BlockImportResult parked = await harness.Orchestrator.ImportBlockAsync(parent, CancellationToken.None);
         harness.Importer.Unavailable.Remove(parentRoot);
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {

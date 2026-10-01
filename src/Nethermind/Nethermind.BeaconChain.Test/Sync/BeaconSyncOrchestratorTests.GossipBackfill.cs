@@ -33,7 +33,7 @@ public partial class BeaconSyncOrchestratorTests
         // One slot and proposer for all, each naming its own parent: only the per-slot budget bounds them.
         for (int i = 0; i < forged; i++)
         {
-            await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot, i), CancellationToken.None);
+            await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(WallSlot, i), CancellationToken.None);
         }
 
         using (Assert.EnterMultipleScope())
@@ -56,10 +56,10 @@ public partial class BeaconSyncOrchestratorTests
 
         for (int i = 0; i < 3; i++)
         {
-            await harness.Orchestrator.ProcessGossipBlockAsync(ChildOf(parent, WallSlot - (ulong)i), CancellationToken.None);
+            await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(parent, WallSlot - (ulong)i), CancellationToken.None);
         }
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot, seed: 1), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(WallSlot, seed: 1), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -76,7 +76,7 @@ public partial class BeaconSyncOrchestratorTests
 
         for (int i = 0; i < BeaconSyncOrchestrator.MaxBackfillsPerSlot + 2; i++)
         {
-            await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot - (ulong)i, seed: 0), CancellationToken.None);
+            await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(WallSlot - (ulong)i, seed: 0), CancellationToken.None);
         }
 
         Assert.That(ByRootRequests(peer), Is.EqualTo(BeaconSyncOrchestrator.MaxBackfillsPerSlot));
@@ -94,12 +94,12 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
         for (int i = 0; i < BeaconSyncOrchestrator.MaxBackfillsPerSlot + forgedHeld; i++)
         {
-            await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot, i), CancellationToken.None);
+            await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(WallSlot, i), CancellationToken.None);
         }
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
         int fetchesBeforeParent = ByRootRequests(peer);
-        await harness.Orchestrator.ProcessGossipBlockAsync(parent, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(parent, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -120,8 +120,8 @@ public partial class BeaconSyncOrchestratorTests
         (Harness harness, IBeaconSyncPeer _) = CreateBackfillHarness(parent);
         harness.Importer.Known.Add(anchorRoot);
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(forged, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(forged, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -136,11 +136,11 @@ public partial class BeaconSyncOrchestratorTests
         (Harness harness, IBeaconSyncPeer peer) = CreateBackfillHarness();
         for (int i = 0; i < 2 * BeaconSyncOrchestrator.MaxBackfillsPerSlot; i++)
         {
-            await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot - (ulong)i, i), CancellationToken.None);
+            await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(WallSlot - (ulong)i, i), CancellationToken.None);
         }
 
         harness.Timestamper.Set(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + (WallSlot + 1) * Spec.SecondsPerSlot));
-        await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot + 1, 100), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(WallSlot + 1, 100), CancellationToken.None);
 
         Assert.That(ByRootRequests(peer), Is.EqualTo(BeaconSyncOrchestrator.MaxBackfillsPerSlot + 1));
     }
@@ -155,13 +155,13 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
         for (int i = 0; i < BeaconSyncOrchestrator.MaxBackfillsPerSlot; i++)
         {
-            await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot - 2 - (ulong)i, i), CancellationToken.None);
+            await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(WallSlot - 2 - (ulong)i, i), CancellationToken.None);
         }
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
         bool childImportedInBudgetSlot = harness.Importer.Known.Contains(child.ComputeMessageRoot());
         harness.Timestamper.Set(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + (WallSlot + 1) * Spec.SecondsPerSlot));
-        await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
