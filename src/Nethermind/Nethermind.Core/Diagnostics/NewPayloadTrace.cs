@@ -34,6 +34,40 @@ public static class NewPayloadTrace
     {
         public readonly long[] Stamps = new long[Count];
         public long Block = -1;
+        // The processing thread's /proc schedstat across ProcessOne: nanoseconds run and waited on a runqueue.
+        public long RunStart, WaitStart, RunNs = -1, WaitNs = -1, Slices = -1, SlicesStart;
+    }
+
+    /// <summary>Reads the calling thread's schedstat at the start of block execution.</summary>
+    public static void SchedStart()
+    {
+        if (Enabled && Volatile.Read(ref s_active) is { } record && ReadSchedStat(out long run, out long wait, out long slices))
+        {
+            record.RunStart = run; record.WaitStart = wait; record.SlicesStart = slices;
+        }
+    }
+
+    /// <summary>Reads it again at the end, on the same thread, and keeps the difference.</summary>
+    public static void SchedEnd()
+    {
+        if (Enabled && Volatile.Read(ref s_active) is { } record && record.RunStart != 0 && ReadSchedStat(out long run, out long wait, out long slices))
+        {
+            record.RunNs = run - record.RunStart; record.WaitNs = wait - record.WaitStart; record.Slices = slices - record.SlicesStart;
+        }
+    }
+
+    private static bool ReadSchedStat(out long run, out long wait, out long slices)
+    {
+        run = wait = slices = 0;
+        try
+        {
+            string[] parts = System.IO.File.ReadAllText("/proc/thread-self/schedstat").Split(' ');
+            return parts.Length >= 3 && long.TryParse(parts[0], out run) && long.TryParse(parts[1], out wait) && long.TryParse(parts[2], out slices);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private static readonly AsyncLocal<Record?> s_request = new();
@@ -88,6 +122,9 @@ public static class NewPayloadTrace
             else line.Append(((stamp - start) * 1_000_000 / Stopwatch.Frequency).ToString());
         }
 
+        line.Append(" schedrun=").Append(record.RunNs < 0 ? "na" : (record.RunNs / 1000).ToString())
+            .Append(" schedwait=").Append(record.WaitNs < 0 ? "na" : (record.WaitNs / 1000).ToString())
+            .Append(" schedslices=").Append(record.Slices < 0 ? "na" : record.Slices.ToString());
         Console.Out.WriteLine(line.ToString());
     }
 }
