@@ -724,7 +724,8 @@ public sealed class BlockImporter : IBlockImporter
             : null;
         if (refusal is not null)
         {
-            if (_logger.IsWarn) _logger.Warn($"Not regenerating the parent state of block {blockRoot} at slot {slot}: {refusal}");
+            // Debug: any cached key can trigger it at will.
+            if (_logger.IsDebug) _logger.Debug($"Not regenerating the parent state of block {blockRoot} at slot {slot}: {refusal}");
             return BlockImportResult.UnknownParent;
         }
 
