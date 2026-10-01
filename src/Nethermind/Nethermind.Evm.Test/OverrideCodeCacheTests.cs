@@ -118,6 +118,32 @@ public class OverrideCodeCacheTests
     }
 
     [Test]
+    public void Codes_of_the_same_hash_and_length_get_their_own_entries()
+    {
+        OverrideCodeCache cache = new();
+        byte[] first = RandomCode(100, seed: 11);
+        byte[] second = RandomCode(100, seed: 12);
+        const int sameHash = 0x1234;
+
+        cache.Get(first, sameHash, out _, out CodeInfo firstInfo);
+        for (int request = 0; request < 3; request++)
+        {
+            cache.Get((byte[])second.Clone(), sameHash, out ValueHash256 secondHash, out CodeInfo secondInfo);
+            cache.Get((byte[])first.Clone(), sameHash, out ValueHash256 firstHash, out CodeInfo firstAgain);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(secondHash, Is.EqualTo(ValueKeccak.Compute(second)), $"request {request}");
+                Assert.That(secondInfo.CodeSpan.SequenceEqual(second), Is.True, $"request {request}");
+                Assert.That(firstHash, Is.EqualTo(ValueKeccak.Compute(first)), $"request {request}");
+                Assert.That(firstAgain, Is.SameAs(firstInfo), $"request {request}");
+            }
+        }
+
+        Assert.That(cache.Count, Is.EqualTo(2));
+    }
+
+    [Test]
     public void A_full_set_drops_the_code_added_first_even_if_it_was_just_used()
     {
         OverrideCodeCache cache = new();
