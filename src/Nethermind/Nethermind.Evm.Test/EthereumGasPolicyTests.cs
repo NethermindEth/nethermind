@@ -171,6 +171,20 @@ public class EthereumGasPolicyTests
         }
     }
 
+    /// <summary>A null address warms like any other, as it did when the set took it directly.</summary>
+    [Test]
+    public void Null_address_warm_up_keeps_set_semantics()
+    {
+        using StackAccessTracker tracker = new();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.WarmUp(null!), Is.True, "first access is cold");
+            Assert.That(tracker.WarmUp(null!), Is.False, "the repeat is warm");
+            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "a remembered null does not make an address warm");
+        }
+    }
+
     [Test]
     public void Memory_cost_preserves_preexpanded_range_and_full_width_validation(
         [Values(0UL, 1UL, 31UL, 32UL, 33UL, ulong.MaxValue)] ulong offset,

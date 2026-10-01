@@ -121,7 +121,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         /// </remarks>
         public bool WarmUp(Address address)
         {
-            if (address.Equals(_lastWarmAddress)) return false;
+            if (_lastWarmAddress is not null && _lastWarmAddress.Equals(address)) return false;
 
             bool wasCold = AccessedAddresses.Add(address);
             _lastWarmAddress = address;
