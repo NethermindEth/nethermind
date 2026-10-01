@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -898,6 +899,126 @@ public class BlockImporterTests
         Assert.That(states.GetBlockState(second.Root), Is.Null);
         Assert.That(states.GetBlockState(second.Root), Is.Null);
         Assert.That(SszRoots.HashTreeRoot(chain.Anchor.AnchorState), Is.EqualTo(expectedAnchor));
+    }
+
+    /// <summary>
+    /// Regeneration runs on the import worker, so in long non-finality it must not replay an unbounded run of stored blocks:
+    /// one epoch of blocks above the nearest held state is replayed, and one block more is refused with a warning before any replay.
+    /// </summary>
+    [Test]
+    public void Regeneration_replays_at_most_one_epoch_of_stored_blocks([Values] bool beyondBound)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        int count = (int)chain.Spec.SlotsPerEpoch + (beyondBound ? 1 : 0);
+        List<UnsignedChain.ChainBlock> blocks = [];
+        Hash256 parentRoot = chain.AnchorRoot;
+        for (int i = 1; i <= count; i++)
+        {
+            UnsignedChain.ChainBlock block = chain.Extend(parentRoot, slot: (ulong)i, payloadHashByte: (byte)i);
+            store.PutBlock(block.Root, block.Block);
+            blocks.Add(block);
+            parentRoot = block.Root;
+        }
+
+        Hash256[] ancestry = [.. blocks.Select(static b => b.Root).Reverse(), chain.AnchorRoot];
+        int walked = 0;
+        IEnumerable<Hash256> Ancestors(Hash256 root)
+        {
+            foreach (Hash256 ancestor in ancestry.SkipWhile(r => r != root))
+            {
+                walked++;
+                yield return ancestor;
+            }
+        }
+
+        WarningCapture warnings = new();
+        PostStateCache states = new(store, chain.Spec, chain.AnchorRoot, chain.Anchor.AnchorState, logManager: new OneLoggerLogManager(new ILogger(warnings)),
+            pubkeys: chain.Anchor.Pubkeys, ancestors: Ancestors);
+
+        long started = Stopwatch.GetTimestamp();
+        BeaconStateFulu? regenerated = states.GetBlockState(blocks[^1].Root);
+        double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        if (!beyondBound) TestContext.Out.WriteLine($"Fulu regeneration: {count} blocks in {elapsedMs:F1} ms, {elapsedMs / count:F2} ms per block, {chain.Anchor.AnchorState.Validators!.Length} validators");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(regenerated is null ? null : SszRoots.HashTreeRoot(regenerated), Is.EqualTo(beyondBound ? null : blocks[^1].Block.Message!.StateRoot));
+            Assert.That(walked, Is.LessThanOrEqualTo((int)chain.Spec.SlotsPerEpoch + 1), "the ancestor walk stops at the bound, before reading any more stored states");
+            Assert.That(warnings.Warnings, beyondBound ? Has.One.Contains($"no ancestor state is held within {chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
+        }
+    }
+
+    /// <summary>
+    /// Regeneration replays at most one epoch, so the checkpoint block state of each epoch must outlive the small LRU that
+    /// fork branch imports churn: the epoch's first block, or the block before its start slot when that slot is empty,
+    /// on the followed lineage or on a branch.
+    /// </summary>
+    [Test]
+    public void Checkpoint_block_state_outlives_branch_churn_so_regeneration_stays_within_one_epoch([Values] bool onBranch, [Values] bool startSlotEmpty, [Values] bool gossip)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ulong epochStart = chain.Spec.SlotsPerEpoch;
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (epochStart + 16) * chain.Spec.SecondsPerSlot));
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        store.PutState(chain.AnchorRoot, BeaconStateFulu.Encode(chain.Anchor.AnchorState));
+        WarningCapture warnings = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, importClock: new SlotClock(chain.Spec, timestamper), store: store);
+        byte fill = 0;
+        UnsignedChain.ChainBlock Extend(Hash256 parentRoot, ulong slot) => chain.Extend(parentRoot, slot, payloadHashByte: ++fill, signed: gossip);
+        BlockImportResult Import(UnsignedChain.ChainBlock block) => importer.Import(block.Block, block.Root, verifySignatures: gossip);
+        List<BlockImportResult> fixture = [];
+        // Built before any import: a trusted import advances the anchor's state in place as the lineage.
+        UnsignedChain.ChainBlock[] churn = [.. Enumerable.Range(0, 9).Select(_ => Extend(chain.AnchorRoot, epochStart + 5))];
+
+        // A dense run of blocks below the boundary, so the nearest state held without a checkpoint state is the anchor, more than an epoch below.
+        Hash256 forkPoint = chain.AnchorRoot;
+        for (ulong slot = 1; slot <= epochStart - 3; slot++)
+        {
+            UnsignedChain.ChainBlock block = Extend(forkPoint, slot);
+            fixture.Add(Import(block));
+            forkPoint = block.Root;
+        }
+
+        if (onBranch)
+        {
+            // The lineage follows another chain through the boundary, so every block below is imported as a fork branch.
+            Hash256 lineageTip = forkPoint;
+            for (ulong slot = epochStart - 2; slot <= epochStart + 8; slot++)
+            {
+                UnsignedChain.ChainBlock block = Extend(lineageTip, slot);
+                fixture.Add(Import(block));
+                lineageTip = block.Root;
+            }
+        }
+
+        Dictionary<ulong, UnsignedChain.ChainBlock> segment = [];
+        Hash256 tip = forkPoint;
+        for (ulong slot = epochStart - 2; slot <= epochStart + 4; slot++)
+        {
+            if (startSlotEmpty && slot == epochStart)
+            {
+                continue;
+            }
+
+            segment[slot] = Extend(tip, slot);
+            fixture.Add(Import(segment[slot]));
+            tip = segment[slot].Root;
+        }
+
+        // Fork branch imports off the target's ancestry retain every post-state in the LRU, pushing out every state retained before them.
+        fixture.AddRange(churn.Select(Import));
+
+        Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+        BlockImportResult result = Import(Extend(segment[epochStart + 3].Root, epochStart + 5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a mid-epoch parent is regenerated from its epoch's checkpoint block state");
+            Assert.That(warnings.Warnings, Has.None.Contains("Cannot regenerate"));
+        }
     }
 
     /// <summary>

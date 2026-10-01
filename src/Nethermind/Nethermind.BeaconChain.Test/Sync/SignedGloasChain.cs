@@ -63,10 +63,11 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
         public ForkedSignedBeaconBlock Forked => new ForkedSignedBeaconBlock.OfFulu(Signed);
     }
 
-    /// <summary>Builds the Fulu block at <paramref name="slot"/> (before the fork) on the anchor, with an empty payload that builds on the anchor's.</summary>
-    public FuluBlock NextFulu(ulong slot)
+    /// <summary>Builds the Fulu block at <paramref name="slot"/> (before the fork) on <paramref name="parent"/>, or on the anchor when it is <c>null</c>, with a payload that builds on the parent's.</summary>
+    public FuluBlock NextFulu(ulong slot, FuluBlock? parent = null, byte blockHashFill = 0xE0)
     {
-        BeaconStateFulu preState = AnchorState.Clone();
+        BeaconStateFulu parentState = parent?.PostState ?? AnchorState;
+        BeaconStateFulu preState = parentState.Clone();
         SlotProcessing.ProcessSlots(preState, slot, new EpochCache());
         ulong epoch = preState.GetCurrentEpoch();
         BeaconBlock message = TestChain.CreateBlock(slot, SszRoots.HashTreeRoot(preState.LatestBlockHeader!)).Message!;
@@ -79,10 +80,10 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
         payload.ParentHash = preState.LatestExecutionPayloadHeader!.BlockHash;
         payload.PrevRandao = preState.GetRandaoMix(epoch);
         payload.Timestamp = preState.GenesisTime + slot * Presets.SecondsPerSlot;
-        payload.BlockHash = Hash(0xE0);
+        payload.BlockHash = Hash(blockHashFill);
         Hash256 proposerDomain = preState.GetDomain(DomainType.BeaconProposer, epoch);
 
-        BeaconStateFulu postState = AnchorState.Clone();
+        BeaconStateFulu postState = parentState.Clone();
         FuluStateTransition.Apply(postState, new SignedBeaconBlock { Message = message }, new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), Spec, validateResult: false, verifySignatures: false);
         message.StateRoot = SszRoots.HashTreeRoot(postState);
         Hash256 root = SszRoots.HashTreeRoot(message);

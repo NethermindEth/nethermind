@@ -156,7 +156,7 @@ public sealed class BlockImporter : IBlockImporter
                 break;
             case (ForkedBeaconState.OfGloas { State: BeaconStateGloas gloasState }, ForkedSignedBeaconBlock.OfGloas { Block: SignedBeaconBlockGloas gloasBlock }):
                 // specs/gloas/fork-choice.md get_forkchoice_store: block_states holds the anchor state, the finalized checkpoint's.
-                _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized);
+                _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
                 _states.PinGloas(anchorRoot, gloasState);
                 _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states);
                 _gloasAnchorRoot = anchorRoot;
@@ -375,7 +375,9 @@ public sealed class BlockImporter : IBlockImporter
         }
 
         bool onLineage = parentRoot == _states.LineageRoot;
-        BeaconStateFulu? parentState = onLineage ? _states.LineageState : _states.GetBlockState(parentRoot)?.Clone();
+        // Kept frozen: the body operations below may load states that push it out of the retained tiers before it is marked.
+        BeaconStateFulu? heldParent = onLineage ? null : _states.GetBlockState(parentRoot);
+        BeaconStateFulu? parentState = onLineage ? _states.LineageState : heldParent?.Clone();
         if (parentState is null)
         {
             // The parent is known to fork choice but its post-state fell out of all retention
@@ -387,6 +389,8 @@ public sealed class BlockImporter : IBlockImporter
         ulong parentEpoch = parentState.GetCurrentEpoch();
         ulong blockEpoch = BeaconStateAccessors.ComputeEpochAtSlot(block.Slot);
         bool crossesEpoch = blockEpoch > parentEpoch;
+        // specs/phase0/fork-choice.md get_checkpoint_block: the parent is one when it sits at an epoch start slot or this block skips one.
+        bool parentIsCheckpoint = parentState.Slot % _spec.SlotsPerEpoch == 0 || blockEpoch > parentEpoch + (block.Slot % _spec.SlotsPerEpoch == 0 ? 1UL : 0UL);
 
         BeaconStateFulu state;
         EpochCache cache;
@@ -398,13 +402,13 @@ public sealed class BlockImporter : IBlockImporter
             cache = _lineageCache;
             if (!verifySignatures && (crossesEpoch || _lineageBlockStartsEpoch))
             {
-                _states.Retain(parentRoot, parentState.Clone());
+                _states.Retain(parentRoot, parentState.Clone(), parentIsCheckpoint);
             }
         }
         else
         {
             if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state and without the cached hasher: the lineage is at {_states.LineageRoot}");
-            state = parentState; // CopyBlockState already cloned
+            state = parentState; // already a copy
             cache = new EpochCache(); // fork branch: stateless hasher, fresh balance memo
         }
 
@@ -479,7 +483,7 @@ public sealed class BlockImporter : IBlockImporter
             if (verifySignatures && (crossesEpoch || _lineageBlockStartsEpoch))
             {
                 // The pre-clone original is the parent post-state, retained as-is.
-                _states.Retain(parentRoot, parentState);
+                _states.Retain(parentRoot, parentState, parentIsCheckpoint);
             }
 
             _states.SetLineage(blockRoot, state);
@@ -489,6 +493,10 @@ public sealed class BlockImporter : IBlockImporter
         else
         {
             _states.Retain(blockRoot, state);
+            if (parentIsCheckpoint)
+            {
+                _states.Retain(parentRoot, heldParent!, checkpointCandidate: true);
+            }
         }
 
         return BlockImportResult.Imported;
@@ -510,15 +518,17 @@ public sealed class BlockImporter : IBlockImporter
 
         ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
         BeaconStateGloas? gloasParent = null;
+        BeaconStateFulu? fuluParent = null;
         ForkedBeaconState? parentState;
         if (SignedBeaconBlockCodec.IsGloasSlot(parentSlot, _spec))
         {
-            gloasParent = _states.GetGloasBlockState(parentRoot);
+            gloasParent = _states.GetOrRegenerateGloasBlockState(parentRoot);
             parentState = gloasParent is null ? null : new ForkedBeaconState.OfGloas(gloasParent.Clone());
         }
         else
         {
-            parentState = _states.GetBlockState(parentRoot)?.Clone() is { } fuluParent ? new ForkedBeaconState.OfFulu(fuluParent) : null;
+            fuluParent = _states.GetBlockState(parentRoot);
+            parentState = fuluParent is null ? null : new ForkedBeaconState.OfFulu(fuluParent.Clone());
         }
 
         if (parentState is null)
@@ -569,10 +579,18 @@ public sealed class BlockImporter : IBlockImporter
         // Only after OnBlock: the Gloas tier must hold states of blocks fork choice accepted (the spec's store.block_states).
         bool startsEpoch = block.Slot % _spec.SlotsPerEpoch == 0;
         _states.RetainGloas(blockRoot, postState, checkpointCandidate: startsEpoch);
-        if (gloasParent is not null && _spec.GetEpoch(block.Slot) > _spec.GetEpoch(parentSlot) + (startsEpoch ? 1UL : 0UL))
+        // The parent is the checkpoint block of every epoch whose start slot this block skipped.
+        if (_spec.GetEpoch(block.Slot) > _spec.GetEpoch(parentSlot) + (startsEpoch ? 1UL : 0UL))
         {
-            // The parent is the checkpoint block of every epoch whose start slot this block skipped.
-            _states.RetainGloas(parentRoot, gloasParent, checkpointCandidate: true);
+            if (gloasParent is not null)
+            {
+                _states.RetainGloas(parentRoot, gloasParent, checkpointCandidate: true);
+            }
+            else if (fuluParent is not null)
+            {
+                // The live lineage state advances in place, so it is retained as a copy.
+                _states.Retain(parentRoot, parentRoot == _states.LineageRoot ? fuluParent.Clone() : fuluParent, checkpointCandidate: true);
+            }
         }
 
         ApplyBodyOperations(block.Body!, blockRoot);
@@ -626,7 +644,7 @@ public sealed class BlockImporter : IBlockImporter
     {
         BeaconBlockGloas block = signedBlock.Message!;
         // A full parent whose payload is unverified is a Gloas block: a known Fulu block counts as verified.
-        if (_states.GetGloasBlockState(ancestorRoot) is not { } ancestorState)
+        if (_states.GetOrRegenerateGloasBlockState(ancestorRoot) is not { } ancestorState)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {block.Slot}: the post-state of its ancestor {ancestorRoot} is no longer retained");
             return BlockImportResult.UnknownParent;
