@@ -45,20 +45,21 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
     public string Id => "/eth2/beacon_chain/req/data_column_sidecars_by_range/1/ssz_snappy";
 
     /// <exception cref="ArgumentOutOfRangeException">The columns are empty or too many; or, for a Gloas dial, the window is empty, runs past the last slot or starts before the Gloas fork.</exception>
-    public async Task<ForkedDataColumnSidecars> DialAsync(IChannel downChannel, ISessionContext context, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest> dial) =>
-        dial.Gloas
-            ? new ForkedDataColumnSidecars([], await DialGloasAsync(downChannel, dial.Request))
-            : new ForkedDataColumnSidecars(await DialFuluAsync(downChannel, dial.Request, dial.OnSidecar), []);
+    public async Task<ForkedDataColumnSidecars> DialAsync(IChannel downChannel, ISessionContext context, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest> dial)
+    {
+        using RequestTiming.Exchange exchange = RequestTiming.Open(dial.Request);
+        RequestTiming? timing = exchange.Timing;
+        return dial.Gloas
+            ? new ForkedDataColumnSidecars([], await DialGloasAsync(downChannel, dial.Request, timing))
+            : new ForkedDataColumnSidecars(await DialFuluAsync(downChannel, dial.Request, dial.OnSidecar, timing), []);
+    }
 
-    private async Task<IReadOnlyList<DataColumnSidecar>> DialFuluAsync(IChannel downChannel, DataColumnSidecarsByRangeRequest request, Action<DataColumnSidecar>? onSidecar)
+    private async Task<IReadOnlyList<DataColumnSidecar>> DialFuluAsync(IChannel downChannel, DataColumnSidecarsByRangeRequest request, Action<DataColumnSidecar>? onSidecar, RequestTiming? timing)
     {
         int requestedColumns = ValidateRequestedColumns(request.Columns, nameof(request));
 
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using (CancellationTokenSource cts = StartTimeout(RespTimeout))
-        {
-            await WriteRequestAndEofAsync(downChannel, stream, DataColumnSidecarsByRangeRequest.Encode(request), cts.Token);
-        }
+        await WriteRequestAndEofAsync(downChannel, stream, DataColumnSidecarsByRangeRequest.Encode(request), RespTimeout);
 
         HashSet<ulong> requestedColumnSet = [.. request.Columns!];
         return await ReadSidecarChunksAsync(
@@ -70,7 +71,8 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
             {
                 ThrowIfNotRequested(request.StartSlot, request.Count, requestedColumnSet, sidecar.SignedBlockHeader!.Message!.Slot, sidecar.Index);
                 onSidecar?.Invoke(sidecar);
-            });
+            },
+            timing);
     }
 
     /// <summary>
@@ -89,7 +91,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         return budget < MaxResponseBudget ? budget : MaxResponseBudget;
     }
 
-    private async Task<IReadOnlyList<DataColumnSidecarGloas>> DialGloasAsync(IChannel downChannel, DataColumnSidecarsByRangeRequest request)
+    private async Task<IReadOnlyList<DataColumnSidecarGloas>> DialGloasAsync(IChannel downChannel, DataColumnSidecarsByRangeRequest request, RequestTiming? timing)
     {
         int requestedColumns = ValidateRequestedColumns(request.Columns, nameof(request));
         if (request.Count == 0 || request.Count - 1 > ulong.MaxValue - request.StartSlot || Spec.GetEpoch(request.StartSlot) < Spec.GloasForkEpoch)
@@ -98,12 +100,9 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         }
 
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using (CancellationTokenSource cts = StartTimeout(RespTimeout))
-        {
-            await WriteRequestAndEofAsync(downChannel, stream, DataColumnSidecarsByRangeRequest.Encode(request), cts.Token);
-        }
+        await WriteRequestAndEofAsync(downChannel, stream, DataColumnSidecarsByRangeRequest.Encode(request), RespTimeout);
 
-        IReadOnlyList<DataColumnSidecarGloas> sidecars = await ReadGloasSidecarChunksAsync(stream, MaxSidecars(request.Count, requestedColumns), Id);
+        IReadOnlyList<DataColumnSidecarGloas> sidecars = await ReadGloasSidecarChunksAsync(stream, MaxSidecars(request.Count, requestedColumns), Id, timing: timing);
 
         HashSet<ulong> requestedColumnSet = [.. request.Columns!];
         foreach (DataColumnSidecarGloas sidecar in sidecars)

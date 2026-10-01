@@ -66,6 +66,7 @@ public class PeerRequestFailureTests
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, hangable: true);
         fixture.Config.FaultDisconnectsBeforeBan = 1;
+        fixture.CountTimeoutsAsDrops();
         fixture.Fail(violated ? PeerFailureReason.ProtocolViolation : PeerFailureReason.RequestFailed, Limit - 1);
         string peerId = fixture.Manager.Peers.Single().PeerId;
         fixture.StopAnswering();
@@ -77,6 +78,46 @@ public class PeerRequestFailureTests
             Assert.That(fixture.Manager.PeerCount, Is.EqualTo(0), "the failure limit drops the peer either way");
             Assert.That(fixture.Manager.IsBannedForTest(peerId), Is.EqualTo(violated), "silence alone must not ban, a violation in the run must");
         }
+    }
+
+    // A lone peer that stops answering cannot be told from this node stalling, so its health check timeout is not counted.
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task A_health_check_that_times_out_while_nothing_else_was_answered_is_not_counted(CancellationToken token)
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(token, hangable: true);
+        fixture.Fail(PeerFailureReason.RequestFailed, 3);
+        fixture.StopAnswering();
+
+        await fixture.Manager.RunMaintenanceRoundAsync(token);
+
+        Assert.That(PeerManager.ConsecutiveFailuresForTest(fixture.Peer), Is.EqualTo(3));
+    }
+
+    // Kept below the peer floor rather than dropped, but not handed out while its health checks fail.
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task A_silent_peer_kept_at_the_peer_floor_is_out_of_selection(CancellationToken token)
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(token, hangable: true);
+        fixture.Manager.CountEveryTimeoutForTest();
+        fixture.Fail(PeerFailureReason.RequestFailed, Limit - 1);
+        bool selectableBefore = fixture.IsSelectable;
+        fixture.StopAnswering();
+
+        await fixture.Manager.RunMaintenanceRoundAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(selectableBefore, Is.True, "test setup: below the request-failure limit");
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1), "one connected peer is below the floor");
+            Assert.That(fixture.IsSelectable, Is.False);
+        }
+
+        fixture.ResumeAnswering();
+        await fixture.Manager.RunMaintenanceRoundAsync(token);
+
+        Assert.That(fixture.IsSelectable, Is.True, "a passing health check restores selection");
     }
 
     [Test]
@@ -94,6 +135,7 @@ public class PeerRequestFailureTests
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, hangable: true);
         fixture.Config.FaultDisconnectsBeforeBan = 1;
+        fixture.CountTimeoutsAsDrops();
         string peerId = fixture.Manager.Peers.Single().PeerId;
         fixture.Break();
         await fixture.Manager.RunMaintenanceRoundAsync(token);
@@ -296,6 +338,8 @@ public class PeerRequestFailureTests
         /// <summary>Makes the server's status answer block, so the client's requests to it time out.</summary>
         public void StopAnswering() => _hang!.Hang();
 
+        public void ResumeAnswering() => _hang!.Release();
+
         /// <summary>Makes the server's status answer fail with an error instead of a reply.</summary>
         public void Break() => _hang!.Break();
 
@@ -320,6 +364,13 @@ public class PeerRequestFailureTests
             Assert.That(await fixture.Manager.TryAddPeerAsync(LoopbackAddress(fixture._server.P2P), token), Is.True);
             fixture.Peer = fixture.Manager.GetBestPeers(0).Single();
             return fixture;
+        }
+
+        /// <summary>A lone silent peer is otherwise kept: below the peer floor, and with no other answer its silence could be this node's stall.</summary>
+        public void CountTimeoutsAsDrops()
+        {
+            Config.MinPeerCount = 0;
+            Manager.CountEveryTimeoutForTest();
         }
 
         public void Fail(PeerFailureReason reason, int times)

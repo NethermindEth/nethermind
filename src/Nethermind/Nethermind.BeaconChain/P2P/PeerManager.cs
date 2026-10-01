@@ -4,12 +4,15 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
@@ -86,6 +89,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly BeaconDiscovery? _discovery;
     private readonly INodeColumnCustodySource _localCustody;
     private readonly ITimestamper _timestamper;
+
+    // Stopwatch timestamp of the latest request of ours, to any peer, that was answered.
+    private long _lastAnswerAt;
 
     // Replaced and completed whenever a sampled column is left without a connected custodian, to wake the admission wait.
     private TaskCompletionSource _custodyShortfall = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -531,7 +537,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         long now = _timestamper.UtcNowOffset.UtcTicks;
-        // A status older than the chain's known slot that could not be refreshed does not show the peer behind (phase0/p2p-interface.md Status).
         bool offerStale = best.Count == 0 && stale.Count > 0;
         if (!offerStale)
         {
@@ -541,26 +546,35 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         if (noStatus + behind + failing + (offerStale ? stale.Count : 0) > 0 && _logger.IsDebug) _logger.Debug($"Sync peers for head slot {minHeadSlot}: {best.Count} usable; left out {noStatus} without status, {behind} behind, {failing} at the request-failure limit{(offerStale ? $"; offering {stale.Count} whose status predates slot {ahead!.Slot}" : "")}");
         if (offerStale)
         {
-            return OrderForSelection(stale, peer => peer.IsCoolingDown(now), static peer => peer.HeadSlot);
+            return OrderForSelection(stale, peer => peer.IsCoolingDown(now), static peer => peer.RequestsInFlight, static peer => peer.HeadSlot);
         }
 
-        return OrderForSelection(best, peer => peer.IsCoolingDown(now), static peer => peer.HeadSlot);
+        return OrderForSelection(best, peer => peer.IsCoolingDown(now), static peer => peer.RequestsInFlight, static peer => peer.HeadSlot);
     }
 
-    /// <summary>Orders peers that did not fail a request recently before those that did, then by head slot, best first.</summary>
-    /// <remarks>Each key is read once per peer before sorting: a failure or status that lands mid-sort would make a live comparator inconsistent, and the sort throws on that.</remarks>
-    internal static T[] OrderForSelection<T>(IReadOnlyList<T> peers, Func<T, bool> isCoolingDown, Func<T, ulong> headSlot)
+    /// <summary>Orders peers that did not fail a request recently before those that did, then the least busy first, then by head slot, best first.</summary>
+    /// <remarks>
+    /// Each key is read once per peer before sorting: a failure or status that lands mid-sort would make a live comparator inconsistent, and the sort throws on that.
+    /// Requests started one after another then go to different peers, where each peer takes at most <see cref="ReqRespProtocolBase.MaxConcurrentRequests"/> of a protocol at once.
+    /// </remarks>
+    internal static T[] OrderForSelection<T>(IReadOnlyList<T> peers, Func<T, bool> isCoolingDown, Func<T, int> requestsInFlight, Func<T, ulong> headSlot)
     {
-        (bool Cooling, ulong HeadSlot, T Peer)[] keyed = new (bool, ulong, T)[peers.Count];
+        (bool Cooling, int InFlight, ulong HeadSlot, T Peer)[] keyed = new (bool, int, ulong, T)[peers.Count];
         for (int i = 0; i < keyed.Length; i++)
         {
-            keyed[i] = (isCoolingDown(peers[i]), headSlot(peers[i]), peers[i]);
+            keyed[i] = (isCoolingDown(peers[i]), requestsInFlight(peers[i]), headSlot(peers[i]), peers[i]);
         }
 
         Array.Sort(keyed, static (a, b) =>
         {
             int byCooldown = a.Cooling.CompareTo(b.Cooling);
-            return byCooldown != 0 ? byCooldown : b.HeadSlot.CompareTo(a.HeadSlot);
+            if (byCooldown != 0)
+            {
+                return byCooldown;
+            }
+
+            int byLoad = a.InFlight.CompareTo(b.InFlight);
+            return byLoad != 0 ? byLoad : b.HeadSlot.CompareTo(a.HeadSlot);
         });
 
         T[] ordered = new T[keyed.Length];
@@ -1286,6 +1300,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
+    /// <remarks>
+    /// A timeout during which no request of ours to any peer was answered is not counted (see <see cref="ManagedPeer.ExchangeAsync{T}"/>).
+    /// At or below <see cref="IBeaconChainConfig.MinPeerCount"/> connected peers a peer that only times out is kept, out of selection at its failure limit,
+    /// unless its session cannot open a channel at all: reconnecting is then the only way to reach it again.
+    /// </remarks>
     private async Task CheckHealthAsync(ManagedPeer peer, CancellationToken token)
     {
         try
@@ -1295,7 +1314,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 return;
             }
 
-            ulong metadataSeqNumber = await _p2p.PingAsync(peer.Session, token);
+            ulong metadataSeqNumber = await peer.ExchangeAsync(RequestName.Ping, _ => _p2p.PingAsync(peer.Session, token), token);
             peer.RecordMessageSent();
             peer.ResetHealthCheckFailures();
             if (peer.MetadataSeqNumber != metadataSeqNumber)
@@ -1305,14 +1324,32 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
+            if (e is ReqRespTimeoutException { NotBlamed: true })
+            {
+                if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check, not counted as no request of ours to any peer was answered meanwhile: {e.Message}");
+                return;
+            }
+
             int failures = peer.RecordFailedHealthCheck(violation: !IsSilence(e));
             if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check ({failures}/{MaxConsecutiveFailures}): {e.Message}");
-            if (failures >= MaxConsecutiveFailures)
+            if (failures < MaxConsecutiveFailures)
             {
-                await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last: {DescribeFailure(e)}", token, unresponsive: IsUnresponsiveFailure(peer, e));
+                return;
             }
+
+            await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last: {DescribeFailure(e)}", token, unresponsive: IsUnresponsiveFailure(peer, e), healthFailure: e);
         }
     }
+
+    /// <summary>Whether a peer at its failure limit for <paramref name="e"/> stays connected with <paramref name="connected"/> peers in the pool.</summary>
+    /// <param name="e">The request failure.</param>
+    /// <param name="connected">The number of connected peers.</param>
+    /// <param name="violated">A reply since the last passing health check failed a content check, so the peer did more than time out.</param>
+    internal bool IsKeptAtPeerFloor(Exception e, int connected, bool violated) =>
+        connected <= _config.MinPeerCount
+        && !violated
+        && e is TimeoutException or OperationCanceledException
+        && e is not ReqRespTimeoutException { ChannelNeverOpened: true };
 
     /// <summary>Reads the peer's custody group count from its <c>MetaData</c> v3 (fulu/p2p-interface.md); on failure the previous custody stands.</summary>
     /// <param name="timeout">Bounds the request; the request timeout when omitted.</param>
@@ -1320,7 +1357,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     {
         try
         {
-            MetaDataV3 metadata = await _p2p.RequestMetaDataAsync(peer.Session, token, timeout);
+            MetaDataV3 metadata = await peer.ExchangeAsync(RequestName.MetaData, _ => _p2p.RequestMetaDataAsync(peer.Session, token, timeout), token);
             peer.RecordMessageSent();
             peer.ApplyMetadata(metadata);
         }
@@ -1340,7 +1377,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         peer.StatusRequestStarted(_timestamper.UtcNowOffset.UtcTicks);
         try
         {
-            status = await _p2p.RequestStatusAsync(peer.Session, token);
+            status = await peer.ExchangeAsync(RequestName.Status, timing => _p2p.RequestStatusAsync(peer.Session, token, timing), token);
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
@@ -1351,7 +1388,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             peer.StatusRequestEnded();
         }
-
         peer.RecordMessageSent();
         if (!status.ForkDigest.AsSpan().SequenceEqual(_statusSource.CurrentStatus.ForkDigest))
         {
@@ -1364,8 +1400,23 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     }
 
     /// <summary>The cause of a failed peer request as an operator reads it: a timeout is named as one, not by its exception type.</summary>
+    /// <remarks>A <see cref="ReqRespTimeoutException"/> already names the bound that fired and what the request was waiting for.</remarks>
     internal static string DescribeFailure(Exception e) =>
-        e is OperationCanceledException or TimeoutException ? "request timed out" : e.Message.Replace("Exception", "failure", StringComparison.Ordinal);
+        e is not ReqRespTimeoutException and (OperationCanceledException or TimeoutException) ? "request timed out" : e.Message.Replace("Exception", "failure", StringComparison.Ordinal);
+
+    /// <summary>The names requests go by in the per-request Debug line and in the concurrency cap, one per protocol ID whatever its fork.</summary>
+    internal static class RequestName
+    {
+        public const string BlocksByRange = "Blocks-by-range";
+        public const string BlocksByRoot = "Blocks-by-root";
+        public const string ColumnsByRange = "Data-column-sidecars-by-range";
+        public const string ColumnsByRoot = "Data-column-sidecars-by-root";
+        public const string EnvelopesByRange = "Execution-payload-envelopes-by-range";
+        public const string EnvelopesByRoot = "Execution-payload-envelopes-by-root";
+        public const string Status = "Status";
+        public const string Ping = "Ping";
+        public const string MetaData = "MetaData";
+    }
 
     /// <summary>A timeout or a lost session says nothing about the content the peer sends; any other failure of a health check is a bad reply.</summary>
     private static bool IsSilence(Exception e) =>
@@ -1376,10 +1427,29 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         IsSilence(e) && !((ManagedPeer)peer).ViolatedProtocolSinceLastHealthyCheck;
 
     /// <param name="unresponsive">The peer only stopped answering: the drop is recorded but earns no step toward a ban.</param>
-    private async Task DropAsync(ManagedPeer peer, ulong reason, string detail, CancellationToken token, bool unresponsive = false)
+    private async Task DropAsync(ManagedPeer peer, ulong reason, string detail, CancellationToken token, bool unresponsive = false, Exception? healthFailure = null)
     {
+        bool kept;
+        lock (_admissionLock)
+        {
+            kept = healthFailure is not null && IsKeptAtPeerFloor(healthFailure, _peers.Count, peer.ViolatedProtocolSinceLastHealthyCheck);
+            if (kept)
+            {
+                peer.HoldOutOfSelection();
+            }
+            else
+            {
+                _peers.TryRemove(peer.Id, out _);
+            }
+        }
+
+        if (kept)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Keeping beacon chain peer {peer.Id} out of selection instead of dropping it: {_peers.Count} peers connected, at most {_config.MinPeerCount}");
+            return;
+        }
+
         if (_logger.IsInfo) _logger.Info($"Dropping beacon chain peer {peer.Id}: {detail}");
-        _peers.TryRemove(peer.Id, out _);
         Metrics.BeaconChainPeersDropped++;
         Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(GoodbyeReasonName(reason)));
         Metrics.BeaconChainPeerCount = _peers.Count;
@@ -1472,9 +1542,26 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     internal static long MessagesSentForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).MessagesSent;
 
-    internal static long FailuresReportedForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).FailuresReported;
+    /// <summary>Internal so a test can hold a peer's requests open on a session it controls, without a status exchange.</summary>
+    internal IBeaconSyncPeer AddPeerForTest(ISession session, string address, StatusMessageV2? status = null)
+    {
+        ManagedPeer peer = new(this, _p2p, address, ExtractPeerId(address), session, PeerDirection.Outbound, null, null);
+        if (status is not null)
+        {
+            peer.SetStatus(status, _timestamper.UtcNowOffset.UtcTicks);
+        }
+        _peers[address] = peer;
+        return peer;
+    }
+
+    internal static int RequestsInFlightForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).RequestsInFlight;
 
     internal static int ConsecutiveFailuresForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).ConsecutiveFailures;
+
+    /// <summary>Internal so a test with one silent peer can count its timeouts, which this node could not tell from its own stall.</summary>
+    internal void CountEveryTimeoutForTest() => Volatile.Write(ref _lastAnswerAt, long.MaxValue);
+
+    internal static long FailuresReportedForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).FailuresReported;
 
     /// <summary>Internal so a test can put an address straight into the "dialing" reservation set,
     /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.
@@ -1503,6 +1590,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private sealed class ManagedPeer(PeerManager manager, BeaconP2P p2p, string address, string peerId, ISession session, PeerDirection direction, string? agentVersion, string? enr) : IBeaconSyncPeer
     {
         private readonly object _requestFailureLock = new();
+        private readonly ConcurrentDictionary<string, SemaphoreSlim> _requestSlots = new(StringComparer.Ordinal);
+        private int _requestsInFlight;
+        private int _unblamedFailures;
+        private int _unblamedInARow;
+        private volatile bool _heldOutOfSelection;
         private int _requestFailures;
         private DateTimeOffset _requestFailuresDecayFrom;
         private long _cooldownUntilTicks;
@@ -1590,7 +1682,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
         }
 
-        public bool IsAtFailureLimit => RequestFailures >= MaxConsecutiveFailures;
+        public bool IsAtFailureLimit => _heldOutOfSelection || RequestFailures >= MaxConsecutiveFailures;
+
+        /// <summary>Keeps a peer that failed its health checks out of selection until one passes, when it is not dropped (see <see cref="IsKeptAtPeerFloor"/>).</summary>
+        public void HoldOutOfSelection() => _heldOutOfSelection = true;
 
         /// <summary>Whether a request of ours failed within <see cref="RequestFailureCooldown"/> of <paramref name="nowTicks"/>. Unlike <see cref="RequestFailures"/>, a served request does not end it.</summary>
         public bool IsCoolingDown(long nowTicks) => nowTicks < Volatile.Read(ref _cooldownUntilTicks);
@@ -1602,6 +1697,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             Interlocked.Exchange(ref _consecutiveFailures, 0);
             Volatile.Write(ref _violatedProtocol, false);
+            _heldOutOfSelection = false;
         }
 
         public void RecordRequestServed()
@@ -1677,60 +1773,142 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public void RecordMessageSent() => Interlocked.Increment(ref _messagesSent);
 
-        private async Task<T> Served<T>(Task<T> request)
+        /// <summary>Requests of ours to this peer that are waiting for a slot or running.</summary>
+        public int RequestsInFlight => Volatile.Read(ref _requestsInFlight);
+
+        /// <summary>Runs one request to this peer once it holds one of the peer's slots for <paramref name="protocol"/>, and logs its timing at Debug when it ends.</summary>
+        /// <remarks>Networking req/resp requesting side limits each protocol to two concurrent requests; a cancelled dial retains its permit until the protocol ends.
+        /// A timeout with no other answer is excused for at most eight consecutive attempts, so a wedged peer can still be reconnected.</remarks>
+        internal async Task<T> ExchangeAsync<T>(string protocol, Func<RequestTiming, Task<T>> request, CancellationToken token)
         {
-            T response = await request;
+            long queuedAt = Stopwatch.GetTimestamp();
+            SemaphoreSlim slots = _requestSlots.GetOrAdd(protocol, static _ => new SemaphoreSlim(ReqRespProtocolBase.MaxConcurrentRequests));
+            Interlocked.Increment(ref _requestsInFlight);
+            try
+            {
+                using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(token, p2p.SessionClosedToken(Session));
+                await slots.WaitAsync(waiting.Token);
+            }
+            catch (Exception e)
+            {
+                Interlocked.Decrement(ref _requestsInFlight);
+                bool disconnected = e is OperationCanceledException && !token.IsCancellationRequested && p2p.SessionClosedToken(Session).IsCancellationRequested;
+                string waitOutcome = disconnected
+                    ? $"peer disconnected after {ReqRespProtocolBase.Seconds(Stopwatch.GetElapsedTime(queuedAt))} waiting for a request slot: its libp2p session closed"
+                    : e is OperationCanceledException && token.IsCancellationRequested ? "cancelled by this node" : DescribeFailure(e);
+                if (manager._logger.IsDebug) manager._logger.Debug($"{protocol} to {Id}: requests in flight {RequestsInFlight}, slot wait {Stopwatch.GetElapsedTime(queuedAt).TotalMilliseconds:F0} ms, request not sent, {waitOutcome}");
+                if (disconnected)
+                {
+                    throw new IOException(waitOutcome, e);
+                }
+
+                throw;
+            }
+
+            long startedAt = Stopwatch.GetTimestamp();
+            TimeSpan slotWait = Stopwatch.GetElapsedTime(queuedAt, startedAt);
+            RequestTiming timing = new();
+            string outcome = "served";
+            try
+            {
+                T response = await request(timing);
+                Volatile.Write(ref manager._lastAnswerAt, Stopwatch.GetTimestamp());
+                Volatile.Write(ref _unblamedInARow, 0);
+                return response;
+            }
+            catch (Exception e)
+            {
+                outcome = e is OperationCanceledException && token.IsCancellationRequested ? "cancelled by this node" : DescribeFailure(e);
+                if (e is ReqRespTimeoutException timeout && Volatile.Read(ref manager._lastAnswerAt) < startedAt
+                    && Interlocked.Increment(ref _unblamedInARow) <= MaxConsecutiveFailures)
+                {
+                    timeout.NotBlamed = true;
+                    outcome += ", not counted against the peer as no request to any peer was answered meanwhile";
+                }
+
+                throw;
+            }
+            finally
+            {
+                if (manager._logger.IsDebug) manager._logger.Debug($"{protocol} to {Id}: requests in flight {RequestsInFlight}, slot wait {slotWait.TotalMilliseconds:F0} ms, {timing}, {outcome}");
+                Task settled = timing.Settled();
+                if (settled.IsCompleted)
+                {
+                    FreeSlot(slots);
+                }
+                else
+                {
+                    _ = settled.ContinueWith(_ => FreeSlot(slots), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                }
+            }
+        }
+
+        /// <summary>Takes the note left by a failed sync request that is not to be counted against this peer; its <see cref="ReportFailure(PeerFailureReason, string?, bool)"/> then does not count.</summary>
+        /// <remarks>Sync reports a failure by its text only, so the note is per peer: with failures of the same peer reported out of order the count stays right but can land on the other failure.</remarks>
+        public bool TryTakeUnblamedFailure()
+        {
+            int unblamed = Volatile.Read(ref _unblamedFailures);
+            while (unblamed > 0)
+            {
+                int seen = Interlocked.CompareExchange(ref _unblamedFailures, unblamed - 1, unblamed);
+                if (seen == unblamed)
+                {
+                    return true;
+                }
+
+                unblamed = seen;
+            }
+
+            return false;
+        }
+
+        private void FreeSlot(SemaphoreSlim slots)
+        {
+            slots.Release();
+            Interlocked.Decrement(ref _requestsInFlight);
+        }
+
+        private async Task<T> Served<T>(string protocol, Func<RequestTiming, Task<T>> request, CancellationToken token)
+        {
+            RecordMessageSent();
+            T response;
+            try
+            {
+                response = await ExchangeAsync(protocol, request, token);
+            }
+            catch (ReqRespTimeoutException e) when (e.NotBlamed)
+            {
+                Interlocked.Increment(ref _unblamedFailures);
+                throw;
+            }
+
             RecordRequestServed();
             return response;
         }
 
-        public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
-        {
-            RecordMessageSent();
-            return await Served(p2p.RequestBlocksByRangeAsync(Session, startSlot, count, token));
-        }
+        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
+            Served(RequestName.BlocksByRange, timing => p2p.RequestBlocksByRangeAsync(Session, startSlot, count, token, timing), token);
 
-        public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token)
-        {
-            RecordMessageSent();
-            return await Served(p2p.RequestBlocksByRootAsync(Session, roots, token));
-        }
+        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
+            Served(RequestName.BlocksByRoot, timing => p2p.RequestBlocksByRootAsync(Session, roots, token, timing), token);
 
-        public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
-        {
-            RecordMessageSent();
-            return await Served(p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token));
-        }
+        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
+            Served(RequestName.ColumnsByRange, timing => p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token, timing), token);
 
-        public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
-        {
-            RecordMessageSent();
-            return await Served(p2p.RequestDataColumnSidecarsByRootAsync(Session, identifiers, token));
-        }
+        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) =>
+            Served(RequestName.ColumnsByRoot, timing => p2p.RequestDataColumnSidecarsByRootAsync(Session, identifiers, token, timing), token);
 
-        public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
-        {
-            RecordMessageSent();
-            return await Served(p2p.RequestGloasDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token));
-        }
+        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
+            Served(RequestName.ColumnsByRange, timing => p2p.RequestGloasDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token, timing), token);
 
-        public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
-        {
-            RecordMessageSent();
-            return await Served(p2p.RequestGloasDataColumnSidecarsByRootAsync(Session, identifiers, token));
-        }
+        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) =>
+            Served(RequestName.ColumnsByRoot, timing => p2p.RequestGloasDataColumnSidecarsByRootAsync(Session, identifiers, token, timing), token);
 
-        public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
-        {
-            RecordMessageSent();
-            return await Served(p2p.RequestExecutionPayloadEnvelopesByRangeAsync(Session, startSlot, count, token));
-        }
+        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
+            Served(RequestName.EnvelopesByRange, timing => p2p.RequestExecutionPayloadEnvelopesByRangeAsync(Session, startSlot, count, token, timing), token);
 
-        public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token)
-        {
-            RecordMessageSent();
-            return await Served(p2p.RequestExecutionPayloadEnvelopesByRootAsync(Session, roots, token));
-        }
+        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token) =>
+            Served(RequestName.EnvelopesByRoot, timing => p2p.RequestExecutionPayloadEnvelopesByRootAsync(Session, roots, token, timing), token);
 
         public void ReportFailure(PeerFailureReason reason, string? detail = null) => ReportFailure(reason, detail, ownRequest: true);
 
@@ -1741,6 +1919,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             if (ownRequest)
             {
                 Volatile.Write(ref _cooldownUntilTicks, (manager._timestamper.UtcNowOffset + RequestFailureCooldown).UtcTicks);
+                if (reason == PeerFailureReason.RequestFailed && TryTakeUnblamedFailure())
+                {
+                    if (manager._logger.IsDebug) manager._logger.Debug($"Beacon chain peer {Id} failed a request, not counted as no request of ours to any peer was answered meanwhile{(detail is null ? "" : $" ({detail})")}");
+                    return;
+                }
             }
 
             // A dead session means every further request would fail, so skip the failure budget and

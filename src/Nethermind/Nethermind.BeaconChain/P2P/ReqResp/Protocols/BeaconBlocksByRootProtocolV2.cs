@@ -36,13 +36,12 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
             throw new ArgumentOutOfRangeException(nameof(request), request.Length, $"Cannot request more than {MaxRequestBlocks} block roots in a single request");
         }
 
+        using RequestTiming.Exchange exchange = RequestTiming.Open(request);
+        RequestTiming? timing = exchange.Timing;
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using (CancellationTokenSource cts = StartTimeout(RespTimeout))
-        {
-            await WriteRequestAndEofAsync(downChannel, stream, BeaconBlocksByRootRequest.Encode(new BeaconBlocksByRootRequest { Roots = request }), cts.Token);
-        }
+        await WriteRequestAndEofAsync(downChannel, stream, BeaconBlocksByRootRequest.Encode(new BeaconBlocksByRootRequest { Roots = request }), RespTimeout);
 
-        IReadOnlyList<ForkedSignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, request.Length, Id);
+        IReadOnlyList<ForkedSignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, request.Length, Id, timing: timing);
         HashSet<Hash256> requestedRoots = [.. request];
         foreach (ForkedSignedBeaconBlock block in blocks)
         {
