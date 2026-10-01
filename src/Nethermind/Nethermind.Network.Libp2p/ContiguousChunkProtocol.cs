@@ -1,17 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Threading.Tasks;
 using Nethermind.Libp2p.Core;
 
 namespace Nethermind.Network.Libp2p;
 
-/// <summary>Sits between yamux and multistream on every yamux channel and hands each received chunk upward as one contiguous segment.</summary>
+/// <summary>Sits between yamux and multistream on every yamux channel and hands each received segment upward as a chunk of its own.</summary>
 /// <remarks>
 /// Nethermind.Libp2p 1.0.0 <c>Channel.ReadAsync</c> keeps only the first segment of every chunk after the first when it gathers an exact
 /// length, and a yamux frame read from Noise arrives as several segments, so a gossip RPC spanning frames reached pubsub truncated and
-/// cost the peer. Copying a multi-segment chunk into one array makes every later chunk a single segment. Data sent down passes unchanged.
+/// cost the peer. Writing each segment upward on its own makes every chunk a single segment without a copy; a frame can be megabytes, so a
+/// copy would put one large object heap array per frame on range sync. Data sent down passes unchanged.
 /// </remarks>
 public sealed class ContiguousChunkProtocol : IConnectionProtocol
 {
@@ -28,8 +30,8 @@ public sealed class ContiguousChunkProtocol : IConnectionProtocol
     /// closed side wrote before its close is passed on first.</remarks>
     internal static async Task RelayAsync(IChannel lower, IChannel upper)
     {
-        Task upward = PumpAsync(lower, upper, contiguous: true);
-        Task downward = PumpAsync(upper, lower, contiguous: false);
+        Task upward = PumpAsync(lower, upper, bySegment: true);
+        Task downward = PumpAsync(upper, lower, bySegment: false);
         Task pumps = Task.WhenAll(upward, downward);
         Task lowerClosed = ClosedAsync(lower);
         Task upperClosed = ClosedAsync(upper);
@@ -46,7 +48,7 @@ public sealed class ContiguousChunkProtocol : IConnectionProtocol
 
     private static async Task ClosedAsync(IChannel channel) => await channel;
 
-    private static async Task PumpAsync(IChannel from, IChannel to, bool contiguous)
+    private static async Task PumpAsync(IChannel from, IChannel to, bool bySegment)
     {
         while (true)
         {
@@ -65,12 +67,29 @@ public sealed class ContiguousChunkProtocol : IConnectionProtocol
                 return;
             }
 
-            ReadOnlySequence<byte> data = contiguous && !read.Data.IsSingleSegment ? new ReadOnlySequence<byte>(read.Data.ToArray()) : read.Data;
-            if (await to.WriteAsync(data) != IOResult.Ok)
+            if (!await WriteAsync(to, read.Data, bySegment))
             {
                 await from.CloseAsync();
                 return;
             }
         }
+    }
+
+    private static async ValueTask<bool> WriteAsync(IChannel to, ReadOnlySequence<byte> data, bool bySegment)
+    {
+        if (!bySegment || data.IsSingleSegment)
+        {
+            return await to.WriteAsync(data) == IOResult.Ok;
+        }
+
+        foreach (ReadOnlyMemory<byte> segment in data)
+        {
+            if (await to.WriteAsync(new ReadOnlySequence<byte>(segment)) != IOResult.Ok)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
