@@ -10,7 +10,6 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -197,7 +196,7 @@ namespace Nethermind.TxPool.Test.Collections
             {
                 Assert.That(snapshot.Count, Is.EqualTo(count));
                 Assert.That(snapshot.IsReadOnly, Is.True);
-                Assert.That(snapshot, Is.SequenceEqualTo(entries.Take(count)));
+                Assert.That(snapshot.ToArray(), Is.EqualTo(entries.Take(count)));
                 Assert.That(readOnly.Keys, Is.EqualTo(entries.Take(count).Select(entry => entry.Key)));
                 Assert.That(readOnly.Values, Is.EqualTo(entries.Take(count).Select(entry => entry.Value)));
                 Assert.That(copy.Skip(1).Take(count), Is.EqualTo(entries.Take(count)));

@@ -164,7 +164,7 @@ public partial class FrameTxProcessorTests
             {
                 ParityTraceAction frame = root.Subtraces[i];
                 bool isStatic = frames[i].Mode is FrameMode.Verify or FrameMode.PostTx;
-                Assert.That(frame.TraceAddress.AsSpan(), Is.SequenceEqualTo(new[] { i }), $"frame {i} address");
+                Assert.That(frame.TraceAddress, Is.SequenceEqualTo(new[] { i }), $"frame {i} address");
                 Assert.That(frame.CallType, Is.EqualTo(isStatic ? "staticcall" : "call"), $"frame {i} call type");
                 Assert.That(frame.From, Is.EqualTo(frames[i].Mode == FrameMode.Sender ? Sender : Eip8141Constants.EntryPointAddress), $"frame {i} from");
                 Assert.That(frame.To, Is.EqualTo(frames[i].Target ?? Sender), $"frame {i} to");

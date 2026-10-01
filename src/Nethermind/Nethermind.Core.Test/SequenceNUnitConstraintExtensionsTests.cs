@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -83,6 +84,26 @@ public class SequenceNUnitConstraintExtensionsTests
     {
         Assert.That(AssertFails(new byte[] { 1, 9, 3 }, Is.SequenceEqualTo(Expected.Select(static b => b))), Does.Contain("Values differ at index [1]"));
         Assert.That(AssertFails(new byte[] { 1, 9, 3 }.Select(static b => b), Is.SequenceEqualTo(Expected)), Does.Contain("Values differ at index [1]"));
+    }
+
+    [Test]
+    public void Capped_arrays_and_pooled_lists_are_compared_directly()
+    {
+        CappedArray<byte> capped = new([1, 2, 3, 4], 3);
+        using ArrayPoolList<byte> pooled = new(Expected);
+        using ArrayPoolListRef<byte> pooledRef = new(Expected);
+
+        Assert.That(capped, Is.SequenceEqualTo(Expected));
+        Assert.That(pooled, Is.SequenceEqualTo(Expected));
+        Assert.That(pooledRef, Is.SequenceEqualTo(Expected));
+        Assert.That(Expected, Is.SequenceEqualTo(pooled));
+        Assert.That(AssertFails(new CappedArray<byte>([1, 9, 3]), Is.SequenceEqualTo(Expected)), Does.Contain("Values differ at index [1]"));
+        Exception? refFailure = Assert.Throws<AssertionException>(static () =>
+        {
+            using ArrayPoolListRef<byte> mismatched = new([1, 9, 3]);
+            Assert.That(mismatched, Is.SequenceEqualTo(Expected));
+        });
+        Assert.That(refFailure!.Message, Does.Contain("Values differ at index [1]"));
     }
 
     [Test]

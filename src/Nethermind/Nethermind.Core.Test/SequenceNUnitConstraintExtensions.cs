@@ -6,9 +6,11 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 
@@ -39,6 +41,12 @@ public static class SequenceNUnitConstraintExtensions
             if (!expression.Matches(actual))
                 Assert.That(actual.ToArray(), expression, message, actualExpression, constraintExpression);
         }
+
+        /// <remarks><see cref="Assert.That{TActual}(TActual, IResolveConstraint, NUnitString, string, string)"/> cannot take a ref struct.</remarks>
+        public static void That<T>(ArrayPoolListRef<T> actual, SequenceEqualConstraint<T> expression, string? message = null,
+            [CallerArgumentExpression(nameof(actual))] string actualExpression = "",
+            [CallerArgumentExpression(nameof(expression))] string constraintExpression = "") =>
+            Assert.That(actual.AsSpan(), expression, message, actualExpression, constraintExpression);
     }
 }
 
@@ -55,6 +63,16 @@ public sealed class SequenceEqualConstraint<T> : Constraint
 {
     // NUnit may compare other types structurally rather than by Equals, e.g. nested sequences or IStructuralEquatable.
     private static readonly bool ElementsCompareByEquals = typeof(T).IsPrimitive || typeof(T).IsEnum;
+
+    // CappedArray<T> requires T : struct, which this T is not constrained to, so it is recognized by type and read through a delegate made for T.
+    private static readonly Type? CappedArrayType = typeof(T).IsValueType && !typeof(T).IsByRefLike && Nullable.GetUnderlyingType(typeof(T)) is null
+        ? typeof(CappedArray<>).MakeGenericType(typeof(T))
+        : null;
+
+    private static readonly Func<object, ReadOnlyMemory<T>>? CappedArrayAsMemory = CappedArrayType is null
+        ? null
+        : typeof(SequenceEqualConstraint<T>).GetMethod(nameof(AsMemory), BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(typeof(T)).CreateDelegate<Func<object, ReadOnlyMemory<T>>>();
 
     private readonly ReadOnlyMemory<T> _expectedMemory;
     private readonly IEnumerable<T>? _expectedSequence;
@@ -86,15 +104,17 @@ public sealed class SequenceEqualConstraint<T> : Constraint
         {
             null => _expectedMemory.Span,
             List<T> list => CollectionsMarshal.AsSpan(list),
+            ArrayPoolList<T> pooled => pooled.AsSpan(),
             _ => default
         };
-        return _expectedRead is not null || _expectedSequence is null or List<T>;
+        return _expectedRead is not null || _expectedSequence is null or List<T> or ArrayPoolList<T>;
     }
 
     public override ConstraintResult ApplyTo<TActual>(TActual actual)
     {
         // A default segment has no contents to compare, though AsSpan reads it as empty.
         if (actual is ArraySegment<T> { Array: null }) return new ConstraintResult(this, actual, false);
+        if (CappedArrayType is not null && actual?.GetType() == CappedArrayType) return ApplyTo(CappedArrayAsMemory!(actual));
 
         T[]? actualRead = null;
         bool matches = ElementsCompareByEquals && actual switch
@@ -104,6 +124,7 @@ public sealed class SequenceEqualConstraint<T> : Constraint
             Memory<T> memory => Matches(memory.Span),
             ArraySegment<T> segment => Matches(segment.AsSpan()),
             List<T> list => Matches(CollectionsMarshal.AsSpan(list)),
+            ArrayPoolList<T> pooled => Matches(pooled.AsSpan()),
             ReadOnlySequence<T> sequence => Matches(sequence),
             MemoryStream stream => stream.TryGetBuffer(out ArraySegment<byte> buffer) && buffer is ArraySegment<T> segment && Matches(segment.AsSpan()),
             IEnumerable<T> sequence => Matches(sequence, out actualRead),
@@ -133,6 +154,12 @@ public sealed class SequenceEqualConstraint<T> : Constraint
         bool matches = MatchesPrefix(enumerator, actual, out int read, out bool stoppedOnElement);
         if (!matches) _expectedRead = Rebuild(actual[..read], enumerator, stoppedOnElement);
         return matches;
+    }
+
+    private static ReadOnlyMemory<TElement> AsMemory<TElement>(object cappedArray) where TElement : struct
+    {
+        CappedArray<TElement> array = (CappedArray<TElement>)cappedArray;
+        return new ReadOnlyMemory<TElement>(array.UnderlyingArray, 0, array.Length);
     }
 
     private bool Matches(in ReadOnlySequence<T> actual)

@@ -78,7 +78,7 @@ namespace Nethermind.Core.Test.Collections
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(journalSet, Is.EqualTo(insertionOrder), "enumeration");
-                Assert.That(journalSet, Is.SequenceEqualTo(insertionOrder), "CopyTo");
+                Assert.That(journalSet.ToArray(), Is.EqualTo(insertionOrder), "CopyTo");
             }
         }
 

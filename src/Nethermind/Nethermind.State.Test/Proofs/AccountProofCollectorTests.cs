@@ -680,7 +680,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
                 node.ResolveNode(null, TreePath.Empty);
                 Assert.That(node.IsBranch, Is.True);
-                Assert.That(FindEmbeddedLeaf(node, Keccak.Compute(indexBytes).Bytes).Value.AsSpan(), Is.SequenceEqualTo(new byte[] { 1 }));
+                Assert.That(FindEmbeddedLeaf(node, Keccak.Compute(indexBytes).Bytes).Value, Is.SequenceEqualTo(new byte[] { 1 }));
             }
         }
 
@@ -785,7 +785,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                         }
                     }
 
-                    Assert.That(node.Value.AsSpan(), Is.SequenceEqualTo(new byte[] { 1 }));
+                    Assert.That(node.Value, Is.SequenceEqualTo(new byte[] { 1 }));
                 }
             }
         }
