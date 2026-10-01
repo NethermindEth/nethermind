@@ -23,9 +23,21 @@ public sealed class ContiguousChunkProtocol : IConnectionProtocol
     public Task DialAsync(IChannel downChannel, IConnectionContext context) => RelayAsync(downChannel, context.Upgrade());
 
     /// <summary>Relays both directions between <paramref name="lower"/> (yamux) and <paramref name="upper"/> (multistream) until both have ended.</summary>
-    /// <remarks>Each direction forwards its end of stream on its own, so a half-closed request keeps receiving its response.</remarks>
-    internal static Task RelayAsync(IChannel lower, IChannel upper) =>
-        Task.WhenAll(PumpAsync(lower, upper, contiguous: true), PumpAsync(upper, lower, contiguous: false));
+    /// <remarks>Each direction forwards its end of stream on its own, so a half-closed request keeps receiving its response. A full close of
+    /// either side closes the other, so a stream the protocol above abandons does not stay open below while the peer keeps it open.</remarks>
+    internal static async Task RelayAsync(IChannel lower, IChannel upper)
+    {
+        Task pumps = Task.WhenAll(PumpAsync(lower, upper, contiguous: true), PumpAsync(upper, lower, contiguous: false));
+        if (await Task.WhenAny(pumps, ClosedAsync(lower), ClosedAsync(upper)) != pumps)
+        {
+            await lower.CloseAsync();
+            await upper.CloseAsync();
+        }
+
+        await pumps;
+    }
+
+    private static async Task ClosedAsync(IChannel channel) => await channel;
 
     private static async Task PumpAsync(IChannel from, IChannel to, bool contiguous)
     {
