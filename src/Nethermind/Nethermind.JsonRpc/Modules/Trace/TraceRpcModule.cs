@@ -259,6 +259,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         /// <summary>
         /// Traces one raw transaction. A transaction priced at zero runs with a zero base fee and pays no gas fee; a priced one is charged for gas.
+        /// Likewise, a blob transaction with a zero blob fee cap runs with a zero blob base fee and pays no blob fee.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {

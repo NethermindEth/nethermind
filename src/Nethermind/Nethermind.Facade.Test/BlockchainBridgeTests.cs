@@ -367,8 +367,7 @@ public class BlockchainBridgeTests
 
     private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
     [
-        (bridge, header, tx) => bridge.Call(header, tx),
-        (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
+        .. CallSources(),
         (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
     ];
 
@@ -397,9 +396,20 @@ public class BlockchainBridgeTests
         (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
     ];
 
-    [Test, Combinatorial]
+    private static IEnumerable<TestCaseData> ZeroBlobFeeCapCallCases()
+    {
+        Action<IBlockchainBridge, BlockHeader, Transaction>[] calls = CallSources();
+        foreach (bool capOmitted in new[] { true, false })
+        {
+            yield return new TestCaseData(TxType.Blob, calls[0], capOmitted).SetArgDisplayNames(nameof(TxType.Blob), "Call", capOmitted.ToString());
+            yield return new TestCaseData(TxType.Blob, calls[1], capOmitted).SetArgDisplayNames(nameof(TxType.Blob), "EstimateGas", capOmitted.ToString());
+            yield return new TestCaseData(TxType.FrameTx, calls[0], capOmitted).SetArgDisplayNames(nameof(TxType.FrameTx), "Call", capOmitted.ToString());
+        }
+    }
+
+    [TestCaseSource(nameof(ZeroBlobFeeCapCallCases))]
     public void Blob_call_without_a_positive_blob_fee_cap_runs_at_a_zero_blob_base_fee(
-        [ValueSource(nameof(CallSources))] Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, [Values] bool capOmitted)
+        TxType txType, Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, bool capOmitted)
     {
         _timestamper.UtcNow = DateTime.MaxValue;
         BlockHeader header = Build.A.BlockHeader
@@ -411,39 +421,13 @@ public class BlockchainBridgeTests
             .TestObject;
         Transaction tx = new()
         {
-            Type = TxType.Blob,
+            Type = txType,
             GasLimit = Transaction.BaseTxGasCost,
             MaxFeePerBlobGas = capOmitted ? null : UInt256.Zero,
             BlobVersionedHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]]
         };
 
         bridgeCall(_blockchainBridge, header, tx);
-
-        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(UInt256.Zero));
-        _transactionProcessor.Received().SetBlockExecutionContext(
-            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.BlobBaseFee == UInt256.Zero.ToValueHash()));
-    }
-
-    [Test]
-    public void Blob_carrying_frame_call_without_a_positive_blob_fee_cap_runs_at_a_zero_blob_base_fee([Values] bool capOmitted)
-    {
-        _timestamper.UtcNow = DateTime.MaxValue;
-        BlockHeader header = Build.A.BlockHeader
-            .WithBeneficiary(TestItem.AddressB)
-            .WithExcessBlobGas(10_000_000)
-            .WithBlobGasUsed(0)
-            .WithNumber(long.MaxValue)
-            .WithTimestamp(ulong.MaxValue)
-            .TestObject;
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            GasLimit = Transaction.BaseTxGasCost,
-            MaxFeePerBlobGas = capOmitted ? null : UInt256.Zero,
-            BlobVersionedHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]]
-        };
-
-        _blockchainBridge.Call(header, tx);
 
         Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(UInt256.Zero));
         _transactionProcessor.Received().SetBlockExecutionContext(
