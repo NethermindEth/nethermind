@@ -187,8 +187,10 @@ internal sealed class ImportableBlobBlock
     private static BlsSignature Sign(Bls.SecretKey key, Hash256 objectRoot, Hash256 domain) =>
         new(BlsSigner.Sign(key, Domains.ComputeSigningRoot(objectRoot, domain).Bytes).Bytes);
 
+    internal static BlsSignature SignAs(ulong validatorIndex, Hash256 objectRoot, Hash256 domain) => Sign(DeriveKey((int)validatorIndex), objectRoot, domain);
+
     /// <summary><c>hash_tree_root(epoch)</c>: one little-endian uint64 chunk.</summary>
-    private static Hash256 EpochRoot(ulong epoch)
+    internal static Hash256 EpochRoot(ulong epoch)
     {
         byte[] root = new byte[32];
         BinaryPrimitives.WriteUInt64LittleEndian(root, epoch);
