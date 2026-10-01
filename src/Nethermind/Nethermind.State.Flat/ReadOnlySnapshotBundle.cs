@@ -122,6 +122,7 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        (Address address, UInt256 index) = key.Key;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
@@ -139,7 +140,25 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        GetSlotBelowInMemory(selfDestructStateIdx, key, sw, out value);
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out value))
+            return;
+
+        UInt256 outSlotValue = default;
+
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
+
+        if (recordDetailedMetrics)
+        {
+            if (outSlotValue.IsZero)
+            {
+                Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
+            }
+            else
+            {
+                Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceLabel);
+            }
+        }
     }
 
     /// <summary>
@@ -178,7 +197,9 @@ public sealed class ReadOnlySnapshotBundle(
     }
 
     // The rest of a slot read once the in-memory snapshots did not decide it: the persisted-snapshot tier, then
-    // persistence.
+    // persistence. Only GetSlotFiltered calls it. GetSlot keeps its own inline copy on purpose: calling this from there
+    // shrinks GetSlot's IL enough for Tier1 to inline all of GetSlot into SnapshotBundle.GetSlot, which changes the
+    // compiled code of every block-processing slot read and made those reads slower.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void GetSlotBelowInMemory(int selfDestructStateIdx, in HashedKey<(Address, UInt256)> key, long sw, out UInt256? value)
     {
