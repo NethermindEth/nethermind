@@ -160,6 +160,7 @@ namespace Nethermind.Consensus.Processing
             if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
                 return;
 
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
             if (txs.Length > 3)
             {
                 ParallelUnbalancedWork.For(
@@ -275,6 +276,7 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)

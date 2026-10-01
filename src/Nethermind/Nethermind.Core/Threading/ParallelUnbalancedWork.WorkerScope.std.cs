@@ -248,6 +248,7 @@ public partial class ParallelUnbalancedWork
         }
         else
         {
+            data.SetUnstarted(count);
             for (int i = 0; i < count; i++)
                 ThreadPool.UnsafeQueueUserWorkItem(work, preferLocal: false);
         }
@@ -257,8 +258,11 @@ public partial class ParallelUnbalancedWork
     {
         // The caller has claimed the range, so unstarted workers would only retire; withdraw them in one step
         // rather than running each. Unrelated callbacks stay queued: they may depend on the caller's progress.
-        if (data.Scope?.Withdraw(data.Queue!) is > 0 and var withdrawn)
-            data.MarkThreadCompleted(withdrawn);
+        // Without a scope the callbacks stay in the thread pool, but they are withdrawn all the same: waiting
+        // for a free thread to dequeue them blocks this thread on the pool, and nested loops (a parallel
+        // BulkSet recursing into another) then park every pool thread on workers that cannot start.
+        int withdrawn = data.Scope is { } scope ? scope.Withdraw(data.Queue!) : data.WithdrawUnstarted();
+        if (withdrawn > 0) data.MarkThreadCompleted(withdrawn);
         if (data.ActiveThreads > 0) data.Event.Wait();
     }
 }

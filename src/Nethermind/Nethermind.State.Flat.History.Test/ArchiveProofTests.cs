@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -28,6 +29,15 @@ namespace Nethermind.State.Flat.History.Test;
 
 public class ArchiveProofTests
 {
+    [Test]
+    public void Nested_proof_prefetch_preserves_proofs_with_shared_worker_budget([Range(1, 2)] int budget)
+    {
+        BuildCommitments();
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(budget);
+
+        AssertProofMatchesTheTrie(Contract, Blocks, ContractSlots);
+    }
+
     private const int AccountCount = 120;
     private const ulong Blocks = 140;
 

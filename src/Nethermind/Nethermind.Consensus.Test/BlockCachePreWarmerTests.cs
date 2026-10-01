@@ -2257,6 +2257,37 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public void Speculative_warmers_share_one_worker_budget([Range(1, 2)] int budget)
+    {
+        ConcurrentBag<int> observedBudgets = [];
+        IHasAccessList hint = Substitute.For<IHasAccessList>();
+        hint.GetAccessList(Arg.Any<Block>(), Arg.Any<IReleaseSpec>()).Returns(_ =>
+        {
+            ParallelUnbalancedWork.For(0, 16, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+                _ => observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0));
+            return null;
+        });
+        using ILifetimeScope warmingScope = _processingScope.BeginLifetimeScope(b => b
+            .AddSingleton<IHasAccessList>(hint)
+            .AddSingleton<IBlocksConfig>(new BlocksConfig
+            {
+                PreWarming = PreWarmMode.BlockAndMempool,
+                PreWarmStateConcurrency = 4,
+                MempoolPreWarmConcurrency = budget,
+                ParallelExecutionBatchRead = true
+            }));
+        BlockCachePreWarmer preWarmer = (BlockCachePreWarmer)warmingScope.Resolve<IBlockCachePreWarmer>();
+
+        RunSpeculativePreWarm(preWarmer, BuildParentHeader(), Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observedBudgets, Is.Not.Empty);
+            Assert.That(observedBudgets, Is.All.EqualTo(budget));
+        }
+    }
+
+    [Test]
     public void Reactive_warmers_share_one_worker_budget([Values] bool cancel, [Values(1, 2)] int budget)
     {
         PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();

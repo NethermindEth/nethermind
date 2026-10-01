@@ -119,6 +119,7 @@ internal static class DirtyNodeHasher
             dirtyChildren &= dirtyChildren - 1;
         }
 
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
             (childIndexes, root, resolver, pool, maxCollectedNodes),
             static (i, state) =>

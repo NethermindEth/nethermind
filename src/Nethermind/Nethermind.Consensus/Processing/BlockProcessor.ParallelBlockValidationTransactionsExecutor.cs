@@ -126,6 +126,7 @@ public partial class BlockProcessor
 
         private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token)
         {
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
             int len = block.Transactions.Length;
             bool isBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
             IBlockTracer parallelSafeTracer = GetParallelSafeTracer(outerReceiptsTracer.OtherTracer);
