@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -523,6 +524,69 @@ public class TraceStoreRpcModuleTests
         {
             Assert.That(JToken.Parse(withNull)["result"]!.Select(static trace => (string?)trace["action"]!["to"]), Is.EqualTo(new[] { TestItem.AddressB.ToString() }), withNull);
             Assert.That(withNull, Is.EqualTo(await Filter($"{{{range}}}")));
+        }
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    // Read and written as the RPC server does, so the streaming case runs the streamed filter.
+    private static async Task<string> FilterJson(TestContext test, string json)
+    {
+        TraceFilterForRpc filter = JsonSerializer.Deserialize<TraceFilterForRpc>(json, EthereumJsonSerializer.JsonRpcRequestOptions)!;
+        using JsonRpcResponse response = test.Module.trace_filter(filter);
+        return Encoding.UTF8.GetString(await Serialize(response));
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_selects_a_block_by_hash([Values] bool streaming, [Values(0, 1, 2)] int parallelization)
+    {
+        TestContext test = new(parallelization, streaming);
+        // Below the stored head, block 2.
+        BlockHeader block = test.BlockFinder.FindHeader(1)!;
+        test.Store.Set(block.Hash!, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(
+            [.. StoreActions.Select(action => new ParityLikeTxTrace
+            {
+                BlockHash = block.Hash,
+                BlockNumber = block.Number,
+                TransactionHash = action.Type == "reward" ? null : TestItem.KeccakB,
+                Action = action
+            })]));
+        string toC = $",\"toAddress\":[\"{TestItem.AddressC}\"],\"after\":1";
+
+        string byHash = await FilterJson(test, $"{{\"blockHash\":\"{block.Hash}\"}}");
+
+        using (Assert.EnterMultipleScope())
+        {
+            JToken result = JToken.Parse(byHash)["result"]!;
+            Assert.That(result.Select(static trace => (string?)trace["blockHash"]), Has.Exactly(StoreActions.Length).EqualTo(block.Hash!.ToString()), byHash);
+            Assert.That(byHash, Is.EqualTo(await FilterJson(test, "{\"fromBlock\":\"0x1\",\"toBlock\":\"0x1\"}")));
+            Assert.That(await FilterJson(test, $"{{\"blockHash\":\"{block.Hash}\",\"fromBlock\":null,\"toBlock\":null}}"), Is.EqualTo(byHash));
+            Assert.That(await FilterJson(test, $"{{\"blockHash\":\"{block.Hash}\"{toC}}}"), Is.EqualTo(await FilterJson(test, $"{{\"fromBlock\":\"0x1\",\"toBlock\":\"0x1\"{toC}}}")));
+        }
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public async Task trace_filter_by_hash_returns_an_error_for_an_unknown_or_side_chain_block(
+        [Values] bool sideChain, [Values("", ",\"count\":0")] string count, [Values(0, 1, 2)] int parallelization)
+    {
+        TestContext test = new(parallelization);
+        Hash256 hash = TestItem.KeccakH;
+        if (sideChain)
+        {
+            // A sibling of the stored head whose traces are stored too: known, but not canonical.
+            Block sibling = Build.A.Block.WithParent(test.BlockFinder.FindHeader(1)!).WithExtraData([1]).TestObject;
+            ((IBlockTree)test.BlockFinder).SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain);
+            test.Store.Set(sibling.Hash!, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(test.DbTraces));
+            hash = sibling.Hash!;
+        }
+
+        string response = await FilterJson(test, $"{{\"blockHash\":\"{hash}\"{count}}}");
+
+        JToken? error = JToken.Parse(response)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)error?["code"], Is.EqualTo(sideChain ? ErrorCodes.InvalidInput : ErrorCodes.ResourceNotFound), response);
+            Assert.That((string?)error?["message"], Is.EqualTo(sideChain ? $"{hash} block is not canonical" : "header not found"), response);
         }
         test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
     }
