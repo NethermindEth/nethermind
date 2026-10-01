@@ -51,7 +51,7 @@ public class DebugModuleTests
     private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
-    private IFileSystem _fileSystem = new MockFileSystem();
+    private readonly MockFileSystem _fileSystem = new();
 
     private DebugRpcModule CreateModule() => new(
         LimboLogs.Instance,
@@ -496,10 +496,13 @@ public class DebugModuleTests
 
         string response = await SerializedRequest("debug_getBadBlocks", BadBlocksFile);
 
-        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
         using JsonDocument written = JsonDocument.Parse(_fileSystem.File.ReadAllText(BadBlocksFile));
-        Assert.That(written.RootElement.GetArrayLength(), Is.EqualTo(1));
-        Assert.That(written.RootElement[0].GetProperty("hash").GetString(), Is.EqualTo(block.Hash!.ToString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+            Assert.That(written.RootElement.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(written.RootElement[0].GetProperty("hash").GetString(), Is.EqualTo(block.Hash!.ToString()));
+        }
     }
 
     [Test]
@@ -510,8 +513,11 @@ public class DebugModuleTests
 
         string response = await SerializedRequest("debug_getBadBlocks", BadBlocksFile);
 
-        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"location would overwrite an existing file\"},\"id\":67}"));
-        Assert.That(_fileSystem.File.ReadAllText(BadBlocksFile), Is.EqualTo("keep"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"location would overwrite an existing file\"},\"id\":67}"));
+            Assert.That(_fileSystem.File.ReadAllText(BadBlocksFile), Is.EqualTo("keep"));
+        }
     }
 
     [Test]
@@ -540,17 +546,18 @@ public class DebugModuleTests
     {
         const string message = "No space left on device";
         _debugBridge.GetBadBlocks().Returns([]);
-        MockFileSystem fileSystem = new();
         // The file is created first; only writing its content fails, as on a full disk.
-        fileSystem.Intercept.Event(
+        _fileSystem.Intercept.Event(
             _ => throw new IOException(message),
-            change => change.ChangeType == WatcherChangeTypes.Changed && change.Path == fileSystem.Path.GetFullPath(BadBlocksFile));
-        _fileSystem = fileSystem;
+            change => change.ChangeType == WatcherChangeTypes.Changed && change.Path == _fileSystem.Path.GetFullPath(BadBlocksFile));
 
         string response = await SerializedRequest("debug_getBadBlocks", BadBlocksFile);
 
-        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"Cannot write bad blocks to {BadBlocksFile}: {message}\"}},\"id\":67}}"));
-        Assert.That(_fileSystem.File.Exists(BadBlocksFile), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"Cannot write bad blocks to {BadBlocksFile}: {message}\"}},\"id\":67}}"));
+            Assert.That(_fileSystem.File.Exists(BadBlocksFile), Is.False);
+        }
     }
 
     [Test]
@@ -560,8 +567,11 @@ public class DebugModuleTests
 
         string response = await SerializedRequest("debug_getBadBlocks", BadBlocksFile, "extra");
 
-        Assert.That(response, Does.Contain("\"code\":-32602"));
-        Assert.That(_fileSystem.File.Exists(BadBlocksFile), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Does.Contain("\"code\":-32602"));
+            Assert.That(_fileSystem.File.Exists(BadBlocksFile), Is.False);
+        }
     }
 
     [Test]

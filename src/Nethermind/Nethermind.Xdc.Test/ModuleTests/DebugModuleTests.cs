@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
@@ -20,7 +21,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using NSubstitute;
 using NUnit.Framework;
-using Testably.Abstractions;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
@@ -56,7 +56,7 @@ public class DebugModuleTests
         new BlocksConfig(),
         _blockFinder,
         new BlockForRpcFactory(),
-        new RealFileSystem());
+        Substitute.For<IFileSystem>());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);

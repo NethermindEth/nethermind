@@ -692,7 +692,6 @@ public class DebugRpcModule(
             return ResultWrapper<IEnumerable<BadBlock>?>.Success(badBlocks);
         }
 
-        // Geth extension: write the list to a new file and return null. CreateNew never overwrites an existing file.
         // Serializing first means a serialization failure never leaves a file behind.
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(badBlocks, EthereumJsonSerializer.JsonOptions);
         Stream stream;
