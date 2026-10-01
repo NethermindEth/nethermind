@@ -212,7 +212,7 @@ public class ForkDispatchTests
         BeaconChainSpec spec = CheckpointSpec();
         BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState.Clone();
         state.Fork = new Fork { PreviousVersion = state.Fork!.PreviousVersion, CurrentVersion = version(spec), Epoch = state.Fork.Epoch };
-        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, null);
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, new ForkedSignedBeaconBlock.OfGloas(ForkCrossingChain.Instance.First.Block));
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, spec, store, LimboLogs.Instance);
 

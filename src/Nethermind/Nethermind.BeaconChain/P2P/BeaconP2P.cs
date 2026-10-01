@@ -76,6 +76,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     private int _identifyTimeouts;
 
     private LocalPeer? _localPeer;
+    private CancellationTokenSource? _startCts;
     private PubsubRouter? _router;
     private GossipTopicSubscriptions? _gossipSubscriptions;
 
@@ -217,27 +218,44 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <param name="token">Must stay uncancelled for the host lifetime: the pubsub heartbeat and reconnect loops are bound to it.</param>
     public async Task StartAsync(CancellationToken token)
     {
-        _localPeer = (LocalPeer)_serviceProvider.GetRequiredService<IPeerFactory>().Create(LoadOrCreateIdentity());
-        _localPeer.OnConnected += OnSessionConnected;
-        _localPeer.Sessions.CollectionChanged += OnSessionsChanged;
-        await _localPeer.StartListenAsync([$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"], token);
-        token.ThrowIfCancellationRequested();
-        IPEndPoint? listenEndpoint = _localPeer.ListenAddresses.Count == 1 ? _localPeer.ListenAddresses[0].ToEndPoint() : null;
-        // The library swallows a failed bind and reports no listen address instead.
-        if (listenEndpoint is null || listenEndpoint.Port == 0)
+        _startCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        try
         {
-            throw new InvalidOperationException($"Beacon chain P2P failed to bind TCP port {_config.P2PPort}; check whether the port is already in use");
-        }
+            _localPeer = (LocalPeer)_serviceProvider.GetRequiredService<IPeerFactory>().Create(LoadOrCreateIdentity());
+            _localPeer.OnConnected += OnSessionConnected;
+            _localPeer.Sessions.CollectionChanged += OnSessionsChanged;
+            await _localPeer.StartListenAsync([$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"], _startCts.Token);
+            token.ThrowIfCancellationRequested();
+            IPEndPoint? listenEndpoint = _localPeer.ListenAddresses.Count == 1 ? _localPeer.ListenAddresses[0].ToEndPoint() : null;
+            // The library swallows a failed bind and reports no listen address instead.
+            if (listenEndpoint is null || listenEndpoint.Port == 0)
+            {
+                throw new InvalidOperationException($"Beacon chain P2P failed to bind TCP port {_config.P2PPort}; check whether the port is already in use");
+            }
 
-        _router = _serviceProvider.GetRequiredService<PubsubRouter>();
-        if (_messageValidator is not null)
+            _router = _serviceProvider.GetRequiredService<PubsubRouter>();
+            if (_messageValidator is not null)
+            {
+                _gossipSubscriptions = new GossipTopicSubscriptions(_router, _messageValidator.Verify);
+                _router.VerifyMessage = _gossipSubscriptions.Verify;
+            }
+
+            await _router.StartAsync(_localPeer, _startCts.Token);
+            if (_logger.IsInfo) _logger.Info($"Beacon chain P2P listening on port {listenEndpoint.Port} as {LocalPeerId}");
+        }
+        catch
         {
-            _gossipSubscriptions = new GossipTopicSubscriptions(_router, _messageValidator.Verify);
-            _router.VerifyMessage = _gossipSubscriptions.Verify;
-        }
+            await _startCts.CancelAsync();
+            _startCts.Dispose();
+            _startCts = null;
+            if (_localPeer is not null)
+            {
+                await _localPeer.DisposeAsync();
+                _localPeer = null;
+            }
 
-        await _router.StartAsync(_localPeer, token);
-        if (_logger.IsInfo) _logger.Info($"Beacon chain P2P listening on port {listenEndpoint.Port} as {LocalPeerId}");
+            throw;
+        }
     }
 
     /// <summary>Gets (and subscribes) the pubsub topic; available after <see cref="StartAsync"/>.</summary>
@@ -697,6 +715,13 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_startCts is not null)
+        {
+            await _startCts.CancelAsync();
+            _startCts.Dispose();
+            _startCts = null;
+        }
+
         if (_localPeer is not null)
         {
             await _localPeer.DisposeAsync();

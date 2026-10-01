@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -29,6 +31,46 @@ namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
 public class BeaconDiscoveryTests
 {
+    [Test]
+    public async Task A_discovery_bind_failure_is_retried_until_the_port_is_available()
+    {
+        using Socket occupied = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        occupied.ExclusiveAddressUse = true;
+        occupied.Bind(new IPEndPoint(IPAddress.Any, 0));
+        int port = ((IPEndPoint)occupied.LocalEndPoint!).Port;
+        await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { Discv5Port = port, Bootnodes = " " }).Build();
+        BeaconDiscovery discovery = container.Resolve<BeaconDiscovery>();
+        BeaconSyncOrchestrator orchestrator = container.Resolve<BeaconSyncOrchestrator>();
+        orchestrator.ComponentStartRetryDelay = TimeSpan.Zero;
+        int attempts = 0;
+        NodeRecord? failedRecord = null;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(20));
+
+        await orchestrator.StartComponentAsync(async token =>
+        {
+            attempts++;
+            try
+            {
+                await discovery.Start(token);
+            }
+            catch
+            {
+                failedRecord = discovery.LocalNodeRecord;
+                occupied.Close();
+                throw;
+            }
+        }, timeout.Token);
+
+        Assert.That(attempts, Is.EqualTo(2));
+        Assert.That(failedRecord, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(discovery.LocalNodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.EqualTo(failedRecord!.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)));
+            Assert.That(discovery.LocalNodeRecord.EnrSequence, Is.GreaterThan(failedRecord.EnrSequence));
+        }
+        await discovery.Stop();
+    }
+
     private static readonly IPAddress PublicIp = IPAddress.Parse("8.8.8.8");
     private static readonly byte[] CurrentDigest = Bytes.FromHexString("0x8c9f62fe"); // mainnet BPO2 digest
     private static readonly byte[] NextDigest = Bytes.FromHexString("0xcb0d1acc");

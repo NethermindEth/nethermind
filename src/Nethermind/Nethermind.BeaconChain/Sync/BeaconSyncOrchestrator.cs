@@ -192,6 +192,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Imported Gloas blocks whose bid commits blobs, by root, whose sampled columns are recovered by root until all are held.</summary>
     private readonly Dictionary<Hash256, ColumnRecovery> _columnRecovery = [];
 
+    /// <summary>The checkpoint anchor's root, whose payload no import of this process recorded (specs/gloas/fork-choice.md get_forkchoice_store: <c>payloads={}</c>).</summary>
+    private Hash256? _anchorRoot;
+
     /// <summary>The unknown parent roots whose backfill started in wall-clock slot <see cref="_backfillSlot"/>.</summary>
     private readonly HashSet<Hash256> _backfilledParents = [];
     private int _backfillsThisSlot;
@@ -384,8 +387,8 @@ public sealed class BeaconSyncOrchestrator(
 
         await ReplayStoredBlocksAsync(token);
 
-        await p2p.StartAsync(token);
-        await discovery.Start(token);
+        await StartComponentAsync(p2p.StartAsync, token);
+        await StartComponentAsync(discovery.Start, token);
 
         // The loops only stop on cancellation, so a fault in any of them stops all the others
         // before it is propagated to the caller.
@@ -423,6 +426,28 @@ public sealed class BeaconSyncOrchestrator(
         await first;
     }
 
+    /// <summary>Wait before a networking component whose start failed, e.g. on a port in use, is started again.</summary>
+    internal TimeSpan ComponentStartRetryDelay { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Runs <paramref name="start"/> until it succeeds or <paramref name="token"/> is cancelled, so a failed bind does not leave the node without a driver.</summary>
+    internal async Task StartComponentAsync(Func<CancellationToken, Task> start, CancellationToken token)
+    {
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                await start(token);
+                return;
+            }
+            catch (Exception e) when (!token.IsCancellationRequested)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Beacon networking startup failed: {CheckpointSync.DescribeCause(e)}; retrying in {ComponentStartRetryDelay.TotalSeconds:F0} s.");
+                await Task.Delay(ComponentStartRetryDelay, token);
+            }
+        }
+    }
+
     /// <summary>Binds the importer and anchor-derived bookkeeping; the synchronous head of <see cref="RunAsync"/>.</summary>
     /// <remarks>
     /// A Gloas anchor's execution hash is its bid's <c>parent_block_hash</c> (specs/gloas/fork-choice.md
@@ -433,6 +458,7 @@ public sealed class BeaconSyncOrchestrator(
     {
         _importer = importer;
         _anchorSlot = anchorBlock.Slot;
+        _anchorRoot = anchorRoot;
         _anchorExecutionHash = anchorBlock switch
         {
             ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.Body!.ExecutionPayload!.BlockHash!,
@@ -1314,7 +1340,8 @@ public sealed class BeaconSyncOrchestrator(
     {
         ulong finalizedSlot = FinalizedSlot;
         ulong currentSlot = slotClock.CurrentSlot;
-        bool Expired(ParkedEnvelope parked) => (parked.Envelope.Message!.Payload?.SlotNumber ?? 0) <= finalizedSlot || IsRetryExpired(parked.QueuedAtSlot, currentSlot);
+        bool Expired(ParkedEnvelope parked) => ((parked.Envelope.Message!.Payload?.SlotNumber ?? 0) <= finalizedSlot
+            && !NeedsParentPayload(parked.Envelope.Message.BeaconBlockRoot!)) || IsRetryExpired(parked.QueuedAtSlot, currentSlot);
         _pendingEnvelopesByBlock.RemoveWhere(Expired);
         _pendingEnvelopeRetry.RemoveWhere(Expired);
 
@@ -1342,6 +1369,11 @@ public sealed class BeaconSyncOrchestrator(
         if (result == ExecutionPayloadEnvelopeImportResult.DataUnavailable && !retryingOnColumns)
         {
             WatchColumns(root, gloas: true);
+            if (!_columnRecovery.ContainsKey(root) && store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
+            {
+                TrackColumnRecovery(root, block);
+            }
+
             if (_columnRecovery.TryGetValue(root, out ColumnRecovery? recovery))
             {
                 RecoverColumns(root, recovery, slotClock.CurrentSlot, token);
@@ -1383,7 +1415,7 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>
     /// Fetches by root, at most once per block per slot, the sampled columns still missing for each imported Gloas block that
-    /// commits blobs, until every one is held, the block falls to finality or it has waited past <see cref="MaxPendingRetryAgeEpochs"/>.
+    /// commits blobs, until every one is held, finality makes its payload unnecessary or it has waited past <see cref="MaxPendingRetryAgeEpochs"/>.
     /// The first attempt is made when the block imports; the slot tick retries.
     /// </summary>
     /// <remarks>
@@ -1402,7 +1434,7 @@ public sealed class BeaconSyncOrchestrator(
         List<KeyValuePair<Hash256, ColumnRecovery>> tracked = [.. _columnRecovery];
         foreach ((Hash256 root, ColumnRecovery recovery) in tracked)
         {
-            if (recovery.Bid.Slot <= finalizedSlot || IsRetryExpired(recovery.QueuedAtSlot, currentSlot))
+            if ((recovery.Bid.Slot <= finalizedSlot && !NeedsParentPayload(root)) || IsRetryExpired(recovery.QueuedAtSlot, currentSlot))
             {
                 _columnRecovery.Remove(root);
                 continue;
@@ -1410,6 +1442,26 @@ public sealed class BeaconSyncOrchestrator(
 
             RecoverColumns(root, recovery, currentSlot, token);
         }
+    }
+
+    /// <summary>Whether <paramref name="root"/> is the anchor or the parent of a held or retried Gloas block, whose payload must verify before a FULL child imports (specs/gloas/fork-choice.md on_block).</summary>
+    private bool NeedsParentPayload(Hash256 root)
+    {
+        if (root == _anchorRoot) return true;
+        foreach (PendingRetry retry in _pendingRetry.Values)
+        {
+            if (retry.Block is ForkedSignedBeaconBlock.OfGloas && retry.Block.ParentRoot == root) return true;
+        }
+
+        if (_pendingByParent.TryGetValue(root, out List<ForkedSignedBeaconBlock>? children))
+        {
+            foreach (ForkedSignedBeaconBlock child in children)
+            {
+                if (_heldForPayload.Contains(child.ComputeMessageRoot())) return true;
+            }
+        }
+
+        return false;
     }
 
     private void RecoverColumns(Hash256 root, ColumnRecovery recovery, ulong currentSlot, CancellationToken token)
