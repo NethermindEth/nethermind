@@ -1368,6 +1368,8 @@ namespace Nethermind.TxPool
         /// and the rest of the sweep re-tests against the reduced total, leaving only the surplus dropped.
         /// <em>Which</em> of that payer's transactions survive follows index iteration order, not the spec's
         /// nearest-expiry-then-lowest-fee order.
+        /// The paymaster cap follows the same order before prefix simulation to avoid work on excess entries;
+        /// a later prefix failure can leave fewer survivors than the cap.
         /// A transaction that stays pending is re-indexed for the sender's delegation target, a head-state
         /// snapshot that can move while the payer does not, since a payer that moves evicts instead. The
         /// re-index is update-only: block production evicts without the head lock, so it can drop the
