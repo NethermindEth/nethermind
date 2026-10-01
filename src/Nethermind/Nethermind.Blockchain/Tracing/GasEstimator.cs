@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Tracing;
 /// that run used, tries an optimistic guess derived from its peak gas, then bisects with a midpoint skewed to
 /// the low side until the bounds are within the allowed error ratio of the upper bound.
 /// </remarks>
-public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider)
+public partial class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider)
 {
     /// <summary>Error margin used if none other is specified, expressed in basis points.</summary>
     public const int DefaultErrorMargin = 150;

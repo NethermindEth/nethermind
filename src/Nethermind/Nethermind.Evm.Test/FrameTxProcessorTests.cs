@@ -209,6 +209,31 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
+    public void FrameGasEstimation_DefersEscrowOnlyForRestoredProbes([Values] bool restore)
+    {
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 1));
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+        ExecutionOptions options = ExecutionOptions.FrameGasEstimation
+            | (restore ? ExecutionOptions.CommitAndRestore : ExecutionOptions.SkipValidationAndCommit);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = _transactionProcessor.Process(tx, tracer, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(restore));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo((UInt256)1), "no escrow refund may leak");
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero));
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL));
+            if (restore) Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            else Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        }
+    }
+
+    [Test]
     public void CallAndRestore_UnsignedCustomVerifier_StillExecutes([Values] bool reverts,
         [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary)] byte scheme)
     {

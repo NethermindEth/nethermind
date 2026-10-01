@@ -34,6 +34,20 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
+    private static FrameTransactionForRpc FrameGasRequest() => new()
+    {
+        From = TestItem.AddressC,
+        To = TestItem.AddressC,
+        MaxFeePerGas = 0,
+        MaxPriorityFeePerGas = 0,
+        Frames =
+        [
+            new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment },
+            new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = new Address("0x000000000000000000000000000000000000dead"), Value = 1 },
+        ],
+        Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+    };
+
     private static FrameTransactionForRpc UnsignedFrameRequest() => new()
     {
         From = TestItem.AddressC,
@@ -47,6 +61,391 @@ public partial class EthRpcModuleTests
         ],
         Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
     };
+
+    [Test]
+    public async Task FrameGas_CallMethods_FillOmittedDimensions(
+        [Values("eth_call", "eth_createAccessList")] string method,
+        [Values(0, 1, 2)] int explicitDimension)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        if (method == "eth_createAccessList") request.MaxFeePerGas = 1_000_000_000;
+        foreach (FrameForRpc frame in request.Frames!)
+        {
+            if (explicitDimension == 1) frame.ExecutionGas = 50_000;
+            if (explicitDimension == 2) frame.StateGas = 200_000;
+        }
+
+        string response = await ctx.Test.TestEthRpc(method, request, "latest");
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        if (method == "eth_call") Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"));
+        else Assert.That(parsed["result"]!["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_FillTransaction_FillsBothDimensions([Values] bool explicitExecution)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        if (explicitExecution) request.Frames![1].ExecutionGas = 50_000;
+
+        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request);
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        JToken frames = parsed["result"]!["tx"]!["frames"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frames[0]!["executionGas"]!.Value<string>(), Is.EqualTo("0x64"));
+            Assert.That(frames[0]!["stateGas"]!.Value<string>(), Is.EqualTo("0x0"));
+            Assert.That(frames[1]!["executionGas"]!.Value<string>(), Is.EqualTo(explicitExecution ? "0xc350" : "0xbb8"));
+            Assert.That(frames[1]!["stateGas"]!.Value<string>(), Is.EqualTo("0x2cd30"));
+            Assert.That(request.Frames![0].ExecutionGas, Is.Null, "RPC serialization must not mutate the caller's request");
+        }
+
+        FrameTransactionForRpc filled = FrameGasRequest();
+        for (int i = 0; i < filled.Frames!.Length; i++)
+        {
+            filled.Frames[i].ExecutionGas = Convert.ToUInt64(frames[i]!["executionGas"]!.Value<string>(), 16);
+            filled.Frames[i].StateGas = Convert.ToUInt64(frames[i]!["stateGas"]!.Value<string>(), 16);
+        }
+        string estimated = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest");
+        string explicitEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", filled, "latest");
+        Assert.That(JToken.Parse(estimated)["result"]!.Value<string>(), Is.EqualTo(JToken.Parse(explicitEstimate)["result"]!.Value<string>()), estimated);
+    }
+
+    [Test]
+    public async Task FrameGas_ExplicitZeroGas_IsNotFilled([Values("eth_fillTransaction", "eth_call", "eth_createAccessList")] string method, [Values] bool stateGas)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        if (method == "eth_createAccessList") request.MaxFeePerGas = 1_000_000_000;
+        request.Frames![1].ExecutionGas = stateGas ? 50_000UL : 0;
+        request.Frames[1].StateGas = stateGas ? 0 : 200_000UL;
+
+        string response = await ctx.Test.TestEthRpc(method, request);
+
+        Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Does.Contain("frame 1 failed: OutOfGas"));
+    }
+
+    [TestCase("eth_call", true)]
+    [TestCase("eth_estimateGas", true)]
+    [TestCase("eth_createAccessList", true)]
+    [TestCase("eth_call", false)]
+    [TestCase("eth_estimateGas", false)]
+    public async Task FrameGas_RejectsLikeExplicitLimits(string method, bool missingState)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance), useFlatDb: false);
+        object? blockOverride = null;
+        if (missingState)
+        {
+            ctx.Test.WorldStateManager.FlushCache(System.Threading.CancellationToken.None);
+            ctx.Test.StateDb.Clear();
+        }
+        else blockOverride = JsonSerializer.Deserialize<object>($$"""{"gasLimit":"0x{{ctx.Test.RpcConfig.GasCap!.Value + 1:x}}"}""");
+        FrameTransactionForRpc omitted = FrameGasRequest();
+        FrameTransactionForRpc explicitLimits = FrameGasRequest();
+        foreach (FrameForRpc frame in explicitLimits.Frames!) (frame.ExecutionGas, frame.StateGas) = (50_000UL, 200_000UL);
+        if (method == "eth_createAccessList") omitted.MaxFeePerGas = explicitLimits.MaxFeePerGas = 1_000_000_000;
+
+        string expected = await ctx.Test.TestEthRpc(method, missingState ? [explicitLimits, "latest"] : [explicitLimits, "latest", null, blockOverride]);
+        string response = await ctx.Test.TestEthRpc(method, missingState ? [omitted, "latest"] : [omitted, "latest", null, blockOverride]);
+
+        Assert.That(JToken.Parse(expected)["error"]!["code"]!.Value<int>(), Is.EqualTo(missingState ? ErrorCodes.ResourceUnavailable : ErrorCodes.InvalidInput), expected);
+        Assert.That(response, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task FrameGas_UsesEarlierFrameWrites([Values("eth_estimateGas", "eth_call", "eth_createAccessList")] string method, [Values] bool atomic, [Values] bool catchesInnerFailure)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        if (method == "eth_createAccessList") request.MaxFeePerGas = 1_000_000_000;
+        Address contract = request.Frames![1].Target!;
+        request.Frames[1].Value = 0;
+        request.Frames[1].Flags = atomic ? (byte)FrameFlags.AtomicBatch : (byte)0;
+        request.Frames = [request.Frames[0], request.Frames[1], new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = contract, Data = new byte[] { 1 } }];
+        // The first call requires zero storage and writes one; the second requires one. Each probe must restore state before replaying the batch.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{contract}}}":{"code":"0x366013575f5415600d575f5ffd5b60015f55005b5f54600114601f575f5ffd5b00"}}""")!;
+
+        if (catchesInnerFailure)
+        {
+            Address wrapper = TestItem.AddressD;
+            request.Frames[1].Target = wrapper;
+            byte[] code = Prepare.EvmCode.Call(contract, 1_000_000).Op(Instruction.POP).Op(Instruction.STOP).Done;
+            string wrapperCode = Convert.ToHexString(code);
+            overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{wrapper}}}":{"code":"0x{{{wrapperCode}}}"},"{{{contract}}}":{"code":"0x366013575f5415600d575f5ffd5b60015f55005b5f54600114601f575f5ffd5b00"}}""")!;
+        }
+
+        string response = await ctx.Test.TestEthRpc(method, request, "latest", overrides);
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        if (method == "eth_estimateGas") Assert.That(parsed["result"]!.Value<string>(), Is.Not.EqualTo("0x0"));
+        if (method == "eth_createAccessList") Assert.That(parsed["result"]!["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_FillTransaction_MaximumFrameCount()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        FrameForRpc verify = request.Frames![0];
+        request.Frames = new FrameForRpc[Eip8141Constants.MaxFrames];
+        request.Frames[0] = verify;
+        for (int i = 1; i < request.Frames.Length; i++)
+            request.Frames[i] = new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB };
+
+        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request);
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        Assert.That((JArray)parsed["result"]!["tx"]!["frames"]!, Has.Count.EqualTo(Eip8141Constants.MaxFrames));
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_FillsEveryFrameWhenProbeBudgetRunsOut([Values] bool lastFrameNeedsHeadroom)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        ctx.Test.RpcConfig.EstimateErrorMargin = 0;
+        FrameTransactionForRpc request = FrameGasRequest();
+        Address loop = request.Frames![1].Target!;
+        FrameForRpc verify = request.Frames[0];
+        request.Frames = new FrameForRpc[Eip8141Constants.MaxFrames];
+        request.Frames[0] = verify;
+        for (int i = 1; i < request.Frames.Length; i++)
+            request.Frames[i] = new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = loop };
+        if (lastFrameNeedsHeadroom) request.Frames[^1].Target = TestItem.AddressD;
+        // A 512-iteration loop: an exact search on every frame needs more probes than the estimator allows. The
+        // headroom check reverts unless 50,000 gas remains: within an even split, so it is measured as succeeding, but
+        // far above what it uses, so an unverified limit fails.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{loop}}}":{"code":"0x6102005b600190038060035700"},"{{{TestItem.AddressD}}}":{"code":"0x5a6200c35010600c575f5ffd5b00"}}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
+
+        JToken? error = JToken.Parse(response)["error"];
+        if (lastFrameNeedsHeadroom) Assert.That(error?["message"]?.Value<string>(), Does.Contain("probes"), response);
+        else Assert.That(error, Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_BlockNumberOverrideUsesBaseState([Values] bool useFlatDb)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance), useFlatDb: useFlatDb);
+        object blockOverride = JsonSerializer.Deserialize<object>("""{"number":"0x100"}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", FrameGasRequest(), "latest", null, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_RunsInTheRequestedBlock()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        // Reverts unless NUMBER is the requested block, as it is for the gas estimate itself.
+        string number = ctx.Test.BlockTree.Head!.Number.ToString("x16");
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.Frames![1].Target}}}":{"code":"0x4367{{{number}}}146011575f5ffd5b00"}}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateFrameGas_ReportsMissingState([Values] bool withOverride)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        BlockHeader pruned = Build.A.BlockHeader.WithNumber(1_000).WithStateRoot(TestItem.KeccakA).TestObject;
+        Transaction tx = FrameGasRequest().ToTransaction().Data!;
+        bool[] fill = [true, true];
+        Dictionary<Address, AccountOverride>? stateOverride = withOverride ? new() { [TestItem.AddressB] = new AccountOverride { Balance = 1 } } : null;
+
+        Result<TxFrame[]> result = ctx.Test.Bridge.EstimateFrameGas(pruned, tx, fill, fill, 1_000_000, 150, stateOverride, null, default, out _);
+
+        Assert.That(result.Error, Does.StartWith("No state available"));
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_FillsLaterFrameThatRevertsWithoutHeadroom()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.Frames = [.. request.Frames!, new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressD }];
+        // Reverts unless 2,000,000 gas remains, more than the frame's share of an even split.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{TestItem.AddressD}}}":{"code":"0x5a621e848010600c575f5ffd5b00"}}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_ReportsVerifierRevert()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"code":"0x5f5ffd"}}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
+
+        Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Does.Contain("VERIFY frame reverted"));
+    }
+
+    [TestCase("0x5f5ffd", "Revert", ErrorCodes.ExecutionReverted)]
+    [TestCase("0x5b5f56", "OutOfGas", ErrorCodes.InvalidInput)]
+    public async Task FrameGas_EstimateGas_ReportsFrameThatFailsAtEveryBudget(string code, string error, int errorCode)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.Frames![1].Target}}}":{"code":"{{{code}}}"}}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
+
+        JToken rpcError = JToken.Parse(response)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpcError["message"]!.Value<string>(), Does.Contain($"frame 1 failed: {error}"));
+            Assert.That(rpcError["code"]!.Value<int>(), Is.EqualTo(errorCode));
+        }
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_ChecksFinalAffordability([Values] bool sufficient)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 1;
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"{{{(sufficient ? "0x3d090" : "0x1")}}}"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0"}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides, blockOverride);
+
+        JToken parsed = JToken.Parse(response);
+        if (sufficient) Assert.That(parsed["error"], Is.Null, response);
+        else Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_RunsFramesAtTheRequestedGasPrice([Values] bool explicitLimits, [Values("0xf4240", OneEther)] string balance, [Values] bool executionHeavy)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 2;
+        request.MaxPriorityFeePerGas = 1;
+        if (executionHeavy) request.Frames![1].Value = 0;
+        if (explicitLimits)
+        {
+            (request.Frames![0].ExecutionGas, request.Frames[0].StateGas) = (50_000, 0);
+            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = executionHeavy ? (400_000UL, 0UL) : (50_000UL, 200_000UL);
+        }
+        // The loop consumes a substantial share of the payer's affordable execution budget.
+        string code = executionHeavy ? "0x3a60011415601557612ee05b6001900380600b57005b5f5ffd" : "0x3a60011415600957005b5f5ffd";
+        // The second frame requires the requested effective GASPRICE of one.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"{{{balance}}}"},"{{{request.Frames![1].Target}}}":{"code":"{{{code}}}"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0"}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_FillsAnExpensiveVerifierAtAnAffordableBudget([Values] bool explicitLimits)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 2;
+        request.MaxPriorityFeePerGas = 1;
+        request.Frames![1].Value = 0;
+        if (explicitLimits)
+        {
+            (request.Frames[0].ExecutionGas, request.Frames[0].StateGas) = (400_000, 0);
+            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (5_000, 0);
+        }
+        // The verifier needs more gas than an affordable even split gives it before APPROVE can be reached.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"0xf4240","code":"0x612ee05b60019003806003575060035f5faa"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0"}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_CallMethods_UseBlobBaseFeeOverride(
+        [Values("eth_call", "eth_estimateGas")] string method, [Values] bool explicitLimits)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance), configurer: builder => builder
+            .WithGenesisPostProcessor((block, _) => (block.Header.BlobGasUsed, block.Header.ExcessBlobGas) = (0, 0)));
+        Assert.That(ctx.Test.BlockTree.Genesis!.ExcessBlobGas, Is.EqualTo(0));
+        FrameTransactionForRpc request = FrameGasRequest();
+        if (explicitLimits)
+        {
+            (request.Frames![0].ExecutionGas, request.Frames[0].StateGas) = (50_000, 0);
+            (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (50_000, 200_000);
+        }
+        // Revert unless BLOBBASEFEE equals the overridden value.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.Frames![1].Target}}}":{"code":"0x4a600214600a575f5ffd5b00"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>("""{"blobBaseFee":"0x2"}""")!;
+
+        string response = await ctx.Test.TestEthRpc(method, request, "0x0", overrides, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_CallMethods_FillWithoutAnRpcGasCap([Values("eth_call", "eth_estimateGas")] string method, [Values] bool withBlockOverride)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        ctx.Test.RpcConfig.GasCap = null;
+        object? blockOverride = withBlockOverride ? JsonSerializer.Deserialize<object>("""{"gasLimit":"0x30d40"}""") : null;
+
+        string response = await ctx.Test.TestEthRpc(method, FrameGasRequest(), "latest", null, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_RespectsRpcGasCap([Values] bool tooSmall)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        ctx.Test.RpcConfig.GasCap = tooSmall ? 190_000UL : 1_000_000UL;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", FrameGasRequest(), "latest");
+
+        JToken parsed = JToken.Parse(response);
+        if (tooSmall) Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("gas limit"));
+        else Assert.That(parsed["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_RejectsExplicitExecutionAboveTransactionCap()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.Frames![1].ExecutionGas = Eip7825Constants.DefaultTxGasLimitCap + 1;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest");
+
+        Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Does.Contain("gas limit"));
+    }
+
+    [Test]
+    public async Task FrameGas_EstimateGas_RespectsBlockGasLimit([Values] bool tooSmall)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        object blockOverride = JsonSerializer.Deserialize<object>(tooSmall ? """{"gasLimit":"0x100"}""" : """{"gasLimit":"0x30d40"}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", FrameGasRequest(), "latest", null, blockOverride);
+
+        JToken parsed = JToken.Parse(response);
+        if (tooSmall) Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("gas limit"));
+        else Assert.That(parsed["error"], Is.Null, response);
+    }
 
     [Test]
     public async Task FrameRpc_SimulateValidation_SkipsProtocolSignatureChecks([Values] bool placeholder, [Values] bool validation)
@@ -193,7 +592,11 @@ public partial class EthRpcModuleTests
     public async Task FrameRpc_EstimateGas_PlaceholderCoversSignedTransaction()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc placeholder = UnsignedFrameRequest();
         FrameTransactionForRpc signed = UnsignedFrameRequest();
+        // Explicit limits: filling would change the frames the signature commits to.
+        foreach (FrameForRpc frame in placeholder.Frames!) frame.StateGas = 0;
+        foreach (FrameForRpc frame in signed.Frames!) frame.StateGas = 0;
         signed.Nonce = ctx.Test.ReadOnlyState.GetNonce(TestItem.AddressC);
         Transaction tx = signed.ToTransaction().Data!;
         tx.ChainId = ctx.Test.Bridge.GetChainId();
@@ -204,7 +607,7 @@ public partial class EthRpcModuleTests
         signature.Bytes.CopyTo(vrs.AsSpan(1));
         signed.Signatures![0].Signature = vrs;
 
-        string placeholderEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", UnsignedFrameRequest());
+        string placeholderEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", placeholder);
         string signedEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", signed);
 
         Assert.That(JToken.Parse(signedEstimate)["error"], Is.Null, signedEstimate);
