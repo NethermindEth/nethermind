@@ -92,29 +92,108 @@ public class RangeSyncPeerSelectionTests
         }
     }
 
-    /// <summary>
-    /// phase0/p2p-interface.md BeaconBlocksByRange skips empty slots: with slot 11 empty, a peer serving from 12 answers a request
-    /// starting at 11 with block 12, which links to the anchor, so refusing it would wait for a peer that cannot exist.
-    /// </summary>
+    /// <summary>BeaconBlocksByRange: skipped slots are accepted only when the retained block links to the anchor.</summary>
     [Test]
     [CancelAfter(30_000)]
-    public async Task Blocks_by_range_fall_back_to_a_peer_serving_from_inside_the_range_when_none_covers_the_start(CancellationToken token)
+    public async Task Blocks_by_range_resume_at_the_earliest_retained_block_after_empty_slots([Values(12UL, 27UL, 43UL)] ulong firstSlot, CancellationToken token)
     {
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 12, 13, 14, 16, 17, 18);
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, firstSlot);
         ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
-        StubPeer peer = new("from12", TargetSlot, RefusingBelow(12, chainBlocks), earliestAvailableSlot: 12);
-        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+        List<ulong> starts = [];
+        // Asked first and serving from inside the target too, but it lacks the block that links to the anchor.
+        StubPeer later = new("later", firstSlot + 10, static (_, _) => [], earliestAvailableSlot: firstSlot + 1);
+        StubPeer peer = new("earliest", firstSlot + 1, (start, count) => { starts.Add(start); return [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]; }, earliestAvailableSlot: firstSlot);
+        RangeSync sync = new(new StubPool(later, peer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
         List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => firstSlot + 1, token))
         {
             yielded.Add(block);
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
-            Assert.That(peer.Failures, Is.Zero, "a peer that answers ResourceUnavailable below its earliest slot is never asked below it");
+            Assert.That(yielded, Is.EqualTo(chainBlocks));
+            Assert.That(starts.FirstOrDefault(), Is.EqualTo(firstSlot));
+            Assert.That(peer.Failures, Is.Zero);
+        }
+    }
+
+    /// <summary>BeaconBlocksByRange: limited replies do not make another supplier responsible for missing blocks.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_short_or_empty_reply_does_not_penalize_the_next_supplier([Values] bool empty, CancellationToken token)
+    {
+        ulong[] slots = [.. Enumerable.Range(11, 33).Select(static slot => (ulong)slot)];
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, slots);
+        ForkedSignedBeaconBlock[] blocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        bool first = true;
+        StubPeer limited = new("limited", 43, (start, count) =>
+        {
+            if (first)
+            {
+                first = false;
+                return empty ? [] : [blocks[0]];
+            }
+            return [.. blocks.Where(b => b.Slot >= start && b.Slot < start + count)];
+        });
+        List<ulong> starts = [];
+        StubPeer honest = new("honest", 43, (start, count) =>
+        {
+            starts.Add(start);
+            return [.. blocks.Where(b => b.Slot >= start && b.Slot < start + count)];
+        });
+        RangeSync sync = new(new StubPool(limited, honest), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+        List<ForkedSignedBeaconBlock> yielded = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => 43, token))
+        {
+            yielded.Add(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(yielded, Is.EqualTo(blocks));
+            Assert.That(honest.Reports, Is.Empty);
+            Assert.That(starts[0], Is.EqualTo(empty ? 27UL : 12UL));
+        }
+    }
+
+    /// <summary>BeaconBlocksByRange: a reply that does not link to the previous one is held against its supplier only when that peer served the previous one too.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_link_break_across_replies_is_blamed_only_on_the_peer_that_served_both(CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12, 13, 14);
+        ForkedSignedBeaconBlock[] blocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        SignedBeaconBlock offChain = TestChain.CreateBlock(11, anchorRoot);
+        offChain.Message!.StateRoot = Keccak.Compute("off-chain");
+        ForkedSignedBeaconBlock[] offChainReply = [new ForkedSignedBeaconBlock.OfFulu(offChain)];
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        StubPeer both = new("both", 14, (start, count) =>
+        {
+            if (start == 11)
+            {
+                return offChainReply;
+            }
+
+            stop.Cancel();
+            return [.. blocks.Where(b => b.Slot >= start && b.Slot < start + count)];
+        });
+        StubPeer other = new("other", 14, (start, count) => [.. blocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
+        RangeSync sync = new(new StubPool(both, other), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        Assert.That(async () =>
+        {
+            await foreach (ForkedSignedBeaconBlock _ in sync.Run(anchorRoot, AnchorSlot, () => 14, stop.Token))
+            {
+            }
+        }, Throws.InstanceOf<OperationCanceledException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(other.Requests, Is.EqualTo(1), "fixture: the other peer was asked after the off-chain reply");
+            Assert.That(other.Reports, Is.Empty);
+            Assert.That(both.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
         }
     }
 
