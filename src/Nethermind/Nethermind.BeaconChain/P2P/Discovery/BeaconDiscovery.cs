@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
@@ -65,7 +66,10 @@ public sealed class BeaconDiscovery(
     /// <summary>Same metadata key as the libp2p host so both stacks share one secp256k1 identity.</summary>
     internal const string IdentityMetadataKey = "p2pIdentityKey";
 
-    private static readonly TimeSpan TableSweepInterval = TimeSpan.FromMinutes(2);
+    /// <summary>The sequence of the last published local ENR, kept with the identity it signs.</summary>
+    internal const string EnrSequenceMetadataKey = "p2pEnrSequence";
+
+    internal static readonly TimeSpan TableSweepInterval = TimeSpan.FromSeconds(30);
 
     // Bounds how often a custodian request can force a sweep, since each one converts the whole table.
     private static readonly TimeSpan CustodianSweepMinInterval = TimeSpan.FromSeconds(10);
@@ -74,12 +78,17 @@ public sealed class BeaconDiscovery(
 
     private const int CandidateCapacity = 256;
 
+    /// <summary>Dial outcomes by address, shared with the peer manager, so an address whose dials failed is offered again only after its backoff.</summary>
+    internal PeerDialHistory DialHistory { get; } = new(timestamper);
+
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconDiscovery>();
 
     private readonly Lock _digestLock = new();
+    private readonly Lock _enrLock = new();
     private ulong? _digestEpoch;
     private byte[] _currentDigest = [];
     private byte[]? _nextDigest;
+    private EnrForkId? _currentForkId;
 
     private BeaconNodeRecordProvider? _localEnr;
     private IContainer? _discv5Services;
@@ -144,7 +153,9 @@ public sealed class BeaconDiscovery(
 
         _runCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         IIPResolver.NethermindIp ip = await ipResolver.Resolve(token);
-        NettyDiscoveryV5Handler handler = CreateDiscv5Services(ip.ExternalIp);
+        IPAddress? advertised = AdvertisedAddress(ip);
+        if (advertised is null && _logger.IsWarn) _logger.Warn("No external IPv4 address is known, so the beacon chain ENR advertises no endpoint and peers cannot dial this node.");
+        NettyDiscoveryV5Handler handler = CreateDiscv5Services(advertised);
 
         _group = new MultithreadEventLoopGroup(1);
         Bootstrap bootstrap = new Bootstrap()
@@ -185,27 +196,41 @@ public sealed class BeaconDiscovery(
     /// </remarks>
     public async IAsyncEnumerable<BeaconPeerCandidate> DiscoverPeers([EnumeratorCancellation] CancellationToken token)
     {
-        System.Threading.Channels.Channel<Node> nodes = System.Threading.Channels.Channel.CreateBounded<Node>(
-            new System.Threading.Channels.BoundedChannelOptions(256) { FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest });
+        System.Threading.Channels.Channel<Node> nodes = CreateNodeChannel();
+        // The sweep waits on a full queue, so it must stop however the consumer stops.
+        using CancellationTokenSource pumpCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        CancellationToken pumpToken = pumpCancellation.Token;
 
         async Task PumpInsertsAsync()
         {
-            await foreach (Node node in _nodeSource!.DiscoverNodes(token))
+            await foreach (Node node in _nodeSource!.DiscoverNodes(pumpToken))
             {
-                await nodes.Writer.WriteAsync(node, token);
+                // Never waits, so a consumer parked at the target peer count cannot pause the lookups behind the source; the sweep re-offers a dropped node.
+                nodes.Writer.TryWrite(node);
             }
         }
 
-        Task pumps = Task.WhenAll(PumpInsertsAsync(), SweepTableAsync(() => _kademlia!.IterateNodes(), nodes.Writer, TableSweepInterval, CustodianSweepMinInterval, token))
+        Task pumps = Task.WhenAll(PumpInsertsAsync(), SweepTableAsync(() => _kademlia!.IterateNodes(), nodes.Writer, TableSweepInterval, CustodianSweepMinInterval, pumpToken))
             .ContinueWith(t => nodes.Writer.TryComplete(t.Exception?.GetBaseException()), CancellationToken.None);
 
-        await foreach (BeaconPeerCandidate candidate in OfferByCustodyAsync(nodes.Reader, CreateCandidate, token))
+        try
         {
-            yield return candidate;
+            await foreach (BeaconPeerCandidate candidate in OfferByCustodyAsync(nodes.Reader, CreateCandidate, token))
+            {
+                yield return candidate;
+            }
         }
-
-        await pumps;
+        finally
+        {
+            await pumpCancellation.CancelAsync();
+            await pumps;
+        }
     }
+
+    /// <summary>The queue from the node sources to the custody ranking; a full queue makes the table sweep wait, so only the ranking evicts a swept candidate.</summary>
+    /// <remarks>fulu/das-core.md: a node must retrieve every column it samples, so a custodian must not be lost before it is ranked.</remarks>
+    internal static System.Threading.Channels.Channel<Node> CreateNodeChannel() => System.Threading.Channels.Channel.CreateBounded<Node>(
+        new System.Threading.Channels.BoundedChannelOptions(CandidateCapacity) { FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait });
 
     /// <summary>Writes every routing-table node to <paramref name="writer"/> each <paramref name="sweepInterval"/>, and early when a column is newly wanted.</summary>
     /// <remarks>An early sweep is followed by at least <paramref name="minInterval"/> before the next, since each one converts the whole table.</remarks>
@@ -226,7 +251,7 @@ public sealed class BeaconDiscovery(
             requested = Volatile.Read(ref _custodiansRequested).Task;
             foreach (Node node in iterateNodes())
             {
-                writer.TryWrite(node);
+                await writer.WriteAsync(node, token);
             }
 
             if (early)
@@ -239,11 +264,11 @@ public sealed class BeaconDiscovery(
     /// <summary>Yields the candidates made from <paramref name="nodes"/>, those custodying most of <see cref="WantedColumns"/> first.</summary>
     internal async IAsyncEnumerable<BeaconPeerCandidate> OfferByCustodyAsync(System.Threading.Channels.ChannelReader<Node> nodes, Func<Node, BeaconPeerCandidate?> createCandidate, [EnumeratorCancellation] CancellationToken token)
     {
-        CustodyRankedCandidates waiting = new(CandidateCapacity);
+        CustodyRankedCandidates waiting = new(CandidateCapacity, c => 5 * DialHistory.Quality(c.Multiaddress) + c.ForkPreference);
         while (true)
         {
             IReadOnlyList<ulong> wanted = WantedColumns;
-            while (nodes.TryRead(out Node? node))
+            for (int read = 0; read < CandidateCapacity && nodes.TryRead(out Node? node); read++)
             {
                 if (createCandidate(node) is { } candidate)
                 {
@@ -253,7 +278,10 @@ public sealed class BeaconDiscovery(
 
             if (waiting.TryTake(wanted, out BeaconPeerCandidate? next))
             {
-                yield return next;
+                if (SelectDialableAddress(next) is { } dialable)
+                {
+                    yield return dialable;
+                }
             }
             else if (!await nodes.WaitToReadAsync(token))
             {
@@ -269,8 +297,25 @@ public sealed class BeaconDiscovery(
     /// <returns><see langword="true"/> when a new ENR was published.</returns>
     public bool UpdateLocalEnr()
     {
+        lock (_enrLock)
+        {
+            return UpdateLocalEnrCore();
+        }
+    }
+
+    private bool UpdateLocalEnrCore()
+    {
         ulong epoch = CurrentEpoch;
-        if (!_localEnr!.Update(EnrForkId.Compute(spec, epoch), EnrForkId.NextForkDigest(spec, epoch)))
+        EnrForkId forkId = EnrForkId.Compute(spec, epoch);
+        byte[]? nextForkDigest = EnrForkId.NextForkDigest(spec, epoch);
+        if (forkId.Equals(_localEnr!.ForkId) && Bytes.AreEqual(nextForkDigest ?? NfdEntry.NoneScheduled, _localEnr.NextForkDigest))
+        {
+            return false;
+        }
+
+        // EIP-778: persist before publication so a restart cannot reuse a sequence peers may already hold.
+        PersistEnrSequence(LocalNodeRecord.EnrSequence + 1);
+        if (!_localEnr.Update(forkId, nextForkDigest))
         {
             return false;
         }
@@ -323,7 +368,7 @@ public sealed class BeaconDiscovery(
         }
     }
 
-    internal static bool TryCreateCandidate(NodeRecord record, byte[] currentForkDigest, byte[]? nextForkDigest, [NotNullWhen(true)] out BeaconPeerCandidate? candidate)
+    internal static bool TryCreateCandidate(NodeRecord record, byte[] currentForkDigest, byte[]? nextForkDigest, [NotNullWhen(true)] out BeaconPeerCandidate? candidate, EnrForkId? localForkId = null)
     {
         candidate = null;
         if (!TryGetForkId(record, out EnrForkId? forkId))
@@ -345,9 +390,21 @@ public sealed class BeaconDiscovery(
 
         string peerId = DerivePeerId(publicKey);
         string ipProtocol = tcpEndpoint.AddressFamily == AddressFamily.InterNetworkV6 ? "ip6" : "ip4";
+        List<string> addresses = [$"/{ipProtocol}/{tcpEndpoint.Address}/tcp/{tcpEndpoint.Port}/p2p/{peerId}"];
+        if (tcpEndpoint.AddressFamily == AddressFamily.InterNetwork && record.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? ipv6))
+        {
+            addresses.Add($"/ip6/{ipv6.Address}/tcp/{ipv6.Port}/p2p/{peerId}");
+        }
+
         candidate = new BeaconPeerCandidate($"/{ipProtocol}/{tcpEndpoint.Address}/tcp/{tcpEndpoint.Port}/p2p/{peerId}", peerId, forkId.ForkDigest, record.EnrSequence, record.ToString())
         {
             Custody = PeerColumnCustody.ForRecord(record) ?? PeerColumnCustody.None,
+            Addresses = addresses,
+            ForkPreference = (Bytes.AreEqual(forkId.ForkDigest, currentForkDigest) ? 2 : 0) +
+                (TryGetNextForkDigest(record, out byte[]? advertisedNext) &&
+                    Bytes.AreEqual(advertisedNext ?? NfdEntry.NoneScheduled, nextForkDigest ?? NfdEntry.NoneScheduled) ? 1 : 0) +
+                (localForkId is not null && forkId.NextForkEpoch == localForkId.NextForkEpoch &&
+                    Bytes.AreEqual(forkId.NextForkVersion, localForkId.NextForkVersion) ? 1 : 0),
         };
         return true;
     }
@@ -448,17 +505,34 @@ public sealed class BeaconDiscovery(
 
         try
         {
-            (byte[] currentDigest, byte[]? nextDigest) = AcceptedForkDigests();
-            return TryCreateCandidate(record, currentDigest, nextDigest, out BeaconPeerCandidate? candidate) ? candidate : null;
+            (byte[] currentDigest, byte[]? nextDigest, EnrForkId localForkId) = AcceptedForkDigests();
+            return TryCreateCandidate(record, currentDigest, nextDigest, out BeaconPeerCandidate? candidate, localForkId) ? SelectDialableAddress(candidate) : null;
         }
         catch (Exception e)
         {
-            if (_logger.IsTrace) _logger.Trace($"Unable to parse discovered beacon chain ENR for {node:s}: {e}");
+            if (_logger.IsTrace) _logger.Trace($"Unable to parse discovered beacon chain ENR for {node:s}: {PeerManager.DescribeFailure(e)}");
             return null;
         }
     }
 
-    private (byte[] Current, byte[]? Next) AcceptedForkDigests()
+    internal BeaconPeerCandidate? SelectDialableAddress(BeaconPeerCandidate candidate)
+    {
+        string? selected = null;
+        int quality = int.MinValue;
+        foreach (string address in candidate.Addresses)
+        {
+            int score = DialHistory.Quality(address);
+            if (DialHistory.CanDial(address) && score > quality)
+            {
+                selected = address;
+                quality = score;
+            }
+        }
+
+        return selected is null ? null : candidate with { Multiaddress = selected };
+    }
+
+    private (byte[] Current, byte[]? Next, EnrForkId LocalForkId) AcceptedForkDigests()
     {
         ulong epoch = CurrentEpoch;
         lock (_digestLock)
@@ -466,15 +540,20 @@ public sealed class BeaconDiscovery(
             if (_digestEpoch != epoch)
             {
                 _digestEpoch = epoch;
-                _currentDigest = ForkDigest.Compute(spec, epoch);
+                _currentForkId = EnrForkId.Compute(spec, epoch);
+                _currentDigest = _currentForkId.ForkDigest;
                 _nextDigest = EnrForkId.NextForkDigest(spec, epoch);
             }
 
-            return (_currentDigest, _nextDigest);
+            return (_currentDigest, _nextDigest, _currentForkId!);
         }
     }
 
     private ulong CurrentEpoch => spec.GetEpoch(spec.GetSlotAtTime(timestamper.UnixTime.Seconds));
+
+    /// <summary>The address the local ENR advertises: the external IPv4 address, since the libp2p host and the discv5 socket listen on IPv4 only.</summary>
+    /// <remarks>consensus-specs v1.7.0-beta.2 networking Transport: advertised listening endpoints must be publicly dialable.</remarks>
+    internal static IPAddress? AdvertisedAddress(IIPResolver.NethermindIp ip) => ip.ExternalIpV4;
 
     private async Task RunDiscovery(CancellationToken token)
     {
@@ -498,14 +577,16 @@ public sealed class BeaconDiscovery(
 
     /// <summary>Builds the local ENR and the private discv5 service graph, both of which need the resolved external IP.</summary>
     /// <remarks>Internal so a test can resolve the graph without binding a socket or reaching bootnodes.</remarks>
-    internal NettyDiscoveryV5Handler CreateDiscv5Services(IPAddress externalIp)
+    /// <param name="externalIp">The address the ENR advertises; <c>null</c> advertises no endpoint.</param>
+    internal NettyDiscoveryV5Handler CreateDiscv5Services(IPAddress? externalIp)
     {
         CryptoRandom cryptoRandom = new();
         PrivateKey nodeKey = LoadOrCreateIdentity(cryptoRandom);
         LocalCustody = new LocalCustody(nodeKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
         ulong epoch = CurrentEpoch;
-        BeaconNodeRecordProvider localEnr = new(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, epoch), LocalCustody.CustodyGroupCount, EnrForkId.NextForkDigest(spec, epoch));
-        Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), config.P2PPort, config.Discv5Port, true);
+        BeaconNodeRecordProvider localEnr = new(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, epoch), LocalCustody.CustodyGroupCount, EnrForkId.NextForkDigest(spec, epoch),
+            NextEnrSequence());
+        Node currentNode = new(nodeKey.PublicKey, (externalIp ?? IPAddress.None).ToString(), config.P2PPort, config.Discv5Port, true);
 
         IContainer discv5Services = new ContainerBuilder()
             .AddModule(new Discv5KademliaModule(currentNode, CreateBootNodes()))
@@ -557,7 +638,7 @@ public sealed class BeaconDiscovery(
             }
             catch (Exception e)
             {
-                if (_logger.IsWarn) _logger.Warn($"Unable to parse beacon chain bootnode ENR {enr}: {e.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Unable to parse beacon chain bootnode ENR {enr}: {PeerManager.DescribeFailure(e)}");
             }
         }
 
@@ -575,9 +656,25 @@ public sealed class BeaconDiscovery(
 
         using PrivateKeyGenerator generator = new(cryptoRandom);
         PrivateKey key = generator.Generate();
-        store.PutMetadata(IdentityMetadataKey, key.KeyBytes);
+        store.PutMetadata(IdentityMetadataKey, key.KeyBytes.AsSpan().ToArray());
         if (_logger.IsInfo) _logger.Info($"Generated new beacon chain P2P identity {DerivePeerId(key.CompressedPublicKey)}");
         return key;
+    }
+
+    /// <summary>Continues the sequence of the record last published under the persisted identity, and persists the new value.</summary>
+    /// <remarks>EIP-778: a node increases the sequence whenever its record changes; a peer holding a higher one ignores a lower one.</remarks>
+    private ulong NextEnrSequence()
+    {
+        ulong sequence = (store.GetMetadata(EnrSequenceMetadataKey) is { Length: sizeof(ulong) } stored ? BinaryPrimitives.ReadUInt64BigEndian(stored) : 0) + 1;
+        PersistEnrSequence(sequence);
+        return sequence;
+    }
+
+    private void PersistEnrSequence(ulong sequence)
+    {
+        byte[] value = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(value, sequence);
+        store.PutMetadata(EnrSequenceMetadataKey, value);
     }
 
     private sealed class NodeKeyWrapper(PrivateKey key) : IProtectedPrivateKey

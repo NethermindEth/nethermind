@@ -545,13 +545,20 @@ public class PeerBandTests
         {
             await remote.P2P.StartAsync(token);
             await local.P2P.StartAsync(token);
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+            ManualTimestamper clock = new();
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: clock);
 
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
 
             Assert.That(refusing.Requests, Is.GreaterThanOrEqualTo(2), "the status exchange never reached the remote");
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
             Assert.That(peerManager.PeerCount, Is.EqualTo(0));
+            int requests = refusing.Requests;
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+            Assert.That(refusing.Requests, Is.EqualTo(requests), "a failed endpoint is not immediately dialled again");
+            clock.Add(TimeSpan.FromMinutes(15));
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+            Assert.That(refusing.Requests, Is.GreaterThan(requests), "an expired backoff permits another dial");
         }
     }
 
