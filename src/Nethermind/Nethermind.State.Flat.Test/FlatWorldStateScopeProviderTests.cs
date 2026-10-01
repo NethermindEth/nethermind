@@ -260,11 +260,106 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void Background_storage_updates_match_foreground(
-        [Values] BackgroundStorageScenario scenario, [Values] bool readBeforeWrite)
+    public async Task Background_storage_updates_replace_the_early_apply([Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
     {
-        (Hash256 root, UInt256[] slots) expected = RunStorageScenario(false, scenario, readBeforeWrite);
-        (Hash256 root, UInt256[] slots) actual = RunStorageScenario(true, scenario, readBeforeWrite);
+        const int slotCount = 256;
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new(config: new FlatDbConfig
+        {
+            ApplyStorageWritesOnIdleThread = true,
+            BackgroundStorageTrieUpdates = true,
+            DeferStorageTrieCommit = deferStorageTrieCommit
+        });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+
+        // Committed writes reach the scope the way PersistentStorageProvider.SaveChange passes them: the value hint
+        // and the background batch. Every slot once, then slot 1 again and slot 2 back to its pre-block zero.
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+        using BackgroundStorageTrie background = (BackgroundStorageTrie)storageTree.StartBackgroundWriteBatch()!;
+        UInt256[] expected = new UInt256[slotCount];
+        void Commit(int slot, UInt256 value)
+        {
+            storageTree.HintSet((UInt256)slot, value);
+            background.Set((UInt256)slot, value);
+        }
+        for (int slot = 0; slot < slotCount; slot++) Commit(slot, expected[slot] = (UInt256)(slot + 1));
+        Commit(1, expected[1] = 1000);
+        Commit(2, expected[2] = 0);
+        Assert.That(background.Worker, Is.Not.Null, "the background worker must prepare the trie");
+        await background.Worker!.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+            if (clearAtBlockEnd) storageBatch.Clear();
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                if (slot != 2) storageBatch.Set((UInt256)slot, expected[slot]);
+            }
+        }
+        // Deferred, the batch only hashed the adopted trie and leaves its nodes to the scope commit.
+        Assert.That(storageTree.HasUncommittedNodes, Is.EqualTo(deferStorageTrieCommit));
+        scope.Commit(1);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            if (!expected[slot].IsZero) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
+        }
+        expectedTree.UpdateRootHash();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(background.IsStopped, Is.True, "the write batch must have taken the prepared trie");
+            Assert.That(scope.EarlyApplyCounts, Is.EqualTo((0, 0, 0, 0)));
+            Assert.That(scope.AppliesStorageWritesEarly, Is.False);
+            Assert.That(storageTree.EarlyWritesDrained, Is.True);
+            Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+        }
+    }
+
+    [Test]
+    public async Task Background_storage_after_a_root_flush_in_the_block_matches_foreground([Values] bool deferStorageTrieCommit)
+    {
+        const int slotCount = 256;
+        using TestContext ctx = new(config: new FlatDbConfig { BackgroundStorageTrieUpdates = true, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = scope.StartWriteBatch(1))
+        {
+            accounts.Set(address, new Account(1, 1));
+            using IWorldStateScopeProvider.IStorageWriteBatch writes = accounts.CreateStorageWriteBatch(address, slotCount);
+            for (int i = 0; i < slotCount; i++) writes.Set((UInt256)i, (UInt256)(i + 1));
+        }
+
+        // A second root flush in the same block. Deferred, the first one left the trie's nodes in memory, so the
+        // flush applies the writes itself instead of a background batch preparing them over the stored trie.
+        IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(address);
+        using BackgroundStorageTrie? background = (BackgroundStorageTrie?)storage.StartBackgroundWriteBatch();
+        Assert.That(background is null, Is.EqualTo(deferStorageTrieCommit));
+        for (int i = 0; i < slotCount; i++) background?.Set((UInt256)i, (UInt256)(i + 1000));
+        if (background?.Worker is { } worker) await worker.WaitAsync(TimeSpan.FromSeconds(30));
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch writes = accounts.CreateStorageWriteBatch(address, slotCount);
+            for (int i = 0; i < slotCount; i++) writes.Set((UInt256)i, (UInt256)(i + 1000));
+        }
+        scope.Commit(1);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int i = 0; i < slotCount; i++) expectedTree.Set((UInt256)i, ((UInt256)(i + 1000)).ToMinimalBigEndian());
+        expectedTree.UpdateRootHash();
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
+    public void Background_storage_updates_match_foreground(
+        [Values] BackgroundStorageScenario scenario, [Values] bool readBeforeWrite, [Values] bool deferStorageTrieCommit)
+    {
+        (Hash256 root, UInt256[] slots) expected = RunStorageScenario(false, scenario, readBeforeWrite, deferStorageTrieCommit);
+        (Hash256 root, UInt256[] slots) actual = RunStorageScenario(true, scenario, readBeforeWrite, deferStorageTrieCommit);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual.root, Is.EqualTo(expected.root));
@@ -284,7 +379,7 @@ public class FlatWorldStateScopeProviderTests
         }
     }
 
-    private static (Hash256 root, UInt256[] slots) RunStorageScenario(bool background, BackgroundStorageScenario scenario, bool readBeforeWrite)
+    private static (Hash256 root, UInt256[] slots) RunStorageScenario(bool background, BackgroundStorageScenario scenario, bool readBeforeWrite, bool deferStorageTrieCommit)
     {
         const int slotCount = 256;
         using IContainer container = new ContainerBuilder()
@@ -292,6 +387,7 @@ public class FlatWorldStateScopeProviderTests
             {
                 Enabled = true,
                 BackgroundStorageTrieUpdates = background,
+                DeferStorageTrieCommit = deferStorageTrieCommit,
                 VerifyWithTrie = true,
                 TrieWarmerWorkerCount = 1
             }))
