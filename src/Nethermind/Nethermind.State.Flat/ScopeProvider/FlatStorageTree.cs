@@ -65,6 +65,9 @@ public sealed class FlatStorageTree(
     private int _speculationState;
     private volatile bool _speculationFailed;
     private Hash256 _speculationBaseRoot = storageRoot;
+    // Set once a write batch or a clear takes the trie over. Until then it may hold speculative writes the block never
+    // reported, so it reports the pre-block root and the scope commit leaves its nodes out.
+    private volatile bool _speculationFinalized;
 
     // Test seam: runs on the runner right after it releases the trie and before it looks for more work.
     internal Action? OnSpeculationReleased;
@@ -99,7 +102,11 @@ public sealed class FlatStorageTree(
         return Interlocked.CompareExchange(ref _trees, created, null) ?? created;
     }
 
-    public Hash256 RootHash => Volatile.Read(ref _trees)?.Tree.RootHash ?? _storageRoot;
+    // As on the serial path, where the trie is untouched until the block-end batch, a trie the workers are still filling
+    // reports the pre-block root.
+    public Hash256 RootHash => Volatile.Read(ref _speculativeQueue) is not null && !_speculationFinalized
+        ? _storageRoot
+        : Volatile.Read(ref _trees)?.Tree.RootHash ?? _storageRoot;
 
     internal bool IsDisposed => _scope.IsDisposed;
 
@@ -470,6 +477,7 @@ public sealed class FlatStorageTree(
     {
         // Whatever the runner put in the trie is dropped with the old root; the batch rewrites the block's slots.
         JoinSpeculation();
+        _speculationFinalized = true;
         _speculativelyApplied?.Clear();
         _speculationBaseRoot = Keccak.EmptyTreeHash;
 
@@ -486,7 +494,9 @@ public sealed class FlatStorageTree(
     public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
 
     /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
-    internal bool HasUncommittedNodes => Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
+    /// <remarks>A trie no write batch took over holds only speculative writes the block never reported, so it has none.</remarks>
+    internal bool HasUncommittedNodes =>
+        (Volatile.Read(ref _speculativeQueue) is null || _speculationFinalized) && Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
@@ -582,6 +592,7 @@ public sealed class FlatStorageTree(
             if (_joined) return;
             _joined = true;
             storageTree.JoinSpeculation();
+            storageTree._speculationFinalized = true;
             if (storageTree._speculativelyApplied is { Count: > 0 } applied)
             {
                 _speculativelyApplied = applied;
