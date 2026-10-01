@@ -66,11 +66,12 @@ public class OptimismGossipLoopbackTests
         Assert.That(await received.Task, Is.EqualTo(block));
     }
 
-    /// <summary>A static peer the router holds no gossip connection to, as after any disconnect it does not redial, is connected by the static peer check.</summary>
+    /// <summary>A static peer the router holds no gossip connection to is connected by the static peer check, at first and again after its
+    /// connection closed.</summary>
     /// <remarks>The router never redials a peer whose reconnection it suppressed, and discovering a known peer again does nothing.</remarks>
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_static_peer_without_a_gossip_connection_is_connected_by_the_static_peer_check(CancellationToken token)
+    public async Task A_static_peer_is_connected_by_the_static_peer_check_again_after_a_disconnect(CancellationToken token)
     {
         // Both routers' own redials are off and nothing is discovered, so only the static peer check can connect the peer.
         await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
@@ -80,6 +81,31 @@ public class OptimismGossipLoopbackTests
         Assert.That(routing.ConnectedPeers, Does.Not.Contain(sequencerId), "fixture: the peer starts unconnected");
 
         using StaticPeerKeeper keeper = new(node.Peer, routing, [sequencer.Address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
+        await KeepUntilConnectedAsync(keeper, node, routing, sequencerId, token);
+
+        foreach (Host host in new[] { node, sequencer })
+        {
+            foreach (ISession session in ((LocalPeer)host.Peer).Sessions.ToArray())
+            {
+                await session.DisconnectAsync();
+            }
+        }
+
+        // The router drops a peer only when its gossip channels end, so a channel left open below would keep it here.
+        using (CancellationTokenSource dropped = CancellationTokenSource.CreateLinkedTokenSource(token))
+        {
+            dropped.CancelAfter(TimeSpan.FromSeconds(15));
+            while (routing.ConnectedPeers.Contains(sequencerId))
+            {
+                if (dropped.IsCancellationRequested)
+                {
+                    Assert.Fail($"the router kept the closed peer ({((LocalPeer)node.Peer).Sessions.Count} sessions)");
+                }
+
+                await Task.Delay(50, CancellationToken.None);
+            }
+        }
+
         await KeepUntilConnectedAsync(keeper, node, routing, sequencerId, token);
     }
 
