@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -39,8 +38,15 @@ public sealed class FlatStorageTree(
     private const int EarlyApplying = 1;
     private const int EarlyClaimed = 2;
 
-    // Committed writes waiting for the early apply thread, in commit order.
-    private ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? _earlyWrites;
+    // Committed writes for the early apply thread, in commit order: entries below _earlyCount are published and never
+    // change, so the thread reads them without a lock. Producers append under _earlyAppending; a grown buffer is
+    // published before the count that needs it. Sized for the few slots most contracts write in a block.
+    private (UInt256 Slot, UInt256 Value)[]? _earlyWrites;
+    private int _earlyCount;
+    private int _earlyAppending;
+    // How far the early apply thread has read; it alone moves it, while it holds EarlyApplying.
+    private int _earlyConsumed;
+    private const int InitialEarlyWrites = 4;
     // Owned by whoever holds _earlyState.
     private StorageTree? _earlyTree;
     private Dictionary<UInt256, UInt256>? _earlyApplied;
@@ -113,16 +119,35 @@ public sealed class FlatStorageTree(
 
         // Capture the pre-block root while the owning thread can still read the mutable bundle.
         _ = GetTrees();
-        ConcurrentQueue<(UInt256 Slot, UInt256 Value)> writes = Volatile.Read(ref _earlyWrites) ?? CreateEarlyWrites();
-        writes.Enqueue((index, value));
+        AppendEarlyWrite(index, value);
         // A set flag means a pass that has yet to clear it will see this write.
         if (Volatile.Read(ref _earlyQueued) == 0 && Interlocked.Exchange(ref _earlyQueued, 1) == 0) _scope.EarlyApplier.Enqueue(this);
     }
 
-    private ConcurrentQueue<(UInt256 Slot, UInt256 Value)> CreateEarlyWrites()
+    private void AppendEarlyWrite(in UInt256 slot, in UInt256 value)
     {
-        ConcurrentQueue<(UInt256 Slot, UInt256 Value)> created = new();
-        return Interlocked.CompareExchange(ref _earlyWrites, created, null) ?? created;
+        // Uncontended unless transactions commit in parallel; a queue per tree cost a 2 KB segment on the block thread.
+        SpinWait spinner = default;
+        while (Interlocked.CompareExchange(ref _earlyAppending, 1, 0) != 0) spinner.SpinOnce();
+        try
+        {
+            (UInt256 Slot, UInt256 Value)[]? writes = _earlyWrites;
+            int count = _earlyCount;
+            if (writes is null || count == writes.Length)
+            {
+                (UInt256 Slot, UInt256 Value)[] grown = new (UInt256 Slot, UInt256 Value)[writes is null ? InitialEarlyWrites : writes.Length * 2];
+                writes?.AsSpan(0, count).CopyTo(grown);
+                Volatile.Write(ref _earlyWrites, grown);
+                writes = grown;
+            }
+
+            writes[count] = (slot, value);
+            Volatile.Write(ref _earlyCount, count + 1);
+        }
+        finally
+        {
+            Volatile.Write(ref _earlyAppending, 0);
+        }
     }
 
     [SkipLocalsInit]
@@ -136,12 +161,16 @@ public sealed class FlatStorageTree(
         bool leased = false;
         try
         {
-            ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? writes = Volatile.Read(ref _earlyWrites);
-            if (writes is null || writes.IsEmpty || !(leased = _bundle.TryLeaseReadOnlyBundle())) return;
+            // The count before the buffer: any buffer published after that count holds every entry below it.
+            int count = Volatile.Read(ref _earlyCount);
+            int consumed = _earlyConsumed;
+            if (count == consumed || !(leased = _bundle.TryLeaseReadOnlyBundle())) return;
 
+            (UInt256 Slot, UInt256 Value)[] writes = Volatile.Read(ref _earlyWrites)!;
             Dictionary<UInt256, UInt256> applied = _earlyApplied ??= [];
-            Dictionary<UInt256, UInt256> latest = new(writes.Count);
-            while (writes.TryDequeue(out (UInt256 Slot, UInt256 Value) write)) latest[write.Slot] = write.Value;
+            Dictionary<UInt256, UInt256> latest = new(count - consumed);
+            for (int i = consumed; i < count; i++) latest[writes[i].Slot] = writes[i].Value;
+            Volatile.Write(ref _earlyConsumed, count);
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(latest.Count);
             Unsafe.SkipInit(out EvmWord word);
@@ -181,7 +210,7 @@ public sealed class FlatStorageTree(
     }
 
     /// <summary>Whether every queued write has been applied to the early tree. For tests.</summary>
-    internal bool EarlyWritesDrained => Volatile.Read(ref _earlyWrites) is not { IsEmpty: false } && Volatile.Read(ref _earlyState) != EarlyApplying && Volatile.Read(ref _earlyQueued) == 0;
+    internal bool EarlyWritesDrained => Volatile.Read(ref _earlyConsumed) == Volatile.Read(ref _earlyCount) && Volatile.Read(ref _earlyState) != EarlyApplying && Volatile.Read(ref _earlyQueued) == 0;
 
     /// <summary>Called once a pass has taken its writes. For tests.</summary>
     internal Action? OnEarlyPassDrained;
