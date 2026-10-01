@@ -70,29 +70,22 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
             if (collisionIndex < 0) pending = default;
         }
 
+        // Only the current generation is consulted: a previous version in an older generation is reached through that
+        // generation's own index by readers, so a record written before a roll in this batch gets no link either.
         if (pending.Generation is not null)
         {
-            prev = TrieNodeLogRecord.PackLocation(pending.Generation.Number, pending.Offset);
             if (pending.Generation == generation)
             {
+                prev = TrieNodeLogRecord.PackPrev(pending.Offset);
                 slot = pending.Slot;
                 newToGeneration = false;
             }
         }
-        else
+        else if (generation.TryLocate(hash, key, _probeBuffer, out _, out int index, out long offset, out _))
         {
-            for (int i = pinned.Count - 1; i >= 0; i--)
-            {
-                TrieNodeLogGeneration candidate = pinned[i];
-                if (!candidate.TryLocate(hash, key, _probeBuffer, out _, out int index, out long offset, out _)) continue;
-                prev = TrieNodeLogRecord.PackLocation(candidate.Number, offset);
-                if (candidate == generation)
-                {
-                    slot = index;
-                    newToGeneration = false;
-                }
-                break;
-            }
+            prev = TrieNodeLogRecord.PackPrev(offset);
+            slot = index;
+            newToGeneration = false;
         }
 
         if (newToGeneration) _pendingInsertsInCurrent++;
@@ -138,10 +131,10 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         {
             FlushBuffer();
             generation = shard.Roll();
-            generation.TryAcquire();
-            pinned.Add(generation);
             _pendingInsertsInCurrent = 0;
         }
+
+        if (_current != generation && generation.TryAcquire()) pinned.Add(generation);
 
         if (_current != generation)
         {

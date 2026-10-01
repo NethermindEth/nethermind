@@ -20,8 +20,8 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// <remarks>
 /// <para>Every log-backed batch gets a version <c>V</c> and stores it in the flat DB metadata column inside the
 /// same RocksDB batch as the state pointer, so a RocksDB snapshot pins the log version a reader must see; the
-/// view serves only records with <c>version &lt;= V</c> and follows each record's <c>prev</c> link back to an
-/// older version when needed. A metadata marker <c>N</c> records the newest generation whose latest record per
+/// view serves only records with <c>version &lt;= V</c>, following a record's <c>prev</c> link within its
+/// generation and the older generations' indexes beyond it. A metadata marker <c>N</c> records the newest generation whose latest record per
 /// key is in RocksDB; a view does not pin generations at or below the <c>N</c> of its snapshot.</para>
 /// <para>Recovery keeps, per surviving file, the prefix up to the last commit record whose version the metadata
 /// column confirms; records of a batch whose RocksDB write did not happen are discarded, files at or below
@@ -113,7 +113,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
         Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending = Interlocked.Exchange(ref _pendingPool, null) ?? [];
         using Lock.Scope _ = _lock.EnterScope();
-        return new TrieNodeLogWriteBatch(this, ++_version, PinAllNoLock(), pending);
+        return new TrieNodeLogWriteBatch(this, ++_version, new ArrayPoolList<TrieNodeLogGeneration>(2), pending);
     }
 
     internal void ReturnPending(Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending)

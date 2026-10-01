@@ -12,9 +12,10 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// every shard holds records of one column.
 /// </summary>
 /// <remarks>
-/// <see cref="Prev"/> is the <see cref="PackLocation">packed location</see> of the previous record of the same key
-/// (0 when none), which lets a reader walk back to the version it needs. A commit record has no key or value and
-/// stores <c>~version</c> in <see cref="Prev"/> so a torn (zero-filled) tail cannot pass as a commit.
+/// <see cref="Prev"/> is the offset + 1 of the previous record of the same key in the same generation file (0 when
+/// none), which lets a reader walk back to the version it needs; older versions in older generations are found
+/// through those generations' own indexes. A commit record has no key or value and stores <c>~version</c> in
+/// <see cref="Prev"/> so a torn (zero-filled) tail cannot pass as a commit.
 /// </remarks>
 internal readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int ValueLength, ulong Version, ulong Prev)
 {
@@ -26,7 +27,7 @@ internal readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int 
     public const int MaxKeyLength = byte.MaxValue;
     public const int MaxValueLength = ushort.MaxValue;
 
-    // Packed location: generation in the high 24 bits, (offset + 1) in the low 40 bits so that 0 means "none".
+    // Index slot: the hash's high 24 bits as a tag over (offset + 1) in the low 40 bits, so that 0 is an empty slot.
     private const int OffsetBits = 40;
     private const ulong OffsetMask = (1UL << OffsetBits) - 1;
 
@@ -65,13 +66,10 @@ internal readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int 
 
     public static ulong Hash(ReadOnlySpan<byte> key) => XxHash3.HashToUInt64(key);
 
-    public static ulong PackLocation(ulong generation, long offset) => (generation << OffsetBits) | ((ulong)offset + 1);
+    public static ulong PackPrev(long offset) => (ulong)offset + 1;
 
-    public static ulong LocationGeneration(ulong location) => location >> OffsetBits;
+    public static long PrevOffset(ulong prev) => (long)prev - 1;
 
-    public static long LocationOffset(ulong location) => (long)(location & OffsetMask) - 1;
-
-    /// <summary>Index slot: the hash's high 24 bits as a tag over the packed (offset + 1); 0 is an empty slot.</summary>
     public static ulong PackSlot(ulong hash, long offset) => (hash & ~OffsetMask) | ((ulong)offset + 1);
 
     public static bool SlotTagMatches(ulong slot, ulong hash) => (slot & ~OffsetMask) == (hash & ~OffsetMask);

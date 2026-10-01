@@ -54,22 +54,19 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
             TrieNodeLogGeneration generation = pinned[i];
             if (!generation.TryLocate(hash, key, buffer, out TrieNodeLogRecord header, out _, out long offset, out int bytesRead)) continue;
 
+            // Walk the key's versions within this generation; once they run out, the next older generation's index
+            // takes over, and RocksDB holds whatever the pinned generations do not.
             bool walked = false;
+            bool found = true;
             while (header.Version > _version)
             {
-                ulong previous = header.Prev;
-                if (previous == 0 || TrieNodeLogRecord.LocationGeneration(previous) <= _flushedGeneration)
+                if (header.Prev == 0)
                 {
-                    Interlocked.Increment(ref _misses);
-                    value = null;
-                    return false;
+                    found = false;
+                    break;
                 }
 
-                // prev links cross generations: a key's newer record points at its record in whichever older generation
-                // held it. That generation is pinned, as the pins are the contiguous set above the merged marker and
-                // a prev at or below the marker was sent to RocksDB above.
-                generation = Pinned(TrieNodeLogRecord.LocationGeneration(previous));
-                offset = TrieNodeLogRecord.LocationOffset(previous);
+                offset = TrieNodeLogRecord.PrevOffset(header.Prev);
                 bytesRead = generation.ReadAt(offset, buffer);
                 header = TrieNodeLogRecord.Read(buffer);
                 if (bytesRead < TrieNodeLogRecord.HeaderLength + key.Length || header.KeyLength != key.Length
@@ -79,6 +76,7 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
                 }
                 walked = true;
             }
+            if (!found) continue;
 
             Interlocked.Increment(ref walked ? ref _chainHits : ref _hits);
             value = header.Type == TrieNodeLogRecord.Delete ? null : generation.ReadValue(offset, header, buffer, bytesRead);
@@ -88,13 +86,6 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
         Interlocked.Increment(ref _misses);
         value = null;
         return false;
-    }
-
-    private TrieNodeLogGeneration Pinned(ulong number)
-    {
-        // Generations are pinned contiguously above the flushed marker, so the index is an offset from the oldest.
-        TrieNodeLogGeneration generation = pinned[(int)(number - pinned[0].Number)];
-        return generation.Number == number ? generation : throw new InvalidOperationException($"Trie node log generation {number} is not pinned");
     }
 
     private static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
