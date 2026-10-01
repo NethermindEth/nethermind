@@ -534,6 +534,97 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
+    /// The epoch-2 shuffling is fixed by the last block at or before slot 31. A at slot 31 is its own decision block and its
+    /// sibling B at slot 32 has their parent, so they never share a state; X at slot 32 and its child Y both have X's parent
+    /// at slot 30, so they do. A decision slot off by one either way merges the first pair or splits the second.
+    /// </summary>
+    [Test]
+    public void Targets_share_a_vote_state_exactly_when_the_decision_slot_gives_them_one_block()
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
+        UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
+        List<UnsignedChain.ChainBlock> xy = ImportLine(chain, runner, parent.Root, 32, 40);
+
+        runner.OnAttestation(BodyVote(chain, a, targetEpoch), isFromBlock: true, verifySignature: false);
+        runner.OnAttestation(BodyVote(chain, xy[0], targetEpoch), isFromBlock: true, verifySignature: false);
+        int afterSiblings = builds.Count;
+        runner.OnAttestation(BodyVote(chain, xy[1], targetEpoch), isFromBlock: true, verifySignature: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterSiblings, Is.EqualTo(2), "the slot-31 block and its slot-32 sibling have two shufflings");
+            Assert.That(builds.Count, Is.EqualTo(2), "the slot-40 child shares the slot-32 block's shuffling");
+        }
+    }
+
+    /// <summary>
+    /// A tree rooted after the decision slot holds none of the decision blocks, but every block in it descends from the root,
+    /// so they all share the root's own ancestor there and one state serves every target of that epoch.
+    /// </summary>
+    [Test]
+    public void Targets_whose_decision_slot_is_below_the_tree_root_share_one_vote_state()
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        UnsignedChain.ChainBlock root = chain.Extend(chain.AnchorRoot, Presets.SlotsPerEpoch, payloadHashByte: 32);
+        ForkChoiceRunner runner = new(chain.Spec, root.PostState, root.Block.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        List<UnsignedChain.ChainBlock> targets = ImportLine(chain, runner, root.Root, 50, 60);
+
+        foreach (UnsignedChain.ChainBlock target in targets)
+        {
+            runner.OnAttestation(BodyVote(chain, target, targetEpoch), isFromBlock: true, verifySignature: false);
+        }
+
+        Assert.That(builds.Count, Is.EqualTo(1));
+    }
+
+    /// <summary>A Gloas checkpoint state names its decision block from its own block roots too, so two Gloas targets of one shuffling share a state.</summary>
+    [Test]
+    public void Gloas_targets_of_one_shuffling_share_one_vote_state()
+    {
+        const ulong targetEpoch = 3;
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkChoiceRunner runner = JustifiedOnFirstGloasBlock(chain);
+        BuildCounter builds = new(runner);
+        ulong epochStart = targetEpoch * Presets.SlotsPerEpoch;
+        BeaconStateGloas atEpochStart = chain.Voting[^1].PostState.Clone();
+        GloasSlotProcessing.ProcessSlots(atEpochStart, epochStart, new EpochCache { Hasher = new CachedBeaconStateHasher() });
+        int committeeSize = new EpochCache().GetCommitteeCache(atEpochStart, targetEpoch).GetBeaconCommittee(epochStart, 0).Length;
+
+        foreach (ForkCrossingChain.ChainBlock target in (ForkCrossingChain.ChainBlock[])[chain.Voting[0], chain.Voting[^1]])
+        {
+            AttestationGloas vote = new()
+            {
+                AggregationBits = new BitArray(committeeSize, true),
+                Data = new AttestationData
+                {
+                    Slot = epochStart,
+                    Index = 0,
+                    BeaconBlockRoot = target.Root,
+                    Source = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = chain.First.Root },
+                    Target = new Checkpoint { Epoch = targetEpoch, Root = target.Root },
+                },
+                Signature = new BlsSignature(SignatureSets.G2PointAtInfinity),
+                CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+            };
+            runner.OnAttestation(vote, isFromBlock: true, verifySignature: false);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(committeeSize, Is.Positive, "fixture bug: slot 96 must have a committee");
+            Assert.That(builds.Count, Is.EqualTo(1), "both blocks have the first Gloas block at slot 32 as their decision block for epoch 3");
+        }
+    }
+
+    /// <summary>
     /// <c>on_attester_slashing</c> reads the justified block's state; with a Gloas justified root that
     /// state is only in the Gloas provider. Whichever container carried the slashing, only the validators
     /// named by both attestations equivocated: the first and the last 40 of slot 32's committee share 16,
