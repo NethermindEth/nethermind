@@ -18,17 +18,17 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// <see cref="MakeDurable"/> (commit records + fsync, in parallel), <see cref="Publish"/> (in parallel) and
 /// <see cref="WriteVersion"/> (serially, into the RocksDB metadata batch).
 /// </remarks>
-internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong version, List<TrieNodeLogGeneration> pinned) : IDisposable
+internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong version, List<TrieNodeLogGeneration> pinned, Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending) : IDisposable
 {
     private const int WriteBufferSize = 1024 * 1024;
     private const int NoSlot = -1;
 
     // Latest record of a key within this batch and the slot it will occupy (NoSlot: a key new to that generation,
     // placed by probing at publish time).
-    private readonly record struct Pending(TrieNodeLogGeneration Generation, int Slot, long Offset);
+    internal readonly record struct Pending(TrieNodeLogGeneration Generation, int Slot, long Offset);
 
     private readonly List<(TrieNodeLogGeneration Generation, long StartFrontier)> _touched = [];
-    private readonly Dictionary<ulong, Pending> _pending = [];
+    private readonly Dictionary<ulong, Pending> _pending = pending;
     private readonly byte[] _buffer = ArrayPool<byte>.Shared.Rent(WriteBufferSize);
     private readonly byte[] _probeBuffer = new byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
     private int _buffered;
@@ -214,5 +214,6 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
 
         foreach (TrieNodeLogGeneration generation in pinned) generation.Dispose();
         pinned.Clear();
+        shard.ReturnPending(_pending);
     }
 }

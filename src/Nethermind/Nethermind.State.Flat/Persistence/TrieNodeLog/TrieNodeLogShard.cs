@@ -49,6 +49,10 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private ulong _version;
     private int _openBatch;
 
+    // One batch is open per shard at a time; its pending-key map is kept across batches so its entry arrays
+    // (which grow past the LOH threshold) are not reallocated every batch.
+    private Dictionary<ulong, TrieNodeLogWriteBatch.Pending>? _pendingPool;
+
     private readonly SemaphoreSlim _flushLock = new(1, 1);
     private readonly SemaphoreSlim _flushSignal = new(0);
     private readonly CancellationTokenSource _cancellation = new();
@@ -96,8 +100,15 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         if (Interlocked.CompareExchange(ref _openBatch, 1, 0) != 0)
             throw new InvalidOperationException($"A trie node log write batch is already open on shard {Name}");
 
+        Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending = Interlocked.Exchange(ref _pendingPool, null) ?? [];
         using Lock.Scope _ = _lock.EnterScope();
-        return new TrieNodeLogWriteBatch(this, ++_version, PinAllNoLock());
+        return new TrieNodeLogWriteBatch(this, ++_version, PinAllNoLock(), pending);
+    }
+
+    internal void ReturnPending(Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending)
+    {
+        pending.Clear();
+        Volatile.Write(ref _pendingPool, pending);
     }
 
     /// <summary>Merges every generation into RocksDB synchronously.</summary>
@@ -296,6 +307,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
+                // Resolved once: the RocksDB columns batch allocates a wrapper per GetColumnBatch call.
+                Core.IWriteBatch?[] columns = new Core.IWriteBatch?[WriteBufferAdjuster.ColumnCount];
                 Scanner scanner = new(generation, generation.Frontier);
                 try
                 {
@@ -311,7 +324,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                             continue;
                         }
 
-                        Core.IWriteBatch column = batch.GetColumnBatch((FlatDbColumns)header.Column);
+                        Core.IWriteBatch column = columns[header.Column] ??= batch.GetColumnBatch((FlatDbColumns)header.Column);
                         if (header.Type == TrieNodeLogRecord.Delete) column.Remove(scanner.Key);
                         else column.PutSpan(scanner.Key, scanner.Value);
                         written += header.KeyLength + header.ValueLength;
