@@ -24,7 +24,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         ParallelUnbalancedWork worker = new(data);
         QueueWorkers(data, worker, threads - 1);
 
-        worker.Execute();
+        worker.Run();
 
         // If there are still active threads, wait for them to complete
         if (data.ActiveThreads > 0)
@@ -70,9 +70,17 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
     private ParallelUnbalancedWork(Data data) => _data = data;
 
     /// <summary>
-    /// Executes the parallel work item.
+    /// Executes a queued slot of the parallel work, unless the caller has already withdrawn it.
     /// </summary>
     public void Execute()
+    {
+        if (_data.TryStartQueued()) Run();
+    }
+
+    /// <summary>
+    /// Executes the parallel work item.
+    /// </summary>
+    private void Run()
     {
         try
         {
@@ -130,6 +138,8 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         internal WorkerScope.WorkQueue? Queue;
         public ManualResetEventSlim Event { get; } = new(initialState: false);
         private int _activeThreads = threads;
+        // Workers queued straight to the thread pool that no thread has started yet.
+        private int _unstarted;
         private int _faulted;
         private ExceptionDispatchInfo? _exception;
         public CancellationToken CancellationToken { get; } = token;
@@ -166,6 +176,31 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Rethrows the first captured exception (preserving its original stack trace), if any.
         /// </summary>
         public void ThrowIfFaulted() => Volatile.Read(ref _exception)?.Throw();
+
+        /// <summary>Records how many workers were queued straight to the thread pool.</summary>
+        public void SetUnstarted(int count) => _unstarted = count;
+
+        /// <summary>
+        /// Claims one queued worker's start. Fails once the caller has withdrawn the unstarted workers,
+        /// so a worker dequeued late neither runs nor completes a slot the caller already settled.
+        /// </summary>
+        public bool TryStartQueued()
+        {
+            // Scoped workers are withdrawn through their scope instead.
+            if (Scope is not null) return true;
+            int unstarted = Volatile.Read(ref _unstarted);
+            while (unstarted > 0)
+            {
+                int observed = Interlocked.CompareExchange(ref _unstarted, unstarted - 1, unstarted);
+                if (observed == unstarted) return true;
+                unstarted = observed;
+            }
+            return false;
+        }
+
+        /// <summary>Withdraws every queued worker that has not started.</summary>
+        /// <returns>The number of workers withdrawn.</returns>
+        public int WithdrawUnstarted() => Interlocked.Exchange(ref _unstarted, 0);
 
         /// <summary>
         /// Marks a thread as completed.
@@ -235,7 +270,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             QueueWorkers(data, worker, threads - 1);
 
             // Execute work on the current thread
-            worker.Execute();
+            worker.Run();
 
             // If there are still active threads, wait for them to complete
             if (data.ActiveThreads > 0)
@@ -256,9 +291,17 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         private InitProcessor(Data<TLocal> data) => _data = data;
 
         /// <summary>
-        /// Executes the parallel work item with thread-local data.
+        /// Executes a queued slot of the parallel work, unless the caller has already withdrawn it.
         /// </summary>
         public void Execute()
+        {
+            if (_data.TryStartQueued()) Run();
+        }
+
+        /// <summary>
+        /// Executes the parallel work item with thread-local data.
+        /// </summary>
+        private void Run()
         {
             TLocal? value = default;
             // Track Init success so a throwing Init does not leak into Finally with default(TLocal)

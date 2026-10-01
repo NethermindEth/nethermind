@@ -611,6 +611,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <returns>Whether the system-contract hints were warmed; false when they were requested but the pass did not reach them.</returns>
     private bool WarmDeltaSync(Block delta, IReleaseSpec spec, bool warmSystemAccessLists, CancellationToken token)
     {
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(_speculativeConcurrencyLevel);
         // The delta comes from the txpool, where every sender is already recovered, so there is no recovery to wait on.
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, spec, speculativelyWarmed: null, recovery: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists);
         // Run inline rather than through the pool: this pass is going to block on the warmer anyway, and the block

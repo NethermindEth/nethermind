@@ -229,6 +229,9 @@ namespace Nethermind.Trie
                 // walk for one bounded copy. The walk is kept where it does something else as well:
                 // spreading the children over cores, or collecting branch pairs for batched hashing.
                 bool useParallel = UseParallel(canBeParallel, item);
+                using ParallelUnbalancedWork.WorkerScope? workers = useParallel
+                    ? ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount)
+                    : null;
                 if (useParallel || (Avx512F.VL.IsSupported && HasBatchableChildPair(item)))
                 {
                     contentLength = valueRlpLength + (useParallel

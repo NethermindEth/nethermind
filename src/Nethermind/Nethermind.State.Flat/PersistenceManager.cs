@@ -9,6 +9,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -38,7 +39,7 @@ public class PersistenceManager(
     IFlatPersistenceCaptureHook? captureHook = null) : IPersistenceManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
-    // Linked to process exit so the conversion Parallel.ForEach below cancels at shutdown-start —
+    // Linked to process exit so the conversion loop below cancels at shutdown-start —
     // before DI disposal order matters — letting the owning FlatDbManager.RunPersistence task drain.
     private readonly CancellationTokenSource _cts = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
     private readonly ulong _minReorgDepth = configuration.MinReorgDepth;
@@ -320,7 +321,7 @@ public class PersistenceManager(
     private async Task ConvertCompactedRange(Snapshot compacted)
     {
         // Ownership of allStateIds transfers to the compactor on the EnqueueAsync handoff below; until then
-        // this method owns it and must dispose it on any early exit (e.g. Parallel.ForEach cancellation).
+        // this method owns it and must dispose it on any early exit (e.g. conversion cancellation).
         ArrayPoolList<StateId> allStateIds = new(64);
         bool handedOff = false;
         try
@@ -336,19 +337,23 @@ public class PersistenceManager(
                     allStateIds.Add(state);
             }
 
-            Parallel.ForEach(
-                allStateIds,
-                new ParallelOptions { CancellationToken = _cts.Token },
-                state =>
-                {
-                    if (snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snap))
+            using (ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount))
+            {
+                ParallelUnbalancedWork.For(
+                    0, allStateIds.Count,
+                    new ParallelOptions { CancellationToken = _cts.Token },
+                    i =>
                     {
-                        long sw = Stopwatch.GetTimestamp();
-                        loader.ConvertAndRegister(snap);
-                        Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
-                        snap.Dispose();
-                    }
-                });
+                        StateId state = allStateIds[i];
+                        if (snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snap))
+                        {
+                            using Snapshot _ = snap;
+                            long sw = Stopwatch.GetTimestamp();
+                            loader.ConvertAndRegister(snap);
+                            Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
+                        }
+                    });
+            }
 
             // Remove exactly the converted in-memory snapshots — not RemoveStatesUntil(end),
             // which would also drop snapshots added concurrently within the block range. Must

@@ -3251,6 +3251,33 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void Parallel_validation_shares_and_restores_worker_budget([Range(0, 2)] int budget)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable stateScope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        ConcurrentBag<int> observedBudgets = [];
+        ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
+        adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(call =>
+        {
+            observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0);
+            call.Arg<Transaction>().BlockGasUsed = 21_000;
+            call.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, 21_000, [], []);
+            return TransactionResult.Ok;
+        });
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = CreateParallelValidationExecutor(stateProvider, adapter);
+        using ParallelUnbalancedWork.WorkerScope? outer = budget == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(budget);
+
+        ProcessParallelValidationBlock(executor, 8);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observedBudgets, Has.Count.EqualTo(8));
+            Assert.That(observedBudgets, Is.All.EqualTo(budget == 0 ? Environment.ProcessorCount : budget));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer));
+        }
+    }
+
+    [Test]
     public void Parallel_validation_releases_the_pooled_slots_a_shorter_block_leaves_unused()
     {
         const int wideTxCount = 8;
