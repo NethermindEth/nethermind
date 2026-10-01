@@ -18,10 +18,27 @@ import yaml
 def file_identity(path):
     path = Path(path).resolve(strict=True)
     digest = hashlib.sha256()
+    lines = 0
+    last = b""
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
-    return {"path": str(path), "bytes": path.stat().st_size, "sha256": digest.hexdigest()}
+            lines += chunk.count(b"\n")
+            last = chunk[-1:]
+    return {"path": str(path), "bytes": path.stat().st_size, "sha256": digest.hexdigest(),
+            "physical_line_count": lines + (bool(last) and last != b"\n")}
+
+
+def first_request(path):
+    with Path(path).open("rb") as stream:
+        record = json.loads(next(line for line in stream if line.strip()))
+    if not isinstance(record, dict):
+        return {"format_error": "first input record is not an RPC object"}
+    params = record.get("params", [])
+    body = params[0] if isinstance(params, list) and params and isinstance(params[0], dict) else {}
+    return {"method": record.get("method"), "root_keys": sorted(record),
+            "header": {key: body[key] for key in ("parentHash", "blockHash", "blockNumber", "timestamp",
+                       "gasUsed", "gasLimit", "headBlockHash", "safeBlockHash", "finalizedBlockHash") if key in body}}
 
 
 def inspect_inputs(config_path):
@@ -44,9 +61,13 @@ def inspect_inputs(config_path):
         raise ValueError("snapshot_source must resolve to a directory for the Linux Flat inventory")
     return {
         "config": file_identity(config_path), "files": files,
+        "first_requests": {key: first_request(value["path"]) for key, value in files.items()},
         "snapshot": {"path": str(snapshot), "backend": scenario.get("snapshot_backend", "overlay"),
                      "entries": sorted(p.name for p in snapshot.iterdir()),
-                     "free_bytes": shutil.disk_usage(snapshot).free},
+                     "free_bytes": shutil.disk_usage(snapshot).free,
+                     "metadata": {name: json.loads((snapshot / name).read_text(encoding="utf-8"))
+                                  for name in ("_snapshot_metadata.json", "_snapshot_eth_getBlockByNumber.json",
+                                               "_snapshot_web3_clientVersion.json") if (snapshot / name).is_file()}},
         "scenario": {key: scenario.get(key) for key in
                      ("network", "amount", "skip", "warmup", "delay", "extra_flags", "snapshot_mount_path")},
         "resources": config.get("resources"),

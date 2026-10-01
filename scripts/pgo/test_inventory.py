@@ -7,10 +7,21 @@ import unittest
 
 import yaml
 
-from inventory import inspect_inputs
+from inventory import file_identity, first_request, inspect_inputs
 
 
 class InventoryTests(unittest.TestCase):
+    def test_header_summary_excludes_transaction_bodies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "payloads.jsonl"
+            path.write_text('{"method":"engine_newPayloadV4","params":[{"blockNumber":"0x1","parentHash":"0xaa","transactions":["0x123"]}]}\n')
+            summary = first_request(path)
+            self.assertEqual(summary["header"], {"blockNumber": "0x1", "parentHash": "0xaa"})
+            self.assertNotIn("transactions", str(summary))
+            self.assertEqual(file_identity(path)["physical_line_count"], 1)
+            path.write_text("a\nb")
+            self.assertEqual(file_identity(path)["physical_line_count"], 2)
+
     def test_workflow_is_manual_fusaka_inventory_without_promotion(self):
         workflow = Path(__file__).resolve().parents[2] / ".github/workflows/collect-pgo-profile.yml"
         config = yaml.load(workflow.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
