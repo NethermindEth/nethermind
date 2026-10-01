@@ -40,7 +40,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating", "CompareBranch")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -95,7 +95,7 @@ public class OpcodeChainBenchmarks
             "DivOne" => (UInt256)3,
             "ModOne" => UInt256.Zero,
             "Predicate" => UInt256.MaxValue,
-            "JumpTaken" => UInt256.Zero,
+            "JumpTaken" or "CompareBranch" => UInt256.Zero,
             "Byte" or "Shift" or "Sar" => UInt256.Zero,
             "Clz" => (UInt256)248,
             _ => UInt256.One
@@ -181,6 +181,19 @@ public class OpcodeChainBenchmarks
                 code.AddRange([(byte)Instruction.DUP2, (byte)Instruction.DUP2, (byte)opcode]);
                 if (i + 1 != BodyOpcodeCount / 4) code.Add((byte)Instruction.POP);
             }
+        }
+        else if (Chain == "CompareBranch")
+        {
+            // A countdown loop of ten opcodes an iteration, which tests its counter with LT ISZERO, as compiled loop
+            // conditions do, and branches back while the counter is not zero.
+            const int iterations = BodyOpcodeCount / 10;
+            code.Clear();
+            code.AddRange([(byte)Instruction.PUSH2, (byte)(iterations >> 8), (byte)(iterations & 0xff)]);
+            int loop = code.Count;
+            code.AddRange([(byte)Instruction.JUMPDEST,
+                (byte)Instruction.PUSH1, 1, (byte)Instruction.SWAP1, (byte)Instruction.SUB,
+                (byte)Instruction.PUSH1, 1, (byte)Instruction.DUP2, (byte)Instruction.LT, (byte)Instruction.ISZERO,
+                (byte)Instruction.PUSH2, (byte)(loop >> 8), (byte)loop, (byte)Instruction.JUMPI]);
         }
         else if (Chain is "JumpTaken" or "JumpUntaken" or "JumpAlternating")
         {
