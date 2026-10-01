@@ -316,7 +316,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     private void LookupDelegation(Address address)
     {
-        if (_isEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(_worldState!.GetCode(address), out Address? target))
+        if (_isEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(_worldState!.GetCode(address).Span, out Address? target))
             LookupAccount(target);
     }
 
@@ -327,7 +327,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
                 UInt256 nonce = account.Nonce;
-                byte[]? code = _disableCode ? null : _worldState.GetCode(addr);
+                ReadOnlyMemory<byte> code = _disableCode ? default : _worldState.GetCode(addr);
                 _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code)
                 {
                     CodeHash = account.CodeHash != default(ValueHash256) && account.CodeHash != Keccak.OfAnEmptyString.ValueHash256
@@ -370,7 +370,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
-                _disableCode ? null : _worldState.GetCode(addr));
+                _disableCode ? default : _worldState.GetCode(addr));
             NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
@@ -390,10 +390,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.CodeHash = postCodeHash;
             }
-            if (!_disableCode && !Bytes.NullableEqualityComparer.Equals(poststateAccount.Code, prestateAccount.Code))
+            if (!_disableCode && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
             {
                 modified = true;
-                diffAccount.Code = poststateAccount.Code ?? [];
+                diffAccount.Code = poststateAccount.Code;
+                diffAccount.IncludeEmptyCode = poststateAccount.Code.IsEmpty;
             }
 
             if (!_disableStorage && prestateAccount.Storage is not null)

@@ -311,7 +311,7 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
             {
                 Address address = stack.PeekAddress(IsExt(_opcode) ? 0 : 1);
                 if (!frame.ContractSizes.ContainsKey(address))
-                    frame.ContractSizes.Add(address, (_worldState.GetCode(address)?.Length ?? 0, _opcode));
+                    frame.ContractSizes.Add(address, (_worldState.GetCode(address).Length, _opcode));
             }
             if (_opcode is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE && stack.Count >= 1)
             {

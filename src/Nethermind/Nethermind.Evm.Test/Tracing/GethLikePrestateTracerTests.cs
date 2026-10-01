@@ -709,7 +709,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(accounts[target].Code is null, Is.EqualTo(disableCode));
+                Assert.That(accounts[target].Code.IsEmpty, Is.EqualTo(disableCode));
                 Assert.That(accounts[target].CodeHash, Is.Not.Null);
             }
         }

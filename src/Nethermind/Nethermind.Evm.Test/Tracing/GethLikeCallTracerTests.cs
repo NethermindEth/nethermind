@@ -854,6 +854,23 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Test_CallTrace_WithLog_LogIndexStart_OffsetsIndex()
+    {
+        byte[] code = CreateNestedCallsCode();
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog) with { LogIndex = new BlockLogIndex(5) });
+        using GethLikeTxTrace trace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Calls[0].Logs!.AssertSingle().Index, Is.EqualTo(5UL));
+            Assert.That(topFrame.Calls[1].Logs!.AssertSingle().Index, Is.EqualTo(6UL));
+            Assert.That(topFrame.Logs!.AssertSingle().Index, Is.EqualTo(7UL));
+        }
+    }
+
+    [Test]
     public void Test_CallTrace_NestedCalls_RevertParentCall()
     {
         byte[] code = CreateNestedCallsCode(true);

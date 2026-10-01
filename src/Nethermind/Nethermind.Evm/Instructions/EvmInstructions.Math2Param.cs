@@ -261,7 +261,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                UInt256.Divide(in a, in b, out result);
+                Divide256(in a, in b, out result);
             }
         }
     }
@@ -317,7 +317,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                UInt256.Mod(in a, in b, out result);
+                Mod256(in a, in b, out result);
             }
         }
     }

@@ -33,6 +33,33 @@ public class KeccakMemoTests
     private const int SlotCount = 1 << KeccakCache.MemoSlotBits;
 
     [Test]
+    public void Memo_preserves_the_32_bit_slot_index([Range(MinLength, MaxLength)] int length)
+    {
+        ulong[] memo = (ulong[])typeof(KeccakCache).GetField("Memo", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+        Random random = new(47);
+        byte[] input = new byte[length];
+        for (int sample = 0; sample < 64; sample++)
+        {
+            random.NextBytes(input);
+            if (sample == 0) input.AsSpan().Fill(byte.MaxValue);
+            ulong mixed = (ulong)length;
+            for (int offset = 0; offset + sizeof(ulong) <= length; offset += sizeof(ulong))
+                mixed ^= BinaryPrimitives.ReadUInt64LittleEndian(input.AsSpan(offset));
+            int partial = length & 7;
+            if (partial != 0)
+                mixed ^= BinaryPrimitives.ReadUInt64LittleEndian(input.AsSpan(length - sizeof(ulong))) >> ((sizeof(ulong) - partial) * 8);
+            uint folded = (uint)mixed ^ (uint)(mixed >> 32);
+            int slot = (int)(unchecked(folded * 2654435761u) >> (32 - KeccakCache.MemoSlotBits));
+            ValueHash256 digest = Digest(length * 64 + sample);
+
+            KeccakCache.WriteMemo(input, digest);
+
+            ValueHash256 actual = MemoryMarshal.Read<ValueHash256>(MemoryMarshal.AsBytes(memo.AsSpan((slot << 4) + 8)));
+            Assert.That(actual, Is.EqualTo(digest), $"sample {sample}");
+        }
+    }
+
+    [Test]
     public void Memo_answers_with_the_digest_stored_for_an_input([Range(MinLength, MaxLength)] int length)
     {
         byte[] input = Pattern(length, seed: 3);

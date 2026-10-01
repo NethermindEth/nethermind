@@ -27,6 +27,7 @@ using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
 using Newtonsoft.Json.Linq;
+using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 using Nethermind.Abi;
 using Nethermind.Core.Messages;
@@ -813,6 +814,37 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
+    /// <summary>
+    /// A <c>blockOverride.gasLimit</c> above <c>JsonRpc.GasCap</c> is rejected, but <c>GasCap</c> being
+    /// <see langword="null"/> or <c>0</c> means uncapped everywhere else (<see cref="GasCapExtensions"/>):
+    /// a null cap must not throw, and a zero cap must not reject every override as "too large".
+    /// </summary>
+    [TestCase(null, null, null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(null cap, no override)")]
+    [TestCase(0UL, null, null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(zero cap, no override)")]
+    [TestCase(null, "0x2540BE400", null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(null cap, huge override)")]
+    [TestCase(0UL, "0x2540BE400", null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(zero cap, huge override)")]
+    [TestCase(1_000_000UL, "0xF4240", null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(capped, override at cap)")]
+    [TestCase(1_000_000UL, "0xF4241", "GasLimit value is too large, max value 1000000", TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(capped, override above cap)")]
+    public async Task Eth_call_blockOverride_gasLimit_vs_gas_cap(ulong? gasCap, string? gasLimitOverrideHex, string? expectedError)
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"gas\": \"0x5208\"}}")!;
+        object? blockOverride = gasLimitOverrideHex is null
+            ? null
+            : JsonSerializer.Deserialize<object>($$"""{"gasLimit":"{{gasLimitOverrideHex}}"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+        JToken parsed = JToken.Parse(serialized);
+
+        if (expectedError is null)
+            Assert.That(parsed["error"], Is.Null, serialized);
+        else
+            Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError));
+    }
+
     [Test]
     public async Task Eth_call_ignores_invalid_nonce()
     {
@@ -982,7 +1014,7 @@ public partial class EthRpcModuleTests
             .TestObject;
         LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.To = null;
-        transaction.Data = data;
+        transaction.Input = data;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
@@ -1022,27 +1054,6 @@ public partial class EthRpcModuleTests
 
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"need at least 1 blob for a blob transaction\"},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_call_maxFeePerBlobGas_is_zero()
-    {
-        using Context ctx = await Context.Create();
-        byte[] validHash = new byte[32];
-        validHash[0] = 0x01; // KZG version
-        Transaction tx = Build.A.Transaction
-            .WithGasLimit(100000)
-            .WithBlobVersionedHashes([validHash])
-            .To(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
-        transaction.MaxFeePerBlobGas = 0;
-        transaction.GasPrice = null;
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
-
-        Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerBlobGas, if specified, must be non-zero\"},\"id\":67}"));
     }
 
     [Test]
@@ -1380,6 +1391,57 @@ public partial class EthRpcModuleTests
         }
     }
 
+    // Shaped like trace-interop's field-data-input-equal and field-data-input-differ probes.
+    [Test]
+    public async Task Eth_call_accepts_data_or_input_when_they_agree([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.MatchingCallData))] string calldata)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Eth_call_rejects_differing_data_and_input([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.DifferingCallData))] string calldata)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
+
+        JToken? error = JToken.Parse(serialized)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams), serialized);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer), serialized);
+        }
+    }
+
+    // Shaped like trace-interop's field-null-blobVersionedHashes-unpriced and field-null-authorizationList-unpriced probes.
+    [TestCase("blobVersionedHashes", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
+    [TestCase("authorizationList", TxErrorMessages.NotAllowedCreateTransaction)]
+    public async Task Eth_call_null_blob_or_authorization_list_selects_no_type(string list, string typeError)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        string call = $"\"from\":\"{TestItem.AddressA}\",\"data\":\"0x602a60005260206000f3\"";
+        using JsonDocument withNull = JsonDocument.Parse($"{{{call},\"{list}\":null}}");
+        using JsonDocument withList = JsonDocument.Parse($"{{{call},\"{list}\":[]}}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{call}}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", withNull.RootElement, "latest");
+        string typed = await ctx.Test.TestEthRpc("eth_call", withList.RootElement, "latest");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
+            Assert.That(serialized, Is.EqualTo(await ctx.Test.TestEthRpc("eth_call", omitted.RootElement, "latest")));
+            // A non-null list still selects its type, which can't create a contract.
+            Assert.That(JToken.Parse(typed)["error"]?["message"]?.Value<string>(), Does.Contain(typeError), typed);
+        }
+    }
+
     [Test]
     public async Task Eth_call_non_existent_block_returns_not_found()
     {
@@ -1469,6 +1531,27 @@ public partial class EthRpcModuleTests
         "0x0000000000000000000000000000000000000000000000000000000000000002",
         null,
         TestName = "BLOBBASEFEE opcode returns overridden value")]
+    [TestCase(
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""",
+        "null",
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+        null,
+        TestName = "blob call without maxFeePerBlobGas sees a zero BLOBBASEFEE and pays no blob fee")]
+    [TestCase(
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000","maxFeePerBlobGas":"0x0","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""",
+        "null",
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+        null,
+        TestName = "blob call with a zero maxFeePerBlobGas sees a zero BLOBBASEFEE and pays no blob fee")]
+    [TestCase(
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000","maxFeePerBlobGas":"0x0","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""",
+        """{"blobBaseFee":"0x2"}""",
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+        null,
+        TestName = "blob call with a zero maxFeePerBlobGas sees a zero BLOBBASEFEE over a blobBaseFee override")]
 
     [TestCase(
         """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","type":"0x3","maxFeePerGas":"0x3B9ACA00","maxPriorityFeePerGas":"0x1","maxFeePerBlobGas":"0xa","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"],"gas":"0x5208"}""",

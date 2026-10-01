@@ -1448,9 +1448,8 @@ public partial class VirtualMachine<TGasPolicy>(
             GetExecutionHandlers().InitializeFrame(this, vmState);
         }
 
-        ReadOnlySpan<byte> codeSpan = env.CodeInfo.CodeSpan;
         // If no machine code is present, treat the call as empty.
-        if (codeSpan.Length == 0)
+        if (env.CodeInfo.CodeLength == 0)
         {
             if (!vmState.IsTopLevel)
             {
@@ -1460,6 +1459,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         // Initialize the internal stacks for the current call frame.
+        ReadOnlySpan<byte> codeSpan = env.CodeInfo.ExecutionCodeSpan;
         EvmStack stack;
         if (vmState.IsContinuation)
         {

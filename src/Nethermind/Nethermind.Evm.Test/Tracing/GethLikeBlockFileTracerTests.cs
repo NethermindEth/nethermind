@@ -226,7 +226,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     public void Nested_exits_preserve_sibling_and_parent_gas()
     {
         PrepareNestedCall("return");
-        byte[] leaf = TestState.GetCode(TestItem.AddressC)!;
+        ReadOnlyMemory<byte> leaf = TestState.GetCode(TestItem.AddressC);
         TestState.CreateAccount(TestItem.AddressE, 1.Ether);
         TestState.InsertCode(TestItem.AddressE, leaf, Spec);
         TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Call(TestItem.AddressE, 10_000)

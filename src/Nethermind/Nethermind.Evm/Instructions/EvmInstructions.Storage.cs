@@ -131,6 +131,10 @@ public static partial class EvmInstructions
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gasAvailable">The remaining gas, which is decremented by both the base and memory extension costs.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
+    /// <remarks>
+    /// The untraced tables run the common case under <see cref="EthereumGasPolicy"/> in <c>MStoreOpcode.TryExecuteFast</c>,
+    /// which charges the base and expansion gas itself; a change to either charge must be made there too.
+    /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionMStore<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -271,6 +275,10 @@ public static partial class EvmInstructions
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gasAvailable">The remaining gas, adjusted for memory access.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
+    /// <remarks>
+    /// The untraced tables run the common case under <see cref="EthereumGasPolicy"/> in <c>MLoadOpcode.TryExecuteFast</c>,
+    /// which charges the base gas itself; a change to the charge must be made there too.
+    /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionMLoad<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)

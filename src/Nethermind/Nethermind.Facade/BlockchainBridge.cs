@@ -14,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -156,10 +155,13 @@ namespace Nethermind.Facade
             return blockHash is not null ? receiptStorage.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, CancellationToken cancellationToken) =>
-            HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
+        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, CancellationToken cancellationToken)
+        {
+            blobBaseFeeOverride = GetBlobBaseFeeOverride(tx, blobBaseFeeOverride);
+            return HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
                 ? CallExclusive(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken)
                 : CallShareable(header, tx, cancellationToken);
+        }
 
         private CallOutput CallShareable(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
@@ -211,6 +213,20 @@ namespace Nethermind.Facade
         private static bool HasOverrides(Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride) =>
             stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null || blockOverride is not null;
 
+        /// <summary>
+        /// Returns the blob base fee override <paramref name="tx"/> runs with: zero for a blob call without a positive blob
+        /// fee cap, which then pays no blob fee, as in Geth's eth_call, and <paramref name="blobBaseFeeOverride"/> otherwise.
+        /// An omitted cap of such a call is set to zero on <paramref name="tx"/>.
+        /// </summary>
+        private static UInt256? GetBlobBaseFeeOverride(Transaction tx, UInt256? blobBaseFeeOverride)
+        {
+            if (!tx.CarriesBlobs || !(tx.MaxFeePerBlobGas ?? UInt256.Zero).IsZero)
+                return blobBaseFeeOverride;
+
+            tx.MaxFeePerBlobGas = UInt256.Zero;
+            return UInt256.Zero;
+        }
+
         public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken)
         {
             using SimulateReadOnlyBlocksProcessingEnvPool.PooledScope pooled = simulateEnvPool.Begin(header);
@@ -229,13 +245,8 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, CancellationToken cancellationToken)
         {
-            // A blob transaction without a blob fee cap is estimated with blob gas priced at zero.
             BlobFeeCapFill blobFeeCapFill = new(tx.SupportsBlobs && tx.MaxFeePerBlobGas is null, blobBaseFeeOverride);
-            if (tx.SupportsBlobs && (tx.MaxFeePerBlobGas ?? UInt256.Zero).IsZero)
-            {
-                tx.MaxFeePerBlobGas = UInt256.Zero;
-                blobBaseFeeOverride = UInt256.Zero;
-            }
+            blobBaseFeeOverride = GetBlobBaseFeeOverride(tx, blobBaseFeeOverride);
 
             return HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
                 ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, blockOverride, gasCap, blobFeeCapFill, cancellationToken)
@@ -532,16 +543,10 @@ namespace Nethermind.Facade
             return new BlockExecutionContext(callHeader, releaseSpec, blobBaseFee);
         }
 
-        /// <summary>
-        /// The rejection of a priced call whose priority fee exceeds its fee cap, before any gas is bought; the
-        /// processor checks only the fee cap against the base fee when validation is skipped.
-        /// </summary>
+        /// <summary>Wraps <see cref="TransactionExtensions.GetTipAboveFeeCapError"/> as a <see cref="TransactionResult"/>.</summary>
         private static TransactionResult? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
-            spec.IsEip1559Enabled
-            && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero)
-            && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas
-                ? TransactionResult.ErrorType.MalformedTransaction.WithDetail(
-                    $"{TxErrorMessages.TipAboveFeeCap}: address {tx.SenderAddress!.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tx.MaxPriorityFeePerGas}, maxFeePerGas: {tx.MaxFeePerGas}")
+            tx.GetTipAboveFeeCapError(spec) is { } error
+                ? TransactionResult.ErrorType.MalformedTransaction.WithDetail(error)
                 : null;
 
         public ulong GetChainId() => blockTree.ChainId;
@@ -709,7 +714,7 @@ namespace Nethermind.Facade
         }
 
         // One env per invocation — independent _worldScopeCloser and decorator chain so concurrent renters share no mutable state.
-        private IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
+        internal IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
         {
             IOverridableEnv env = envFactory.Create();
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
@@ -717,6 +722,11 @@ namespace Nethermind.Facade
                 .AddScoped<SingleCallRequestState>()
                 .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+                // Resolved code is remembered across the restored re-runs of estimateGas and createAccessList; the
+                // processor decorator drops it after any transaction that keeps its changes.
+                .AddScoped<ResolvedCodeMemo>()
+                .AddDecorator<ICodeInfoRepository, MemoizingCodeInfoRepository>()
+                .AddDecorator<ITransactionProcessor, ResolvedCodeClearingTransactionProcessor>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Pool owns the scope. Registering with rootLifetimeScope.Disposer would retain every created env until shutdown
@@ -727,6 +737,7 @@ namespace Nethermind.Facade
                 inner,
                 overridableScopeLifetime,
                 overridableScopeLifetime.Resolve<IOverridableCodeInfoRepository>(),
+                overridableScopeLifetime.Resolve<ResolvedCodeMemo>(),
                 overridableScopeLifetime.Resolve<ISpecProvider>());
         }
 
@@ -734,6 +745,7 @@ namespace Nethermind.Facade
             IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner,
             IDisposable scope,
             IOverridableCodeInfoRepository codeInfoRepository,
+            ResolvedCodeMemo resolvedCode,
             ISpecProvider specProvider) : IOverridableEnv<BlockchainBridge.BlockProcessingComponents>, IDisposable
         {
             /// <inheritdoc/>
@@ -757,6 +769,7 @@ namespace Nethermind.Facade
                 // the overridden block number, which the overridden header relies on to resolve.
                 if (!inner.TryBuildAndOverride(header, stateOverride: null, specOverride, blockOverride, out scope)) return false;
 
+                scope = ClearResolvedCodeOnDispose(scope);
                 if (stateOverride is null || header is null) return true;
                 ApplyUnmerkleizedStateOverride(scope, stateOverride, header);
                 return true;
@@ -768,6 +781,7 @@ namespace Nethermind.Facade
             {
                 if (!inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride: null, specOverride, out scope)) return false;
 
+                scope = ClearResolvedCodeOnDispose(scope);
                 if (stateOverride is null) return true;
                 ApplyUnmerkleizedStateOverride(scope, stateOverride, targetBlock);
                 return true;
@@ -789,7 +803,20 @@ namespace Nethermind.Facade
                 }
             }
 
+            // The next renter of this pooled env must not be answered with code this scope resolved.
+            private Scope<BlockchainBridge.BlockProcessingComponents> ClearResolvedCodeOnDispose(Scope<BlockchainBridge.BlockProcessingComponents> scope) =>
+                new(scope.Component, new ResolvedCodeClearingCloser(scope, resolvedCode));
+
             public void Dispose() => scope.Dispose();
+
+            private sealed class ResolvedCodeClearingCloser(IDisposable scope, ResolvedCodeMemo resolvedCode) : IDisposable
+            {
+                public void Dispose()
+                {
+                    resolvedCode.Clear();
+                    scope.Dispose();
+                }
+            }
         }
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
@@ -17,6 +18,22 @@ namespace Nethermind.JsonRpc.Test.Data;
 public class TransactionForRpcDeserializationTests
 {
     private readonly EthereumJsonSerializer _serializer = new();
+
+    public static readonly string[] MatchingCallData =
+    [
+        "\"data\":\"0x602a60005260206000f3\"",
+        "\"input\":\"0x602a60005260206000f3\"",
+        "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x602a60005260206000f3\"",
+        "\"data\":null,\"input\":\"0x602a60005260206000f3\"",
+        "\"input\":null,\"data\":\"0x602a60005260206000f3\"",
+    ];
+
+    public static readonly string[] DifferingCallData =
+    [
+        "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x600160005260206000f3\"",
+        "\"input\":\"0x600160005260206000f3\",\"data\":\"0x602a60005260206000f3\"",
+        "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"",
+    ];
 
     [TestCaseSource(nameof(TxJsonTestCases))]
     public TxType Test_TxTypeIsDetected_ForDifferentFieldSet(string txJson)
@@ -54,8 +71,13 @@ public class TransactionForRpcDeserializationTests
 
             yield return Make(TxType.AccessList, """{"type":null,"accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[]}""");
-            yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null}""");
-            yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","AccessList":null}""");
+            yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","AccessList":[]}""");
+            // An explicit null discriminator is the same as omitting it.
+            yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null}""");
+            yield return Make(TxType.EIP1559, """{"accessList":null,"blobVersionedHashes":null,"authorizationList":null}""");
+            yield return Make(TxType.AccessList, """{"accessList":[],"blobVersionedHashes":null,"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"gasPrice":null}""");
+            yield return Make(TxType.EIP1559, """{"gasPrice":null,"accessList":null}""");
 
             yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"maxPriorityFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","accessList":null,"maxPriorityFeePerGas":"0x0"}""");
@@ -71,12 +93,14 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"maxFeePerBlobGas":"0x0", "blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"blobVersionedHashes":[]}""");
-            yield return Make(TxType.Blob, """{"BlobVersionedHashes":null}""");
+            yield return Make(TxType.Blob, """{"BlobVersionedHashes":[]}""");
+            yield return Make(TxType.EIP1559, """{"blobVersionedHashes":null}""");
             yield return Make(TxType.Blob, """{"blobVersionedHashes":["0x01f1872d656b7a820d763e6001728b9b883f829b922089ec6ad7f5f1665470dc"]}""");
 
             yield return Make(TxType.SetCode, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"authorizationList":[]}""");
             yield return Make(TxType.SetCode, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","authorizationList":[]}""");
-            yield return Make(TxType.SetCode, """{"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"frames":null}""");
             yield return Make(TxType.SetCode, """{"AuthorizationList":[]}""");
 
             yield return Make(TxType.Legacy, """{"type":"0x0"}""");
@@ -112,6 +136,9 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Legacy, """{}""", Istanbul.Instance);
             yield return Make(TxType.Legacy, """{"nonce":"0x0","input":null}""", Istanbul.Instance);
             yield return Make(TxType.Legacy, """{"type":null}""", Istanbul.Instance);
+            // A null discriminator is the same as omitting it, so the type stays defaulted.
+            yield return Make(TxType.Legacy, """{"accessList":null}""", Istanbul.Instance);
+            yield return Make(TxType.Legacy, """{"maxFeePerGas":null,"maxPriorityFeePerGas":null}""", Istanbul.Instance);
 
             // Defaulted type on post-Berlin → keeps EIP1559
             yield return Make(TxType.EIP1559, """{}""", Berlin.Instance);
@@ -147,11 +174,47 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"data":null,"input":"0x602a"}""", ExpectedResult = "0x602a")]
     [TestCase("""{"input":null}""", ExpectedResult = "0x")]
     [TestCase("""{"data":null,"input":null}""", ExpectedResult = "0x")]
-    [TestCase("""{"data":"0x602a","input":"0x"}""", ExpectedResult = "0x")]
-    [TestCase("""{"data":"0x602a","input":""}""", ExpectedResult = "0x")]
-    [TestCase("""{"input":"","data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a","input":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":"0x602a","data":"0x602a","gasPrice":"0x1"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x","input":""}""", ExpectedResult = "0x")]
     public string Test_InputDataAliasResolution(string txJson) =>
         _serializer.Deserialize<TransactionForRpc>(txJson)!.ToTransaction().Data!.Data.ToArray().ToHexString(true);
+
+    private static readonly string[] DifferingInputAndData =
+    [
+        """{"data":"0x602a","input":"0x6001"}""",
+        """{"input":"0x6001","data":"0x602a","gasPrice":"0x1"}""",
+        """{"data":"0x602a","input":"0x"}""",
+        """{"data":"0x602a","input":""}""",
+        """{"input":"","data":"0x602a"}""",
+        """{"type":"0x4","data":"0x602a","input":"0x6001","authorizationList":[]}""",
+    ];
+
+    [Test]
+    public void Test_DifferingInputAndData_Throws([ValueSource(nameof(DifferingInputAndData))] string txJson) =>
+        Assert.That(() => _serializer.Deserialize<TransactionForRpc>(txJson),
+            Throws.TypeOf<SafePublicMessageFormatException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+
+    [Test]
+    public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized)
+    {
+        LegacyTransactionForRpc rpc = deserialized
+            ? _serializer.Deserialize<LegacyTransactionForRpc>("""{"data":"0x6001"}""")!
+            : new LegacyTransactionForRpc { Input = [0x60, 0x01] };
+        byte[] data = [0x60, 0x2a];
+
+        rpc.Data = data;
+
+        using JsonDocument document = JsonDocument.Parse(_serializer.Serialize(rpc));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.Input, Is.EqualTo(data));
+            Assert.That(rpc.ToTransaction().Data!.Data.ToArray(), Is.EqualTo(data));
+            Assert.That(document.RootElement.GetProperty("input").GetString(), Is.EqualTo("0x602a"));
+            Assert.That(document.RootElement.TryGetProperty("data", out _), Is.False);
+        }
+    }
 
     [TestCaseSource(nameof(DefaultedTypeResolutionCases))]
     public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)
