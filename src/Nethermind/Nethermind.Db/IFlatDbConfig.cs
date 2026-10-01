@@ -184,6 +184,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Number of shards per trie node log partition, a power of two. Nodes are sharded by the first byte of their column key (the first path nibbles for state nodes, the first byte of the address hash for storage nodes); shards are appended to and merged in parallel.", DefaultValue = "2")]
     int TrieNodeLogShardCount { get; set; }
 
+    [ConfigItem(Description = "Maximum number of trie node log generation merges (across all shards) running at the same time; each merge is one RocksDB write batch.", DefaultValue = "2")]
+    int TrieNodeLogMaxConcurrentMerges { get; set; }
+
+    [ConfigItem(Description = "Sealed trie node log generations a shard may accumulate beyond TrieNodeLogMergeLag before starting a new generation waits for a merge to finish, which stalls persistence until the merges catch up.", DefaultValue = "2")]
+    int TrieNodeLogMergeBacklogMargin { get; set; }
+
     [ConfigItem(Description = "Number of sealed trie node log generations kept unmerged behind the newest one. A generation is merged into RocksDB only once this many newer generations are sealed, and keys rewritten in those are skipped, so the effective deduplication window is (1 + this) generations at the cost of that many extra generation files and in-memory indexes.", DefaultValue = "1")]
     int TrieNodeLogMergeLag { get; set; }
 }

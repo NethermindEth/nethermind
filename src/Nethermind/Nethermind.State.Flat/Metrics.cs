@@ -442,6 +442,11 @@ public static class Metrics
     public static IMetricObserver TrieNodeLogMergeTime { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
+    [Description("Time a trie node log shard waited for a merge before starting a new generation because its backlog of unmerged generations was full; persistence stalls for this long")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver TrieNodeLogBackpressureTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
     [Description("Time to commit one batch to the trie node log: buffer flush, fsync and index publish")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
     public static IMetricObserver TrieNodeLogCommitTime { get; set; } = new NoopMetricObserver();

@@ -31,6 +31,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private readonly int _shardCount;
     private readonly int _shardBits;
     private readonly TrieNodeLogShard[] _shards; // state shards first, then storage shards
+    private readonly SemaphoreSlim _mergeLimiter;
     private readonly ILogger _logger;
 
     public TrieNodeLog(string basePath, IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
@@ -40,6 +41,11 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         if (_shardCount < 1 || !BitOperations.IsPow2(_shardCount))
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogShardCount)} must be a power of two, got {_shardCount}", -1);
         _shardBits = BitOperations.Log2((uint)_shardCount);
+        if (config.TrieNodeLogMaxConcurrentMerges < 1)
+            throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMaxConcurrentMerges)} must be at least 1, got {config.TrieNodeLogMaxConcurrentMerges}", -1);
+        if (config.TrieNodeLogMergeBacklogMargin < 1)
+            throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMergeBacklogMargin)} must be at least 1, got {config.TrieNodeLogMergeBacklogMargin}", -1);
+        _mergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _logger = logManager.GetClassLogger<TrieNodeLog>();
 
         int partitions = _scope == TrieNodeLogScope.All ? 2 : 1;
@@ -51,7 +57,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             for (int shard = 0; shard < _shardCount; shard++)
             {
                 string name = $"{partitionName}-{shard}";
-                _shards[partition * _shardCount + shard] = new TrieNodeLogShard(name, Path.Combine(basePath, name), db, budget / _shardCount, config.TrieNodeLogMergeLag, logManager);
+                _shards[partition * _shardCount + shard] = new TrieNodeLogShard(name, Path.Combine(basePath, name), db, budget / _shardCount, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, logManager);
             }
         }
 
@@ -139,6 +145,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         foreach (TrieNodeLogShard shard in _shards) await shard.DisposeAsync();
+        _mergeLimiter.Dispose();
     }
 
     private sealed class View(TrieNodeLog log, TrieNodeLogView[] views) : ITrieNodeLog.IView

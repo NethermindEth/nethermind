@@ -67,4 +67,6 @@ public class FlatDbConfig : IFlatDbConfig
     public long TrieNodeLogStorageBytes { get; set; } = 500.MiB;
     public int TrieNodeLogShardCount { get; set; } = 2;
     public int TrieNodeLogMergeLag { get; set; } = 1;
+    public int TrieNodeLogMaxConcurrentMerges { get; set; } = 2;
+    public int TrieNodeLogMergeBacklogMargin { get; set; } = 2;
 }

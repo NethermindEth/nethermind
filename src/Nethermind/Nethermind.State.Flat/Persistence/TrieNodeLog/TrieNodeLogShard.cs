@@ -40,6 +40,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly long _generationBytes;
     private readonly int _mergeLag;
+    private readonly int _maxBacklog;
+    private readonly SemaphoreSlim _mergeLimiter;
+    private readonly ManualResetEventSlim _merged = new();
     private readonly TrieNodeLogLabel _label;
 
     private readonly Lock _lock = new();
@@ -64,7 +67,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private int _reportedListCount;
     private long _reportedBytes;
 
-    public TrieNodeLogShard(string name, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int mergeLag, ILogManager logManager)
+    /// <param name="mergeLimiter">Caps concurrent merges across every shard of the log.</param>
+    /// <param name="backlogMargin">Sealed generations allowed beyond <paramref name="mergeLag"/> before a roll waits for a merge.</param>
+    public TrieNodeLogShard(string name, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
     {
         Name = name;
         VersionKey = Keccak.Compute($"TrieNodeLogVersion:{name}").BytesToArray();
@@ -74,6 +79,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _logger = logManager.GetClassLogger<TrieNodeLogShard>();
         _generationBytes = generationBytes;
         _mergeLag = mergeLag;
+        _maxBacklog = mergeLag + backlogMargin;
+        _mergeLimiter = mergeLimiter;
         _label = new TrieNodeLogLabel(name);
 
         Directory.CreateDirectory(basePath);
@@ -151,6 +158,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             _active = null;
         }
         _cancellation.Dispose();
+        _merged.Dispose();
     }
 
     internal void ThrowIfBatchOpen()
@@ -187,6 +195,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// </summary>
     internal TrieNodeLogGeneration Roll()
     {
+        WaitForBacklog();
         using Lock.Scope _ = _lock.EnterScope();
         TrieNodeLogGeneration generation = new(_nextGeneration, System.IO.Path.Combine(_basePath, $"{FilePrefix}{_nextGeneration:D8}{FileExtension}"), TrieNodeLogGeneration.CapacityFor(_generationBytes));
         _nextGeneration++;
@@ -194,6 +203,43 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _active = generation;
         RefreshGaugesNoLock();
         return generation;
+    }
+
+    /// <summary>
+    /// Blocks the appending worker while the shard holds more sealed, unmerged generations than the merge lag plus
+    /// the configured margin, so a persistence that outruns the merges backs up instead of growing the log unbounded.
+    /// </summary>
+    private void WaitForBacklog()
+    {
+        long sw = 0;
+        while (true)
+        {
+            _merged.Reset();
+            int backlog = 0;
+            using (_lock.EnterScope())
+            {
+                foreach (TrieNodeLogGeneration generation in _generations)
+                {
+                    if (generation.IsSealed && !generation.IsFlushed) backlog++;
+                }
+            }
+            if (backlog < _maxBacklog) break;
+
+            if (sw == 0)
+            {
+                sw = Stopwatch.GetTimestamp();
+                if (_logger.IsWarn) _logger.Warn($"Trie node log {Name} has {backlog} unmerged generations (limit {_maxBacklog}); persistence is waiting for a merge");
+            }
+            _flushSignal.Release(); // a merge that failed is retried rather than leaving persistence stuck
+            if (!_merged.Wait(TimeSpan.FromSeconds(10)) && _logger.IsWarn)
+                _logger.Warn($"Trie node log {Name} still has {backlog} unmerged generations after {Stopwatch.GetElapsedTime(sw).TotalSeconds:F0} s; persistence is still waiting");
+        }
+
+        if (sw != 0)
+        {
+            Metrics.TrieNodeLogBackpressureTime.Observe(Stopwatch.GetTimestamp() - sw);
+            if (_logger.IsInfo) _logger.Info($"Trie node log {Name} merge caught up; persistence waited {Stopwatch.GetElapsedTime(sw).TotalMilliseconds:F0} ms");
+        }
     }
 
     internal bool IsFull(TrieNodeLogGeneration generation, int pendingInserts, long pendingBytes) =>
@@ -281,11 +327,13 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             if (!generation.TryAcquire()) throw new InvalidOperationException($"Trie node log generation {generation.Number} was released before being merged");
             try
             {
+                using SemaphoreSlimExtensions.Scope __ = _mergeLimiter.EnterScope();
                 FlushGeneration(generation, newer);
             }
             finally
             {
                 generation.Dispose();
+                _merged.Set();
             }
         }
     }

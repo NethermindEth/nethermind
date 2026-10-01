@@ -335,6 +335,30 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public void Persistence_backs_up_on_the_merge_backlog_and_completes()
+    {
+        // One merge at a time and no slack beyond the lag: every other batch rolls, so rolls regularly have to wait.
+        _config.TrieNodeLogMaxConcurrentMerges = 1;
+        _config.TrieNodeLogMergeBacklogMargin = 1;
+        Reopen().GetAwaiter().GetResult();
+
+        byte[] value = new byte[3000];
+        for (ulong block = 0; block < 24; block++)
+        {
+            value[0] = (byte)block;
+            WriteTop(block, block + 1, value);
+            Assert.That(ReadTop(), Is.EqualTo(value));
+        }
+
+        _log.Drain();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(value));
+            Assert.That(LogFiles, Is.Empty.After(5000, 20));
+        }
+    }
+
+    [Test]
     public void Only_one_log_backed_batch_may_be_open()
     {
         using IPersistence.IWriteBatch open = Batch(0, 1);
