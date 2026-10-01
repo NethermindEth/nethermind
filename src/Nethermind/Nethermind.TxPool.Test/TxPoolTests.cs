@@ -5077,7 +5077,14 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
             }
 
-            Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1));
+            // eth/68 pushes to several peers, so resends can arrive before the first announcement: they must not
+            // consume the entry that announcement claims.
+            IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1));
+                Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
+            }
         }
 
         private int TrackedFrameTxDependencies() => ((FrameTxDependencyIndex)typeof(TxPool)

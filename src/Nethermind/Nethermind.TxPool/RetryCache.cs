@@ -45,6 +45,10 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly long _overflowGenerationPeriodTimestampTicks;
     private readonly int _maxPreferredRetryResourcesPerHandlerPerTick;
     private readonly TimeProvider _timeProvider;
+
+    /// <summary>When the latest unclaimed <see cref="TryAwaitAnnouncement"/> entry was published, so the announce path
+    /// can skip the lookup while none can still be alive.</summary>
+    private long _lastUnclaimedPublishedAt = long.MinValue;
     private readonly Task _mainLoopTask;
     private static readonly ObjectPool<HandlerBag<TMessage>> _handlerBagsPool = new DefaultObjectPool<HandlerBag<TMessage>>(new HandlerBagPolicy<TMessage>(), maximumRetained: MaxRetainedHandlerBags);
     private readonly RetryRequestStore _retryRequests = new();
@@ -743,7 +747,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     /// <remarks>The entry has no requester until an announcement claims it, through
     /// <see cref="Announced"/> or <see cref="TryClaimUnrequested"/>; that request is then the first one of an
     /// ordinary retry lifecycle, bounded as <see cref="TryDefer"/> describes. An unclaimed entry grants no
-    /// deferral and expires after the usual timeout without sending anything.</remarks>
+    /// deferral and expires after the usual timeout without sending anything. It takes a tracked slot like an
+    /// announced request does, so many yielded pushes can crowd announced ones until they expire.</remarks>
     /// <returns><see langword="true"/> when the resource is tracked awaiting an announcement; <see langword="false"/>
     /// when it is tracked for a request already, or cannot be tracked, in which case the caller treats it as received.</returns>
     internal bool TryAwaitAnnouncement(in TResourceId resourceId)
@@ -769,7 +774,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     /// <returns><see langword="true"/> when the caller must request the resource from <paramref name="handler"/>.</returns>
     internal bool TryClaimUnrequested(in TResourceId resourceId, IMessageHandler<TMessage> handler)
     {
-        if (!TryEnterOperation())
+        if (!MayHaveUnclaimed() || !TryEnterOperation())
         {
             return false;
         }
@@ -785,6 +790,32 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             ExitOperation();
         }
+    }
+
+    /// <summary>Whether <paramref name="resourceId"/> has an unclaimed <see cref="TryAwaitAnnouncement"/> entry, which a
+    /// resend of the resource must not consume.</summary>
+    internal bool IsAwaitingAnnouncement(in TResourceId resourceId)
+    {
+        if (!MayHaveUnclaimed() || !TryEnterOperation())
+        {
+            return false;
+        }
+
+        try
+        {
+            return _retryRequests.TryGetValue(resourceId, out RetryRequestEntry entry) && entry.SourceHandler is null;
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
+
+    /// <remarks>Twice the timeout leaves room for expiry to run late; past it, no unclaimed entry can be alive.</remarks>
+    private bool MayHaveUnclaimed()
+    {
+        long last = Volatile.Read(ref _lastUnclaimedPublishedAt);
+        return last != long.MinValue && _timeProvider.GetElapsedTime(last) < _timeout * 2;
     }
 
     private bool AwaitAnnouncementCore(in TResourceId resourceId)
@@ -814,6 +845,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         RetryRequestEntry entry = new(bag, bag.Activate(), null, Interlocked.Increment(ref _requestGeneration));
         if (TryPublishTrackedRequest(resourceId, entry))
         {
+            Volatile.Write(ref _lastUnclaimedPublishedAt, _timeProvider.GetTimestamp());
             Enqueue(resourceId, entry);
             return true;
         }
