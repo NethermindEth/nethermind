@@ -703,6 +703,96 @@ public class GloasBlockImporterTests
     }
 
     /// <summary>
+    /// Gossip validation verifies no block signature, so a forged child of every evicted block could each buy a replay and push
+    /// live states out. A child whose proposer signature does not verify is refused before any regeneration, however many
+    /// evicted parents it is aimed at, and the states of the recent blocks stay held.
+    /// </summary>
+    [Test]
+    public void Forged_children_of_evicted_blocks_cost_no_regeneration()
+    {
+        SignedGloasChain chain = new();
+        TestLogger logger = new() { IsInfo = false, IsTrace = false };
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (ulong slot = ForkSlot; slot < ForkSlot + 136; slot++)
+        {
+            // Offset so no fill is the anchor payload's 0x71, which a bid may not repeat as its parent block hash.
+            tip = chain.Next(tip, slot, full: false, (byte)(slot + 0x80));
+            Import(importer, tip);
+            blocks.Add(tip);
+        }
+
+        // Each forged child copies a real child's message under a new root and keeps the real child's signature.
+        List<(SignedGloasChain.Block Parent, ForkedSignedBeaconBlock Forged, Hash256 Root)> forged = [];
+        for (int i = 1; i < blocks.Count - 2 * (int)ForkSlot - 1; i++)
+        {
+            if (blocks[i].Signed.Message!.Slot % ForkSlot == 0)
+            {
+                continue;
+            }
+
+            BeaconBlockGloas real = blocks[i + 1].Signed.Message!;
+            BeaconBlockGloas message = new() { Slot = real.Slot, ProposerIndex = real.ProposerIndex, ParentRoot = real.ParentRoot, StateRoot = Keccak.Compute(BitConverter.GetBytes(i)), Body = real.Body };
+            forged.Add((blocks[i], new ForkedSignedBeaconBlock.OfGloas(new SignedBeaconBlockGloas { Message = message, Signature = blocks[i + 1].Signed.Signature }), SszRoots.HashTreeRoot(message)));
+        }
+
+        // Children built on an evicted parent's unverified full payload take the deferral path, which regenerates too.
+        for (int i = 1; i <= 2; i++)
+        {
+            SignedGloasChain.Block fullChild = chain.Next(blocks[i], blocks[i].Signed.Message!.Slot + 1, full: true, (byte)(0xF0 + i));
+            BeaconBlockGloas real = fullChild.Signed.Message!;
+            BeaconBlockGloas message = new() { Slot = real.Slot, ProposerIndex = real.ProposerIndex, ParentRoot = real.ParentRoot, StateRoot = Keccak.Compute(BitConverter.GetBytes(-i)), Body = real.Body };
+            forged.Add((blocks[i], new ForkedSignedBeaconBlock.OfGloas(new SignedBeaconBlockGloas { Message = message, Signature = fullChild.Signed.Signature }), SszRoots.HashTreeRoot(message)));
+        }
+
+        bool parentsEvicted = forged.All(f => states.GetGloasBlockState(f.Parent.Root) is null);
+        BlockImportResult[] results = [.. forged.Select(f => importer.Import(f.Forged, f.Root, verifySignatures: true))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forged.Select(f => f.Parent.Root).Distinct().Count(), Is.GreaterThan(2 * (int)ForkSlot), "fixture: more forged parents than the per-block tier holds");
+            Assert.That(parentsEvicted, Is.True, "fixture: every forged child names a parent whose state left every tier");
+            Assert.That(results, Is.All.EqualTo(BlockImportResult.Invalid));
+            Assert.That(logger.LogList, Has.None.Contains("Regenerated the post-state"));
+            Assert.That(blocks.TakeLast(2 * (int)ForkSlot).Select(b => states.GetGloasBlockState(b.Root)), Is.All.Not.Null);
+        }
+    }
+
+    /// <summary>
+    /// A correctly signed block from gossip on an evicted parent may regenerate it, but only a few times per wall-clock slot:
+    /// a validator's own blocks on many evicted parents cannot stall the import worker on replays. The next slot allows more.
+    /// </summary>
+    [Test]
+    public void Signed_blocks_on_evicted_parents_regenerate_within_a_per_slot_budget()
+    {
+        SignedGloasChain chain = new();
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (ulong slot = ForkSlot; slot < ForkSlot + 2 * ForkSlot + 4; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            blocks.Add(tip);
+        }
+
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (tip!.Signed.Message!.Slot + 1) * chain.Spec.SecondsPerSlot + 1));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        Import(importer, [.. blocks]);
+        SignedGloasChain.Block[] siblings = [.. Enumerable.Range(1, 3).Select(i => chain.Next(blocks[i], blocks[i].Signed.Message!.Slot + 1, full: false, (byte)(0xF0 + i)))];
+
+        BlockImportResult[] sameSlot = [.. siblings.Select(s => importer.Import(s.Forked, s.Root, verifySignatures: true))];
+        timestamper.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
+        BlockImportResult nextSlot = importer.Import(siblings[2].Forked, siblings[2].Root, verifySignatures: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sameSlot, Is.EqualTo(new[] { BlockImportResult.Imported, BlockImportResult.Imported, BlockImportResult.UnknownParent }));
+            Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
+        }
+    }
+
+    /// <summary>
     /// A Gloas replay is bounded like a Fulu one: one epoch of stored blocks above the nearest held state, here the Fulu
     /// anchor's, so the replay crosses the fork, builds on full and empty parents, and leaves the Fulu state unchanged.
     /// One block more is refused with a warning before any replay.
@@ -730,6 +820,12 @@ public class GloasBlockImporterTests
         PostStateCache states = new(store, chain.Spec, chain.AnchorRoot, chain.AnchorState, isGloasBlock: gloasRoots.Contains, logManager: new OneLoggerLogManager(new ILogger(logger)),
             pubkeys: pubkeys, ancestors: root => ancestry.SkipWhile(r => r != root));
         Hash256 anchorStateRoot = SszRoots.HashTreeRoot(chain.AnchorState);
+        // A full per-block tier of live states, which a regeneration must not push out.
+        Hash256[] live = [.. Enumerable.Range(0, 2 * (int)ForkSlot).Select(static i => Keccak.Compute(BitConverter.GetBytes(i)))];
+        foreach (Hash256 root in live)
+        {
+            states.RetainGloas(root, blocks[0].PostState);
+        }
 
         long started = Stopwatch.GetTimestamp();
         BeaconStateGloas? regenerated = states.GetOrRegenerateGloasBlockState(blocks[^1].Root);
@@ -741,6 +837,7 @@ public class GloasBlockImporterTests
             Assert.That(regenerated is null ? null : SszRoots.HashTreeRoot(regenerated), Is.EqualTo(beyondBound ? null : blocks[^1].Signed.Message!.StateRoot));
             Assert.That(states.GetGloasBlockState(blocks[^1].Root), Is.SameAs(regenerated), "a regenerated state is retained, so the next import naming it replays nothing");
             Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot));
+            Assert.That(live.Select(states.GetGloasBlockState), Is.All.Not.Null, "regenerated states are kept apart from the states of live blocks");
             Assert.That(logger.LogList, beyondBound ? Has.One.Contains($"no ancestor state is held within {chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
         }
     }
