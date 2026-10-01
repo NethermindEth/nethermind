@@ -18,7 +18,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
-using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -453,7 +452,7 @@ public class PeerBandTests
             PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
 
-            await knocking.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
 
             string knockingId = knocking.P2P.LocalPeerId!.ToString();
             // The knocking side losing its session proves the refusal ran to its disconnect, so the
@@ -492,7 +491,7 @@ public class PeerBandTests
             peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
 
-            await knocking.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
             await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId).LastDisconnectReason == "TooManyPeers", token, "the refusal was never recorded");
 
             // Being turned away while we are full says nothing about the peer's behaviour: the fault
@@ -523,7 +522,7 @@ public class PeerBandTests
             peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
             Assert.That(peerManager.IsBannedForTest(bannedId), Is.True, "test setup: three faults must have banned it already");
 
-            await banned.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await PeerSessionNodes.DialToBeRefusedAsync(banned.P2P, local.P2P, token);
 
             await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == bannedId).LastDisconnectReason == "Banned", token, "the refusal was never recorded");
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
@@ -550,14 +549,7 @@ public class PeerBandTests
             await local.P2P.StartAsync(token);
             PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
 
-            try
-            {
-                await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
-            }
-            catch (PeerConnectionException)
-            {
-                // The dial ends after the remote's own identify, so the local node can already have closed the session it refused.
-            }
+            await PeerSessionNodes.DialToBeRefusedAsync(remote.P2P, local.P2P, token);
 
             // Both status versions were refused over the open session, so the admission provably threw
             // after the session existed: a count of zero below cannot be the pre-connect zero.

@@ -19,6 +19,7 @@ using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Core.Dto;
+using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -86,6 +87,19 @@ internal static class PeerSessionNodes
         }
 
         return session;
+    }
+
+    /// <summary>Dials <paramref name="to"/>, which refuses the session, from <paramref name="from"/>; the dial's own outcome is not checked.</summary>
+    /// <remarks>A dial ends only after the dialer's own identify, so the refusing node can already have closed the session and failed the dial.</remarks>
+    public static async Task DialToBeRefusedAsync(BeaconP2P from, BeaconP2P to, CancellationToken token)
+    {
+        try
+        {
+            await from.DialPeerAsync(LoopbackAddress(to), token);
+        }
+        catch (PeerConnectionException)
+        {
+        }
     }
 
     /// <summary>Whether <paramref name="node"/> holds a session with <paramref name="peerId"/> whose identify completed, waiting for it to end.</summary>
