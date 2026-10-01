@@ -19,7 +19,8 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// <summary>The Fulu <c>data_column_sidecars_by_range</c> v1 protocol, dialable for Fulu or Gloas-shaped sidecars.</summary>
 /// <remarks>
 /// The listen side serves custodied columns of either fork from the local <see cref="DataColumnSidecarPool"/>,
-/// skipping slots or columns it does not hold. It serves only the block <see cref="BeaconChainStore"/>
+/// skipping slots or columns it does not hold; unreadable held columns at or above the servable floor end the reply with
+/// a <c>ServerError</c> (fulu/p2p-interface.md, DataColumnSidecarsByRange). It serves only the block <see cref="BeaconChainStore"/>
 /// records as canonical at each slot, since fulu/p2p-interface.md requires the response to follow the
 /// responder's view of the current fork choice; a competing block's columns are never served.
 /// The dial side validates per-chunk fork-digest context
@@ -140,7 +141,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
-        Stream stream = new ChannelStreamAdapter(downChannel);
+        Stream wire = new ChannelStreamAdapter(downChannel);
         await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
@@ -151,7 +152,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         CancellationTokenSource cts = timeout.Cts;
         try
         {
-            byte[] requestSsz = await inboundSlot.ReadRequestAsync(stream, MaxRequestLength, cts.Token);
+            byte[] requestSsz = await inboundSlot.ReadRequestAsync(wire, MaxRequestLength, cts.Token);
             DataColumnSidecarsByRangeRequest request;
             try
             {
@@ -175,6 +176,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
                 throw new Eth2ReqRespException("Requested range reaches below the earliest slot whose columns are all held", ReqRespFraming.ResponseCode.ResourceUnavailable);
             }
 
+            List<(DataColumnSidecar? Fulu, DataColumnSidecarGloas? Gloas)> sidecars = [];
             for (ulong slot = request.StartSlot; slot < request.StartSlot + count; slot++)
             {
                 if (!store.TryGetCanonicalRoot(slot, out Hash256? root))
@@ -182,31 +184,71 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
                     continue;
                 }
 
+                // fulu/p2p-interface.md: include all requested columns of each included block; resolve reads before writing.
+                sidecars.Clear();
                 foreach (ulong column in orderedColumns)
                 {
-                    if (pool.TryGet(root, column, out DataColumnSidecar? sidecar))
+                    bool read = TryRead(root, column, out DataColumnSidecar? fulu, out DataColumnSidecarGloas? gloas);
+                    if (!read && slot >= pool.EarliestCompletelyServableSlot && StoreHoldsUnreadable(root, column))
                     {
-                        await WriteSidecarChunkAsync(stream, sidecar!, cts);
+                        // Recheck concurrent arrivals before ending the reply (fulu/p2p-interface.md, DataColumnSidecarsByRange).
+                        read = TryRead(root, column, out fulu, out gloas);
+                        if (!read)
+                        {
+                            throw new Eth2ReqRespException($"Data column sidecar at slot {slot} index {column} could not be read", ReqRespFraming.ResponseCode.ServerError);
+                        }
                     }
-                    else if (pool.TryGetGloas(root, column, out DataColumnSidecarGloas? gloasSidecar))
+
+                    if (read)
                     {
-                        await WriteGloasSidecarChunkAsync(stream, gloasSidecar, cts);
+                        sidecars.Add((fulu, gloas));
+                    }
+                }
+
+                foreach ((DataColumnSidecar? fulu, DataColumnSidecarGloas? gloas) in sidecars)
+                {
+                    if (fulu is not null)
+                    {
+                        await WriteSidecarChunkAsync(wire, fulu, cts);
+                    }
+                    else
+                    {
+                        await WriteGloasSidecarChunkAsync(wire, gloas!, cts);
                     }
                 }
             }
         }
         catch (Eth2ReqRespException e)
         {
-            if (e.ResponseCode != ReqRespFraming.ResponseCode.ResourceUnavailable)
+            if (e.ResponseCode is not (ReqRespFraming.ResponseCode.ResourceUnavailable or ReqRespFraming.ResponseCode.ServerError))
             {
                 RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
             }
 
-            await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
+            await ReqRespFraming.WriteErrorChunkAsync(wire, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)
         {
             RecordFailure(Id, ReqRespFailureReason.Timeout);
+        }
+    }
+
+    private bool TryRead(Hash256 root, ulong column, out DataColumnSidecar? fulu, out DataColumnSidecarGloas? gloas)
+    {
+        gloas = null;
+        return pool.TryGet(root, column, out fulu) || pool.TryGetGloas(root, column, out gloas);
+    }
+
+    // Failed reads must not omit held columns (fulu/p2p-interface.md, DataColumnSidecarsByRange).
+    private bool StoreHoldsUnreadable(Hash256 root, ulong column)
+    {
+        try
+        {
+            return store.HasDataColumnRecord(root, column);
+        }
+        catch (Exception e) when (e is not (OutOfMemoryException or OperationCanceledException))
+        {
+            return true;
         }
     }
 

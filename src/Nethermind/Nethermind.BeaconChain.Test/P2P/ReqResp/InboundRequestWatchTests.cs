@@ -90,30 +90,73 @@ public class InboundRequestWatchTests
         Assert.That(reported, Is.Empty, "the end of the linger is not a violation");
     }
 
-    // A peer that holds its streams open must not hold more of them than the cap allows.
+    // Completed responses release capacity while closure is watched (consensus-specs networking, Req/Resp interaction).
     [Test]
     [CancelAfter(30_000)]
-    public async Task A_stream_held_for_the_requester_to_end_keeps_the_peers_concurrency_slot(CancellationToken token)
+    public async Task A_completed_response_releases_the_peers_concurrency_slot([Values] bool unattributed, CancellationToken token)
     {
-        using LateByteStream stream = new(await RequestBytesAsync(token), lateByte: null);
-        ProbeProtocol protocol = new((_, _) => { });
-        ISessionContext context = Context();
+        using LateByteStream wire = new(await RequestBytesAsync(token), lateByte: null);
+        List<string> reported = [];
+        ProbeProtocol protocol = new((_, detail) => reported.Add(detail));
+        ISessionContext context = unattributed ? ContextWithoutPeer() : Context();
         protocol.Enter(context);
-        await protocol.ReadAsync(stream, token);
-        await stream.WatchStarted.WaitAsync(token);
+        await protocol.ReadAsync(wire, token);
+        await wire.WatchStarted.WaitAsync(token);
         Task lingering = protocol.DisposeAsync().AsTask();
         await using IAsyncDisposable? second = protocol.TryEnterAnother(context);
+        await using IAsyncDisposable? third = protocol.TryEnterAnother(context);
 
-        IAsyncDisposable? third = protocol.TryEnterAnother(context);
+        await using IAsyncDisposable? fourth = protocol.TryEnterAnother(context);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(second, Is.Not.Null, "test setup: one slot is free beside the lingering stream");
-            Assert.That(third, Is.Null, "the lingering stream still counts against the peer");
+            Assert.That(lingering.IsCompleted, Is.False, "test setup: the listener is still waiting for the requester");
+            Assert.That(second, Is.Not.Null, "the completed response no longer counts against the peer");
+            Assert.That(third, Is.Not.Null);
+            Assert.That(fourth, Is.Null, "the cap still bounds requests being served");
         }
 
-        stream.Teardown();
+        wire.SendLate(0x2a);
         await lingering.WaitAsync(token);
+        Assert.That(reported, Has.Count.EqualTo(unattributed ? 0 : 1), "late bytes are still watched after capacity is released");
+    }
+
+    // Bound listeners awaiting requester closure (consensus-specs networking, Req/Resp interaction).
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Completed_responses_awaiting_requester_closure_are_bounded_while_further_requests_are_served([Values] bool unattributed, CancellationToken token)
+    {
+        ProbeProtocol protocol = new((_, _) => { });
+        ISessionContext context = unattributed ? ContextWithoutPeer() : Context();
+        for (int iteration = 0; iteration < 2; iteration++)
+        {
+            List<LateByteStream> wires = [];
+            List<Task> lingering = [];
+            for (int i = 0; i < ProbeProtocol.LingerBudget + 4; i++)
+            {
+                LateByteStream wire = new(await RequestBytesAsync(token), lateByte: null);
+                wires.Add(wire);
+                IAsyncDisposable? request = await protocol.ServeAsync(context, wire, token);
+                Assert.That(request, Is.Not.Null, "a peer withholding closure is still served");
+                await wire.WatchStarted.WaitAsync(token);
+                lingering.Add(request!.DisposeAsync().AsTask());
+            }
+
+            Task overBudget = Task.WhenAll(lingering.Skip(ProbeProtocol.LingerBudget));
+            Assert.DoesNotThrowAsync(() => overBudget.WaitAsync(TimeSpan.FromSeconds(5), token), "a listener over the budget returns at once");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lingering.Take(ProbeProtocol.LingerBudget).Count(static t => !t.IsCompleted), Is.EqualTo(ProbeProtocol.LingerBudget), "the listeners within the budget still wait for the requester");
+                Assert.That(wires.Skip(ProbeProtocol.LingerBudget).All(static s => s.WatchEnded.IsCompleted), Is.True);
+            }
+
+            wires.ForEach(static s => s.Teardown());
+            await Task.WhenAll(lingering).WaitAsync(token);
+
+            IAsyncDisposable? afterwards = protocol.TryEnterAnother(context);
+            Assert.That(afterwards, Is.Not.Null);
+            await afterwards!.DisposeAsync();
+        }
     }
 
     // The linger ends a watch only if a pending channel read honours its token.
@@ -251,6 +294,13 @@ public class InboundRequestWatchTests
         return context;
     }
 
+    private static ISessionContext ContextWithoutPeer()
+    {
+        ISessionContext context = Substitute.For<ISessionContext>();
+        context.State.Returns(new Nethermind.Libp2p.Core.State());
+        return context;
+    }
+
     private static async Task<byte[]> RequestBytesAsync(CancellationToken token)
     {
         using MemoryStream wire = new();
@@ -292,6 +342,19 @@ public class InboundRequestWatchTests
         public void Enter(ISessionContext context) => _request = TryEnterInbound(context, ProbeId);
 
         public Task<byte[]> ReadAsync(Stream stream, CancellationToken token) => _request!.ReadRequestAsync(stream, maxSize: 8, token);
+
+        public const int LingerBudget = MaxLingeringRequests;
+
+        public async Task<IAsyncDisposable?> ServeAsync(ISessionContext context, Stream wire, CancellationToken token)
+        {
+            InboundRequest? request = TryEnterInbound(context, ProbeId);
+            if (request is not null)
+            {
+                await request.ReadRequestAsync(wire, maxSize: 8, token);
+            }
+
+            return request;
+        }
 
         public IAsyncDisposable? TryEnterAnother(ISessionContext context) => TryEnterInbound(context, ProbeId);
 
