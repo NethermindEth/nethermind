@@ -574,6 +574,7 @@ public partial class EngineModuleTests
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
                 Substitute.For<IHandler<Hash256?, InclusionListBytes>>(),
                 Substitute.For<Nethermind.Consensus.Transactions.IInclusionListTxSource>(),
+                Substitute.For<IInclusionListComplianceEvaluator>(),
                 Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>>(),
@@ -582,7 +583,8 @@ public partial class EngineModuleTests
                 chain.SpecProvider,
                 chain.Container.Resolve<GCKeeper>(),
                 chain.BlockProcessingQueue,
-                Substitute.For<ILogManager>()));
+                Substitute.For<ILogManager>(),
+                chain.BlockTree));
         }
 
 
