@@ -18,6 +18,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Protocols;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -200,7 +201,7 @@ public class PeerBandTests
             local.Config.StaticPeers = LoopbackAddress(staticPeer.P2P);
             PeerManager peerManager = watch.Watch(local, staticPeer, other);
 
-            await staticPeer.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await PeerSessionNodes.DialAsync(staticPeer.P2P, local.P2P, token);
             await watch.AdmittedAsync("the static peer's inbound session was never admitted", token);
             Assert.That(peerManager.PeerCount, Is.EqualTo(1));
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token), Is.True, () => watch.Describe("the second peer was not admitted"));
@@ -337,7 +338,7 @@ public class PeerBandTests
             // Admission failures are logged at Debug only; the watch keeps that log so a failure names why the session was dropped.
             PeerManager peerManager = watch.Watch(local, remote);
 
-            await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
 
             await watch.AdmittedAsync("the manager never admitted the session the remote opened", token);
             Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("the admitted peer does not match"));
@@ -379,7 +380,7 @@ public class PeerBandTests
             await local.P2P.StartAsync(token);
             PeerManager peerManager = watch.Watch(local, remote);
 
-            await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
             await watch.AdmittedAsync("the inbound session was never admitted", token);
             Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("the admitted peer does not match"));
 
@@ -500,7 +501,10 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token)
+    public Task A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token) =>
+        PeerSessionNodes.RetryStalledAsync(StatusExchangeFailsAsync, token, TimeSpan.FromSeconds(25));
+
+    private static async Task<bool> StatusExchangeFailsAsync(CancellationToken token)
     {
         RefusingStatusSource refusing = new();
         Node remote = CreateNode(refusing);
@@ -518,10 +522,13 @@ public class PeerBandTests
 
             // Both status versions were refused over the open session, so the admission provably threw
             // after the session existed: a count of zero below cannot be the pre-connect zero.
-            await WaitUntilAsync(() => refusing.Requests >= 2, token, "the status exchange never reached the remote");
+            await PeerSessionNodes.WaitUntilAsync(() => refusing.Requests >= 2, "the status exchange never reached the remote", token,
+                stallCheck: [local.P2P, remote.P2P]);
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
             Assert.That(peerManager.PeerCount, Is.EqualTo(0));
         }
+
+        return true;
     }
 
     [Test]
@@ -981,8 +988,18 @@ public class PeerBandTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
-        BeaconP2P p2p = new(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logManager ?? LimboLogs.Instance);
+        BeaconP2P p2p = PeerSessionNodes.Watched(logs => new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource,
+            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logManager is null ? logs : new HostLogs(logs, logManager)));
         return new Node(p2p, statusHolder, config, store, metadataSource);
+    }
+
+    private sealed class HostLogs(ILogManager transport, ILogManager admission) : ILogManager
+    {
+        public ILogger GetClassLogger<T>() => GetLogger(ILogManager.GetLoggerName(typeof(T)));
+
+        public ILogger GetLogger(string loggerName) => loggerName.EndsWith(nameof(YamuxProtocol), StringComparison.Ordinal)
+            ? transport.GetLogger(loggerName)
+            : admission.GetLogger(loggerName);
     }
 
     /// <summary>
