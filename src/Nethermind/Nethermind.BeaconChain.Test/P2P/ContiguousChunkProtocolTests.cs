@@ -12,7 +12,7 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>An exact-length read above the stream gets every byte, however the yamux frames below it were split into segments.</summary>
+/// <summary>An exact-length read above the relay gets every byte, however the yamux frames below it were split into segments.</summary>
 /// <remarks>Nethermind.Libp2p 1.0.0 <c>Channel.ReadAsync</c> keeps only the first segment of each later chunk; pubsub reads a whole RPC that way.</remarks>
 public class ContiguousChunkProtocolTests
 {
@@ -28,10 +28,10 @@ public class ContiguousChunkProtocolTests
     public Task An_exact_length_read_receives_every_segment_of_every_chunk([ValueSource(nameof(Chunkings))] int[][] chunks, CancellationToken token) =>
         AssertRelayedAsync(chunks, token);
 
-    /// <summary>A stream the protocol above closes is closed below too, although the peer never ended its side.</summary>
+    /// <summary>A channel the protocol above closes is closed below too, although the peer never ended its side.</summary>
     [Test]
     [CancelAfter(10_000)]
-    public async Task A_full_close_above_closes_the_stream_below(CancellationToken token)
+    public async Task A_full_close_above_closes_the_channel_below(CancellationToken token)
     {
         Channel lower = new();
         Channel upper = new();
@@ -61,7 +61,7 @@ public class ContiguousChunkProtocolTests
         {
             Assert.That(await response, Is.EqualTo(IOResult.Ok));
             Assert.That(received.Data.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
-            Assert.That(relay.IsCompleted, Is.False, "a half-close leaves the stream open");
+            Assert.That(relay.IsCompleted, Is.False, "a half-close leaves the channel open");
         }
 
         await lower.CloseAsync();
