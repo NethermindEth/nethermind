@@ -9,6 +9,10 @@ on:
         type: choice
         options: [inventory, instrumentation]
         default: inventory
+      training_amount:
+        description: Fusaka payload count for instrumentation (1-1000; start with a bounded fixture)
+        required: true
+        default: "10"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -153,25 +157,19 @@ jobs:
         shell: bash
         env:
           CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
+          TRAINING_AMOUNT: ${{ inputs.training_amount }}
         run: |
           set -euo pipefail
-          rendered="${RUNNER_TEMP}/rendered-pgo-config.yaml"
-          sed \
-            -e 's#<<DOCKER_TAG>>#${{ env.PGO_TAG }}#g' \
-            -e 's#<<DELAY>>#0#g' \
-            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-collect:#g' \
-            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
-            > "${rendered}"
-          # Inject a writable pgo volume so EventPipe/PGO data survives container removal
-          # EXPB stores extra_volumes under {outputs_dir}/{scenario}/volumes/{name}/
-          sed -i '/^[[:space:]]*mode: r$/{
-            a\      pgo:
-            a\        bind: /nethermind/pgo
-            a\        mode: rw
-          }' "${rendered}"
-          echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
-          echo "Rendered config:"
-          cat "${rendered}"
+          root="${RUNNER_TEMP}/pgo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/collection"
+          docker pull "nethermindeth/nethermind:${PGO_TAG}"
+          image=$(docker image inspect "nethermindeth/nethermind:${PGO_TAG}" --format '{{index .RepoDigests 0}}')
+          uv run --with pyyaml==6.0.3 python scripts/pgo/render_collection.py \
+            --config "${EXPB_DATA_DIR}/${CONFIG_FILE}" --root "${root}" \
+            --image "${image}" --amount "${TRAINING_AMOUNT}"
+          echo "COLLECTION_ROOT=${root}" >> "${GITHUB_ENV}"
+          echo "COLLECTION_IMAGE=${image}" >> "${GITHUB_ENV}"
+          echo "rendered_config_file=${root}/config.yaml" >> "${GITHUB_OUTPUT}"
+          cat "${root}/manifest.json"
 
       - name: Install or upgrade expb
         shell: bash
@@ -182,76 +180,55 @@ jobs:
             exit 1
           fi
           uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks@56f83b112a93436a66468b863ed9e47bcd5feba6" expb
-          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+          uv tool dir --bin >> "${GITHUB_PATH}"
 
       - name: Run EXPB for PGO collection
         id: run-expb
-        continue-on-error: true
         shell: bash
         working-directory: ${{ env.EXPB_DATA_DIR }}
+        env:
+          TRAINING_AMOUNT: ${{ inputs.training_amount }}
         run: |
           set -euo pipefail
-
-          # Background: tail Nethermind container logs for visibility
-          log_tail_pid=""
-          (
-            sleep 5
-            for i in $(seq 1 60); do
-              cid=$(docker ps --filter "ancestor=nethermindeth/nethermind:${{ env.PGO_TAG }}" \
-                --format '{{.ID}}' 2>/dev/null | head -1)
-              if [[ -n "${cid}" ]]; then
-                echo "=== Tailing Nethermind container ${cid} logs ==="
-                exec docker logs -f "${cid}" 2>&1 | sed 's/^/[nethermind] /'
-              fi
-              sleep 2
-            done
-          ) &
-          log_tail_pid=$!
-
-          expb execute-scenarios \
+          set +e
+          timeout --signal=INT --kill-after=120s 30m expb execute-scenarios \
             --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
-            --per-payload-metrics \
-            --print-logs \
-            2>&1 | tee "${RUNNER_TEMP}/expb-pgo-run.log"
-          expb_exit=$?
+            --per-payload-metrics --print-logs 2>&1 | tee "${COLLECTION_ROOT}/expb.log"
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          if [[ "${statuses[1]}" != 0 ]]; then
+            echo "Failed to retain EXPB log."
+            exit 1
+          fi
+          python3 "${GITHUB_WORKSPACE}/scripts/pgo/validate_collection.py" \
+            --log "${COLLECTION_ROOT}/expb.log" --amount "${TRAINING_AMOUNT}" \
+            --exit-code "${statuses[0]}" --output "${COLLECTION_ROOT}/execution-validation.json"
 
-          # Kill the entire process group to ensure docker logs is terminated
-          kill -- -"${log_tail_pid}" 2>/dev/null || kill "${log_tail_pid}" 2>/dev/null || true
-          exit "${expb_exit}"
-
-      - name: Extract PGO data from EXPB output
-        if: always()
+      - name: Check run-owned raw trace
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/pgo-data"
-
-          # EXPB stores extra_volumes under {outputs_dir}/{scenario}/volumes/{name}/
-          # Find the pgo volume directory from the latest EXPB run
-          expb_outputs="${EXPB_DATA_DIR}/outputs"
-          pgo_vol_dir=$(find "${expb_outputs}" -maxdepth 3 -type d -name "pgo" -path "*/volumes/pgo" \
-            -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
-
-          if [[ -n "${pgo_vol_dir}" ]]; then
-            echo "Found PGO volume at: ${pgo_vol_dir}"
-            ls -la "${pgo_vol_dir}/"
-            cp -a "${pgo_vol_dir}/." "${RUNNER_TEMP}/pgo-data/"
-          else
-            echo "No EXPB pgo volume found, trying container fallback..."
-            container_id=$(docker ps -a --filter "ancestor=nethermindeth/nethermind:${{ env.PGO_TAG }}" \
-              --format '{{.ID}}' | head -1)
-            if [[ -n "${container_id}" ]]; then
-              echo "Extracting from container ${container_id}..."
-              docker cp "${container_id}:/nethermind/pgo/" "${RUNNER_TEMP}/pgo-data/" 2>/dev/null || true
-            else
-              echo "No container found either."
-            fi
+          shopt -s nullglob
+          traces=("${COLLECTION_ROOT}/pgo/"*.nettrace)
+          if [[ "${#traces[@]}" != 1 ]] || [[ ! -s "${traces[0]}" ]]; then
+            echo "Expected exactly one complete nonempty trace from this collection run."
+            exit 1
           fi
+          echo "COLLECTION_TRACE=${traces[0]}" >> "${GITHUB_ENV}"
 
-          echo "=== .nettrace files (EventPipe method traces) ==="
-          find "${RUNNER_TEMP}/pgo-data" -name "*.nettrace" -type f -ls 2>/dev/null || true
-          echo "=== .jit files (edge/block profiling data) ==="
-          find "${RUNNER_TEMP}/pgo-data" -name "*.jit" -type f -ls 2>/dev/null || true
+      - name: Upload run-owned collection evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pgo-collection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/config.yaml
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/manifest.json
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/expb.log
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/execution-validation.json
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/pgo/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Set up .NET
         if: always()
@@ -260,7 +237,6 @@ jobs:
           cache: false
 
       - name: Build dotnet-pgo from source
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -293,36 +269,26 @@ jobs:
 
       - name: Convert traces to .mibc and merge with edge profiling
         id: convert
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
           validation_dir="${RUNNER_TEMP}/pgo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/profile-validation"
           mkdir -p "${validation_dir}"
           mibc_file="${validation_dir}/nethermind.mibc"
-          pgo_dir="${RUNNER_TEMP}/pgo-data"
+          pgo_dir="${COLLECTION_ROOT}/pgo"
 
           if [[ ! -d "${pgo_dir}" ]] || [[ -z "$(ls -A "${pgo_dir}" 2>/dev/null)" ]]; then
             echo "No PGO data found in ${pgo_dir}."
             exit 1
           fi
 
-          # Step 1: Create .mibc from EventPipe trace (method-level hot/cold)
-          trace_file=$(find "${pgo_dir}" -name "*.nettrace" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
-          if [[ -z "${trace_file}" ]]; then
-            echo "No .nettrace file found under: ${pgo_dir}"
-            ls -laR "${pgo_dir}"
-            exit 1
-          fi
-
-          # Extract Nethermind assemblies from the PGO image so dotnet-pgo can resolve
-          # generic method signatures against R2R tables
-          ref_dir="${RUNNER_TEMP}/nethermind-ref"
-          cid=$(docker create "nethermindeth/nethermind:${{ env.PGO_TAG }}" --entrypoint /bin/true 2>/dev/null || true)
-          if [[ -n "${cid}" ]]; then
-            docker cp "${cid}:/nethermind/" "${ref_dir}/" 2>/dev/null || true
-            docker rm "${cid}" >/dev/null 2>&1 || true
-          fi
+          trace_file="${COLLECTION_TRACE}"
+          test -s "${trace_file}"
+          ref_dir="${COLLECTION_ROOT}/references"
+          mkdir -p "${ref_dir}"
+          ref_cid=$(docker create --entrypoint /bin/true "${COLLECTION_IMAGE}")
+          trap 'docker rm -v "${ref_cid}" >/dev/null' EXIT
+          docker cp "${ref_cid}:/nethermind/." "${ref_dir}/"
 
           echo "Converting ${trace_file} to .mibc..."
           trace_mibc="${validation_dir}/trace.mibc"
@@ -361,6 +327,15 @@ jobs:
             echo "No .jit file found — skipping edge profiling trim."
           fi
 
+      - name: Upload matching application references
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pgo-app-references-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/references/
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Upload profile validation diagnostics
         if: always()
         uses: actions/upload-artifact@v7
@@ -391,6 +366,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nethermind-pgo-raw-data
-          path: ${{ runner.temp }}/pgo-data/
+          path: ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/pgo/
           if-no-files-found: warn
           retention-days: 30
