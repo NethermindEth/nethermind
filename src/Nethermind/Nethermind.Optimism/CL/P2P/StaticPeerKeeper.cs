@@ -16,8 +16,12 @@ namespace Nethermind.Optimism.CL.P2P;
 /// <summary>Dials every static peer the gossip router holds no connection to and opens gossipsub on the session.</summary>
 /// <remarks>The router redials a peer only while its reconnection is not suppressed, and a peer it disconnected for an invalid RPC stays
 /// suppressed; discovering a known peer again does nothing, so a lost static peer such as the sequencer is dialed here.</remarks>
-internal sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContainer router, IReadOnlyList<Multiaddress> staticPeers, ILogger logger) : IDisposable
+/// <param name="openGossip">Opens gossipsub on a session and completes when that stream ends; gossipsub v1.1 when omitted.</param>
+internal sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContainer router, IReadOnlyList<Multiaddress> staticPeers, ILogger logger,
+    Func<ISession, CancellationToken, Task>? openGossip = null) : IDisposable
 {
+    private readonly Func<ISession, CancellationToken, Task> _openGossip = openGossip ?? (static (session, token) => session.DialAsync<GossipsubProtocolV11>(token));
+
     // At most one gossip dial per peer: it is the live stream once connected, and is abandoned if the next check still finds the peer unconnected.
     private readonly Dictionary<PeerId, CancellationTokenSource> _gossipDials = [];
 
@@ -44,7 +48,7 @@ internal sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContai
                 CancellationTokenSource dial = CancellationTokenSource.CreateLinkedTokenSource(token);
                 _gossipDials[peerId] = dial;
                 // The gossip stream lives as long as the connection, so its end is only observed.
-                _ = session.DialAsync<GossipsubProtocolV11>(dial.Token).ContinueWith(
+                _ = _openGossip(session, dial.Token).ContinueWith(
                     static (t, state) => { if (t.IsFaulted && ((ILogger)state!).IsDebug) ((ILogger)state!).Debug($"Static peer gossip ended: {t.Exception!.InnerException?.Message}"); },
                     logger, TaskScheduler.Default);
             }
@@ -54,9 +58,6 @@ internal sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContai
             }
         }
     }
-
-    /// <summary>Internal so a test can see that a stalled dial is replaced, not joined by another.</summary>
-    internal int GossipDialCountForTest => _gossipDials.Count;
 
     private void Abandon(PeerId peerId)
     {
