@@ -184,10 +184,6 @@ public static class BeaconStateAccessors
     public static ulong GetBaseRewardPerIncrement(this BeaconStateFulu state, EpochCache cache) =>
         Presets.EffectiveBalanceIncrement * Presets.BaseRewardFactor / IntegerSquareRoot(state.GetTotalActiveBalance(cache));
 
-    /// <summary>Spec <c>get_base_reward</c> (Altair).</summary>
-    public static ulong GetBaseReward(this BeaconStateFulu state, int index, EpochCache cache) =>
-        state.Validators![index].EffectiveBalance / Presets.EffectiveBalanceIncrement * state.GetBaseRewardPerIncrement(cache);
-
     /// <summary>Spec <c>integer_squareroot</c> (with the Deneb special case for <c>2^64 - 1</c>).</summary>
     public static ulong IntegerSquareRoot(ulong n)
     {

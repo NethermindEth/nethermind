@@ -520,15 +520,19 @@ public static class BlockProcessing
             : state.PreviousEpochParticipation!;
 
         ulong proposerRewardNumerator = 0;
+        ulong? baseRewardPerIncrement = null;
         foreach (ulong index in attestingIndices)
         {
+            ulong? baseReward = null;
             for (int flagIndex = 0; flagIndex < Presets.ParticipationFlagWeights.Length; flagIndex++)
             {
                 byte flag = (byte)(1 << flagIndex);
                 if ((participationFlags & flag) != 0 && (epochParticipation[index] & flag) == 0)
                 {
                     epochParticipation[index] |= flag;
-                    proposerRewardNumerator += state.GetBaseReward((int)index, cache) * Presets.ParticipationFlagWeights[flagIndex];
+                    baseRewardPerIncrement ??= state.GetBaseRewardPerIncrement(cache);
+                    baseReward ??= state.Validators![(int)index].EffectiveBalance / Presets.EffectiveBalanceIncrement * baseRewardPerIncrement.Value;
+                    proposerRewardNumerator += baseReward.Value * Presets.ParticipationFlagWeights[flagIndex];
                 }
             }
         }
