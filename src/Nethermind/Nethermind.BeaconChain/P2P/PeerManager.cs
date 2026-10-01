@@ -336,7 +336,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return uncustodied;
     }
 
-    /// <param name="usableOnly">Counts only peers below the request-failure limit, which requests are still sent to (see <see cref="GetBestPeers"/>).</param>
+    /// <param name="usableOnly">Counts only peers below the request-failure limit, which requests go to while any such peer is connected (see <see cref="GetBestPeers"/>).</param>
     private int CustodianCount(ulong column, bool usableOnly = false)
     {
         int count = 0;
