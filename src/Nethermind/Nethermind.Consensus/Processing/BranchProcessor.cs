@@ -154,7 +154,9 @@ public class BranchProcessor(
                 try
                 {
                     NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneStart);
+                    NewPayloadTrace.SchedStart();
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
+                    NewPayloadTrace.SchedEnd();
                     NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneEnd);
                 }
                 catch (BlockProcessor.BlockAccessListSequentialRetryException) when (
