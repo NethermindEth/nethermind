@@ -35,7 +35,7 @@ internal sealed class StateRequestLimiter : IDisposable
     internal const int MaxResponseTimeoutSeconds = 4294967;
 
     /// <summary>The largest single write forwarded to the response, so a slow reader shows progress within a chunk rather than only after a whole state.</summary>
-    internal const int WriteChunkBytes = 256 * 1024;
+    internal const int WriteChunkBytes = 64 * 1024;
 
     private readonly int _maxConcurrent;
     private readonly int _maxPerClient;
