@@ -34,6 +34,8 @@ public static class BeaconChainMetadataKeys
     public const string CanonicalIndexTopSlot = "canonicalIndexTopSlot";
     /// <summary>32-byte root followed by the 8-byte big-endian epoch of the last weak subjectivity checkpoint an anchor of this database proved.</summary>
     public const string WeakSubjectivityCheckpoint = "weakSubjectivityCheckpoint";
+    /// <summary>8-byte big-endian slot of the lowest anchor ever recorded, before any verified backfill.</summary>
+    public const string EarliestBlockSlot = "earliestBlockSlot";
 }
 
 /// <summary>Persistence for beacon blocks, states, execution payload envelopes, the canonical slot index, the root-to-children index, and driver metadata.</summary>
@@ -1975,17 +1977,35 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// The anchor is the finalized checkpoint (or the checkpoint-sync start), and only states above it can still be
     /// read by a justification or a replay, so older snapshots, old anchors and evicted checkpoint candidates are reclaimed
     /// here. The batch makes a crash leave either the previous anchor with its state or the new one, never an anchor without its state.
-    /// Idempotent: a repeat finds nothing left to delete.
+    /// Idempotent: a repeat finds nothing left to delete. Canonical blocks below the anchor stay stored, so the lowest anchor
+    /// ever recorded is kept as <see cref="TryGetEarliestBlockSlot"/>.
     /// </remarks>
     public void SetAnchor(Hash256 blockRoot, ulong slot)
     {
         byte[] value = new byte[AnchorValueLength];
         blockRoot.Bytes.CopyTo(value.AsSpan());
         BinaryPrimitives.WriteUInt64BigEndian(value.AsSpan(Hash256.Size), slot);
+        byte[] earliest = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(earliest, TryGetEarliestBlockSlot(out ulong earliestSlot) ? Math.Min(earliestSlot, slot) : slot);
 
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
-        batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.Anchor), value);
+        IWriteBatch metadata = batch.GetColumnBatch(BeaconChainDbColumns.Metadata);
+        metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.Anchor), value);
+        metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.EarliestBlockSlot), earliest);
         RemoveStatesThroughSlot(slot, blockRoot, batch.GetColumnBatch(BeaconChainDbColumns.States), batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex), batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex));
+    }
+
+    /// <summary>The slot of the lowest anchor ever recorded: canonical blocks are stored from it on.</summary>
+    /// <remarks>A database written before this record falls back to its current anchor, which is never below the real floor.</remarks>
+    internal bool TryGetEarliestBlockSlot(out ulong slot)
+    {
+        if (GetMetadata(BeaconChainMetadataKeys.EarliestBlockSlot) is { Length: sizeof(ulong) } value)
+        {
+            slot = BinaryPrimitives.ReadUInt64BigEndian(value);
+            return true;
+        }
+
+        return TryGetAnchor(out _, out slot);
     }
 
     public bool TryGetAnchor([NotNullWhen(true)] out Hash256? blockRoot, out ulong slot)

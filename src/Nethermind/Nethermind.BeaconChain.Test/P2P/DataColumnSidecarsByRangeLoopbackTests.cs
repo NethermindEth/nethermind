@@ -30,7 +30,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
 
     [Test]
     [CancelAfter(120_000)]
-    public async Task A_host_serves_by_range_columns_of_the_canonical_block_it_stores(CancellationToken token)
+    public async Task A_host_serves_by_range_columns_of_the_canonical_block_it_stores([Values(0UL, 200UL)] ulong emptySlots, CancellationToken token)
     {
         const ulong slot = 13_410_304;
         const ulong column = 5;
@@ -46,7 +46,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
         await client.StartAsync(token);
 
         ISession toServer = await PeerSessionNodes.DialAsync(client, server, token);
-        IReadOnlyList<DataColumnSidecar> served = await client.RequestDataColumnSidecarsByRangeAsync(toServer, slot, 1, [column], token);
+        IReadOnlyList<DataColumnSidecar> served = await client.RequestDataColumnSidecarsByRangeAsync(toServer, slot - emptySlots, emptySlots == 0 ? 1UL : 256UL, [column], token);
 
         Assert.That(served.Select(static s => (s.SignedBlockHeader!.Message!.Slot, s.Index)), Is.EqualTo(new[] { (slot, column) }));
     }

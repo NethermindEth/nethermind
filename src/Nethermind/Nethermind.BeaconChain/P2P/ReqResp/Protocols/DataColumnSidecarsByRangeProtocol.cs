@@ -126,8 +126,9 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         return requestedColumns;
     }
 
+    // fulu/p2p-interface.md caps the reply at compute_max_request_data_column_sidecars() sidecars, not at MAX_REQUEST_BLOCKS slots.
     private static int MaxSidecars(ulong count, int requestedColumns) =>
-        (int)Math.Min(MaxRequestDataColumnSidecars, Math.Min(count, BlocksProtocolBase.MaxRequestBlocks) * (ulong)requestedColumns);
+        (int)Math.Min(MaxRequestDataColumnSidecars, Math.Min(count, MaxRequestDataColumnSidecars) * (ulong)requestedColumns);
 
     private void ThrowIfNotRequested(ulong startSlot, ulong count, HashSet<ulong> requestedColumns, ulong slot, ulong column)
     {
@@ -140,7 +141,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
-        Stream wire = new ChannelStreamAdapter(downChannel);
+        Stream reply = new ChannelStreamAdapter(downChannel);
         await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
@@ -151,7 +152,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         CancellationTokenSource cts = timeout.Cts;
         try
         {
-            byte[] requestSsz = await inboundSlot.ReadRequestAsync(wire, MaxRequestLength, cts.Token);
+            byte[] requestSsz = await inboundSlot.ReadRequestAsync(reply, MaxRequestLength, cts.Token);
             DataColumnSidecarsByRangeRequest request;
             try
             {
@@ -169,22 +170,34 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
 
             // fulu/p2p-interface.md: sidecars MUST be sent in (slot, column_index) order.
             ulong[] orderedColumns = [.. new SortedSet<ulong>(columns)];
-            ulong count = Math.Min(request.Count, BlocksProtocolBase.MaxRequestBlocks);
-            if (clock is not null && StartsBelowCompleteColumns(request.StartSlot, count, clock))
+            ulong count = request.Count;
+            if (clock is not null)
+            {
+                ulong currentSlot = clock.CurrentSlot;
+                count = request.StartSlot > currentSlot ? 0
+                    : currentSlot - request.StartSlot == ulong.MaxValue ? count
+                    : Math.Min(count, currentSlot - request.StartSlot + 1);
+            }
+
+            if (count > 0 && clock is not null && StartsBelowCompleteColumns(request.StartSlot, count, clock))
             {
                 throw new Eth2ReqRespException("Requested range reaches below the earliest slot whose columns are all held", ReqRespFraming.ResponseCode.ResourceUnavailable);
             }
 
-            List<(DataColumnSidecar? Fulu, DataColumnSidecarGloas? Gloas)> sidecars = [];
-            for (ulong slot = request.StartSlot; slot < request.StartSlot + count; slot++)
+            List<(ulong Slot, Hash256 Root)> sinceServed = [];
+            int emitted = 0;
+            // fulu/p2p-interface.md DataColumnSidecarsByRange: bound the walk and refuse an empty reply when slots remain unread.
+            ulong walked = Math.Min(count, MaxRequestDataColumnSidecars);
+            for (ulong offset = 0; offset < walked && offset <= ulong.MaxValue - request.StartSlot; offset++)
             {
+                cts.Token.ThrowIfCancellationRequested();
+                ulong slot = request.StartSlot + offset;
                 if (!store.TryGetCanonicalRoot(slot, out Hash256? root))
                 {
                     continue;
                 }
 
-                // fulu/p2p-interface.md: include all requested columns of each included block; resolve reads before writing.
-                sidecars.Clear();
+                List<(DataColumnSidecar? Fulu, DataColumnSidecarGloas? Gloas)> held = [];
                 foreach (ulong column in orderedColumns)
                 {
                     bool read = TryRead(root, column, out DataColumnSidecar? fulu, out DataColumnSidecarGloas? gloas);
@@ -198,23 +211,40 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
                         }
                     }
 
-                    if (read)
-                    {
-                        sidecars.Add((fulu, gloas));
-                    }
+                    if (read) held.Add((fulu, gloas));
                 }
 
-                foreach ((DataColumnSidecar? fulu, DataColumnSidecarGloas? gloas) in sidecars)
+                if (held.Count == 0)
                 {
-                    if (fulu is not null)
-                    {
-                        await WriteSidecarChunkAsync(wire, fulu, cts);
-                    }
-                    else
-                    {
-                        await WriteGloasSidecarChunkAsync(wire, gloas!, cts);
-                    }
+                    if (emitted == 0) continue;
+                    // DataColumnSidecarsByRange: clients MAY limit the reply, which bounds the view kept below.
+                    if (sinceServed.Count > (int)BlocksProtocolBase.MaxRequestBlocks) break;
+                    sinceServed.Add((slot, root));
+                    continue;
                 }
+
+                // DataColumnSidecarsByRange: a reply stays on one chain and MAY stop once the view changes after the first sidecar.
+                sinceServed.Add((slot, root));
+                if (held.Count > (int)MaxRequestDataColumnSidecars - emitted || (emitted > 0 && ViewChanged(sinceServed)))
+                {
+                    break;
+                }
+
+                foreach ((DataColumnSidecar? fulu, DataColumnSidecarGloas? gloas) in held)
+                {
+                    if (fulu is not null) await WriteSidecarChunkAsync(reply, fulu, cts);
+                    else await WriteGloasSidecarChunkAsync(reply, gloas!, cts);
+                    emitted++;
+                }
+
+                sinceServed.Clear();
+                sinceServed.Add((slot, root));
+            }
+
+            // DataColumnSidecarsByRange: an empty reply would claim the slots past the walk hold no columns; ResourceUnavailable does not.
+            if (emitted == 0 && walked < count)
+            {
+                throw new Eth2ReqRespException($"No held sidecar in the first {walked} requested slots", ReqRespFraming.ResponseCode.ResourceUnavailable);
             }
         }
         catch (Eth2ReqRespException e)
@@ -224,7 +254,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
                 RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
             }
 
-            await ReqRespFraming.WriteErrorChunkAsync(wire, e.ResponseCode, e.Message, cts.Token);
+            await ReqRespFraming.WriteErrorChunkAsync(reply, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -249,6 +279,19 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         {
             return true;
         }
+    }
+
+    private bool ViewChanged(List<(ulong Slot, Hash256 Root)> sinceServed)
+    {
+        int index = 0;
+        for (ulong offset = 0; offset <= sinceServed[^1].Slot - sinceServed[0].Slot; offset++)
+        {
+            ulong slot = sinceServed[0].Slot + offset;
+            Hash256? expected = index < sinceServed.Count && sinceServed[index].Slot == slot ? sinceServed[index++].Root : null;
+            if ((store.TryGetCanonicalRoot(slot, out Hash256? current) ? current : null) != expected) return true;
+        }
+
+        return false;
     }
 
     // Below data_column_serve_range the columns MAY be served as held, so only the part inside it is checked.

@@ -31,7 +31,7 @@ namespace Nethermind.BeaconChain.Test.P2P;
 public class BlocksProtocolForkDecodeTests
 {
     private static readonly ForkedSignedBeaconBlock LastFuluBlock = new ForkedSignedBeaconBlock.OfFulu(CreateMinimalBlock(FirstGloasSlot - 1));
-    private static readonly ForkedSignedBeaconBlock FirstGloasBlock = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(FirstGloasSlot));
+    private static readonly ForkedSignedBeaconBlock FirstGloasBlock = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(FirstGloasSlot, LastFuluBlock.ComputeMessageRoot()));
 
     [Test]
     public async Task Response_spanning_the_fork_decodes_each_chunk_as_the_shape_its_context_names()
