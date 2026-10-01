@@ -84,6 +84,11 @@ public interface IBeaconSyncPeerPool
     /// <remarks>A pool may then return from <see cref="GetBestPeers"/> a peer whose last status is behind the slot asked for, when that status could not be refreshed.</remarks>
     /// <param name="reason">Why the node believes the chain is past its peers, for the log.</param>
     void RefreshStatusesBehind(ulong slot, string reason) { }
+
+    /// <summary>Asks again for the <c>status</c> of peers whose last head is behind <paramref name="slot"/>, without claiming the chain has reached it; ignored by a pool that does not implement it.</summary>
+    /// <remarks>Unlike <see cref="RefreshStatusesBehind"/>, a peer whose status then cannot be refreshed is not offered past its last head: the slot may be empty.</remarks>
+    /// <param name="reason">Why the statuses are asked for, for the log.</param>
+    void RefreshStatusesBelow(ulong slot, string reason) { }
 }
 
 /// <summary>Connection direction of a tracked beacon chain peer.</summary>

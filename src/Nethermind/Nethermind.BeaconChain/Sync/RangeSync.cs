@@ -140,7 +140,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 // The wall slot alone is no such evidence: its block may simply not be out yet.
                 if (nextSlot < target)
                 {
-                    peerPool.RefreshStatusesBehind(nextSlot, $"range sync waits for slot {nextSlot}, behind wall slot {target}, and no peer's status reaches it");
+                    peerPool.RefreshStatusesBelow(nextSlot, $"range sync waits for slot {nextSlot}, behind wall slot {target}, and no peer's status reaches it");
                 }
 
                 if (beforeRetry is not null)
@@ -416,17 +416,24 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     }
 
     /// <summary>
-    /// Assigns each of <paramref name="missing"/> to a peer reaching <paramref name="batchStartSlot"/> that custodies it, serves the range from <paramref name="startSlot"/>
-    /// and is not in <paramref name="excluded"/>; empty when no such peer exists.
+    /// Assigns each of <paramref name="missing"/> to a peer reaching <paramref name="startSlot"/>, or else <paramref name="batchStartSlot"/>, that custodies it, serves the range
+    /// from <paramref name="startSlot"/> and is not in <paramref name="excluded"/>; empty when no such peer exists.
     /// </summary>
-    /// <param name="batchStartSlot">The batch's first slot, which its blocks were requested from peers reaching: a later round's first missing slot can lie past every peer's last
-    /// status although a peer served the block there (phase0/p2p-interface.md Status), and a custodian lacking it leaves the column unserved and is not asked again.</param>
+    /// <param name="batchStartSlot">The batch's first slot, which its blocks were requested from peers reaching. Custodians reaching only it are asked when none reaching
+    /// <paramref name="startSlot"/> custodies a missing column: a later round's first missing slot can lie past every peer's last status although a peer served the block there
+    /// (phase0/p2p-interface.md Status), while a custodian whose status reaches that slot is likelier to hold it.</param>
     /// <param name="boundPerPeer">Caps each peer at an even share of <paramref name="missing"/>, at least <see cref="MinColumnsPerPeer"/>; a column the cap leaves out
     /// waits for a later round, so only a caller that retries sets it.</param>
     private List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignBatchColumns(List<ulong> missing, ulong batchStartSlot, ulong startSlot, ulong lastSlot, HashSet<string>? excluded, bool boundPerPeer)
     {
-        IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(batchStartSlot);
-        IBeaconSyncPeer[] custodians = [.. reaching.Where(p => excluded?.Contains(p.Id) is not true && p.Custody.CountCustodied(missing) > 0)];
+        IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
+        IBeaconSyncPeer[] custodians = [.. reaching.Where(IsCandidate)];
+        if (custodians.Length == 0 && batchStartSlot < startSlot)
+        {
+            reaching = peerPool.GetBestPeers(batchStartSlot);
+            custodians = [.. reaching.Where(IsCandidate)];
+        }
+
         if (custodians.Length == 0)
         {
             LogNoCustodian(missing, reaching.Count);
@@ -443,6 +450,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         int askedPeers = Math.Min(MaxColumnPeersPerBatch, serving.Count);
         int perPeer = Math.Max(MinColumnsPerPeer, (missing.Count + askedPeers - 1) / askedPeers);
         return AssignColumns(missing, serving, MaxColumnPeersPerBatch, perPeer);
+
+        bool IsCandidate(IBeaconSyncPeer peer) => excluded?.Contains(peer.Id) is not true && peer.Custody.CountCustodied(missing) > 0;
     }
 
     /// <summary>
