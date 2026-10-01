@@ -234,13 +234,14 @@ public class TraceStoreRpcModuleTests
 
     [Test]
     public async Task Stored_replay_keeps_reward_actions_like_live_replay(
-        [Values("rewards", "stateDiff,rewards")] string selection, [Values] bool streaming)
+        [Values("rewards", "trace,rewards")] string selection, [Values] bool streaming)
     {
-        TestContext test = new(streaming: streaming);
+        ParityTraceTypes storedTypes = new TraceStoreConfig().TraceTypes;
+        TestContext test = new(streaming: streaming, storedTraceTypes: storedTypes);
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Block block = test.BlockFinder.Head!.WithReplacedBody(new BlockBody([tx], []));
         Replay(new DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer>(
-            new ParityLikeBlockTracer(new TraceStoreConfig().TraceTypes), test.Store, new ParityLikeTraceSerializer(LimboLogs.Instance), LimboLogs.Instance), block);
+            new ParityLikeBlockTracer(storedTypes), test.Store, new ParityLikeTraceSerializer(LimboLogs.Instance), LimboLogs.Instance), block);
         string[] types = selection.Split(',');
         Assert.That(TraceRpcModule.TryGetParityTypes(types, out ParityTraceTypes liveTypes), Is.True);
         JToken expected;
@@ -267,10 +268,53 @@ public class TraceStoreRpcModuleTests
         byte[] serialized = await Serialize(response);
         JToken actual = JToken.Parse(Encoding.UTF8.GetString(serialized))["result"]!;
 
-        // The default store records Trace|Rewards only, so it has no state diff to compare against live replay.
-        foreach (JObject entry in expected.Children<JObject>().Concat(actual.Children<JObject>())) entry.Remove("stateDiff");
         Assert.That(actual, Is.EqualTo(expected).Using(JToken.EqualityComparer));
         Assert.That(actual.Last!["trace"]!.Single()["action"]!["rewardType"]!.Value<string>(), Is.EqualTo("block"));
+    }
+
+    // A store answers only for the types it records; anything else goes to live tracing rather than returning nulls.
+    [TestCase("Trace, Rewards", "trace", false, true)]
+    [TestCase("Trace, Rewards", "trace,rewards", true, true)]
+    [TestCase("Trace, Rewards", "vmTrace", false, false)]
+    [TestCase("Trace, Rewards", "vmTrace", true, false)]
+    [TestCase("Trace, Rewards", "stateDiff", false, false)]
+    [TestCase("Trace, Rewards", "stateDiff", true, false)]
+    [TestCase("Trace", "trace,rewards", true, false)]
+    [TestCase("VmTrace, StateDiff, Trace", "vmTrace,stateDiff", true, true)]
+    // Live replay can answer a transaction with its block's reward, which the store doesn't hold per transaction.
+    [TestCase("Trace, Rewards", "trace,rewards", false, false)]
+    public void Stored_replay_serves_only_recorded_types(string stored, string selection, bool blockReplay, bool fromStore)
+    {
+        TestContext test = new(streaming: false, storedTraceTypes: Enum.Parse<ParityTraceTypes>(stored));
+        string[] types = selection.Split(',');
+
+        if (blockReplay)
+        {
+            using ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> result = test.Module.trace_replayBlockTransactions(BlockParameter.Latest, types);
+            test.InnerModule.Received(fromStore ? 0 : 1).trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>());
+        }
+        else
+        {
+            using ResultWrapper<ParityTxTraceFromReplay?> result = test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, types);
+            test.InnerModule.Received(fromStore ? 0 : 1).trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>());
+        }
+    }
+
+    // Live trace_transaction traces calls; live trace_block and trace_filter also trace rewards.
+    [TestCase("Trace, Rewards", true, true)]
+    [TestCase("Trace", true, false)]
+    [TestCase("StateDiff, Rewards", false, false)]
+    public void Stored_actions_serve_only_recorded_types(string stored, bool transactionFromStore, bool blockFromStore)
+    {
+        TestContext test = new(streaming: false, storedTraceTypes: Enum.Parse<ParityTraceTypes>(stored));
+
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> transaction = test.Module.trace_transaction(test.DbTrace.TransactionHash!);
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> block = test.Module.trace_block(BlockParameter.Latest);
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> filter = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest });
+
+        test.InnerModule.Received(transactionFromStore ? 0 : 1).trace_transaction(Arg.Any<Hash256>(), Arg.Any<bool>());
+        test.InnerModule.Received(blockFromStore ? 0 : 1).trace_block(Arg.Any<BlockParameter>(), Arg.Any<string?>());
+        test.InnerModule.Received(blockFromStore ? 0 : 1).trace_filter(Arg.Any<TraceFilterForRpc>());
     }
 
     // Mirrors BlockProcessor: transactions, then the reward on a null transaction, reported after its trace ends.
@@ -679,14 +723,14 @@ public class TraceStoreRpcModuleTests
         public IReceiptFinder ReceiptFinder { get; }
         public TraceStoreRpcModule Module { get; }
 
-        public TestContext(int parallelization = 0, bool streaming = true)
+        public TestContext(int parallelization = 0, bool streaming = true, ParityTraceTypes storedTraceTypes = ParityTraceTypes.All)
         {
             InnerModule = Substitute.For<ITraceRpcModule>();
             Store = new MemDb();
             BlockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
             ReceiptFinder = Substitute.For<IReceiptFinder>();
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
-            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, new JsonRpcConfig { EnableTracingStreamMode = streaming }, LimboLogs.Instance, parallelization);
+            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, storedTraceTypes, new JsonRpcConfig { EnableTracingStreamMode = streaming }, LimboLogs.Instance, parallelization);
             Hash256 dbTransaction = Build.A.Transaction.TestObject.Hash!;
             Hash256 dbBlock = BlockFinder.Head!.Hash!;
             DbTrace = new() { BlockHash = dbBlock, TransactionHash = dbTransaction };
