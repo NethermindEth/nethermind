@@ -95,15 +95,25 @@ public class OptimismGossipLoopbackTests
         IRoutingStateContainer router = Substitute.For<IRoutingStateContainer>();
         router.ConnectedPeers.Returns([]);
         List<CancellationToken> dials = [];
+        List<bool> earlierCancelledAtStart = [];
         using StaticPeerKeeper keeper = new(localPeer, router, [address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(),
-            (_, dialToken) => { dials.Add(dialToken); return Task.Delay(Timeout.Infinite, dialToken); });
+            (_, dialToken) =>
+            {
+                earlierCancelledAtStart.Add(dials.All(static dial => dial.IsCancellationRequested));
+                dials.Add(dialToken);
+                return Task.Delay(Timeout.Infinite, dialToken);
+            });
 
         for (int check = 0; check < 3; check++)
         {
             await keeper.CheckAsync(CancellationToken.None);
         }
 
-        Assert.That(dials.Select(static dial => dial.IsCancellationRequested), Is.EqualTo(new[] { true, true, false }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(earlierCancelledAtStart, Is.EqualTo(new[] { true, true, true }), "every earlier dial was cancelled before the next started");
+            Assert.That(dials.Select(static dial => dial.IsCancellationRequested), Is.EqualTo(new[] { true, true, false }));
+        }
     }
 
     // Runs the static peer check as its timer does, more often: the peer can refuse a dial while it still holds an earlier session.
