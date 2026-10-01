@@ -61,7 +61,8 @@ public sealed class ForkChoiceRunner
     /// <summary>Most recent last: a target checkpoint state a vote verified against, per shuffling of the current and previous epochs.</summary>
     private readonly List<(ShufflingKey Key, ForkedBeaconState State)> _voteStates = [];
 
-    /// <summary>The head <see cref="GetHeadNode"/> last returned, which gossip aggregates are checked against; cleared when a tick or a block may move it.</summary>
+    /// <summary>The head <see cref="GetHeadNode"/> last returned, which gossip aggregates are checked against; cleared when a tick, a block or a slashing may move it.</summary>
+    /// <remarks>A vote does not clear it: recomputing <c>get_head</c> for every aggregate would cost more than a head one vote can move.</remarks>
     private Hash256? _lastHeadRoot;
 
     /// <summary>The store epoch <see cref="_offHeadBuilds"/> counts in.</summary>
@@ -991,8 +992,9 @@ public sealed class ForkChoiceRunner
         HashSet<ulong> indices2 = [.. attestation2.AttestingIndices];
         foreach (ulong index in attestation1.AttestingIndices)
         {
-            if (indices2.Contains(index))
-                _equivocatingIndices.Add(index);
+            // A new equivocator's votes leave the weights, which can move the head gossip is checked against.
+            if (indices2.Contains(index) && _equivocatingIndices.Add(index))
+                _lastHeadRoot = null;
         }
     }
 
@@ -1661,11 +1663,20 @@ public sealed class ForkChoiceRunner
         return treeRoot is null ? null : new ShufflingKey(target.Epoch, treeRoot, BelowTreeRoot: true);
     }
 
-    /// <summary>Holds <paramref name="state"/>, which a vote verified against, for its shuffling unless one is held, evicting the least recently used past <see cref="MaxVoteStates"/>.</summary>
+    /// <summary>Holds <paramref name="state"/>, which a vote verified against, for its shuffling, or marks the one held as just used; evicts the least recently used past <see cref="MaxVoteStates"/>.</summary>
     private void RegisterVoteState(ShufflingKey? key, ForkedBeaconState state)
     {
-        if (key is not { } shuffling || shuffling.Epoch + 1 < _store.CurrentEpoch || _voteStates.Exists(entry => entry.Key == shuffling))
+        if (key is not { } shuffling || shuffling.Epoch + 1 < _store.CurrentEpoch)
             return;
+
+        int held = _voteStates.FindIndex(entry => entry.Key == shuffling);
+        if (held >= 0)
+        {
+            (ShufflingKey Key, ForkedBeaconState State) entry = _voteStates[held];
+            _voteStates.RemoveAt(held);
+            _voteStates.Add(entry);
+            return;
+        }
 
         Hash256 decisionRoot = state switch
         {
