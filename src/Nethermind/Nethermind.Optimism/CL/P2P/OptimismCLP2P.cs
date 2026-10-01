@@ -352,27 +352,8 @@ public class OptimismCLP2P : IDisposable
 
 
         if (_logger.IsInfo) _logger.Info("CL P2P is started");
-        _ = KeepStaticPeersAsync(token);
+        _ = StaticPeerKeeper.RunAsync(_localPeer!, _router!, _staticPeerList, StaticPeerKeeper.CheckInterval, _logger, token);
         await MainLoop(token);
-    }
-
-    // Long enough not to race the router's own reconnect, short enough to win back the sequencer within a minute.
-    private static readonly TimeSpan StaticPeerCheckInterval = TimeSpan.FromSeconds(30);
-
-    private async Task KeepStaticPeersAsync(CancellationToken token)
-    {
-        using StaticPeerKeeper keeper = new(_localPeer!, _router!, _staticPeerList, _logger);
-        using PeriodicTimer timer = new(StaticPeerCheckInterval);
-        try
-        {
-            while (await timer.WaitForNextTickAsync(token))
-            {
-                await keeper.CheckAsync(token);
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
     }
 
     public void Reset(ulong headNumber) => _headNumber = headNumber;
