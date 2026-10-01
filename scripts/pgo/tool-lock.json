@@ -31,6 +31,13 @@
       "upstream_commit": null,
       "upstream_url": null,
       "purpose": "Defer unknown PDB signatures only when a verifiable module/CLR identity record is available; reject missing and conflicting identities."
+    },
+    {
+      "file": "patches/runtime-keep-nettrace-events.patch",
+      "sha256": "e2717a4e1c492370c4937fe4280d74f029dbbbb710b7ceb785c44ecbd29d90d4",
+      "upstream_commit": null,
+      "upstream_url": null,
+      "purpose": "Preserve IL/native map records during initial EventPipe nettrace-to-ETLX conversion, before reopening cached ETLX."
     }
   ],
   "purpose": "Isolated offline profile conversion; never included in production runtime images."

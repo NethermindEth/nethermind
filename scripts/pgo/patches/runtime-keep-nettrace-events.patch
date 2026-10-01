@@ -1,0 +1,15 @@
+--- a/src/coreclr/tools/dotnet-pgo/Program.cs
++++ b/src/coreclr/tools/dotnet-pgo/Program.cs
+@@ -1028,11 +1028,11 @@
+             {
+                 if (etlFileName.EndsWith(nettraceExtension))
+                 {
+                     string etlxFileName = Path.ChangeExtension(etlFileName, ".etlx");
+                     PrintMessage($"Creating ETLX file {etlxFileName} from {etlFileName}");
+-                    TraceLog.CreateFromEventPipeDataFile(etlFileName, etlxFileName);
++                    TraceLog.CreateFromEventPipeDataFile(etlFileName, etlxFileName, new TraceLogOptions { KeepAllEvents = true });
+                     etlFileName = etlxFileName;
+                 }
+             }
+ 
+             string lttngExtension = ".trace.zip";
