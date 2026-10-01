@@ -130,8 +130,7 @@ public class OptimismGossipLoopbackTests
                 earlierCancelledAtStart.Add(dials.All(static dial => dial.IsCancellationRequested));
                 dials.Add(dialToken);
                 return Task.Delay(Timeout.Infinite, dialToken);
-            },
-            resolveHost: null);
+            });
 
         for (int check = 0; check < 3; check++)
         {
@@ -145,27 +144,30 @@ public class OptimismGossipLoopbackTests
         }
     }
 
-    /// <summary>A static peer named by DNS is connected once its name resolves, although an earlier lookup failed.</summary>
-    /// <remarks>Nethermind.Libp2p 1.0.0 keeps a failed resolution as the pending dial of the peer id for good, so the keeper resolves names itself.</remarks>
-    [Test]
+    /// <summary>A dial that cannot start, to addresses any peer can announce for another through pubsub peer discovery, does not keep that
+    /// peer from being connected later.</summary>
+    /// <remarks>Nethermind.Libp2p 1.0.0 keeps a dial that fails before its first await as the pending dial of the peer id for good.</remarks>
+    [TestCase("/dns4/sequencer.invalid/tcp/{port}/p2p/{id}", TestName = "A name whose first lookup fails")]
+    [TestCase("/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name")]
+    [TestCase("/ip4/127.0.0.1/tcp/{port}/p2p/{id}|/ip4/127.0.0.1/tcp/{port}/p2p/{other}", TestName = "Addresses of two peer ids")]
     [CancelAfter(60_000)]
-    public async Task A_static_peer_named_by_dns_is_connected_after_a_failed_lookup(CancellationToken token)
+    public async Task A_dial_that_cannot_start_does_not_lose_the_peer(string announced, CancellationToken token)
     {
-        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
-        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
-        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
-        string[] parts = sequencer.Address.ToString().Split('/');
-        IPAddress ip = IPAddress.Parse(parts[2]);
-        Multiaddress named = Multiaddress.Decode($"/dns4/sequencer.invalid/{string.Join('/', parts[3..])}");
         int lookups = 0;
-        using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(), openGossip: null,
-            resolveHost: (_, _, _) => ++lookups == 1
-                ? Task.FromException<IPAddress[]>(new SocketException((int)SocketError.HostNotFound))
-                : Task.FromResult(new[] { ip }));
+        HostResolver failsOnce = (_, _, _) => ++lookups == 1
+            ? Task.FromException<IPAddress[]>(new SocketException((int)SocketError.HostNotFound))
+            : Task.FromResult(new[] { IPAddress.Loopback });
+        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite, failsOnce);
+        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
+        string port = sequencer.Address.ToString().Split('/')[4];
+        Multiaddress[] poison = [.. announced.Split('|').Select(address => Multiaddress.Decode(address
+            .Replace("{port}", port).Replace("{id}", sequencerId.ToString()).Replace("{other}", new Nethermind.Libp2p.Core.Identity().PeerId.ToString())))];
 
-        await keeper.CheckAsync(token);
-        Assert.That(lookups, Is.EqualTo(1), "fixture: the first lookup fails");
+        Assert.That(async () => await node.Peer.DialAsync(poison, token), Throws.Exception, "fixture: the dial fails");
 
+        Multiaddress named = Multiaddress.Decode($"/dns4/sequencer.invalid/tcp/{port}/p2p/{sequencerId}");
+        using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
@@ -197,14 +199,19 @@ public class OptimismGossipLoopbackTests
         // The libp2p dial needs the peer id, which a listen address may not carry.
         public Multiaddress Address => Multiaddress.Decode($"{peer.ListenAddresses.First().ToString().Split("/p2p/")[0]}/p2p/{peer.Identity.PeerId}");
 
-        public static async Task<Host> StartAsync(CancellationToken token, Action<PubsubSettings>? configure = null)
+        public static async Task<Host> StartAsync(CancellationToken token, Action<PubsubSettings>? configure = null, HostResolver? resolveHost = null)
         {
             PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings(BlocksTopic);
             configure?.Invoke(settings);
-            ServiceProvider services = new ServiceCollection()
+            IServiceCollection collection = new ServiceCollection()
                 .AddLibp2p(static builder => builder.WithPubsub())
-                .AddSingleton(settings)
-                .BuildServiceProvider();
+                .AddSingleton(settings);
+            if (resolveHost is not null)
+            {
+                collection.AddSingleton(resolveHost);
+            }
+
+            ServiceProvider services = collection.BuildServiceProvider();
             ILocalPeer peer = services.GetRequiredService<IPeerFactory>().Create();
             await peer.StartListenAsync([Multiaddress.Decode("/ip4/127.0.0.1/tcp/0")], token);
             await services.GetRequiredService<PubsubRouter>().StartAsync(peer, token);

@@ -24,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Network.Libp2p;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Nethermind.Shutter;
 
@@ -125,8 +124,7 @@ public class ShutterP2P : IShutterP2P
         _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(listenAddress)], cancellationToken);
 
         Multiaddress[] bootnodes = [.. bootnodeP2PAddresses];
-        // A DNS bootnode is dialed only by the static peer check, which resolves it first.
-        foreach (Multiaddress address in bootnodes.Where(static address => !StaticPeerKeeper.HasDnsName(address)))
+        foreach (Multiaddress address in bootnodes)
         {
             _peerStore.Discover([address]);
         }
