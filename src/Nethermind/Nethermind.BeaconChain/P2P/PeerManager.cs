@@ -1698,7 +1698,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <summary>Removes a peer whose libp2p session closed and wakes <see cref="WaitForAdmissionCapacityAsync"/>, so the dial loop can replace it.</summary>
     /// <remarks>
-    /// A lost session is not a fault of the peer: no failure is counted and its fault-disconnect streak is left as it is.
+    /// A lost session is not a fault of the peer or its address: no failure is counted, its fault-disconnect streak is left as it is and its address gets no dial backoff.
     /// Its waiting and running requests end as disconnects on the same session token (see <see cref="ManagedPeer.ExchangeAsync{T}"/>).
     /// </remarks>
     private void RemoveClosedSession(ManagedPeer peer)
@@ -1718,7 +1718,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         const string detail = "its libp2p session closed";
         if (_logger.IsInfo) _logger.Info($"Beacon chain peer {peer.Id} disconnected: {detail}");
         Interlocked.Increment(ref Metrics.PeersDroppedCount);
-        _dialHistory.Record(peer.Id, connected: false);
         RecordDisconnect(peer.PeerId, peer.MessagesSent, peer.FailuresReported, SessionClosedReason, detail, unresponsive: true);
         WakeAdmissionWaiters();
         PublishCustodyShortfall();
