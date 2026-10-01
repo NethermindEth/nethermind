@@ -42,6 +42,26 @@ class CollectionValidationTests(unittest.TestCase):
             log.write_text(good.replace("| 2 |", "| 9 |") + evidence)
             self.assertEqual(validate(log, 2, 0, manifest)["status"], "failed")
 
+    def test_pacing_declaration_must_match_requested_delay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "manifest.json"
+            log = root / "run.log"
+            block_hash = "0x" + "a" * 64
+            log.write_text('| 0 | 100 | 1.0 |\nNethermind is shut down\nevent="Cleanup completed"\n' +
+                "".join(f"EXPB_ENGINE_RESULT idx=0 warmup=0 kind={kind} status=VALID "
+                        f"latest_valid_hash={block_hash}\n" for kind in ("newPayload", "forkchoiceUpdated")))
+            window = {"warmup": 0, "amount": 1, "headers": [{"index": 0, "hash": block_hash}]}
+            for declared in (0, 1):
+                manifest.write_text(json.dumps({"replay_window": window, "delay_seconds": declared,
+                                                "warmup_delay_seconds": 0}))
+                self.assertEqual(validate(log, 1, 0, manifest, declared)["status"], "valid")
+                self.assertEqual(validate(log, 1, 0, manifest, 1 - declared)["status"], "failed")
+            for fields in ({}, {"delay_seconds": True, "warmup_delay_seconds": 0},
+                           {"delay_seconds": 1, "warmup_delay_seconds": 1}, {"delay_seconds": 1}):
+                manifest.write_text(json.dumps({"replay_window": window} | fields))
+                self.assertEqual(validate(log, 1, 0, manifest, 1)["status"], "failed")
+
 
 if __name__ == "__main__":
     unittest.main()

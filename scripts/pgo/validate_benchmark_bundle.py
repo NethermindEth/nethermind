@@ -125,6 +125,10 @@ def validate_bundle(root, run, source_sha):
     manifest_path = collection / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     window = manifest["replay_window"]
+    # Older authenticated collection artifacts were rendered with a fixed zero delay.
+    delay = manifest.get("delay_seconds", 0)
+    if type(delay) is not int or delay not in (0, 1):
+        raise ValueError("training bundle has an invalid block delay")
     if (PurePosixPath(manifest["config_source"]).name != "github-action-mainnet-fusaka-flat.yaml"
             or PurePosixPath(manifest["snapshot_source"]).name != "nethermind-flat-25490000"
             or "fusaka-payloads" not in PurePosixPath(manifest["payloads"]).parts
@@ -153,6 +157,7 @@ def validate_bundle(root, run, source_sha):
     return {"source_sha": source_sha, "run_id": run["id"], "run_attempt": run["run_attempt"],
             "image": manifest["image"], "engine_api_results": replay["engine_api_results"],
             "measured_payloads": 1000, "reference_files": len(files),
+            "training_delay_seconds": delay,
             "profile_sha256": digest(profile), "trace_sha256": digest(trace),
             "reference_manifest_sha256": digest(references / "manifest.json"), "artifacts": artifacts}
 

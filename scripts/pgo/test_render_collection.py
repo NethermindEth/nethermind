@@ -64,6 +64,27 @@ class CollectionRenderTests(unittest.TestCase):
                 render(config_path, root / "snapshot/new", "nethermindeth/nethermind@sha256:" + "a" * 64, 10)
             self.assertFalse((root / "snapshot/new").exists())
 
+    def test_delayed_collection_preserves_inputs_and_records_pacing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.fixture(root)
+            original = path.read_bytes()
+            config = render(path, root / "run", "nethermindeth/nethermind@sha256:" + "a" * 64, 10, 1)
+            scenario = config["scenarios"]["nethermind-pgo-collect"]
+            manifest = json.loads((root / "run/manifest.json").read_text())
+            self.assertEqual((scenario["delay"], scenario["warmup_delay"]), (1, 0))
+            self.assertEqual((manifest["delay_seconds"], manifest["warmup_delay_seconds"]), (1, 0))
+            self.assertEqual(path.read_bytes(), original)
+
+    def test_invalid_delay_fails_before_output_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.fixture(root)
+            for delay in (-1, 2, True, 1.0, "1"):
+                with self.subTest(delay=delay), self.assertRaisesRegex(ValueError, "delay"):
+                    render(path, root / "run", "nethermindeth/nethermind@sha256:" + "a" * 64, 10, delay)
+                self.assertFalse((root / "run").exists())
+
     def test_invalid_amount_or_unpinned_image_fails_before_output_creation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

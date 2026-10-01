@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "expb"))
 from sequential_driver import collect_metrics
 
 
-def validate(log_path, amount, exit_code, manifest=None):
+def validate(log_path, amount, exit_code, manifest=None, delay=None):
     metrics, diagnostics = collect_metrics(log_path)
     reasons = []
     if exit_code:
@@ -31,7 +31,16 @@ def validate(log_path, amount, exit_code, manifest=None):
     if manifest is None:
         reasons.append("replay manifest is required for Engine API validation")
     else:
-        window = json.loads(Path(manifest).read_text(encoding="utf-8"))["replay_window"]
+        declared = json.loads(Path(manifest).read_text(encoding="utf-8"))
+        if "delay_seconds" in declared:
+            if (type(declared["delay_seconds"]) is not int or declared["delay_seconds"] not in (0, 1)
+                    or type(declared.get("warmup_delay_seconds")) is not int
+                    or declared["warmup_delay_seconds"] != 0):
+                reasons.append("invalid collection pacing declaration")
+        if delay is not None and (type(delay) is not int or delay not in (0, 1)
+                                  or declared.get("delay_seconds") != delay):
+            reasons.append("collection pacing does not match the requested delay")
+        window = declared["replay_window"]
         expected = {(header["index"], kind): (header["index"] < window["warmup"], header["hash"].lower())
                     for header in window["headers"] for kind in ("newPayload", "forkchoiceUpdated")}
         pattern = re.compile(r"EXPB_ENGINE_RESULT idx=(\d+) warmup=([01]) kind=(newPayload|forkchoiceUpdated) "
@@ -64,8 +73,9 @@ def main():
     parser.add_argument("--exit-code", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--delay", type=int, choices=(0, 1))
     args = parser.parse_args()
-    report = validate(args.log, args.amount, args.exit_code, args.manifest)
+    report = validate(args.log, args.amount, args.exit_code, args.manifest, args.delay)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     if report["status"] != "valid":
         raise SystemExit(json.dumps({"reasons": report["reasons"], "diagnostics": report["diagnostics"]}))

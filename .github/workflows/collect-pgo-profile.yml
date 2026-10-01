@@ -13,6 +13,12 @@ on:
         description: Fusaka payload count for instrumentation (1-1000; start with a bounded fixture)
         required: true
         default: "10"
+      training_delay:
+        description: Fusaka measured-phase block pacing in seconds (warmup remains undelayed)
+        required: true
+        type: choice
+        options: ["0", "1"]
+        default: "0"
       training_run_id:
         description: Successful strict 1000-payload training run for benchmark-images
         required: false
@@ -217,6 +223,7 @@ jobs:
         env:
           CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
           TRAINING_AMOUNT: ${{ inputs.training_amount }}
+          TRAINING_DELAY: ${{ inputs.training_delay }}
         run: |
           set -euo pipefail
           root="${RUNNER_TEMP}/pgo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/collection"
@@ -224,7 +231,7 @@ jobs:
           image=$(docker image inspect "nethermindeth/nethermind:${PGO_TAG}" --format '{{index .RepoDigests 0}}')
           uv run --with pyyaml==6.0.3 python scripts/pgo/render_collection.py \
             --config "${EXPB_DATA_DIR}/${CONFIG_FILE}" --root "${root}" \
-            --image "${image}" --amount "${TRAINING_AMOUNT}"
+            --image "${image}" --amount "${TRAINING_AMOUNT}" --delay "${TRAINING_DELAY}"
           echo "COLLECTION_ROOT=${root}" >> "${GITHUB_ENV}"
           echo "COLLECTION_IMAGE=${image}" >> "${GITHUB_ENV}"
           echo "rendered_config_file=${root}/config.yaml" >> "${GITHUB_OUTPUT}"
@@ -252,6 +259,7 @@ jobs:
         working-directory: ${{ env.EXPB_DATA_DIR }}
         env:
           TRAINING_AMOUNT: ${{ inputs.training_amount }}
+          TRAINING_DELAY: ${{ inputs.training_delay }}
         run: |
           set -euo pipefail
           set +e
@@ -267,6 +275,7 @@ jobs:
           python3 "${GITHUB_WORKSPACE}/scripts/pgo/validate_collection.py" \
             --log "${COLLECTION_ROOT}/expb.log" --amount "${TRAINING_AMOUNT}" \
             --manifest "${COLLECTION_ROOT}/manifest.json" \
+            --delay "${TRAINING_DELAY}" \
             --exit-code "${statuses[0]}" --output "${COLLECTION_ROOT}/execution-validation.json"
 
       - name: Check run-owned raw trace

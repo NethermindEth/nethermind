@@ -12,13 +12,15 @@ import yaml
 from replay_window import validate_window
 
 
-def render(config_path, root, image, amount):
+def render(config_path, root, image, amount, delay=0):
     config_path = Path(config_path).resolve(strict=True)
     root = Path(root).resolve()
     if config_path.name != "github-action-mainnet-fusaka-flat.yaml":
         raise ValueError("collection requires the Fusaka Flat configuration")
     if isinstance(amount, bool) or not isinstance(amount, int) or not 1 <= amount <= 1000:
         raise ValueError("collection amount must be between 1 and 1000")
+    if type(delay) is not int or delay not in (0, 1):
+        raise ValueError("collection delay must be 0 or 1 seconds")
     if root.exists():
         raise ValueError(f"collection destination already exists: {root}")
     if not image.startswith("nethermindeth/nethermind@sha256:") or len(image.rsplit(":", 1)[1]) != 64:
@@ -45,7 +47,7 @@ def render(config_path, root, image, amount):
     window = validate_window(scenario["payloads"], scenario["fcus"], scenario["snapshot_source"],
                              scenario.get("warmup", 0), amount)
     scenario.update({"client": "nethermind", "image": image, "amount": amount, "skip": 0,
-                     "repeat": 1, "delay": 0, "warmup_delay": 0, "snapshot_backend": "overlay"})
+                     "repeat": 1, "delay": delay, "warmup_delay": 0, "snapshot_backend": "overlay"})
     scenario.pop("snapshot_path", None)
     volumes = scenario.setdefault("extra_volumes", {})
     if any(volume.get("bind") == "/nethermind/pgo" for name, volume in volumes.items() if name != "pgo"):
@@ -62,7 +64,8 @@ def render(config_path, root, image, amount):
     (root / "pgo").mkdir()
     (root / "config.yaml").write_text(text, encoding="utf-8")
     (root / "manifest.json").write_text(json.dumps({"config_source": str(config_path),
-        "image": image, "amount": amount, "payloads": scenario["payloads"], "fcus": scenario["fcus"],
+        "image": image, "amount": amount, "delay_seconds": delay, "warmup_delay_seconds": 0,
+        "payloads": scenario["payloads"], "fcus": scenario["fcus"],
         "snapshot_source": scenario["snapshot_source"], "snapshot_backend": "overlay",
         "raw_profile_directory": str(root / "pgo"), "replay_window": window,
         "state_identity_verified": False}, indent=2) + "\n", encoding="utf-8")
@@ -75,8 +78,9 @@ def main():
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--amount", type=int, required=True)
+    parser.add_argument("--delay", type=int, choices=(0, 1), default=0)
     args = parser.parse_args()
-    render(args.config, args.root, args.image, args.amount)
+    render(args.config, args.root, args.image, args.amount, args.delay)
 
 
 if __name__ == "__main__":

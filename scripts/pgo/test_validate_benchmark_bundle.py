@@ -110,6 +110,18 @@ class BenchmarkBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "full commit SHA"):
             validate_run(self.run, "short")
 
+    def test_training_pacing_is_projected_and_invalid_declarations_rejected(self):
+        self.assertEqual(validate_bundle(self.root, self.run, self.sha)["training_delay_seconds"], 0)
+        for delay in (0, 1):
+            self.manifest.update(delay_seconds=delay, warmup_delay_seconds=0)
+            self.save_manifest()
+            self.assertEqual(validate_bundle(self.root, self.run, self.sha)["training_delay_seconds"], delay)
+        for delay in (True, 1.0, "1", -1, 2):
+            self.manifest["delay_seconds"] = delay
+            self.save_manifest()
+            with self.subTest(delay=delay), self.assertRaisesRegex(ValueError, "invalid block delay"):
+                validate_bundle(self.root, self.run, self.sha)
+
     def test_wrong_training_window_or_layout_is_rejected(self):
         original = copy.deepcopy(self.manifest)
         changes = ({"config_source": "github-action-mainnet-flat.yaml"}, {"snapshot_source": "halfpath"},
