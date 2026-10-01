@@ -136,6 +136,8 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>1 while a <see cref="VoteWakeItem"/> may be queued in the work channel, so a vote flood adds at most one item there.</summary>
     private int _voteWakeQueued;
 
+    private ulong _publishedHeadSlot;
+
     /// <summary>The newest slot tick the worker has read; a vote queued after a newer tick waits for that tick.</summary>
     private ulong _reachedSlotTick;
 
@@ -337,6 +339,29 @@ public sealed class BeaconSyncOrchestrator(
     /// <param name="afterEngineKick">Runs once the execution layer has been pointed at the anchor and before any block is imported, so slow start-up work does not delay that first call.</param>
     public async Task RunAsync(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token, Action? afterEngineKick = null)
     {
+        using CancellationTokenSource timerCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task run = RunCoreAsync(anchorState, anchorBlock, anchorRoot, token, afterEngineKick);
+        Task timer = RunHeadSlotDelayTimerAsync(timerCancellation.Token);
+        try
+        {
+            await run;
+        }
+        finally
+        {
+            await timerCancellation.CancelAsync();
+            try
+            {
+                await timer;
+            }
+            catch (OperationCanceledException) when (timerCancellation.IsCancellationRequested)
+            {
+                if (_logger.IsTrace) _logger.Trace("Beacon head delay timer stopped.");
+            }
+        }
+    }
+
+    private async Task RunCoreAsync(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token, Action? afterEngineKick)
+    {
         if (p2p is null || peerManager is null || discovery is null)
         {
             throw new InvalidOperationException($"{nameof(BeaconSyncOrchestrator)} requires the P2P components to run");
@@ -415,6 +440,8 @@ public sealed class BeaconSyncOrchestrator(
             _ => throw new NotSupportedException($"Unhandled anchor block {anchorBlock.GetType().Name}"),
         };
         _syncTip = new Tip(anchorRoot, _anchorSlot);
+        Volatile.Write(ref _publishedHeadSlot, _anchorSlot);
+        RefreshHeadSlotDelay();
         _progressLogSlot = _anchorSlot;
         _progressLogMs = slotClock.UnixMilliseconds;
         _newPayloadMsAtProgressLog = Metrics.BeaconChainNewPayloadMilliseconds;
@@ -497,10 +524,14 @@ public sealed class BeaconSyncOrchestrator(
                 continue;
             }
 
+            long startMs = Environment.TickCount64;
             if (block.ParentRoot != expectedParent || await _importThread.RunAsync(() => importer.Import(block, root, verifySignatures: false)) != BlockImportResult.Imported)
             {
                 break;
             }
+
+            Interlocked.Increment(ref Metrics.BlocksImportedCount);
+            Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
 
             if (block is ForkedSignedBeaconBlock.OfGloas && TryReadStoredEnvelope(root, out SignedExecutionPayloadEnvelope? envelope))
             {
@@ -882,7 +913,7 @@ public sealed class BeaconSyncOrchestrator(
 
         if (result == BlockImportResult.Imported)
         {
-            Metrics.BeaconChainBlocksImported++;
+            Interlocked.Increment(ref Metrics.BlocksImportedCount);
             Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
             _importMsSinceProgressLog += Metrics.BeaconChainLastBlockImportMs;
             _pendingRetry.Remove(root);
@@ -1958,7 +1989,8 @@ public sealed class BeaconSyncOrchestrator(
 
         _lastHead = head;
         Metrics.BeaconChainHeadSlot = head.HeadSlot;
-        Metrics.BeaconChainHeadSlotDelay = (long)slotClock.CurrentSlot - (long)head.HeadSlot;
+        Volatile.Write(ref _publishedHeadSlot, head.HeadSlot);
+        RefreshHeadSlotDelay();
         Metrics.BeaconChainFinalizedEpoch = head.Finalized.Epoch;
         Metrics.BeaconChainJustifiedEpoch = head.Justified.Epoch;
         Metrics.BeaconChainElInSync = _elInSync ? 1 : 0;
@@ -2130,7 +2162,7 @@ public sealed class BeaconSyncOrchestrator(
             Interlocked.Decrement(ref _votesAheadOfTick);
         }
 
-        Metrics.BeaconChainGossipDropped++;
+        Interlocked.Increment(ref Metrics.GossipDroppedCount);
         return false;
     }
 
@@ -2222,6 +2254,18 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         _gossipDigests = wanted;
+    }
+
+    private void RefreshHeadSlotDelay() =>
+        Metrics.BeaconChainHeadSlotDelay = (long)slotClock.CurrentSlot - (long)Volatile.Read(ref _publishedHeadSlot);
+
+    internal async Task RunHeadSlotDelayTimerAsync(CancellationToken token)
+    {
+        using PeriodicTimer timer = new(TimeSpan.FromSeconds(1));
+        do
+        {
+            RefreshHeadSlotDelay();
+        } while (await timer.WaitForNextTickAsync(token));
     }
 
     private async Task PumpSlotTicksAsync(CancellationToken token)

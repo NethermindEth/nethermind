@@ -409,32 +409,61 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
     /// <summary>Produces the listen-side response for a decoded request.</summary>
     protected abstract TResponse HandleRequest(TRequest request);
 
+    private TResponse DecodeWithMetrics(byte[] payload)
+    {
+        try
+        {
+            return DecodeResponse(payload);
+        }
+        catch (Exception e) when (e is not Eth2ReqRespException and not OperationCanceledException)
+        {
+            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            throw;
+        }
+    }
+
     public async Task<TResponse> DialAsync(IChannel downChannel, ISessionContext context, TRequest request)
     {
         using RequestTiming.Exchange exchange = RequestTiming.Open(request);
         RequestTiming? timing = exchange.Timing;
-        Stream stream = new ChannelStreamAdapter(downChannel);
+        using ChannelStreamAdapter input = new(downChannel);
         using CancellationTokenSource cts = StartTimeout(TtfbTimeout + RespTimeout);
-        ResponseChunk? read;
+        bool peerError = false;
         try
         {
-            await WriteRequestAndEofAsync(downChannel, stream, EncodeRequest(request), cts.Token);
-            read = await ReqRespFraming.ReadResponseChunkAsync(stream, 0, MaxResponseSize, cts.Token);
-        }
-        catch (Exception e) when (e is not Eth2ReqRespException && cts.IsCancellationRequested)
-        {
-            throw new ReqRespTimeoutException($"timed out after {Seconds(TtfbTimeout + RespTimeout)} waiting for the response", e);
-        }
+            ResponseChunk chunk;
+            try
+            {
+                await WriteRequestAndEofAsync(downChannel, input, EncodeRequest(request), cts.Token);
+                chunk = await ReqRespFraming.ReadResponseChunkAsync(input, 0, MaxResponseSize, cts.Token)
+                    ?? throw new Eth2ReqRespException("Peer closed without responding");
+            }
+            catch (Exception e) when (e is not Eth2ReqRespException && cts.IsCancellationRequested)
+            {
+                RecordFailure(Id, ReqRespFailureReason.Timeout);
+                throw new ReqRespTimeoutException($"timed out after {Seconds(TtfbTimeout + RespTimeout)} waiting for the response", e);
+            }
 
-        ResponseChunk chunk = read ?? throw new Eth2ReqRespException("Peer closed the channel without responding");
-        timing?.ChunkRead();
-        if (chunk.Result == ReqRespFraming.ResponseCode.Success)
-        {
-            return DecodeResponse(chunk.Payload);
-        }
+            timing?.ChunkRead();
+            if (chunk.Result == ReqRespFraming.ResponseCode.Success)
+            {
+                return DecodeWithMetrics(chunk.Payload);
+            }
 
-        RecordFailure(Id, ReqRespFailureReason.PeerError);
-        throw ErrorChunkToException(chunk);
+            peerError = true;
+            RecordFailure(Id, ReqRespFailureReason.PeerError);
+            throw ErrorChunkToException(chunk);
+        }
+        catch (OperationCanceledException)
+        {
+            RecordFailure(Id, ReqRespFailureReason.Timeout);
+            throw;
+        }
+        catch (Eth2ReqRespException) when (!peerError)
+        {
+            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            throw;
+        }
     }
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)

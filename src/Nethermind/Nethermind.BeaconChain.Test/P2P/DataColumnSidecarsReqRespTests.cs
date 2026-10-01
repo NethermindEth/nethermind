@@ -34,6 +34,16 @@ public class DataColumnSidecarsReqRespTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
     [Test]
+    public void Metrics_truncated_column_framing_records_one_invalid_message([Values] bool gloas)
+    {
+        TestDataColumnSidecarsProtocol protocol = new(Spec);
+        using MemoryStream input = new(new byte[] { ReqRespFraming.ResponseCode.Success });
+        long before = FailureCount(TestDataColumnSidecarsProtocol.ProtocolId, ReqRespFailureReason.InvalidMessage);
+        Assert.ThrowsAsync<Eth2ReqRespException>(() => gloas ? protocol.ReadGloasSidecarsAsync(input, 1) : protocol.ReadSidecarsAsync(input, 1));
+        Assert.That(FailureCount(TestDataColumnSidecarsProtocol.ProtocolId, ReqRespFailureReason.InvalidMessage), Is.EqualTo(before + 1));
+    }
+
+    [Test]
     public async Task Response_exceeding_the_chunk_limit_is_rejected_and_the_stream_closed()
     {
         const int maxSidecars = 3;
@@ -514,5 +524,8 @@ public class DataColumnSidecarsReqRespTests
             Assert.That(timing.Chunks, Is.EqualTo(sidecars.Count));
             return sidecars;
         }
+
+        public Task<IReadOnlyList<DataColumnSidecarGloas>> ReadGloasSidecarsAsync(MemoryStream input, int maxSidecars) =>
+            ReadGloasSidecarChunksAsync(input, maxSidecars, ProtocolId);
     }
 }

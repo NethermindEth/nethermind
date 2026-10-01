@@ -15,6 +15,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -63,14 +64,21 @@ public class ColumnGossipRouterGloasTests
     }
 
     [TestCaseSource(nameof(Cases))]
-    public void Gloas_sidecar_verdict_follows_the_spec_order(DataColumnSidecarGloas sidecar, ulong subnet, MessageValidity expected, ColumnGossipDropReason? reason, Outcome outcome)
+    public void Metrics_gloas_sidecar_verdict_follows_the_spec_order(DataColumnSidecarGloas sidecar, ulong subnet, MessageValidity expected, ColumnGossipDropReason? reason, Outcome outcome)
     {
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(subscribed: [Column, Column + 1]);
 
+        ulong acceptedBefore = Metrics.BeaconChainGossipAccepted;
+        ulong droppedBefore = Metrics.BeaconChainGossipDropped;
+        StringLabel key = new(reason?.ToString() ?? "unused");
+        long reasonBefore = Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(key);
         MessageValidity validity = router.Handle(subnet, gloasTopic: true, Encode(sidecar));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (expected == MessageValidity.Accepted ? 1UL : 0UL)));
+            Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (reason is null ? 0UL : 1UL)));
+            Assert.That(Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(key), Is.EqualTo(reasonBefore + (reason is null ? 0 : 1)));
             Assert.That(validity, Is.EqualTo(expected));
             if (reason is { } dropReason)
             {

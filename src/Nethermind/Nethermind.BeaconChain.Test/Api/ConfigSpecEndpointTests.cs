@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.Config;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
@@ -44,6 +45,14 @@ public class ConfigSpecEndpointTests
         string raw = await response.Content.ReadAsStringAsync();
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
         return JsonDocument.Parse(raw).RootElement.GetProperty("data").Clone();
+    }
+
+    [Test]
+    public void Metrics_bootnodes_documentation_uses_the_selected_network()
+    {
+        ConfigItemAttribute description = typeof(IBeaconChainConfig).GetProperty(nameof(IBeaconChainConfig.Bootnodes))!
+            .GetCustomAttribute<ConfigItemAttribute>()!;
+        Assert.That(description.Description, Does.Contain("network selected via the execution layer's chain id"));
     }
 
     [Test]

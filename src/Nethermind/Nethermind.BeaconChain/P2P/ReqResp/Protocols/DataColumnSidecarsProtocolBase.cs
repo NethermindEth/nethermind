@@ -38,18 +38,21 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
         List<DataColumnSidecar> sidecars = [];
         using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxSidecarsResponseDuration);
         CancellationTokenSource cts = timeout.Cts;
+        bool failureRecorded = false;
         try
         {
             while (await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, cts.Token) is { } chunk)
             {
                 if (chunk.Result != ReqRespFraming.ResponseCode.Success)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.PeerError);
                     throw ErrorChunkToException(chunk);
                 }
 
                 if (sidecars.Count >= maxSidecars)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.LimitExceeded);
                     throw new Eth2ReqRespException($"Peer responded with more than the requested {maxSidecars} data column sidecars");
                 }
@@ -61,6 +64,7 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                 }
                 catch (Exception e) when (e is not Eth2ReqRespException and not OperationCanceledException)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException($"Malformed data column sidecar chunk: {e.Message}");
                 }
@@ -70,18 +74,21 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                 // against the fork-digest check right below null-referencing if that ever changes.
                 if (sidecar.SignedBlockHeader?.Message is null)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException("Data column sidecar chunk missing its signed block header");
                 }
 
                 if (!DataColumnSidecarVerifier.VerifyStructure(sidecar))
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException("Data column sidecar chunk failed structural validation");
                 }
 
                 if (!DataColumnSidecarVerifier.VerifyBlobCount(sidecar, Spec))
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException("Data column sidecar chunk carries more commitments than its epoch permits");
                 }
@@ -89,12 +96,14 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                 // gloas/p2p-interface.md: a Gloas-epoch sidecar has the Gloas shape, so a Fulu-shaped one claiming a Gloas slot is invalid.
                 if (Spec.GetEpoch(sidecar.SignedBlockHeader.Message.Slot) >= Spec.GloasForkEpoch)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException($"Fulu data column sidecar chunk claims Gloas slot {sidecar.SignedBlockHeader.Message.Slot}");
                 }
 
                 if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(sidecar)))
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException($"Data column sidecar chunk context bytes do not match the fork digest of slot {sidecar.SignedBlockHeader.Message.Slot}");
                 }
@@ -104,6 +113,11 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                 timing?.ChunkRead();
                 cts.CancelAfter(RespTimeout);
             }
+        }
+        catch (Eth2ReqRespException) when (!failureRecorded)
+        {
+            RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+            throw;
         }
         catch (OperationCanceledException e) when (cts.IsCancellationRequested)
         {
@@ -140,18 +154,21 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
         List<DataColumnSidecarGloas> sidecars = [];
         using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxSidecarsResponseDuration);
         CancellationTokenSource cts = timeout.Cts;
+        bool failureRecorded = false;
         try
         {
             while (await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, maxChunkSize, cts.Token) is { } chunk)
             {
                 if (chunk.Result != ReqRespFraming.ResponseCode.Success)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.PeerError);
                     throw ErrorChunkToException(chunk);
                 }
 
                 if (sidecars.Count >= maxSidecars)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.LimitExceeded);
                     throw new Eth2ReqRespException($"Peer responded with more than the requested {maxSidecars} data column sidecars");
                 }
@@ -163,24 +180,28 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                 }
                 catch (Exception e) when (e is not Eth2ReqRespException and not OperationCanceledException)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException($"Malformed Gloas data column sidecar chunk: {e.Message}");
                 }
 
                 if (sidecar.BeaconBlockRoot is null || !HasGloasStructure(sidecar))
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException("Gloas data column sidecar chunk failed structural validation");
                 }
 
                 if (Spec.GetEpoch(sidecar.Slot) < Spec.GloasForkEpoch)
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException($"Gloas data column sidecar chunk claims pre-Gloas slot {sidecar.Slot}");
                 }
 
                 if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(sidecar)))
                 {
+                    failureRecorded = true;
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
                     throw new Eth2ReqRespException($"Gloas data column sidecar chunk context bytes do not match the fork digest of slot {sidecar.Slot}");
                 }
@@ -189,6 +210,11 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                 timing?.ChunkRead();
                 cts.CancelAfter(RespTimeout);
             }
+        }
+        catch (Eth2ReqRespException) when (!failureRecorded)
+        {
+            RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+            throw;
         }
         catch (OperationCanceledException e) when (cts.IsCancellationRequested)
         {

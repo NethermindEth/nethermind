@@ -20,28 +20,52 @@ public sealed class MetaDataProtocolV3(LocalMetadataSource metadataSource) : Req
 
     public async Task<MetaDataV3> DialAsync(IChannel downChannel, ISessionContext context, ulong request)
     {
-        Stream stream = new ChannelStreamAdapter(downChannel);
+        using ChannelStreamAdapter input = new(downChannel);
         using CancellationTokenSource cts = StartTimeout(TtfbTimeout + RespTimeout);
-        ResponseChunk? read;
+        bool peerError = false;
         try
         {
-            await WriteEofAsync(downChannel, cts.Token);
-            read = await ReqRespFraming.ReadResponseChunkAsync(stream, 0, MetaDataV3Length, cts.Token);
-        }
-        catch (Exception e) when (e is not Eth2ReqRespException && cts.IsCancellationRequested)
-        {
-            throw new ReqRespTimeoutException($"timed out after {Seconds(TtfbTimeout + RespTimeout)} waiting for the response", e);
-        }
+            ResponseChunk chunk;
+            try
+            {
+                await WriteEofAsync(downChannel, cts.Token);
+                chunk = await ReqRespFraming.ReadResponseChunkAsync(input, 0, MetaDataV3Length, cts.Token)
+                    ?? throw new Eth2ReqRespException("Peer closed without responding");
+            }
+            catch (Exception e) when (e is not Eth2ReqRespException && cts.IsCancellationRequested)
+            {
+                RecordFailure(Id, ReqRespFailureReason.Timeout);
+                throw new ReqRespTimeoutException($"timed out after {Seconds(TtfbTimeout + RespTimeout)} waiting for the response", e);
+            }
 
-        ResponseChunk chunk = read ?? throw new Eth2ReqRespException("Peer closed the channel without responding");
-        if (chunk.Result != ReqRespFraming.ResponseCode.Success)
-        {
-            RecordFailure(Id, ReqRespFailureReason.PeerError);
-            throw ErrorChunkToException(chunk);
-        }
+            if (chunk.Result != ReqRespFraming.ResponseCode.Success)
+            {
+                peerError = true;
+                RecordFailure(Id, ReqRespFailureReason.PeerError);
+                throw ErrorChunkToException(chunk);
+            }
 
-        MetaDataV3.Decode(chunk.Payload, out MetaDataV3 metadata);
-        return metadata;
+            try
+            {
+                MetaDataV3.Decode(chunk.Payload, out MetaDataV3 metadata);
+                return metadata;
+            }
+            catch (Exception e) when (e is not Eth2ReqRespException and not OperationCanceledException)
+            {
+                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+                throw;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            RecordFailure(Id, ReqRespFailureReason.Timeout);
+            throw;
+        }
+        catch (Eth2ReqRespException) when (!peerError)
+        {
+            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            throw;
+        }
     }
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
