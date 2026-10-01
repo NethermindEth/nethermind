@@ -256,7 +256,8 @@ public class IdentifyTests
 
     /// <summary>A read of declared length 0 takes everything pending, so an answer declaring none must be refused before any of the body is read.</summary>
     [TestCase(new byte[] { 0x00 })]
-    [TestCase(new byte[] { 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00 })]
+    // The longest zero encoding the library varint reader accepts: it reads at most five bytes for a length.
+    [TestCase(new byte[] { 0x80, 0x80, 0x80, 0x80, 0x00 })]
     public async Task An_identify_answer_declaring_no_bytes_is_refused_without_reading_what_follows(byte[] declared)
     {
         TimeSpan bound = TimeSpan.FromSeconds(10);
