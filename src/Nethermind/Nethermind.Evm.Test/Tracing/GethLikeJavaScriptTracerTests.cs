@@ -617,8 +617,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,P2:REVERT,F2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
     [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_explicit_self_destruct")]
     // Geth reports pre-execution failures through step with an error, without a second fault callback.
-    [TestCase("20", "S0:KECCAK256,P0:KECCAK256,F0:KECCAK256", 1, TestName = "Callbacks_ordered_stack_underflow")]
-    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256,F6:KECCAK256", 1, TestName = "Callbacks_ordered_out_of_gas")]
+    [TestCase("20", "S0:KECCAK256,P0:KECCAK256", 0, TestName = "Callbacks_ordered_stack_underflow")]
+    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256", 0, TestName = "Callbacks_ordered_out_of_gas")]
     [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_jumpi_falls_off_code")]
     [TestCase("fe", "S0:INVALID,P0:INVALID,F0:INVALID", 1, TestName = "Callbacks_ordered_invalid_opcode")]
     [TestCase("0f", "S0:opcode 0xf not defined,P0:opcode 0xf not defined,F0:opcode 0xf not defined", 1, TestName = "Callbacks_ordered_undefined_opcode")]
@@ -887,7 +887,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x7f8f\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x7f6e\",\"input\":\"0x7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"0x000000\"}]}]}"));
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x7f8f\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x26a\",\"input\":\"0x7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"0x000000\"}]}]}"));
     }
 
     [Test]

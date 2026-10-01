@@ -25,6 +25,8 @@ public class Engine : IDisposable
     private readonly TracerRuntime _runtime;
     private readonly bool _ownsRuntime;
 
+    internal long SelfDestructRefund => (long)_spec.GasCosts.DestroyRefund;
+
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
     private int _disposed;
