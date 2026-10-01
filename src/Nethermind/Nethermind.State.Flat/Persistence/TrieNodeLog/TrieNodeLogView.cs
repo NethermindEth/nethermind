@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// Reader-side view of one shard at the version of one RocksDB snapshot: the pinned generations, the version
 /// <c>V</c> the snapshot confirms and the flushed marker <c>N</c> below which the snapshot already holds the shard's content.
 /// </summary>
-internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGeneration> pinned) : IDisposable
+internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNodeLogGeneration> pinned) : IDisposable
 {
     // Header, the longest key and a full trie node (a branch is ~530 bytes) fit in one read.
     private const int ReadBufferSize = 1024;
@@ -28,15 +28,16 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGe
         _flushedGeneration = ReadUInt64(metadata.Get(shard.FlushedGenerationKey));
         shard.PinNewer(pinned);
 
-        int flushed = 0;
-        while (flushed < pinned.Count && pinned[flushed].Number <= _flushedGeneration) pinned[flushed++].Dispose();
-        pinned.RemoveRange(0, flushed);
+        while (pinned.Count > 0 && pinned[0].Number <= _flushedGeneration)
+        {
+            pinned[0].Dispose();
+            pinned.RemoveAt(0);
+        }
     }
 
     public void Dispose()
     {
-        foreach (TrieNodeLogGeneration generation in pinned) generation.Dispose();
-        pinned.Clear();
+        pinned.DisposeRecursive();
         if (_hits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Hit, _hits);
         if (_chainHits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Chain, _chainHits);
         if (_misses != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Miss, _misses);

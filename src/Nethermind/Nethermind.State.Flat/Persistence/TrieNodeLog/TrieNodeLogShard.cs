@@ -170,9 +170,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         if (Volatile.Read(ref _openBatch) != 0) throw new InvalidOperationException($"A trie node log write batch is open on shard {Name}");
     }
 
-    private List<TrieNodeLogGeneration> PinAllNoLock()
+    private ArrayPoolList<TrieNodeLogGeneration> PinAllNoLock()
     {
-        List<TrieNodeLogGeneration> pinned = new(_generations.Count);
+        ArrayPoolList<TrieNodeLogGeneration> pinned = new(_generations.Count);
         foreach (TrieNodeLogGeneration generation in _generations)
         {
             if (generation.TryAcquire()) pinned.Add(generation);
@@ -181,7 +181,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     }
 
     /// <summary>Pins generations added since <paramref name="alreadyPinned"/> was taken (a roll that raced the RocksDB snapshot).</summary>
-    internal void PinNewer(List<TrieNodeLogGeneration> alreadyPinned)
+    internal void PinNewer(ArrayPoolList<TrieNodeLogGeneration> alreadyPinned)
     {
         ulong newest = alreadyPinned.Count == 0 ? 0 : alreadyPinned[^1].Number;
         using Lock.Scope _ = _lock.EnterScope();

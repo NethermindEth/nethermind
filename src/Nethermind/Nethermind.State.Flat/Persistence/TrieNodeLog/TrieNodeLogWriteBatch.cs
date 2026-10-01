@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// <see cref="MakeDurable"/> (commit records + fsync, in parallel), <see cref="Publish"/> (in parallel) and
 /// <see cref="WriteVersion"/> (serially, into the RocksDB metadata batch).
 /// </remarks>
-internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong version, List<TrieNodeLogGeneration> pinned, Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending) : IDisposable
+internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong version, ArrayPoolList<TrieNodeLogGeneration> pinned, Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending) : IDisposable
 {
     private const int WriteBufferSize = 1024 * 1024;
     private const int NoSlot = -1;
@@ -269,8 +269,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
             shard.OnBatchAborted();
         }
 
-        foreach (TrieNodeLogGeneration generation in pinned) generation.Dispose();
-        pinned.Clear();
+        pinned.DisposeRecursive();
         shard.ReturnPending(_pending);
     }
 }

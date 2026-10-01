@@ -121,14 +121,14 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             return NullTrieNodeLog.Instance;
         }
 
-        TrieNodeLogWriteBatch[] batches = new TrieNodeLogWriteBatch[_shards.Length];
+        ArrayPoolList<TrieNodeLogWriteBatch> batches = new(_shards.Length);
         try
         {
-            for (int i = 0; i < batches.Length; i++) batches[i] = _shards[i].StartWriteBatch();
+            foreach (TrieNodeLogShard shard in _shards) batches.Add(shard.StartWriteBatch());
         }
         catch
         {
-            foreach (TrieNodeLogWriteBatch? started in batches) started?.Dispose();
+            batches.DisposeRecursive();
             throw;
         }
 
@@ -183,17 +183,17 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     {
         private readonly TrieNodeLog _log;
         private readonly IColumnsWriteBatch<FlatDbColumns> _rocksDbBatch;
-        private readonly TrieNodeLogWriteBatch[] _batches;
-        private readonly ShardWriter[] _writers;
+        private readonly ArrayPoolList<TrieNodeLogWriteBatch> _batches;
+        private readonly ArrayPoolList<ShardWriter> _writers;
         private bool _committed;
 
-        public WriteBatch(TrieNodeLog log, IColumnsWriteBatch<FlatDbColumns> rocksDbBatch, TrieNodeLogWriteBatch[] batches)
+        public WriteBatch(TrieNodeLog log, IColumnsWriteBatch<FlatDbColumns> rocksDbBatch, ArrayPoolList<TrieNodeLogWriteBatch> batches)
         {
             _log = log;
             _rocksDbBatch = rocksDbBatch;
             _batches = batches;
-            _writers = new ShardWriter[batches.Length];
-            for (int i = 0; i < batches.Length; i++) _writers[i] = new ShardWriter(batches[i]);
+            _writers = new ArrayPoolList<ShardWriter>(batches.Count);
+            foreach (TrieNodeLogWriteBatch batch in batches) _writers.Add(new ShardWriter(batch, log._logger));
         }
 
         public IWriteBatch Wrap(FlatDbColumns column, IWriteBatch inner) => Covers(column) ? new Column(this, (byte)column) : inner;
@@ -225,12 +225,12 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
         public void Dispose()
         {
-            foreach (ShardWriter writer in _writers) writer.Dispose(_log._logger);
+            _writers.DisposeRecursive();
             if (!_committed)
             {
                 foreach (TrieNodeLogWriteBatch batch in _batches) batch.Abort();
             }
-            foreach (TrieNodeLogWriteBatch batch in _batches) batch.Dispose();
+            _batches.DisposeRecursive();
         }
 
         private sealed class Column(WriteBatch batch, byte column) : IWriteBatch
@@ -255,7 +255,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     }
 
     /// <summary>Staging chunks of one shard and the worker that appends them to the shard's batch, in order.</summary>
-    private sealed class ShardWriter(TrieNodeLogWriteBatch batch)
+    private sealed class ShardWriter(TrieNodeLogWriteBatch batch, ILogger logger) : IDisposable
     {
         private readonly Channel<(byte[] Buffer, int Length)> _chunks = Channel.CreateBounded<(byte[], int)>(new BoundedChannelOptions(StagingQueueDepth) { SingleReader = true, SingleWriter = true });
         private Task? _worker;
@@ -320,7 +320,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             }
         }
 
-        public void Dispose(ILogger logger)
+        public void Dispose()
         {
             _chunks.Writer.TryComplete();
             try
