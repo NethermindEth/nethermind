@@ -15,6 +15,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 
@@ -57,7 +58,8 @@ public sealed class BeaconChainService(
     /// <summary>Checks the database schema version and any persisted anchor, then runs the driver in the background.</summary>
     /// <remarks>Does nothing, not even the schema check, once an external consensus client has been detected.</remarks>
     /// <exception cref="InvalidOperationException">The database cannot be brought to the current schema version (see <see cref="BeaconChainStore.EnsureSchemaVersion"/>), or its anchor state is missing; thrown before the run starts, so node startup fails.</exception>
-    /// <exception cref="InvalidDataException">The persisted anchor state holds an invalid sync committee key or a malformed body, or its block is of another fork.</exception>
+    /// <exception cref="InvalidDataException">The persisted anchor state holds an invalid sync committee key or a malformed body, its block is of another fork, or it does not prove the configured weak subjectivity checkpoint.</exception>
+    /// <exception cref="InvalidConfigurationException">The configured weak subjectivity checkpoint is malformed.</exception>
     /// <exception cref="BeaconStateException">The persisted anchor state or block record is too short or not of its slot's shape.</exception>
     /// <exception cref="NotSupportedException">The persisted anchor state is at a slot before Electra.</exception>
     public Task Start()
@@ -72,6 +74,7 @@ public sealed class BeaconChainService(
         }
 
         // A database or resumed anchor this build refuses leaves the execution layer without a driver, so it fails startup instead of the background run.
+        _ = CheckpointSync.ParseWeakSubjectivityCheckpoint(config.WeakSubjectivityCheckpoint);
         store.EnsureSchemaVersion();
         _columnFloorCheck = SeedColumnFloor();
         _runTask = RunAsync(LoadPersistedAnchor());
@@ -177,6 +180,7 @@ public sealed class BeaconChainService(
             throw new InvalidDataException($"The anchor block {anchorRoot} at slot {block.Slot} is a {blockFork} block, but the anchor state at slot {state.Slot} is a {state.Fork} state. Delete the beaconChain database to checkpoint-sync again.");
         }
 
+        checkpointSync.ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(state, anchorRoot);
         return (state, block, anchorRoot);
     }
 

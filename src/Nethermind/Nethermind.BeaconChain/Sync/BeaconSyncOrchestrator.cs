@@ -187,6 +187,9 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>The slot each parent envelope was last requested by root, so a parked child asks at most once per slot.</summary>
     private readonly LruCache<Hash256, ulong> _envelopeRequestedAtSlot = new(RecentEnvelopeRequestCapacity, "beacon sync envelope by-root requests");
+    private readonly LruCache<Hash256, RangeSync.ColumnFetchRotation> _envelopePeerSelections = new(RecentEnvelopeRequestCapacity, "beacon sync envelope peers");
+
+    private readonly LruCache<Hash256, RangeSync.ColumnFetchRotation> _rangeEnvelopePeerSelections = new(RecentEnvelopeRequestCapacity, "beacon sync range envelope peers");
 
     /// <summary>Imported Gloas blocks whose bid commits blobs, by root, whose sampled columns are recovered by root until all are held.</summary>
     private readonly Dictionary<Hash256, ColumnRecovery> _columnRecovery = [];
@@ -1509,7 +1512,12 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         _envelopeRequestedAtSlot.Set(parentRoot, currentSlot);
-        IReadOnlyList<IBeaconSyncPeer> peers = peerPool.GetBestPeers(0);
+        if (!_envelopePeerSelections.TryGet(parentRoot, out RangeSync.ColumnFetchRotation? rotation))
+        {
+            rotation = new RangeSync.ColumnFetchRotation(slotClock);
+            _envelopePeerSelections.Set(parentRoot, rotation);
+        }
+        IReadOnlyList<IBeaconSyncPeer> peers = rotation.Take(peerPool.GetBestPeers(0), MaxBackfillPeersPerRequest);
         for (int i = 0; i < peers.Count && i < MaxBackfillPeersPerRequest; i++)
         {
             IBeaconSyncPeer peer = peers[i];
@@ -2393,6 +2401,13 @@ public sealed class BeaconSyncOrchestrator(
         {
             peers = [.. reaching.Where(peer => peer.EarliestAvailableSlot <= run[^1].Slot)];
         }
+        Hash256 firstRoot = run[0].ComputeMessageRoot();
+        if (!_rangeEnvelopePeerSelections.TryGet(firstRoot, out RangeSync.ColumnFetchRotation? rotation))
+        {
+            rotation = new RangeSync.ColumnFetchRotation(slotClock);
+            _rangeEnvelopePeerSelections.Set(firstRoot, rotation);
+        }
+        peers = rotation.Take(peers, MaxBackfillPeersPerRequest);
         for (int p = 0; p < peers.Count && p < MaxBackfillPeersPerRequest; p++)
         {
             IBeaconSyncPeer peer = peers[p];
@@ -2407,6 +2422,8 @@ public sealed class BeaconSyncOrchestrator(
                 continue;
             }
 
+            bool[] served = new bool[run.Count];
+            bool invalid = false;
             foreach (SignedExecutionPayloadEnvelope envelope in envelopes)
             {
                 if (envelope.Message is not { BeaconBlockRoot: { } root } message
@@ -2414,10 +2431,24 @@ public sealed class BeaconSyncOrchestrator(
                     || !MatchesBid(message, run[index]))
                 {
                     peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Execution-payload-envelopes-by-range from slot {startSlot} returned an envelope for no block of the range");
+                    invalid = true;
                     continue;
                 }
 
+                served[index] = true;
                 found[index] ??= (envelope, peer);
+            }
+
+            // Networking BeaconBlocksByRange, which this request follows: a reply MAY stop early, but MUST NOT skip one that exists.
+            // A served envelope puts its block, and so every earlier block of the run, on the peer's chain, where the same bids decide each payload.
+            int lastServed = Array.LastIndexOf(served, true);
+            for (int i = 0; !invalid && i < lastServed; i++)
+            {
+                if (!served[i] && run[i].Slot >= peer.EarliestAvailableSlot && IsPayloadOnChain(run[i], run[i + 1]))
+                {
+                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Execution-payload-envelopes-by-range from slot {startSlot} skipped the on-chain payload of slot {run[i].Slot}");
+                    break;
+                }
             }
 
             if (HasEveryOnChainEnvelope(run, found))

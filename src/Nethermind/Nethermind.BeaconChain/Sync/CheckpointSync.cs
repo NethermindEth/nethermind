@@ -3,8 +3,10 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -17,7 +19,9 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -57,6 +61,22 @@ public class CheckpointSync(
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DefaultReadStallTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan DefaultResponseHeadersTimeout = TimeSpan.FromSeconds(60);
+
+    /// <summary>Largest checkpoint body read, 1 GiB: about four times a mainnet state of hundreds of MB; an operational bound, not an SSZ limit.</summary>
+    internal int MaxBodyBytes { get; init; } = 1024 * 1024 * 1024;
+
+    /// <summary>Lowest average rate, in bytes per second, a response body may arrive at once <see cref="MinThroughputGrace"/> has passed: 64 KiB/s, the slowest link the download supports.</summary>
+    /// <remarks>
+    /// A provider that sends a byte just inside every <see cref="ReadStallTimeout"/> would otherwise hold startup without limit. At this rate a
+    /// 300 MB state takes about 80 minutes, and an attempt lasts at most <see cref="MaxBodyBytes"/> / rate plus the grace, about 4.6 hours.
+    /// </remarks>
+    internal int MinThroughputBytesPerSecond { get; init; } = 64 * 1024;
+
+    /// <summary>Time a response body may arrive below <see cref="MinThroughputBytesPerSecond"/> before the rate is enforced, for connection ramp-up.</summary>
+    internal TimeSpan MinThroughputGrace { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>Total time allowed for a checkpoint response body, default five hours.</summary>
+    internal TimeSpan BodyDownloadTimeout { get; init; } = TimeSpan.FromHours(5);
 
     private readonly ILogger _logger = logManager.GetClassLogger<CheckpointSync>();
     private readonly HttpClient _httpClient = new(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.All })
@@ -102,6 +122,7 @@ public class CheckpointSync(
 
     public async Task<CheckpointAnchor> RunAsync(CancellationToken cancellationToken)
     {
+        Checkpoint? weakSubjectivityCheckpoint = ParseWeakSubjectivityCheckpoint(config.WeakSubjectivityCheckpoint);
         (byte[] buffer, int length) = config.CheckpointStateFile is { } stateFile
             ? await ReadStateFileAsync(stateFile, cancellationToken)
             : await RetryTransientAsync("state download", DownloadStateAsync, cancellationToken);
@@ -118,10 +139,15 @@ public class CheckpointSync(
 
             BeaconBlockHeader latestBlockHeader = LatestBlockHeader(state);
             Hash256 blockRoot = ComputeAnchorBlockRoot(latestBlockHeader, stateRoot);
+            if (weakSubjectivityCheckpoint is not null && !ProvesCheckpoint(state, blockRoot, weakSubjectivityCheckpoint))
+            {
+                throw new InvalidDataException($"The anchor at slot {state.Slot} is not BeaconChain.WeakSubjectivityCheckpoint {config.WeakSubjectivityCheckpoint}: the anchor block must be the checkpoint's block at the start of epoch {weakSubjectivityCheckpoint.Epoch}. Supply the checkpoint's state with BeaconChain.CheckpointStateFile or a source serving it as finalized, or correct the checkpoint.");
+            }
+
             ForkedSignedBeaconBlock? block = await GetAnchorBlockAsync(state, blockRoot, stateRoot, cancellationToken);
 
             CheckpointAnchor anchor = new(state, block, blockRoot, stateRoot);
-            Persist(anchor, buffer.AsSpan(0, length));
+            Persist(anchor, buffer.AsSpan(0, length), weakSubjectivityCheckpoint);
             if (_logger.IsInfo) _logger.Info($"Checkpoint sync complete: anchor block {blockRoot} at slot {latestBlockHeader.Slot}");
             return anchor;
         }
@@ -148,40 +174,73 @@ public class CheckpointSync(
     private async Task<(byte[] Buffer, int Length)> ReadStateFileAsync(string stateFile, CancellationToken cancellationToken)
     {
         await using FileStream content = File.OpenRead(stateFile);
+        ThrowIfBodyTooLarge(content.Length);
         return await ReadToPooledBufferAsync(content, (int)content.Length, Timeout.InfiniteTimeSpan, cancellationToken);
     }
 
-    private async Task<(byte[] Buffer, int Length)> ReadResponseBodyAsync(HttpResponseMessage response, int defaultLength, CancellationToken cancellationToken)
+    internal async Task<(byte[] Buffer, int Length)> ReadResponseBodyAsync(HttpResponseMessage response, int defaultLength, CancellationToken cancellationToken)
     {
-        await using Stream content = await response.Content.ReadAsStreamAsync(cancellationToken);
-        return await ReadToPooledBufferAsync(content, (int)(response.Content.Headers.ContentLength ?? defaultLength), ReadStallTimeout, cancellationToken);
+        long initialLength = response.Content.Headers.ContentLength ?? Math.Min(defaultLength, MaxBodyBytes);
+        ThrowIfBodyTooLarge(initialLength);
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(BodyDownloadTimeout);
+        try
+        {
+            await using Stream content = await response.Content.ReadAsStreamAsync(deadline.Token);
+            return await ReadToPooledBufferAsync(content, (int)initialLength, ReadStallTimeout, deadline.Token, MinThroughputBytesPerSecond);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException($"Checkpoint body exceeded the {BodyDownloadTimeout.TotalSeconds:F0} s download deadline.");
+        }
     }
 
-    private async Task<(byte[] Buffer, int Length)> ReadToPooledBufferAsync(Stream content, int initialLength, TimeSpan stallTimeout, CancellationToken cancellationToken)
+    private void ThrowIfBodyTooLarge(long length)
+    {
+        if (length > MaxBodyBytes)
+        {
+            throw new InvalidDataException($"Checkpoint body exceeds the {MaxBodyBytes}-byte limit.");
+        }
+    }
+
+    /// <param name="minBytesPerSecond">Average rate the body must keep once <see cref="MinThroughputGrace"/> has passed; 0 for none.</param>
+    private async Task<(byte[] Buffer, int Length)> ReadToPooledBufferAsync(Stream content, int initialLength, TimeSpan stallTimeout, CancellationToken cancellationToken, int minBytesPerSecond = 0)
     {
         using CancellationTokenSource stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        long started = Stopwatch.GetTimestamp();
         byte[] buffer = BufferPool.Rent(initialLength);
         int length = 0;
         try
         {
             while (true)
             {
+                if (length == MaxBodyBytes)
+                {
+                    byte[] probe = new byte[1];
+                    stall.CancelAfter(stallTimeout);
+                    ThrowIfBodyTooLarge((long)length + await content.ReadAsync(probe, stall.Token));
+                    return (buffer, length);
+                }
                 if (length == buffer.Length)
                 {
-                    byte[] grown = BufferPool.Rent(buffer.Length * 2);
+                    byte[] grown = BufferPool.Rent((int)Math.Min((long)buffer.Length * 2, MaxBodyBytes));
                     buffer.CopyTo(grown, 0);
                     BufferPool.Return(buffer);
                     buffer = grown;
                 }
 
                 stall.CancelAfter(stallTimeout);
-                int read = await content.ReadAsync(buffer.AsMemory(length), stall.Token);
+                int read = await content.ReadAsync(buffer.AsMemory(length, Math.Min(buffer.Length, MaxBodyBytes) - length), stall.Token);
                 if (read == 0)
                 {
                     return (buffer, length);
                 }
 
                 length += read;
+                if (minBytesPerSecond > 0 && Stopwatch.GetElapsedTime(started) > MinThroughputGrace + TimeSpan.FromSeconds((double)length / minBytesPerSecond))
+                {
+                    throw new IOException($"The body arrived below {minBytesPerSecond / 1024.0:0.##} KiB/s: {length} bytes in {Stopwatch.GetElapsedTime(started).TotalSeconds:F0} s");
+                }
             }
         }
         catch (Exception e)
@@ -444,7 +503,7 @@ public class CheckpointSync(
         return response;
     }
 
-    private void Persist(CheckpointAnchor anchor, ReadOnlySpan<byte> stateSsz)
+    private void Persist(CheckpointAnchor anchor, ReadOnlySpan<byte> stateSsz, Checkpoint? weakSubjectivityCheckpoint)
     {
         store.PutState(anchor.BlockRoot, stateSsz);
         if (anchor.Block is not null)
@@ -452,8 +511,13 @@ public class CheckpointSync(
             store.PutForkedBlock(anchor.BlockRoot, anchor.Block);
         }
 
-        // The anchor entry is written last: its presence marks a fully persisted checkpoint.
+        // The anchor entry is written after the state and block: its presence marks a fully persisted checkpoint.
         store.SetAnchor(anchor.BlockRoot, LatestBlockHeader(anchor.State).Slot);
+        if (weakSubjectivityCheckpoint is not null)
+        {
+            // Weak Subjectivity Sync Procedure (weak-subjectivity.md): record the proof only after its anchor is persisted.
+            store.PutMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint, EncodeCheckpointRecord(weakSubjectivityCheckpoint));
+        }
     }
 
     private static Hash256 HashTreeRoot(ForkedBeaconState state) => state switch
@@ -462,6 +526,83 @@ public class CheckpointSync(
         ForkedBeaconState.OfGloas gloas => SszRoots.HashTreeRoot(gloas.State),
         _ => throw new NotSupportedException($"Unhandled beacon state shape {state.GetType().Name}"),
     };
+
+    /// <summary>The operator's <see cref="IBeaconChainConfig.WeakSubjectivityCheckpoint"/>, or <c>null</c> when it is unset.</summary>
+    /// <exception cref="InvalidConfigurationException">The value is not a 0x-prefixed 32-byte hex root, a colon and a decimal epoch.</exception>
+    internal static Checkpoint? ParseWeakSubjectivityCheckpoint(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        // weak-subjectivity.md, Weak Subjectivity Sync Procedure: the input is block_root:epoch_number.
+        string[] parts = value.Split(':');
+        if (parts.Length != 2 || parts[0].Length != 2 + 2 * Hash256.Size || !parts[0].StartsWith("0x", StringComparison.Ordinal)
+            || !IsHex(parts[0].AsSpan(2))
+            || !ulong.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out ulong epoch))
+        {
+            throw new InvalidConfigurationException($"BeaconChain.WeakSubjectivityCheckpoint '{value}' is not block_root:epoch_number, a 0x-prefixed 32-byte hex root and a decimal epoch.", ExitCodes.ConflictingConfigurations);
+        }
+
+        return new Checkpoint { Root = new Hash256(parts[0]), Epoch = epoch };
+    }
+
+    /// <summary>Refuses a resumed anchor unless the configured weak subjectivity checkpoint was proven for this database or <paramref name="state"/> proves it.</summary>
+    /// <remarks>
+    /// The persisted anchor follows finality, so it is the checkpoint only until the first finalized block after it; the record
+    /// written when the checkpoint was proven keeps it accepted. A checkpoint proven here is recorded the same way.
+    /// </remarks>
+    /// <exception cref="InvalidConfigurationException">The configured checkpoint is malformed.</exception>
+    /// <exception cref="InvalidDataException">Neither the record nor <paramref name="state"/> proves the configured checkpoint.</exception>
+    internal void ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(ForkedBeaconState state, Hash256 anchorRoot)
+    {
+        if (ParseWeakSubjectivityCheckpoint(config.WeakSubjectivityCheckpoint) is not { } checkpoint)
+        {
+            return;
+        }
+
+        byte[] record = EncodeCheckpointRecord(checkpoint);
+        if (store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint) is { } proven && proven.AsSpan().SequenceEqual(record))
+        {
+            return;
+        }
+
+        if (!ProvesCheckpoint(state, anchorRoot, checkpoint))
+        {
+            throw new InvalidDataException($"The persisted anchor at slot {state.Slot} is not BeaconChain.WeakSubjectivityCheckpoint {config.WeakSubjectivityCheckpoint}, and this database recorded no other anchor as that checkpoint. Correct the checkpoint, or delete the beaconChain database to checkpoint-sync again.");
+        }
+
+        store.PutMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint, record);
+    }
+
+    /// <summary>Whether <paramref name="anchorRoot"/>, the latest block of <paramref name="state"/>, is <paramref name="checkpoint"/>'s block at the start of its epoch.</summary>
+    /// <remarks>
+    /// Weak Subjectivity Sync Procedure (weak-subjectivity.md): the checkpoint root must authenticate the anchor state;
+    /// an older root in provider-supplied <c>block_roots</c> cannot prove ancestry.
+    /// </remarks>
+    internal bool ProvesCheckpoint(ForkedBeaconState state, Hash256 anchorRoot, Checkpoint checkpoint) =>
+        anchorRoot == checkpoint.Root
+        && spec.GetEpoch(state.Slot) >= checkpoint.Epoch
+        && LatestBlockHeader(state).Slot <= checkpoint.Epoch * spec.SlotsPerEpoch;
+
+    private static byte[] EncodeCheckpointRecord(Checkpoint checkpoint)
+    {
+        byte[] record = new byte[Hash256.Size + sizeof(ulong)];
+        checkpoint.Root!.Bytes.CopyTo(record);
+        BinaryPrimitives.WriteUInt64BigEndian(record.AsSpan(Hash256.Size), checkpoint.Epoch);
+        return record;
+    }
+
+    private static bool IsHex(ReadOnlySpan<char> value)
+    {
+        foreach (char digit in value)
+        {
+            if (!char.IsAsciiHexDigit(digit)) return false;
+        }
+
+        return true;
+    }
 
     private static BeaconBlockHeader LatestBlockHeader(ForkedBeaconState state) => state switch
     {
