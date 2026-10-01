@@ -19,7 +19,7 @@ namespace Nethermind.Store.Test;
 public class PatriciaTrieWitnessGeneratorTests
 {
     [Test]
-    public void Nested_witness_walk_shares_and_restores_worker_budget([Values(0, 1, 2)] int budget, [Values] bool parallelize)
+    public void Nested_witness_walk_shares_and_restores_worker_budget([Range(0, 2)] int budget, [Values] bool parallelize)
     {
         Scenario scenario = MakeFuzz(seed: 101, size: 6000);
         (TestMemDb db, Hash256 root) = BuildTrie(scenario.Existing);

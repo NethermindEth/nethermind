@@ -26,7 +26,7 @@ public class PatriciaTreeBulkSetterTests
     public enum ParallelTrieOperation { BulkSet, UpdateRootHash, ResolveKey }
 
     [Test]
-    public void Parallel_trie_operations_share_and_restore_worker_budget([Values] ParallelTrieOperation operation, [Values(0, 1, 2)] int concurrency)
+    public void Parallel_trie_operations_share_and_restore_worker_budget([Values] ParallelTrieOperation operation, [Range(0, 2)] int concurrency)
     {
         if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires parallel trie work.");
 

@@ -51,7 +51,7 @@ public class PersistedSnapshotTests
         TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data);
 
     [Test]
-    public void Nested_snapshot_sorting_preserves_all_node_buckets([Values(1, 2)] int budget)
+    public void Nested_snapshot_sorting_preserves_all_node_buckets([Range(1, 2)] int budget)
     {
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("scoped-snapshot"));

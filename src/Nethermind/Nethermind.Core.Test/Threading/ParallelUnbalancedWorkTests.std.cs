@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Threading;
@@ -330,48 +331,98 @@ public partial class ParallelUnbalancedWorkTests
 
     [Test]
     [NonParallelizable]
-    public void For_returns_without_a_free_pool_thread_once_the_caller_claims_the_range([Values] bool withLocal)
+    public async Task For_returns_without_a_free_pool_thread_once_the_caller_claims_the_range()
     {
         if (Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires queued workers.");
-        // Park more callbacks than the pool has threads, so the loop's queued workers sit behind them. A caller
-        // that waited for those workers to be dequeued would block on the pool, as nested loops did when every
-        // pool thread was itself inside one.
-        // Not disposed: parked callbacks may still be dequeued after the test returns.
-        ManualResetEventSlim release = new();
-        int blockers = ThreadPool.ThreadCount + 64;
-        for (int i = 0; i < blockers; i++)
-            ThreadPool.UnsafeQueueUserWorkItem(static r => r.Wait(TimeSpan.FromSeconds(30)), release, preferLocal: false);
+        const string childMarker = "NETHERMIND_TEST_BOUNDED_PARALLEL_POOL";
+        string? variant = Environment.GetEnvironmentVariable(childMarker);
+        if (variant is not ("plain" or "local"))
+        {
+            foreach (string childVariant in new[] { "plain", "local" })
+            {
+                ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false
+                };
+                start.ArgumentList.Add(typeof(ParallelUnbalancedWorkTests).Assembly.Location);
+                start.ArgumentList.Add("--filter");
+                start.ArgumentList.Add($"FullyQualifiedName~{nameof(For_returns_without_a_free_pool_thread_once_the_caller_claims_the_range)}");
+                start.Environment[childMarker] = childVariant;
+                using Process child = new() { StartInfo = start };
+                Assert.That(child.Start(), Is.True);
+                Task<string> output = child.StandardOutput.ReadToEndAsync();
+                Task<string> error = child.StandardError.ReadToEndAsync();
+                using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+                try
+                {
+                    await child.WaitForExitAsync(timeout.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    child.Kill(entireProcessTree: true);
+                    await child.WaitForExitAsync();
+                    Assert.Fail($"The bounded-pool test did not return.\n{await output}\n{await error}");
+                }
+                Assert.That(child.ExitCode, Is.Zero, $"{childVariant}: {await output}\n{await error}");
+            }
+            return;
+        }
+
+        // Pool limits belong to the child process so other tests retain their scheduling environment.
+        ThreadPool.GetMaxThreads(out _, out int completionPortThreads);
+        Assert.That(ThreadPool.SetMinThreads(1, 1), Is.True);
+        Assert.That(ThreadPool.SetMaxThreads(4, completionPortThreads), Is.True);
+        Assert.That(ThreadPool.SetMinThreads(4, 1), Is.True);
+        // The runner also occupies pool threads while it waits for this test to return.
+        ThreadPool.GetAvailableThreads(out int blockers, out _);
+        Assert.That(blockers, Is.GreaterThan(0));
+        RunWithOccupiedPool(withLocal: variant == "local", blockers);
+    }
+
+    private static void RunWithOccupiedPool(bool withLocal, int blockers)
+    {
+        using ManualResetEventSlim release = new();
+        using CountdownEvent occupied = new(blockers);
+        using CountdownEvent finished = new(blockers);
 
         int[] calls = new int[64];
         int inits = 0;
         try
         {
-            Task loop = Task.Factory.StartNew(() =>
+            for (int i = 0; i < blockers; i++)
+                ThreadPool.UnsafeQueueUserWorkItem(_ =>
+                {
+                    occupied.Signal();
+                    release.Wait();
+                    finished.Signal();
+                }, 0, preferLocal: false);
+            Assert.That(occupied.Wait(TimeSpan.FromSeconds(10)), Is.True, "Every pool worker must enter its blocker before the loop starts.");
+            ThreadPool.GetAvailableThreads(out int available, out _);
+            Assert.That(available, Is.Zero);
+            ParallelOptions options = new() { MaxDegreeOfParallelism = 4 };
+            if (withLocal)
             {
-                ParallelOptions options = new() { MaxDegreeOfParallelism = 4 };
-                if (withLocal)
+                ParallelUnbalancedWork.For(0, calls.Length, options, () =>
                 {
-                    ParallelUnbalancedWork.For(0, calls.Length, options, () =>
-                    {
-                        Interlocked.Increment(ref inits);
-                        return 0;
-                    }, (i, local) =>
-                    {
-                        Interlocked.Increment(ref calls[i]);
-                        return local;
-                    }, static _ => { });
-                }
-                else
+                    Interlocked.Increment(ref inits);
+                    return 0;
+                }, (i, local) =>
                 {
-                    ParallelUnbalancedWork.For(0, calls.Length, options, i => Interlocked.Increment(ref calls[i]));
-                }
-            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-
-            Assert.That(loop.Wait(TimeSpan.FromSeconds(10)), Is.True, "The caller must not wait for queued workers that never started.");
+                    Interlocked.Increment(ref calls[i]);
+                    return local;
+                }, static _ => { });
+            }
+            else
+            {
+                ParallelUnbalancedWork.For(0, calls.Length, options, i => Interlocked.Increment(ref calls[i]));
+            }
         }
         finally
         {
             release.Set();
+            Assert.That(finished.Wait(TimeSpan.FromSeconds(10)), Is.True, "Blockers must finish before their gates are disposed.");
         }
 
         using (Assert.EnterMultipleScope())

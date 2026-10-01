@@ -30,7 +30,7 @@ namespace Nethermind.State.Flat.History.Test;
 public class ArchiveProofTests
 {
     [Test]
-    public void Nested_proof_prefetch_preserves_proofs_with_shared_worker_budget([Values(1, 2)] int budget)
+    public void Nested_proof_prefetch_preserves_proofs_with_shared_worker_budget([Range(1, 2)] int budget)
     {
         BuildCommitments();
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(budget);

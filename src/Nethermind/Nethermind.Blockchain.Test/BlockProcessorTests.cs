@@ -3392,7 +3392,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void Parallel_validation_shares_and_restores_worker_budget([Values(0, 1, 2)] int budget)
+    public void Parallel_validation_shares_and_restores_worker_budget([Range(0, 2)] int budget)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using IDisposable stateScope = stateProvider.BeginScope(IWorldState.PreGenesis);

@@ -2257,16 +2257,26 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void Speculative_warmers_share_one_worker_budget([Values(1, 2)] int budget)
+    public void Speculative_warmers_share_one_worker_budget([Range(1, 2)] int budget)
     {
-        PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
         ConcurrentBag<int> observedBudgets = [];
-        using ManualResetEventSlim openGate = new(initialState: true);
-        WarmupCountingPolicy policy = new(_processingScope.Resolve<PrewarmerEnvFactory>(), caches, openGate,
-            () => observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0));
-        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 4, concurrency: 4,
-            parallelExecutionBatchRead: true, _processingScope.Resolve<NodeStorageCache>(), caches, LimboLogs.Instance,
-            speculativeConcurrency: budget);
+        IHasAccessList hint = Substitute.For<IHasAccessList>();
+        hint.GetAccessList(Arg.Any<Block>(), Arg.Any<IReleaseSpec>()).Returns(_ =>
+        {
+            ParallelUnbalancedWork.For(0, 16, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+                _ => observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0));
+            return null;
+        });
+        using ILifetimeScope warmingScope = _processingScope.BeginLifetimeScope(b => b
+            .AddSingleton<IHasAccessList>(hint)
+            .AddSingleton<IBlocksConfig>(new BlocksConfig
+            {
+                PreWarming = PreWarmMode.BlockAndMempool,
+                PreWarmStateConcurrency = 4,
+                MempoolPreWarmConcurrency = budget,
+                ParallelExecutionBatchRead = true
+            }));
+        BlockCachePreWarmer preWarmer = (BlockCachePreWarmer)warmingScope.Resolve<IBlockCachePreWarmer>();
 
         RunSpeculativePreWarm(preWarmer, BuildParentHeader(), Osaka.Instance);
 

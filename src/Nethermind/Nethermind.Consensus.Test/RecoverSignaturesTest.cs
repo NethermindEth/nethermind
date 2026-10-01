@@ -128,7 +128,7 @@ public class RecoverSignaturesTest
     private const int PollMs = 5;
 
     [Test]
-    public void Recovery_shares_worker_budget_with_authorization_lists([Values] bool background, [Values(0, 1)] int budget)
+    public void Recovery_shares_worker_budget_with_authorization_lists([Values] bool background, [Range(0, 1)] int budget)
     {
         ConcurrentBag<int> observedBudgets = [];
         IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
@@ -139,7 +139,11 @@ public class RecoverSignaturesTest
         });
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.IsAuthorizationListEnabled.Returns(true);
-        RecoverSignatures recovery = new(ecdsa, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IEthereumEcdsa>(ecdsa)
+            .Build();
+        RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
         Transaction[] txs = new Transaction[4];
         for (int i = 0; i < txs.Length; i++)
         {
