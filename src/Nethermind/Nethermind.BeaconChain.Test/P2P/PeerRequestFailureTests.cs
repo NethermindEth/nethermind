@@ -62,7 +62,7 @@ public class PeerRequestFailureTests
 
     [Test]
     [CancelAfter(90_000)]
-    public async Task A_peer_that_stops_answering_is_dropped_without_a_ban_unless_it_also_violated_the_protocol([Values] bool violated, CancellationToken token)
+    public async Task A_peer_that_stops_answering_is_retained_unless_it_also_violated_the_protocol([Values] bool violated, CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, hangable: true);
         fixture.Config.FaultDisconnectsBeforeBan = 1;
@@ -75,7 +75,7 @@ public class PeerRequestFailureTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(0), "the failure limit drops the peer either way");
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(violated ? 0 : 1));
             Assert.That(fixture.Manager.IsBannedForTest(peerId), Is.EqualTo(violated), "silence alone must not ban, a violation in the run must");
         }
     }
@@ -118,6 +118,53 @@ public class PeerRequestFailureTests
         await fixture.Manager.RunMaintenanceRoundAsync(token);
 
         Assert.That(fixture.IsSelectable, Is.True, "a passing health check restores selection");
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Uncorrelated_timeouts_deprioritise_a_peer_without_dropping_it_even_above_the_floor(CancellationToken token)
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(token);
+        fixture.Config.MinPeerCount = 0;
+        for (int i = 0; i < Limit * 2; i++)
+        {
+            await fixture.Manager.HandleHealthFailureAsync(fixture.Peer, new TimeoutException(), fixture.Time.UtcNow.Ticks, token);
+        }
+
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(1));
+        Assert.That(fixture.IsSelectable, Is.False);
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Independently_confirmed_timeouts_keep_the_floor_and_do_not_share_the_request_failure_budget([Values] bool keepFloor, CancellationToken token)
+    {
+        await using Fixture fixture = await Fixture.CreateAsync(token);
+        Node other = CreateNode();
+        SetMatchingStatus(other);
+        try
+        {
+            await other.P2P.StartAsync(token);
+            Assert.That(await fixture.Manager.TryAddPeerAsync(LoopbackAddress(other.P2P), token), Is.True);
+            fixture.Config.MinPeerCount = keepFloor ? 2 : 1;
+            long startedAt = fixture.Time.UtcNow.Ticks;
+            fixture.Time.Add(TimeSpan.FromSeconds(1));
+            await fixture.Manager.RunMaintenanceRoundAsync(token);
+            // After the passing health check, which would clear them: sync failures must not count toward the timeout budget.
+            fixture.Fail(PeerFailureReason.RequestFailed, Limit);
+            for (int i = 0; i < Limit; i++)
+            {
+                await fixture.Manager.HandleHealthFailureAsync(fixture.Peer, new TimeoutException(), startedAt, token);
+                if (i < Limit - 1) Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2));
+            }
+
+            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(keepFloor ? 2 : 1));
+            if (!keepFloor) Assert.That(await fixture.Manager.TryAddPeerAsync(fixture.Peer.Id, token), Is.False, "a dropped endpoint also observes backoff");
+        }
+        finally
+        {
+            await other.P2P.DisposeAsync();
+        }
     }
 
     [Test]
