@@ -252,6 +252,45 @@ public class PeerSessionCloseTests
 
     [Test]
     [CancelAfter(60_000)]
+    public async Task A_churn_of_identities_keeps_only_the_newest_closed_peers_up_to_the_capacity(CancellationToken token)
+    {
+        Node node = Create();
+        node.Config.MaxPeerCount = 2;
+        await using (node.P2P)
+        {
+            await node.P2P.StartAsync(token);
+            PeerManager manager = node.CreatePeerManager();
+            int churn = manager.ClosedPeerCapacity + 2;
+            Identity[] identities = [.. Enumerable.Range(0, churn).Select(static _ => new Identity(privateKey: null, KeyType.Secp256K1))];
+            foreach (Identity identity in identities)
+            {
+                await CloseAsync(identity, disconnects: 1);
+            }
+
+            // The oldest kept id closes again, so its first entry is the next to go and must not take the new one with it.
+            Identity again = identities[churn - manager.ClosedPeerCapacity];
+            await CloseAsync(again, disconnects: 2);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(manager.ClosedPeerCountForTest, Is.EqualTo(manager.ClosedPeerCapacity));
+                Assert.That(identities.Select(identity => manager.TryReportInboundViolation(identity.PeerId, "bytes after the request")),
+                    Is.EqualTo(Enumerable.Range(0, churn).Select(i => i >= churn - manager.ClosedPeerCapacity)), "the newest are kept, the oldest forgotten");
+            }
+
+            async Task CloseAsync(Identity identity, int disconnects)
+            {
+                LocalPeer.Session session = RequestFailureCauseTests.AddWedgedSession(node.P2P);
+                manager.AddPeerForTest(session, $"/ip4/10.0.0.1/tcp/9000/p2p/{identity.PeerId}", Status);
+                await session.DisconnectAsync();
+                string peerId = identity.PeerId.ToString();
+                await WaitUntilAsync(() => manager.GetPeerDiagnostics().Any(p => p.PeerId == peerId && p.DisconnectCount == disconnects), "the peer's removal never finished", token, ReplacementBound);
+            }
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
     public Task A_dialed_peer_that_breaks_the_protocol_and_closes_after_its_admission_backs_its_address_off(CancellationToken token) =>
         RetryStalledAsync(ViolationAfterDialAsync, token, TimeSpan.FromSeconds(20));
 
