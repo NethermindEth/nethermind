@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -17,6 +18,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -24,6 +26,7 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
@@ -900,6 +903,170 @@ public class FlatWorldStateScopeProviderTests
         for (int slot = 0; slot < slotCount; slot++) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
         expectedTree.UpdateRootHash();
         Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
+    public void EarlyStorageRoots_ReachTheSerialRootAndNodes([Values] bool deferStorageTrieCommit, [Values] bool touchTakenContractsLate)
+    {
+        long earlyContracts = Db.Metrics.EarlyStorageRootContracts;
+        EarlyStorageRootsBlock early = ProcessEarlyStorageRootsBlock(new FlatDbConfig { EarlyStorageRoots = true, DeferStorageTrieCommit = deferStorageTrieCommit }, touchTakenContractsLate);
+        long taken = Db.Metrics.EarlyStorageRootContracts - earlyContracts;
+        EarlyStorageRootsBlock serial = ProcessEarlyStorageRootsBlock(new FlatDbConfig { ApplyStorageWritesOnIdleThread = false, DeferStorageTrieCommit = deferStorageTrieCommit }, touchTakenContractsLate);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Every contract the transactions wrote except the late writer.
+            Assert.That(taken, Is.GreaterThanOrEqualTo(EarlyStorageRootsBlock.TakenContracts));
+            Assert.That(early.StateRoot, Is.EqualTo(serial.StateRoot));
+            Assert.That(early.StorageNodes, Is.Not.Empty);
+            Assert.That(early.StorageNodes, Is.EquivalentTo(serial.StorageNodes));
+        }
+    }
+
+    [Test]
+    public void EarlyStorageRoots_WithTheEarlyApplyOn_NeverUseTheEarlyTree([Values] bool deferStorageTrieCommit)
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        EarlyStorageRootsBlock early = ProcessEarlyStorageRootsBlock(new FlatDbConfig { EarlyStorageRoots = true, ApplyStorageWritesOnIdleThread = true, DeferStorageTrieCommit = deferStorageTrieCommit }, touchTakenContractsLate: true);
+        EarlyStorageRootsBlock reference = ProcessEarlyStorageRootsBlock(new FlatDbConfig { ApplyStorageWritesOnIdleThread = true, DeferStorageTrieCommit = deferStorageTrieCommit }, touchTakenContractsLate: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(early.UsedEarlyApply, Is.False);
+            Assert.That(reference.UsedEarlyApply, Is.True, "the reference block must have run with the early apply");
+            Assert.That(early.StateRoot, Is.EqualTo(reference.StateRoot));
+            Assert.That(early.StorageNodes, Is.EquivalentTo(reference.StorageNodes));
+        }
+    }
+
+    [Test]
+    public void EarlyStorageRoots_AreOffByDefaultAndNotWithVerifyWithTrie()
+    {
+        using (TestContext ctx = new())
+        {
+            Assert.That(ctx.Scope.ComputesStorageRootsEarly, Is.False);
+        }
+
+        using (TestContext ctx = new(config: new FlatDbConfig { EarlyStorageRoots = true }))
+        {
+            Assert.That(ctx.Scope.ComputesStorageRootsEarly, Is.True);
+        }
+
+        using TestContext verifying = new(config: new FlatDbConfig { EarlyStorageRoots = true, VerifyWithTrie = true });
+        Assert.That(verifying.Scope.ComputesStorageRootsEarly, Is.False);
+    }
+
+    private sealed record EarlyStorageRootsBlock(Hash256 StateRoot, HashSet<string> StorageNodes, bool UsedEarlyApply)
+    {
+        public const int TakenContracts = 6;
+    }
+
+    // Block 1 gives the contracts storage. Block 2's transactions update, insert, delete and clear it and create a
+    // contract, then the block end writes the late writer and credits a contract the early roots took, and optionally
+    // writes one and reads another of those contracts, which has to wait for them.
+    private static EarlyStorageRootsBlock ProcessEarlyStorageRootsBlock(FlatDbConfig config, bool touchTakenContractsLate)
+    {
+        const int slotCount = 40;
+        IReleaseSpec spec = Prague.Instance;
+        Address updated = TestItem.AddressA;
+        Address rewritten = TestItem.AddressB;
+        Address cleared = TestItem.AddressC;
+        Address writtenLate = TestItem.AddressD;
+        Address readLate = TestItem.AddressE;
+        Address lateWriter = TestItem.AddressF;
+        Address created = TestItem.Addresses[10];
+        Address[] existing = [updated, rewritten, cleared, writtenLate, readLate, lateWriter];
+
+        using TestContext ctx = new(config: config);
+        FlatWorldStateScope scope = ctx.Scope;
+        WorldState worldState = new(new SingleScopeProvider(scope), LimboLogs.Instance);
+        Assert.That(worldState.TryBeginScope(IWorldState.PreGenesis, out IDisposable? scopeCloser), Is.True);
+        using IDisposable closer = scopeCloser!;
+
+        foreach (Address address in existing)
+        {
+            worldState.CreateAccount(address, 1, 1);
+            for (int slot = 0; slot < slotCount; slot++) worldState.Set(new StorageCell(address, (UInt256)slot), SlotValue(address, slot, 1));
+        }
+
+        worldState.Commit(spec);
+        worldState.RecalculateStateRoot();
+        worldState.CommitTree(1);
+
+        // Block 2, first transaction.
+        for (int slot = 0; slot < 10; slot++) worldState.Set(new StorageCell(updated, (UInt256)slot), SlotValue(updated, slot, 2));
+        for (int slot = 10; slot < 15; slot++) worldState.Set(new StorageCell(updated, (UInt256)slot), UInt256.Zero);
+        for (int slot = slotCount; slot < slotCount + 10; slot++) worldState.Set(new StorageCell(updated, (UInt256)slot), SlotValue(updated, slot, 2));
+        for (int slot = 0; slot < slotCount; slot++) worldState.Set(new StorageCell(rewritten, (UInt256)slot), SlotValue(rewritten, slot, 2));
+        worldState.ClearStorage(cleared);
+        for (int slot = 0; slot < 3; slot++) worldState.Set(new StorageCell(cleared, (UInt256)slot), SlotValue(cleared, slot, 2));
+        worldState.Set(new StorageCell(writtenLate, 0), SlotValue(writtenLate, 0, 2));
+        worldState.Set(new StorageCell(readLate, 0), SlotValue(readLate, 0, 2));
+        worldState.Set(new StorageCell(lateWriter, 0), SlotValue(lateWriter, 0, 2));
+        worldState.CreateAccount(created, 1, 1);
+        for (int slot = 0; slot < 20; slot++) worldState.Set(new StorageCell(created, (UInt256)slot), SlotValue(created, slot, 2));
+        worldState.Commit(spec, commitRoots: false);
+
+        // Second transaction: slot 0 goes back to its pre-block value, which the flush skips.
+        worldState.Set(new StorageCell(updated, 0), SlotValue(updated, 0, 1));
+        worldState.Set(new StorageCell(updated, 20), SlotValue(updated, 20, 3));
+        worldState.Commit(spec, commitRoots: false);
+
+        worldState.BeginEarlyStorageRoots(new HashSet<AddressAsKey> { lateWriter });
+
+        // The block end: a withdrawal to a contract the early roots took, and the system call writing its queue.
+        worldState.AddToBalance(rewritten, 5, spec);
+        for (int slot = 1; slot < 4; slot++) worldState.Set(new StorageCell(lateWriter, (UInt256)slot), SlotValue(lateWriter, slot, 3));
+        if (touchTakenContractsLate)
+        {
+            worldState.Set(new StorageCell(writtenLate, 1), SlotValue(writtenLate, 1, 3));
+            worldState.Get(new StorageCell(readLate, 5), out UInt256 value);
+            Assert.That(value, Is.EqualTo(SlotValue(readLate, 5, 1)));
+        }
+
+        worldState.Commit(spec, commitRoots: false);
+        worldState.Commit(spec);
+        worldState.RecalculateStateRoot();
+        Hash256 stateRoot = worldState.StateRoot;
+
+        bool usedEarlyApply = scope.AppliesStorageWritesEarly || scope.EarlyApplyCounts != (0, 0, 0, 0);
+        Address[] written = [.. existing, created];
+        foreach (Address address in written)
+        {
+            usedEarlyApply |= ((FlatStorageTree)scope.CreateStorageTree(address)).UsedEarlyApply;
+        }
+
+        worldState.CommitTree(2);
+
+        HashSet<string> nodes = [];
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> node in ctx.LastCommittedSnapshot!.StorageNodes)
+        {
+            nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{node.Value.Keccak}");
+        }
+
+        return new EarlyStorageRootsBlock(stateRoot, nodes, usedEarlyApply);
+
+        static UInt256 SlotValue(Address address, int slot, int version) => new((ulong)(address.Bytes[19] * 1_000_000 + slot * 100 + version));
+    }
+
+    // Hands the world state the test's scope.
+    private sealed class SingleScopeProvider(IWorldStateScopeProvider.IScope inner) : IWorldStateScopeProvider
+    {
+        public bool HasRoot(BlockHeader? baseBlock) => true;
+
+        public bool HasStateForTargetBlock(BlockHeader targetBlock) => true;
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            scope = inner;
+            return true;
+        }
+
+        public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            scope = inner;
+            return true;
+        }
     }
 
     // Process-wide, so restore the previous value.
