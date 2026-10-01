@@ -57,6 +57,7 @@ public class BeaconChainModule : Module
             .Bind<IBeaconChainStatusSource, BeaconChainStatusHolder>()
             .AddSingleton<LocalMetadataSource>()
             .AddSingleton<SlotClock>()
+            .AddSingleton<ColumnStoreWriter>()
             .AddSingleton<DataColumnSidecarPool>()
             .AddSingleton<ExecutionPayloadEnvelopePool>()
             .AddSingleton<BeaconP2P>()
