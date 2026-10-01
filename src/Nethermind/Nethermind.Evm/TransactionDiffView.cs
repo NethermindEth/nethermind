@@ -40,6 +40,7 @@ internal sealed class TransactionDiffView
     private readonly int[] _eventIndices;
     // Memoized so a warm-priced TXDIFF 0x04 cannot re-hash up to 24 KB of code per call.
     private Dictionary<AddressAsKey, ValueHash256>? _preTxCodeHashes;
+    private Dictionary<ValueHash256, List<int>>? _topicEvents;
 
     private TransactionDiffView(
         BlockAccessListAtIndex slice,
@@ -129,6 +130,41 @@ internal sealed class TransactionDiffView
         }
         globalIndex = 0;
         return false;
+    }
+
+    public int TopicEventCount(in ValueHash256 topic) =>
+        TopicEvents.TryGetValue(topic, out List<int>? indices) ? indices.Count : 0;
+
+    public bool TryGetTopicEventGlobalIndex(in ValueHash256 topic, in UInt256 localIndex, out int globalIndex)
+    {
+        if (TopicEvents.TryGetValue(topic, out List<int>? indices) && localIndex < (UInt256)(ulong)indices.Count)
+        {
+            globalIndex = indices[(int)localIndex.u0];
+            return true;
+        }
+        globalIndex = 0;
+        return false;
+    }
+
+    private Dictionary<ValueHash256, List<int>> TopicEvents
+    {
+        get
+        {
+            if (_topicEvents is not null) return _topicEvents;
+            Dictionary<ValueHash256, List<int>> events = [];
+            for (int i = 0; i < Logs.Length; i++)
+            {
+                Hash256[] topics = Logs[i].Topics;
+                for (int j = 1; j < topics.Length; j++)
+                {
+                    ValueHash256 topic = topics[j].ValueHash256;
+                    if (!events.TryGetValue(topic, out List<int>? indices))
+                        events.Add(topic, indices = []);
+                    if (indices.Count == 0 || indices[^1] != i) indices.Add(i);
+                }
+            }
+            return _topicEvents = events;
+        }
     }
 
     /// <summary>Pre-tx code hash for an address whose code changed, memoized for the life of this view.</summary>
