@@ -657,7 +657,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MarkJumpDestinations(Span<long> jumpDestinationBitmap, nuint pos, long flags)
     {
-        uint offset = (uint)pos >> BitShiftPerInt64;
+        nuint offset = pos >> BitShiftPerInt64;
         ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetReference(jumpDestinationBitmap), offset);
         segment = segment | flags;
     }
