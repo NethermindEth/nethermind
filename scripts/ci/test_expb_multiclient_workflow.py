@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -141,12 +142,34 @@ class ExpbWorkflowTests(unittest.TestCase):
 
     def render_resources(self, **overrides):
         """Run the render step's config rewrite on the amd64 resources block; return the rendered block."""
+        return self.render_config(".resources", whole_step=False, **overrides)
+
+    def render_scenario(self, **overrides):
+        """Run the whole render step but its yq download on the amd64 config; return the rendered scenario."""
+        return self.render_config(".scenarios.test", whole_step=True, **overrides)
+
+    def render_config(self, query, whole_step, **overrides):
         yq = os.environ.get("YQ") or shutil.which("yq")
         if not yq:
             self.skipTest("Mike Farah yq is required (set YQ or add it to PATH)")
         renderers = extract_steps(WORKFLOW, "Render benchmark config")
         self.assertEqual(1, len(renderers))
         renderer = renderers[0]
+        if whole_step:
+            # The test brings its own yq, so only the download is left out.
+            body = renderer[: renderer.index('YQ="${RUNNER_TEMP}/yq"')] + renderer[renderer.index("sed \\") :]
+            overrides = {
+                "PAYLOAD_SET": "fusaka",
+                "ADDITIONAL_EXTRA_FLAGS": "",
+                "MEASUREMENT_MODE": "standard",
+                "EXPB_ENV_PASSTHROUGH": "",
+                "TRACE_BLOCKS": "",
+                "CLIENT_ENV": "",
+                "CELL_MODE": "timing",
+                **overrides,
+            }
+        else:
+            body = renderer[renderer.index("sed \\") : renderer.index('scenario_key="${SCENARIO_NAME}"')]
         with tempfile.TemporaryDirectory() as directory:
             topology = Path(directory) / "cpu"
             for cpu in range(16):
@@ -162,9 +185,7 @@ class ExpbWorkflowTests(unittest.TestCase):
                 'scenarios:\n  nethermind:\n    amount: 10\n'
             )
             source.write_text(original, encoding="utf-8")
-            start = renderer.index('sed \\')
-            end = renderer.index('scenario_key="${SCENARIO_NAME}"')
-            proc, _, _ = self.run_body(renderer[start:end], {
+            proc, _, _ = self.run_body(body, {
                 "YQ": to_bash(yq),
                 "SOURCE_CONFIG_FILE": to_bash(source),
                 "RENDERED_CONFIG_FILE": to_bash(rendered),
@@ -183,11 +204,38 @@ class ExpbWorkflowTests(unittest.TestCase):
             })
             self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
             result = subprocess.run(
-                [yq, "-o=json", ".resources", str(rendered)],
+                [yq, "-o=json", query, str(rendered)],
                 capture_output=True, text=True, check=True,
             )
             self.assertEqual(original, source.read_text(encoding="utf-8"))
             return json.loads(result.stdout)
+
+    def test_render_sets_up_the_instruction_cell(self):
+        scenario = self.render_scenario(
+            CELL_MODE="instructions",
+            ADDITIONAL_EXTRA_FLAGS="--Blocks.PreWarming=Block",
+            CLIENT_ENV="DOTNET_TieredPGO=1",
+        )
+        env = scenario["extra_env"]
+        self.assertEqual("1", env["NETHERMIND_COUNT_INSTRUCTIONS"])
+        self.assertEqual("1", env["NETHERMIND_DETERMINISTIC_BENCHMARK"])
+        self.assertEqual("0", env["DOTNET_TieredCompilation"])
+        self.assertEqual("1", env["DOTNET_PROCESSOR_COUNT"])
+        # The processing thread keeps the first CPU of the client's pinned set.
+        self.assertEqual("2", env["NETHERMIND_COUNT_PIN_CPU"])
+        self.assertEqual(["seccomp=unconfined"], scenario["security_opt"])
+        self.assertEqual(["PERFMON"], scenario["cap_add"])
+        flags = scenario["extra_flags"]
+        self.assertIn("--FlatDb.MaxInMemoryBaseSnapshotCount=100000", flags)
+        self.assertIn("--Merge.SweepMemory=NoGC", flags)
+        # A dispatch's own flags and client_env win over the counting setup.
+        self.assertEqual(["--Blocks.PreWarming=Block"], [flag for flag in flags if flag.startswith("--Blocks.PreWarming")])
+        self.assertEqual("1", env["DOTNET_TieredPGO"])
+
+        timing = self.render_scenario()
+        self.assertNotIn("extra_env", timing)
+        self.assertNotIn("cap_add", timing)
+        self.assertNotIn("--Blocks.PreWarming=None", timing.get("extra_flags", []))
 
     def test_render_replaces_the_cpu_quota_with_whole_core_affinity(self):
         self.assertEqual({
@@ -382,8 +430,9 @@ fi
                 self.assertIn(expected, log)
 
     AUTOMATED_CELLS = [
-        {"id": "fusaka", "payload_set": "fusaka", "amount": "1000", "delay_seconds": "0"},
-        {"id": "fusaka-delay1s", "payload_set": "fusaka", "amount": "100", "delay_seconds": "1"},
+        {"id": "fusaka", "payload_set": "fusaka", "amount": "1000", "delay_seconds": "0", "mode": "timing"},
+        {"id": "fusaka-delay1s", "payload_set": "fusaka", "amount": "100", "delay_seconds": "1", "mode": "timing"},
+        {"id": "fusaka-instructions", "payload_set": "fusaka", "amount": "1000", "delay_seconds": "0", "mode": "instructions"},
     ]
 
     def test_performance_label_runs_only_fusaka_at_both_delays(self):
@@ -409,7 +458,7 @@ fi
         code, log, output = self.run_resolver(DISPATCH_AMOUNT="25", DISPATCH_DELAY_SECONDS="1")
         self.assertEqual(0, code, log)
         self.assertEqual(
-            [{"id": "fusaka", "payload_set": "fusaka", "amount": "25", "delay_seconds": "1"}],
+            [{"id": "fusaka", "payload_set": "fusaka", "amount": "25", "delay_seconds": "1", "mode": "timing"}],
             json.loads(output["cells"]),
         )
 
@@ -424,9 +473,30 @@ fi
         )
         self.assertEqual(0, code, log)
         self.assertEqual(
-            [{"id": "superblocks", "payload_set": "superblocks", "amount": "100", "delay_seconds": "0"}],
+            [{"id": "superblocks", "payload_set": "superblocks", "amount": "100", "delay_seconds": "0", "mode": "timing"}],
             json.loads(output["cells"]),
         )
+
+    def test_dispatch_counts_instructions_of_one_nethermind_image(self):
+        code, log, output = self.run_resolver(DISPATCH_MEASUREMENT_MODE="instructions", DISPATCH_DOCKER_IMAGES="")
+        self.assertEqual(0, code, log)
+        self.assertEqual("single", output["mode"])
+        self.assertEqual("instructions", output["measurement_mode"])
+        self.assertEqual(
+            [{"id": "fusaka", "payload_set": "fusaka", "amount": "25", "delay_seconds": "0", "mode": "instructions"}],
+            json.loads(output["cells"]),
+        )
+
+        for label, overrides, expected in (
+            ("a reference client", {"DISPATCH_CLIENT": "reth"}, "measurement_mode=instructions is Nethermind-only"),
+            ("several images", {"DISPATCH_DOCKER_IMAGES": "a/x:1,a/x:2"}, "measurement_mode=instructions counts one image"),
+            ("dotTrace", {"DISPATCH_DOCKER_IMAGES": "", "DISPATCH_DOTTRACE": "sampling"}, "a profiler changes the counts"),
+            ("perf", {"DISPATCH_DOCKER_IMAGES": "", "DISPATCH_PERF": "true"}, "a profiler changes the counts"),
+        ):
+            with self.subTest(rejected=label):
+                code, log, _ = self.run_resolver(DISPATCH_MEASUREMENT_MODE="instructions", **overrides)
+                self.assertNotEqual(0, code)
+                self.assertIn(expected, log)
 
     def test_dispatch_rejects_a_delay_or_amount_that_is_not_a_plain_number(self):
         for overrides, expected in (
@@ -456,27 +526,22 @@ fi
         for cell in self.AUTOMATED_CELLS:
             self.assertIn(f"Restore master metrics ({cell['id']})", text)
 
-    def test_pr_comment_has_one_table_per_cell_against_its_own_baseline(self):
+    def build_comment(self, files):
+        """Run the PR comment builder over the automated cells, with these artifact and master cache files."""
         if shutil.which("jq") is None:
             self.skipTest("jq is required to build the PR comment")
         body = extract_step(WORKFLOW, "Build PR comparison comment")
         with tempfile.TemporaryDirectory(prefix="expb-comment-test-") as directory:
             root = Path(directory)
-            metrics = root / "metrics"
-            cache = root / "cache"
-            for cell_id, avg in (("fusaka", "40.0"), ("fusaka-delay1s", "30.0")):
-                cell_dir = metrics / f"expb-single-metrics-{cell_id}-run1"
-                cell_dir.mkdir(parents=True)
-                (cell_dir / "expb-metrics.env").write_text(f"SOURCE=k6\nAVG={avg}\nMEDIAN={avg}\n", encoding="utf-8")
-            # Only the 1 s cell has a master baseline; the 0 s cell must not borrow it.
-            baseline = cache / "expb-master-metrics-cache-fusaka-delay1s"
-            baseline.mkdir(parents=True)
-            (baseline / "master-metrics.env").write_text("SOURCE=k6\nAVG=33.0\nMEDIAN=33.0\n", encoding="utf-8")
+            for name, text in files.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text, encoding="utf-8")
             proc, output, _ = self.run_body(
                 body,
                 {
-                    "METRICS_DIR": to_bash(metrics),
-                    "MASTER_CACHE_ROOT": to_bash(cache),
+                    "METRICS_DIR": to_bash(root / "metrics"),
+                    "MASTER_CACHE_ROOT": to_bash(root / "cache"),
+                    "BASE_SHA": "a" * 40,
                     "CELLS": json.dumps(self.AUTOMATED_CELLS),
                     "STATE_LAYOUT": "flat",
                     "CLEAN_BRANCH": "perf-example",
@@ -484,19 +549,45 @@ fi
                     "IMAGE_REVISION": "a" * 40,
                     "RUN_URL": "https://example.invalid/run",
                     "CLIENT": "nethermind",
+                    "PYTHON": to_bash(sys.executable),
                     "RUNNER_TEMP": to_bash(root),
                 },
             )
         self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
-        comment = output["body"]
+        return output["body"]
+
+    def test_pr_comment_has_one_table_per_cell_against_its_own_baseline(self):
+        comment = self.build_comment({
+            "metrics/expb-single-metrics-fusaka-run1/expb-metrics.env": "SOURCE=k6\nAVG=40.0\nMEDIAN=40.0\n",
+            "metrics/expb-single-metrics-fusaka-delay1s-run1/expb-metrics.env": "SOURCE=k6\nAVG=30.0\nMEDIAN=30.0\n",
+            # Only the 1 s cell has a master baseline; the 0 s cell must not borrow it.
+            "cache/expb-master-metrics-cache-fusaka-delay1s/master-metrics.env": "SOURCE=k6\nAVG=33.0\nMEDIAN=33.0\n",
+            "cache/expb-master-metrics-cache-fusaka-delay1s/master-revision.txt": "b" * 40 + "\n",
+        })
         self.assertIn("#### fusaka: 1000 payloads, 0 s delay", comment)
         self.assertIn("#### fusaka: 100 payloads, 1 s delay", comment)
-        self.assertIn("nethermind-flat-fusaka-perf-example-delay0s", comment)
-        self.assertIn("nethermind-flat-fusaka-perf-example-delay1s", comment)
+        self.assertIn("Scenario: `nethermind-flat-fusaka-perf-example-delay0s`\n", comment)
+        self.assertIn("Scenario: `nethermind-flat-fusaka-perf-example-delay1s` · master baseline `bbbbbbbbbbbb`", comment)
         self.assertIn("No cached master baseline for `fusaka`.", comment)
         self.assertNotIn("No cached master baseline for `fusaka-delay1s`.", comment)
         # The 1 s cell is compared with its own baseline: 30.0 against 33.0.
         self.assertIn("| Avg | 33.0 | 30.0 | -9% |", comment)
+        # The instruction cell counted nothing here, and its section says so rather than showing a timing table.
+        self.assertIn("#### fusaka: 1000 payloads, counted in instructions", comment)
+        self.assertIn("No instruction counts were produced", comment)
+
+    def test_pr_comment_compares_the_instruction_cell_with_its_master_counts(self):
+        line = (
+            "EXPB-COUNT block=100 txs=5 gas=21000 instr={} cycles=50000000 alloc=1000000 gc=0/0/0 mux=0 jit=0 "
+            "exec=1 roots=1 commit=1 cyc=1/1/1\n"
+        )
+        comment = self.build_comment({
+            "metrics/expb-single-metrics-fusaka-instructions-run1/expb-counts.log": line.format(101_000_000),
+            "cache/expb-master-metrics-cache-fusaka-instructions/master-counts.log": line.format(100_000_000),
+            "cache/expb-master-metrics-cache-fusaka-instructions/master-revision.txt": "b" * 40 + "\n",
+        })
+        self.assertIn("| **Instructions, whole block** | 100.00M | 101.00M | +1.00% |", comment)
+        self.assertIn("Baseline: master `bbbbbbbbbbbb`. The PR's base is `aaaaaaaaaaaa`", comment)
 
     def test_nethermind_default_preserves_sse_and_flatdb_behavior(self):
         code, log, output = self.run_resolver(
@@ -650,6 +741,60 @@ fi
                 self.assertIn("Could not extract any processing_ms data", proc.stdout)
                 if metrics:
                     self.assertIn("ERROR=no_metrics", metrics)
+
+    def test_cpus_a_cancelled_run_left_offline_come_back(self):
+        # A run cancelled mid-scenario leaves the hyperthreads expb took offline, and every later run then fails its
+        # whole-core pinning.
+        bodies = extract_steps(WORKFLOW, "Bring back CPUs a cancelled run left offline")
+        self.assertEqual(2, len(bodies))
+        # The single-image job separates its steps with a blank line, which the body extraction keeps.
+        self.assertEqual(bodies[0].rstrip("\n"), bodies[1].rstrip("\n"))
+        with tempfile.TemporaryDirectory(prefix="expb-cpus-test-") as directory:
+            cpus = Path(directory) / "cpu"
+            # cpu0 has no online file, as on a real box; cpufreq is not a CPU.
+            for cpu, state in ((0, None), (1, "1"), (2, "0"), (3, "0")):
+                (cpus / f"cpu{cpu}").mkdir(parents=True)
+                if state is not None:
+                    (cpus / f"cpu{cpu}" / "online").write_text(state + "\n", encoding="utf-8")
+            (cpus / "cpufreq").mkdir()
+            script = Path(directory) / "step.sh"
+            script.write_text(bodies[0], encoding="utf-8")
+            proc = subprocess.run(
+                [self.bash, "--noprofile", "--norc", "-eo", "pipefail", to_bash(script), to_bash(cpus)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+            self.assertEqual(
+                ["1", "1", "1"],
+                [(cpus / f"cpu{cpu}" / "online").read_text(encoding="utf-8").strip() for cpu in (1, 2, 3)],
+            )
+            self.assertIn("Brought cpu2 back online.", proc.stdout)
+            self.assertIn("Brought cpu3 back online.", proc.stdout)
+            self.assertNotIn("cpu1", proc.stdout)
+
+    def test_an_instruction_cell_needs_a_count_for_every_measured_block(self):
+        def counts(*blocks):
+            return "".join("EXPB-COUNT block={} instr=1000 cycles=500\n".format(block) for block in blocks)
+
+        for analyzer in self.analyzers:
+            for label, blocks, status in (
+                ("every measured block", (100, 101, 102), "ok"),
+                ("a warm-up block before them", (50, 100, 101, 102), "ok"),
+                ("one short", (100, 101), "missing"),
+                ("a gap among the last three", (100, 101, 103), "missing"),
+                ("a block counted twice", (100, 101, 101), "missing"),
+            ):
+                with self.subTest(case=label):
+                    log = counts(*blocks) + self.k6_table(3)
+                    proc, output = self.run_analyzer(analyzer, log, metrics_name="github-output", CELL_MODE="instructions")
+                    self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                    self.assertIn("counts_status={}\n".format(status), output)
+                    _, kept = self.run_analyzer(analyzer, log, metrics_name="expb-counts.log", CELL_MODE="instructions")
+                    self.assertEqual(len(blocks), kept.count("EXPB-COUNT block="))
+            with self.subTest(cell="timing"):
+                _, kept = self.run_analyzer(analyzer, counts(100, 101, 102) + self.k6_table(3), metrics_name="expb-counts.log")
+                self.assertEqual("", kept)
 
     def run_snapshot_preflight(self, client, build):
         """Run the reference-client snapshot preflight against a synthetic snapshot directory."""
