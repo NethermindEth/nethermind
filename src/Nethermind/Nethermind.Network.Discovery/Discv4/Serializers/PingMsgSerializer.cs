@@ -45,8 +45,22 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
     {
         (PublicKey FarPublicKey, ValueHash256 Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
         RlpReader ctx = new(Data.AsSpan());
-        ctx.ReadSequenceLength();
-        int version = ctx.DecodeInt();
+        int messageLength = ctx.ReadSequenceLength();
+        if (messageLength > ctx.Length - ctx.Position)
+        {
+            throw new RlpException("Ping list exceeds packet data.");
+        }
+
+        int messageEnd = ctx.Position + messageLength;
+        ReadOnlySpan<byte> versionBytes = ctx.DecodeByteArraySpan();
+        int version = 0;
+        if (versionBytes.Length <= sizeof(int))
+        {
+            foreach (byte value in versionBytes)
+            {
+                version = (version << 8) | value;
+            }
+        }
 
         ctx.ReadSequenceLength();
         ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
@@ -64,19 +78,23 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         long expireTime = ctx.DecodeLong();
         PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc, sourceTcpPort, destinationTcpPort) { Version = version };
 
-        if (version == 4)
+        if (ctx.Position < messageEnd && IsNextEnrSequence(ctx))
         {
-            if (ctx.Position < ctx.Length)
-            {
-                ulong enrSequence = ctx.DecodeULong();
-                msg.EnrSequence = enrSequence;
-            }
-        }
-        else
-        {
-            // what do we do when receive version 5?
+            msg.EnrSequence = ctx.DecodeULong();
         }
 
+        while (ctx.Position < messageEnd)
+        {
+            int itemLength = ctx.PeekNextRlpLength();
+            if (itemLength > messageEnd - ctx.Position)
+            {
+                throw new RlpException("Ping extra item exceeds its list.");
+            }
+
+            ctx.SkipBytes(itemLength);
+        }
+
+        ctx.Check(messageEnd);
         Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         return msg;
     }

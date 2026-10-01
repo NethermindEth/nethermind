@@ -77,6 +77,59 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
+    public void PingMessage_Accepts_Unrepresentable_Version()
+    {
+        byte[] packet = CreatePingPacket("not-a-numeric-version"u8.ToArray());
+
+        PingMsg ping = _messageSerializationService.Deserialize<PingMsg>(packet);
+
+        Assert.That(ping.Version, Is.Zero);
+        Assert.That(ping.SourceAddress, Is.EqualTo(_farAddress));
+    }
+
+    [Test]
+    public void PingMessage_Ignores_Unknown_Extra_Elements()
+    {
+        byte[] packet = CreatePingPacket([4], Rlp.Encode("not-an-enr-sequence"u8), Rlp.Encode(42));
+
+        PingMsg ping = _messageSerializationService.Deserialize<PingMsg>(packet);
+
+        Assert.That(ping.EnrSequence, Is.Null);
+    }
+
+    [Test]
+    public void PingMessage_Reads_EnrSequence_And_Ignores_Subsequent_Elements()
+    {
+        byte[] packet = CreatePingPacket([4], Rlp.Encode(42), Rlp.Encode("extra"u8));
+
+        PingMsg ping = _messageSerializationService.Deserialize<PingMsg>(packet);
+
+        Assert.That(ping.EnrSequence, Is.EqualTo(42));
+    }
+
+    [Test]
+    public void PingMessage_Ignores_Bytes_After_Rlp_List()
+    {
+        byte[] packet = CreatePingPacket([4], [0xff]);
+
+        PingMsg ping = _messageSerializationService.Deserialize<PingMsg>(packet);
+
+        Assert.That(ping.EnrSequence, Is.Null);
+    }
+
+    [Test]
+    public void PingMessage_Reports_Truncated_Extra_Item_As_Rlp_Error()
+    {
+        byte[] payload = CreatePingPacket([4], Rlp.Encode(42))[98..];
+        // The outer list and its last item both claim one byte more than the packet contains.
+        payload[^1] = 0xc1;
+        payload[0]++;
+        byte[] packet = SignAndWrapDiscoveryPacket((byte)MsgType.Ping, payload);
+
+        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(packet), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
     public void PingMessage_rejects_invalid_packet_hash()
     {
         PingMsg message =
@@ -572,6 +625,19 @@ public class DiscoveryMessageSerializerTests
         ValueHash256 mdc = ValueKeccak.Compute(packet.AsSpan(32));
         mdc.BytesAsSpan.CopyTo(packet);
         return packet;
+    }
+
+    private byte[] CreatePingPacket(byte[] version, params Rlp[] extraFields) => CreatePingPacket(version, [], extraFields);
+
+    private byte[] CreatePingPacket(byte[] version, byte[] trailingBytes, params Rlp[] extraFields)
+    {
+        Rlp endpoint = Rlp.Encode(Rlp.Encode(_farAddress.Address.GetAddressBytes()), Rlp.Encode(_farAddress.Port), Rlp.Encode(_farAddress.Port));
+        Rlp[] fields = [Rlp.Encode(version), endpoint, endpoint, Rlp.Encode(_timestamper.UnixTime.SecondsLong + 60), .. extraFields];
+        byte[] payload = Rlp.Encode(fields).Bytes;
+        byte[] data = new byte[payload.Length + trailingBytes.Length];
+        payload.CopyTo(data, 0);
+        trailingBytes.CopyTo(data, payload.Length);
+        return SignAndWrapDiscoveryPacket((byte)MsgType.Ping, data);
     }
 
     private EnrResponseMsg BuildEnrResponse(CompressedPublicKey enrPublicKey)
