@@ -61,7 +61,7 @@ public sealed class ForkChoiceRunner
     /// <summary>Most recent last: a target checkpoint state a vote verified against, per shuffling of the current and previous epochs.</summary>
     private readonly List<(ShufflingKey Key, ForkedBeaconState State)> _voteStates = [];
 
-    /// <summary>The head <see cref="GetHeadNode"/> last returned, which gossip aggregates are checked against; cleared when a tick, a block or a slashing may move it.</summary>
+    /// <summary>The head <see cref="GetHeadNode"/> last returned, which gossip aggregates are checked against; cleared when a tick, a block, a slashing or an invalid payload may move it.</summary>
     /// <remarks>A vote does not clear it: recomputing <c>get_head</c> for every aggregate would cost more than a head one vote can move.</remarks>
     private Hash256? _lastHeadRoot;
 
@@ -1251,12 +1251,15 @@ public sealed class ForkChoiceRunner
     public void OnValidExecutionPayload(Hash256 blockRoot) => _protoArray.ProcessExecutionPayloadValidation(blockRoot);
 
     /// <summary>Invalidates the payload of <paramref name="blockRoot"/> and, when <paramref name="latestValidHash"/> identifies a known ancestor, everything between them, plus all descendants.</summary>
-    public void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash = null) =>
+    public void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash = null)
+    {
+        _lastHeadRoot = null;
         _protoArray.ProcessExecutionPayloadInvalidation(
             latestValidHash is null
                 ? InvalidationOperation.InvalidateOne(blockRoot)
                 : InvalidationOperation.InvalidateMany(blockRoot, alwaysInvalidateHead: true, latestValidHash),
             _store.FinalizedCheckpoint);
+    }
 
     /// <summary>
     /// Applies an engine INVALID verdict on the payload <paramref name="payloadHash"/> of the chain ending at <paramref name="chainRoot"/>:
@@ -1272,6 +1275,7 @@ public sealed class ForkChoiceRunner
     /// <exception cref="ProtoArrayException">A payload to invalidate was reported valid before.</exception>
     public void InvalidateExecutionChain(Hash256 chainRoot, Hash256? payloadHash, Hash256? latestValidHash)
     {
+        _lastHeadRoot = null;
         List<ProtoNode> invalid = [];
         bool latestValidFound = false;
         Hash256? next = payloadHash;
