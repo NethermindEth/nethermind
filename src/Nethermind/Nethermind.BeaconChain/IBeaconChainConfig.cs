@@ -28,7 +28,7 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "Comma-separated beacon chain bootnode ENRs. When empty, the built-in mainnet bootnodes are used.", DefaultValue = "null")]
     string? Bootnodes { get; set; }
 
-    [ConfigItem(Description = "Comma-separated static beacon chain peer multiaddrs to keep persistent connections to. Each multiaddr must include the /p2p/<peer-id> component.", DefaultValue = "null")]
+    [ConfigItem(Description = "Comma-separated static beacon chain peer multiaddrs to keep persistent connections to. Each multiaddr must name an /ip4 or /ip6 address and include the /p2p/<peer-id> component.", DefaultValue = "null")]
     string? StaticPeers { get; set; }
 
     [ConfigItem(Description = "The target number of beacon chain peers.", DefaultValue = "50")]
