@@ -193,7 +193,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Number of shards of the storage partition of the trie node log, a power of two.", DefaultValue = "2")]
     int TrieNodeLogStorageShardCount { get; set; }
 
-    [ConfigItem(Description = "Compress trie node log blocks (8 KiB of records) with LZ4. Reads decompress one block; the index and the merge are unaffected. Only affects blocks written after the change.", DefaultValue = "false")]
+    [ConfigItem(Description = "Compress trie node log blocks (16 KiB of records) with LZ4. Reads decompress one block; the index and the merge are unaffected. Only affects blocks written after the change.", DefaultValue = "false")]
     bool TrieNodeLogCompression { get; set; }
 
     [ConfigItem(Description = "With the trie node log enabled, keep sorting trie nodes during compaction instead of merging them by hash. Without the log they are always sorted, since RocksDB receives them in that order.", DefaultValue = "false")]

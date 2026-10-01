@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// </summary>
 internal static class TrieNodeLogBlock
 {
-    public const int Size = 8192;
+    public const int Size = 16384;
     public const int HeaderLength = 2 + 2;
     public const int MaxStoredLength = HeaderLength + Size;
 
