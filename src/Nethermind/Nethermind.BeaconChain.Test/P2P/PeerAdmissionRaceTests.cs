@@ -264,40 +264,6 @@ public class PeerAdmissionRaceTests
         return true;
     }
 
-    /// <summary>
-    /// A dial whose connection closes before its session is established ends in the library's own exception rather than in a
-    /// closed session, which is how our half of a simultaneous dial can end; the lower peer id must redial after it too.
-    /// </summary>
-    [Test]
-    [CancelAfter(60_000)]
-    public Task A_dial_whose_connection_closes_before_a_session_is_established_is_redialed_by_the_lower_peer_id(CancellationToken token) =>
-        RetryStalledAsync(RedialAfterConnectionClosedAsync, token);
-
-    private static async Task<bool> RedialAfterConnectionClosedAsync(CancellationToken token)
-    {
-        (byte[] lowerKey, byte[] higherKey) = OrderedKeys();
-        Node local = Create(privateKey: lowerKey);
-        Node remote = Create(privateKey: higherKey);
-        await using (local.P2P)
-        await using (remote.P2P)
-        {
-            await local.P2P.StartAsync(token);
-            await remote.P2P.StartAsync(token);
-            await using Relay relay = Relay.Start(PortOf(remote.P2P), closeFirst: 1);
-            PeerManager manager = local.CreatePeerManager();
-
-            bool admitted = await manager.TryAddPeerAsync(relay.AddressOf(remote.P2P), token);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(admitted, Is.True, "the redial after the closed connection admits the peer");
-                Assert.That(manager.PeerCount, Is.EqualTo(1));
-                Assert.That(relay.Accepted, Has.Length.EqualTo(2), "one closed connection, one redial");
-            }
-        }
-
-        return true;
-    }
-
     private static int PortOf(BeaconP2P node) => int.Parse(LoopbackAddressText(node, withPeerId: false).Split('/')[4]);
 
     /// <summary>A loopback TCP front for a node: closes the first connections it accepts, relays the rest, and records when each arrived.</summary>

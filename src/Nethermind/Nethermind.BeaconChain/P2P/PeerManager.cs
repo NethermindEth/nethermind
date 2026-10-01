@@ -1152,13 +1152,14 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         try
         {
             using CancellationTokenSource dialCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            using BeaconP2P.SessionWatch? sessions = Multiaddress.Decode(address).GetPeerId() is { } remotePeerId ? _p2p.WatchSessions(remotePeerId) : null;
             try
             {
                 Interlocked.Increment(ref Metrics.DialAttemptsCount);
                 DialOutcome outcome = await DialAndAdmitAsync(address, peerId, enr, dial, dialCancellation.Token, () => dialCancellation.CancelAfter(DialTimeout));
                 // The peer can still hold its half of the collapsed session when a redial arrives and refuses it, so redials back off.
                 for (int redials = 1; redials <= MaxRedialsAfterSimultaneousDial
-                    && outcome.LostSessionPeerId is { } lostPeerId && RedialsAfterSimultaneousDial(lostPeerId); redials++)
+                    && outcome.LostSessionPeerId is { } lostPeerId && sessions?.Opened > 0 && RedialsAfterSimultaneousDial(lostPeerId); redials++)
                 {
                     await Task.Delay(RedialBackoff * redials, dialCancellation.Token);
                     outcome = await DialAndAdmitAsync(address, peerId, enr, dial, dialCancellation.Token);
@@ -1266,7 +1267,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <remarks>Two peers that dial each other at once can each keep the session it opened and refuse the other's
     /// as a second session, which closes both connections. Only the side with the lower peer id redials, so redials never
     /// cross each other, and the other side admits one as a session the remote opened. The peer can still hold its half of the
-    /// collapsed session for a while and refuse a redial as a second session, which is why the caller backs off and retries.</remarks>
+    /// collapsed session for a while and refuse a redial as a second session, which is why the caller backs off and retries.
+    /// The caller redials only once a session with the peer opened during the dial: a connection that never authenticated the
+    /// peer, as to an unreachable or dead address, is no sign of a crossing dial.</remarks>
     private bool RedialsAfterSimultaneousDial(string remotePeerId) =>
         _p2p.LocalPeerId is { } localPeerId && string.CompareOrdinal(localPeerId.ToString(), remotePeerId) < 0;
 
@@ -1299,8 +1302,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Libp2pException e) when (!token.IsCancellationRequested)
         {
-            // The pinned dial throws this, unwrapped, when the connection opened but its session was refused or closed,
-            // which is how our side of a simultaneous dial can end as well as the session closing before identify.
+            // The dial throws this when its connection closed before a session formed, which is how our side of a
+            // simultaneous dial can end, and also when no connection opened at all.
             if (_logger.IsDebug) _logger.Debug($"Connection to beacon chain peer {address} closed before a session was established: {DescribeFailure(e)}");
             return new DialOutcome(false, Multiaddress.Decode(address).GetPeerId()?.ToString());
         }
