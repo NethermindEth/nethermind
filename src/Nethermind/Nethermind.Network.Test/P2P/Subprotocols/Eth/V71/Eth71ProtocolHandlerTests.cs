@@ -29,6 +29,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -179,10 +180,14 @@ public class Eth71ProtocolHandlerTests
     {
         const int softLimit = 2 * MemorySizes.MiB;
         Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
-        byte[][] entries = [new byte[oversizedFirstEntry ? softLimit + 1 : softLimit / 2 + 1], new byte[softLimit / 2], new byte[1024]];
+        byte[][] entries =
+        [
+            Rlp.Encode([Rlp.Encode(new byte[oversizedFirstEntry ? softLimit + 1 : softLimit / 2 + 1])]).Bytes,
+            Rlp.Encode([Rlp.Encode(new byte[softLimit / 2])]).Bytes,
+            Rlp.Encode([Rlp.Encode(new byte[1024])]).Bytes
+        ];
         for (int i = 0; i < entries.Length; i++)
         {
-            entries[i][0] = 0xc0;
             _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(ArrayMemoryManager.From(entries[i]));
         }
         BlockAccessListsMessage? response = null;
