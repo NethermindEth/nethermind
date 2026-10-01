@@ -803,13 +803,22 @@ public partial class BeaconSyncOrchestratorTests
         peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
     }
 
+    public enum FinalityView
+    {
+        Above,
+        BelowHeadFinality,
+        BelowImportedFinality,
+    }
+
     /// <summary>
     /// fork-choice.md <c>on_block</c> refuses a block at or below the finalized slot by local admission alone, which says
-    /// nothing of the block's data: a peer that served such a block by root is not blamed, while one above finality is.
+    /// nothing of the block's data: a peer that served such a block by root is not blamed, while one above finality is. Imports
+    /// since the last head step can have moved finality past the block, which counts as well.
     /// </summary>
     [Test]
-    public async Task Peer_serving_a_refused_block_by_root_is_blamed_only_above_finality([Values] bool belowFinality)
+    public async Task Peer_serving_a_refused_block_by_root_is_blamed_only_above_finality([Values] FinalityView finality)
     {
+        bool belowFinality = finality == FinalityView.BelowHeadFinality;
         const ulong NearWallSlot = WallSlot - 5;
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
@@ -819,13 +828,14 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Forged.Add(block.ComputeMessageRoot());
         harness.Importer.Head = CreateHead(anchorRoot, NearWallSlot, finalizedEpoch: belowFinality ? NearWallSlot / 32 + 1 : 1);
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        harness.Importer.FinalizedSlot = finality == FinalityView.BelowImportedFinality ? block.Slot : 0;
 
         BlockImportResult result = await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None, fetchedByRoot: true, servedBy: peer);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture");
-            peer.Received(belowFinality ? 0 : 1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+            peer.Received(finality == FinalityView.Above ? 1 : 0).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
         }
     }
 
@@ -1490,6 +1500,9 @@ public partial class BeaconSyncOrchestratorTests
 
         /// <summary>Block roots whose known parent's state the regeneration budget refuses, so <see cref="Import"/> answers <see cref="BlockImportResult.UnknownParent"/>.</summary>
         public HashSet<Hash256> RegenerationRefused { get; } = [];
+
+        /// <summary>The finalized slot fork choice has reached through imports, ahead of the last <see cref="Head"/> it reported.</summary>
+        public ulong FinalizedSlot { get; set; }
 
         /// <summary>Fulu block signatures that fail, so a copy of a block under another signature answers <see cref="BlockImportResult.Invalid"/>.</summary>
         public HashSet<BlsSignature> ForgedSignatures { get; } = [];
