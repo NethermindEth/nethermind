@@ -393,6 +393,55 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
+    /// p2p-interface.md beacon_aggregate_and_proof checks the aggregator against <c>store.block_states[get_head(store).root]</c> even when a
+    /// state of the vote's target is held: a body vote leaves B's target state held, two votes then make A (another shuffling) the head,
+    /// and an aggregate B's committee signed for B is refused because its aggregator is not in A's committee at that slot.
+    /// </summary>
+    [Test]
+    public void Gossip_aggregate_for_a_held_target_of_another_shuffling_is_checked_against_the_head_state()
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        TickToSlot(runner, (targetEpoch + 1) * Presets.SlotsPerEpoch - 1);
+        UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
+        UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
+        UnsignedChain.ChainBlock b = ImportLine(chain, runner, parent.Root, 32)[0];
+        CommitteeCache aCommittees = new EpochCache().GetCommitteeCache(FirstCommitteeMember(a, targetEpoch).SigningState, targetEpoch);
+        int bSkip = 0;
+        (BeaconStateFulu bState, ulong voteSlot, int member) = FirstCommitteeMember(b, targetEpoch);
+        while (!HasOtherSoleMember(aCommittees, voteSlot, member))
+            (bState, voteSlot, member) = FirstCommitteeMember(b, targetEpoch, ++bSkip);
+        List<int> aSkips = [];
+        for (int skip = 0; aSkips.Count < 2; skip++)
+        {
+            if (FirstCommitteeMember(a, targetEpoch, skip).Member != member)
+                aSkips.Add(skip);
+        }
+
+        runner.OnAttestation(BodyVote(chain, b, targetEpoch, bSkip), isFromBlock: true, verifySignature: false);
+        foreach (int skip in aSkips)
+            runner.OnAttestation(BodyVote(chain, a, targetEpoch, skip), isFromBlock: true, verifySignature: false);
+        Hash256 head = runner.GetHead();
+        int buildsBefore = builds.Count;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head, Is.EqualTo(a.Root), "fixture bug: A's two votes must make it the head");
+            Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, b.Root, targetEpoch, member, bState)),
+                Throws.TypeOf<ForkChoiceException>().With.Message.Contains($"Aggregator {member} is not a member of committee 0"));
+            Assert.That(builds.Count, Is.EqualTo(buildsBefore), "both the head's and B's target states are held");
+        }
+
+        static bool HasOtherSoleMember(CommitteeCache committees, ulong slot, int member)
+        {
+            ReadOnlySpan<int> committee = committees.GetBeaconCommittee(slot, 0);
+            return committee.Length == 1 && committee[0] != member;
+        }
+    }
+
+    /// <summary>
     /// Two blocks a proposer equivocated at the decision slot carry the same RANDAO reveal, so their branches have different
     /// decision blocks but the same committees. An aggregate the head's committee signed for the other branch is valid gossip
     /// and valid for on_attestation with its own target state, so it must count, at the cost of building that state.
