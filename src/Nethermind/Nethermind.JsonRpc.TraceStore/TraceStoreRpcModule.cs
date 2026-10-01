@@ -46,7 +46,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     {
         { ParityTraceTypes.Trace, FilterTrace },
         { ParityTraceTypes.StateDiff , FilterStateDiff },
-        { ParityTraceTypes.VmTrace | ParityTraceTypes.Trace, FilterStateVmTrace }
+        { ParityTraceTypes.VmTrace, FilterVmTrace }
     };
 
     private static IEnumerable<ParityTxTraceFromStore> FlattenStoreItems(List<List<ParityLikeTxTrace>> blockTraces) =>
@@ -212,19 +212,18 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
     {
-        if (TraceRpcModule.IsPending(traceFilterForRpc.FromBlock) || TraceRpcModule.IsPending(traceFilterForRpc.ToBlock))
+        (BlockParameter fromBlock, BlockParameter toBlock) = traceFilterForRpc.GetBlockRange();
+        if (TraceRpcModule.IsPending(fromBlock) || TraceRpcModule.IsPending(toBlock))
         {
             return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
         }
 
-        if (_blockFinder.IsRangeInFuture(traceFilterForRpc.FromBlock, traceFilterForRpc.ToBlock))
+        if (_blockFinder.IsRangeInFuture(fromBlock, toBlock))
         {
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
         }
 
-        IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(
-            traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
-            traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
+        IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock);
 
         IEnumerable<(SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
         {
@@ -408,21 +407,11 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     }
 
 
-    // VmTrace uses flags IsTracingCode, IsTracingInstructions
-    private static void FilterStateVmTrace(ParityLikeTxTrace trace) => trace.VmTrace = null;
+    // VmTrace uses flags IsTracingCode, IsTracingInstructions; the latter also records each operation's ex.store.
+    private static void FilterVmTrace(ParityLikeTxTrace trace) => trace.VmTrace = null;
 
     // StateDiff uses flags IsTracingState, IsTracingStorage
-    private static void FilterStateDiff(ParityLikeTxTrace trace)
-    {
-        trace.StateChanges = null;
-        if (trace.VmTrace is not null)
-        {
-            for (int i = 0; i < trace.VmTrace.Operations.Count; i++)
-            {
-                trace.VmTrace.Operations[i].Store = null!;
-            }
-        }
-    }
+    private static void FilterStateDiff(ParityLikeTxTrace trace) => trace.StateChanges = null;
 
     // A reward entry survives FilterRewards only when rewards are requested; its action is the reward itself, as in live replay.
     private static void FilterTrace(ParityLikeTxTrace trace)
