@@ -69,6 +69,40 @@ public class PeerFailureLimitFallbackTests
         }
     }
 
+    public enum Unoffered
+    {
+        HealthCheckReplyFailedACheck,
+        SessionClosed,
+    }
+
+    // Each peer left out here has fewer consecutive failures than the one offered, so only the exclusion keeps it out.
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Every_peer_at_the_limit_still_leaves_out_one_whose_health_check_reply_failed_a_check_or_whose_session_closed([Values] Unoffered reason, CancellationToken token)
+    {
+        Node node = Create();
+        await using (node.P2P)
+        {
+            await node.P2P.StartAsync(token);
+            PeerManager manager = node.CreatePeerManager();
+            IBeaconSyncPeer offered = AddPeer(manager, "Offered", PeerFailureReason.RequestFailed, Limit + 3);
+            if (reason == Unoffered.SessionClosed)
+            {
+                // A session the host does not track is one it already dropped.
+                AddPeer(manager, "Closed", PeerFailureReason.RequestFailed, Limit, session: new LocalPeer.Session(node.P2P.LocalPeerForTest!));
+            }
+            else
+            {
+                IBeaconSyncPeer violator = AddPeer(manager, "Violator", PeerFailureReason.RequestFailed, 0);
+                for (int i = 0; i < Limit; i++) await manager.HandleHealthFailureAsync(violator, new TimeoutException(), long.MaxValue, default);
+                await manager.HandleHealthFailureAsync(violator, new InvalidOperationException("reply failed a check"), long.MaxValue, default);
+                Assert.That(PeerManager.ConsecutiveFailuresForTest(violator), Is.EqualTo(1), "test setup: the violator is the least-failed");
+            }
+
+            Assert.That(manager.GetBestPeers(0), Is.EqualTo(new[] { offered }));
+        }
+    }
+
     // Failure counts tie at the limit, so the selection order must still pick among the tied rather than whichever the pool lists first.
     [Test]
     public async Task Among_peers_tied_at_the_limit_the_two_first_in_selection_order_are_offered()
@@ -133,11 +167,15 @@ public class PeerFailureLimitFallbackTests
         }
     }
 
-    private static IBeaconSyncPeer AddPeer(PeerManager manager, string name, PeerFailureReason reason, int failures, StatusMessageV2? status = null)
+    private static IBeaconSyncPeer AddPeer(PeerManager manager, string name, PeerFailureReason reason, int failures, StatusMessageV2? status = null, ISession? session = null)
     {
-        ISession session = Substitute.For<ISession>();
-        session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default)
-            .ReturnsForAnyArgs(Task.FromException<StatusMessageV2>(new IOException("status refused for the test")));
+        if (session is null)
+        {
+            session = Substitute.For<ISession>();
+            session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default)
+                .ReturnsForAnyArgs(Task.FromException<StatusMessageV2>(new IOException("status refused for the test")));
+        }
+
         IBeaconSyncPeer peer = manager.AddPeerForTest(session, AddressPrefix + name, status ?? Status);
         for (int i = 0; i < failures; i++)
         {
