@@ -46,12 +46,12 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGe
     /// <summary>Whether the shard holds the value for <paramref name="key"/> at this view's version; <paramref name="value"/> is null for a tombstone.</summary>
     public bool TryGet(byte column, ReadOnlySpan<byte> key, out byte[]? value)
     {
-        ulong hash = TrieNodeLogRecord.Hash(column, key);
+        ulong hash = TrieNodeLogRecord.Hash(key);
         Span<byte> buffer = stackalloc byte[ReadBufferSize];
         for (int i = pinned.Count - 1; i >= 0; i--)
         {
             TrieNodeLogGeneration generation = pinned[i];
-            if (!generation.TryLocate(hash, column, key, buffer, out TrieNodeLogRecord header, out _, out long offset, out int bytesRead)) continue;
+            if (!generation.TryLocate(hash, key, buffer, out TrieNodeLogRecord header, out _, out long offset, out int bytesRead)) continue;
 
             bool walked = false;
             while (header.Version > _version)
@@ -68,7 +68,7 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, List<TrieNodeLogGe
                 offset = TrieNodeLogRecord.LocationOffset(previous);
                 bytesRead = generation.ReadAt(offset, buffer);
                 header = TrieNodeLogRecord.Read(buffer);
-                if (bytesRead < TrieNodeLogRecord.HeaderLength + key.Length || header.Column != column || header.KeyLength != key.Length
+                if (bytesRead < TrieNodeLogRecord.HeaderLength + key.Length || header.KeyLength != key.Length
                     || !buffer.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key))
                 {
                     Metrics.RecordTrieNodeLogChainKeyMismatch();

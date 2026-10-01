@@ -39,22 +39,22 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     private int _pendingInsertsInCurrent;
     private bool _committed;
     private long _storedBytes;
-    private readonly long[] _appendedBytesByColumn = new long[WriteBufferAdjuster.ColumnCount];
+    private long _appendedBytes;
 
-    public void Append(byte column, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete)
+    public void Append(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete)
     {
         if (key.Length is 0 or > TrieNodeLogRecord.MaxKeyLength) throw new ArgumentOutOfRangeException(nameof(key), key.Length, "Unsupported trie node log key length");
         if (value.Length > TrieNodeLogRecord.MaxValueLength) throw new ArgumentOutOfRangeException(nameof(value), value.Length, "Unsupported trie node log value length");
 
         TrieNodeLogGeneration generation = CurrentGeneration();
-        ulong hash = TrieNodeLogRecord.Hash(column, key);
+        ulong hash = TrieNodeLogRecord.Hash(key);
 
         ulong prev = 0;
         int slot = NoSlot;
         bool newToGeneration = true;
         bool collided = _pending.TryGetValue(hash, out Pending pending);
         int collisionIndex = -1;
-        if (collided && IsRecordOf(pending, column, key))
+        if (collided && IsRecordOf(pending, key))
         {
             collided = false;
         }
@@ -62,7 +62,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         {
             for (int i = 0; i < _collisions.Count; i++)
             {
-                if (!IsRecordOf(_collisions[i], column, key)) continue;
+                if (!IsRecordOf(_collisions[i], key)) continue;
                 collisionIndex = i;
                 pending = _collisions[i];
                 break;
@@ -85,7 +85,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
             for (int i = pinned.Count - 1; i >= 0; i--)
             {
                 TrieNodeLogGeneration candidate = pinned[i];
-                if (!candidate.TryLocate(hash, column, key, _probeBuffer, out _, out int index, out long offset, out _)) continue;
+                if (!candidate.TryLocate(hash, key, _probeBuffer, out _, out int index, out long offset, out _)) continue;
                 prev = TrieNodeLogRecord.PackLocation(candidate.Number, offset);
                 if (candidate == generation)
                 {
@@ -98,7 +98,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
 
         if (newToGeneration) _pendingInsertsInCurrent++;
 
-        TrieNodeLogRecord header = new(delete ? TrieNodeLogRecord.Delete : TrieNodeLogRecord.Put, column, key.Length, value.Length, version, prev);
+        TrieNodeLogRecord header = new(delete ? TrieNodeLogRecord.Delete : TrieNodeLogRecord.Put, key.Length, value.Length, version, prev);
         long recordOffset = Reserve(header.Length);
         Span<byte> destination = _buffer.AsSpan(_buffered, header.Length);
         header.Write(destination);
@@ -110,11 +110,11 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         if (!collided) _pending[hash] = record;
         else if (collisionIndex >= 0) _collisions[collisionIndex] = record;
         else _collisions.Add(record);
-        _appendedBytesByColumn[column] += key.Length + value.Length;
+        _appendedBytes += key.Length + value.Length;
     }
 
     /// <summary>Whether the record <paramref name="pending"/> points at was written for <paramref name="key"/>; it is read from the write buffer while still there.</summary>
-    private bool IsRecordOf(in Pending pending, byte column, ReadOnlySpan<byte> key)
+    private bool IsRecordOf(in Pending pending, ReadOnlySpan<byte> key)
     {
         ReadOnlySpan<byte> record;
         if (pending.Generation == _current && pending.Offset >= _current.WriteFrontier)
@@ -129,7 +129,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
 
         if (record.Length < TrieNodeLogRecord.HeaderLength) return false;
         TrieNodeLogRecord header = TrieNodeLogRecord.Read(record);
-        return header.Column == column && header.KeyLength == key.Length && record.Length >= TrieNodeLogRecord.HeaderLength + key.Length
+        return header.KeyLength == key.Length && record.Length >= TrieNodeLogRecord.HeaderLength + key.Length
             && record.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key);
     }
 
@@ -211,10 +211,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
 
         foreach ((TrieNodeLogGeneration generation, _) in _touched) generation.PublishFrontier(generation.WriteFrontier);
 
-        for (int column = 0; column < _appendedBytesByColumn.Length; column++)
-        {
-            if (_appendedBytesByColumn[column] != 0) Metrics.TrieNodeLogAppendedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), _appendedBytesByColumn[column]);
-        }
+        if (_appendedBytes != 0) Metrics.TrieNodeLogAppendedBytes.AddBy(TrieNodeLogLabel.Column((byte)shard.Column), _appendedBytes);
         Metrics.AddTrieNodeLogStoredBytes(_storedBytes);
         _committed = true;
     }
@@ -239,7 +236,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         if (read < TrieNodeLogRecord.HeaderLength) throw new IOException($"Short read of trie node log record at {pending.Generation.Path}:{pending.Offset}");
         TrieNodeLogRecord header = TrieNodeLogRecord.Read(_probeBuffer);
         if (read < TrieNodeLogRecord.HeaderLength + header.KeyLength) throw new IOException($"Short read of trie node log record at {pending.Generation.Path}:{pending.Offset}");
-        return TrieNodeLogRecord.Hash(header.Column, _probeBuffer.AsSpan(TrieNodeLogRecord.HeaderLength, header.KeyLength));
+        return TrieNodeLogRecord.Hash(_probeBuffer.AsSpan(TrieNodeLogRecord.HeaderLength, header.KeyLength));
     }
 
     /// <summary>Puts this batch's version into the metadata column batch, so RocksDB confirms it atomically with the state pointer.</summary>

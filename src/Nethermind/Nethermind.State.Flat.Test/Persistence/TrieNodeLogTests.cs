@@ -165,19 +165,23 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public void Every_trie_column_is_logged()
+    public void Three_columns_are_logged_and_fallback_goes_direct()
     {
         Hash256 address = TestItem.KeccakA;
+        TreePath longPath = TreePath.FromHexString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"); // FallbackNodes
         using (IPersistence.IWriteBatch batch = Batch(0, 1))
         {
             batch.SetStateTrieNode(TopPath, Rlp1);
             batch.SetStateTrieNode(MediumPath, Rlp2);
             batch.SetStorageTrieNode(address, StoragePath, Rlp3);
+            batch.SetStateTrieNode(longPath, Rlp1);
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(reader.TryLoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().TryLoadStateRlp(longPath, ReadFlags.None), Is.EqualTo(Rlp1), "fallback nodes bypass the log");
             Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
             Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
             Assert.That(reader.TryLoadStorageRlp(address, StoragePath, ReadFlags.None), Is.EqualTo(Rlp3));

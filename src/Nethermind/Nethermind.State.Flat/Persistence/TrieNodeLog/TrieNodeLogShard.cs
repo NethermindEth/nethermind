@@ -69,9 +69,10 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     /// <param name="mergeLimiter">Caps concurrent merges across every shard of the log.</param>
     /// <param name="backlogMargin">Sealed generations allowed beyond <paramref name="mergeLag"/> before a roll waits for a merge.</param>
-    public TrieNodeLogShard(string name, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
+    public TrieNodeLogShard(string name, FlatDbColumns column, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
     {
         Name = name;
+        Column = column;
         VersionKey = Keccak.Compute($"TrieNodeLogVersion:{name}").BytesToArray();
         FlushedGenerationKey = Keccak.Compute($"TrieNodeLogFlushedGeneration:{name}").BytesToArray();
         _basePath = basePath;
@@ -89,6 +90,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     }
 
     public string Name { get; }
+
+    /// <summary>The one trie column this shard holds records of.</summary>
+    public FlatDbColumns Column { get; }
 
     internal byte[] VersionKey { get; }
 
@@ -342,9 +346,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     {
         long sw = Stopwatch.GetTimestamp();
         long written = 0;
+        long skipped = 0;
         int records = 0;
-        long[] writtenByColumn = new long[WriteBufferAdjuster.ColumnCount];
-        long[] skippedByColumn = new long[WriteBufferAdjuster.ColumnCount];
         IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
         if (!BasePersistence.ReadWipedForSync(metadata))
         {
@@ -353,11 +356,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
             Span<byte> probeBuffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
 
-            // Resolved once: the RocksDB columns batch allocates a wrapper per GetColumnBatch call. Non-null entries
-            // are the column families this merge wrote and must flush.
-            Core.IWriteBatch?[] columns = new Core.IWriteBatch?[WriteBufferAdjuster.ColumnCount];
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
+                Core.IWriteBatch column = batch.GetColumnBatch(Column);
                 Scanner scanner = new(generation, generation.Frontier);
                 try
                 {
@@ -365,19 +366,17 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                     {
                         TrieNodeLogRecord header = scanner.Header;
                         if (header.IsCommit) continue;
-                        ulong hash = TrieNodeLogRecord.Hash(header.Column, scanner.Key);
+                        ulong hash = TrieNodeLogRecord.Hash(scanner.Key);
                         if (!generation.IsLatest(hash, scanner.Offset)) continue;
-                        if (HasCommittedNewerRecord(newer, hash, header.Column, scanner.Key, probeBuffer, committedVersion))
+                        if (HasCommittedNewerRecord(newer, hash, scanner.Key, probeBuffer, committedVersion))
                         {
-                            skippedByColumn[header.Column] += header.KeyLength + header.ValueLength;
+                            skipped += header.KeyLength + header.ValueLength;
                             continue;
                         }
 
-                        Core.IWriteBatch column = columns[header.Column] ??= batch.GetColumnBatch((FlatDbColumns)header.Column);
                         if (header.Type == TrieNodeLogRecord.Delete) column.Set(scanner.Key, null, WriteFlags.DisableWAL);
                         else column.PutSpan(scanner.Key, scanner.Value, WriteFlags.DisableWAL);
                         written += header.KeyLength + header.ValueLength;
-                        writtenByColumn[header.Column] += header.KeyLength + header.ValueLength;
                         records++;
                     }
                 }
@@ -387,13 +386,10 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                 }
             }
 
-            // The log file is the WAL of this merge: the data goes in without one, the written column families are
-            // flushed (throwing, so a failure never reaches the marker), and only then is the marker written and
-            // flushed. Marker durable therefore implies data durable; a crash before that replays the file.
-            for (int column = 0; column < columns.Length; column++)
-            {
-                if (columns[column] is not null) _db.GetColumnDb((FlatDbColumns)column).FlushOrThrow();
-            }
+            // The log file is the WAL of this merge: the data goes in without one, the column family is flushed
+            // (throwing, so a failure never reaches the marker), and only then is the marker written and flushed.
+            // Marker durable therefore implies data durable; a crash before that replays the file.
+            _db.GetColumnDb(Column).FlushOrThrow();
 
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
@@ -402,11 +398,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                 batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(FlushedGenerationKey, marker, WriteFlags.DisableWAL);
             }
             _db.GetColumnDb(FlatDbColumns.Metadata).FlushOrThrow();
-            for (int column = 0; column < WriteBufferAdjuster.ColumnCount; column++)
-            {
-                if (writtenByColumn[column] != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), writtenByColumn[column]);
-                if (skippedByColumn[column] != 0) Metrics.TrieNodeLogSkippedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), skippedByColumn[column]);
-            }
+            if (written != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(TrieNodeLogLabel.Column((byte)Column), written);
+            if (skipped != 0) Metrics.TrieNodeLogSkippedBytes.AddBy(TrieNodeLogLabel.Column((byte)Column), skipped);
             Metrics.TrieNodeLogFlushedGeneration[_label] = (long)generation.Number;
         }
 
@@ -422,11 +415,11 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         if (_logger.IsDebug) _logger.Debug($"Merged trie node log {Name} generation {generation.Number}: {records} records, {written / (double)MemorySizes.MiB:F1} MiB of {generation.Frontier / (double)MemorySizes.MiB:F1} MiB in {Stopwatch.GetElapsedTime(sw).TotalMilliseconds:F0} ms");
     }
 
-    private static bool HasCommittedNewerRecord(List<TrieNodeLogGeneration> newer, ulong hash, byte column, ReadOnlySpan<byte> key, Span<byte> probeBuffer, ulong committedVersion)
+    private static bool HasCommittedNewerRecord(List<TrieNodeLogGeneration> newer, ulong hash, ReadOnlySpan<byte> key, Span<byte> probeBuffer, ulong committedVersion)
     {
         foreach (TrieNodeLogGeneration generation in newer)
         {
-            if (generation.TryLocate(hash, column, key, probeBuffer, out TrieNodeLogRecord header, out _, out _, out _))
+            if (generation.TryLocate(hash, key, probeBuffer, out TrieNodeLogRecord header, out _, out _, out _))
                 return header.Version <= committedVersion;
         }
         return false;
@@ -524,8 +517,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             while (scanner.MoveNext())
             {
                 if (scanner.Header.IsCommit) continue;
-                ulong hash = TrieNodeLogRecord.Hash(scanner.Header.Column, scanner.Key);
-                generation.TryLocate(hash, scanner.Header.Column, scanner.Key, buffer, out _, out int index, out _, out _);
+                ulong hash = TrieNodeLogRecord.Hash(scanner.Key);
+                generation.TryLocate(hash, scanner.Key, buffer, out _, out int index, out _, out _);
                 generation.Publish(index, hash, scanner.Offset);
             }
         }

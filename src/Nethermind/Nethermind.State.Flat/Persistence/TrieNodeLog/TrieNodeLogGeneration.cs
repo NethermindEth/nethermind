@@ -103,7 +103,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     /// key and as much of the value as fit), <paramref name="header"/> its header and <paramref name="index"/> its slot.
     /// On a miss <paramref name="index"/> is the first empty slot on the probe path.
     /// </summary>
-    public bool TryLocate(ulong hash, byte column, ReadOnlySpan<byte> key, Span<byte> buffer, out TrieNodeLogRecord header, out int index, out long offset, out int bytesRead)
+    public bool TryLocate(ulong hash, ReadOnlySpan<byte> key, Span<byte> buffer, out TrieNodeLogRecord header, out int index, out long offset, out int bytesRead)
     {
         for (index = HomeIndex(hash); ; index = NextIndex(index))
         {
@@ -115,7 +115,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
             bytesRead = ReadAt(offset, buffer);
             if (bytesRead < TrieNodeLogRecord.HeaderLength) continue;
             header = TrieNodeLogRecord.Read(buffer);
-            if (header.Column == column && header.KeyLength == key.Length && bytesRead >= TrieNodeLogRecord.HeaderLength + key.Length
+            if (header.KeyLength == key.Length && bytesRead >= TrieNodeLogRecord.HeaderLength + key.Length
                 && buffer.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key))
                 return true;
             Metrics.RecordTrieNodeLogIndexFalseMatch();
