@@ -419,39 +419,53 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// Assigns each of <paramref name="missing"/> to a peer reaching <paramref name="startSlot"/>, or else <paramref name="batchStartSlot"/>, that custodies it, serves the range
     /// from <paramref name="startSlot"/> and is not in <paramref name="excluded"/>; empty when no such peer exists.
     /// </summary>
-    /// <param name="batchStartSlot">The batch's first slot, which its blocks were requested from peers reaching. Custodians reaching only it are asked when none reaching
-    /// <paramref name="startSlot"/> custodies a missing column: a later round's first missing slot can lie past every peer's last status although a peer served the block there
+    /// <param name="batchStartSlot">The batch's first slot, which its blocks were requested from peers reaching. A column no custodian reaching <paramref name="startSlot"/>
+    /// custodies goes to one reaching only the batch start: a later round's first missing slot can lie past every peer's last status although a peer served the block there
     /// (phase0/p2p-interface.md Status), while a custodian whose status reaches that slot is likelier to hold it.</param>
     /// <param name="boundPerPeer">Caps each peer at an even share of <paramref name="missing"/>, at least <see cref="MinColumnsPerPeer"/>; a column the cap leaves out
     /// waits for a later round, so only a caller that retries sets it.</param>
     private List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignBatchColumns(List<ulong> missing, ulong batchStartSlot, ulong startSlot, ulong lastSlot, HashSet<string>? excluded, bool boundPerPeer)
     {
         IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
-        IBeaconSyncPeer[] custodians = [.. reaching.Where(IsCandidate)];
-        if (custodians.Length == 0 && batchStartSlot < startSlot)
+        IBeaconSyncPeer[] custodians = [.. reaching.Where(peer => IsCandidate(peer, missing))];
+        IReadOnlyList<IBeaconSyncPeer> serving = custodians.Length > 0 ? ServingFrom(custodians, startSlot, lastSlot) : [];
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = Assign(missing, serving, MaxColumnPeersPerBatch);
+        List<ulong> uncovered = [.. missing.Where(column => !serving.Any(peer => peer.Custody.Custodies(column)))];
+        if (uncovered.Count > 0 && batchStartSlot < startSlot && requests.Count < MaxColumnPeersPerBatch)
         {
-            reaching = peerPool.GetBestPeers(batchStartSlot);
-            custodians = [.. reaching.Where(IsCandidate)];
+            IReadOnlyList<IBeaconSyncPeer> reachingBatchStart = peerPool.GetBestPeers(batchStartSlot);
+            HashSet<string> considered = [.. custodians.Select(static peer => peer.Id)];
+            IBeaconSyncPeer[] behind = [.. reachingBatchStart.Where(peer => !considered.Contains(peer.Id) && IsCandidate(peer, uncovered))];
+            if (behind.Length > 0)
+            {
+                requests.AddRange(Assign(uncovered, ServingFrom(behind, startSlot, lastSlot), MaxColumnPeersPerBatch - requests.Count));
+            }
+
+            custodians = [.. custodians, .. behind];
+            reaching = reachingBatchStart;
         }
 
         if (custodians.Length == 0)
         {
             LogNoCustodian(missing, reaching.Count);
-            return [];
         }
 
-        IReadOnlyList<IBeaconSyncPeer> serving = ServingFrom(custodians, startSlot, lastSlot);
-        if (!boundPerPeer || serving.Count == 0)
+        return requests;
+
+        bool IsCandidate(IBeaconSyncPeer peer, List<ulong> columns) => excluded?.Contains(peer.Id) is not true && peer.Custody.CountCustodied(columns) > 0;
+
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> Assign(List<ulong> columns, IReadOnlyList<IBeaconSyncPeer> peers, int maxPeers)
         {
-            return AssignColumns(missing, serving, MaxColumnPeersPerBatch);
+            if (!boundPerPeer || peers.Count == 0)
+            {
+                return AssignColumns(columns, peers, maxPeers);
+            }
+
+            // A lone custodian has to take the lot.
+            int askedPeers = Math.Min(maxPeers, peers.Count);
+            int perPeer = Math.Max(MinColumnsPerPeer, (columns.Count + askedPeers - 1) / askedPeers);
+            return AssignColumns(columns, peers, maxPeers, perPeer);
         }
-
-        // A lone custodian has to take the lot.
-        int askedPeers = Math.Min(MaxColumnPeersPerBatch, serving.Count);
-        int perPeer = Math.Max(MinColumnsPerPeer, (missing.Count + askedPeers - 1) / askedPeers);
-        return AssignColumns(missing, serving, MaxColumnPeersPerBatch, perPeer);
-
-        bool IsCandidate(IBeaconSyncPeer peer) => excluded?.Contains(peer.Id) is not true && peer.Custody.CountCustodied(missing) > 0;
     }
 
     /// <summary>
