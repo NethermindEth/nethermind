@@ -13,16 +13,19 @@ const [, , inPath, outPath] = process.argv;
 const OLD_FIXED = 4 + 4 + 8 + 4;
 const NEW_FIXED = 4 + 4 + 8;
 const PUBLIC_KEY_LENGTH = 65;
+const SCHEMA_IDS = [0x0001, 0x1501];
 
 // ZisK frame: len u64le | data[len] | zero-padding to a multiple of 8
 const frame = fs.readFileSync(inPath);
 const dataLength = Number(frame.readBigUInt64LE(0));
-if (8 + dataLength > frame.length) throw new Error(`framed length ${dataLength} exceeds file size ${frame.length}`);
+const frameLength = 8 + dataLength + ((8 - (dataLength % 8)) % 8);
+if (frame.length !== frameLength) throw new Error(`file size ${frame.length} does not match the ${frameLength}-byte frame of ${dataLength} bytes`);
 for (let i = 8 + dataLength; i < frame.length; i++) if (frame[i] !== 0) throw new Error('non-zero frame padding');
 const data = frame.subarray(8, 8 + dataLength);
 
 // Data: schema u16be | SSZ StatelessInput
 const schema = data.subarray(0, 2);
+if (!SCHEMA_IDS.includes(schema.readUInt16BE(0))) throw new Error(`unexpected schema id 0x${schema.toString('hex')}`);
 const body = data.subarray(2);
 const requestOffset = body.readUInt32LE(0);
 const witnessOffset = body.readUInt32LE(4);
