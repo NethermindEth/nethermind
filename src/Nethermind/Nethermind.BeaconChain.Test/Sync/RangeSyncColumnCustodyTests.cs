@@ -13,6 +13,7 @@ using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
@@ -327,11 +328,13 @@ public class RangeSyncColumnCustodyTests
     /// <summary>A reply repeating one invalid (root, index) is verified and penalized once, not once per copy: each copy would cost a KZG verification.</summary>
     [Test]
     [CancelAfter(30_000)]
-    public async Task Repeated_invalid_copies_of_a_column_in_one_reply_penalize_the_peer_once(CancellationToken token)
+    public async Task Repeated_invalid_copies_of_a_column_in_one_reply_penalize_the_peer_once([Values] bool malformedCopyFirst, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
+        ulong? firstColumn = null;
         StubPeer peer = fixture.FailingColumnPeer("repeating", columns =>
         {
+            firstColumn ??= columns[0];
             DataColumnSidecar valid = fixture.Chain.Columns[(int)columns[0]];
             DataColumnSidecar tampered = new()
             {
@@ -342,12 +345,133 @@ public class RangeSyncColumnCustodyTests
                 SignedBlockHeader = valid.SignedBlockHeader,
                 KzgCommitmentsInclusionProof = valid.KzgCommitmentsInclusionProof,
             };
-            return [.. fixture.ServeColumns(columns[1..]), .. Enumerable.Repeat(tampered, 50)];
+            DataColumnSidecar truncated = new()
+            {
+                Index = valid.Index,
+                Column = valid.Column![..^1],
+                KzgCommitments = valid.KzgCommitments,
+                KzgProofs = valid.KzgProofs,
+                SignedBlockHeader = valid.SignedBlockHeader,
+                KzgCommitmentsInclusionProof = valid.KzgCommitmentsInclusionProof,
+            };
+            return [.. fixture.ServeColumns(columns[1..]), .. Enumerable.Repeat(truncated, malformedCopyFirst ? 1 : 0), .. Enumerable.Repeat(tampered, 50), valid];
         });
 
         await fixture.RunOneRoundAsync([peer], token);
 
-        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+            Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, firstColumn!.Value, out _), Is.False, "a KZG failure hides later copies in this reply");
+        }
+    }
+
+    /// <summary>Only a KZG failure shadows later copies; fulu/p2p-interface.md (v1.7.0-beta.2) separates structure, inclusion and KZG verification.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_range_copy_failing_a_cheap_check_does_not_hide_the_valid_copy_after_it([Range(0, 2)] int invalidPart, [Values(1, 3)] int malformedCopies, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        ulong? firstColumn = null;
+        StubPeer peer = fixture.FailingColumnPeer("malformed-then-valid", columns =>
+        {
+            firstColumn ??= columns[0];
+            DataColumnSidecar valid = fixture.Chain.Columns[(int)columns[0]];
+            DataColumnSidecar malformed = new()
+            {
+                Index = valid.Index,
+                Column = invalidPart == 0 ? valid.Column![..^1] : valid.Column,
+                KzgCommitments = invalidPart == 2 ? valid.KzgCommitments![..^1] : valid.KzgCommitments,
+                KzgProofs = valid.KzgProofs,
+                SignedBlockHeader = valid.SignedBlockHeader,
+                KzgCommitmentsInclusionProof = invalidPart == 1 ? [.. valid.KzgCommitmentsInclusionProof!.Select(static _ => Hash256.Zero)] : valid.KzgCommitmentsInclusionProof,
+            };
+            return [.. Enumerable.Repeat(malformed, malformedCopies), .. fixture.ServeColumns(columns)];
+        });
+
+        await fixture.RunOneRoundAsync([peer], token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, firstColumn!.Value, out _), Is.True, "the valid copy behind the malformed one is pooled");
+            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the malformed copies are penalized once");
+        }
+    }
+
+    /// <summary>Columns must obey their epoch blob limit (v1.7.0-beta.2 fulu/p2p-interface.md, verify_data_column_sidecar).</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_range_column_over_the_blob_limit_of_its_epoch_is_not_pooled(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        BeaconChainSpec chainSpec = fixture.Chain.Spec;
+        BeaconChainSpec oneBlobSpec = new()
+        {
+            ChainId = chainSpec.ChainId,
+            CheckpointSyncUrl = chainSpec.CheckpointSyncUrl,
+            Bootnodes = chainSpec.Bootnodes,
+            SecondsPerSlot = chainSpec.SecondsPerSlot,
+            SlotsPerEpoch = chainSpec.SlotsPerEpoch,
+            GenesisTime = chainSpec.GenesisTime,
+            GenesisValidatorsRoot = chainSpec.GenesisValidatorsRoot,
+            Forks = chainSpec.Forks,
+            BlobSchedule = [],
+            ElectraForkEpoch = chainSpec.ElectraForkEpoch,
+            FuluForkEpoch = chainSpec.FuluForkEpoch,
+            MaxBlobsPerBlockElectra = (ulong)fixture.Chain.Block.Message!.Body!.BlobKzgCommitments!.Length - 1,
+            GloasForkEpoch = chainSpec.GloasForkEpoch,
+            GloasForkVersion = chainSpec.GloasForkVersion,
+        };
+        ulong[] served = [];
+        StubPeer peer = fixture.FailingColumnPeer("over-limit", columns =>
+        {
+            served = columns;
+            return [.. fixture.ServeColumns(columns), .. fixture.ServeColumns(columns)];
+        });
+        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, fixture.SidecarPool, oneBlobSpec, fixture.Clock, fixture.Discovery);
+
+        await foreach (ForkedSignedBeaconBlock _ in sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token))
+        {
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Is.Not.Empty, "fixture: the peer was asked for columns");
+            Assert.That(served, Is.All.Matches<ulong>(column => !fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, column, out _)), "no column over the blob limit is pooled");
+            Assert.That(peer.Reports, Is.EqualTo(Enumerable.Repeat(PeerFailureReason.ProtocolViolation, served.Length)), "each (root, index) is penalized once, not once per copy");
+        }
+    }
+
+    /// <summary>An unrequested sidecar earns one penalty per key and cannot hide requested data (v1.7.0-beta.2 fulu/p2p-interface.md, DataColumnSidecarsByRange).</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_range_sidecar_for_an_unrequested_block_is_penalized_once_and_hides_nothing(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        ulong? firstColumn = null;
+        StubPeer peer = fixture.FailingColumnPeer("other-block", columns =>
+        {
+            firstColumn ??= columns[0];
+            DataColumnSidecar valid = fixture.Chain.Columns[(int)columns[0]];
+            BeaconBlockHeader header = valid.SignedBlockHeader!.Message!;
+            DataColumnSidecar other = new()
+            {
+                Index = valid.Index,
+                SignedBlockHeader = new SignedBeaconBlockHeader
+                {
+                    Message = new BeaconBlockHeader { Slot = header.Slot + 1000, ProposerIndex = header.ProposerIndex, ParentRoot = header.ParentRoot, StateRoot = header.StateRoot, BodyRoot = header.BodyRoot },
+                },
+            };
+            return [other, other, .. fixture.ServeColumns(columns)];
+        });
+
+        await fixture.RunOneRoundAsync([peer], token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, firstColumn!.Value, out _), Is.True, "the requested block's column is pooled");
+            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the repeated unrequested sidecar is penalized once");
+        }
     }
 
     /// <summary>One supernode must not take a whole batch while other custodians can serve columns: it is asked for at most the per-peer bound, the rest wait for the next round.</summary>

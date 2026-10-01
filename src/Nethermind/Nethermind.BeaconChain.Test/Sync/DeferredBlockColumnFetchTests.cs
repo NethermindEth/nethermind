@@ -824,10 +824,11 @@ public class DeferredBlockColumnFetchTests
     {
         await using Fixture fixture = Fixture.Create();
         const int HeldBlocks = BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches + 4;
-        HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, HeldBlocks, static (importer, delivered) => importer.Stuck.UnionWith(delivered), token);
+        HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, HeldBlocks, (importer, delivered) => importer.AcceptOnceColumnsAreHeld(delivered, fixture.SidecarPool, fixture.Sampled), token);
         await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
-        // The requests reach the peer from other threads, so an unbounded start needs a moment to show itself.
-        await Task.Delay(300, token);
+        int queuedForAPlace = scenario.Orchestrator.HeldColumnFetchQueueCount;
+        int started = HeldBlocks - queuedForAPlace;
+        await scenario.Gate.WaitForRequestsAsync(started, token);
         int requestedWhileBlocked = scenario.HeldRootsRequested.Length;
         int inFlightWhileBlocked = scenario.Gate.MaxInFlight;
         int heldAfterHeadImported = scenario.Orchestrator.PendingGossipBlockCount;
@@ -839,8 +840,6 @@ public class DeferredBlockColumnFetchTests
         bool columnsHeld = scenario.HeldRoots.All(root => fixture.Sampled.All(column => fixture.SidecarPool.TryGet(root, column, out _)));
 
         // The columns are held now, so each block imports once its parent has.
-        scenario.Importer.Stuck.Clear();
-        scenario.Importer.Accepted.UnionWith(scenario.HeldRoots);
         fixture.AdvanceSlots(1);
         await scenario.Orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         await scenario.Orchestrator.SettleColumnFetchesAsync(token);
@@ -849,7 +848,8 @@ public class DeferredBlockColumnFetchTests
         {
             Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
             Assert.That(heldAfterHeadImported, Is.EqualTo(HeldBlocks - 1), "fixture: the blocks behind the first one it drains wait for their parents");
-            Assert.That(requestedWhileBlocked, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "the blocks past the bound wait for a place");
+            Assert.That(queuedForAPlace, Is.EqualTo(HeldBlocks - BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "the blocks past the bound wait for a place");
+            Assert.That(requestedWhileBlocked, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "only the blocks with a place asked the peer");
             Assert.That(inFlightWhileBlocked, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "the fetches of the held blocks overlap, up to the bound");
             Assert.That(inFlightAtMost, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "a finished fetch gives its place to one queued block, never more");
             Assert.That(columnsHeld, Is.True, "every held block's columns reached the pool");
@@ -857,6 +857,24 @@ public class DeferredBlockColumnFetchTests
             Assert.That(scenario.Orchestrator.PendingGossipBlockCount, Is.Zero);
             Assert.That(scenario.Orchestrator.PendingRetryBlockCount, Is.Zero);
         }
+    }
+
+    /// <summary>Held blocks remain unimported without their sampled columns (v1.7.0-beta.2 fulu/fork-choice.md, is_data_available).</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task The_pool_gated_importer_keeps_a_block_held_whose_columns_never_reached_the_pool(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, 2, (importer, delivered) => importer.AcceptOnceColumnsAreHeld(delivered, fixture.SidecarPool, fixture.Sampled), token, columnsArrive: false);
+        await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
+
+        scenario.Gate.Open();
+        await scenario.Orchestrator.SettleColumnFetchesAsync(token);
+        fixture.AdvanceSlots(1);
+        await scenario.Orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        await scenario.Orchestrator.SettleColumnFetchesAsync(token);
+
+        Assert.That(scenario.HeldRoots, Is.All.Matches<Hash256>(root => !scenario.Importer.IsKnown(root)), "no column reached the pool, so no block imports");
     }
 
     /// <summary>A held block that imports before its turn for a fetch needs none: the queue holds only blocks still held.</summary>
@@ -1064,10 +1082,8 @@ public class DeferredBlockColumnFetchTests
         }
 
         await orchestrator.ProcessQueuedAsync(token);
-        while (gate.MaxInFlight < Math.Min(delivered.Length, BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches))
-        {
-            await Task.Delay(10, token);
-        }
+        int expectedInFlight = Math.Min(delivered.Length, BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches);
+        await gate.WaitForRequestsAsync(expectedInFlight, token);
 
         return new HeldBlobBlocks(orchestrator, importer, peer, gate, held);
     }
@@ -1705,6 +1721,7 @@ public class DeferredBlockColumnFetchTests
     private sealed class StuckBlocksImporter(IBlockImporter inner) : IBlockImporter
     {
         private readonly HashSet<Hash256> _accepted = [];
+        private Func<Hash256, bool>? _columnsHeld;
 
         public HashSet<Hash256> Stuck { get; } = [];
 
@@ -1716,6 +1733,12 @@ public class DeferredBlockColumnFetchTests
         public HashSet<Hash256> Accepted { get; } = [];
 
         public List<Hash256> ImportCalls { get; } = [];
+
+        public void AcceptOnceColumnsAreHeld(Hash256[] roots, DataColumnSidecarPool pool, ulong[] columns)
+        {
+            Accepted.UnionWith(roots);
+            _columnsHeld = root => columns.All(column => pool.TryGet(root, column, out _));
+        }
 
         public bool IsKnown(Hash256 blockRoot) => _accepted.Contains(blockRoot) || inner.IsKnown(blockRoot);
 
@@ -1731,7 +1754,7 @@ public class DeferredBlockColumnFetchTests
             }
 
             return Invalid.Contains(blockRoot) ? BlockImportResult.Invalid
-                : Stuck.Contains(blockRoot) ? BlockImportResult.DataUnavailable
+                : Stuck.Contains(blockRoot) || (Accepted.Contains(blockRoot) && _columnsHeld is { } columnsHeld && !columnsHeld(blockRoot)) ? BlockImportResult.DataUnavailable
                 : Accepted.Contains(blockRoot) ? (_accepted.Add(blockRoot) ? BlockImportResult.Imported : BlockImportResult.AlreadyKnown)
                 : EngineDown.Contains(blockRoot) ? BlockImportResult.EngineUnavailable
                 : inner.Import(block, blockRoot, verifySignatures);
@@ -1944,6 +1967,8 @@ public class DeferredBlockColumnFetchTests
         private readonly TaskCompletionSource _open = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _inFlight;
         private int _maxInFlight;
+        private readonly object _arrivalLock = new();
+        private TaskCompletionSource _arrival = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public int MaxInFlight => Volatile.Read(ref _maxInFlight);
 
@@ -1953,7 +1978,12 @@ public class DeferredBlockColumnFetchTests
         public async Task WaitAsync(TimeSpan timeout, CancellationToken token)
         {
             int inFlight = Interlocked.Increment(ref _inFlight);
-            InterlockedMax(ref _maxInFlight, inFlight);
+            lock (_arrivalLock)
+            {
+                InterlockedMax(ref _maxInFlight, inFlight);
+                _arrival.TrySetResult();
+                _arrival = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
             if (inFlight >= expected)
             {
                 _open.TrySetResult();
@@ -1966,6 +1996,25 @@ public class DeferredBlockColumnFetchTests
             finally
             {
                 Interlocked.Decrement(ref _inFlight);
+            }
+        }
+
+        public async Task WaitForRequestsAsync(int count, CancellationToken token)
+        {
+            while (true)
+            {
+                Task arrival;
+                lock (_arrivalLock)
+                {
+                    if (MaxInFlight >= count)
+                    {
+                        return;
+                    }
+
+                    arrival = _arrival.Task;
+                }
+
+                await arrival.WaitAsync(TimeSpan.FromSeconds(30), token);
             }
         }
 

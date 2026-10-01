@@ -465,9 +465,11 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     }
 
     /// <summary>Adds each sidecar that verifies against the block it names in <paramref name="blocksByRoot"/>; any other penalizes <paramref name="peer"/>, once per (root, index) of the reply.</summary>
+    /// <remarks>Only KZG failures shadow later copies of a requested column; consensus-specs v1.7.0-beta.2 fulu/p2p-interface.md defines the three independent checks.</remarks>
     private void AddVerifiedSidecars(IBeaconSyncPeer peer, IReadOnlyList<DataColumnSidecar> sidecars, Dictionary<Hash256, BeaconBlock> blocksByRoot)
     {
         HashSet<(Hash256 Root, ulong Index)> rejected = [];
+        HashSet<(Hash256 Root, ulong Index)> penalized = [];
         foreach (DataColumnSidecar sidecar in sidecars)
         {
             if (sidecar.SignedBlockHeader?.Message is not { } header)
@@ -477,8 +479,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
 
             Hash256 sidecarBlockRoot = SszRoots.HashTreeRoot(header);
-            // A repeat of a (root, index) this reply already failed is neither verified nor penalized again.
-            if (rejected.Contains((sidecarBlockRoot, sidecar.Index)))
+            (Hash256 Root, ulong Index) key = (sidecarBlockRoot, sidecar.Index);
+            if (rejected.Contains(key))
             {
                 continue;
             }
@@ -490,11 +492,38 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
-            if (!requested
-                || !DataColumnAvailability.IsVerifiedColumnOf(sidecar, sidecarBlockRoot, block!.Body!.BlobKzgCommitments!, spec))
+            if (!requested)
             {
-                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
-                rejected.Add((sidecarBlockRoot, sidecar.Index));
+                if (penalized.Add(key))
+                {
+                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
+                }
+
+                continue;
+            }
+
+            IReadOnlyList<SszKzgCommitment> commitments = block!.Body!.BlobKzgCommitments!;
+            if (!DataColumnAvailability.MatchesBlock(sidecar, sidecarBlockRoot, commitments)
+                || !DataColumnSidecarVerifier.VerifyStructure(sidecar)
+                || !DataColumnSidecarVerifier.VerifyBlobCount(sidecar, spec)
+                || !DataColumnSidecarVerifier.VerifyInclusionProof(sidecar))
+            {
+                if (penalized.Add(key))
+                {
+                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
+                }
+
+                continue;
+            }
+
+            if (!DataColumnSidecarVerifier.VerifyKzgProofs(sidecar))
+            {
+                if (penalized.Add(key))
+                {
+                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
+                }
+
+                rejected.Add(key);
                 continue;
             }
 
