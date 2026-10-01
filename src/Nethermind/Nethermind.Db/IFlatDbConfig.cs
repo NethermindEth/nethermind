@@ -175,7 +175,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Write trie nodes (StateTopNodes, StateNodes and StorageNodes; FallbackNodes stays direct) through an append-only trie node log (with an in-memory index) that is merged into RocksDB one generation at a time, so nodes rewritten within a generation are written to RocksDB once. Flat layout only. Experimental: a self-destruct only removes the storage trie nodes already in RocksDB, nodes still in the log are left as unreachable orphans.", DefaultValue = "false")]
     bool TrieNodeLogEnabled { get; set; }
 
-    [ConfigItem(Description = "Byte budget of the state-top partition of the trie node log (StateTopNodes), split evenly over its shards: each shard's generation, i.e. its deduplication window before it is merged into RocksDB, is this divided by the partition's shard count. Each live generation also keeps an in-memory index of about 1/8 of its size.", DefaultValue = "524288000")]
+    [ConfigItem(Description = "Byte budget of the state-top partition of the trie node log (StateTopNodes), split evenly over its shards: each shard's generation, i.e. its deduplication window before it is merged into RocksDB, is this divided by the partition's shard count. Each live generation also keeps an in-memory index of 1/TrieNodeLogIndexRatio of its size.", DefaultValue = "524288000")]
     long TrieNodeLogStateTopBytes { get; set; }
 
     [ConfigItem(Description = "Byte budget of the state partition of the trie node log (StateNodes), split evenly over its shards like TrieNodeLogStateTopBytes.", DefaultValue = "134217728")]
@@ -198,6 +198,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Sealed trie node log generations a shard may accumulate beyond TrieNodeLogMergeLag before starting a new generation waits for a merge to finish, which stalls persistence until the merges catch up.", DefaultValue = "2")]
     int TrieNodeLogMergeBacklogMargin { get; set; }
+
+    [ConfigItem(Description = "Size of a trie node log generation's in-memory index as a fraction of its byte budget: the index is the budget divided by this, in 8-byte slots. A generation rolls once its index is three-quarters full, so a larger value makes generations of small records roll before their byte budget.", DefaultValue = "16")]
+    int TrieNodeLogIndexRatio { get; set; }
 
     [ConfigItem(Description = "Number of sealed trie node log generations kept unmerged behind the newest one. A generation is merged into RocksDB only once this many newer generations are sealed, and keys rewritten in those are skipped, so the effective deduplication window is (1 + this) generations at the cost of that many extra generation files and in-memory indexes.", DefaultValue = "2")]
     int TrieNodeLogMergeLag { get; set; }

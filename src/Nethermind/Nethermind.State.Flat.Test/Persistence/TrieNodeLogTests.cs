@@ -451,6 +451,11 @@ public class TrieNodeLogTests
         }
     }
 
+    [TestCase(8, 16384)]
+    [TestCase(16, 8192)]
+    public void Index_capacity_is_the_budget_over_the_ratio_in_slots(int ratio, int slots) =>
+        Assert.That(TrieNodeLogGeneration.CapacityFor(1024 * 1024, ratio), Is.EqualTo(slots));
+
     [Test]
     public void Only_one_log_backed_batch_may_be_open()
     {

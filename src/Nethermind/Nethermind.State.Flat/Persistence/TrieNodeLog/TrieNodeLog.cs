@@ -40,6 +40,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMaxConcurrentMerges)} must be at least 1, got {config.TrieNodeLogMaxConcurrentMerges}", -1);
         if (config.TrieNodeLogMergeBacklogMargin < 1)
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMergeBacklogMargin)} must be at least 1, got {config.TrieNodeLogMergeBacklogMargin}", -1);
+        if (config.TrieNodeLogIndexRatio < 1)
+            throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogIndexRatio)} must be at least 1, got {config.TrieNodeLogIndexRatio}", -1);
         _mergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _logger = logManager.GetClassLogger<TrieNodeLog>();
 
@@ -63,7 +65,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 for (int shard = 0; shard < shardCount; shard++)
                 {
                     string name = $"{partitionName}-{shard}";
-                    shards.Add(new TrieNodeLogShard(name, column, Path.Combine(basePath, name), db, budget / shardCount, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, logManager));
+                    shards.Add(new TrieNodeLogShard(name, column, Path.Combine(basePath, name), db, budget / shardCount, config.TrieNodeLogIndexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, logManager));
                 }
                 db.GetColumnDb(column).SetWriteBuffer(WriteBufferAdjuster.MaxWriteBufferSize(column));
             }
@@ -106,7 +108,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             }
 
             if (logger.IsInfo) logger.Info($"Merging trie node log shard {name} left by the previous run");
-            TrieNodeLogShard shard = new(name, column.Value, directory, db, generationBytes: 0, mergeLag: 0, backlogMargin: 1, mergeLimiter, logManager);
+            TrieNodeLogShard shard = new(name, column.Value, directory, db, generationBytes: 0, indexRatio: 1, mergeLag: 0, backlogMargin: 1, mergeLimiter, logManager);
             try
             {
                 shard.Drain();

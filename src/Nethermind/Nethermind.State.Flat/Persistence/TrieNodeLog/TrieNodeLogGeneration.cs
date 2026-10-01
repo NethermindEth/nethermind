@@ -74,7 +74,11 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 
     public long IndexBytes => (long)Capacity * sizeof(ulong);
 
-    public static int CapacityFor(long generationBytes) => (int)Math.Min(int.MaxValue / 2, generationBytes / 64);
+    /// <summary>Slots of a generation whose index is 1/<paramref name="indexRatio"/> of <paramref name="generationBytes"/>.</summary>
+    public static int CapacityFor(long generationBytes, int indexRatio) => (int)Math.Min(int.MaxValue / 2, generationBytes / ((long)indexRatio * sizeof(ulong)));
+
+    /// <summary>Slots that keep an index of <paramref name="records"/> entries under the three-quarters roll threshold.</summary>
+    public static int CapacityForRecords(int records) => records + records / 3 + 1;
 
     /// <summary>Writes the file header of a new generation; the write frontier starts after it.</summary>
     public void WriteFileHeader()
@@ -153,6 +157,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
             if (header.KeyLength == key.Length && bytesRead >= TrieNodeLogRecord.HeaderLength + key.Length
                 && buffer.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key))
                 return true;
+            Metrics.IncrementTrieNodeLogIndexFalseMatches();
         }
 
         header = default;
@@ -161,12 +166,14 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         return false;
     }
 
-    public int ReadAt(long offset, Span<byte> destination)
+    public int ReadAt(long offset, Span<byte> destination) => ReadAt(Handle, offset, destination);
+
+    public static int ReadAt(SafeFileHandle handle, long offset, Span<byte> destination)
     {
         int total = 0;
         while (total < destination.Length)
         {
-            int read = RandomAccess.Read(Handle, destination[total..], offset + total);
+            int read = RandomAccess.Read(handle, destination[total..], offset + total);
             if (read <= 0) break;
             total += read;
         }

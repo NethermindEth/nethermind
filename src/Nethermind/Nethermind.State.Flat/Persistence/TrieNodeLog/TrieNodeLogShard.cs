@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using Microsoft.Win32.SafeHandles;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -39,6 +40,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private readonly IColumnsDb<FlatDbColumns> _db;
     private readonly ILogger _logger;
     private readonly long _generationBytes;
+    private readonly int _indexCapacity;
     private readonly int _mergeLag;
     private readonly int _maxBacklog;
     private readonly SemaphoreSlim _mergeLimiter;
@@ -71,7 +73,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     /// <param name="mergeLimiter">Caps concurrent merges across every shard of the log.</param>
     /// <param name="backlogMargin">Sealed generations allowed beyond <paramref name="mergeLag"/> before a roll waits for a merge.</param>
-    public TrieNodeLogShard(string name, FlatDbColumns column, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
+    public TrieNodeLogShard(string name, FlatDbColumns column, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int indexRatio, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
     {
         Name = name;
         Column = column;
@@ -81,6 +83,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _db = db;
         _logger = logManager.GetClassLogger<TrieNodeLogShard>();
         _generationBytes = generationBytes;
+        _indexCapacity = TrieNodeLogGeneration.CapacityFor(generationBytes, indexRatio);
         _mergeLag = mergeLag;
         _maxBacklog = mergeLag + backlogMargin;
         _mergeLimiter = mergeLimiter;
@@ -252,7 +255,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     {
         WaitForBacklog();
         using Lock.Scope _ = _lock.EnterScope();
-        TrieNodeLogGeneration generation = new(_nextGeneration, System.IO.Path.Combine(_basePath, $"{FilePrefix}{_nextGeneration:D8}{FileExtension}"), TrieNodeLogGeneration.CapacityFor(_generationBytes));
+        TrieNodeLogGeneration generation = new(_nextGeneration, System.IO.Path.Combine(_basePath, $"{FilePrefix}{_nextGeneration:D8}{FileExtension}"), _indexCapacity);
         generation.WriteFileHeader();
         _nextGeneration++;
         _generations.Add(generation);
@@ -410,7 +413,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
                 Core.IWriteBatch column = batch.GetColumnBatch(Column);
-                Scanner scanner = new(generation, generation.Frontier);
+                Scanner scanner = new(generation.Handle, generation.Frontier);
                 try
                 {
                     while (scanner.MoveNext())
@@ -537,23 +540,27 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private TrieNodeLogGeneration RecoverGeneration(ulong number, string path, ulong committedVersion)
     {
         long fileLength = new FileInfo(path).Length;
-        TrieNodeLogGeneration generation = new(number, path, Math.Max(TrieNodeLogGeneration.CapacityFor(_generationBytes), TrieNodeLogGeneration.CapacityFor(fileLength)));
 
-        // First pass: the frontier is the end of the last commit record the metadata column confirms.
+        // First pass: the frontier is the end of the last commit record the metadata column confirms. The index is
+        // sized by the record count rather than the configured ratio, so a file written under another ratio fits.
         long frontier = TrieNodeLogGeneration.FileHeaderLength;
-        using (Scanner scanner = new(generation, fileLength))
+        int records = 0;
+        using (SafeFileHandle handle = File.OpenHandle(path))
+        using (Scanner scanner = new(handle, fileLength))
         {
             while (scanner.MoveNext() && scanner.Header.Version <= committedVersion)
             {
                 if (scanner.Header.IsCommit) frontier = scanner.Offset + scanner.Header.Length;
+                else records++;
             }
         }
 
+        TrieNodeLogGeneration generation = new(number, path, TrieNodeLogGeneration.CapacityForRecords(records));
         generation.Truncate(frontier);
 
         // Second pass: index the surviving records; a later record of the same key replaces the earlier slot.
         Span<byte> buffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
-        using (Scanner scanner = new(generation, frontier))
+        using (Scanner scanner = new(generation.Handle, frontier))
         {
             while (scanner.MoveNext())
             {
@@ -570,7 +577,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
 
     /// <summary>Sequential record reader over <c>[0, end)</c> of a generation file; stops at the first implausible header.</summary>
-    private sealed class Scanner(TrieNodeLogGeneration generation, long end) : IDisposable
+    private sealed class Scanner(SafeFileHandle handle, long end) : IDisposable
     {
         private byte[] _buffer = ArrayPool<byte>.Shared.Rent(ScanBufferSize);
         private long _bufferOffset; // file offset of _buffer[0]
@@ -611,7 +618,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             }
 
             _bufferOffset = _next;
-            _buffered = generation.ReadAt(_next, _buffer.AsSpan(0, (int)Math.Min(_buffer.Length, end - _next)));
+            _buffered = TrieNodeLogGeneration.ReadAt(handle, _next, _buffer.AsSpan(0, (int)Math.Min(_buffer.Length, end - _next)));
             _recordStart = 0;
             return _buffered >= length;
         }

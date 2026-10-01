@@ -426,6 +426,14 @@ public static class Metrics
     [KeyIsLabel("outcome")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogReads { get; } = new();
 
+    private static long _trieNodeLogIndexFalseMatches;
+
+    [CounterMetric]
+    [Description("Trie node log index probes whose slot tag matched but whose record held another key, so the record was read for nothing")]
+    public static long TrieNodeLogIndexFalseMatches => Volatile.Read(ref _trieNodeLogIndexFalseMatches);
+
+    public static void IncrementTrieNodeLogIndexFalseMatches() => Interlocked.Increment(ref _trieNodeLogIndexFalseMatches);
+
     [CounterMetric]
     [Description("Bytes written to trie node log files (records with their headers), by column")]
     [KeyIsLabel("column")]

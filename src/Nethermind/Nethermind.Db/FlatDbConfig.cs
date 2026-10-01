@@ -69,6 +69,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int TrieNodeLogStateTopShardCount { get; set; } = 2;
     public int TrieNodeLogStateShardCount { get; set; } = 1;
     public int TrieNodeLogStorageShardCount { get; set; } = 2;
+    public int TrieNodeLogIndexRatio { get; set; } = 16;
     public int TrieNodeLogMergeLag { get; set; } = 2;
     public int TrieNodeLogMaxConcurrentMerges { get; set; } = 2;
     public int TrieNodeLogMergeBacklogMargin { get; set; } = 2;
