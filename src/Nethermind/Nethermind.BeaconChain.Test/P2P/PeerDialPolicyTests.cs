@@ -251,6 +251,8 @@ public class PeerDialPolicyTests
 
             await manager.RunMaintenanceRoundAsync(token);
             Assert.That(manager.PeerCount, Is.Zero, "a static peer on another fork was admitted");
+            // The remote refuses a second session while it still holds its half of the dropped one.
+            await WaitUntilAsync(() => remote.P2P.SessionCountForTest == 0 && local.P2P.SessionCountForTest == 0, token, "the session of the peer on another fork was left open");
 
             Volatile.Write(ref compatible, true);
             // The clock never moves, so only a dial that ignores the backoff of the failed one can connect.
