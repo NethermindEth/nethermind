@@ -38,6 +38,26 @@ namespace Nethermind.Evm.Test
             AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
         }
 
+        [Test]
+        public void Default_tracer_preserves_cold_access_gas([Values(Instruction.SLOAD, Instruction.BALANCE)] Instruction instruction)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
+            byte[] code = instruction == Instruction.SLOAD
+                ? Prepare.EvmCode.PushData(1).Op(instruction).Op(Instruction.POP).Done
+                : Prepare.EvmCode.PushData(TestItem.AddressC).Op(instruction).Op(Instruction.POP).Done;
+
+            TestAllTracerWithOutput tracer = new();
+            Execute(tracer, code);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.IsTracingAccess, Is.False);
+                Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+                AssertGas(tracer, GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.Base
+                    + (instruction == Instruction.SLOAD ? GasCostOf.ColdSLoad : GasCostOf.ColdAccountAccess));
+            }
+        }
+
         /// <remarks>The halted frame must leave slot 1 cold, so both runs pay the same gas.</remarks>
         [Test]
         public void Cold_sload_out_of_gas_in_a_sub_call_leaves_the_slot_cold()
@@ -128,13 +148,6 @@ namespace Nethermind.Evm.Test
                     Assert.That(tracer.Actions, Has.Count.EqualTo(traceActions ? 1 : 0));
                 }
             }
-        }
-
-        protected override TestAllTracerWithOutput CreateTracer()
-        {
-            TestAllTracerWithOutput tracer = base.CreateTracer();
-            tracer.IsTracingAccess = false;
-            return tracer;
         }
     }
 }

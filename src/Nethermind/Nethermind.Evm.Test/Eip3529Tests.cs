@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
             Assert.That(tracer.Refund, Is.EqualTo(refund));
-            ulong uGasUsed = gasUsed;
+            ulong uGasUsed = gasUsed + GasCostOf.ColdSLoad;
             ulong uRefund = refund;
             AssertGas(tracer, uGasUsed + GasCostOf.Transaction - Math.Min((uGasUsed + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), uRefund));
         }
@@ -148,7 +148,7 @@ namespace Nethermind.Evm.Test
             Transaction tx2 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // self destruct contract
             Transaction tx3 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(3).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            uint gasUsedByTx3 = 37767;
+            uint gasUsedByTx3 = 44867;
 
             ulong blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;
