@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
@@ -259,6 +260,44 @@ public class ForkChoiceRunnerTests
             Assert.That(SszRoots.HashTreeRoot(actual), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
             Assert.That(SszRoots.HashTreeRoot(actual), Is.EqualTo(SszRoots.HashTreeRoot(transitioned)), "the state transition's own crossing lands on the same state");
             Assert.That(BlockStateRoot(chain, gloasRoot), Is.EqualTo(blockStateRoot), "the block state the providers froze must not be advanced in place");
+        }
+    }
+
+    /// <summary>
+    /// A gossip vote for an old head names a checkpoint whose block lies a whole epoch before the epoch start. At
+    /// mainnet registry size a full state merkleization takes seconds, so one per skipped slot held the import worker
+    /// for minutes; one incremental hasher must serve every slot root of the advance and still land on the spec's state.
+    /// </summary>
+    [Test]
+    public void Checkpoint_state_over_skipped_slots_hashes_every_slot_through_one_incremental_hasher()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        (ForkChoiceRunner runner, _) = RunnerAt(chain);
+        IBeaconStateHasher defaultHasher = runner.CheckpointStateHasher();
+        List<CountingHasher> made = [];
+        runner.CheckpointStateHasher = () =>
+        {
+            CountingHasher hasher = new(new CachedBeaconStateHasher());
+            made.Add(hasher);
+            return hasher;
+        };
+        Hash256 anchorStateRoot = SszRoots.HashTreeRoot(chain.AnchorState);
+        CheckpointRef checkpoint = new(1, chain.AnchorRoot);
+        BeaconStateFulu expected = chain.AnchorState.Clone();
+        SlotProcessing.ProcessSlots(expected, Presets.SlotsPerEpoch, new EpochCache());
+
+        ForkedBeaconState first = runner.GetCheckpointState(checkpoint);
+        ForkedBeaconState repeated = runner.GetCheckpointState(checkpoint);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(defaultHasher, Is.TypeOf<CachedBeaconStateHasher>(), "production advances must hash incrementally");
+            Assert.That(chain.AnchorState.Slot, Is.Zero, "fixture bug: the checkpoint block must sit a whole epoch before the epoch start");
+            Assert.That(made, Has.Count.EqualTo(1), "one hasher per advance, and none for the cached repeat");
+            Assert.That(made.Single().Calls, Is.EqualTo((int)Presets.SlotsPerEpoch), "every skipped slot's state root comes from that hasher");
+            Assert.That(repeated, Is.SameAs(first));
+            Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)first).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
+            Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot), "the block state must not be advanced in place");
         }
     }
 
@@ -1192,5 +1231,22 @@ public class ForkChoiceRunnerTests
     private sealed class AcceptingNotifier : INewPayloadNotifier
     {
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
+    }
+
+    private sealed class CountingHasher(IBeaconStateHasher inner) : IBeaconStateHasher
+    {
+        public int Calls { get; private set; }
+
+        public Hash256 HashTreeRoot(BeaconStateFulu state)
+        {
+            Calls++;
+            return inner.HashTreeRoot(state);
+        }
+
+        public Hash256 HashTreeRoot(BeaconStateGloas state)
+        {
+            Calls++;
+            return inner.HashTreeRoot(state);
+        }
     }
 }

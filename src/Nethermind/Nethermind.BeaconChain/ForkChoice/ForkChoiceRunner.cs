@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -79,6 +80,10 @@ public sealed class ForkChoiceRunner
 
     /// <summary>Committee shufflings only; safe to share across forks (keyed by decision root). The balance memo is never used through this instance.</summary>
     private readonly EpochCache _committees = new();
+
+    /// <summary>Makes the hasher of one checkpoint state advance, which serves every <c>process_slot</c> state root of that advance.</summary>
+    /// <remarks>An incremental hasher pays one full merkleization per advance instead of one per skipped slot.</remarks>
+    internal Func<IBeaconStateHasher> CheckpointStateHasher { get; set; } = static () => new CachedBeaconStateHasher();
 
     /// <summary>An attestation for the current slot, validated and indexed, waiting for the next slot tick (the spec only counts attestations from past slots).</summary>
     private readonly record struct QueuedAttestation(ulong Slot, ulong[] AttestingIndices, Hash256 BlockRoot, ulong TargetEpoch, bool? PayloadPresent);
@@ -1549,7 +1554,7 @@ public sealed class ForkChoiceRunner
     /// <summary>A mutable copy of <paramref name="blockState"/> advanced to <paramref name="targetSlot"/>, crossing into <paramref name="targetFork"/> on the way when needed.</summary>
     private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ForkedBeaconState blockState, ulong targetSlot, BeaconFork targetFork)
     {
-        EpochCache cache = new();
+        EpochCache cache = new() { Hasher = CheckpointStateHasher() };
         ForkedBeaconState state = blockState switch
         {
             ForkedBeaconState.OfFulu => new ForkedBeaconState.OfFulu(_stateProvider.CopyBlockState(blockRoot)
