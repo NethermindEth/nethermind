@@ -454,15 +454,28 @@ public class RangeSyncPeerSelectionTests
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1, AnchorSlot + 2);
         ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
         StubPeer peer = new("ahead", AnchorSlot + 2, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
-        StaleStatusPool pool = new(peer, AnchorSlot);
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        // Each lookup after the first follows a whole wait, so by the third range sync has waited twice; the run is ended there, not by the clock.
+        StaleStatusPool pool = new(peer, AnchorSlot, lookups => { if (lookups == 3) stop.Cancel(); });
         RangeSync sync = new(pool, LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
-        (bool ended, int yielded) = await RunBoundedAsync(sync, anchorRoot, AnchorSlot + wallSlotsPastHead, token);
+        List<ForkedSignedBeaconBlock> yielded = [];
+        try
+        {
+            await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => AnchorSlot + wallSlotsPastHead, stop.Token))
+            {
+                yielded.Add(block);
+            }
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested && !token.IsCancellationRequested)
+        {
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pool.Refreshes, refreshed ? (NUnit.Framework.Constraints.IResolveConstraint)Is.EqualTo(new[] { AnchorSlot + 1 }) : Is.Empty, "asked once, for the slot range sync waits on");
-            Assert.That((ended, yielded), Is.EqualTo(refreshed ? (true, chain.Length) : (false, 0)));
+            Assert.That(yielded, refreshed ? (NUnit.Framework.Constraints.IResolveConstraint)Is.EqualTo(chainBlocks) : Is.Empty);
+            Assert.That(pool.Lookups, Is.EqualTo(refreshed ? 2 : 3), "refreshed, the run ends after one wait; otherwise it is still waiting when stopped");
             Assert.That(pool.ChainClaims, Is.Empty, "a slot behind the wall slot may be empty, so it is no evidence the chain reached it");
         }
     }
@@ -494,16 +507,23 @@ public class RangeSyncPeerSelectionTests
     }
 
     /// <summary>Selects <paramref name="peer"/> by a last status of <paramref name="staleHeadSlot"/> until a refresh is asked for, as <see cref="PeerManager"/> does.</summary>
-    private sealed class StaleStatusPool(IBeaconSyncPeer peer, ulong staleHeadSlot) : IBeaconSyncPeerPool
+    /// <param name="onLookup">Called with the number of lookups so far, the current one included.</param>
+    private sealed class StaleStatusPool(IBeaconSyncPeer peer, ulong staleHeadSlot, Action<int>? onLookup = null) : IBeaconSyncPeerPool
     {
         private ulong _statusHeadSlot = staleHeadSlot;
+
+        public int Lookups { get; private set; }
 
         public List<ulong> Refreshes { get; } = [];
 
         /// <summary>The slots claimed reached, which would let a pool offer peers past their last head.</summary>
         public List<ulong> ChainClaims { get; } = [];
 
-        public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => _statusHeadSlot >= minHeadSlot ? [peer] : [];
+        public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
+        {
+            onLookup?.Invoke(++Lookups);
+            return _statusHeadSlot >= minHeadSlot ? [peer] : [];
+        }
 
         public void RefreshStatusesBelow(ulong slot, string reason)
         {
