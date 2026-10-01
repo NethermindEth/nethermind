@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -18,6 +19,7 @@ using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
@@ -924,6 +926,70 @@ public class BlockImporterTests
             Assert.That(importer.IsKnown(strayVote.Root), Is.True);
             Assert.That(RefusedByForkChoice("body_attestation") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
         });
+    }
+
+    /// <summary>
+    /// The transition checks a body vote with the committees of its block's state, but fork choice reads its aggregation bits
+    /// through its target's state (specs/phase0/fork-choice.md on_attestation). A proposer can name an ancestor whose epoch-2
+    /// shuffling differs (P at slot 30, before the decision block A at slot 31), so that bit then names another validator: the
+    /// signature must be checked again, and this unsigned vote must credit nobody. A vote for A, whose shuffling is the block's,
+    /// still counts without a signature.
+    /// </summary>
+    [Test]
+    public void Body_attestation_for_a_target_of_another_shuffling_is_checked_against_its_signature()
+    {
+        const ulong epoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        UnsignedChain.ChainBlock p = chain.Extend(chain.AnchorRoot, slot: 30, payloadHashByte: 0xB0);
+        UnsignedChain.ChainBlock a = chain.Extend(p.Root, slot: 31, payloadHashByte: 0xB1);
+        CommitteeCache pCommittees = EpochCommittees(p, epoch);
+        CommitteeCache aCommittees = EpochCommittees(a, epoch);
+        ulong voteSlot = epoch * Presets.SlotsPerEpoch;
+        while (pCommittees.GetBeaconCommittee(voteSlot, 0).Length != 1 || aCommittees.GetBeaconCommittee(voteSlot, 0).Length != 1
+            || pCommittees.GetBeaconCommittee(voteSlot, 0)[0] == aCommittees.GetBeaconCommittee(voteSlot, 0)[0])
+        {
+            voteSlot++;
+        }
+
+        UnsignedChain.ChainBlock voting = chain.Extend(a.Root, slot: voteSlot + 1, payloadHashByte: 0xB2, attestations: [Vote(p.Root), Vote(a.Root)]);
+        BlockImportResult[] results = [.. new[] { p, a, voting }.Select(block => importer.Import(block.Block, block.Root, verifySignatures: false))];
+        ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        runner.GetHead();
+        ForkChoiceSnapshot snapshot = runner.Snapshot();
+        ulong balance = chain.Anchor.AnchorState.Validators![0].EffectiveBalance;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(voteSlot, Is.LessThan((epoch + 1) * Presets.SlotsPerEpoch - 1), "fixture bug: no slot of epoch 2 has two one-member committees of different validators");
+            Assert.That(results, Is.All.EqualTo(BlockImportResult.Imported));
+            Assert.That(Weight(p.Root) - Weight(a.Root), Is.Zero, "the vote for P credits nobody");
+            Assert.That(Weight(a.Root), Is.EqualTo(balance), "the vote for A counts");
+        }
+
+        ulong Weight(Hash256 root) => snapshot.Nodes.Single(node => node.Root == root).Weight;
+
+        Attestation Vote(Hash256 target) => new()
+        {
+            AggregationBits = new BitArray(1, true),
+            Data = new AttestationData
+            {
+                Slot = voteSlot,
+                Index = 0,
+                BeaconBlockRoot = target,
+                Source = chain.Anchor.AnchorState.CurrentJustifiedCheckpoint,
+                Target = new Checkpoint { Epoch = epoch, Root = target },
+            },
+            Signature = new BlsSignature(SignatureSets.G2PointAtInfinity),
+            CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+        };
+    }
+
+    private static CommitteeCache EpochCommittees(UnsignedChain.ChainBlock block, ulong epoch)
+    {
+        BeaconStateFulu state = block.PostState.Clone();
+        SlotProcessing.ProcessSlots(state, epoch * Presets.SlotsPerEpoch, new EpochCache { Hasher = new CachedBeaconStateHasher() });
+        return new EpochCache().GetCommitteeCache(state, epoch);
     }
 
     /// <summary>
