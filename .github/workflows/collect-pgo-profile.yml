@@ -235,6 +235,7 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           cache: false
+          dotnet-version: "10.0.401"
 
       - name: Build dotnet-pgo from source
         shell: bash
@@ -255,6 +256,14 @@ jobs:
           chmod +x "${dotnet_pgo_dir}/dotnet-pgo"
           find "${dotnet_pgo_dir}" -type f -print0 | sort -z | xargs -0 sha256sum > "${tool_root}/tool-binaries.sha256"
           echo "${dotnet_pgo_dir}" >> "${GITHUB_PATH}"
+
+      - name: Validate smoothing failure isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet run --project tools/PgoToolValidation/PgoToolValidation.csproj -c Release -- \
+            "${RUNNER_TEMP}/pgo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/tool/runtime/artifacts/bin/coreclr/linux.x64.Release/dotnet-pgo" \
+            src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
 
       - name: Upload offline tool identities
         if: always()
