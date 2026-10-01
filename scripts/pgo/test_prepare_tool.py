@@ -15,7 +15,7 @@ class PrepareToolTests(unittest.TestCase):
         lock, patches = verified_patches(Path(__file__).with_name("tool-lock.json"))
         self.assertEqual(lock["runtime_version"], "10.0.12")
         self.assertEqual(lock["traceevent_version"], "3.2.8")
-        self.assertEqual(len(patches), 7)
+        self.assertEqual(len(patches), 8)
 
     def test_bad_checksum_fails_before_network_or_source_mutation(self):
         with tempfile.TemporaryDirectory() as directory:

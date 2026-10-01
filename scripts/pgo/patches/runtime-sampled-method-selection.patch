@@ -1,0 +1,35 @@
+diff --git a/src/coreclr/tools/dotnet-pgo/Program.cs b/src/coreclr/tools/dotnet-pgo/Program.cs
+--- a/src/coreclr/tools/dotnet-pgo/Program.cs
++++ b/src/coreclr/tools/dotnet-pgo/Program.cs
+@@ -1785,6 +1785,19 @@
+                     }
+ 
+                     correlator.SmoothAllProfiles(_command.Warnings ? PrintWarning : null);
++
++                    HashSet<MethodDesc> listedMethods = new HashSet<MethodDesc>();
++                    long nextMethodIndex = 0;
++                    foreach (var entry in methodsToAttemptToPrepare)
++                    {
++                        listedMethods.Add(entry.Value.Method);
++                        nextMethodIndex = Math.Max(nextMethodIndex, checked(entry.Key + 1));
++                    }
++                    foreach (MethodDesc method in correlator.ProfiledMethods)
++                    {
++                        if (correlator.GetProfile(method).AttributedSamples >= Get(_command.SpgoMinSamples) && listedMethods.Add(method))
++                            methodsToAttemptToPrepare.Add(nextMethodIndex++, new ProcessedMethodData(Math.Max(0, excludeEventsBefore), method, "SampleProfile"));
++                    }
+                 }
+ 
+                 if (_command.DisplayProcessedEvents)
+diff --git a/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs b/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs
+--- a/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs
++++ b/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs
+@@ -62,6 +62,8 @@
+ 
+         public SampleProfile GetProfile(MethodDesc md)
+             => _methodInf.GetValueOrDefault(md)?.Profile;
++
++        public IEnumerable<MethodDesc> ProfiledMethods => _methodInf.Keys;
+ 
+         public void SmoothAllProfiles(Action<string> warningLogger)
+         {

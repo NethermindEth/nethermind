@@ -88,6 +88,9 @@ foreach (bool logging in new[] { true, false })
     object good = correlatorType.GetMethod("GetProfile").Invoke(correlator, new[] { keys[1] });
     if (sampleType.GetProperty("SmoothedSamples").GetValue(good) == null)
         throw new Exception("Valid method was not smoothed");
+    IEnumerable profiledMethods = (IEnumerable)correlatorType.GetProperty("ProfiledMethods").GetValue(correlator);
+    if (!profiledMethods.Cast<object>().SequenceEqual(new[] { keys[1] }))
+        throw new Exception("Profile enumeration must retain the successfully smoothed method and exclude the failed method");
     Console.WriteLine($"PASS: failed profile removed; valid profile smoothed; logging={logging}; warnings={warnings.Count}");
 }
 object unrelated = MakeCorrelator(null, out IDictionary untouched);

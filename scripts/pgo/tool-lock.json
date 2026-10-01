@@ -52,6 +52,13 @@
       "upstream_commit": null,
       "upstream_url": null,
       "purpose": "Attribute Linux Universal CPU samples with checked weights and inclusive process-scoped sample windows; report missing stacks and accounting context."
+    },
+    {
+      "file": "patches/runtime-sampled-method-selection.patch",
+      "sha256": "250536ee2897f61868f12a565be5462228406e72f48b2138fd101309e66a8f70",
+      "upstream_commit": null,
+      "upstream_url": null,
+      "purpose": "Retain successfully smoothed sample profiles meeting the sample threshold even when methods compiled before the selected sample window."
     }
   ],
   "purpose": "Isolated offline profile conversion; never included in production runtime images."
