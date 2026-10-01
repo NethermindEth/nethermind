@@ -45,10 +45,16 @@ public class ReqRespLimitsTests
         RequestTiming timing = new();
         byte[] request = timing.Track(new byte[sizeof(ulong)]);
         string id = protocolKind switch { 0 => ping.Id, 1 => meta.Id, _ => invalidDecoder.Id };
-        ReqRespFailureReason reason = failure == 0 ? ReqRespFailureReason.Timeout
-            : failure == 3 ? ReqRespFailureReason.PeerError : ReqRespFailureReason.InvalidMessage;
-        long before = FailureCount(id, reason);
-        long invalidBefore = FailureCount(id, ReqRespFailureReason.InvalidMessage);
+        // A clean close before any byte is a session ending, not a failed response, so it records nothing.
+        ReqRespFailureReason? reason = failure switch
+        {
+            0 => ReqRespFailureReason.Timeout,
+            3 => ReqRespFailureReason.PeerError,
+            4 => null,
+            _ => ReqRespFailureReason.InvalidMessage,
+        };
+        ReqRespFailureReason[] counted = [ReqRespFailureReason.Timeout, ReqRespFailureReason.PeerError, ReqRespFailureReason.InvalidMessage];
+        long[] before = Array.ConvertAll(counted, r => FailureCount(id, r));
         using MemoryStream input = new();
         if (failure == 1)
         {
@@ -93,12 +99,8 @@ public class ReqRespLimitsTests
             }
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(FailureCount(id, reason), Is.EqualTo(before + 1));
-            Assert.That(FailureCount(id, ReqRespFailureReason.InvalidMessage),
-                Is.EqualTo(invalidBefore + (reason == ReqRespFailureReason.InvalidMessage ? 1 : 0)));
-        }
+        Assert.That(Array.ConvertAll(counted, r => FailureCount(id, r)),
+            Is.EqualTo(before.Select((count, i) => count + (counted[i] == reason ? 1 : 0))));
 
         ValueTask<ReadResult> ReadAsync(int length)
         {

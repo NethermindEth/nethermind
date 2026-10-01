@@ -428,15 +428,17 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
         RequestTiming? timing = exchange.Timing;
         using ChannelStreamAdapter input = new(downChannel);
         using CancellationTokenSource cts = StartTimeout(TtfbTimeout + RespTimeout);
-        bool peerError = false;
+        bool classified = false;
         try
         {
             ResponseChunk chunk;
             try
             {
                 await WriteRequestAndEofAsync(downChannel, input, EncodeRequest(request), cts.Token);
-                chunk = await ReqRespFraming.ReadResponseChunkAsync(input, 0, MaxResponseSize, cts.Token)
-                    ?? throw new Eth2ReqRespException("Peer closed without responding");
+                ResponseChunk? read = await ReqRespFraming.ReadResponseChunkAsync(input, 0, MaxResponseSize, cts.Token);
+                // A clean close before any byte is the peer or this node ending the session, not a malformed response.
+                classified = read is null;
+                chunk = read ?? throw new Eth2ReqRespException("Peer closed without responding");
             }
             catch (Exception e) when (e is not Eth2ReqRespException && cts.IsCancellationRequested)
             {
@@ -450,7 +452,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
                 return DecodeWithMetrics(chunk.Payload);
             }
 
-            peerError = true;
+            classified = true;
             RecordFailure(Id, ReqRespFailureReason.PeerError);
             throw ErrorChunkToException(chunk);
         }
@@ -459,7 +461,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
             RecordFailure(Id, ReqRespFailureReason.Timeout);
             throw;
         }
-        catch (Eth2ReqRespException) when (!peerError)
+        catch (Eth2ReqRespException) when (!classified)
         {
             RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
             throw;

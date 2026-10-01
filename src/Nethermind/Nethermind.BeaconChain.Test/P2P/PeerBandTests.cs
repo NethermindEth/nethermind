@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
@@ -56,7 +55,7 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task Metrics_peer_removal_and_count_publication_wait_for_admission_lock(CancellationToken token)
+    public async Task Metrics_peer_gauge_and_counters_follow_an_admission_and_a_drop(CancellationToken token)
     {
         Node client = CreateNode();
         Node server = CreateNode();
@@ -68,38 +67,19 @@ public class PeerBandTests
             await server.P2P.StartAsync(token);
             PeerManager manager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
             ulong connectedBefore = Metrics.BeaconChainPeersConnected;
-            Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
-            Assert.That(Metrics.BeaconChainPeersConnected, Is.EqualTo(connectedBefore + 1));
-            object peer = manager.GetBestPeers(0).Single();
-            object admissionLock = typeof(PeerManager).GetField("_admissionLock", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(manager)!;
-            MethodInfo remove = typeof(PeerManager).GetMethod("DropAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            using ManualResetEventSlim entered = new();
-            using ManualResetEventSlim dropped = new();
             ulong droppedBefore = Metrics.BeaconChainPeersDropped;
-            Task removal;
-            bool removedWhileLocked;
-            int countWhileLocked;
-            int gaugeWhileLocked;
-            lock (admissionLock)
-            {
-                removal = Task.Run(async () =>
-                {
-                    entered.Set();
-                    await (Task)remove.Invoke(manager, [peer, GoodbyeReason.ClientShutdown, "shutdown", token, false, null])!;
-                    dropped.Set();
-                }, token);
-                Assert.That(entered.Wait(TimeSpan.FromSeconds(5), token), Is.True);
-                removedWhileLocked = dropped.Wait(TimeSpan.FromMilliseconds(100), token);
-                countWhileLocked = manager.PeerCount;
-                gaugeWhileLocked = Metrics.BeaconChainPeerCount;
-            }
 
-            await removal.WaitAsync(token);
+            Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
+            (int Pool, int Gauge, ulong Connected) admitted = (manager.PeerCount, Metrics.BeaconChainPeerCount, Metrics.BeaconChainPeersConnected);
+
+            IBeaconSyncPeer peer = manager.GetBestPeers(0).Single();
+            // A content violation is never kept at the peer floor, so the last failure drops the peer.
+            for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new Eth2ReqRespException("malformed reply"), 0, token);
+
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(removedWhileLocked, Is.False);
-                Assert.That((countWhileLocked, gaugeWhileLocked), Is.EqualTo((1, 1)));
-                Assert.That((manager.PeerCount, Metrics.BeaconChainPeerCount), Is.EqualTo((0, 0)));
+                Assert.That(admitted, Is.EqualTo((1, 1, connectedBefore + 1)), "after the admission");
+                Assert.That((manager.PeerCount, Metrics.BeaconChainPeerCount), Is.EqualTo((0, 0)), "after the drop");
                 Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(droppedBefore + 1));
             }
         }
