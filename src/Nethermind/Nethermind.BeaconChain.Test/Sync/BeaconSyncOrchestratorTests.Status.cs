@@ -250,6 +250,9 @@ public partial class BeaconSyncOrchestratorTests
         BeaconSyncOrchestrator orchestrator = container.Resolve<BeaconSyncOrchestrator>();
         BeaconChainStatusHolder statusHolder = container.Resolve<BeaconChainStatusHolder>();
         AddColumn(container.Resolve<DataColumnSidecarPool>(), ServeRangeStart + 10);
+        // The store records its floor with the first write, which the module's writer runs off this thread.
+        DataColumnSidecarPoolPersistenceTests.DrainStoreWrites(container.Resolve<ColumnStoreWriter>());
+
         Initialize(orchestrator, ImporterWithHead(FuluAnchorSlot, FuluHeadOffset), FuluAnchorSlot);
 
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
