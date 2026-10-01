@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -89,6 +91,37 @@ public class BeaconChainServiceTests
         Assert.That(() => container.Resolve<BeaconChainService>().Start(), Throws.InvalidOperationException.With.Message.Contains("anchor state"), "the driver went on to read the anchor");
         Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
         Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+    }
+
+    [Test]
+    public async Task Engine_stall_does_not_hold_shutdown_or_dispose_the_run_token()
+    {
+        using IContainer container = BuildContainer();
+        using BeaconChainService service = new(container.Resolve<IBeaconChainConfig>(), container.Resolve<BeaconChainSpec>(),
+            container.Resolve<BeaconChainStore>(), container.Resolve<PubkeyCache>(), container.Resolve<CheckpointSync>(),
+            container.Resolve<BeaconSyncOrchestrator>(), container.Resolve<ExternalClDetector>(), LimboLogs.Instance)
+        {
+            ShutdownTimeout = TimeSpan.FromMilliseconds(20),
+        };
+        TaskCompletionSource run = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        typeof(BeaconChainService).GetField("_runTask", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(service, run.Task);
+        CancellationTokenSource source = (CancellationTokenSource)typeof(BeaconChainService)
+            .GetField("_cancellationTokenSource", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!;
+        try
+        {
+            await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            service.Dispose();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(source.Token.IsCancellationRequested, Is.True);
+                Assert.That(run.Task.IsCompleted, Is.False);
+            }
+        }
+        finally
+        {
+            run.TrySetResult();
+        }
+        Assert.That(() => source.Token, Throws.TypeOf<ObjectDisposedException>().After(2000, 10));
     }
 
     // Regression for gap 113: ServiceStopper.StopAllServices() resolves every registered

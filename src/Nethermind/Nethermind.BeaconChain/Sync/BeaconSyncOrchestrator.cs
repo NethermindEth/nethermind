@@ -1908,7 +1908,7 @@ public sealed class BeaconSyncOrchestrator(
         if (_logger.IsDebug) _logger.Debug($"Head step: head {head.HeadRoot} at slot {head.HeadSlot}, sync tip slot {_syncTip.Slot}, justified epoch {head.Justified.Epoch}, finalized epoch {head.Finalized.Epoch}, wall slot {slotClock.CurrentSlot}");
         if (head.HeadExecutionHash is { } headExec)
         {
-            PayloadStatusV1? status = await ForkchoiceUpdatedAsync(head, headExec);
+            PayloadStatusV1? status = await ForkchoiceUpdatedAsync(head, headExec, token);
             if (status?.Status == PayloadStatus.Invalid)
             {
                 if (_logger.IsWarn) _logger.Warn($"Execution layer reported head {head.HeadRoot} INVALID (latest valid hash {status.LatestValidHash}); invalidating and re-running fork choice");
@@ -1917,7 +1917,7 @@ public sealed class BeaconSyncOrchestrator(
                 if (head.HeadExecutionHash is { } retryExec)
                 {
                     headExec = retryExec;
-                    status = await ForkchoiceUpdatedAsync(head, retryExec);
+                    status = await ForkchoiceUpdatedAsync(head, retryExec, token);
                     if (status?.Status == PayloadStatus.Invalid)
                     {
                         importer.OnForkchoiceUpdated(head.HeadRoot, headExec, status);
@@ -1983,7 +1983,7 @@ public sealed class BeaconSyncOrchestrator(
     internal Task<PayloadStatusV1?> KickExecutionAsync(Hash256 anchorRoot)
     {
         CheckpointRef anchor = new(spec.GetEpoch(_anchorSlot), anchorRoot);
-        return ForkchoiceUpdatedAsync(new HeadView(anchorRoot, _anchorSlot, _anchorExecutionHash, null, null, anchor, anchor), _anchorExecutionHash);
+        return ForkchoiceUpdatedAsync(new HeadView(anchorRoot, _anchorSlot, _anchorExecutionHash, null, null, anchor, anchor), _anchorExecutionHash, CancellationToken.None);
     }
 
     /// <summary>Sends <c>forkchoiceUpdated</c> unless the same head, safe and finalized hashes were sent within <see cref="ForkchoiceResendInterval"/>.</summary>
@@ -1992,8 +1992,9 @@ public sealed class BeaconSyncOrchestrator(
     /// It is still resent at that interval, as the EL treats a CL that sends neither this nor <c>newPayload</c> for a while as gone.
     /// A failed call returns <c>null</c> and is not remembered, so the next head step sends it again.
     /// </remarks>
-    private async Task<PayloadStatusV1?> ForkchoiceUpdatedAsync(HeadView head, Hash256 headExec)
+    private async Task<PayloadStatusV1?> ForkchoiceUpdatedAsync(HeadView head, Hash256 headExec, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         ForkchoiceHashes sent = new(headExec, head.JustifiedExecutionHash ?? headExec, head.FinalizedExecutionHash ?? _anchorExecutionHash);
         long now = slotClock.UnixMilliseconds;
         if (_lastForkchoice is { } last && last.Hashes == sent && last.Status.Status != PayloadStatus.Invalid
@@ -2005,10 +2006,12 @@ public sealed class BeaconSyncOrchestrator(
         PayloadStatusV1 status;
         try
         {
-            status = await engine.ForkchoiceUpdated(sent.Head, sent.Safe, sent.Finalized);
+            status = await engine.ForkchoiceUpdated(sent.Head, sent.Safe, sent.Finalized).WaitAsync(token);
         }
-        catch (EngineUnavailableException e)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
+            _elInSync = false;
+            _lastForkchoice = null;
             if (_logger.IsWarn) _logger.Warn($"forkchoiceUpdated returned no status; it is sent again on the next head step: {e.Message}");
             return null;
         }
@@ -2074,7 +2077,7 @@ public sealed class BeaconSyncOrchestrator(
         if (epoch > _statusLogEpoch && _lastHead is { } head && _logger.IsInfo)
         {
             _statusLogEpoch = epoch;
-            _logger.Info($"Beacon chain: head slot {head.HeadSlot} ({head.HeadRoot}), finalized epoch {head.Finalized.Epoch}, peers {peerManager?.PeerCount ?? 0}/{config.TargetPeerCount}, EL {(_elInSync ? "in sync" : "syncing")}");
+            _logger.Info($"Beacon chain: head slot {head.HeadSlot} ({head.HeadRoot}), finalized epoch {head.Finalized.Epoch}, peers {peerManager?.PeerCount ?? 0}/{config.TargetPeerCount}, EL {(!engine.IsAvailable ? "unavailable" : _elInSync ? "in sync" : "syncing")}");
         }
     }
 
@@ -2556,7 +2559,7 @@ public sealed class BeaconSyncOrchestrator(
 
         double seconds = (now - _progressLogMs) / 1000.0;
         ulong newPayloadMs = Metrics.BeaconChainNewPayloadMilliseconds;
-        _logger.Info($"Beacon sync: slot {slot} (+{slot - _progressLogSlot} slots, {_blocksSinceProgressLog / seconds:F1} blocks/s, {_importMsSinceProgressLog / _blocksSinceProgressLog} ms/block of which newPayload {(long)(newPayloadMs - _newPayloadMsAtProgressLog) / _blocksSinceProgressLog} ms), {behind} behind wall slot {wallSlot}, finalized epoch {_lastHead?.Finalized.Epoch ?? 0}, peers {peerManager?.PeerCount ?? 0}/{config.TargetPeerCount}, EL {(_elInSync ? "in sync" : "syncing")}");
+        _logger.Info($"Beacon sync: slot {slot} (+{slot - _progressLogSlot} slots, {_blocksSinceProgressLog / seconds:F1} blocks/s, {_importMsSinceProgressLog / _blocksSinceProgressLog} ms/block of which newPayload {(long)(newPayloadMs - _newPayloadMsAtProgressLog) / _blocksSinceProgressLog} ms), {behind} behind wall slot {wallSlot}, finalized epoch {_lastHead?.Finalized.Epoch ?? 0}, peers {peerManager?.PeerCount ?? 0}/{config.TargetPeerCount}, EL {(!engine.IsAvailable ? "unavailable" : _elInSync ? "in sync" : "syncing")}");
         _progressLogSlot = slot;
         _progressLogMs = now;
         _blocksSinceProgressLog = 0;

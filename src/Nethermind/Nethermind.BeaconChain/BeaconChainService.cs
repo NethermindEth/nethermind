@@ -52,6 +52,9 @@ public sealed class BeaconChainService(
     private Task? _runTask;
     private Task _columnFloorCheck = Task.CompletedTask;
 
+    /// <summary>How long <see cref="StopAsync"/> waits for the run loop before it returns anyway.</summary>
+    internal TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(8);
+
     /// <summary>Wait before checkpoint sync starts over after a network failure that outlasted its own retries.</summary>
     internal TimeSpan StartRetryDelay { get; init; } = DefaultStartRetryDelay;
 
@@ -131,7 +134,6 @@ public sealed class BeaconChainService(
         }
         finally
         {
-            // Awaited so StopAsync returns only after the warm-up has left the cache.
             await warmUpSource.CancelAsync();
             await warmUp;
             await backfill;
@@ -235,13 +237,20 @@ public sealed class BeaconChainService(
         }
     }
 
-    /// <summary>Stops the driver and awaits its run loop, so <see cref="Dispose"/> only tears the token source down after the driver has actually unwound.</summary>
+    /// <summary>Stops the driver and waits up to the shutdown deadline for its run loop.</summary>
     public async Task StopAsync()
     {
         Stop();
         if (_runTask is not null)
         {
-            await _runTask;
+            try
+            {
+                await _runTask.WaitAsync(ShutdownTimeout);
+            }
+            catch (TimeoutException)
+            {
+                if (_logger.IsWarn) _logger.Warn("Embedded beacon chain driver did not stop before the shutdown deadline");
+            }
         }
 
         await _columnFloorCheck;
@@ -263,7 +272,18 @@ public sealed class BeaconChainService(
             _disposed = true;
             watchdog?.Dispose();
             externalClDetector.ExternalClDetected -= Stop;
-            _cancellationTokenSource.Dispose();
+            if (_runTask is { IsCompleted: false } pending)
+            {
+                _ = pending.ContinueWith(task =>
+                {
+                    _ = task.Exception;
+                    _cancellationTokenSource.Dispose();
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
+            else
+            {
+                _cancellationTokenSource.Dispose();
+            }
         }
     }
 }

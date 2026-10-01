@@ -55,7 +55,7 @@ internal static class NodeEndpoints
         }
 
         long distance = (long)ctx.SlotClock.CurrentSlot - (long)status.HeadSlot;
-        c.Response.StatusCode = distance > ReadySyncDistance || !ctx.StatusSource.ExecutionInSync || ctx.EngineAvailability?.IsOffline == true
+        c.Response.StatusCode = distance > ReadySyncDistance || !ctx.StatusSource.ExecutionInSync || !ctx.Engine.IsAvailable
             ? syncingStatus : StatusCodes.Status200OK;
         return Task.CompletedTask;
     }
@@ -125,7 +125,7 @@ internal static class NodeEndpoints
             distance.ToString(),
             distance > ReadySyncDistance,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ctx.EngineAvailability?.IsOffline == true);
+            !ctx.Engine.IsAvailable);
 
         return BeaconApiJson.WriteDataAsync(c, dto, c.RequestAborted);
     }

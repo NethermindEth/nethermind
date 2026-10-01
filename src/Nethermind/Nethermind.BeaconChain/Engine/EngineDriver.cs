@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
@@ -28,11 +29,20 @@ namespace Nethermind.BeaconChain.Engine;
 /// <remarks>
 /// Calls go through <see cref="ExternalClDetector.InnerEngine"/> so the driver's own traffic never
 /// trips external-CL detection. The orchestrator serializes all calls (they run on the slot
-/// worker); only the last-status properties are meant to be read concurrently.
+/// worker); only the last-status properties are meant to be read concurrently. A forkchoice
+/// update still running past its deadline fails every later call until it finishes.
 /// </remarks>
 public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager, SlotClock clock, BeaconChainSpec spec, INodeColumnCustodySource custody) : IEngineDriver
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EngineDriver>();
+    private volatile bool _isAvailable = true;
+    private Task<PayloadStatusV1>? _pendingForkchoice;
+
+    /// <summary>Whether the most recent engine call returned a verdict.</summary>
+    public bool IsAvailable => _isAvailable;
+
+    /// <summary>How long a caller waits for a forkchoice update before it counts as unavailable.</summary>
+    internal TimeSpan ForkchoiceTimeout { get; init; } = TimeSpan.FromSeconds(8);
 
     /// <summary>
     /// The block currently being run through the state transition; the orchestrator sets it before
@@ -67,13 +77,15 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         Metrics.BeaconChainNewPayloadCalls++;
         long started = Stopwatch.GetTimestamp();
         // EIP-4788: the payload's parent_beacon_block_root is the parent root of the beacon block carrying it.
-        ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(
-            payload,
-            PayloadConverter.ToBlobVersionedHashes(body.BlobKzgCommitments),
-            message.ParentRoot,
-            PayloadConverter.ToExecutionRequestsList(body.ExecutionRequests));
-        Metrics.BeaconChainNewPayloadMilliseconds += (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        return UnwrapNewPayload(result.Result, result.Data, "newPayloadV4");
+        Hash256?[] versionedHashes = PayloadConverter.ToBlobVersionedHashes(body.BlobKzgCommitments);
+        byte[][] requests = PayloadConverter.ToExecutionRequestsList(body.ExecutionRequests);
+        return await CallEngineAsync("newPayloadV4", async () =>
+        {
+            detector.ThrowIfStoodDown();
+            ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
+            Metrics.BeaconChainNewPayloadMilliseconds += (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            return UnwrapNewPayload(result.Result, result.Data, "newPayloadV4");
+        });
     }
 
     /// <summary>
@@ -88,20 +100,34 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// execution-apis amsterdam.md defines as a CL that provides no custody services.
     /// </remarks>
     /// <exception cref="EngineUnavailableException">The call produced no status; a failure is not SYNCING.</exception>
-    public async Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
+    public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
+        CallEngineAsync("forkchoiceUpdated", async () =>
+        {
+            Metrics.BeaconChainForkchoiceUpdatedCalls++;
+            ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
+            // execution-apis paris.md engine_forkchoiceUpdatedV1 "timeout: 8s"; Task.Run keeps synchronous EL work inside the deadline.
+            Task<PayloadStatusV1> pending = Task.Run(() => SendForkchoiceUpdatedAsync(state));
+            _pendingForkchoice = pending;
+            _ = pending.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return LastForkchoiceStatus = await pending.WaitAsync(ForkchoiceTimeout);
+        });
+
+    private async Task<PayloadStatusV1> SendForkchoiceUpdatedAsync(ForkchoiceStateV1 state)
     {
-        Metrics.BeaconChainForkchoiceUpdatedCalls++;
-        ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
         // V3 stays valid after Amsterdam only without payload attributes: execution-apis amsterdam.md "Osaka API" bounds only the payload timestamp.
         if (clock.CurrentEpoch < spec.GloasForkEpoch)
         {
+            detector.ThrowIfStoodDown();
             ResultWrapper<ForkchoiceUpdatedV1Result> v3 = await detector.InnerEngine.engine_forkchoiceUpdatedV3(state);
-            return LastForkchoiceStatus = Unwrap(v3.Result, v3.Data?.PayloadStatus, "forkchoiceUpdatedV3");
+            return Unwrap(v3.Result, v3.Data?.PayloadStatus, "forkchoiceUpdatedV3");
         }
 
         // specs/gloas/fork-choice.md notify_forkchoice_updated: custody_columns is the node's custody set.
-        ResultWrapper<ForkchoiceUpdatedV1Result> v4 = await detector.InnerEngine.engine_forkchoiceUpdatedV4(state, null, ToCustodyColumnBits(custody.Current));
-        return LastForkchoiceStatus = Unwrap(v4.Result, v4.Data?.PayloadStatus, "forkchoiceUpdatedV4");
+        BitArray? columns = ToCustodyColumnBits(custody.Current);
+        detector.ThrowIfStoodDown();
+        ResultWrapper<ForkchoiceUpdatedV1Result> v4 = await detector.InnerEngine.engine_forkchoiceUpdatedV4(state, null, columns);
+        return Unwrap(v4.Result, v4.Data?.PayloadStatus, "forkchoiceUpdatedV4");
     }
 
     /// <summary>The <c>CustodyColumnBits</c> wire form: bit <c>i</c> set when column <c>i</c> is custodied.</summary>
@@ -149,13 +175,15 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     {
         Metrics.BeaconChainNewPayloadCalls++;
         long started = Stopwatch.GetTimestamp();
-        ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(
-            PayloadConverter.ToExecutionPayloadV4(payload),
-            versionedHashes,
-            parentBeaconBlockRoot,
-            PayloadConverter.ToExecutionRequestsList(executionRequests));
-        Metrics.BeaconChainNewPayloadMilliseconds += (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        return UnwrapNewPayload(result.Result, result.Data, "newPayloadV5");
+        ExecutionPayloadV4 converted = PayloadConverter.ToExecutionPayloadV4(payload);
+        byte[][] requests = PayloadConverter.ToExecutionRequestsList(executionRequests);
+        return await CallEngineAsync("newPayloadV5", async () =>
+        {
+            detector.ThrowIfStoodDown();
+            ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
+            Metrics.BeaconChainNewPayloadMilliseconds += (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            return UnwrapNewPayload(result.Result, result.Data, "newPayloadV5");
+        });
     }
 
     /// <inheritdoc/>
@@ -194,6 +222,35 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     {
         HasAnsweredNewPayload = true;
         return Unwrap(result, status, method);
+    }
+
+    /// <summary>Runs one engine call and records whether it returned a verdict.</summary>
+    /// <exception cref="EngineUnavailableException">The call produced no verdict, threw, or a timed-out forkchoice update is still running.</exception>
+    /// <exception cref="OperationCanceledException">An external consensus client took over the engine API.</exception>
+    private async Task<PayloadStatusV1> CallEngineAsync(string method, Func<Task<PayloadStatusV1>> call)
+    {
+        try
+        {
+            if (_pendingForkchoice is { IsCompleted: false })
+                throw new EngineUnavailableException(method, "the previous forkchoiceUpdated call is still running");
+            PayloadStatusV1 status = await call();
+            _isAvailable = true;
+            return status;
+        }
+        catch (OperationCanceledException) when (detector.HasStoodDown)
+        {
+            throw;
+        }
+        catch (EngineUnavailableException)
+        {
+            _isAvailable = false;
+            throw;
+        }
+        catch (Exception e)
+        {
+            _isAvailable = false;
+            throw new EngineUnavailableException(method, e.Message, e);
+        }
     }
 
     /// <exception cref="EngineUnavailableException">The call produced no status.</exception>
