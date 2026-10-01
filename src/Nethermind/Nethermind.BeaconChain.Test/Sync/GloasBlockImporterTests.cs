@@ -822,6 +822,51 @@ public class GloasBlockImporterTests
     }
 
     /// <summary>
+    /// A gossip block whose regeneration ran but which then waits for its slot (fork-choice.md <c>on_block</c>) is retried as
+    /// the same block, not as another proposal for its slot and proposer: once other regenerations pushed its parent's
+    /// state out, the retry regenerates it again and imports.
+    /// </summary>
+    [Test]
+    public void Gossip_block_deferred_after_its_regeneration_regenerates_again_on_retry()
+    {
+        SignedGloasChain chain = new();
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (ulong slot = ForkSlot; slot < 3 * ForkSlot + 8; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            blocks.Add(tip);
+        }
+
+        ulong blockSlot = tip!.Signed.Message!.Slot + 2;
+        // Within MAXIMUM_GOSSIP_CLOCK_DISPARITY before the block's slot, so it waits for its slot after its transition.
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + blockSlot * chain.Spec.SecondsPerSlot).AddMilliseconds(-200));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        Import(importer, [.. blocks]);
+        SignedGloasChain.Block early = chain.Next(blocks[1], blockSlot, full: false, 0xF1);
+
+        BlockImportResult first = importer.Import(early.Forked, early.Root, verifySignatures: true);
+        // Range-sync regenerations of two other evicted parents push the first regenerated state out.
+        BlockImportResult[] churn = [.. new[] { 2, 3 }.Select(i =>
+        {
+            SignedGloasChain.Block other = chain.Next(blocks[i], blockSlot - 4 + (ulong)i, full: false, (byte)(0xF0 + i));
+            return importer.ImportRequested(other.Forked, other.Root);
+        })];
+        bool parentChurned = states.GetGloasBlockState(blocks[1].Root) is null;
+        timestamper.Add(TimeSpan.FromSeconds(1));
+        BlockImportResult retry = importer.Import(early.Forked, early.Root, verifySignatures: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(BlockImportResult.FutureSlot), "fixture: the block waits for its slot");
+            Assert.That(churn, Is.All.EqualTo(BlockImportResult.Imported), "fixture");
+            Assert.That(parentChurned, Is.True, "fixture: the first regenerated state was pushed out");
+            Assert.That(retry, Is.EqualTo(BlockImportResult.Imported));
+        }
+    }
+
+    /// <summary>
     /// A Gloas replay is bounded like a Fulu one: one epoch of stored blocks above the nearest held state, here the Fulu
     /// anchor's, so the replay crosses the fork, builds on full and empty parents, and leaves the Fulu state unchanged.
     /// One block more is refused with a warning before any replay.
