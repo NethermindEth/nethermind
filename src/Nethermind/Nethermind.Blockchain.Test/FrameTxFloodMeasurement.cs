@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -30,9 +29,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NUnit.Framework;
-
-using static Nethermind.Blockchain.Test.MeasurementEnvironment;
-using static Nethermind.Blockchain.Test.MeasurementStatistics;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -357,14 +353,13 @@ public partial class FrameTxFloodMeasurement
     /// </summary>
     /// <remarks>
     /// The optional arguments serve the declared gas/s arms: <paramref name="submit"/> routes the flood through the
-    /// gossip scheduler, <paramref name="beforeWindow"/> advances the head, <paramref name="window"/> and
+    /// gossip scheduler, <paramref name="window"/> and
     /// <paramref name="poolSize"/> size longer or faster windows, and <paramref name="onWindowEnd"/> reads counters
     /// that only exist after the generator stops. Left unset, the flood is the one every earlier arm measures.
     /// </remarks>
     private FloodOutcome MeasureUnderFloodGeneric(
         int offeredRate, Action warmup, Func<TimeSpan, List<double>> measure, Func<long>? rejectionCounter = null,
-        Action? onWindowStart = null, Func<Transaction, AcceptTxResult>? submit = null, Action? beforeWindow = null,
-        TimeSpan? window = null, int poolSize = FloodPoolSize, Action? onWindowEnd = null)
+        Action? onWindowStart = null, Func<Transaction, AcceptTxResult>? submit = null, TimeSpan? window = null, int poolSize = FloodPoolSize, Action? onWindowEnd = null)
     {
         _floodTxs = BuildFloodTransactions(_saltCursor, poolSize);
         _saltCursor += poolSize;
@@ -375,7 +370,6 @@ public partial class FrameTxFloodMeasurement
         return generator.Run(() =>
         {
             warmup();
-            beforeWindow?.Invoke();
 
             int submittedAtStart = Volatile.Read(ref generator.Submitted);
             int rejectedAtStart = Volatile.Read(ref generator.Rejected);

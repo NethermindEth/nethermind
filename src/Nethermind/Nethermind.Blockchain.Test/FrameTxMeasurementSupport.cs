@@ -195,21 +195,6 @@ internal sealed class ProducerRig : IDisposable
     private int _attemptsOnCurrent;
     private CountingAdapter _adapter = null!;
 
-    public int Evictions { get; private set; }
-
-    private int _evictionsAtWindowStart;
-    private int _executionsAtWindowStart;
-
-    public int EvictionsInWindow => Evictions - _evictionsAtWindowStart;
-
-    public int ExecutionsInWindow => FailingExecutions - _executionsAtWindowStart;
-
-    public void MarkWindowStart()
-    {
-        _evictionsAtWindowStart = Evictions;
-        _executionsAtWindowStart = FailingExecutions;
-    }
-
     public int FailingExecutions => _adapter.Attempts;
 
     private ProducerRig(
@@ -305,7 +290,6 @@ internal sealed class ProducerRig : IDisposable
     }
 
     /// <summary>Runs one production pass and returns the microseconds it took.</summary>
-    // Resetting the series avoids charging replacement construction differently across K_retry values.
     public double ProduceOnce()
     {
         Block block = _blocks[_blockCursor];
@@ -318,11 +302,7 @@ internal sealed class ProducerRig : IDisposable
         _receiptsTracer.EndBlockTrace();
         double micros = Stopwatch.GetElapsedTime(start).TotalMicroseconds;
 
-        if (_attemptsOnCurrent >= _kRetry)
-        {
-            Evictions++;
-            _attemptsOnCurrent = 0;
-        }
+        if (_attemptsOnCurrent >= _kRetry) _attemptsOnCurrent = 0;
 
         return micros;
     }

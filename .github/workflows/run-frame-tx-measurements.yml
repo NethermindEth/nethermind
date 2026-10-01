@@ -5,9 +5,9 @@ on:
     inputs:
       suite:
         description: >-
-          Suite to run, one per dispatch. cost: idle reject cost, retry law, shape guard (~5 min).
-          producer / import: block-building / block-import delay at fixed gas/s (~16 / ~23 min).
-          import-tails: import with 60 s windows (~100 min, agree a slot first). honest: honest txs lost to the budget (~6 min).
+          Suite to run, one per dispatch. cost: idle reject cost, unpaid burn, retry law, pool retention, shape guard (~10 min).
+          producer / import: block-building / block-import delay at fixed gas/s (~25 / ~25 min).
+          import-tails: import with 60 s windows (~100 min, agree a slot first). honest: honest txs lost to the budget (~10 min).
         required: true
         type: choice
         options:
@@ -46,7 +46,7 @@ permissions:
 jobs:
   measure:
     name: Measure the frame-transaction validation prefix
-    runs-on: [self-hosted, benchmark]
+    runs-on: [self-hosted, reproducible-benchmarks]
     # Suite budget plus build and setup; see the campaign SPEC.
     timeout-minutes: ${{ fromJSON('{"cost":20,"producer":35,"import":40,"import-tails":120,"honest":20}')[inputs.suite] }}
     steps:
@@ -157,7 +157,7 @@ jobs:
 
           projects=()
           case "${SUITE}" in
-            cost)                   projects=(Nethermind.TxPool.Test Nethermind.Blockchain.Test) ;;
+            cost)                   projects=(Nethermind.Evm.Test Nethermind.TxPool.Test Nethermind.Blockchain.Test) ;;
             producer|import|import-tails|honest) projects=(Nethermind.Blockchain.Test) ;;
             *)                      echo "::error::no build mapping for suite '${SUITE}'"; exit 1 ;;
           esac
@@ -242,6 +242,7 @@ jobs:
             export FRAME_MEMPOOL_DOS_OUT="${results}"
             export FRAME_RETRY_OUT="${results}"
             export FRAME_FLOOD_OUT="${results}"
+            export FRAME_POOL_RETENTION_OUT="${results}"
 
             dotnet build-server shutdown || true
 
@@ -283,6 +284,8 @@ jobs:
               run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement "FullyQualifiedName~FrameTxMempoolDosMeasurement" nopin "${mempool_markers[@]}" || status=1
               run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "FullyQualifiedName~FrameTxProducerRetryMeasurement" nopin 'case=k_retry_sweep' || status=1
               run_harness Nethermind.Blockchain.Test FrameTxShapeGuard "TestCategory=frame-tx-cost" nopin || status=1
+              run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement "FullyQualifiedName~FrameTxVerifyDosMeasurement" nopin 'case=burn_per_attempt' || status=1
+              run_harness Nethermind.TxPool.Test FrameTxPoolRetentionMeasurement "FullyQualifiedName~FrameTxPoolRetentionMeasurement" nopin 'case=retention_with_deadline' || status=1
               ;;
             producer|import|import-tails|honest)
               row_case="${SUITE//-/_}_level"

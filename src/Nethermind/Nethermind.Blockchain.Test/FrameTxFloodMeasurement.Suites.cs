@@ -156,7 +156,7 @@ public partial class FrameTxFloodMeasurement
             () => rig.Measure(MeasureWindow),
             rate => DirectPoint(MeasureAccounted(submitter, RefusalCounterFor(shape), () => MeasureUnderFloodGeneric(rate,
                 warmup: () => { Thread.Sleep(FloodSettle); rig.RunFor(WarmupWindow); },
-                measure: rig.Measure, rejectionCounter, onWindowStart: rig.MarkWindowStart, submit: submitter.Submit,
+                measure: rig.Measure, rejectionCounter, submit: submitter.Submit,
                 poolSize: PoolSizeFor(rate, FloodSettle + WarmupWindow + MeasureWindow)))));
 
         Assert.That(rig.FailingExecutions, Is.GreaterThan(0),
@@ -200,7 +200,7 @@ public partial class FrameTxFloodMeasurement
             ProducerValidationLevelsMillions, () => LongPasses(MeasureWindow),
             rate => DirectPoint(MeasureAccounted(submitter, RefusalCounterFor(shape), () => MeasureUnderFloodGeneric(rate,
                 warmup: () => { Thread.Sleep(FloodSettle); LongPasses(PeriodicWarmup); },
-                measure: LongPasses, rejectionCounter, onWindowStart: rig.MarkWindowStart, submit: submitter.Submit,
+                measure: LongPasses, rejectionCounter, submit: submitter.Submit,
                 poolSize: PoolSizeFor(rate, FloodSettle + PeriodicWarmup + MeasureWindow)))));
 
         Assert.That(rig.FailingExecutions, Is.GreaterThan(0),
@@ -217,8 +217,7 @@ public partial class FrameTxFloodMeasurement
         await MeasureImport(ceiling, shape, path, "import_level", PeriodicWindow);
 
     /// <summary>The import arm with 60 s windows, so the p99 rests on ~240 blocks instead of ~40.</summary>
-    /// <remarks>About 100 minutes, over the 80-minute budget: split and time it before dispatching it, alone, in a
-    /// window agreed with the runner's owners.</remarks>
+    /// <remarks>About 100 minutes: dispatch it alone, in a window agreed with the runner's owners.</remarks>
     [TestCaseSource(nameof(ImportCases))]
     [Category(ImportTailsSuite)]
     public async Task Import_tail_delay_at_fixed_declared_gas_rate(ulong ceiling, string shape, string path) =>
@@ -299,7 +298,7 @@ public partial class FrameTxFloodMeasurement
                  + $"slots={slots} slot_s={SlotLength.TotalSeconds:F0} honest_rate={HonestRate} honest_verify_gas={HonestVerifyGas} "
                  + $"honest_offered={o.Honest.Total} honest_admitted={o.Honest.Accepted} honest_deferred={o.Honest.Deferred} "
                  + $"honest_deferred_budget={o.Honest.DeferredBudget} honest_deferred_preempted={o.Honest.DeferredPreempted} "
-                 + $"honest_deferred_busy={o.Honest.DeferredBusy} honest_other={o.Honest.Other} "
+                 + $"honest_deferred_busy={o.Honest.DeferredBusy} honest_deferred_other={o.Honest.DeferredOther} honest_other={o.Honest.Other} "
                  + $"honest_admitted_pct={o.Honest.AcceptedPct:F1} honest_lost_to_budget_pct={o.Honest.BudgetPct:F1} "
                  + $"honest_admitted_pct_0_1s={o.PhasePct(0):F1} honest_admitted_pct_1_3s={o.PhasePct(1):F1} "
                  + $"honest_admitted_pct_3_6s={o.PhasePct(2):F1} honest_admitted_pct_6_12s={o.PhasePct(3):F1} "
@@ -578,15 +577,18 @@ public partial class FrameTxFloodMeasurement
 
     /// <summary>Counts outcomes; a deferral is split by the simulator's reason, since only a spent budget loses the
     /// transaction for the rest of the slot.</summary>
+    /// <remarks>The reasons are the simulator's own wording (<c>FrameTxPrefixSimulator</c>). A deferral matching none
+    /// of them is counted apart and never as transient, so a reworded reason cannot inflate the control.</remarks>
     private sealed class Tally
     {
-        private int _accepted, _deferredBudget, _deferredPreempted, _deferredBusy, _failed, _other;
+        private int _accepted, _deferredBudget, _deferredPreempted, _deferredBusy, _deferredOther, _failed, _other;
 
         public int Accepted => Volatile.Read(ref _accepted);
         public int DeferredBudget => Volatile.Read(ref _deferredBudget);
         public int DeferredPreempted => Volatile.Read(ref _deferredPreempted);
         public int DeferredBusy => Volatile.Read(ref _deferredBusy);
-        public int Deferred => DeferredBudget + DeferredPreempted + DeferredBusy;
+        public int DeferredOther => Volatile.Read(ref _deferredOther);
+        public int Deferred => DeferredBudget + DeferredPreempted + DeferredBusy + DeferredOther;
         public int Failed => Volatile.Read(ref _failed);
         public int Other => Volatile.Read(ref _other);
         public int Total => Accepted + Deferred + Failed + Other;
@@ -600,7 +602,8 @@ public partial class FrameTxFloodMeasurement
             else if (result != AcceptTxResult.FrameSimulationDeferred) Interlocked.Increment(ref _other);
             else if (result.ToString().Contains("budget", StringComparison.Ordinal)) Interlocked.Increment(ref _deferredBudget);
             else if (result.ToString().Contains("preempted", StringComparison.Ordinal)) Interlocked.Increment(ref _deferredPreempted);
-            else Interlocked.Increment(ref _deferredBusy);
+            else if (result.ToString().Contains("busy", StringComparison.Ordinal)) Interlocked.Increment(ref _deferredBusy);
+            else Interlocked.Increment(ref _deferredOther);
         }
     }
 
