@@ -5,6 +5,8 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using NUnit.Framework;
 
 namespace Nethermind.Torrent.Tests;
@@ -242,6 +244,318 @@ public sealed class DhtClientTests
         Assert.That(
             async () => await client.AnnounceAsync(CreateId(0x55), port, true, CancellationToken.None),
             Throws.InstanceOf<ArgumentOutOfRangeException>());
+    }
+
+    [TestCase("", "4a533d47ec9c7d95b1ad75f576cffc641853b750", "305ac8aeb6c9c151fa120f120ea2cfb923564e11552d06a5d856091e5e853cff1260d3f39e4999684aa92eb73ffd136e6f4f3ecbfda0ce53a1608ecd7ae21f01")]
+    [TestCase("foobar", "411eba73b6f087ca51a3795d9c8c938d365e32c1", "6834284b6b24c3204eb2fea824d82f88883a3d95e8b4a21b8c0ded553d17d17ddf9a8a7104b1258f30bed3787e6cb896fca78c58f8e03b5f18f14951a87d9a08")]
+    public void Mutable_item_matches_bep44_vectors(string salt, string targetHex, string signatureHex)
+    {
+        byte[] value = Bencode.Encode(Bencode.String("Hello World!"));
+        DhtMutableItem item = DhtMutableItem.FromSigned(
+            Convert.FromHexString("77ff84905a91936367c01360803104f92432fcd904a43511876df5cdf3e7e548"),
+            Encoding.ASCII.GetBytes(salt), 1, Convert.FromHexString(signatureHex), value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Convert.ToHexString(item.PublicKey), Is.EqualTo("77FF84905A91936367C01360803104F92432FCD904A43511876DF5CDF3E7E548"));
+            Assert.That(Convert.ToHexString(item.Target), Is.EqualTo(targetHex.ToUpperInvariant()));
+            Assert.That(Convert.ToHexString(item.Signature), Is.EqualTo(signatureHex.ToUpperInvariant()));
+        }
+        Assert.DoesNotThrow(() => DhtMutableItem.FromSigned(item.PublicKey, item.Salt, item.Sequence, item.Signature, item.Value));
+    }
+
+    [Test]
+    public void Immutable_item_matches_bep44_vector()
+        => Assert.That(Convert.ToHexString(SHA1.HashData(Bencode.Encode(Bencode.String("Hello World!")))),
+            Is.EqualTo("E5F96F6F38320F0F33959CB4D3D656452117AADB"));
+
+    [Test]
+    public void Mutable_item_rejects_tampering_and_noncanonical_value()
+    {
+        DhtMutableItem item = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.String("hello")), 1);
+        byte[] signature = item.Signature.ToArray();
+        signature[0] ^= 1;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => DhtMutableItem.FromSigned(item.PublicKey, [], 1, signature, item.Value), Throws.TypeOf<FormatException>());
+            Assert.That(() => DhtMutableItem.FromSigned(item.PublicKey, [1], 1, item.Signature, item.Value), Throws.TypeOf<FormatException>());
+            Assert.That(() => DhtMutableItem.Sign(new byte[32], "i01e"u8, 1), Throws.TypeOf<FormatException>());
+            Assert.That(() => DhtMutableItem.Sign(new byte[32], new byte[1001], 1), Throws.TypeOf<FormatException>());
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Mutable_get_verifies_the_signed_network_response(bool validSignature)
+    {
+        using UdpClient server = new(new IPEndPoint(IPAddress.Loopback, 0));
+        byte[] nodeId = CreateId(0x40);
+        DhtMutableItem item = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("ih", Bencode.Bytes(CreateId(0x55))))), 7);
+        byte[] signature = item.Signature.ToArray();
+        if (!validSignature)
+        {
+            signature[0] ^= 1;
+        }
+
+        Task responseTask = RespondItemGetAsync(server, nodeId, item, signature);
+        await using DhtClient client = CreateClient(server, nodeId);
+        DhtMutableItem? actual = await client.GetMutableAsync(item.PublicKey, [], TestContext.CurrentContext.CancellationToken);
+        await responseTask;
+
+        Assert.That(actual?.Sequence, validSignature ? Is.EqualTo(7) : Is.Null);
+        if (actual is not null)
+        {
+            Assert.That(Bep46Link.Decode(actual).InfoHash, Is.EqualTo(CreateId(0x55)));
+        }
+    }
+
+    [Test]
+    public async Task Mutable_get_selects_highest_valid_sequence_across_nodes()
+    {
+        using UdpClient first = new(new IPEndPoint(IPAddress.Loopback, 0));
+        using UdpClient second = new(new IPEndPoint(IPAddress.Loopback, 0));
+        DhtMutableItem old = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.String("old")), 3);
+        DhtMutableItem latest = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.String("new")), 4);
+        Task firstResponse = RespondItemGetAsync(first, CreateId(0x40), old, old.Signature,
+            CreateCompactNode(CreateId(0x41), (IPEndPoint)second.Client.LocalEndPoint!));
+        Task secondResponse = RespondItemGetAsync(second, CreateId(0x41), latest, latest.Signature);
+        await using DhtClient client = CreateClient(first, CreateId(0x40));
+
+        DhtMutableItem? item = await client.GetMutableAsync(old.PublicKey, [], TestContext.CurrentContext.CancellationToken);
+        await Task.WhenAll(firstResponse, secondResponse);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(item?.Sequence, Is.EqualTo(4));
+            Assert.That(item?.Value, Is.EqualTo(latest.Value));
+        }
+    }
+
+    [Test]
+    public async Task Mutable_get_rejects_conflicting_values_at_the_same_sequence()
+    {
+        using UdpClient first = new(new IPEndPoint(IPAddress.Loopback, 0));
+        using UdpClient second = new(new IPEndPoint(IPAddress.Loopback, 0));
+        DhtMutableItem firstItem = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.String("first")), 5);
+        DhtMutableItem secondItem = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.String("second")), 5);
+        Task firstResponse = RespondItemGetAsync(first, CreateId(0x40), firstItem, firstItem.Signature,
+            CreateCompactNode(CreateId(0x41), (IPEndPoint)second.Client.LocalEndPoint!));
+        Task secondResponse = RespondItemGetAsync(second, CreateId(0x41), secondItem, secondItem.Signature);
+        await using DhtClient client = CreateClient(first, CreateId(0x40));
+
+        Assert.That(async () => await client.GetMutableAsync(firstItem.PublicKey, [], TestContext.CurrentContext.CancellationToken),
+            Throws.TypeOf<InvalidDataException>());
+        await Task.WhenAll(firstResponse, secondResponse);
+    }
+
+    [Test]
+    public async Task Mutable_get_reaches_a_live_node_after_six_unresponsive_candidates()
+    {
+        using UdpClient live = new(new IPEndPoint(IPAddress.Loopback, 0));
+        DhtMutableItem item = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.String("available")), 1);
+        byte[] liveId = item.Target.ToArray();
+        liveId[^1] ^= 7;
+        List<UdpClient> silent = [];
+        try
+        {
+            await using DhtClient client = CreateClient(live, liveId);
+            TorrentKademlia routing = (TorrentKademlia)typeof(DhtClient)
+                .GetField("_kademlia", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(client)!;
+            for (byte distance = 1; distance <= 6; distance++)
+            {
+                UdpClient server = new(new IPEndPoint(IPAddress.Loopback, 0));
+                silent.Add(server);
+                byte[] id = item.Target.ToArray();
+                id[^1] ^= distance;
+                routing.AddOrRefresh(new DhtNode(new KadId(id), (IPEndPoint)server.Client.LocalEndPoint!));
+            }
+
+            Task responseTask = RespondItemGetAsync(live, liveId, item, item.Signature);
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CurrentContext.CancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(20));
+            DhtMutableItem? actual = await client.GetMutableAsync(item.PublicKey, [], deadline.Token);
+            await responseTask;
+
+            Assert.That(actual?.Value, Is.EqualTo(item.Value));
+        }
+        finally
+        {
+            foreach (UdpClient server in silent)
+            {
+                server.Dispose();
+            }
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Immutable_get_checks_content_hash(bool matchesTarget)
+    {
+        using UdpClient server = new(new IPEndPoint(IPAddress.Loopback, 0));
+        byte[] value = Bencode.Encode(Bencode.String("immutable"));
+        byte[] target = matchesTarget ? SHA1.HashData(value) : new byte[20];
+        Task responseTask = RespondImmutableGetAsync(server, CreateId(0x40), value);
+        await using DhtClient client = CreateClient(server, CreateId(0x40));
+
+        byte[]? actual = await client.GetImmutableAsync(target, TestContext.CurrentContext.CancellationToken);
+        await responseTask;
+
+        Assert.That(actual, matchesTarget ? Is.EqualTo(value) : Is.Null);
+    }
+
+    [Test]
+    public async Task Immutable_put_sends_canonical_value_without_signature_fields()
+    {
+        using UdpClient server = new(new IPEndPoint(IPAddress.Loopback, 0));
+        byte[] value = Bencode.Encode(Bencode.String("immutable"));
+        Task<BDictionary> serverTask = CaptureItemPutAsync(server, CreateId(0x40));
+        await using DhtClient client = CreateClient(server, CreateId(0x40));
+
+        int count = await client.PutImmutableAsync(value, TestContext.CurrentContext.CancellationToken);
+        BDictionary args = await serverTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(Bencode.Encode(args["v"]), Is.EqualTo(value));
+            Assert.That(args.TryGetValue("k", out _), Is.False);
+            Assert.That(args.TryGetValue("sig", out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Mutable_get_preserves_binary_dictionary_keys()
+    {
+        using UdpClient server = new(new IPEndPoint(IPAddress.Loopback, 0));
+        byte[] value = [(byte)'d', (byte)'1', (byte)':', 0xff, (byte)'i', (byte)'1', (byte)'e', (byte)'e'];
+        DhtMutableItem item = DhtMutableItem.Sign(new byte[32], value, 2);
+        Task responseTask = RespondItemGetAsync(server, CreateId(0x40), item, item.Signature);
+        await using DhtClient client = CreateClient(server, CreateId(0x40));
+
+        DhtMutableItem? actual = await client.GetMutableAsync(item.PublicKey, [], TestContext.CurrentContext.CancellationToken);
+        await responseTask;
+
+        Assert.That(actual?.Value, Is.EqualTo(value));
+    }
+
+    [Test]
+    public async Task Bep46_magnet_resolves_signed_dht_pointer_to_v1_magnet()
+    {
+        using UdpClient server = new(new IPEndPoint(IPAddress.Loopback, 0));
+        byte[] infoHash = CreateId(0x55);
+        byte[] salt = [0x6e];
+        DhtMutableItem item = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("ih", Bencode.Bytes(infoHash)))), 9, salt);
+        string uri = $"magnet:?xs=urn:btpk:{Convert.ToHexString(item.PublicKey)}&s=6e&x.pe=127.0.0.1:6881";
+        Bep46Link feed = Bep46Link.Parse(uri);
+        Task responseTask = RespondItemGetAsync(server, CreateId(0x40), item, item.Signature);
+        await using DhtClient client = CreateClient(server, CreateId(0x40));
+
+        Bep46Update? update = await feed.GetCurrentAsync(client.GetMutableAsync, TestContext.CurrentContext.CancellationToken);
+        await responseTask;
+        Assert.That(update, Is.Not.Null);
+        MagnetLink resolved = MagnetLink.Parse(feed.ToMagnet(update!));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update!.Sequence, Is.EqualTo(9));
+            Assert.That(resolved.InfoHash, Is.EqualTo(infoHash));
+            Assert.That(resolved.ExplicitPeers, Is.EqualTo(new[] { "127.0.0.1:6881" }));
+        }
+    }
+
+    [Test]
+    public async Task Immutable_put_preserves_binary_dictionary_keys()
+    {
+        using UdpClient server = new(new IPEndPoint(IPAddress.Loopback, 0));
+        byte[] value = [(byte)'d', (byte)'1', (byte)':', 0xff, (byte)'i', (byte)'1', (byte)'e', (byte)'e'];
+        Task<BDictionary> serverTask = CaptureItemPutAsync(server, CreateId(0x40));
+        await using DhtClient client = CreateClient(server, CreateId(0x40));
+
+        int count = await client.PutImmutableAsync(value, TestContext.CurrentContext.CancellationToken);
+        BDictionary args = await serverTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(args.RawItemValue, Is.EqualTo(value));
+        }
+    }
+
+    [Test]
+    public async Task Mutable_put_uses_get_token_and_sends_signed_value_and_cas()
+    {
+        using UdpClient server = new(new IPEndPoint(IPAddress.Loopback, 0));
+        byte[] nodeId = CreateId(0x40);
+        DhtMutableItem item = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.String("value")), 8, [0x6e]);
+        Task<BDictionary> serverTask = CaptureItemPutAsync(server, nodeId);
+        await using DhtClient client = CreateClient(server, nodeId);
+
+        int stored = await client.PutMutableAsync(item, 7, TestContext.CurrentContext.CancellationToken);
+        BDictionary args = await serverTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored, Is.EqualTo(1));
+            Assert.That(args["token"].AsBytes("token"), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(args["k"].AsBytes("k"), Is.EqualTo(item.PublicKey));
+            Assert.That(args["sig"].AsBytes("sig"), Is.EqualTo(item.Signature));
+            Assert.That(args["seq"].AsInteger("seq"), Is.EqualTo(8));
+            Assert.That(args["cas"].AsInteger("cas"), Is.EqualTo(7));
+            Assert.That(args["salt"].AsBytes("salt"), Is.EqualTo(new byte[] { 0x6e }));
+        }
+    }
+
+    private static async Task RespondItemGetAsync(UdpClient server, byte[] nodeId, DhtMutableItem item, byte[] signature, byte[]? compactNodes = null)
+    {
+        UdpReceiveResult request = await server.ReceiveAsync(TestContext.CurrentContext.CancellationToken);
+        BDictionary args = ReadQueryArguments(request, "get");
+        Assert.That(args["target"].AsBytes("target"), Is.EqualTo(item.Target));
+        BDictionary response = Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("id", Bencode.Bytes(nodeId)),
+            new KeyValuePair<string, BValue>("nodes", Bencode.Bytes(compactNodes ?? [])),
+            new KeyValuePair<string, BValue>("token", Bencode.Bytes([1, 2, 3])),
+            new KeyValuePair<string, BValue>("k", Bencode.Bytes(item.PublicKey)),
+            new KeyValuePair<string, BValue>("seq", Bencode.Integer(item.Sequence)),
+            new KeyValuePair<string, BValue>("sig", Bencode.Bytes(signature)),
+            new KeyValuePair<string, BValue>("v", new BRaw(item.Value)));
+        await SendItemResponseAsync(server, request, response);
+    }
+
+    private static async Task RespondImmutableGetAsync(UdpClient server, byte[] nodeId, byte[] value)
+    {
+        UdpReceiveResult request = await server.ReceiveAsync(TestContext.CurrentContext.CancellationToken);
+        _ = ReadQueryArguments(request, "get");
+        await SendItemResponseAsync(server, request, Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("id", Bencode.Bytes(nodeId)),
+            new KeyValuePair<string, BValue>("nodes", Bencode.Bytes([])),
+            new KeyValuePair<string, BValue>("v", BencodeDocument.Decode(value).Root)));
+    }
+
+    private static async Task<BDictionary> CaptureItemPutAsync(UdpClient server, byte[] nodeId)
+    {
+        UdpReceiveResult get = await server.ReceiveAsync(TestContext.CurrentContext.CancellationToken);
+        _ = ReadQueryArguments(get, "get");
+        await SendItemResponseAsync(server, get, Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("id", Bencode.Bytes(nodeId)),
+            new KeyValuePair<string, BValue>("nodes", Bencode.Bytes([])),
+            new KeyValuePair<string, BValue>("token", Bencode.Bytes([1, 2, 3]))));
+        UdpReceiveResult put = await server.ReceiveAsync(TestContext.CurrentContext.CancellationToken);
+        BDictionary args = ReadQueryArguments(put, "put");
+        await SendItemResponseAsync(server, put, Bencode.Dictionary(new KeyValuePair<string, BValue>("id", Bencode.Bytes(nodeId))));
+        return args;
+    }
+
+    private static async Task SendItemResponseAsync(UdpClient server, UdpReceiveResult request, BDictionary response)
+    {
+        BDictionary query = BencodeDocument.Decode(request.Buffer).Root.AsDictionary("query");
+        byte[] payload = Bencode.Encode(Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("t", query["t"]),
+            new KeyValuePair<string, BValue>("y", Bencode.String("r")),
+            new KeyValuePair<string, BValue>("r", response)));
+        await server.SendAsync(payload, request.RemoteEndPoint);
     }
 
     private static DhtClient CreateClient(UdpClient server, byte[] nodeId)

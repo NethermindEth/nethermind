@@ -53,6 +53,63 @@ public sealed class MagnetMetadataTests
     public void Parse_rejects_conflicting_hashes()
         => Assert.That(() => MagnetLink.Parse($"magnet:?xt=urn:btih:{HashHex}&xt=urn:btih:{new string('0', 40)}"), Throws.TypeOf<FormatException>());
 
+    [TestCase("", "cc3f9d90b572172053626f9980ce261a850d050b")]
+    [TestCase("6e", "59ee7c2cb9b4f7eb1986ee2d18fd2fdb8a56554f")]
+    public void Bep46_magnet_matches_target_vectors(string saltHex, string targetHex)
+    {
+        string key = "8543d3e6115f0f98c944077a4493dcd543e49c739fd998550a1f614ab36ed63e";
+        string uri = $"magnet:?xs=urn:btpk:{key}&s={saltHex}&dn=Example&x.pe=127.0.0.1:6881";
+        Bep46Link link = Bep46Link.Parse(uri);
+        byte[] target = SHA1.HashData([.. link.PublicKey, .. link.Salt]);
+        Bep46Update update = new(2, InfoHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Convert.ToHexString(target), Is.EqualTo(targetHex.ToUpperInvariant()));
+            Assert.That(link.ToMagnet(update), Does.Contain($"xt=urn:btih:{Convert.ToHexString(InfoHash)}"));
+            Assert.That(link.ToMagnet(update), Does.Contain("x.pe=127.0.0.1:6881"));
+        }
+    }
+
+    [TestCase("magnet:?xs=urn:btpk:bad")]
+    [TestCase("magnet:?xs=urn:btpk:8543d3e6115f0f98c944077a4493dcd543e49c739fd998550a1f614ab36ed63e&s=zz")]
+    public void Bep46_rejects_invalid_magnets(string uri)
+    {
+        Assert.That(() => Bep46Link.Parse(uri), Throws.TypeOf<FormatException>());
+        Assert.That(Bep46Link.TryParse(uri, out _), Is.False);
+    }
+
+    [Test]
+    public void Bep46_rejects_non_ih_payload()
+    {
+        DhtMutableItem item = DhtMutableItem.Sign(new byte[32], Bencode.Encode(Bencode.Dictionary(
+            new KeyValuePair<string, BValue>("ih", Bencode.Bytes([1, 2])))), 1);
+
+        Assert.That(() => Bep46Link.Decode(item), Throws.TypeOf<FormatException>());
+    }
+
+    [Test]
+    public void Bep46_signs_and_decodes_a_feed_update()
+    {
+        byte[] seed = new byte[32];
+        byte[] publicKey = DhtMutableItem.Sign(seed, Bencode.Encode(Bencode.String("seed")), 0).PublicKey;
+        Bep46Link link = Bep46Link.Parse($"magnet:?xs=urn:btpk:{Convert.ToHexString(publicKey)}&s=6e");
+
+        DhtMutableItem item = link.SignUpdate(seed, InfoHash, 5);
+        byte[] wrongSeed = new byte[32];
+        wrongSeed[0] = 1;
+        Bep46Update update = Bep46Link.Decode(DhtMutableItem.FromSigned(
+            item.PublicKey, item.Salt, item.Sequence, item.Signature, item.Value));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(update.Sequence, Is.EqualTo(5));
+            Assert.That(update.InfoHash, Is.EqualTo(InfoHash));
+            Assert.That(item.Salt, Is.EqualTo(new byte[] { 0x6e }));
+            Assert.That(() => link.SignUpdate(wrongSeed, InfoHash, 6), Throws.TypeOf<ArgumentException>());
+        }
+    }
+
     [Test]
     public void ResolveAsync_honors_pre_canceled_token()
     {

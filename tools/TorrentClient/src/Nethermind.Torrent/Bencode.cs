@@ -23,6 +23,11 @@ internal sealed class BString(byte[] bytes) : BValue
     public string Text => Encoding.UTF8.GetString(Bytes);
 }
 
+internal sealed class BRaw(byte[] bytes) : BValue
+{
+    public byte[] Bytes { get; } = bytes;
+}
+
 internal sealed class BList(List<BValue> values) : BValue
 {
     public List<BValue> Values { get; } = values;
@@ -31,6 +36,8 @@ internal sealed class BList(List<BValue> values) : BValue
 internal sealed class BDictionary(Dictionary<string, BValue> values) : BValue
 {
     public Dictionary<string, BValue> Values { get; } = values;
+
+    public byte[]? RawItemValue { get; set; }
 
     public BValue this[string key] => Values[key];
 
@@ -192,13 +199,14 @@ internal ref struct BencodeParser(ReadOnlySpan<byte> data, bool requireCanonical
         Position++;
         Dictionary<string, BValue> values = new(StringComparer.Ordinal);
         byte[]? previousKey = null;
+        byte[]? rawItemValue = null;
         while (true)
         {
             EnsureAvailable(1);
             if (_data[Position] == (byte)'e')
             {
                 Position++;
-                return new BDictionary(values);
+                return new BDictionary(values) { RawItemValue = rawItemValue };
             }
 
             BString key = ParseString();
@@ -214,6 +222,11 @@ internal ref struct BencodeParser(ReadOnlySpan<byte> data, bool requireCanonical
             if (depth == 0 && keyText == "info")
             {
                 InfoBytes = _data[valueStart..Position].ToArray();
+            }
+
+            if (depth == 1 && keyText == "v")
+            {
+                rawItemValue = _data[valueStart..Position].ToArray();
             }
 
             values[keyText] = value;
@@ -252,6 +265,9 @@ internal static class Bencode
                 WriteAscii(writer, ":");
                 writer.Write(text.Bytes);
                 break;
+            case BRaw raw:
+                writer.Write(raw.Bytes);
+                break;
             case BList list:
                 WriteAscii(writer, "l");
                 for (int i = 0; i < list.Values.Count; i++)
@@ -264,7 +280,7 @@ internal static class Bencode
             case BDictionary dictionary:
                 WriteAscii(writer, "d");
                 List<string> keys = [.. dictionary.Values.Keys];
-                keys.Sort(StringComparer.Ordinal);
+                keys.Sort((left, right) => Encoding.UTF8.GetBytes(left).AsSpan().SequenceCompareTo(Encoding.UTF8.GetBytes(right)));
                 for (int i = 0; i < keys.Count; i++)
                 {
                     string key = keys[i];

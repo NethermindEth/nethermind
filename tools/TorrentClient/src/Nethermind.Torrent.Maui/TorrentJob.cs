@@ -62,6 +62,12 @@ internal sealed class TorrentJob : INotifyPropertyChanged
 
     public string InfoHashHex { get; set; } = string.Empty;
 
+    public string? Bep46FeedUri { get; set; }
+
+    public long? Bep46Sequence { get; set; }
+
+    public string? Bep46DownloadRoot { get; set; }
+
     public string OutputDirectory
     {
         get => _outputDirectory;

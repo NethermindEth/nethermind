@@ -154,6 +154,55 @@ public sealed class TorrentUiSettingsTests
 public sealed class TorrentQueueStoreTests
 {
     [Test]
+    public void Queue_round_trips_bep46_feed_sequence()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "nethermind-feed-" + Guid.NewGuid().ToString("N") + ".json");
+        string feedUri = "magnet:?xs=urn:btpk:8543d3e6115f0f98c944077a4493dcd543e49c739fd998550a1f614ab36ed63e&s=6e";
+        TorrentQueueEntry entry = new(Path.Combine(Path.GetTempPath(), "feed.torrent"), Path.GetTempPath(),
+            "Feed", new string('a', 40), Bep46FeedUri: feedUri, Bep46Sequence: 42,
+            Bep46DownloadRoot: Path.GetTempPath());
+        try
+        {
+            TorrentQueueStore.Save(path, [entry]);
+            TorrentQueueEntry restored = TorrentQueueStore.Load(path)[0];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restored.Bep46FeedUri, Is.EqualTo(feedUri));
+                Assert.That(restored.Bep46Sequence, Is.EqualTo(42));
+                Assert.That(restored.Bep46DownloadRoot, Is.EqualTo(Path.GetTempPath()));
+            }
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public void Bep46_versions_and_publishers_use_distinct_payload_directories()
+    {
+        string root = Path.GetTempPath();
+        Bep46Link first = Bep46Link.Parse("magnet:?xs=urn:btpk:8543d3e6115f0f98c944077a4493dcd543e49c739fd998550a1f614ab36ed63e");
+        Bep46Link sameKeyWithSalt = Bep46Link.Parse("magnet:?xs=urn:btpk:8543d3e6115f0f98c944077a4493dcd543e49c739fd998550a1f614ab36ed63e&s=6e");
+        Bep46Link second = Bep46Link.Parse("magnet:?xs=urn:btpk:7543d3e6115f0f98c944077a4493dcd543e49c739fd998550a1f614ab36ed63e");
+        string firstVersion = Bep46StorageLayout.VersionDirectory(root, first, new string('a', 40));
+        string nextVersion = Bep46StorageLayout.VersionDirectory(root, first, new string('b', 40));
+        string otherPublisher = Bep46StorageLayout.VersionDirectory(root, second, new string('a', 40));
+        string saltedFeed = Bep46StorageLayout.VersionDirectory(root, sameKeyWithSalt, new string('a', 40));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nextVersion, Is.Not.EqualTo(firstVersion));
+            Assert.That(otherPublisher, Is.Not.EqualTo(firstVersion));
+            Assert.That(saltedFeed, Is.Not.EqualTo(firstVersion));
+            Assert.That(Bep46StorageLayout.SameFeed(first, Bep46Link.Parse(first.OriginalUri.ToUpperInvariant())), Is.True);
+            Assert.That(Bep46StorageLayout.SameFeed(first, sameKeyWithSalt), Is.False);
+            Assert.That(Path.Combine(nextVersion, "payload.bin"), Is.Not.EqualTo(Path.Combine(firstVersion, "payload.bin")));
+        }
+    }
+
+    [Test]
     public void Queue_restores_explicit_peer_hints_without_migrating_old_entries()
     {
         string path = Path.Combine(Path.GetTempPath(), "nethermind-queue-" + Guid.NewGuid().ToString("N") + ".json");

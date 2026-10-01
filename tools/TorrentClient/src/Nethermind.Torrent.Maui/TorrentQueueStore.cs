@@ -11,7 +11,8 @@ internal sealed record TorrentTransferHistory(long PayloadBytesReceived, long Ve
     long ActiveTicks, int LastRunContributors, long UploadedBytes = 0);
 
 internal sealed record TorrentQueueEntry(string TorrentPath, string OutputDirectory, string Name, string InfoHashHex,
-    List<string>? ExplicitPeers = null, TorrentTransferHistory? Transfer = null, bool ResumeSeeding = false);
+    List<string>? ExplicitPeers = null, TorrentTransferHistory? Transfer = null, bool ResumeSeeding = false,
+    string? Bep46FeedUri = null, long? Bep46Sequence = null, string? Bep46DownloadRoot = null);
 
 internal static class TorrentQueueStore
 {
@@ -66,7 +67,12 @@ internal static class TorrentQueueStore
                     entry.ExplicitPeers?.Any(peer => string.IsNullOrWhiteSpace(peer) || peer.Length > 300) == true ||
                     entry.Transfer is { PayloadBytesReceived: < 0 } or { VerifiedBytesFromPeers: < 0 } or
                     { ActiveTicks: < 0 } or { LastRunContributors: < 0 } or { UploadedBytes: < 0 } ||
-                    entry.Transfer is { } transfer && transfer.VerifiedBytesFromPeers > transfer.PayloadBytesReceived)
+                    entry.Transfer is { } transfer && transfer.VerifiedBytesFromPeers > transfer.PayloadBytesReceived ||
+                    entry.Bep46Sequence < 0 ||
+                    entry.Bep46DownloadRoot is not null && !Path.IsPathFullyQualified(entry.Bep46DownloadRoot) ||
+                    entry.Bep46FeedUri is not null &&
+                    (entry.Bep46FeedUri.Length > MagnetLink.MaxUriLength || entry.Bep46Sequence is null ||
+                        !Bep46Link.TryParse(entry.Bep46FeedUri, out _)))
                 {
                     throw new FormatException("Torrent queue contains an invalid entry.");
                 }

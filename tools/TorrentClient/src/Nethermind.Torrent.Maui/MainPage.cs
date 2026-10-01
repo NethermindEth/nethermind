@@ -116,6 +116,9 @@ public sealed class MainPage : ContentPage
     private IDispatcherTimer? _activityTimer;
     private DateTimeOffset _nextTransferRefresh = DateTimeOffset.MinValue;
     private DateTimeOffset _nextTransferSave = DateTimeOffset.MinValue;
+    private DateTimeOffset _nextFeedRefresh = DateTimeOffset.UtcNow.AddMinutes(1);
+    private readonly CancellationTokenSource _feedRefreshCancellation = new();
+    private Task? _feedRefreshTask;
     private CancellationTokenSource? _magnetImportCancellation;
     private Task<byte[]>? _magnetResolutionTask;
     private bool _importPending;
@@ -158,6 +161,7 @@ public sealed class MainPage : ContentPage
             _activityTimer?.Stop();
             CancelAllVerifications();
             _magnetImportCancellation?.Cancel();
+            _feedRefreshCancellation.Cancel();
         };
         if (!string.IsNullOrWhiteSpace(TorrentUiSettingsStore.LastLoadError))
         {
@@ -717,6 +721,13 @@ public sealed class MainPage : ContentPage
                     }
                 }
 
+                if (now >= _nextFeedRefresh && _feedRefreshTask is not { IsCompleted: false } &&
+                    _magnetImportCancellation is null && _settings.EnableDht && !_feedRefreshCancellation.IsCancellationRequested)
+                {
+                    _nextFeedRefresh = now.AddMinutes(15);
+                    _feedRefreshTask = RefreshFeedsAsync(_feedRefreshCancellation.Token);
+                }
+
                 RefreshSummary();
                 RefreshActionState();
                 if (!_showSettings && _selectedJob is not null)
@@ -727,6 +738,116 @@ public sealed class MainPage : ContentPage
         }
 
         _activityTimer.Start();
+    }
+
+    private async Task RefreshFeedsAsync(CancellationToken token)
+    {
+        foreach (TorrentJob previous in _jobs.ToArray())
+        {
+            if (previous.Bep46FeedUri is not string feedUri || previous.Bep46Sequence is not long seenSequence)
+            {
+                continue;
+            }
+
+            try
+            {
+                token.ThrowIfCancellationRequested();
+                Bep46Link feed = Bep46Link.Parse(feedUri);
+                Bep46Update? update = await feed.GetCurrentAsync(token);
+                token.ThrowIfCancellationRequested();
+                if (!_jobs.Contains(previous) || !string.Equals(previous.Bep46FeedUri, feedUri, StringComparison.Ordinal) ||
+                    previous.Bep46Sequence != seenSequence)
+                {
+                    continue;
+                }
+
+                if (update is null || update.Sequence <= seenSequence)
+                {
+                    continue;
+                }
+
+                string infoHashHex = Convert.ToHexString(update.InfoHash).ToLowerInvariant();
+                string downloadRoot = previous.Bep46DownloadRoot ?? previous.OutputDirectory;
+                string versionDirectory = Bep46StorageLayout.VersionDirectory(downloadRoot, feed, infoHashHex);
+                TorrentJob? existing = null;
+                foreach (TorrentJob job in _jobs)
+                {
+                    if (string.Equals(job.InfoHashHex, infoHashHex, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(job.OutputDirectory, versionDirectory, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existing = job;
+                        break;
+                    }
+                }
+
+                if (existing is null)
+                {
+                    string magnet = feed.ToMagnet(update);
+                    byte[] metainfo = await MagnetMetadataResolver.ResolveAsync(magnet, _settings.ToMagnetResolveOptions(),
+                        null, token);
+                    token.ThrowIfCancellationRequested();
+                    if (!_jobs.Contains(previous) || !string.Equals(previous.Bep46FeedUri, feedUri, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    string cachedPath = TorrentQueueStore.CacheMetainfo(metainfo, TorrentQueueStore.AppMetainfoDirectory, infoHashHex);
+                    TorrentMetadata metadata = TorrentMetadata.Load(cachedPath);
+                    await AddCachedTorrentAsync(cachedPath, metadata, MagnetLink.Parse(magnet).ExplicitPeers,
+                        feedUri, update.Sequence, versionDirectory, downloadRoot, previous);
+                    foreach (TorrentJob job in _jobs)
+                    {
+                        if (string.Equals(job.InfoHashHex, infoHashHex, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(job.OutputDirectory, versionDirectory, StringComparison.OrdinalIgnoreCase))
+                        {
+                            existing = job;
+                            break;
+                        }
+                    }
+                }
+
+                if (existing is not null && previous.Bep46FeedUri is not null)
+                {
+                    string? priorFeed = existing.Bep46FeedUri;
+                    long? priorSequence = existing.Bep46Sequence;
+                    string? priorRoot = existing.Bep46DownloadRoot;
+                    string? previousRoot = previous.Bep46DownloadRoot;
+                    existing.Bep46FeedUri = feedUri;
+                    existing.Bep46Sequence = update.Sequence;
+                    existing.Bep46DownloadRoot = downloadRoot;
+                    if (!ReferenceEquals(existing, previous))
+                    {
+                        previous.Bep46FeedUri = null;
+                        previous.Bep46Sequence = null;
+                        previous.Bep46DownloadRoot = null;
+                    }
+
+                    if (!SaveQueue())
+                    {
+                        existing.Bep46FeedUri = priorFeed;
+                        existing.Bep46Sequence = priorSequence;
+                        existing.Bep46DownloadRoot = priorRoot;
+                        previous.Bep46FeedUri = feedUri;
+                        previous.Bep46Sequence = seenSequence;
+                        previous.Bep46DownloadRoot = previousRoot;
+                        continue;
+                    }
+                }
+
+                if (existing is not null)
+                {
+                    _statusLabel.Text = $"Feed updated to {existing.Name}";
+                }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                _statusLabel.Text = $"Feed refresh failed: {exception.Message}";
+            }
+        }
     }
 
 #if WINDOWS
@@ -1408,6 +1529,9 @@ public sealed class MainPage : ContentPage
                 job.ApplyMetadata(metadata);
                 job.RestoreTransferHistory(entry.Transfer);
                 job.ResumeSeeding = entry.ResumeSeeding;
+                job.Bep46FeedUri = entry.Bep46FeedUri;
+                job.Bep46Sequence = entry.Bep46Sequence;
+                job.Bep46DownloadRoot = entry.Bep46DownloadRoot;
                 job.BeginVerification();
                 _pendingVerifications.Add((job, metadata));
             }
@@ -1422,6 +1546,9 @@ public sealed class MainPage : ContentPage
                 job.Message = exception.Message;
                 job.RestoreTransferHistory(entry.Transfer);
                 job.ResumeSeeding = entry.ResumeSeeding;
+                job.Bep46FeedUri = entry.Bep46FeedUri;
+                job.Bep46Sequence = entry.Bep46Sequence;
+                job.Bep46DownloadRoot = entry.Bep46DownloadRoot;
             }
 
             if (entry.ExplicitPeers is not null)
@@ -1475,14 +1602,16 @@ public sealed class MainPage : ContentPage
             if (!ReferenceEquals(job, removed))
             {
                 entries.Add(new TorrentQueueEntry(job.TorrentPath, job.OutputDirectory, job.Name, job.InfoHashHex,
-                    job.ExplicitPeers.Count == 0 ? null : [.. job.ExplicitPeers], job.TransferHistory, job.ResumeSeeding));
+                    job.ExplicitPeers.Count == 0 ? null : [.. job.ExplicitPeers], job.TransferHistory, job.ResumeSeeding,
+                    job.Bep46FeedUri, job.Bep46Sequence, job.Bep46DownloadRoot));
             }
         }
 
         if (added is not null)
         {
             entries.Add(new TorrentQueueEntry(added.TorrentPath, added.OutputDirectory, added.Name, added.InfoHashHex,
-                added.ExplicitPeers.Count == 0 ? null : [.. added.ExplicitPeers], added.TransferHistory, added.ResumeSeeding));
+                added.ExplicitPeers.Count == 0 ? null : [.. added.ExplicitPeers], added.TransferHistory, added.ResumeSeeding,
+                added.Bep46FeedUri, added.Bep46Sequence, added.Bep46DownloadRoot));
         }
 
         try
@@ -1728,9 +1857,60 @@ public sealed class MainPage : ContentPage
 
     private async Task AddMagnetAsync(string magnetUri)
     {
-        MagnetLink link = MagnetLink.Parse(magnetUri);
-        if (SelectExistingTorrent(link.InfoHashHex))
+        string? feedUri = null;
+        long? feedSequence = null;
+        if (Bep46Link.TryParse(magnetUri, out Bep46Link? feed))
         {
+            foreach (TorrentJob job in _jobs)
+            {
+                if (job.Bep46FeedUri is string subscribedUri &&
+                    Bep46StorageLayout.SameFeed(feed!, Bep46Link.Parse(subscribedUri)))
+                {
+                    _queueView.SelectedItem = job;
+                    SelectJob(job);
+                    _statusLabel.Text = "Feed already in the library";
+                    return;
+                }
+            }
+
+            feedUri = magnetUri;
+            using CancellationTokenSource feedCancellation = new();
+            _magnetImportCancellation = feedCancellation;
+            SetImportState(true);
+            _statusLabel.Text = "Resolving signed torrent feed";
+            try
+            {
+                if (!_settings.EnableDht)
+                {
+                    throw new InvalidOperationException("BEP 46 magnet links require DHT.");
+                }
+
+                Bep46Update update = await feed!.GetCurrentAsync(feedCancellation.Token)
+                    ?? throw new InvalidOperationException("No valid BEP 46 update was found in the DHT.");
+                feedSequence = update.Sequence;
+                magnetUri = feed.ToMagnet(update);
+            }
+            finally
+            {
+                _magnetImportCancellation = null;
+                SetImportState(false);
+            }
+        }
+
+        MagnetLink link = MagnetLink.Parse(magnetUri);
+        string? feedDownloadRoot = feedUri is null ? null : _settings.DefaultDownloadDirectory;
+        string? outputDirectory = feedDownloadRoot is null
+            ? null : Bep46StorageLayout.VersionDirectory(feedDownloadRoot, feed!, link.InfoHashHex);
+        if (SelectExistingTorrent(link.InfoHashHex, outputDirectory))
+        {
+            if (feedUri is not null && _selectedJob is not null)
+            {
+                _selectedJob.Bep46FeedUri = feedUri;
+                _selectedJob.Bep46Sequence = Math.Max(_selectedJob.Bep46Sequence ?? 0, feedSequence!.Value);
+                _selectedJob.Bep46DownloadRoot = feedDownloadRoot;
+                SaveQueue();
+            }
+
             return;
         }
 
@@ -1756,7 +1936,8 @@ public sealed class MainPage : ContentPage
             cancellation.Token.ThrowIfCancellationRequested();
             string cachedPath = TorrentQueueStore.CacheMetainfo(torrentBytes, TorrentQueueStore.AppMetainfoDirectory, link.InfoHashHex);
             TorrentMetadata metadata = TorrentMetadata.Load(cachedPath);
-            await AddCachedTorrentAsync(cachedPath, metadata, link.ExplicitPeers);
+            await AddCachedTorrentAsync(cachedPath, metadata, link.ExplicitPeers, feedUri, feedSequence,
+                outputDirectory, feedDownloadRoot);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -1781,12 +1962,13 @@ public sealed class MainPage : ContentPage
         SemanticProperties.SetDescription(_pasteButton, label);
     }
 
-    private bool SelectExistingTorrent(string infoHashHex)
+    private bool SelectExistingTorrent(string infoHashHex, string? outputDirectory = null)
     {
+        string directory = outputDirectory ?? _settings.DefaultDownloadDirectory;
         foreach (TorrentJob existing in _jobs)
         {
             if (string.Equals(existing.InfoHashHex, infoHashHex, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(existing.OutputDirectory, _settings.DefaultDownloadDirectory, StringComparison.OrdinalIgnoreCase))
+                string.Equals(existing.OutputDirectory, directory, StringComparison.OrdinalIgnoreCase))
             {
                 _searchEntry.Text = string.Empty;
                 SetQueueFilter("All");
@@ -1800,23 +1982,45 @@ public sealed class MainPage : ContentPage
         return false;
     }
 
-    private async Task AddCachedTorrentAsync(string cachedPath, TorrentMetadata metadata, IReadOnlyList<string>? explicitPeers = null)
+    private async Task AddCachedTorrentAsync(string cachedPath, TorrentMetadata metadata, IReadOnlyList<string>? explicitPeers = null,
+        string? feedUri = null, long? feedSequence = null, string? outputDirectory = null, string? feedDownloadRoot = null,
+        TorrentJob? transferFeedFrom = null)
     {
-        if (SelectExistingTorrent(metadata.InfoHashHex))
+        if (SelectExistingTorrent(metadata.InfoHashHex, outputDirectory))
         {
             return;
         }
 
-        TorrentJob job = new(cachedPath, _settings.DefaultDownloadDirectory);
+        TorrentJob job = new(cachedPath, outputDirectory ?? _settings.DefaultDownloadDirectory);
         job.ApplyMetadata(metadata);
+        job.Bep46FeedUri = feedUri;
+        job.Bep46Sequence = feedSequence;
+        job.Bep46DownloadRoot = feedDownloadRoot;
         if (explicitPeers is not null)
         {
             job.ExplicitPeers.AddRange(explicitPeers);
         }
         job.Status = "Ready";
         job.Message = "Ready to start";
+        string? previousFeed = transferFeedFrom?.Bep46FeedUri;
+        long? previousSequence = transferFeedFrom?.Bep46Sequence;
+        string? previousRoot = transferFeedFrom?.Bep46DownloadRoot;
+        if (transferFeedFrom is not null)
+        {
+            transferFeedFrom.Bep46FeedUri = null;
+            transferFeedFrom.Bep46Sequence = null;
+            transferFeedFrom.Bep46DownloadRoot = null;
+        }
+
         if (!SaveQueue(added: job))
         {
+            if (transferFeedFrom is not null)
+            {
+                transferFeedFrom.Bep46FeedUri = previousFeed;
+                transferFeedFrom.Bep46Sequence = previousSequence;
+                transferFeedFrom.Bep46DownloadRoot = previousRoot;
+            }
+
             return;
         }
 
@@ -2051,6 +2255,7 @@ public sealed class MainPage : ContentPage
     internal async Task StopAllAsync(TimeSpan timeout)
     {
         _magnetImportCancellation?.Cancel();
+        _feedRefreshCancellation.Cancel();
         CancelAllVerifications();
         List<Task> stops = CreateStopTasks();
         if (stops.Count == 0)
@@ -2074,8 +2279,9 @@ public sealed class MainPage : ContentPage
     internal void StopAllForShutdown(TimeSpan timeout)
     {
         _magnetImportCancellation?.Cancel();
+        _feedRefreshCancellation.Cancel();
         CancelAllVerifications();
-        List<Task> stops = CreateStopTasks();
+        List<Task> stops = CreateStopTasks(includeFeedRefresh: false);
         if (stops.Count == 0)
         {
             return;
@@ -2107,12 +2313,17 @@ public sealed class MainPage : ContentPage
         SaveQueue();
     }
 
-    private List<Task> CreateStopTasks()
+    private List<Task> CreateStopTasks(bool includeFeedRefresh = true)
     {
         List<Task> stops = [];
         if (_magnetResolutionTask is not null)
         {
             stops.Add(_magnetResolutionTask);
+        }
+
+        if (includeFeedRefresh && _feedRefreshTask is not null)
+        {
+            stops.Add(_feedRefreshTask);
         }
 
         for (int i = 0; i < _jobs.Count; i++)

@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 
 namespace Nethermind.Torrent;
 
@@ -11,6 +12,8 @@ internal sealed class DhtClient : IAsyncDisposable
 {
     private const int MaxAnnounceQueries = 32;
     private const int MaxAnnounceNodes = 8;
+    private const int MaxItemQueries = 32;
+    private const int MaxItemResponseBytes = 4096;
 
     private static readonly (string Host, int Port)[] BootstrapRouters =
     [
@@ -80,6 +83,233 @@ internal sealed class DhtClient : IAsyncDisposable
         {
             _operationGate.Release();
         }
+    }
+
+    internal async Task<byte[]?> GetImmutableAsync(byte[] target, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (target.Length != KadId.Length)
+        {
+            throw new ArgumentException("DHT target must be 20 bytes.", nameof(target));
+        }
+
+        byte[] stableTarget = target.ToArray();
+        await _operationGate.WaitAsync(token);
+        try
+        {
+            (byte[]? value, _, _) = await GetItemCoreAsync(stableTarget, null, [], token);
+            return value;
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    internal async Task<DhtMutableItem?> GetMutableAsync(byte[] publicKey, byte[] salt, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(publicKey);
+        ArgumentNullException.ThrowIfNull(salt);
+        if (publicKey.Length != 32 || salt.Length > 64)
+        {
+            throw new ArgumentException("BEP 44 requires a 32-byte key and at most 64 bytes of salt.");
+        }
+
+        byte[] stableKey = publicKey.ToArray();
+        byte[] stableSalt = salt.ToArray();
+        byte[] target = SHA1.HashData([.. stableKey, .. stableSalt]);
+        await _operationGate.WaitAsync(token);
+        try
+        {
+            (_, DhtMutableItem? item, _) = await GetItemCoreAsync(target, stableKey, stableSalt, token);
+            return item;
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    internal async Task<int> PutImmutableAsync(byte[] value, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        byte[] stableValue = value.ToArray();
+        DhtMutableItem.Validate(stableValue, 0, []);
+        return await PutItemAsync(SHA1.HashData(stableValue), stableValue, null, null, token);
+    }
+
+    internal Task<int> PutMutableAsync(DhtMutableItem item, long? compareAndSwap, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (compareAndSwap < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(compareAndSwap));
+        }
+
+        // Recheck because the public byte arrays may have been mutated by a caller.
+        DhtMutableItem validated = DhtMutableItem.FromSigned(item.PublicKey, item.Salt, item.Sequence, item.Signature, item.Value);
+        return PutItemAsync(validated.Target, validated.Value, validated, compareAndSwap, token);
+    }
+
+    private async Task<int> PutItemAsync(byte[] target, byte[] value, DhtMutableItem? item, long? compareAndSwap, CancellationToken token)
+    {
+        await _operationGate.WaitAsync(token);
+        try
+        {
+            (_, _, List<(DhtNode Node, byte[] Token)> eligible) = await GetItemCoreAsync(target, item?.PublicKey, item?.Salt ?? [], token);
+            eligible.Sort((left, right) => DhtKeyOperator.CompareDistance(left.Node.Id, right.Node.Id, new KadId(target)));
+            int stored = 0;
+            for (int i = 0; i < eligible.Count && i < MaxAnnounceNodes; i++)
+            {
+                token.ThrowIfCancellationRequested();
+                (DhtNode node, byte[] writeToken) = eligible[i];
+                BDictionary args = Bencode.Dictionary(
+                    new KeyValuePair<string, BValue>("id", Bencode.Bytes(_nodeId.Bytes)),
+                    new KeyValuePair<string, BValue>("token", Bencode.Bytes(writeToken)),
+                    new KeyValuePair<string, BValue>("v", new BRaw(value)));
+                if (item is not null)
+                {
+                    args.Values.Add("k", Bencode.Bytes(item.PublicKey));
+                    args.Values.Add("seq", Bencode.Integer(item.Sequence));
+                    args.Values.Add("sig", Bencode.Bytes(item.Signature));
+                    if (item.Salt.Length != 0)
+                    {
+                        args.Values.Add("salt", Bencode.Bytes(item.Salt));
+                    }
+
+                    if (compareAndSwap.HasValue)
+                    {
+                        args.Values.Add("cas", Bencode.Integer(compareAndSwap.Value));
+                    }
+                }
+
+                if (await QueryAsync(node.EndPoint, "put", args, token, node.Id, requireCanonical: true) is not null)
+                {
+                    stored++;
+                }
+            }
+
+            return stored;
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    private async Task<(byte[]? Immutable, DhtMutableItem? Mutable, List<(DhtNode Node, byte[] Token)> Eligible)> GetItemCoreAsync(
+        byte[] target, byte[]? publicKey, byte[] salt, CancellationToken token)
+    {
+        await BootstrapAsync(token);
+        KadId targetId = new(target);
+        List<DhtNode> candidates = _kademlia.GetClosest(targetId, 16);
+        HashSet<KadId> queried = [];
+        List<(DhtNode Node, byte[] Token)> eligible = [];
+        byte[]? immutable = null;
+        DhtMutableItem? mutable = null;
+        using CancellationTokenSource budget = CancellationTokenSource.CreateLinkedTokenSource(token);
+        budget.CancelAfter(TimeSpan.FromSeconds(50));
+        try
+        {
+            for (int queryCount = 0; queryCount < MaxItemQueries; queryCount++)
+            {
+                DhtNode? next = null;
+                for (int i = 0; i < candidates.Count; i++)
+                {
+                    if (!queried.Contains(candidates[i].Id))
+                    {
+                        next = candidates[i];
+                        break;
+                    }
+                }
+
+                if (next is null)
+                {
+                    break;
+                }
+
+                DhtNode node = next.Value;
+                queried.Add(node.Id);
+                BDictionary args = Bencode.Dictionary(
+                    new KeyValuePair<string, BValue>("id", Bencode.Bytes(_nodeId.Bytes)),
+                    new KeyValuePair<string, BValue>("target", Bencode.Bytes(target)));
+                if (mutable is not null)
+                {
+                    args.Values.Add("seq", Bencode.Integer(mutable.Sequence));
+                }
+
+                BDictionary? response = await QueryAsync(node.EndPoint, "get", args, budget.Token, node.Id,
+                    requireCanonical: true, responseTimeout: TimeSpan.FromMilliseconds(1500));
+                if (response is null)
+                {
+                    continue;
+                }
+
+                if (response.TryGetValue("token", out BValue? rawToken) && rawToken is BString writeToken &&
+                    writeToken.Bytes.Length is > 0 and <= 256)
+                {
+                    eligible.Add((node, writeToken.Bytes));
+                }
+
+                if (response.RawItemValue is byte[] value)
+                {
+                    if (value.Length <= 1000)
+                    {
+                        if (publicKey is null && SHA1.HashData(value).AsSpan().SequenceEqual(target))
+                        {
+                            immutable = value;
+                        }
+                        else if (publicKey is not null &&
+                            response.TryGetValue("k", out BValue? rawKey) && rawKey is BString key &&
+                            key.Bytes.AsSpan().SequenceEqual(publicKey) &&
+                            response.TryGetValue("seq", out BValue? rawSequence) && rawSequence is BInteger sequence &&
+                            response.TryGetValue("sig", out BValue? rawSignature) && rawSignature is BString signature)
+                        {
+                            try
+                            {
+                                DhtMutableItem candidate = DhtMutableItem.FromSigned(key.Bytes, salt, sequence.Value, signature.Bytes, value);
+                                if (mutable is not null && candidate.Sequence == mutable.Sequence &&
+                                    !candidate.Value.AsSpan().SequenceEqual(mutable.Value))
+                                {
+                                    throw new InvalidDataException("Conflicting signed BEP 44 values have the same sequence.");
+                                }
+
+                                if (candidate.Target.AsSpan().SequenceEqual(target) &&
+                                    (mutable is null || candidate.Sequence > mutable.Sequence))
+                                {
+                                    mutable = candidate;
+                                }
+                            }
+                            catch (FormatException)
+                            {
+                                _log($"dht get {node.EndPoint} returned an invalid mutable item");
+                            }
+                        }
+                    }
+                }
+
+                if (response.TryGetValue("nodes", out BValue? rawNodes) && rawNodes is BString nodes)
+                {
+                    List<DhtNode> discovered = [];
+                    ParseCompactNodes(nodes.Bytes.AsSpan(0, Math.Min(nodes.Bytes.Length, MaxItemQueries * 26)), discovered);
+                    for (int i = 0; i < discovered.Count; i++)
+                    {
+                        AddSeed(candidates, discovered[i], targetId);
+                        if (candidates.Count > MaxItemQueries)
+                        {
+                            candidates.RemoveAt(candidates.Count - 1);
+                        }
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            _log("dht item lookup timed out");
+        }
+
+        token.ThrowIfCancellationRequested();
+        return (immutable, mutable, eligible);
     }
 
     private async Task<IReadOnlyList<PeerEndpoint>> FindPeersCoreAsync(byte[] infoHash, CancellationToken token)
@@ -382,7 +612,9 @@ internal sealed class DhtClient : IAsyncDisposable
         string queryName,
         BDictionary arguments,
         CancellationToken token,
-        KadId? expectedNodeId = null)
+        KadId? expectedNodeId = null,
+        bool requireCanonical = false,
+        TimeSpan? responseTimeout = null)
     {
         byte[] transactionBytes = NextTransactionId();
         BDictionary query = Bencode.Dictionary(
@@ -393,7 +625,7 @@ internal sealed class DhtClient : IAsyncDisposable
         byte[] payload = Bencode.Encode(query);
 
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        timeout.CancelAfter(responseTimeout ?? TimeSpan.FromSeconds(5));
         bool validResponse = false;
         try
         {
@@ -406,7 +638,12 @@ internal sealed class DhtClient : IAsyncDisposable
                     continue;
                 }
 
-                BDictionary root = BencodeDocument.Decode(result.Buffer).Root.AsDictionary("dht response");
+                if (requireCanonical && result.Buffer.Length > MaxItemResponseBytes)
+                {
+                    continue;
+                }
+
+                BDictionary root = BencodeDocument.Decode(result.Buffer, requireCanonical).Root.AsDictionary("dht response");
                 if (!root.TryGetValue("t", out BValue? transaction) ||
                     transaction is not BString transactionString ||
                     !transactionString.Bytes.AsSpan().SequenceEqual(transactionBytes))

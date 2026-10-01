@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" />
     <ProjectReference Include="..\..\..\..\src\Nethermind\Nethermind.Kademlia\Nethermind.Kademlia.csproj" />
   </ItemGroup>
 

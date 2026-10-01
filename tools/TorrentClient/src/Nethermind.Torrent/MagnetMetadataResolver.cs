@@ -57,6 +57,18 @@ public static class MagnetMetadataResolver
         token.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options);
+        if (Bep46Link.TryParse(magnetUri, out Bep46Link? feed))
+        {
+            if (!options.EnableDht)
+            {
+                throw new InvalidOperationException("BEP 46 magnet links require DHT.");
+            }
+
+            using CancellationTokenSource feedDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            feedDeadline.CancelAfter(options.DhtTimeout);
+            magnetUri = await feed!.ResolveMagnetAsync(feedDeadline.Token);
+        }
+
         MagnetLink link = MagnetLink.Parse(magnetUri);
         token.ThrowIfCancellationRequested();
 

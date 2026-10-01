@@ -15,7 +15,7 @@ public sealed class TorrentClientOptions
     /// <summary>
     /// Gets or sets the path to the `.torrent` file.
     /// </summary>
-    public required string TorrentPath { get; init; }
+    public required string TorrentPath { get; set; }
 
     /// <summary>
     /// Gets or sets the directory where payload files are written.

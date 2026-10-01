@@ -17,6 +17,24 @@ internal static class Program
                 cts.Cancel();
             };
 
+            if (options.TorrentPath.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                byte[] metainfo = await MagnetMetadataResolver.ResolveAsync(options.TorrentPath,
+                    new MagnetResolveOptions
+                    {
+                        EnableDht = options.EnableDht,
+                        EnableTrackers = options.EnableTrackers,
+                        ListenPort = options.ListenPort == 0 ? 6881 : options.ListenPort,
+                    }, Console.WriteLine, cts.Token);
+                string cacheDirectory = Path.Combine(options.OutputDirectory, ".metainfo");
+                Directory.CreateDirectory(cacheDirectory);
+                string cachePath = Path.Combine(cacheDirectory,
+                    Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(metainfo)) + ".torrent");
+                await File.WriteAllBytesAsync(cachePath, metainfo, cts.Token);
+                _ = TorrentMetadata.Load(cachePath);
+                options.TorrentPath = cachePath;
+            }
+
             TorrentSession session = new(options, Console.WriteLine);
             await session.RunAsync(cts.Token);
             return 0;
@@ -141,7 +159,7 @@ internal static class Program
 
     private static void PrintUsage()
     {
-        Console.WriteLine("Usage: Nethermind.Torrent.Cli <file.torrent> [options]");
+        Console.WriteLine("Usage: Nethermind.Torrent.Cli <file.torrent|magnet URI> [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  -o, --output <dir>   Output directory. Default: ./artifacts/torrent-downloads");
