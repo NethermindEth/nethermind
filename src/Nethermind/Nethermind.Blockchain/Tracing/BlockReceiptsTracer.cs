@@ -28,6 +28,8 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     /// <summary>Error reported to tracers for a frame transaction whose derived status is a failure.</summary>
     private const string FrameTxFailedError = "frame failed";
 
+    /// <inheritdoc/>
+    /// <remarks>A block tracer with this capability must forward receipts to its tx tracer; frame-end and rollback reports go directly to the tx tracer.</remarks>
     public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
     {
         _frameTxPayer = payer;
