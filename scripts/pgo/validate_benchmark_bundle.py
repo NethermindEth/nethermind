@@ -4,7 +4,8 @@
 
 """Validate strict Fusaka training inputs (Python 3.11+).
 
-The caller must obtain run/artifact metadata from the authenticated GitHub API.
+The caller must obtain the latest run and its complete, unfiltered artifact list
+from the authenticated GitHub API. Merge all artifact pages before validation.
 Keep the original artifact archives under .artifact-archives/<artifact-id>.zip.
 """
 import argparse
@@ -31,6 +32,9 @@ def validate_run(run, source_sha):
             or run.get("path") != ".github/workflows/collect-pgo-profile.yml"
             or run.get("event") != "workflow_dispatch"
             or run.get("head_repository", {}).get("full_name") != "NethermindEth/nethermind"
+            or run.get("repository", {}).get("full_name") != "NethermindEth/nethermind"
+            or run.get("repository", {}).get("id") != 101194285
+            or run.get("head_repository", {}).get("id") != 101194285
             or not isinstance(run.get("id"), int) or run["id"] < 1
             or not isinstance(run.get("run_attempt"), int) or run["run_attempt"] < 1):
         raise ValueError("training run identity or completion does not match")
@@ -40,6 +44,8 @@ def validate_run(run, source_sha):
 def verify_artifacts(root, run, suffix):
     root = Path(root).resolve(strict=True)
     metadata = json.loads((root / "artifact-api.json").read_text(encoding="utf-8"))
+    if type(metadata.get("total_count")) is not int or metadata["total_count"] != len(metadata["artifacts"]):
+        raise ValueError("artifact API inventory must be complete and unfiltered")
     names = (f"pgo-collection-{suffix}", f"pgo-app-references-{suffix}",
              "nethermind-pgo-profile", "nethermind-pgo-raw-data")
     identities = {}
@@ -66,17 +72,19 @@ def verify_artifacts(root, run, suffix):
             for item in bundle.infolist():
                 if item.is_dir():
                     continue
-                relative = PurePosixPath(item.filename)
-                if relative.is_absolute() or ".." in relative.parts or "\\" in item.filename or item.filename in checked:
+                name_in_archive = item.orig_filename
+                relative = PurePosixPath(name_in_archive)
+                if (relative.is_absolute() or ".." in relative.parts or "\\" in name_in_archive
+                        or "\0" in name_in_archive or name_in_archive in checked):
                     raise ValueError("artifact archive contains an unsafe or duplicate path")
-                path = (root / name / relative).resolve(strict=True)
+                path = (root / name / relative).resolve()
                 if not path.is_relative_to(root / name) or not path.is_file():
-                    raise ValueError("artifact file escapes its directory")
+                    raise ValueError("artifact file is missing or escapes its directory")
                 with bundle.open(item) as stream:
                     expected = hashlib.file_digest(stream, "sha256").hexdigest()
                 if digest(path) != expected:
                     raise ValueError("downloaded file does not match the authenticated artifact")
-                checked.add(item.filename)
+                checked.add(name_in_archive)
         actual = {path.relative_to(root / name).as_posix() for path in (root / name).rglob("*") if path.is_file()}
         if not checked or actual != checked:
             raise ValueError("extracted artifact inventory does not match its archive")
@@ -115,8 +123,8 @@ def validate_bundle(root, run, source_sha):
     manifest_path = collection / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     window = manifest["replay_window"]
-    if (Path(manifest["config_source"]).name != "github-action-mainnet-fusaka-flat.yaml"
-            or Path(manifest["snapshot_source"]).name != "nethermind-flat-25490000"
+    if (PurePosixPath(manifest["config_source"]).name != "github-action-mainnet-fusaka-flat.yaml"
+            or PurePosixPath(manifest["snapshot_source"]).name != "nethermind-flat-25490000"
             or "fusaka-payloads" not in PurePosixPath(manifest["payloads"]).parts
             or manifest["amount"] != 1000 or window["amount"] != 1000
             or window["warmup"] != 11 or window["snapshot_number"] != 25490000
