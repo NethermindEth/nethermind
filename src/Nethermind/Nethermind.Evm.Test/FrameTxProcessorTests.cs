@@ -514,7 +514,7 @@ public partial class FrameTxProcessorTests
             Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert leaves the frame transaction included");
             Assert.That(_stateProvider.AccountExists(child), Is.True,
                 "a contract created in the validation prefix and self-destructed in a rolled-back body frame must be restored, not finalized for deletion");
-            Assert.That(_stateProvider.GetCode(child), Is.EqualTo(childRuntime), "the restored contract keeps its runtime code");
+            Assert.That(_stateProvider.GetCode(child).ToArray(), Is.EqualTo(childRuntime), "the restored contract keeps its runtime code");
         }
     }
 
