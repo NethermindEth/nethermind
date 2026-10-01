@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -12,6 +13,11 @@ public class AccountOverride
 {
     public ulong? Nonce { get; set; }
     public UInt256? Balance { get; set; }
+
+    /// <remarks>
+    /// Read from JSON, the array may be shared with other requests that sent the same text, so it must not be modified.
+    /// </remarks>
+    [JsonConverter(typeof(OverrideCodeJsonConverter))]
     public byte[]? Code { get; set; }
     public Address? MovePrecompileToAddress { get; set; }
 
