@@ -141,6 +141,32 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>gloas/fork-choice.md on_block: a full child can recover its parent's verified payload beyond the first three peers.</summary>
+    [Test]
+    public async Task Parent_envelope_recovery_reaches_the_fourth_peer_after_empty_replies()
+    {
+        Hash256 root = AnchorRoot();
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(EnvelopeBlockSlot, root));
+        EnvelopeServingPeer[] silent = [.. Enumerable.Range(0, 3).Select(i => new EnvelopeServingPeer($"silent-{i}", WallSlot))];
+        EnvelopeServingPeer serving = new("serving", WallSlot, byRoot: roots => [EnvelopeFor(roots[0], AnchorSlot)]);
+        Harness harness = CreateHarness(peers: [.. silent, serving]);
+        harness.Importer.Known.Add(root);
+        harness.Importer.UnverifiedPayloads.Add(root);
+
+        await harness.Orchestrator.ImportBlockAsync(child, CancellationToken.None);
+        Assert.That(serving.RootRequests, Is.Empty);
+        harness.Timestamper.Set(SlotStart(WallSlot + 1));
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(silent.Select(static p => p.RootRequests.Count), Is.All.EqualTo(1));
+            Assert.That(silent.SelectMany(static p => p.Reports), Is.Empty);
+            Assert.That(serving.RootRequests, Has.Count.EqualTo(1));
+            Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
+        }
+    }
+
     [Test]
     public async Task Envelope_by_root_for_another_block_penalizes_its_peer()
     {
@@ -766,11 +792,46 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public async Task Range_feed_asks_the_next_peer_for_envelopes_the_first_did_not_serve()
+    public async Task Range_envelope_recovery_reaches_the_fourth_peer_after_empty_replies()
     {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2);
-        EnvelopeServingPeer bare = new("bare", WallSlot, blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
-        Harness harness = CreateRangeHarness(chain, EnvelopesOf(chain), out EnvelopeServingPeer serving, extraPeer: bare);
+        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 3);
+        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
+        EnvelopeServingPeer[] silent = [.. Enumerable.Range(0, 3).Select(i => new EnvelopeServingPeer($"silent-{i}", WallSlot,
+            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]))];
+        EnvelopeServingPeer serving = new("serving", WallSlot, byRange: (_, _) => envelopes,
+            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
+        Harness harness = CreateHarness(peers: [.. silent, serving]);
+        harness.Importer.Known.Add(AnchorRoot());
+        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
+
+        await harness.Orchestrator.FeedRangeSyncRoundAsync(CancellationToken.None);
+        Assert.That(serving.RangeRequests, Is.Empty);
+        harness.Timestamper.Set(SlotStart(WallSlot + 1));
+        await RunRangeRoundAsync(harness);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serving.RangeRequests, Has.Count.EqualTo(1));
+            Assert.That(silent.SelectMany(static p => p.Reports), Is.Empty);
+            Assert.That(harness.Importer.ImportOrder, Does.Contain((true, chain[0].ComputeMessageRoot())));
+        }
+    }
+
+    /// <summary>
+    /// Networking BeaconBlocksByRange, which envelopes by range follow: a reply may stop early or be empty, but skipping an
+    /// on-chain payload before one it serves is a violation. The next peer is asked for what is missing in every case.
+    /// </summary>
+    [TestCase(new int[0], false)]
+    [TestCase(new[] { 0 }, false)]
+    [TestCase(new[] { 1 }, true)]
+    public async Task Range_feed_asks_the_next_peer_for_envelopes_the_first_did_not_serve(int[] servedByFirst, bool skipIsPenalized)
+    {
+        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 3);
+        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
+        EnvelopeServingPeer bare = new("bare", WallSlot,
+            byRange: (_, _) => [.. servedByFirst.Select(i => envelopes[i])],
+            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
+        Harness harness = CreateRangeHarness(chain, envelopes, out EnvelopeServingPeer serving, extraPeer: bare);
         harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
 
         await RunRangeRoundAsync(harness);
@@ -778,6 +839,8 @@ public partial class BeaconSyncOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bare.RangeRequests, Has.Count.EqualTo(1));
+            Assert.That(bare.Reports, skipIsPenalized ? Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }) : Is.Empty);
+            Assert.That(serving.Reports, Is.Empty);
             Assert.That(serving.RangeRequests, Has.Count.EqualTo(1));
             Assert.That(harness.Importer.ImportOrder, Is.EqualTo(chain.SelectMany(static b => new[] { (false, b.ComputeMessageRoot()), (true, b.ComputeMessageRoot()) })));
         }

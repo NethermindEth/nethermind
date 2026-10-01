@@ -32,6 +32,8 @@ public static class BeaconChainMetadataKeys
     public const string SchemaVersion = "schemaVersion";
     /// <summary>8-byte big-endian slot above which the canonical index holds no entry; written with every index update.</summary>
     public const string CanonicalIndexTopSlot = "canonicalIndexTopSlot";
+    /// <summary>32-byte root followed by the 8-byte big-endian epoch of the last weak subjectivity checkpoint an anchor of this database proved.</summary>
+    public const string WeakSubjectivityCheckpoint = "weakSubjectivityCheckpoint";
 }
 
 /// <summary>Persistence for beacon blocks, states, execution payload envelopes, the canonical slot index, the root-to-children index, and driver metadata.</summary>
