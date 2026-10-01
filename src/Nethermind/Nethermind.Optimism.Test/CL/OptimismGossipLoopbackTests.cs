@@ -20,18 +20,13 @@ public class OptimismGossipLoopbackTests
 {
     private const string BlocksTopic = "/optimism/10/2/blocks";
 
-    /// <summary>Block gossip on the Optimism settings crosses a real TCP, Noise and yamux session.</summary>
+    /// <summary>rollup-node-p2p.md: block gossip may carry up to 10 MiB, so a block of any legal size crosses a real session whole.</summary>
+    /// <remarks>An RPC over the receiver's bound, or one truncated below the stream, ends the read loop and disconnects the peer.</remarks>
     [TestCase(64, TestName = "A small block message reaches the other host")]
     [TestCase(280 * 1024, TestName = "A block message over one yamux window reaches the other host")]
+    [TestCase(1024 * 1024 + 4096, TestName = "A block message over one mebibyte reaches the other host")]
     [CancelAfter(60_000)]
     public Task A_block_message_reaches_the_other_host(int size, CancellationToken token) => PublishAndReceiveAsync(size, token);
-
-    /// <summary>rollup-node-p2p.md: block gossip may carry up to 10 MiB, so a block over the library's 1 MiB RPC bound still arrives.</summary>
-    /// <remarks>An RPC over the receiver's bound ends its read loop and disconnects the peer without reconnecting, losing the sequencer until restart.</remarks>
-    [Test]
-    [CancelAfter(60_000)]
-    [Explicit("Nethermind.Libp2p 1.0.0 Channel.ReadAsync appends only the first segment of each later chunk, so an RPC over about 320 KiB arrives truncated")]
-    public Task A_block_message_over_one_mebibyte_reaches_the_other_host(CancellationToken token) => PublishAndReceiveAsync(1024 * 1024 + 4096, token);
 
     /// <summary>The receiver reads an RPC and an IWANT answer up to max_compressed_len(10 MiB) + 1024 bytes, not the library's 1 MiB and 512 KiB.</summary>
     [Test]

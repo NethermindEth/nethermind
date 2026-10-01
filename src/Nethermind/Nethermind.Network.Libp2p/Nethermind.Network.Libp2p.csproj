@@ -14,4 +14,7 @@
     <PackageReference Include="Nethermind.Libp2p.Protocols.Yamux" />
     <PackageReference Include="Snappier" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.BeaconChain.Test" />
+  </ItemGroup>
 </Project>

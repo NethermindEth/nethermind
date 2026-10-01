@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -66,6 +67,39 @@ public class GossipLoopbackTests
 
         ForkedSignedBeaconBlock receivedBlock = await received.Task;
         Assert.That(receivedBlock.Slot, Is.EqualTo(slotClock.CurrentSlot).Within(1), "the published block round-trips the mesh");
+    }
+
+    /// <summary>A gossip message of any legal size crosses a real session whole, so its sender is not disconnected for a truncated RPC.</summary>
+    /// <remarks>phase0 p2p "Gossipsub size limits" allow a compressed payload up to max_compressed_len(10 MiB); a message over one yamux window
+    /// spans several frames, and Nethermind.Libp2p 1.0.0 truncated such an RPC below the stream (see ContiguousChunkProtocol).</remarks>
+    [TestCase(64)]
+    [TestCase(300 * 1024)]
+    [TestCase(1200 * 1024)]
+    [TestCase(6 * 1024 * 1024)]
+    [CancelAfter(60_000)]
+    public async Task A_gossip_message_of_any_legal_size_reaches_the_other_host(int size, CancellationToken token)
+    {
+        string topicId = GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.DataColumnSidecarTopicName(0));
+        await using BeaconP2P publisher = CreateHost();
+        await using BeaconP2P subscriber = CreateHost();
+        await publisher.StartAsync(token);
+        await subscriber.StartAsync(token);
+        TaskCompletionSource<byte[]> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        subscriber.GetTopic(topicId).OnMessage += (_, data) => received.TrySetResult(data);
+        ITopic topic = publisher.GetTopic(topicId);
+        subscriber.Discover([LoopbackAddress(publisher)]);
+
+        byte[] message = new byte[size];
+        Random.Shared.NextBytes(message);
+        while (!received.Task.IsCompleted)
+        {
+            // The publisher sends only once it has learnt the subscription, so it repeats until the subscriber has the message.
+            token.ThrowIfCancellationRequested();
+            topic.Publish(message);
+            await Task.WhenAny(received.Task, Task.Delay(500, token));
+        }
+
+        Assert.That(await received.Task, Is.EqualTo(message));
     }
 
     private static BeaconP2P CreateHost()
