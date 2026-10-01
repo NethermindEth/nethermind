@@ -212,19 +212,18 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
     {
-        if (TraceRpcModule.IsPending(traceFilterForRpc.FromBlock) || TraceRpcModule.IsPending(traceFilterForRpc.ToBlock))
+        (BlockParameter fromBlock, BlockParameter toBlock) = traceFilterForRpc.GetBlockRange();
+        if (TraceRpcModule.IsPending(fromBlock) || TraceRpcModule.IsPending(toBlock))
         {
             return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
         }
 
-        if (_blockFinder.IsRangeInFuture(traceFilterForRpc.FromBlock, traceFilterForRpc.ToBlock))
+        if (_blockFinder.IsRangeInFuture(fromBlock, toBlock))
         {
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
         }
 
-        IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(
-            traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
-            traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
+        IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock);
 
         IEnumerable<(SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
         {
