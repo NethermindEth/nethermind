@@ -101,7 +101,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly ConcurrentDictionary<string, ManagedPeer> _peers = new();
 
     // Peers removed for a closed session, by peer id, so an inbound violation reported just after the close still counts against it.
-    private readonly ConcurrentDictionary<string, (ManagedPeer Peer, long RemovedAtTicks)> _closedPeers = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (ManagedPeer Peer, long RemovedAtTicks, long Sequence)> _closedPeers = new(StringComparer.Ordinal);
+    // The entries of _closedPeers oldest first, so pruning them costs O(1) per close; written under _admissionLock only.
+    private readonly Queue<(string PeerId, long RemovedAtTicks, long Sequence)> _closedOrder = new();
+    private long _closedSequence;
     internal static readonly TimeSpan ClosedPeerWindow = TimeSpan.FromMinutes(1);
     private readonly BeaconDiscovery? _discovery;
     private readonly INodeColumnCustodySource _localCustody;
@@ -1811,27 +1814,37 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         PublishCustodyShortfall();
     }
 
-    /// <summary>Keeps <paramref name="peer"/>, just removed for its closed session, findable by id for <see cref="ClosedPeerWindow"/>, and forgets older ones.</summary>
+    /// <summary>At most this many peers removed for a closed session are kept findable by id, the newest; a churn of identities cannot grow it further.</summary>
+    internal int ClosedPeerCapacity => Math.Max(1, 2 * _config.MaxPeerCount);
+
+    /// <summary>Keeps <paramref name="peer"/>, just removed for its closed session, findable by id for <see cref="ClosedPeerWindow"/>, and forgets the ones past the window or the capacity.</summary>
+    /// <remarks>Called under <c>_admissionLock</c>, the only writer of the order queue.</remarks>
     private void RememberClosed(ManagedPeer peer)
     {
         long now = _timestamper.UtcNowOffset.UtcTicks;
-        foreach (KeyValuePair<string, (ManagedPeer Peer, long RemovedAtTicks)> closed in _closedPeers)
+        long sequence = ++_closedSequence;
+        _closedPeers[peer.PeerId] = (peer, now, sequence);
+        _closedOrder.Enqueue((peer.PeerId, now, sequence));
+        while (_closedOrder.TryPeek(out (string PeerId, long RemovedAtTicks, long Sequence) oldest)
+            && (_closedOrder.Count > ClosedPeerCapacity || now - oldest.RemovedAtTicks > ClosedPeerWindow.Ticks))
         {
-            if (now - closed.Value.RemovedAtTicks > ClosedPeerWindow.Ticks)
+            _closedOrder.Dequeue();
+            // Only the entry this queue item wrote: the same id may have closed again since.
+            if (_closedPeers.TryGetValue(oldest.PeerId, out (ManagedPeer Peer, long RemovedAtTicks, long Sequence) entry) && entry.Sequence == oldest.Sequence)
             {
-                _closedPeers.TryRemove(closed);
+                _closedPeers.TryRemove(new KeyValuePair<string, (ManagedPeer Peer, long RemovedAtTicks, long Sequence)>(oldest.PeerId, entry));
             }
         }
-
-        _closedPeers[peer.PeerId] = (peer, now);
     }
 
     private bool TryFindClosed(string peerId, out ManagedPeer? peer)
     {
-        peer = _closedPeers.TryGetValue(peerId, out (ManagedPeer Peer, long RemovedAtTicks) closed)
+        peer = _closedPeers.TryGetValue(peerId, out (ManagedPeer Peer, long RemovedAtTicks, long Sequence) closed)
             && _timestamper.UtcNowOffset.UtcTicks - closed.RemovedAtTicks <= ClosedPeerWindow.Ticks ? closed.Peer : null;
         return peer is not null;
     }
+
+    internal int ClosedPeerCountForTest => _closedPeers.Count;
 
     /// <summary>Records the close of a peer's session in its peer id's history; as a fault disconnect when <paramref name="fault"/>, which also backs its address off.</summary>
     /// <param name="newDisconnect">The close was not recorded yet; <c>false</c> when a violation reported after the removal turns it into a fault.</param>
