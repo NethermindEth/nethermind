@@ -56,7 +56,7 @@ public static class VirtualMachineStatics
     /// <remarks>A kept frame holds its data stack (32 KiB, pinned), its 1 KiB inline memory and its environment, about
     /// 34 KiB in all, so a VM that has reached this depth retains about 270 KiB until it is collected. Like the ID
     /// scratch above, that is multiplied by the pooled VMs, so the depth is kept to where most calls end.</remarks>
-    public const int MaxCachedFrameDepth = 8;
+    internal const int MaxCachedFrameDepth = 8;
 
     public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
     public static ref readonly UInt256 P255 => ref P255Int;
