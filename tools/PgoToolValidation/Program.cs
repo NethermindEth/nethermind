@@ -18,7 +18,8 @@ AssemblyLoadContext.Default.Resolving += (_, name) => Assembly.LoadFrom(Path.Com
 Assembly tool = Assembly.LoadFrom(Path.Combine(toolDirectory, "dotnet-pgo.dll"));
 using ZipArchive archive = ZipFile.OpenRead(args[1]);
 using MemoryStream peStream = new();
-archive.Entries.Single(entry => entry.Name.EndsWith(".dll", StringComparison.Ordinal)).Open().CopyTo(peStream);
+using Stream entryStream = archive.Entries.Single(entry => entry.Name.EndsWith(".dll", StringComparison.Ordinal)).Open();
+entryStream.CopyTo(peStream);
 peStream.Position = 0;
 using PEReader pe = new(peStream);
 Type contextType = tool.GetType("Microsoft.Diagnostics.Tools.Pgo.TypeRefTypeSystem.TypeRefTypeSystemContext", true);
