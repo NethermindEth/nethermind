@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -79,11 +80,34 @@ public class InclusionListValidatorTests
             .WithGasUsed(gasUsed)
             .WithBaseFeePerGas(baseFee)
             .WithTransactions(blockTxs)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
             .WithInclusionListTransactions(il)
             .TestObject;
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
         Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
+    }
+
+    [Test]
+    public void Blob_appendability_requires_capacity_and_base_fee(
+        [Values(0UL, Eip4844Constants.GasPerBlob - 1, Eip4844Constants.GasPerBlob)] ulong remainingBlobGas,
+        [Values] bool underpriced,
+        [Values] bool included)
+    {
+        IReleaseSpec spec = Bogota.Instance;
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithBlobGasUsed(spec.GasCosts.MaxBlobGasPerBlock - remainingBlobGas)
+            .WithExcessBlobGas(2 * spec.BlobBaseFeeUpdateFraction)
+            .TestObject;
+        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee), Is.True);
+        Transaction tx = BuildBlobTx(maxFeePerBlobGas: underpriced ? blobBaseFee - UInt256.One : blobBaseFee);
+        if (included) block = new Block(block.Header, [tx], block.Uncles);
+
+        bool expected = included || underpriced || remainingBlobGas < Eip4844Constants.GasPerBlob;
+        Assert.That(InclusionListValidator.IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(expected));
     }
 
     // Withdrawals land after the block's transactions, so judging against the raw post-block balance
