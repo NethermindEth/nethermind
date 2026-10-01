@@ -136,6 +136,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"No beacon chain peers with head at or past slot {nextSlot} and earliest available slot at or before {target}; waiting");
+                // phase0/p2p-interface.md Status: a peer's last status can predate blocks it holds, so it is asked again rather than at the periodic refresh.
+                peerPool.RefreshStatusesBehind(nextSlot, $"range sync waits for slot {nextSlot} and no peer's status reaches it");
                 if (beforeRetry is not null)
                 {
                     await beforeRetry(token);
@@ -339,7 +341,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // Later rounds ask only for the slots still lacking a column, not the whole batch again.
             ulong roundStart = round == 0 ? startSlot : firstMissingSlot;
             ulong roundEnd = round == 0 ? endSlot : lastMissingSlot;
-            List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, roundStart, round == 0 ? lastBlobSlot : lastMissingSlot, spent, boundPerPeer: true);
+            List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, startSlot, roundStart, round == 0 ? lastBlobSlot : lastMissingSlot, spent, boundPerPeer: true);
             if (requests.Count == 0)
             {
                 return;
@@ -409,14 +411,16 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     }
 
     /// <summary>
-    /// Assigns each of <paramref name="missing"/> to a peer reaching <paramref name="startSlot"/> that custodies it, serves the range and is not in
-    /// <paramref name="excluded"/>; empty when no such peer exists.
+    /// Assigns each of <paramref name="missing"/> to a peer reaching <paramref name="batchStartSlot"/> that custodies it, serves the range from <paramref name="startSlot"/>
+    /// and is not in <paramref name="excluded"/>; empty when no such peer exists.
     /// </summary>
+    /// <param name="batchStartSlot">The batch's first slot, which its blocks were requested from peers reaching: a later round's first missing slot can lie past every peer's last
+    /// status although a peer served the block there (phase0/p2p-interface.md Status), and a custodian lacking it leaves the column unserved and is not asked again.</param>
     /// <param name="boundPerPeer">Caps each peer at an even share of <paramref name="missing"/>, at least <see cref="MinColumnsPerPeer"/>; a column the cap leaves out
     /// waits for a later round, so only a caller that retries sets it.</param>
-    private List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignBatchColumns(List<ulong> missing, ulong startSlot, ulong lastSlot, HashSet<string>? excluded, bool boundPerPeer)
+    private List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignBatchColumns(List<ulong> missing, ulong batchStartSlot, ulong startSlot, ulong lastSlot, HashSet<string>? excluded, bool boundPerPeer)
     {
-        IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
+        IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(batchStartSlot);
         IBeaconSyncPeer[] custodians = [.. reaching.Where(p => excluded?.Contains(p.Id) is not true && p.Custody.CountCustodied(missing) > 0)];
         if (custodians.Length == 0)
         {
@@ -860,7 +864,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // Later rounds ask only for the slots still lacking a column, not the whole batch again.
             ulong roundStart = round == 0 ? startSlot : firstMissingSlot;
             ulong roundEnd = round == 0 ? endSlot : lastMissingSlot;
-            List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, roundStart, round == 0 ? lastBlobSlot : lastMissingSlot, spent, boundPerPeer: true);
+            List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, startSlot, roundStart, round == 0 ? lastBlobSlot : lastMissingSlot, spent, boundPerPeer: true);
             if (requests.Count == 0)
             {
                 return;
