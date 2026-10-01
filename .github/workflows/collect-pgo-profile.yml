@@ -4,15 +4,33 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: Inspect Linux inputs or collect an instrumentation profile
+        description: Inspect inputs, collect training, or build matched benchmark images
         required: true
         type: choice
-        options: [inventory, instrumentation]
+        options: [inventory, instrumentation, benchmark-images]
         default: inventory
       training_amount:
         description: Fusaka payload count for instrumentation (1-1000; start with a bounded fixture)
         required: true
         default: "10"
+      training_run_id:
+        description: Successful strict 1000-payload training run for benchmark-images
+        required: false
+      training_source_sha:
+        description: Full source commit SHA of that training run
+        required: false
+      method_selector:
+        description: dotnet-pgo include-methods pattern (selection must retain exactly one method)
+        required: false
+        default: TrieNode.*GetMemorySize
+      profile_method:
+        description: Exact dotnet-pgo display name to retain
+        required: false
+        default: "[Nethermind.Trie]Nethermind.Trie.TrieNode.GetMemorySize(bool)"
+      diagnostic_method:
+        description: Simple method name for compiler assembly evidence
+        required: false
+        default: GetMemorySize
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -53,6 +71,108 @@ jobs:
         with:
           name: pgo-inventory-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/inventory/
+          if-no-files-found: error
+          retention-days: 90
+
+  benchmark-images:
+    if: inputs.phase == 'benchmark-images'
+    name: Build matched Fusaka Flat x64 benchmark images
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out orchestration source
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Download and independently validate strict training
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRAINING_RUN_ID: ${{ inputs.training_run_id }}
+          TRAINING_SHA: ${{ inputs.training_source_sha }}
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP}/pgo-images-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 scripts/pgo/download_benchmark_bundle.py \
+            --root "${root}/bundle" --run-id "${TRAINING_RUN_ID}" --source-sha "${TRAINING_SHA}"
+          git fetch --no-tags --depth=1 origin "${TRAINING_SHA}"
+
+      - name: Set up pinned offline tool SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: false
+          dotnet-version: "10.0.401"
+
+      - name: Build pinned dotnet-pgo
+        shell: bash
+        run: |
+          set -euo pipefail
+          tool_root="${RUNNER_TEMP}/pgo-images-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/tool"
+          mkdir -p "${tool_root}"
+          python3 scripts/pgo/prepare_tool.py --destination "${tool_root}/runtime"
+          cd "${tool_root}/runtime"
+          ./build.sh -c Release --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
+          tool_dir="${tool_root}/runtime/artifacts/bin/coreclr/linux.x64.Release/dotnet-pgo"
+          test -s "${tool_dir}/dotnet-pgo.dll"
+          printf '#!/usr/bin/env bash\nset -euo pipefail\nexec "%s" "%s" "$@"\n' \
+            "${tool_root}/runtime/.dotnet/dotnet" "${tool_dir}/dotnet-pgo.dll" > "${tool_dir}/dotnet-pgo"
+          chmod +x "${tool_dir}/dotnet-pgo"
+          find "${tool_dir}" -type f -print0 | sort -z | xargs -0 sha256sum > "${tool_root}/tool-binaries.sha256"
+          echo "${tool_dir}" >> "${GITHUB_PATH}"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: Build, validate and publish run-specific runtime images
+        shell: bash
+        env:
+          TRAINING_SHA: ${{ inputs.training_source_sha }}
+          METHOD_SELECTOR: ${{ inputs.method_selector }}
+          PROFILE_METHOD: ${{ inputs.profile_method }}
+          DIAGNOSTIC_METHOD: ${{ inputs.diagnostic_method }}
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP}/pgo-images-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 scripts/pgo/build_benchmark_images.py \
+            --repository "${GITHUB_WORKSPACE}" --bundle "${root}/bundle" \
+            --source-sha "${TRAINING_SHA}" --output "${root}/build" \
+            --pgo-tool "$(command -v dotnet-pgo)" --selector "${METHOD_SELECTOR}" \
+            --method "${PROFILE_METHOD}" --diagnostic-method "${DIAGNOSTIC_METHOD}" \
+            --tag-prefix "pgo-benchmark-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --publish
+
+      - name: Upload configuration-free build evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pgo-benchmark-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/bundle-validation.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/source.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/selection.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/rebuilt-inputs.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/images.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/publication-comparison.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/il-baseline-native-headers.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/no-profile-native-headers.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/one-method-profile-native-headers.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/no-profile-properties.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/one-method-profile-properties.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/no-profile-compiler.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/one-method-profile-compiler.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/no-profile.asm
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/build/evidence/one-method-profile.asm
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/tool/runtime-source-manifest.json
+            ${{ runner.temp }}/pgo-images-${{ github.run_id }}-${{ github.run_attempt }}/tool/tool-binaries.sha256
           if-no-files-found: error
           retention-days: 90
 
