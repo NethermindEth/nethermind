@@ -28,6 +28,46 @@ public class ContiguousChunkProtocolTests
     public Task An_exact_length_read_receives_every_segment_of_every_chunk([ValueSource(nameof(Chunkings))] int[][] chunks, CancellationToken token) =>
         AssertRelayedAsync(chunks, token);
 
+    /// <summary>A stream the protocol above closes is closed below too, although the peer never ended its side.</summary>
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task A_full_close_above_closes_the_stream_below(CancellationToken token)
+    {
+        Channel lower = new();
+        Channel upper = new();
+        Task relay = ContiguousChunkProtocol.RelayAsync(lower.Reverse, upper);
+
+        await upper.Reverse.CloseAsync();
+        await relay.WaitAsync(token);
+
+        Assert.That((await lower.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended));
+    }
+
+    /// <summary>A request the protocol above half-closes still receives its response from below.</summary>
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task A_half_close_above_keeps_the_response_flowing(CancellationToken token)
+    {
+        Channel lower = new();
+        Channel upper = new();
+        Task relay = ContiguousChunkProtocol.RelayAsync(lower.Reverse, upper);
+
+        Assert.That(await upper.Reverse.WriteEofAsync(token), Is.EqualTo(IOResult.Ok));
+        Assert.That((await lower.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended), "the request end reaches the peer");
+        Task<IOResult> response = lower.WriteAsync(new ReadOnlySequence<byte>([1, 2, 3]), token).AsTask();
+        ReadResult received = await upper.Reverse.ReadAsync(3, ReadBlockingMode.WaitAll, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await response, Is.EqualTo(IOResult.Ok));
+            Assert.That(received.Data.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(relay.IsCompleted, Is.False, "a half-close leaves the stream open");
+        }
+
+        await lower.CloseAsync();
+        await relay.WaitAsync(token);
+    }
+
     private static async Task AssertRelayedAsync(int[][] chunks, CancellationToken token)
     {
         Channel lower = new();
