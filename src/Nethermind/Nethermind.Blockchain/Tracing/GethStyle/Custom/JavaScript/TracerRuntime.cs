@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Text.RegularExpressions;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Logging;
@@ -71,34 +72,17 @@ internal sealed class TracerRuntime : IDisposable
     /// <summary>
     /// Compiles the tracer given as inline code or as the name of a tracer shipped under <c>Data/JSTracers</c>.
     /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="tracer"/> is not a known tracer, see <see cref="IsKnownTracer"/>.</exception>
-    public V8Script GetTracerScript(string tracer)
-    {
-        tracer = tracer.Trim();
-        if (IsInline(tracer))
-        {
-            return GetScript(tracer, tracer, pack: true);
-        }
-
-        string fileName = ToTracerFileName(tracer);
-        return IsBuiltIn(fileName)
+    public V8Script GetTracerScript(string tracer) =>
+        TryGetBuiltInName(tracer, out string fileName)
             ? GetScript(fileName, _builtInSources.Value[fileName], pack: true)
-            : throw new ArgumentException($"Tracer '{tracer}' not found");
-    }
+            : GetScript(tracer, tracer, pack: true);
 
-    /// <summary>
-    /// Reports whether <paramref name="tracer"/> is inline tracer code or names a tracer shipped under
-    /// <c>Data/JSTracers</c>, so a request naming anything else can be refused before a runtime is created.
-    /// </summary>
-    private static bool IsKnownTracer(string? tracer)
+    private static bool TryGetBuiltInName(string tracer, out string fileName)
     {
-        if (tracer is null)
-        {
-            return false;
-        }
-
-        tracer = tracer.Trim();
-        return IsInline(tracer) || IsBuiltIn(ToTracerFileName(tracer));
+        fileName = string.Empty;
+        if (!Regex.IsMatch(tracer, @"\A[A-Za-z0-9$][A-Za-z0-9_$]*(?:\.js)?\z")) return false;
+        fileName = ToTracerFileName(tracer);
+        return IsBuiltIn(fileName);
     }
 
     /// <summary>
@@ -108,12 +92,12 @@ internal sealed class TracerRuntime : IDisposable
     /// <exception cref="ArgumentException">The tracer is not found or its code does not compile.</exception>
     public static TracerRuntime? CreateValidated(string? tracer)
     {
-        if (!IsKnownTracer(tracer))
+        if (tracer is null)
         {
             throw new ArgumentException($"Tracer '{tracer}' not found");
         }
 
-        if (!IsInline(tracer!.Trim()))
+        if (TryGetBuiltInName(tracer, out _))
         {
             return null;
         }
@@ -157,8 +141,6 @@ internal sealed class TracerRuntime : IDisposable
 
         return script;
     }
-
-    private static bool IsInline(string tracer) => tracer.StartsWith('{') && tracer.EndsWith('}');
 
     // Names starting with '_' are the engine's own scripts, not tracers.
     private static bool IsBuiltIn(string fileName) => !fileName.StartsWith('_') && _builtInSources.Value.ContainsKey(fileName);
