@@ -258,6 +258,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         // CancellationTxTracer does from ReportActionRemainingGas: nothing disposes the staged frame.
         RecordingTracer throwing = new(Machine) { CancelWhenStagedAtDepth = 1 };
         Assert.Throws<OperationCanceledException>(() => Run(code, throwing));
+        Assert.That(throwing.Orphan, Is.Not.Null, "the tracer cancelled with a child frame staged");
         VmState<EthereumGasPolicy> orphan = throwing.Orphan!;
         ExecutionEnvironment orphanEnv = throwing.OrphanEnv!;
         using (Assert.EnterMultipleScope())
@@ -444,9 +445,12 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         string warm = Observe(code, traced: false);
         string uncached = Uncached(() => Observe(code, traced: false));
 
-        Assert.That(cached, Does.StartWith("status=1"));
-        Assert.That(cached, Is.EqualTo(uncached));
-        Assert.That(warm, Is.EqualTo(uncached));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cached, Does.StartWith("status=1"));
+            Assert.That(cached, Is.EqualTo(uncached));
+            Assert.That(warm, Is.EqualTo(uncached));
+        }
     }
 
     /// <summary>
@@ -491,8 +495,13 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             .RETURN(0, 128)
             .Done;
 
-        Assert.That(Words(RunAndRestore(code, traced)), Is.EqualTo(new UInt256[] { 0, 1, 0, 1 }));
-        Assert.That(Words(RunAndRestore(code, traced)), Is.EqualTo(new UInt256[] { 0, 1, 0, 1 }));
+        UInt256[] first = Words(RunAndRestore(code, traced));
+        UInt256[] second = Words(RunAndRestore(code, traced));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(new UInt256[] { 0, 1, 0, 1 }));
+            Assert.That(second, Is.EqualTo(new UInt256[] { 0, 1, 0, 1 }));
+        }
     }
 
     /// <summary>
@@ -512,8 +521,13 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
 
         UInt256 initial = 1.Ether;
         UInt256[] expected = [initial + 3, 3, 0, initial + 7, 4, 0];
-        Assert.That(Words(RunAndRestore(code, traced)), Is.EqualTo(expected));
-        Assert.That(Words(RunAndRestore(code, traced)), Is.EqualTo(expected));
+        UInt256[] first = Words(RunAndRestore(code, traced));
+        UInt256[] second = Words(RunAndRestore(code, traced));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(expected));
+            Assert.That(second, Is.EqualTo(expected));
+        }
     }
 
     /// <summary>
@@ -526,6 +540,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         byte[] code = ChainDriver(5);
         Assert.That(RunAndRestore(code, traced: false), Is.Not.Null);
         VmState<EthereumGasPolicy>[] before = Enumerable.Range(1, 5).Select(d => Machine.FrameCache[d]!).ToArray();
+        Assert.That(before, Has.None.Null, "the first run cached a frame at every depth");
 
         RecordingTracer throwing = new(Machine)
         {
@@ -539,7 +554,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             for (int depth = 1; depth <= 5; depth++)
             {
                 Assert.That(Machine.FrameCache[depth], Is.SameAs(before[depth - 1]), $"depth {depth} kept");
-                Assert.That(IsDisposed(Machine.FrameCache[depth]!), Is.True, $"depth {depth} disposed by the unwind");
+                Assert.That(IsDisposed(before[depth - 1]), Is.True, $"depth {depth} disposed by the unwind");
                 Assert.That(Machine.EnvironmentCache[depth]!.ExecutingAccount, Is.Null, $"env at depth {depth} released");
             }
         }
@@ -569,15 +584,16 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         byte[] code = ChainDriver(5);
         Assert.That(RunAndRestore(code, traced), Is.Not.Null);
         VmState<EthereumGasPolicy>[] before = Enumerable.Range(1, 6).Select(d => Machine.FrameCache[d]!).ToArray();
+        Assert.That(before, Has.None.Null, "the first run cached a frame at every depth");
 
         RecordingTracer cancelling = new(Machine) { CancelWhenStagedAtDepth = orphanDepth, Traced = traced };
         Assert.Throws<OperationCanceledException>(() => RunAndRestore(code, cancelling));
         VmState<EthereumGasPolicy> orphan = cancelling.Orphan!;
         ExecutionEnvironment orphanEnv = cancelling.OrphanEnv!;
+        Assert.That(orphan, Is.SameAs(before[orphanDepth - 1]), "the cached frame was staged again and orphaned");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(orphan, Is.SameAs(before[orphanDepth - 1]), "the cached frame was staged again and orphaned");
             Assert.That(orphan.DataStack, Is.Not.Null, "with the data stack it kept from its previous use");
             Assert.That(IsDisposed(orphan), Is.False, "the orphan is not disposed");
             Assert.That(orphanEnv.ExecutingAccount, Is.EqualTo(Chain), "nor is its environment");
@@ -586,7 +602,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             foreach (int depth in new[] { 1, 2, 4, 5, 6 })
             {
                 Assert.That(Machine.FrameCache[depth], Is.SameAs(before[depth - 1]), $"depth {depth} kept");
-                Assert.That(IsDisposed(Machine.FrameCache[depth]!), Is.True, $"depth {depth} released");
+                Assert.That(IsDisposed(before[depth - 1]), Is.True, $"depth {depth} released");
                 Assert.That(Machine.EnvironmentCache[depth]!.ExecutingAccount, Is.Null, $"env at depth {depth} released");
             }
         }
@@ -630,20 +646,25 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         RecordingTracer uncachedTracer = new(Machine) { ThrowEvmExceptionWhenStagedAtDepth = 2 };
         byte[]? uncached = Uncached(() => RunAndRestore(code, uncachedTracer));
 
+        Assert.That(orphan, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(throwing.Error, Is.Null);
             Assert.That(Words(output), Is.EqualTo(new UInt256[] { 0, 1, 1 }), "the first call halted, the others succeeded");
             Assert.That(output, Is.EqualTo(uncached));
-            Assert.That(orphan, Is.Not.Null);
             Assert.That(IsDisposed(orphan), Is.False, "the orphan is left alone");
             Assert.That(Machine.FrameCache[2], Is.Not.SameAs(orphan), "and replaced");
             Assert.That(throwing.Frames.Where(static f => f.Depth == 2).Select(static f => f.Frame), Has.None.SameAs(orphan));
         }
 
         RecordingTracer after = new(Machine);
-        Assert.That(RunAndRestore(code, after), Is.EqualTo(Uncached(() => RunAndRestore(code, traced: false))));
-        Assert.That(after.Error, Is.Null);
+        byte[]? afterOutput = RunAndRestore(code, after);
+        byte[]? afterUncached = Uncached(() => RunAndRestore(code, traced: false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterOutput, Is.EqualTo(afterUncached));
+            Assert.That(after.Error, Is.Null);
+        }
     }
 
     /// <summary>
@@ -1006,7 +1027,9 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
     private static UInt256[] Words(byte[]? data)
     {
         Assert.That(data, Is.Not.Null);
-        UInt256[] words = new UInt256[data!.Length / 32];
+        // Inside a multiple-assert scope a failure does not stop the test.
+        if (data is null) return [];
+        UInt256[] words = new UInt256[data.Length / 32];
         for (int i = 0; i < words.Length; i++) words[i] = new UInt256(data.AsSpan(i * 32, 32), isBigEndian: true);
         return words;
     }

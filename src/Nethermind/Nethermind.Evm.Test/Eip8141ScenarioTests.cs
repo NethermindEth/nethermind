@@ -898,14 +898,17 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
-            "the reverted inner reversal leaves frame 1's state gas intact");
-        Assert.That(receipt.FrameReceipts![2].StateGasUsed, Is.Zero,
-            "frame 3 reversed the slot frame 2 created, which refunds frame 2");
-        Assert.That(receipt.FrameReceipts![3].StateGasUsed, Is.Zero, "the reversing frame is credited nothing");
-        AssertStorage(slotOwner, 0, 1, "the inner reversal is rolled back");
-        AssertStorage(creator, 0, 0, "frame 3 cleared the slot");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
+                "the reverted inner reversal leaves frame 1's state gas intact");
+            Assert.That(receipt.FrameReceipts![2].StateGasUsed, Is.Zero,
+                "frame 3 reversed the slot frame 2 created, which refunds frame 2");
+            Assert.That(receipt.FrameReceipts![3].StateGasUsed, Is.Zero, "the reversing frame is credited nothing");
+            AssertStorage(slotOwner, 0, 1, "the inner reversal is rolled back");
+            AssertStorage(creator, 0, 0, "frame 3 cleared the slot");
+        }
     }
 
     [Test]
