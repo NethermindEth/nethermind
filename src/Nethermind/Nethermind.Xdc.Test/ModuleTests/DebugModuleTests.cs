@@ -20,6 +20,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
@@ -54,7 +55,8 @@ public class DebugModuleTests
         _blockchainBridge,
         new BlocksConfig(),
         _blockFinder,
-        new BlockForRpcFactory());
+        new BlockForRpcFactory(),
+        new RealFileSystem());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);

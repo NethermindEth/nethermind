@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -36,6 +37,7 @@ using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
+using Testably.Abstractions;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -50,6 +52,7 @@ public class DebugModuleTests
     private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
+    private IFileSystem _fileSystem = new RealFileSystem();
 
     private DebugRpcModule CreateModule() => new(
         LimboLogs.Instance,
@@ -59,7 +62,8 @@ public class DebugModuleTests
         _blockchainBridge,
         new BlocksConfig(),
         _blockFinder,
-        new BlockForRpcFactory());
+        new BlockForRpcFactory(),
+        _fileSystem);
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
@@ -532,6 +536,31 @@ public class DebugModuleTests
         string response = await SerializedRequest("debug_getBadBlocks", Path.Combine(directory.Path, "bad-blocks.json"));
 
         Assert.That(response, Does.StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Cannot write bad blocks to "));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenWriteFailsAfterCreate_DeletesFileAndReportsWriteError()
+    {
+        const string file = "bad-blocks.json";
+        _debugBridge.GetBadBlocks().Returns([]);
+        _fileSystem = Substitute.For<IFileSystem>();
+        _fileSystem.FileStream.New(file, FileMode.CreateNew, FileAccess.Write)
+            .Returns(new FullDiskStream(file));
+        _fileSystem.File.Exists(file).Returns(true);
+
+        string response = await SerializedRequest("debug_getBadBlocks", file);
+
+        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"Cannot write bad blocks to {file}: {FullDiskStream.Message}\"}},\"id\":67}}"));
+        _fileSystem.File.Received(1).Delete(file);
+    }
+
+    private sealed class FullDiskStream(string path) : FileSystemStream(new MemoryStream(), path, false)
+    {
+        public const string Message = "No space left on device";
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new IOException(Message);
+
+        public override void Write(ReadOnlySpan<byte> buffer) => throw new IOException(Message);
     }
 
     [Test]

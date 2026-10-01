@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.IO;
+using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -46,7 +47,8 @@ public class DebugRpcModule(
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
-    IBlockForRpcFactory blockForRpcFactory)
+    IBlockForRpcFactory blockForRpcFactory,
+    IFileSystem fileSystem)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
@@ -693,12 +695,12 @@ public class DebugRpcModule(
         // Geth extension: write the list to a new file and return null. CreateNew never overwrites an existing file.
         // Serializing first means a serialization failure never leaves a file behind.
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(badBlocks, EthereumJsonSerializer.JsonOptions);
-        FileStream stream;
+        Stream stream;
         try
         {
-            stream = new FileStream(file, FileMode.CreateNew, FileAccess.Write);
+            stream = fileSystem.FileStream.New(file, FileMode.CreateNew, FileAccess.Write);
         }
-        catch (IOException) when (File.Exists(file) || Directory.Exists(file))
+        catch (IOException) when (fileSystem.File.Exists(file) || fileSystem.Directory.Exists(file))
         {
             return ResultWrapper<IEnumerable<BadBlock>?>.Fail("location would overwrite an existing file", ErrorCodes.Default);
         }
@@ -718,7 +720,7 @@ public class DebugRpcModule(
         catch (IOException e)
         {
             // The file is ours: remove the partial write rather than leave a truncated list.
-            File.Delete(file);
+            fileSystem.File.Delete(file);
             return ResultWrapper<IEnumerable<BadBlock>?>.Fail($"Cannot write bad blocks to {file}: {e.Message}", ErrorCodes.Default);
         }
 
