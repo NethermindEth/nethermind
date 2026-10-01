@@ -1,0 +1,41 @@
+diff --git a/src/coreclr/tools/dotnet-pgo/Program.cs b/src/coreclr/tools/dotnet-pgo/Program.cs
+--- a/src/coreclr/tools/dotnet-pgo/Program.cs
++++ b/src/coreclr/tools/dotnet-pgo/Program.cs
+@@ -29,6 +29,7 @@
+ using Microsoft.Diagnostics.Tracing.Etlx;
+ using Microsoft.Diagnostics.Tracing.Parsers.Clr;
+ using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
++using Microsoft.Diagnostics.Tracing.Parsers.Universal.Events;
+ 
+ using ILCompiler;
+ using ILCompiler.IBC;
+@@ -1706,6 +1707,29 @@
+                             correlator.AttributeSamplesToIP(e.InstructionPointer, 1);
+                         }
+ 
++                        long universalWeight = 0;
++                        long missingStackWeight = 0;
++                        foreach (SampleTraceData e in p.EventsInProcess.ByEventType<SampleTraceData>())
++                        {
++                            if (e.EventName != "cpu" || e.TimeStampRelativeMSec < excludeEventsBefore || e.TimeStampRelativeMSec > excludeEventsAfter)
++                                continue;
++
++                            long weight = checked((long)e.Value);
++                            universalWeight = checked(universalWeight + weight);
++                            TraceCallStack stack = e.CallStack();
++                            if (stack == null)
++                            {
++                                missingStackWeight = checked(missingStackWeight + weight);
++                                continue;
++                            }
++                            correlator.AttributeSamplesToIP(stack.CodeAddress.Address, weight);
++                        }
++                        PrintOutput($"Universal CPU sample process: {p.ProcessID}");
++                        PrintOutput($"Universal CPU sample window start: {excludeEventsBefore.ToString("R", CultureInfo.InvariantCulture)}");
++                        PrintOutput($"Universal CPU sample window end: {excludeEventsAfter.ToString("R", CultureInfo.InvariantCulture)}");
++                        PrintOutput($"Universal CPU sample weight in window: {universalWeight}");
++                        PrintOutput($"Universal CPU sample weight without stacks: {missingStackWeight}");
++
+                         PrintOutput($"Samples outside managed code: {correlator.SamplesOutsideManagedCode}");
+                         PrintOutput($"Samples in managed code that does not have native<->IL mappings: {correlator.SamplesInManagedCodeWithoutAnyMappings}");
+                         PrintOutput($"Samples in managed code with mappings that could not be correlated: {correlator.SamplesInManagedCodeOutsideMappings}");

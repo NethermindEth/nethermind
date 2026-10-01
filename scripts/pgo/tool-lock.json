@@ -45,6 +45,13 @@
       "upstream_commit": null,
       "upstream_url": null,
       "purpose": "Preserve CPU sample weights in raw SPGO block counts and minimum-sample eligibility, as well as attribution diagnostics."
+    },
+    {
+      "file": "patches/runtime-universal-spgo.patch",
+      "sha256": "0dd52571c02ae220abf133642ecf551d2b8e42d73801a3133f77274301a30800",
+      "upstream_commit": null,
+      "upstream_url": null,
+      "purpose": "Attribute Linux Universal CPU samples with checked weights and inclusive process-scoped sample windows; report missing stacks and accounting context."
     }
   ],
   "purpose": "Isolated offline profile conversion; never included in production runtime images."
