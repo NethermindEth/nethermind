@@ -436,6 +436,18 @@ public static class Metrics
     [KeyIsLabel("outcome")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogReads { get; } = new();
 
+    private static long _trieNodeLogIndexFalseMatches;
+
+    [CounterMetric]
+    [Description("Trie node log index probes whose 24-bit tag matched but whose record held a different key, so the record was read for nothing")]
+    public static long TrieNodeLogIndexFalseMatches
+    {
+        get => Volatile.Read(ref _trieNodeLogIndexFalseMatches);
+        set => Interlocked.Exchange(ref _trieNodeLogIndexFalseMatches, value);
+    }
+
+    public static void RecordTrieNodeLogIndexFalseMatch() => Interlocked.Increment(ref _trieNodeLogIndexFalseMatches);
+
     [DetailedMetric]
     [Description("Time to merge one trie node log generation into RocksDB")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
