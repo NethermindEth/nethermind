@@ -189,26 +189,18 @@ public class ExecutionPayloadEnvelopesReqRespTests
     public enum RangeFault
     {
         UnreadableStoredBlock,
-        PastWalkCap,
         ZeroCount,
     }
 
     [TestCase(RangeFault.UnreadableStoredBlock, ReqRespFraming.ResponseCode.ServerError, 0L)]
-    [TestCase(RangeFault.PastWalkCap, ReqRespFraming.ResponseCode.ResourceUnavailable, 0L)]
     [TestCase(RangeFault.ZeroCount, ReqRespFraming.ResponseCode.InvalidRequest, 1L)]
     [CancelAfter(30_000)]
     public async Task By_range_listen_records_a_peer_failure_only_for_an_invalid_request(RangeFault fault, byte expected, long recorded, CancellationToken token)
     {
         EnvelopeChain chain = new();
         ulong start = FirstGloasSlot + 1;
-        (Hash256 head, Hash256 headHash) = chain.Put(start, Hash256.Zero, Hash256.Zero);
-        ulong headSlot = start + (fault == RangeFault.PastWalkCap ? (ulong)ExecutionPayloadEnvelopePool.MaxCanonicalWalk : 0);
-        for (ulong slot = start + 1; slot <= headSlot; slot++)
-        {
-            (head, headHash) = chain.Put(slot, head, headHash);
-        }
-
-        chain.SetHead(head, headSlot);
+        (Hash256 head, _) = chain.Put(start, Hash256.Zero, Hash256.Zero);
+        chain.SetHead(head, start);
         if (fault == RangeFault.UnreadableStoredBlock)
         {
             chain.Corrupt(head);

@@ -9,6 +9,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
+using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
@@ -280,6 +282,179 @@ public class InboundRequestWatchTests
             Assert.That(chunks, Has.Count.EqualTo(3));
             Assert.That(chunks, Has.All.Matches<ResponseChunk>(static c => c.Result == ReqRespFraming.ResponseCode.Success));
         }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Range_reply_stops_when_a_reorg_replaces_its_served_ancestors([Values] bool columns, [Values] bool belowAnchor, CancellationToken token)
+    {
+        const ulong start = 13_410_304;
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet;
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] blocks) = TestChain.BuildLinkedChain(start - 1, start, start + 1, start + 2, start + 3);
+        TestChain.Persist(store, anchor, anchorRoot, blocks);
+        if (belowAnchor)
+        {
+            store.SetAnchor(SszRoots.HashTreeRoot(blocks[^1].Message!), start + 3);
+            store.BackfilledBlockFloor = start;
+        }
+
+        DataColumnSidecarPool pool = new();
+        foreach (SignedBeaconBlock block in blocks)
+        {
+            pool.Add(SszRoots.HashTreeRoot(block.Message!), block.Message!.Slot,
+                DataColumnSidecarTestFixture.BuildValidSidecar(0, block.Message.Slot, blobCount: 1));
+        }
+
+        Channel channel = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IChannel server = HoldSecondWrite(channel.Reverse, entered, release);
+        Task listening = Task.Run(async () =>
+        {
+            try
+            {
+                if (columns) await new DataColumnSidecarsByRangeProtocol(spec, pool, store).ListenAsync(server, Context());
+                else await new BeaconBlocksByRangeProtocolV2(spec, store).ListenAsync(server, Context());
+            }
+            finally
+            {
+                await channel.Reverse.WriteEofAsync(token);
+            }
+        }, token);
+        ChannelStreamAdapter input = new(channel);
+        byte[] request = columns
+            ? DataColumnSidecarsByRangeRequest.Encode(new DataColumnSidecarsByRangeRequest { StartSlot = start, Count = 3, Columns = [0] })
+            : BeaconBlocksByRangeRequest.Encode(new BeaconBlocksByRangeRequest { StartSlot = start, Count = 3, Step = 1 });
+        await ReqRespFraming.WriteRequestAsync(input, request, token);
+        await channel.WriteEofAsync(token);
+        List<ResponseChunk> received = [(await ReqRespFraming.ReadResponseChunkAsync(input, 4, ReqRespFraming.MaxPayloadSize, token))!.Value];
+        await entered.Task.WaitAsync(token);
+        SignedBeaconBlock replacement = TestChain.CreateBlock(start + 1, anchorRoot);
+        Hash256 replacementRoot = SszRoots.HashTreeRoot(replacement.Message!);
+        SignedBeaconBlock next = TestChain.CreateBlock(start + 2, replacementRoot);
+        Hash256 nextRoot = SszRoots.HashTreeRoot(next.Message!);
+        store.PutBlock(replacementRoot, replacement);
+        store.PutBlock(nextRoot, next);
+        pool.Add(nextRoot, start + 2, DataColumnSidecarTestFixture.BuildValidSidecar(0, start + 2, blobCount: 1));
+        store.ApplyCanonicalIndexChanges([(start, null), (start + 1, replacementRoot), (start + 2, nextRoot)], start + 2);
+        release.SetResult();
+        while (await ReqRespFraming.ReadResponseChunkAsync(input, 4, ReqRespFraming.MaxPayloadSize, token) is { } chunk)
+        {
+            received.Add(chunk);
+        }
+
+        await listening.WaitAsync(token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Has.Count.EqualTo(2));
+            Assert.That(received, Has.All.Matches<ResponseChunk>(static c => c.Result == ReqRespFraming.ResponseCode.Success));
+        }
+    }
+
+    // p2p-interface.md range replies: reread passed slots to keep the reply on one chain.
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Range_reply_stops_when_a_reorg_rewrites_a_slot_it_already_passed([Values] bool columns, [Values] bool passedSlotWasEmpty, CancellationToken token)
+    {
+        const ulong start = 13_410_304;
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet;
+        SlotReadHookColumnsDb db = new(start + 2);
+        BeaconChainStore store = new(db, spec);
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] blocks) =
+            TestChain.BuildLinkedChain(start - 1, passedSlotWasEmpty ? [start, start + 2] : [start, start + 1, start + 2]);
+        TestChain.Persist(store, anchor, anchorRoot, blocks);
+        Hash256 firstRoot = SszRoots.HashTreeRoot(blocks[0].Message!);
+        SignedBeaconBlock replacement = TestChain.CreateBlock(start + 1, firstRoot);
+        replacement.Message!.ProposerIndex = 22;
+        Hash256 replacementRoot = SszRoots.HashTreeRoot(replacement.Message);
+        SignedBeaconBlock next = TestChain.CreateBlock(start + 2, replacementRoot);
+        Hash256 nextRoot = SszRoots.HashTreeRoot(next.Message!);
+        store.PutBlock(replacementRoot, replacement);
+        store.PutBlock(nextRoot, next);
+        DataColumnSidecarPool pool = new();
+        pool.Add(firstRoot, start, DataColumnSidecarTestFixture.BuildValidSidecar(0, start, blobCount: 1));
+        pool.Add(nextRoot, start + 2, DataColumnSidecarTestFixture.BuildValidSidecar(0, start + 2, blobCount: 1));
+        db.OnRead = () => store.ApplyCanonicalIndexChanges([(start + 1, replacementRoot), (start + 2, nextRoot)], start + 2);
+
+        Channel channel = new();
+        Task listening = Task.Run(async () =>
+        {
+            try
+            {
+                if (columns) await new DataColumnSidecarsByRangeProtocol(spec, pool, store).ListenAsync(channel.Reverse, Context());
+                else await new BeaconBlocksByRangeProtocolV2(spec, store).ListenAsync(channel.Reverse, Context());
+            }
+            finally
+            {
+                await channel.Reverse.WriteEofAsync(token);
+            }
+        }, token);
+        ChannelStreamAdapter input = new(channel);
+        byte[] request = columns
+            ? DataColumnSidecarsByRangeRequest.Encode(new DataColumnSidecarsByRangeRequest { StartSlot = start, Count = 3, Columns = [0] })
+            : BeaconBlocksByRangeRequest.Encode(new BeaconBlocksByRangeRequest { StartSlot = start, Count = 3, Step = 1 });
+        await ReqRespFraming.WriteRequestAsync(input, request, token);
+        await channel.WriteEofAsync(token);
+        List<ResponseChunk> received = [];
+        while (await ReqRespFraming.ReadResponseChunkAsync(input, 4, ReqRespFraming.MaxPayloadSize, token) is { } chunk)
+        {
+            received.Add(chunk);
+        }
+
+        await listening.WaitAsync(token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Has.Count.EqualTo(columns || passedSlotWasEmpty ? 1 : 2), "nothing of the new chain follows what was served of the old one");
+            Assert.That(received, Has.All.Matches<ResponseChunk>(static c => c.Result == ReqRespFraming.ResponseCode.Success));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Column_reply_caps_sidecars_at_a_whole_block_after_empty_slots([Values(2, 130)] int blockCount, [Values] bool atLastSlot, CancellationToken token)
+    {
+        BeaconChainSpec spec = EnvelopeChain.Spec;
+        ulong start = atLastSlot ? ulong.MaxValue - (ulong)blockCount - 1 : spec.GloasForkEpoch * spec.SlotsPerEpoch;
+        ulong[] columns = [.. Enumerable.Range(0, 127).Select(static c => (ulong)c)];
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
+        DataColumnSidecarPool pool = new(capacity: 130 * columns.Length);
+        for (ulong offset = 2; offset < (ulong)blockCount + 2; offset++)
+        {
+            Hash256 root = Keccak.Compute($"columns {offset}");
+            store.SetCanonicalRoot(start + offset, root);
+            foreach (ulong column in columns)
+            {
+                pool.AddGloas(new DataColumnSidecarGloas { Slot = start + offset, BeaconBlockRoot = root, Index = column, Column = [], KzgProofs = [] });
+            }
+        }
+
+        Channel channel = new();
+        Task listening = Task.Run(async () =>
+        {
+            try
+            {
+                await new DataColumnSidecarsByRangeProtocol(spec, pool, store).ListenAsync(channel.Reverse, Context());
+            }
+            finally
+            {
+                await channel.Reverse.WriteEofAsync(token);
+            }
+        }, token);
+        ChannelStreamAdapter input = new(channel);
+        await ReqRespFraming.WriteRequestAsync(input, DataColumnSidecarsByRangeRequest.Encode(
+            new DataColumnSidecarsByRangeRequest { StartSlot = start, Count = (ulong)blockCount + 2, Columns = columns }), token);
+        await channel.WriteEofAsync(token);
+        List<(ulong Slot, ulong Column)> received = [];
+        while (await ReqRespFraming.ReadResponseChunkAsync(input, 4, ReqRespFraming.MaxPayloadSize, token) is { } chunk)
+        {
+            Assert.That(chunk.Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success));
+            DataColumnSidecarGloas.Decode(chunk.Payload, out DataColumnSidecarGloas sidecar);
+            received.Add((sidecar.Slot, sidecar.Index));
+        }
+
+        await listening.WaitAsync(token);
+        Assert.That(received, Is.EqualTo(Enumerable.Range(2, Math.Min(blockCount, 129)).SelectMany(offset => columns.Select(column => (start + (ulong)offset, column)))));
     }
 
     private static long InvalidMessageCount() =>

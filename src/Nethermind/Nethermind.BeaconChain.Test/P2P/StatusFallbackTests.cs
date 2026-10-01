@@ -90,6 +90,33 @@ public class StatusFallbackTests
         }
     }
 
+    [Test]
+    public void Published_status_uses_the_wall_clock_digest_at_the_fork_boundary([Values] bool earliestSource, [Values] bool bpo)
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet;
+        ulong epoch = bpo ? spec.BlobSchedule[0].Epoch : spec.FuluForkEpoch;
+        ulong seconds = spec.GenesisTime + epoch * spec.SlotsPerEpoch * spec.SecondsPerSlot;
+        ManualTimestamper time = new(DateTime.UnixEpoch.AddSeconds(seconds - 1));
+        BeaconChainStatusHolder holder = new(spec, time);
+        Hash256 head = Keccak.Compute("head");
+        holder.Publish(new StatusMessageV2
+        {
+            ForkDigest = ForkDigest.Compute(spec, epoch - 1), HeadRoot = head, HeadSlot = 42,
+            FinalizedRoot = Hash256.Zero, EarliestAvailableSlot = 10,
+        }, head);
+        if (earliestSource) holder.EarliestAvailableSlotSource = () => 11;
+        Assert.That(holder.CurrentStatus.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch - 1)));
+        time.Set(DateTime.UnixEpoch.AddSeconds(seconds));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(holder.CurrentStatus.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch)));
+            Assert.That(holder.CurrentHead.Status.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch)));
+            Assert.That(holder.CurrentHead.FullHeadRoot, Is.EqualTo(head));
+            Assert.That(holder.CurrentStatus.HeadSlot, Is.EqualTo(42));
+            Assert.That(holder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(earliestSource ? 11 : 10));
+        }
+    }
+
     private static async Task<(Exception? Thrown, StatusMessageV2? Answer, ISession Session)> RequestStatusAsync(Exception v2Error, CancellationToken token)
     {
         ISession session = Substitute.For<ISession>();
