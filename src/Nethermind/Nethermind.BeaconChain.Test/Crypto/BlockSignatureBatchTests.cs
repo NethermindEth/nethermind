@@ -43,6 +43,31 @@ public class BlockSignatureBatchTests
 
     private static BlsSignature SignedBy(int keyIndex, Hash256 message) => Sign(DeriveKey(keyIndex), message);
 
+    /// <summary>Serial and deferred signatures must belong to G2, as required by IETF BLS draft v4, CoreVerify section 2.7.</summary>
+    [Test]
+    public void Signature_outside_G2_is_rejected([Values] bool deferred)
+    {
+        G1Affine publicKey = PublicKey(3);
+        BlsSignature validSignature = SignedBy(3, Message);
+        Assert.That(BlsSigner.Verify(publicKey, validSignature.Bytes, Message.Bytes), Is.True);
+        BlsSignature signature = OffSubgroupKeys.WithG2Torsion(validSignature);
+        Bls.P2 point = new(new long[Bls.P2.Sz]);
+        Assert.That(point.TryDecode(signature.Bytes, out _), Is.True);
+        Assert.That(point.OnCurve(), Is.True);
+        Assert.That(point.ToAffine().InGroup(), Is.False);
+        bool pairingOnly = BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), Message.Bytes);
+        TestContext.Out.WriteLine($"S + T pairing-only verification: {pairingOnly}");
+
+        BlockSignatureBatch batch = new();
+        bool accepted = BlockSignatureBatch.Verify(publicKey, signature, Message, deferred ? batch.Defer("outside G2") : null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.False, $"S + T pairing-only verification: {pairingOnly}");
+            Assert.That(batch.Count, Is.Zero);
+        }
+    }
+
     [Test]
     public void A_signature_the_serial_path_cannot_decode_is_refused_at_its_call_site()
     {
