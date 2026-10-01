@@ -181,6 +181,8 @@ public sealed class BeaconP2P : IAsyncDisposable
                 // phase0 p2p "Gossipsub size limits": an encoded RPC, an IWANT answer included, may reach max_message_size().
                 MaxRpcBytes = Eth2MessageId.MaxMessageSize,
                 MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
+                // The router redials every closed gossip peer each period, past PeerManager's bans, band and backoff; PeerManager owns redials.
+                ReconnectionPeriod = System.Threading.Timeout.Infinite,
             }, ScheduledTopics(spec)))
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
@@ -371,6 +373,9 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Internal so a test can tell a session closed for an unanswered identify from a failure of the code under test.</summary>
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
+
+    /// <summary>Internal so a test can see which peers the started router holds a gossip connection to.</summary>
+    internal IRoutingStateContainer? RoutingStateForTest => _router;
 
     /// <summary>Internal so a test can see the validator installed on the started router; without it the node forwards every message unchecked.</summary>
     internal Func<PeerId, Libp2p.Protocols.Pubsub.Dto.Message, MessageValidity>? VerifyMessageForTest => _router?.VerifyMessage;

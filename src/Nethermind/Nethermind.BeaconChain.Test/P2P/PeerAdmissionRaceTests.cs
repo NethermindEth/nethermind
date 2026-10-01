@@ -261,6 +261,32 @@ public class PeerAdmissionRaceTests
         return true;
     }
 
+    /// <summary>A peer whose session closed is dialed again only by the peer manager, never by the gossipsub router.</summary>
+    /// <remarks>The router queues every closed gossip peer and redials it each reconnection period, past bans, the peer band, dial backoff and the dial gate.</remarks>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_closed_session_is_not_redialed_by_the_gossip_router(CancellationToken token)
+    {
+        Node local = Create();
+        Node remote = Create();
+        await using (local.P2P)
+        await using (remote.P2P)
+        {
+            await local.P2P.StartAsync(token);
+            await remote.P2P.StartAsync(token);
+            remote.P2P.Discover([LoopbackAddress(local.P2P)]);
+            await WaitUntilAsync(() => remote.P2P.RoutingStateForTest!.ConnectedPeers.Contains(local.P2P.LocalPeerId!), "fixture: the router never connected to the peer", token);
+            Assert.That(remote.P2P.TryGetEstablishedSession(local.P2P.LocalPeerId!, out ISession? session), Is.True, "fixture: the router's session is established");
+
+            await session!.DisconnectAsync();
+            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0 && remote.P2P.SessionCountForTest == 0, "fixture: the closed session was not torn down", token);
+            // Past the library's default ReconnectionPeriod of 15 s.
+            await Task.Delay(TimeSpan.FromSeconds(20), token);
+
+            Assert.That((local.P2P.SessionCountForTest, remote.P2P.SessionCountForTest), Is.EqualTo((0, 0)), "neither router dialed the closed peer again");
+        }
+    }
+
     private static int PortOf(BeaconP2P node) => int.Parse(LoopbackAddressText(node, withPeerId: false).Split('/')[4]);
 
     /// <summary>A loopback TCP front for a node: closes the first connections it accepts, relays the rest, and records when each arrived.</summary>
