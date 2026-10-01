@@ -71,6 +71,7 @@ public static class WitnessExtensions
 
                     decodedHeaders[i] = Decoder.Decode(ref reader)
                         ?? throw new InvalidOperationException($"No header decoded at index {i}");
+                    reader.CheckEnd();
 
                     if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))
                         throw new InvalidOperationException("Witness headers are not contiguous");

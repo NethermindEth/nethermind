@@ -181,28 +181,14 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
                     BlockErrorMessages.BuilderExitsContractEmpty, BlockErrorMessages.BuilderExitsContractFailed);
             }
 
-            RecordRequests(block, ref requests);
+            block.ExecutionRequests = [.. requests];
+            block.Header.RequestsHash =
+                ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
         }
         finally
         {
             requests.Dispose();
         }
-    }
-
-    /// <summary>
-    /// Records the requests derived from execution onto the block and computes the requests hash.
-    /// </summary>
-    /// <remarks>
-    /// The request system calls are always executed (their state effects matter); this only controls
-    /// whether the derived requests are written back to the block header. Stateless validation
-    /// overrides this to a no-op so the block keeps the consensus-layer-provided requests hash, which
-    /// the statelessly re-executed state transition does not re-derive.
-    /// </remarks>
-    protected virtual void RecordRequests(Block block, ref ArrayPoolListRef<byte[]> requests)
-    {
-        block.ExecutionRequests = [.. requests];
-        block.Header.RequestsHash =
-            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 
     private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ref ArrayPoolListRef<byte[]> requests)

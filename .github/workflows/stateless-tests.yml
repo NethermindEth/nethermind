@@ -138,7 +138,7 @@ jobs:
       - name: Download input
         working-directory: src/Nethermind/${{ matrix.project }}/bin
         run: |
-          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${{ matrix.block.input }}" \
+          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260930/${{ matrix.block.input }}" \
             -o "${{ matrix.block.input }}"
           echo "${{ matrix.block.hash }}  ${{ matrix.block.input }}" | sha256sum --status -c - || \
             { echo "::error::Checksum failed"; exit 1; }
