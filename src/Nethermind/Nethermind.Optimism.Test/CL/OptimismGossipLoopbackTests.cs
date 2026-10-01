@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Network.Libp2p;
 using Nethermind.Optimism.CL.P2P;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.CL;
@@ -79,7 +81,29 @@ public class OptimismGossipLoopbackTests
 
         using StaticPeerKeeper keeper = new(node.Peer, routing, [sequencer.Address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
         await KeepUntilConnectedAsync(keeper, node, routing, sequencerId, token);
-        Assert.That(keeper.GossipDialCountForTest, Is.EqualTo(1), "one gossip dial per static peer");
+    }
+
+    /// <summary>A gossip dial that has not connected the peer by the next check is cancelled before another starts, so a peer that stalls
+    /// in negotiation holds one stream, not one per check.</summary>
+    [Test]
+    public async Task A_stalled_gossip_dial_is_cancelled_before_the_next_check_dials_again()
+    {
+        PeerId peerId = new Nethermind.Libp2p.Core.Identity().PeerId;
+        Multiaddress address = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{peerId}");
+        ILocalPeer localPeer = Substitute.For<ILocalPeer>();
+        localPeer.DialAsync(Arg.Any<Multiaddress>(), Arg.Any<CancellationToken>()).Returns(Substitute.For<ISession>());
+        IRoutingStateContainer router = Substitute.For<IRoutingStateContainer>();
+        router.ConnectedPeers.Returns([]);
+        List<CancellationToken> dials = [];
+        using StaticPeerKeeper keeper = new(localPeer, router, [address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(),
+            (_, dialToken) => { dials.Add(dialToken); return Task.Delay(Timeout.Infinite, dialToken); });
+
+        for (int check = 0; check < 3; check++)
+        {
+            await keeper.CheckAsync(CancellationToken.None);
+        }
+
+        Assert.That(dials.Select(static dial => dial.IsCancellationRequested), Is.EqualTo(new[] { true, true, false }));
     }
 
     // Runs the static peer check as its timer does, more often: the peer can refuse a dial while it still holds an earlier session.
