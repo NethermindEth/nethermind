@@ -38,6 +38,13 @@
       "upstream_commit": null,
       "upstream_url": null,
       "purpose": "Preserve IL/native map records during initial EventPipe nettrace-to-ETLX conversion, before reopening cached ETLX."
+    },
+    {
+      "file": "patches/runtime-weighted-blocks.patch",
+      "sha256": "d11b3afc7a292d3301791bc80899025a3187f54a310aee80a5ec3e98f3a3bf6c",
+      "upstream_commit": null,
+      "upstream_url": null,
+      "purpose": "Preserve CPU sample weights in raw SPGO block counts and minimum-sample eligibility, as well as attribution diagnostics."
     }
   ],
   "purpose": "Isolated offline profile conversion; never included in production runtime images."

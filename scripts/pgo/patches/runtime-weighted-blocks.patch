@@ -1,0 +1,12 @@
+diff --git a/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs b/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs
+--- a/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs
++++ b/src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs
+@@ -110,7 +110,7 @@
+                 return;
+             }
+ 
+-            if (pmi.Profile.TryAttributeSamples(mapping.ILOffset, 1))
++            if (pmi.Profile.TryAttributeSamples(mapping.ILOffset, numSamples))
+             {
+                 TotalAttributedSamples += numSamples;
+             }

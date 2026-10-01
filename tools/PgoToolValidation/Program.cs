@@ -5,6 +5,7 @@ using System.Collections;
 using System.IO.Compression;
 using System.Reflection;
 using System.Reflection.PortableExecutable;
+using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 
 if (args.Length != 2)
@@ -101,4 +102,45 @@ catch (TargetInvocationException exception) when (exception.InnerException is Nu
         throw new Exception("Unrelated failure removed a method");
     Console.WriteLine("PASS: unrelated failure propagates");
 }
+Type memoryMapType = tool.GetType("Microsoft.Diagnostics.Tools.Pgo.MethodMemoryMap", true);
+Type regionType = tool.GetType("Microsoft.Diagnostics.Tools.Pgo.MemoryRegionInfo", true);
+Type mappingType = tool.GetType("Microsoft.Diagnostics.Tools.Pgo.IPMapping", true);
+Type keyValueMapType = tool.GetType("Microsoft.Diagnostics.Tools.Pgo.KeyValueMap`2", true).MakeGenericType(typeof(uint), mappingType);
+object mapping = Activator.CreateInstance(mappingType, new object[] { 0, null, keys[0] });
+Array mappings = Array.CreateInstance(mappingType, 1);
+mappings.SetValue(mapping, 0);
+object nativeToIl = Activator.CreateInstance(keyValueMapType, new object[] { new uint[] { 0 }, mappings });
+object region = Activator.CreateInstance(regionType);
+regionType.GetProperty("StartAddress").SetValue(region, 100UL);
+regionType.GetProperty("EndAddress").SetValue(region, 110UL);
+regionType.GetProperty("Method").SetValue(region, keys[0]);
+regionType.GetProperty("NativeToILMap").SetValue(region, nativeToIl);
+Array regions = Array.CreateInstance(regionType, 1);
+regions.SetValue(region, 0);
+object memoryMap = RuntimeHelpers.GetUninitializedObject(memoryMapType);
+memoryMapType.GetField("_infoKeys", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(memoryMap, new ulong[] { 100 });
+memoryMapType.GetField("_infos").SetValue(memoryMap, regions);
+object weightedCorrelator = Activator.CreateInstance(correlatorType, new[] { memoryMap });
+IDictionary weightedMethods = (IDictionary)correlatorType.GetField("_methodInf", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(weightedCorrelator);
+object weightedProfile = MakeProfile(false);
+object weightedInfo = Activator.CreateInstance(infoType, true);
+infoType.GetProperty("Profile").SetValue(weightedInfo, weightedProfile);
+weightedMethods.Add(keys[0], weightedInfo);
+MethodInfo attribute = correlatorType.GetMethod("AttributeSamplesToIP");
+long totalWeight = 0;
+foreach (long weight in new[] { 0L, 1L, 2L, 3_000_000_000L })
+{
+    attribute.Invoke(weightedCorrelator, new object[] { 100UL, weight });
+    totalWeight += weight;
+    long attributed = (long)correlatorType.GetProperty("TotalAttributedSamples").GetValue(weightedCorrelator);
+    long profileWeight = (long)sampleType.GetProperty("AttributedSamples").GetValue(weightedProfile);
+    IDictionary raw = (IDictionary)sampleType.GetProperty("RawSamples").GetValue(weightedProfile);
+    if (attributed != totalWeight || profileWeight != 10 + totalWeight || raw.Values.Cast<long>().Single() != 10 + totalWeight)
+        throw new Exception($"Sample weight {weight} was not preserved in both diagnostics and block counts");
+}
+attribute.Invoke(weightedCorrelator, new object[] { 110UL, 7L });
+if ((long)correlatorType.GetProperty("SamplesOutsideManagedCode").GetValue(weightedCorrelator) != 7 ||
+    (long)sampleType.GetProperty("AttributedSamples").GetValue(weightedProfile) != 10 + totalWeight)
+    throw new Exception("Outside-code samples changed the managed profile");
+Console.WriteLine("PASS: zero, unit, non-unit and 64-bit sample weights reach raw block counts; outside-code samples stay separate");
 return 0;

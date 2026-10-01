@@ -257,7 +257,7 @@ jobs:
           find "${dotnet_pgo_dir}" -type f -print0 | sort -z | xargs -0 sha256sum > "${tool_root}/tool-binaries.sha256"
           echo "${dotnet_pgo_dir}" >> "${GITHUB_PATH}"
 
-      - name: Validate smoothing failure isolation
+      - name: Validate smoothing isolation and sample weights
         shell: bash
         run: |
           set -euo pipefail
