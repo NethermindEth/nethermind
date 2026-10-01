@@ -1361,7 +1361,7 @@ namespace Nethermind.TxPool
             _frameTxsToRevalidate.Clear();
         }
 
-        /// <summary>Whether <paramref name="tx"/> still resolves the solvent payer it was admitted against.</summary>
+        /// <summary>Whether <paramref name="tx"/> still satisfies the head's payer and paymaster rules.</summary>
         /// <remarks>
         /// The solvency test compares the payer's whole pending exposure against its balance, so an
         /// over-committed payer sheds transactions one at a time: each eviction releases its reservation,
@@ -1375,6 +1375,14 @@ namespace Nethermind.TxPool
         /// </remarks>
         private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state)
         {
+            // EIP-8141: a default-code sponsor may have become a capped paymaster since admission.
+            if (PendingPaymasterCache.KeyFor(tx) is Address paymaster
+                && _pendingPaymasters.GetPendingCount(paymaster) > Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
+                && FrameTxPaymasterFilter.IsNonCanonicalPaymaster(paymaster, state))
+            {
+                return false;
+            }
+
             bool stillValid = ResolveFrameTxAgainstHead(tx, state, out Address? resolvedPayer);
             if (stillValid) IndexFrameTxDependencies(tx, resolvedPayer, onlyIfTracked: true);
             return stillValid;
