@@ -32,7 +32,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     {
         _frameTxPayer = payer;
         _frameTxReceipts = frameReceipts;
-        if (_otherTracer is BlockReceiptsTracer receiptsTracer)
+        if (_otherTracer is IFrameTxReceiptTracer receiptsTracer)
             receiptsTracer.ReportFrameTxReceipt(payer, frameReceipts);
         else
             _currentFrameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
