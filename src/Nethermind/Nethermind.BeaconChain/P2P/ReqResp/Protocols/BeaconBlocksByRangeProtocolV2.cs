@@ -31,13 +31,12 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
 
     public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, BeaconBlocksByRangeRequest request)
     {
+        using RequestTiming.Exchange exchange = RequestTiming.Open(request);
+        RequestTiming? timing = exchange.Timing;
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using (CancellationTokenSource cts = StartTimeout(RespTimeout))
-        {
-            await WriteRequestAndEofAsync(downChannel, stream, BeaconBlocksByRangeRequest.Encode(request), cts.Token);
-        }
+        await WriteRequestAndEofAsync(downChannel, stream, BeaconBlocksByRangeRequest.Encode(request), RespTimeout);
 
-        IReadOnlyList<ForkedSignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, (int)Math.Min(request.Count, MaxRequestBlocks), Id);
+        IReadOnlyList<ForkedSignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, (int)Math.Min(request.Count, MaxRequestBlocks), Id, timing: timing);
         ulong? previousSlot = null;
         foreach (ForkedSignedBeaconBlock block in blocks)
         {

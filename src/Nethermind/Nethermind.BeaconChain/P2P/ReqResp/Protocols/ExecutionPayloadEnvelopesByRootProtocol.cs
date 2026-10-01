@@ -32,13 +32,12 @@ public sealed class ExecutionPayloadEnvelopesByRootProtocol(BeaconChainSpec spec
             throw new ArgumentOutOfRangeException(nameof(request), request.Length, $"Cannot request more than {MaxRequestPayloads} beacon block roots in a single request");
         }
 
+        using RequestTiming.Exchange exchange = RequestTiming.Open(request);
+        RequestTiming? timing = exchange.Timing;
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using (CancellationTokenSource cts = StartTimeout(RespTimeout))
-        {
-            await WriteRequestAndEofAsync(downChannel, stream, ExecutionPayloadEnvelopeRoots.Encode(new ExecutionPayloadEnvelopeRoots { Roots = request }), cts.Token);
-        }
+        await WriteRequestAndEofAsync(downChannel, stream, ExecutionPayloadEnvelopeRoots.Encode(new ExecutionPayloadEnvelopeRoots { Roots = request }), RespTimeout);
 
-        IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes = await ReadEnvelopeChunksAsync(stream, request.Length, Id);
+        IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes = await ReadEnvelopeChunksAsync(stream, request.Length, Id, timing: timing);
         HashSet<Hash256> requestedRoots = [.. request];
         foreach (SignedExecutionPayloadEnvelope envelope in envelopes)
         {

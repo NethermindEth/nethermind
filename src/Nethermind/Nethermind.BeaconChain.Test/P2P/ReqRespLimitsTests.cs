@@ -9,11 +9,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Multiformats.Address;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
 using NUnit.Framework;
@@ -161,9 +165,113 @@ public class ReqRespLimitsTests
         using DrippingStream stream = new(wireChunks, TimeSpan.FromMilliseconds(20));
         long before = FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.Timeout);
 
-        Assert.CatchAsync<OperationCanceledException>(() =>
+        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() =>
             protocol.ReadBlocksAsync(stream, blockCount, TimeSpan.FromMilliseconds(80)));
         Assert.That(FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.Timeout), Is.EqualTo(before + 1), "timeout recorded");
+        Assert.That(cut!.Message, Does.Match(@"^timed out after 0\.1 s, the bound for the whole response, with \d chunks read$"));
+    }
+
+    /// <summary>A timeout names the bound that fired: nothing within the first-chunk bound, or a later chunk not within the bound between chunks.</summary>
+    [TestCase(1, 16_000, "timed out after 15 s waiting for the first chunk")]
+    [TestCase(2, 12_000, "timed out after 10 s reading chunk 2")]
+    [CancelAfter(60_000)]
+    public async Task A_read_cut_by_a_chunk_bound_names_that_bound(int blocks, int delayBeforeEachChunkMs, string expected)
+    {
+        TestBlocksProtocol protocol = new(Spec);
+        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, [.. SlotRange(2_001, blocks)]);
+        List<byte[]> wireChunks = [];
+        foreach (SignedBeaconBlock block in chain)
+        {
+            using MemoryStream buffer = new();
+            await WriteBlockChunkAsync(buffer, block);
+            wireChunks.Add(buffer.ToArray());
+        }
+
+        await using DrippingStream response = new(wireChunks, TimeSpan.FromMilliseconds(delayBeforeEachChunkMs));
+
+        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => protocol.ReadBlocksAsync(response, blocks));
+
+        Assert.That(cut!.Message, Is.EqualTo(expected));
+    }
+
+    /// <summary>A request the peer never reads is cut at the write bound, and the failure says so rather than blaming the response.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public void A_request_the_peer_never_reads_times_out_naming_the_write()
+    {
+        BeaconBlocksByRootProtocolV2 protocol = new(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
+
+        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => protocol.DialAsync(new Channel(), FakeSessionContext.ForNewPeer(), [Hash256.Zero]));
+
+        Assert.That(cut!.Message, Is.EqualTo("timed out after 10 s writing the request"));
+    }
+
+    /// <summary>A single-chunk exchange has one bound for the request and its answer.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_single_chunk_request_never_answered_times_out_naming_the_response([Values] bool metadata)
+    {
+        Eth2PingProtocol protocol = new(new LocalMetadataSource());
+        Channel channel = new();
+        // Reads the request and never answers.
+        Task drain = Task.Run(async () =>
+        {
+            while ((await channel.Reverse.ReadAsync(1, ReadBlockingMode.WaitAny)).Result == IOResult.Ok)
+            {
+            }
+        });
+
+        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => metadata
+            ? new MetaDataProtocolV3(new LocalMetadataSource()).DialAsync(channel, FakeSessionContext.ForNewPeer(), 0)
+            : protocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), 7));
+
+        Assert.That(cut!.Message, Is.EqualTo("timed out after 15 s waiting for the response"));
+        await channel.CloseAsync();
+        await drain.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    public enum ResponseKind { Blocks, FuluColumns, GloasColumns, Envelopes }
+
+    [Test]
+    public async Task A_block_response_counts_each_read_chunk()
+    {
+        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, 2_001);
+        using MemoryStream response = new();
+        await WriteBlockChunkAsync(response, chain[0]);
+        response.Position = 0;
+        RequestTiming timing = new();
+
+        IReadOnlyList<ForkedSignedBeaconBlock> blocks = await new TestBlocksProtocol(Spec).ReadBlocksAsync(response, 1, timing: timing);
+
+        Assert.That((blocks.Count, timing.Chunks), Is.EqualTo((1, 1)));
+    }
+
+    [Test]
+    public void Every_response_reader_names_its_overall_bound([Values] ResponseKind kind)
+    {
+        using NeverEndingStream response = new();
+        TimeSpan bound = TimeSpan.FromMilliseconds(80);
+        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => kind switch
+        {
+            ResponseKind.Blocks => new TestBlocksProtocol(Spec).ReadBlocksAsync(response, 1, bound),
+            ResponseKind.FuluColumns => new TestColumnsProtocol(Spec).ReadAsync(response, bound, gloas: false),
+            ResponseKind.GloasColumns => new TestColumnsProtocol(Spec).ReadAsync(response, bound, gloas: true),
+            _ => new TestEnvelopesProtocol(Spec).ReadAsync(response, bound),
+        });
+
+        Assert.That(cut!.Message, Is.EqualTo("timed out after 0.1 s, the bound for the whole response, with 0 chunks read"));
+    }
+
+    private sealed class TestColumnsProtocol(BeaconChainSpec spec) : DataColumnSidecarsProtocolBase(spec)
+    {
+        public Task ReadAsync(Stream response, TimeSpan bound, bool gloas) => gloas
+            ? ReadGloasSidecarChunksAsync(response, 1, "/test/columns/1", bound)
+            : ReadSidecarChunksAsync(response, 1, "/test/columns/1", bound);
+    }
+
+    private sealed class TestEnvelopesProtocol(BeaconChainSpec spec) : ExecutionPayloadEnvelopesProtocolBase(spec)
+    {
+        public Task ReadAsync(Stream response, TimeSpan bound) => ReadEnvelopeChunksAsync(response, 1, "/test/envelopes/1", bound);
     }
 
     private static long FailureCount(string protocolId, ReqRespFailureReason reason) =>
@@ -196,8 +304,8 @@ public class ReqRespLimitsTests
     {
         public const string ProtocolId = "/test/blocks-limits/1";
 
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> ReadBlocksAsync(Stream stream, int maxBlocks, TimeSpan? overallTimeout = null) =>
-            ReadBlockChunksAsync(stream, maxBlocks, ProtocolId, overallTimeout);
+        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> ReadBlocksAsync(Stream response, int maxBlocks, TimeSpan? overallTimeout = null, RequestTiming? timing = null) =>
+            ReadBlockChunksAsync(response, maxBlocks, ProtocolId, overallTimeout, timing);
     }
 
     /// <summary>A minimal <see cref="ISessionContext"/> carrying only a synthetic remote peer identity.</summary>

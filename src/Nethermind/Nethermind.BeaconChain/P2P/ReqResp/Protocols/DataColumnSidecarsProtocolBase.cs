@@ -31,7 +31,9 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
 
     /// <param name="overallTimeout">Overrides <see cref="MaxSidecarsResponseDuration"/>; the by-range dial scales it by the chunks it expects.</param>
     /// <param name="onSidecar">Called with each chunk that passed every check, before the next is read; may throw to refuse the chunk.</param>
-    protected async Task<IReadOnlyList<DataColumnSidecar>> ReadSidecarChunksAsync(Stream stream, int maxSidecars, string protocolId, TimeSpan? overallTimeout = null, Action<DataColumnSidecar>? onSidecar = null)
+    /// <param name="timing">Counts the chunks read, when the request is timed.</param>
+    /// <exception cref="ReqRespTimeoutException">A bound fired, named in the message.</exception>
+    protected async Task<IReadOnlyList<DataColumnSidecar>> ReadSidecarChunksAsync(Stream stream, int maxSidecars, string protocolId, TimeSpan? overallTimeout = null, Action<DataColumnSidecar>? onSidecar = null, RequestTiming? timing = null)
     {
         List<DataColumnSidecar> sidecars = [];
         using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxSidecarsResponseDuration);
@@ -99,13 +101,14 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
 
                 onSidecar?.Invoke(sidecar);
                 sidecars.Add(sidecar);
+                timing?.ChunkRead();
                 cts.CancelAfter(RespTimeout);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException e) when (cts.IsCancellationRequested)
         {
             RecordFailure(protocolId, ReqRespFailureReason.Timeout);
-            throw;
+            throw timeout.Expired(sidecars.Count, e);
         }
 
         return sidecars;
@@ -129,7 +132,9 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
     /// The commitment match and KZG proofs need the block's bid, so the caller checks them.
     /// </remarks>
     /// <param name="overallTimeout">Overrides <see cref="MaxSidecarsResponseDuration"/>; test-only seam, production call sites omit it.</param>
-    protected async Task<IReadOnlyList<DataColumnSidecarGloas>> ReadGloasSidecarChunksAsync(Stream stream, int maxSidecars, string protocolId, TimeSpan? overallTimeout = null)
+    /// <param name="timing">Counts the chunks read, when the request is timed.</param>
+    /// <exception cref="ReqRespTimeoutException">A bound fired, named in the message.</exception>
+    protected async Task<IReadOnlyList<DataColumnSidecarGloas>> ReadGloasSidecarChunksAsync(Stream stream, int maxSidecars, string protocolId, TimeSpan? overallTimeout = null, RequestTiming? timing = null)
     {
         int maxChunkSize = (int)Math.Min(DataColumnSidecarGloasSize.ComputeMax(Spec), (ulong)ReqRespFraming.MaxPayloadSize);
         List<DataColumnSidecarGloas> sidecars = [];
@@ -181,13 +186,14 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                 }
 
                 sidecars.Add(sidecar);
+                timing?.ChunkRead();
                 cts.CancelAfter(RespTimeout);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException e) when (cts.IsCancellationRequested)
         {
             RecordFailure(protocolId, ReqRespFailureReason.Timeout);
-            throw;
+            throw timeout.Expired(sidecars.Count, e);
         }
 
         return sidecars;

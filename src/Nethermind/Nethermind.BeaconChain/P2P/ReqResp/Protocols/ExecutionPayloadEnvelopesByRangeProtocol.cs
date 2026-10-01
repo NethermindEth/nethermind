@@ -27,14 +27,13 @@ public sealed class ExecutionPayloadEnvelopesByRangeProtocol(BeaconChainSpec spe
 
     public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> DialAsync(IChannel downChannel, ISessionContext context, ExecutionPayloadEnvelopesByRangeRequest request)
     {
+        using RequestTiming.Exchange exchange = RequestTiming.Open(request);
+        RequestTiming? timing = exchange.Timing;
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using (CancellationTokenSource cts = StartTimeout(RespTimeout))
-        {
-            await WriteRequestAndEofAsync(downChannel, stream, ExecutionPayloadEnvelopesByRangeRequest.Encode(request), cts.Token);
-        }
+        await WriteRequestAndEofAsync(downChannel, stream, ExecutionPayloadEnvelopesByRangeRequest.Encode(request), RespTimeout);
 
         int maxEnvelopes = (int)Math.Min(request.Count, MaxRequestPayloads);
-        IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes = await ReadEnvelopeChunksAsync(stream, maxEnvelopes, Id);
+        IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes = await ReadEnvelopeChunksAsync(stream, maxEnvelopes, Id, timing: timing);
 
         ulong? previousSlot = null;
         foreach (SignedExecutionPayloadEnvelope envelope in envelopes)

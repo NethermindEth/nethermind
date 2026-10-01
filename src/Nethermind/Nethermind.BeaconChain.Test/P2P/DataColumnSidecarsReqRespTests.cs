@@ -354,9 +354,13 @@ public class DataColumnSidecarsReqRespTests
         Assert.That(DataColumnSidecarsByRangeProtocol.ResponseBudget(1, 3), Is.EqualTo(TimeSpan.FromSeconds(16)));
         List<DataColumnSidecar> seen = [];
 
-        Assert.CatchAsync<OperationCanceledException>(() => DialRangeAsync(chunks, [], seen.Add, request, chunkGap: TimeSpan.FromSeconds(7), token));
+        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => DialRangeAsync(chunks, [], seen.Add, request, TimeSpan.FromSeconds(7), token));
 
-        Assert.That(seen, Has.Count.EqualTo(2), "the third chunk was never read");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seen, Has.Count.EqualTo(2), "the third chunk was never read");
+            Assert.That(cut!.Message, Is.EqualTo("timed out after 16 s, the bound for the whole response, with 2 chunks read"));
+        }
     }
 
     private static async Task DialRangeAsync(DataColumnSidecar[] whole, byte[] trailingBytes, Action<DataColumnSidecar> onSidecar, DataColumnSidecarsByRangeRequest? request = null, TimeSpan chunkGap = default, CancellationToken token = default)
@@ -454,7 +458,12 @@ public class DataColumnSidecarsReqRespTests
     {
         public const string ProtocolId = "/test/data-column-sidecars-limits/1";
 
-        public Task<IReadOnlyList<DataColumnSidecar>> ReadSidecarsAsync(Stream stream, int maxSidecars) =>
-            ReadSidecarChunksAsync(stream, maxSidecars, ProtocolId);
+        public async Task<IReadOnlyList<DataColumnSidecar>> ReadSidecarsAsync(Stream response, int maxSidecars)
+        {
+            RequestTiming timing = new();
+            IReadOnlyList<DataColumnSidecar> sidecars = await ReadSidecarChunksAsync(response, maxSidecars, ProtocolId, timing: timing);
+            Assert.That(timing.Chunks, Is.EqualTo(sidecars.Count));
+            return sidecars;
+        }
     }
 }
