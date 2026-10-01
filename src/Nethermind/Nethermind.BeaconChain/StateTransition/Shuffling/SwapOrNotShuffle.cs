@@ -4,8 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Threading;
 
 namespace Nethermind.BeaconChain.StateTransition.Shuffling;
 
@@ -115,13 +115,13 @@ public static class SwapOrNotShuffle
             return;
         }
 
-        // Spec compute_shuffled_index: swap pairs are disjoint within a round. Parallel.For joins before the pin ends.
+        // Spec compute_shuffled_index: swap pairs are disjoint within a round. BeaconParallel.For joins before the pin ends.
         byte[] template = buf.ToArray();
         int length = input.Length;
         fixed (int* pinned = input)
         {
             nint address = (nint)pinned;
-            Parallel.For(0, (count + ParallelChunk - 1) / ParallelChunk, chunk =>
+            BeaconParallel.For(0, (count + ParallelChunk - 1) / ParallelChunk, chunk =>
             {
                 int start = chunk * ParallelChunk;
                 Span<byte> chunkBuf = stackalloc byte[TotalSize];

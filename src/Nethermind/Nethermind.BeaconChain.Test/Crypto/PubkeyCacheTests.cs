@@ -360,7 +360,7 @@ public class PubkeyCacheTests
     private static Validator[] MixedRegistry(int count) =>
         [.. Enumerable.Range(0, count).Select(static i => new Validator { Pubkey = IsOffSubgroup(i) ? OffSubgroupKeys.WithTorsion(SecretKey(i)) : new BlsPublicKey(CompressedPubkey(i)) })];
 
-    private static byte[] CompressedPubkey(int index)
+    internal static byte[] CompressedPubkey(int index)
     {
         Bls.P1 publicKey = new(SecretKey(index));
         return publicKey.Compress();
