@@ -73,8 +73,7 @@ public class HostMemoryFastPathTests
     private static readonly byte[] WordB = Enumerable.Range(0xe0, 32).Select(static b => (byte)b).ToArray();
 
     [ThreadStatic] private static int _fallbacks;
-    [ThreadStatic] private static nint _plainLoad;
-    [ThreadStatic] private static nint _plainStore;
+    [ThreadStatic] private static nint[]? _plainHandlers;
 
     /// <summary>The dispatch tables a run can enter.</summary>
     public enum Table
@@ -106,7 +105,7 @@ public class HostMemoryFastPathTests
 
     private static readonly Table[] Tables = Enum.GetValues<Table>();
 
-    private readonly record struct Outcome(
+    internal readonly record struct Outcome(
         EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, nint OpCodeCount);
 
     private static IEnumerable<TestCaseData> Cases()
@@ -195,7 +194,7 @@ public class HostMemoryFastPathTests
         yield return Fallbacks("MSTORE with one operand", Setup.Fresh, [PUSH1, 0, MSTORE], 1);
     }
 
-    /// <summary>Pins which cases the fast paths finish themselves, by counting the runs of the fallback half's MLOAD and MSTORE.</summary>
+    /// <summary>Pins which cases the fast paths finish themselves, by counting the runs of the fallback half's handlers.</summary>
     [TestCaseSource(nameof(FallbackCases))]
     public void Fast_paths_fall_back_only_outside_their_common_case(byte[] code, Setup setup, int fallbacks, ulong gas)
     {
@@ -233,7 +232,7 @@ public class HostMemoryFastPathTests
     }
 
     /// <summary>Every mainnet fork, found by reflection so that a fork added later is swept too, with a seed of its own.</summary>
-    private static IEnumerable<TestCaseData> Forks()
+    internal static IEnumerable<TestCaseData> Forks()
     {
         Type[] forks = typeof(Osaka).Assembly.GetTypes()
             .Where(static t => t.Namespace == typeof(Osaka).Namespace && !t.IsAbstract && t.IsSubclassOf(typeof(NamedReleaseSpec)))
@@ -297,7 +296,7 @@ public class HostMemoryFastPathTests
         Assert.That(mismatches, Is.Empty);
     }
 
-    private static bool IsFault(EvmExceptionType exception) => exception is not (EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert);
+    internal static bool IsFault(EvmExceptionType exception) => exception is not (EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert);
 
     private static byte[] Generate(Random random)
     {
@@ -424,24 +423,16 @@ public class HostMemoryFastPathTests
 
     private static byte[] Repeated(int times, params byte[] ops) => Enumerable.Repeat(ops, times).SelectMany(static o => o).ToArray();
 
-    private static unsafe EvmExceptionType CountingLoadFallback(
+    private static unsafe EvmExceptionType CountingFallback(
         ref EvmStack stack, ref EthereumGasPolicy gas, ref DispatchState state, nint pc, nint opCodeCount)
     {
         _fallbacks++;
-        return ((delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)_plainLoad)(
-            ref stack, ref gas, ref state, pc, opCodeCount);
-    }
-
-    private static unsafe EvmExceptionType CountingStoreFallback(
-        ref EvmStack stack, ref EthereumGasPolicy gas, ref DispatchState state, nint pc, nint opCodeCount)
-    {
-        _fallbacks++;
-        return ((delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)_plainStore)(
+        return ((delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)_plainHandlers![Unsafe.Add(ref stack.Code, pc)])(
             ref stack, ref gas, ref state, pc, opCodeCount);
     }
 
     /// <summary>Runs code through the dispatch tables of one virtual machine and one aligned stack.</summary>
-    private sealed unsafe class Harness
+    internal sealed unsafe class Harness
     {
         public const int DirtyArrayLength = 8192;
         public const byte StaleByte = 0xa5;
@@ -458,6 +449,13 @@ public class HostMemoryFastPathTests
             _stackStart = alignment == 0 ? 0 : EvmStack.WordSize - alignment;
         }
 
+        /// <summary>How many times the last run that counted fallbacks entered the table's plain half.</summary>
+        public int Fallbacks => _fallbacks;
+
+        /// <summary>How many of the last run's opcodes were counted on the machine rather than by the chain.</summary>
+        /// <remarks>An untraced PUSH2 that runs the jump after it counts that jump, and the JUMPDEST it lands on, there.</remarks>
+        public int MachineOpCodeCount { get; private set; }
+
         /// <summary>Runs <paramref name="code"/> through every table and records how each differs from the plain untraced one.</summary>
         public void Compare(byte[] code, ulong gas, Setup setup, byte[] input, List<string> mismatches, byte[]? stack = null)
         {
@@ -466,15 +464,10 @@ public class HostMemoryFastPathTests
             {
                 if (table == Table.PlainNoTrace) continue;
                 Outcome outcome = Run(code, gas, table, setup, input, stack);
-                // Untraced dispatch skips opcodes the traced table runs, such as the JUMPDEST after a taken JUMPI, so it
-                // counts fewer. It also leaves out a push that ends the code, and a checked body that faults reports its
-                // program counter one short; nothing can read either.
-                if (table == Table.Traced)
-                {
-                    outcome = outcome with { OpCodeCount = plain.OpCodeCount };
-                    if (outcome.Pc >= code.Length || IsFault(outcome.Exception))
-                        outcome = outcome with { Pc = IsFault(outcome.Exception) || plain.Pc >= code.Length ? plain.Pc : outcome.Pc, Head = plain.Head, Stack = plain.Stack };
-                }
+                // Untraced dispatch leaves out a push that ends the code, and a checked body that faults reports its program
+                // counter one short; nothing can read either.
+                if (table == Table.Traced && (outcome.Pc >= code.Length || IsFault(outcome.Exception)))
+                    outcome = outcome with { Pc = IsFault(outcome.Exception) || plain.Pc >= code.Length ? plain.Pc : outcome.Pc, Head = plain.Head, Stack = plain.Stack };
 
                 if (outcome != plain)
                     mismatches.Add($"{table} gas {gas} {setup} code {Convert.ToHexString(code)} input {Convert.ToHexString(input)} stack {Convert.ToHexString(stack ?? [])}\n {table,-22} {outcome}\n {"plain",-22} {plain}");
@@ -508,14 +501,17 @@ public class HostMemoryFastPathTests
             {
                 Assert.That(handlers.Length, Is.EqualTo(2 * VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset), "an untraced table carries its fallback half");
                 handlers = (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])handlers.Clone();
-                _plainLoad = (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD];
-                _plainStore = (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE];
-                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD] = &CountingLoadFallback;
-                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE] = &CountingStoreFallback;
+                _plainHandlers = new nint[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset];
+                for (int opcode = 0; opcode < _plainHandlers.Length; opcode++)
+                {
+                    _plainHandlers[opcode] = (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + opcode];
+                    handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + opcode] = &CountingFallback;
+                }
                 _fallbacks = 0;
             }
 
             bool cancelable = table is Table.NoTraceCancelable or Table.PlainNoTraceCancelable;
+            _vm.OpCodeCount = 0;
             EthereumGasPolicy gasPolicy = EthereumGasPolicy.FromULong(gas);
             EvmExceptionType exception;
             nint pc;
@@ -544,7 +540,8 @@ public class HostMemoryFastPathTests
                 }
 
                 pc = state.FinalProgramCounter;
-                opCodeCount = state.OpCodeCount;
+                MachineOpCodeCount = _vm.OpCodeCount;
+                opCodeCount = state.OpCodeCount + MachineOpCodeCount;
                 finalHead = evmStack.Head;
             }
 
@@ -601,7 +598,7 @@ public class HostMemoryFastPathTests
         private static byte[] Filled(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
     }
 
-    private delegate void EvmPooledMemoryInspector(ref EvmPooledMemory memory);
+    internal delegate void EvmPooledMemoryInspector(ref EvmPooledMemory memory);
 
     /// <summary>A virtual machine over a block of one fork, whose current frame a test can set.</summary>
     private sealed class DispatchingVirtualMachine : VirtualMachine<EthereumGasPolicy>

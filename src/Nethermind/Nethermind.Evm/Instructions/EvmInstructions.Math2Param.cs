@@ -186,7 +186,7 @@ public static partial class EvmInstructions
     /// stops at the first pair that differs.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
+    internal static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
         where TOpMath : struct, IOpMath2Param
     {
         bool signed = typeof(TOpMath) == typeof(OpSLt) || typeof(TOpMath) == typeof(OpSGt);

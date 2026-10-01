@@ -159,7 +159,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// through <c>Policy&lt;__Canon&gt;</c>. Table generation therefore rejects fat entries up front
     /// (<see cref="EnsureThinHandler"/>).
     /// </remarks>
-    private static class RawCalliHelper
+    private static partial class RawCalliHelper
     {
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
