@@ -365,12 +365,10 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Dials the peer, or returns the existing session when one is already established (for example inbound).</summary>
     /// <remarks>
-    /// The existing-session check mirrors newer dotnet-libp2p behavior; in the pinned preview a
-    /// second dial to an already-connected peer fails the upgrade with a session-exists error
-    /// instead of reusing the connection. The same check runs again after a failed dial: when both
-    /// sides dial at once ours loses the upgrade to the session the remote opened, and that session
-    /// is the connection to hand back, not a failure. The caller's own cancellation is neither: it
-    /// propagates even when such a session exists.
+    /// The existing-session check prefers a session whose handshake completed; the library's own check also hands back one
+    /// still upgrading. The same check runs again after a failed dial: when both sides dial at once ours loses the upgrade to
+    /// the session the remote opened, and that session is the connection to hand back, not a failure. The caller's own
+    /// cancellation is neither: it propagates even when such a session exists.
     /// </remarks>
     public async Task<ISession> DialPeerAsync(Multiaddress address, CancellationToken token)
     {
@@ -383,14 +381,14 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         try
         {
-            return await localPeer.DialAsync(address, token);
+            // The library joins a dial to a peer already being dialed, and that dial ends on its first caller's token.
+            return await localPeer.DialAsync(address, token).WaitAsync(token);
         }
         catch (Exception e) when (e is not OperationCanceledException && token.IsCancellationRequested)
         {
-            // The pinned library can end a dial the caller cancelled with its own exception rather than a cancellation.
             throw new OperationCanceledException("The dial was cancelled by the caller", e, token);
         }
-        catch (Exception) when (remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced)
+        catch (Exception) when (!token.IsCancellationRequested && remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced)
                                 && IsNotDropped(_sessionInfo, raced))
         {
             return raced;
