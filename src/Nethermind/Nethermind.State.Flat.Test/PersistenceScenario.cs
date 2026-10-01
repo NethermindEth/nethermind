@@ -69,17 +69,6 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             TrieNodeLogStateBytes = 8192,
             TrieNodeLogStorageBytes = 8192,
         }, "Flat+TrieNodeLog");
-
-        yield return new TestConfiguration(new FlatDbConfig()
-        {
-            Enabled = true,
-            Layout = FlatLayout.Flat,
-            TrieNodeLogEnabled = true,
-            TrieNodeLogStateTopBytes = 8192,
-            TrieNodeLogStateBytes = 8192,
-            TrieNodeLogStorageBytes = 8192,
-            TrieNodeLogCompression = true,
-        }, "Flat+TrieNodeLog+LZ4");
     }
 
     private static bool IsPreimage(FlatLayout layout) => layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat;

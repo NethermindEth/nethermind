@@ -18,9 +18,7 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Persistence;
 
-[TestFixture(false)]
-[TestFixture(true)]
-public class TrieNodeLogTests(bool compression)
+public class TrieNodeLogTests
 {
     private static readonly TreePath TopPath = TreePath.FromHexString("12345"); // StateTopNodes
     private static readonly TreePath MediumPath = TreePath.FromHexString("123456789abc"); // StateNodes
@@ -41,7 +39,7 @@ public class TrieNodeLogTests(bool compression)
         _directory = TempPath.GetTempDirectory();
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // Two shards per partition, so every shard gets a 4 KiB generation.
-        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateTopBytes = 8192, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192, TrieNodeLogCompression = compression };
+        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateTopBytes = 8192, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
         Open();
     }
 
@@ -90,7 +88,7 @@ public class TrieNodeLogTests(bool compression)
 
     private string[] LogFiles() => Directory.GetFiles(_directory.Path, "*.log", SearchOption.AllDirectories);
 
-    /// <summary>Random, hence incompressible, bytes so generations fill by bytes with compression on as well.</summary>
+    /// <summary>Random bytes of the given length.</summary>
     private static byte[] Value(byte seed, int length)
     {
         byte[] value = new byte[length];
@@ -366,24 +364,22 @@ public class TrieNodeLogTests(bool compression)
     }
 
     [Test]
-    public void Blocks_round_trip([Values] bool compress)
+    public void Blocks_round_trip()
     {
-        byte[] repetitive = new byte[TrieNodeLogBlock.Size];
-        for (int i = 0; i < repetitive.Length; i++) repetitive[i] = (byte)(i % 7);
-        byte[] random = Value(3, TrieNodeLogBlock.Size);
+        byte[] raw = Value(3, TrieNodeLogBlock.Size);
         byte[] stored = new byte[TrieNodeLogBlock.MaxStoredLength];
         byte[] decoded = new byte[TrieNodeLogBlock.Size];
 
-        foreach ((byte[] raw, bool shrinks) in new[] { (repetitive, compress), (random, false), (random[..100], false) })
+        foreach (byte[] payload in new[] { raw, raw[..100] })
         {
-            int written = TrieNodeLogBlock.Write(stored, raw, compress);
+            int written = TrieNodeLogBlock.Write(stored, payload);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(written - TrieNodeLogBlock.HeaderLength, shrinks ? Is.LessThan(raw.Length) : Is.EqualTo(raw.Length));
+                Assert.That(written, Is.EqualTo(TrieNodeLogBlock.HeaderLength + payload.Length));
                 Assert.That(TrieNodeLogBlock.StoredLength(stored), Is.EqualTo(written));
-                Assert.That(TrieNodeLogBlock.Read(stored.AsSpan(0, written), decoded), Is.EqualTo(raw.Length));
-                Assert.That(decoded.AsSpan(0, raw.Length).ToArray(), Is.EqualTo(raw));
-                Assert.That(TrieNodeLogBlock.Read(stored.AsSpan(0, written - 1), decoded), Is.EqualTo(-1), "a truncated block does not decode");
+                Assert.That(TrieNodeLogBlock.Read(stored.AsSpan(0, written), decoded), Is.EqualTo(payload.Length));
+                Assert.That(decoded.AsSpan(0, payload.Length).ToArray(), Is.EqualTo(payload));
+                Assert.That(TrieNodeLogBlock.Read(stored.AsSpan(0, written - 1), decoded), Is.EqualTo(-1), "a truncated block does not read");
             }
         }
 

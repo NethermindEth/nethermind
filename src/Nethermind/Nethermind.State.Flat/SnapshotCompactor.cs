@@ -23,7 +23,7 @@ public class SnapshotCompactor(
 {
     private readonly ulong _compactSize = config.CompactSize;
     // With the trie node log, RocksDB no longer receives the nodes in key order, so sorting them buys nothing.
-    private readonly bool _sortTrieNodes = !config.TrieNodeLogEnabled || config.TrieNodeLogSortTrieNodes;
+    private readonly bool _sortTrieNodes = !config.TrieNodeLogEnabled;
     private readonly ICompactionSchedule _schedule = schedule;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotCompactor>();
     private readonly IResourcePool _resourcePool = resourcePool;

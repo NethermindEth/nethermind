@@ -70,7 +70,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     /// <param name="mergeLimiter">Caps concurrent merges across every shard of the log.</param>
     /// <param name="backlogMargin">Sealed generations allowed beyond <paramref name="mergeLag"/> before a roll waits for a merge.</param>
-    public TrieNodeLogShard(string name, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, bool compress, ILogManager logManager)
+    public TrieNodeLogShard(string name, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
     {
         Name = name;
         VersionKey = Keccak.Compute($"TrieNodeLogVersion:{name}").BytesToArray();
@@ -82,7 +82,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _mergeLag = mergeLag;
         _maxBacklog = mergeLag + backlogMargin;
         _mergeLimiter = mergeLimiter;
-        Compress = compress;
         _label = new TrieNodeLogLabel(name);
 
         Directory.CreateDirectory(basePath);
@@ -91,9 +90,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     }
 
     public string Name { get; }
-
-    /// <summary>Whether new blocks are LZ4-compressed; blocks are read according to their own header either way.</summary>
-    public bool Compress { get; }
 
     internal byte[] VersionKey { get; }
 

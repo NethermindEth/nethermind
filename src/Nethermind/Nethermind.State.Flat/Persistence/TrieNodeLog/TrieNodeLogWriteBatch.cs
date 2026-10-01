@@ -47,7 +47,6 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     private TrieNodeLogGeneration? _current; // the generation the buffer appends to
     private int _pendingInsertsInCurrent;
     private bool _committed;
-    private long _rawBytes;
     private long _storedBytes;
     private readonly long[] _appendedBytesByColumn = new long[WriteBufferAdjuster.ColumnCount];
 
@@ -194,9 +193,8 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         if (!_blockOpen) return;
         if (_rawLength > 0)
         {
-            int written = TrieNodeLogBlock.Write(_buffer.AsSpan(_buffered), _raw.AsSpan(0, _rawLength), _shard.Compress);
+            int written = TrieNodeLogBlock.Write(_buffer.AsSpan(_buffered), _raw.AsSpan(0, _rawLength));
             _buffered += written;
-            _rawBytes += _rawLength;
             _storedBytes += written;
             _rawLength = 0;
         }
@@ -220,7 +218,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
             Span<byte> commit = stackalloc byte[TrieNodeLogRecord.HeaderLength];
             TrieNodeLogRecord.CommitRecord(_version).Write(commit);
             Span<byte> commitBlock = stackalloc byte[TrieNodeLogBlock.HeaderLength + TrieNodeLogRecord.HeaderLength];
-            int commitBlockLength = TrieNodeLogBlock.Write(commitBlock, commit, compress: false);
+            int commitBlockLength = TrieNodeLogBlock.Write(commitBlock, commit);
 
             foreach ((TrieNodeLogGeneration generation, _) in _touched)
             {
@@ -260,7 +258,6 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         {
             if (_appendedBytesByColumn[column] != 0) Metrics.TrieNodeLogAppendedBytes.AddBy(TrieNodeLogLabel.Column((byte)column), _appendedBytesByColumn[column]);
         }
-        Metrics.AddTrieNodeLogRawBytes(_rawBytes);
         Metrics.AddTrieNodeLogStoredBytes(_storedBytes);
         _committed = true;
     }

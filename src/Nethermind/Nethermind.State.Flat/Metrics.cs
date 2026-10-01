@@ -436,22 +436,10 @@ public static class Metrics
     [KeyIsLabel("outcome")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogReads { get; } = new();
 
-    private static long _trieNodeLogRawBytes;
-
-    [CounterMetric]
-    [Description("Uncompressed bytes of the blocks written to trie node log files (records with their headers); the stored bytes divided by this is the compression ratio")]
-    public static long TrieNodeLogRawBytes
-    {
-        get => Volatile.Read(ref _trieNodeLogRawBytes);
-        set => Interlocked.Exchange(ref _trieNodeLogRawBytes, value);
-    }
-
-    public static void AddTrieNodeLogRawBytes(long bytes) => Interlocked.Add(ref _trieNodeLogRawBytes, bytes);
-
     private static long _trieNodeLogStoredBytes;
 
     [CounterMetric]
-    [Description("Bytes written to trie node log files: block headers plus payloads after compression")]
+    [Description("Bytes written to trie node log files: records with their headers plus block headers")]
     public static long TrieNodeLogStoredBytes
     {
         get => Volatile.Read(ref _trieNodeLogStoredBytes);
