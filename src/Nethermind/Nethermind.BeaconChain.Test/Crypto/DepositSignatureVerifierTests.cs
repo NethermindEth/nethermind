@@ -70,6 +70,25 @@ public class DepositSignatureVerifierTests
         Assert.That(DepositSignatureVerifier.IsValid(BeaconChainSpec.Mainnet.GenesisValidatorsRoot, pubkey, credentials, Amount, signature), Is.False);
     }
 
+    /// <summary>Deposit signatures must belong to G2, as required by IETF BLS draft v4, CoreVerify section 2.7.</summary>
+    [Test]
+    public void Deposit_signature_outside_G2_is_rejected([Values] bool addTorsion)
+    {
+        Bls.SecretKey key = GloasTestFixtures.DeriveKey(7);
+        BlsPublicKey pubkey = new(new Bls.P1(key).Compress());
+        Hash256 credentials = GloasTestFixtures.EthWithdrawalCredentials(0xEE);
+        Hash256 signingRoot = SigningRoot(pubkey, credentials);
+        BlsSignature signature = addTorsion
+            ? OffSubgroupKeys.WithG2Torsion(GloasTestFixtures.Sign(key, signingRoot))
+            : OffSubgroupKeys.NotInG2Signature();
+        Bls.P2 point = new(new long[Bls.P2.Sz]);
+        Assert.That(point.TryDecode(signature.Bytes, out _), Is.True);
+        Assert.That(point.OnCurve(), Is.True);
+        Assert.That(point.ToAffine().InGroup(), Is.False);
+
+        Assert.That(DepositSignatureVerifier.IsValid(BeaconChainSpec.Mainnet.GenesisValidatorsRoot, pubkey, credentials, Amount, signature), Is.False);
+    }
+
     private static Hash256 SigningRoot(BlsPublicKey pubkey, Hash256 credentials)
     {
         DepositMessage.Merkleize(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = credentials, Amount = Amount }, out UInt256 root);

@@ -20,11 +20,10 @@ namespace Nethermind.BeaconChain.Crypto;
 /// Accepts and refuses exactly what the serial checks in <see cref="SignatureSets"/> accept and
 /// refuse, and refuses with the same <see cref="BeaconStateException"/> message:
 /// <list type="bullet">
-/// <item>A signature the serial path cannot decode is refused at its own call site, as before.</item>
+/// <item>A signature the serial path cannot decode or that is outside G2 is refused at its own call site.</item>
 /// <item>A public key at infinity is refused at its call site, as <c>KeyValidate</c> in the IETF draft's
 /// <c>CoreVerify</c> refuses it, including an aggregate of keys that sum to infinity.</item>
-/// <item>A set whose other points are outside the batch's soundness conditions (a public key outside G1,
-/// a signature outside G2) is verified serially at its call site instead of deferred.</item>
+/// <item>A public key outside G1 is verified serially at its call site instead of deferred.</item>
 /// <item>A failed batch is attributed with <see cref="BatchSignatureVerifier.FindInvalid"/>, which
 /// runs the serial primitive, so its verdict is the serial one: a set it finds invalid is refused
 /// with that set's message, and no invalid set means the block stands.</item>
@@ -98,7 +97,8 @@ public sealed class BlockSignatureBatch
             return false;
 
         if (!BlsSignatureSet.TryCreate(publicKey, point.ToAffine(), signingRoot.Bytes, out BlsSignatureSet? set))
-            return BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), signingRoot.Bytes);
+            // IETF BLS draft v4, CoreVerify (section 2.7): the serial fallback must also reject signatures outside G2.
+            return point.ToAffine().InGroup() && BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), signingRoot.Bytes);
 
         _sets.Add(set);
         _failures.Add(failure);
