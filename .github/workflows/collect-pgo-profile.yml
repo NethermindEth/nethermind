@@ -108,7 +108,6 @@ jobs:
           echo "COLLECTION_ROOT=${root}" >> "${GITHUB_ENV}"
           echo "COLLECTION_IMAGE=${image}" >> "${GITHUB_ENV}"
           echo "rendered_config_file=${root}/config.yaml" >> "${GITHUB_OUTPUT}"
-          cat "${root}/manifest.json"
 
       - name: Prepare isolated EXPB with strict Engine API validation
         shell: bash
@@ -168,7 +167,6 @@ jobs:
         with:
           name: pgo-collection-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/config.yaml
             ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/manifest.json
             ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/expb.log
             ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/execution-validation.json
@@ -288,7 +286,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: pgo-app-references-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/references/
+          path: |
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/references/app/**/*.dll
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/references/shared/**/*.dll
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/references/manifest.json
+            ${{ runner.temp }}/pgo-${{ github.run_id }}-${{ github.run_attempt }}/collection/references/references.txt
           if-no-files-found: error
           retention-days: 90
 

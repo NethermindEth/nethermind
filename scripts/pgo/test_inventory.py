@@ -40,6 +40,21 @@ class InventoryTests(unittest.TestCase):
         self.assertNotIn("realblocks", str(config))
         self.assertNotIn("halfpath", str(config))
 
+    def test_collection_artifacts_exclude_configuration_files(self):
+        workflow = Path(__file__).resolve().parents[2] / ".github/workflows/collect-pgo-profile.yml"
+        config = yaml.load(workflow.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        steps = config["jobs"]["collect"]["steps"]
+        uploads = {step["name"]: step["with"]["path"].splitlines() for step in steps
+                   if step.get("uses", "").startswith("actions/upload-artifact@")}
+        collection = uploads["Upload run-owned collection evidence"]
+        self.assertTrue(collection)
+        self.assertTrue(all(not path.endswith("config.yaml") for path in collection))
+        references = uploads["Upload matching application and framework references"]
+        self.assertEqual([path.rsplit("/references/", 1)[1] for path in references],
+                         ["app/**/*.dll", "shared/**/*.dll", "manifest.json", "references.txt"])
+        render = next(step["run"] for step in steps if step["name"] == "Render benchmark config")
+        self.assertNotIn("cat ", render)
+
     def test_resolves_inputs_and_keeps_snapshot_unchanged(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
