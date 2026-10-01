@@ -276,7 +276,7 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Math.Max(1, Environment.ProcessorCount - 2));
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)

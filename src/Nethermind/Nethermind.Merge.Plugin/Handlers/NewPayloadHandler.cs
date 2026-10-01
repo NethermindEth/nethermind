@@ -139,8 +139,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // Overlaps ecrecover with everything that follows, block processing included; the pipeline
         // recovers inline whatever it reaches before the background recovery does. Started only once the block is
-        // built: the recovery takes every pool worker, and TryGetBlock joins the transactions-trie root, which hashes
-        // on those same workers and would otherwise wait behind ecrecover with the request blocked on it.
+        // built: TryGetBlock has already finished hashing the transactions-trie root before recovery competes for
+        // pool workers.
         StartSenderRecovery(request);
 
         string requestStr = $"New Block:  {request}";
