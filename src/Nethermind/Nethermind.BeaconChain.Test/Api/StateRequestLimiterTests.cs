@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -37,7 +38,7 @@ public class StateRequestLimiterTests
     private const string Json = "application/json";
     private const string Download = "/eth/v2/debug/beacon/states/head";
     private static readonly Hash256 Root = BeaconApiTestHost.TestRoot(0x50);
-    private static readonly byte[] StateBytes = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    private static readonly byte[] StateBytes = CreateStateBytes();
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(20);
 
     [Test]
@@ -210,20 +211,21 @@ public class StateRequestLimiterTests
     }
 
     [Test]
-    public async Task A_slow_but_steady_download_completes_past_the_idle_bound_even_when_one_write_is_larger_than_it_can_send_in_that_time()
+    public async Task A_slow_but_steady_download_completes_past_the_idle_bound_even_when_one_write_is_larger_than_it_can_send_in_that_time(
+        [Values(16 * 1024, 256 * 1024)] int writeBytes)
     {
         using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 60, StateResponseIdleTimeoutSeconds = 1 });
-        PacedStream reader = new(TimeSpan.FromMilliseconds(400));
+        using PacedStream reader = new(TimeSpan.FromMilliseconds(100), 16 * 1024);
         DefaultHttpContext download = StateRequest(Download, "192.0.2.7");
         download.Response.Body = reader;
-        byte[] state = new byte[4 * StateRequestLimiter.WriteChunkBytes];
+        byte[] state = new byte[writeBytes];
 
         await limiter.InvokeAsync(download, c => c.Response.Body.WriteAsync(state, c.RequestAborted).AsTask()).WaitAsync(Wait);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.Written, Is.EqualTo(state.Length), "every byte reaches a reader that never stalls longer than the idle bound between chunks");
-            Assert.That(download.RequestAborted.IsCancellationRequested, Is.False, "1.6 s of steady progress exceeds the 1 s idle bound and must not trip it");
+            Assert.That(download.RequestAborted.IsCancellationRequested, Is.False, "steady writes must complete even when draining 256 KiB takes 1.6 s and the idle bound is 1 s");
         }
     }
 
@@ -425,8 +427,7 @@ public class StateRequestLimiterTests
         }
     }
 
-    /// <summary>A body that takes <c>perChunk</c> for every <see cref="StateRequestLimiter.WriteChunkBytes"/> (rounded up) of each write, honouring cancellation.</summary>
-    private sealed class PacedStream(TimeSpan perChunk) : Stream
+    private sealed class PacedStream(TimeSpan perChunk, int bytesPerChunk = StateRequestLimiter.WriteChunkBytes) : Stream
     {
         public long Written { get; private set; }
         public override bool CanRead => false;
@@ -437,7 +438,8 @@ public class StateRequestLimiterTests
 
         public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            await Task.Delay(perChunk * ((buffer.Length + StateRequestLimiter.WriteChunkBytes - 1) / StateRequestLimiter.WriteChunkBytes), cancellationToken);
+            TimeSpan delay = perChunk == Timeout.InfiniteTimeSpan ? perChunk : perChunk * ((double)buffer.Length / bytesPerChunk);
+            await Task.Delay(delay, cancellationToken);
             Written += buffer.Length;
         }
 
@@ -463,5 +465,12 @@ public class StateRequestLimiterTests
         host.SetStatus(Root, Root, 0);
         host.Store.PutState(Root, StateBytes);
         return host;
+    }
+
+    private static byte[] CreateStateBytes()
+    {
+        byte[] bytes = new byte[48];
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(40), BeaconChainSpec.Mainnet.FuluForkEpoch * BeaconChainSpec.Mainnet.SlotsPerEpoch);
+        return bytes;
     }
 }
