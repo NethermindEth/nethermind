@@ -699,7 +699,7 @@ public class DebugRpcModule(
         {
             stream = fileSystem.FileStream.New(file, FileMode.CreateNew, FileAccess.Write);
         }
-        catch (IOException) when (fileSystem.File.Exists(file) || fileSystem.Directory.Exists(file))
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException && (fileSystem.File.Exists(file) || fileSystem.Directory.Exists(file)))
         {
             return ResultWrapper<IEnumerable<BadBlock>?>.Fail("location would overwrite an existing file", ErrorCodes.Default);
         }
