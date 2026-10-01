@@ -503,6 +503,59 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
+    /// Every chain shares the slot-0 decision block of the first two epochs, so an epoch-1 aggregate for an ancestor of the head
+    /// (P at slot 30, while the head's epoch-1 target is Q at slot 32) has the head's committees and counts like any other.
+    /// </summary>
+    [Test]
+    public void Gossip_aggregate_for_an_ancestor_of_the_head_in_the_first_two_epochs_counts()
+    {
+        const ulong targetEpoch = 1;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        TickToSlot(runner, 2 * Presets.SlotsPerEpoch - 1);
+        List<UnsignedChain.ChainBlock> line = ImportLine(chain, runner, chain.AnchorRoot, 30, 32, 40);
+        (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(line[^1], targetEpoch);
+        ulong weightBefore = Weight(runner, line[0].Root) - Weight(runner, line[1].Root);
+
+        runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, line[0].Root, targetEpoch, member, signingState));
+
+        Assert.That(Weight(runner, line[0].Root) - Weight(runner, line[1].Root) - weightBefore, Is.EqualTo(EffectiveBalance));
+    }
+
+    /// <summary>
+    /// p2p-interface.md lets an aggregator send one aggregate per target epoch, so a previous-epoch aggregate that cost a build
+    /// must not use up the same aggregator's current-epoch one: both of its off-head aggregates are built for and count.
+    /// </summary>
+    [Test]
+    public void Off_head_build_allowance_is_one_per_aggregator_and_target_epoch()
+    {
+        const ulong currentEpoch = 3;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        TickToSlot(runner, (currentEpoch + 1) * Presets.SlotsPerEpoch - 1);
+        List<UnsignedChain.ChainBlock> siblings = [];
+        foreach (ulong slot in (ulong[])[29, 30, 31])
+        {
+            siblings.Add(ImportLine(chain, runner, chain.AnchorRoot, slot)[0]);
+        }
+
+        Hash256 head = runner.GetHead();
+        UnsignedChain.ChainBlock headTip = siblings.Single(sibling => sibling.Root == head);
+        List<UnsignedChain.ChainBlock> others = [.. siblings.Where(sibling => sibling.Root != head)];
+        (BeaconStateFulu previousState, ulong previousSlot, int aggregator) = FirstCommitteeMember(headTip, currentEpoch - 1);
+        (BeaconStateFulu currentState, ulong currentSlot, int _) = Enumerable.Range(0, (int)Presets.SlotsPerEpoch)
+            .Select(skip => FirstCommitteeMember(headTip, currentEpoch, skip))
+            .First(candidate => candidate.Member == aggregator);
+        ulong[] weightsBefore = [.. others.Select(other => Weight(runner, other.Root))];
+
+        runner.OnAggregateAndProof(GossipAggregate(chain, previousSlot, others[0].Root, currentEpoch - 1, aggregator, previousState));
+        runner.OnAggregateAndProof(GossipAggregate(chain, currentSlot, others[1].Root, currentEpoch, aggregator, currentState));
+
+        Assert.That(others.Select((other, i) => Weight(runner, other.Root) - weightsBefore[i]), Is.EqualTo((ulong[])[0, EffectiveBalance]),
+            "the current-epoch vote replaces the previous-epoch one as the aggregator's latest message");
+    }
+
+    /// <summary>
     /// get_head picks the state gossip is checked with, and a slashing or an invalid payload can move it without a tick or a
     /// block: once A's two voters are slashed, or A's payload is invalid, B is the head. An aggregate for B right after must be
     /// checked against B as the head, building B's target state, not against the head cached before.
