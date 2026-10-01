@@ -11,9 +11,11 @@ using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
@@ -111,12 +113,111 @@ public class PeerSessionCloseTests
             PeerManager manager = node.CreatePeerManager();
             LocalPeer.Session session = RequestFailureCauseTests.AddWedgedSession(node.P2P);
             await session.DisconnectAsync();
+            ulong dropped = Metrics.BeaconChainPeersDropped;
+            long droppedAsClosed = DroppedAsSessionClosed();
 
             manager.AddPeerForTest(session, PeerAddress, Status);
 
-            Assert.That(manager.PeerCount, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(manager.PeerCount, Is.Zero);
+                Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(dropped + 1));
+                Assert.That(DroppedAsSessionClosed(), Is.EqualTo(droppedAsClosed + 1), "the per-reason series sum to the dropped total");
+            }
         }
     }
+
+    public enum Violation
+    {
+        RequestBeforeClose,
+        HealthCheckBeforeClose,
+        RequestAfterRemoval,
+        HealthCheckAfterRemoval,
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_peer_that_breaks_the_protocol_and_closes_its_session_is_banned_after_the_configured_fault_disconnects([Values] Violation violation, CancellationToken token)
+    {
+        Node node = Create();
+        node.Config.FaultDisconnectsBeforeBan = 2;
+        await using BeaconDiscovery discovery = new(node.Config, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
+            new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), new ManualTimestamper(), LimboLogs.Instance);
+        await using (node.P2P)
+        {
+            await node.P2P.StartAsync(token);
+            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, discovery);
+            for (int round = 1; round <= node.Config.FaultDisconnectsBeforeBan; round++)
+            {
+                Assert.That(manager.IsBannedForTest(PeerId), Is.False, "fixture: no ban before the last round");
+                await ViolateAndCloseAsync(manager, node.P2P, violation, round, token);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(manager.IsBannedForTest(PeerId), Is.True, "closing the session after a bad reply does not escape the ban");
+                Assert.That(discovery.DialHistory.Quality(PeerAddress), Is.LessThan(0), "its address is not dialed again at once");
+                Assert.That(manager.GetPeerDiagnostics().Single().DisconnectCount, Is.EqualTo(node.Config.FaultDisconnectsBeforeBan), "one disconnect per session");
+            }
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_drop_that_began_before_the_session_closed_does_not_record_the_peer_again(CancellationToken token)
+    {
+        Node node = Create();
+        node.Config.FaultDisconnectsBeforeBan = 2;
+        await using (node.P2P)
+        {
+            await node.P2P.StartAsync(token);
+            PeerManager manager = node.CreatePeerManager();
+            IBeaconSyncPeer closed = await ViolateAndCloseAsync(manager, node.P2P, Violation.RequestBeforeClose, 1, token);
+            ulong dropped = Metrics.BeaconChainPeersDropped;
+
+            await manager.DropForTest(closed, GoodbyeReason.TooManyPeers, "over the configured peer band");
+
+            PeerManager.PeerDiagnostics record = manager.GetPeerDiagnostics().Single();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(record.DisconnectCount, Is.EqualTo(1), "one session, one disconnect");
+                Assert.That(record.LastDisconnectReason, Is.EqualTo("Fault"));
+                Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(dropped), "the close already counted the drop");
+            }
+
+            await ViolateAndCloseAsync(manager, node.P2P, Violation.RequestBeforeClose, 2, token);
+            Assert.That(manager.IsBannedForTest(PeerId), Is.True, "the stale drop did not reset the fault streak");
+        }
+    }
+
+    /// <summary>Admits a peer on a new session, has it break the protocol as <paramref name="violation"/> says, and closes the session.</summary>
+    /// <param name="round">The disconnects the peer id has once this returns.</param>
+    private static async Task<IBeaconSyncPeer> ViolateAndCloseAsync(PeerManager manager, BeaconP2P p2p, Violation violation, int round, CancellationToken token)
+    {
+        LocalPeer.Session session = RequestFailureCauseTests.AddWedgedSession(p2p);
+        IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress, Status);
+        bool afterRemoval = violation is Violation.RequestAfterRemoval or Violation.HealthCheckAfterRemoval;
+        if (!afterRemoval) await ViolateAsync();
+        await session.DisconnectAsync();
+        await WaitUntilAsync(() => manager.GetPeerDiagnostics().Any(p => p.DisconnectCount == round), "the peer's removal never finished", token, ReplacementBound);
+        if (afterRemoval) await ViolateAsync();
+        return peer;
+
+        Task ViolateAsync()
+        {
+            if (violation is Violation.HealthCheckBeforeClose or Violation.HealthCheckAfterRemoval)
+            {
+                return manager.HandleHealthFailureAsync(peer, new InvalidDataException("the status reply failed its content check"), startedAt: 0, token);
+            }
+
+            peer.ReportFailure(PeerFailureReason.ProtocolViolation, "a block failed its parent-root check");
+            return Task.CompletedTask;
+        }
+    }
+
+    private static string PeerId => PeerManager.ExtractPeerIdForTest(PeerAddress);
+
+    private static long DroppedAsSessionClosed() => Metrics.BeaconChainPeersDroppedByReason.GetValueOrDefault(new StringLabel("SessionClosed"));
 
     [Test]
     [CancelAfter(30_000)]

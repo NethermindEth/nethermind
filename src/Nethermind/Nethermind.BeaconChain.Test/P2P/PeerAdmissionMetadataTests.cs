@@ -4,9 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.Core;
+using Nethermind.Db;
+using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
@@ -91,6 +98,45 @@ public class PeerAdmissionMetadataTests
                 Assert.That(inTime && silentAdmission.Result, Is.True);
                 Assert.That(inTime && otherAdmission.Result, Is.True);
                 Assert.That(peerManager.PeerCount, Is.EqualTo(2));
+            }
+        }
+    }
+
+    /// <summary>A peer is usable while its admission metadata is awaited, so it can break the protocol and close its session before its dial ends.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_peer_that_breaks_the_protocol_and_closes_while_its_metadata_is_awaited_keeps_its_dial_backoff(CancellationToken token)
+    {
+        Node client = CreateNode();
+        await using BeaconDiscovery discovery = new(client.Config, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
+            new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), new ManualTimestamper(), LimboLogs.Instance);
+        // Does not list the metadata protocol, so the admission waits out its metadata timeout.
+        await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
+            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
+
+        await using (client.P2P)
+        {
+            await client.P2P.StartAsync(token);
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+            string silentAddress = silent.Address.ToString();
+            if (!silentAddress.Contains("/p2p/", StringComparison.Ordinal))
+            {
+                silentAddress += $"/p2p/{silent.Peer.Identity.PeerId}";
+            }
+
+            Task<bool> admission = peerManager.TryAddPeerAsync(silentAddress, token);
+            await PeerSessionNodes.WaitUntilAsync(() => peerManager.PeerCount == 1, "fixture: the silent peer was never recorded", token);
+            Assert.That(admission.IsCompleted, Is.False, "fixture: the metadata is still awaited");
+            peerManager.GetBestPeers(0).Single().ReportFailure(PeerFailureReason.ProtocolViolation, "a block failed its parent-root check");
+            Assert.That(client.P2P.TryGetEstablishedSession(silent.Peer.Identity.PeerId, out ISession? session), Is.True);
+            await session!.DisconnectAsync();
+
+            bool admitted = await admission.WaitAsync(Within, token);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admitted, Is.False, "the session closed before the admission ended");
+                Assert.That(discovery.DialHistory.Quality(silentAddress), Is.LessThan(0), "the address stays backed off");
             }
         }
     }
