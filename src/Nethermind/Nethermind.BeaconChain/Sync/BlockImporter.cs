@@ -19,6 +19,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.BeaconChain.Sync;
 
@@ -421,6 +422,9 @@ public sealed class BlockImporter : IBlockImporter
         {
             if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {e.Message}");
             MarkFailed(blockRoot, block.Slot, e);
+            // specs/bellatrix/optimistic-sync.md: the optimistic blocks after the payload latestValidHash names are invalid too.
+            if (verdict.Status == ExecutionStatus.Invalid)
+                _runner.InvalidateExecutionChain(parentRoot, payloadHash: null, verdict.LatestValidHash);
             return BlockImportResult.Invalid;
         }
         finally
@@ -778,7 +782,16 @@ public sealed class BlockImporter : IBlockImporter
     private Hash256? GetParentBlockHash(Hash256 root) => _runner.GetParentBlockHash(root) ?? (root == _gloasAnchorRoot ? _gloasAnchorParentBlockHash : null);
 
     /// <inheritdoc/>
-    public void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash) =>
+    public void OnForkchoiceUpdated(Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)
+    {
+        if (status.Status == PayloadStatus.Valid)
+            _runner.ValidateExecutionChain(headRoot, headExecutionHash);
+        else if (status.Status == PayloadStatus.Invalid)
+            _runner.InvalidateExecutionChain(headRoot, headExecutionHash, status.LatestValidHash);
+    }
+
+    /// <summary>Invalidates <paramref name="blockRoot"/> and its descendants, and the blocks back to <paramref name="latestValidHash"/> when it names a known ancestor.</summary>
+    internal void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash) =>
         _runner.OnInvalidExecutionPayload(blockRoot, latestValidHash);
 
     /// <inheritdoc/>
@@ -1176,17 +1189,28 @@ public sealed class BlockImporter : IBlockImporter
         /// <summary>The verdict for this import, optimistic until the hook produces one.</summary>
         public ExecutionStatus Status { get; private set; } = ExecutionStatus.Optimistic;
 
+        public Hash256? LatestValidHash { get; private set; }
+
         /// <summary>Obtains the verdict for <paramref name="body"/> ahead of the transition that will consume it.</summary>
         /// <remarks>The hook is served this verdict rather than calling the engine a second time.</remarks>
         /// <exception cref="EngineUnavailableException">The execution layer returned no verdict.</exception>
         public void Prime(BeaconBlockBody body)
         {
-            Status = engine.NotifyNewPayload(body);
+            Status = engine.NotifyNewPayload(body, out Hash256? latestValidHash);
+            LatestValidHash = latestValidHash;
             _primed = body;
         }
 
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) =>
-            ReferenceEquals(body, _primed) ? Status : Status = engine.NotifyNewPayload(body);
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+        {
+            if (!ReferenceEquals(body, _primed))
+            {
+                Status = engine.NotifyNewPayload(body, out Hash256? latestValidHash);
+                LatestValidHash = latestValidHash;
+            }
+
+            return Status;
+        }
 
         public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) =>
             Status = engine.NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests);

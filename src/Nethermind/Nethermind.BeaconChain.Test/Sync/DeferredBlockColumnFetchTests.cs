@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.RangeSyncTests;
@@ -1742,7 +1743,7 @@ public class DeferredBlockColumnFetchTests
 
         public HeadView ComputeHead() => inner.ComputeHead();
 
-        public void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash) => inner.OnInvalidExecutionPayload(blockRoot, latestValidHash);
+        public void OnForkchoiceUpdated(Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status) => inner.OnForkchoiceUpdated(headRoot, headExecutionHash, status);
 
         public void OnFinalized(CheckpointRef finalized) => inner.OnFinalized(finalized);
 

@@ -66,6 +66,12 @@ public sealed class ForkChoiceRunner
     /// <summary>The committed bid's <c>parent_block_hash</c> of each Gloas block, keyed by block root.</summary>
     private readonly Dictionary<Hash256, Hash256> _parentBlockHashes = [];
 
+    /// <summary>specs/bellatrix/optimistic-sync.md: invalid Gloas payloads cannot become FULL again.</summary>
+    private readonly HashSet<Hash256> _invalidPayloads = [];
+
+    /// <summary>specs/bellatrix/optimistic-sync.md: a Gloas payload reported VALID cannot become INVALID.</summary>
+    private readonly HashSet<Hash256> _validPayloads = [];
+
     /// <summary>The slot and proposer of each registered block, for <c>is_proposer_equivocation</c>; pruned by slot, and <see cref="_blockTimeliness"/> keeps the roots it holds, so <c>should_apply_proposer_boost</c> sees both for the same blocks.</summary>
     private readonly Dictionary<Hash256, BlockProposer> _blockProposers = [];
 
@@ -290,6 +296,8 @@ public sealed class ForkChoiceRunner
         PruneUnknownRoots(_parentBlockHashes);
         PruneUnknownRoots(_ptcVotes);
         _payloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
+        _invalidPayloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
+        _validPayloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
     }
 
     /// <summary>
@@ -431,6 +439,7 @@ public sealed class ForkChoiceRunner
     /// <c>block_hash</c> as its execution block hash: under EIP-7732 the block carries only the bid and
     /// its payload arrives later in an envelope, and the invalidation walk maps a <c>latestValidHash</c>
     /// to roots through that hash, so the parent's applied hash would be wrong there.
+    /// Its execution status is that of the payload the bid builds on; its own payload's verdicts are kept apart (<see cref="InvalidateExecutionChain"/>).
     /// There is no availability argument because the Gloas <c>on_block</c> no longer calls
     /// <c>is_data_available</c>. The body replay contract is the one the Fulu overload documents, through
     /// the <see cref="AttestationGloas"/> and <see cref="AttesterSlashingGloas"/> overloads.
@@ -595,7 +604,8 @@ public sealed class ForkChoiceRunner
         ulong slot = _protoArray.GetBlockSlot(blockRoot) ?? throw new ForkChoiceException($"Block {blockRoot} is unknown to fork choice");
         if (!IsGloasSlot(slot))
             throw new ForkChoiceException($"Block {blockRoot} at slot {slot} is before the Gloas fork; its payload has no envelope");
-        _payloads.Add(blockRoot);
+        if (!_invalidPayloads.Contains(blockRoot))
+            _payloads.Add(blockRoot);
     }
 
     /// <summary>The committed bid's <c>parent_block_hash</c> of the Gloas block <paramref name="blockRoot"/>; <see langword="null"/> for a pre-Gloas or unknown block.</summary>
@@ -1129,6 +1139,136 @@ public sealed class ForkChoiceRunner
                 ? InvalidationOperation.InvalidateOne(blockRoot)
                 : InvalidationOperation.InvalidateMany(blockRoot, alwaysInvalidateHead: true, latestValidHash),
             _store.FinalizedCheckpoint);
+
+    /// <summary>
+    /// Applies an engine INVALID verdict on the payload <paramref name="payloadHash"/> of the chain ending at <paramref name="chainRoot"/>:
+    /// that payload, and every payload after the one <paramref name="latestValidHash"/> names, becomes invalid with the blocks built on it.
+    /// </summary>
+    /// <remarks>
+    /// specs/bellatrix/optimistic-sync.md: invalidate the execution suffix after latestValidHash; unknown hashes count as null.
+    /// specs/gloas/fork-choice.md get_node_children: an invalid payload removes only FULL and blocks built on it, preserving EMPTY.
+    /// </remarks>
+    /// <param name="chainRoot">The last known beacon block on the execution chain being invalidated.</param>
+    /// <param name="payloadHash">The payload in question; <c>null</c> when its block is not in fork choice and builds on <paramref name="chainRoot"/>'s payload.</param>
+    /// <param name="latestValidHash">The engine's latest valid execution hash, or <c>null</c> to invalidate only the payload in question.</param>
+    /// <exception cref="ProtoArrayException">A payload to invalidate was reported valid before.</exception>
+    public void InvalidateExecutionChain(Hash256 chainRoot, Hash256? payloadHash, Hash256? latestValidHash)
+    {
+        List<ProtoNode> invalid = [];
+        bool latestValidFound = false;
+        Hash256? next = payloadHash;
+        foreach (ProtoNode node in _protoArray.EnumerateAncestorNodes(chainRoot))
+        {
+            if (node.ExecutionStatus == ExecutionStatus.Irrelevant)
+                break;
+            if (next is not null && node.ExecutionBlockHash != next)
+                continue;
+            if (latestValidHash != Hash256.Zero && node.ExecutionBlockHash == latestValidHash)
+            {
+                latestValidFound = _protoArray.IsFinalizedCheckpointOrDescendant(node.Root, _store.FinalizedCheckpoint);
+                break;
+            }
+
+            invalid.Add(node);
+            // specs/gloas/fork-choice.md get_parent_payload_status: follow bid parent hashes across EMPTY nodes.
+            next = null;
+            if (node.IsGloas && node.Parent is int parent && _protoArray.Nodes[parent].IsGloas && !_parentBlockHashes.TryGetValue(node.Root, out next))
+                break;
+        }
+
+        latestValidFound |= latestValidHash == Hash256.Zero;
+        // specs/bellatrix/optimistic-sync.md: an unknown latestValidHash acts as null, naming only the payload in question.
+        int count = latestValidFound ? invalid.Count : payloadHash is null ? 0 : Math.Min(1, invalid.Count);
+        invalid.RemoveRange(count, invalid.Count - count);
+        IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
+        HashSet<int> subtreeRoots = [];
+        foreach (ProtoNode node in invalid)
+        {
+            if (node.IsGloas ? _validPayloads.Contains(node.Root) : node.ExecutionStatus == ExecutionStatus.Valid)
+                throw new ProtoArrayException($"Valid execution payload {node.ExecutionBlockHash} of block {node.Root} became invalid");
+            if (!node.IsGloas)
+            {
+                subtreeRoots.Add(_protoArray.IndexOf(node.Root)!.Value);
+                continue;
+            }
+
+            foreach (int child in node.Children)
+            {
+                if (nodes[child].ParentPayloadStatus == ForkChoicePayloadStatus.Full)
+                    subtreeRoots.Add(child);
+            }
+        }
+
+        InvalidateSubtrees(subtreeRoots);
+        foreach (ProtoNode node in invalid)
+        {
+            if (!node.IsGloas)
+                continue;
+            _payloads.Remove(node.Root);
+            _invalidPayloads.Add(node.Root);
+        }
+    }
+
+    /// <summary>
+    /// Applies an engine VALID verdict on the payload <paramref name="payloadHash"/> of the chain ending at <paramref name="chainRoot"/>:
+    /// the nearest block that carries or builds on that payload, and all its ancestors, become valid.
+    /// </summary>
+    /// <remarks>
+    /// specs/bellatrix/optimistic-sync.md: when a block becomes VALID, all its ancestors become VALID. Every beacon ancestor of a
+    /// Gloas block builds on an execution ancestor of the payload that block builds on, so the walk holds across EMPTY and FULL nodes.
+    /// </remarks>
+    /// <exception cref="ProtoArrayException">An ancestor was invalidated before.</exception>
+    public void ValidateExecutionChain(Hash256 chainRoot, Hash256 payloadHash)
+    {
+        foreach (ProtoNode node in _protoArray.EnumerateAncestorNodes(chainRoot))
+        {
+            bool carriesPayload = node.ExecutionBlockHash == payloadHash;
+            if (!carriesPayload && (!node.IsGloas || GetParentBlockHash(node.Root) != payloadHash))
+                continue;
+
+            if (carriesPayload && _invalidPayloads.Contains(node.Root))
+                throw new ProtoArrayException($"Invalid execution payload {node.ExecutionBlockHash} became valid");
+            _protoArray.ProcessExecutionPayloadValidation(node.Root);
+            if (carriesPayload && node.IsGloas)
+                _validPayloads.Add(node.Root);
+            return;
+        }
+    }
+
+    /// <summary>specs/bellatrix/optimistic-sync.md: invalidates the blocks at <paramref name="subtreeRoots"/> and all their descendants, or none.</summary>
+    /// <exception cref="ProtoArrayException">One of them is valid or has no execution payload.</exception>
+    private void InvalidateSubtrees(HashSet<int> subtreeRoots)
+    {
+        if (subtreeRoots.Count == 0)
+            return;
+
+        IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
+        int start = int.MaxValue;
+        foreach (int index in subtreeRoots)
+            start = Math.Min(start, index);
+
+        // specs/bellatrix/optimistic-sync.md: invalidate all descendants; parent-before-child storage permits one pass.
+        bool[] invalid = new bool[nodes.Count];
+        for (int i = start; i < nodes.Count; i++)
+        {
+            ProtoNode node = nodes[i];
+            if (!subtreeRoots.Contains(i) && !(node.Parent is int parent && invalid[parent]))
+                continue;
+            if (node.ExecutionStatus is ExecutionStatus.Valid or ExecutionStatus.Irrelevant)
+                throw new ProtoArrayException($"Block {node.Root} ({node.ExecutionStatus}) builds on an invalid execution payload");
+            invalid[i] = true;
+        }
+
+        for (int i = start; i < nodes.Count; i++)
+        {
+            if (!invalid[i])
+                continue;
+            ProtoNode node = nodes[i];
+            node.ExecutionStatus = ExecutionStatus.Invalid;
+            node.BestChild = null;
+            node.BestDescendant = null;
+        }
+    }
 
     /// <summary>
     /// The spec's <c>get_proposer_head</c> (specs/fulu/fork-choice.md): the block the proposer of

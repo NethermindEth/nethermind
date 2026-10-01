@@ -5,6 +5,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.BeaconChain.Sync;
 
@@ -111,8 +112,11 @@ public interface IBlockImporter
     /// </remarks>
     HeadView ComputeHead();
 
-    /// <summary>Propagates an INVALID <c>forkchoiceUpdated</c> verdict into fork choice; recompute the head afterwards.</summary>
-    void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash);
+    /// <summary>
+    /// Applies a VALID or INVALID <c>forkchoiceUpdated</c> verdict on <paramref name="headExecutionHash"/>, the head hash sent for
+    /// <paramref name="headRoot"/>, to the payloads it names; recompute the head afterwards. Other statuses change nothing.
+    /// </summary>
+    void OnForkchoiceUpdated(Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status);
 
     /// <summary>
     /// Reacts to a finalized-checkpoint advance: persists the finalized state, advances the

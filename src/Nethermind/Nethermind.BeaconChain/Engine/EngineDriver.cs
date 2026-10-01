@@ -126,13 +126,17 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// SYNCING/ACCEPTED map to <see cref="ExecutionStatus.Optimistic"/> per the spec's
     /// <c>verify_and_notify_new_payload</c>; only INVALID rejects the block.
     /// </remarks>
-    public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+    public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => NotifyNewPayload(body, out _);
+
+    /// <inheritdoc/>
+    public ExecutionStatus NotifyNewPayload(BeaconBlockBody body, out Hash256? latestValidHash)
     {
         SignedBeaconBlock block = CurrentBlock ?? throw new InvalidOperationException($"{nameof(CurrentBlock)} must be set before running the state transition");
         if (!ReferenceEquals(block.Message?.Body, body))
             throw new InvalidOperationException($"The body being processed does not belong to {nameof(CurrentBlock)}");
 
         PayloadStatusV1 status = NewPayload(block).GetAwaiter().GetResult();
+        latestValidHash = status.LatestValidHash;
         return ToExecutionStatus(status.Status);
     }
 
