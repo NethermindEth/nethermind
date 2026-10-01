@@ -28,6 +28,7 @@ using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using NSubstitute;
 using NUnit.Framework;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
@@ -705,6 +706,71 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Known, Does.Contain(blockRoot), "the retry must import the block once its data becomes available");
     }
 
+    public enum BlockSource
+    {
+        Gossip,
+        RangeSync,
+        ByRootBackfill,
+        GossipThenFetched,
+    }
+
+    /// <summary>
+    /// A block this node fetched stays a requested import on every retry, and so does a range-sync child held under it: a
+    /// deferred fetched block whose parent's state must be regenerated would otherwise wait on the budget gossip shares, and
+    /// be dropped once gossip spent it.
+    /// </summary>
+    [Test]
+    public async Task Deferred_block_is_retried_as_requested_only_when_this_node_fetched_it([Values] BlockSource source)
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        Hash256 blockRoot = block.ComputeMessageRoot();
+        Hash256 childRoot = child.ComputeMessageRoot();
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([block]));
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(blockRoot);
+
+        switch (source)
+        {
+            case BlockSource.Gossip:
+                await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
+                break;
+            case BlockSource.RangeSync:
+                // The child is held under the deferred block and imports once that block does.
+                harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(block));
+                harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(child));
+                await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+                break;
+            case BlockSource.ByRootBackfill:
+                await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+                break;
+            case BlockSource.GossipThenFetched:
+                await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
+                await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None, fetchedByRoot: true);
+                break;
+        }
+
+        bool waited = harness.Orchestrator.PendingRetryBlockCount == 1 && !harness.Importer.Known.Contains(blockRoot);
+        harness.Importer.Unavailable.Remove(blockRoot);
+        await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 3, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waited, Is.True, "fixture: the block waits in the retry set");
+            Assert.That(harness.Importer.Known, Does.Contain(blockRoot), "fixture: the retry imports the block");
+            Assert.That(harness.Importer.RequestedImports.Count(root => root == blockRoot), Is.EqualTo(source == BlockSource.Gossip ? 0 : 2));
+            if (source == BlockSource.RangeSync)
+            {
+                Assert.That(harness.Importer.Known, Does.Contain(childRoot), "fixture: the held child imports");
+                Assert.That(harness.Importer.RequestedImports.Count(root => root == childRoot), Is.EqualTo(2), "the held range child imports as requested too");
+            }
+        }
+    }
+
     /// <summary>The retry list is bounded by finality, not just by size: a block finality has passed stops being retried even after its data becomes available.</summary>
     [Test]
     public async Task Gossip_block_with_unavailable_data_stops_being_retried_once_finality_passes_its_slot()
@@ -1279,6 +1345,15 @@ public partial class BeaconSyncOrchestratorTests
         public bool IsKnown(Hash256 blockRoot) => Known.Contains(blockRoot);
 
         public bool IsExpectedProposer(ForkedSignedBeaconBlock block) => ExpectedProposer;
+
+        /// <summary>The roots imported as blocks this node requested, once per attempt.</summary>
+        public List<Hash256> RequestedImports { get; } = [];
+
+        public BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot)
+        {
+            RequestedImports.Add(blockRoot);
+            return Import(block, blockRoot, verifySignatures: true);
+        }
 
         public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {

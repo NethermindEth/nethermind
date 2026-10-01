@@ -223,6 +223,8 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(harness.Importer.Known, Does.Contain(grandchildRoot));
             Assert.That(harness.Importer.Known.Contains(greatGrandchild.ComputeMessageRoot()), Is.EqualTo(parentUnknown));
             Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
+            Assert.That(harness.Importer.RequestedImports.Contains(grandchildRoot), Is.EqualTo(parentUnknown), "a fetched block is held as a requested import");
+            Assert.That(harness.Importer.RequestedImports, Does.Not.Contain(greatGrandchild.ComputeMessageRoot()));
         }
     }
 
@@ -453,6 +455,74 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.UnionWith([anchorRoot, fullRoot]);
         harness.Importer.UnverifiedPayloads.Add(fullRoot);
         return new ParkedParentScenario(harness, peer, fullRoot, parent, child, grandchild);
+    }
+
+    public enum Fetch
+    {
+        RangeSync,
+        ByRootBackfill,
+    }
+
+    /// <summary>
+    /// Signed gossip blocks on evicted parents can spend a slot's regeneration budget at will, so a block this node fetched,
+    /// a competing branch from range sync or the parent a gossip child names, must not wait on that budget, or the node
+    /// could not switch to a branch whose fork point's state was evicted. A gossip block the spent budget refused is fetched
+    /// again by its child's by-root backfill and imports with it.
+    /// </summary>
+    [Test]
+    public async Task Fetched_block_on_an_evicted_parent_imports_after_gossip_spent_the_regeneration_budget([Values] Fetch fetch)
+    {
+        SignedGloasChain chain = new();
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (ulong slot = chain.Spec.SlotsPerEpoch; slot < 3 * chain.Spec.SlotsPerEpoch + 8; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            blocks.Add(tip);
+        }
+
+        ulong wallSlot = tip!.Signed.Message!.Slot + 2;
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain, clock: clock, peers: [peer], importOnClock: true);
+        List<BlockImportResult> fixture = [];
+        foreach (SignedGloasChain.Block block in blocks)
+        {
+            fixture.Add(await orchestrator.ImportBlockAsync(block.Forked, CancellationToken.None));
+        }
+
+        // Two signed gossip blocks on evicted parents spend this slot's budget.
+        foreach (int i in new[] { 1, 2 })
+        {
+            SignedGloasChain.Block spender = chain.Next(blocks[i], 3 * chain.Spec.SlotsPerEpoch + (ulong)i, full: false, (byte)(0xF0 + i));
+            fixture.Add(await orchestrator.ImportBlockAsync(spender.Forked, CancellationToken.None));
+        }
+
+        // Past the chain's slots, so no imported block has marked their slot and proposer seen.
+        SignedGloasChain.Block fetched = chain.Next(blocks[3], wallSlot - 1, full: false, 0xF3);
+        SignedGloasChain.Block child = chain.Next(fetched, wallSlot, full: false, 0xF4);
+        BlockImportResult? asGossip = null;
+        if (fetch == Fetch.RangeSync)
+        {
+            await orchestrator.ImportBlockAsync(fetched.Forked, CancellationToken.None, rangeItem: new BeaconSyncOrchestrator.RangeBlockItem(fetched.Forked));
+        }
+        else
+        {
+            asGossip = await orchestrator.ImportBlockAsync(fetched.Forked, CancellationToken.None);
+            peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([fetched.Forked]));
+            await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+            Assert.That(importer.IsKnown(fetched.Root), Is.True);
+            if (fetch == Fetch.ByRootBackfill)
+            {
+                Assert.That(asGossip, Is.EqualTo(BlockImportResult.UnknownParent), "fixture: the spent budget refused the block from gossip");
+                Assert.That(importer.IsKnown(child.Root), Is.True);
+            }
+        }
     }
 
     /// <summary>A restart replays stored Gloas blocks; the Fulu-only store read would throw on the first of them and stop the node.</summary>
@@ -717,15 +787,16 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>An orchestrator on the real importer over <paramref name="chain"/>, its wall clock inside slot 34.</summary>
-    private static (BeaconSyncOrchestrator Orchestrator, BlockImporter Importer, SignedGloasChain.EnvelopeEngine Engine) CreateGloasOrchestrator(SignedGloasChain chain, BeaconChainStore? persisted = null, ManualTimestamper? clock = null, GossipRouter? router = null, SignedGloasChain.Block? gloasAnchor = null)
+    /// <param name="importOnClock">Whether the importer reads the orchestrator's clock rather than the wall clock.</param>
+    private static (BeaconSyncOrchestrator Orchestrator, BlockImporter Importer, SignedGloasChain.EnvelopeEngine Engine) CreateGloasOrchestrator(SignedGloasChain chain, BeaconChainStore? persisted = null, ManualTimestamper? clock = null, GossipRouter? router = null, SignedGloasChain.Block? gloasAnchor = null, IBeaconSyncPeer[]? peers = null, bool importOnClock = false)
     {
         BeaconChainSpec spec = chain.Spec;
         ManualTimestamper timestamper = clock ?? new(DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + 34 * spec.SecondsPerSlot).AddSeconds(6));
         SlotClock slotClock = new(spec, timestamper);
         BeaconChainStore store = persisted ?? chain.CreateStore();
         SignedGloasChain.EnvelopeEngine engine = new();
-        StubPool pool = new([]);
-        BlockImporter importer = chain.CreateImporter(engine, store: store, gloasAnchor: gloasAnchor);
+        StubPool pool = new(peers ?? []);
+        BlockImporter importer = chain.CreateImporter(engine, store: store, gloasAnchor: gloasAnchor, clock: importOnClock ? slotClock : null);
         BeaconSyncOrchestrator orchestrator = new(
             new BeaconChainConfig(),
             spec,
