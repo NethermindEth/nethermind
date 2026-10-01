@@ -24,6 +24,13 @@
       "sha256": "fe4af344b6cf141fd2a2cacaeb8f2ce17eac0117bfe5816e8f59b7eef260c111",
       "upstream_commit": "875672f5ce661b791d58bf8506fffe9c8c4a4a78",
       "upstream_url": "https://github.com/dotnet/runtime/pull/125936"
+    },
+    {
+      "file": "patches/runtime-module-identity.patch",
+      "sha256": "c72b2ded2527ac6378842aeb4c2753c408b4f70a9aa3ac0ea0cdf3953bbe116b",
+      "upstream_commit": null,
+      "upstream_url": null,
+      "purpose": "Defer unknown PDB signatures only when a verifiable module/CLR identity record is available; reject missing and conflicting identities."
     }
   ],
   "purpose": "Isolated offline profile conversion; never included in production runtime images."

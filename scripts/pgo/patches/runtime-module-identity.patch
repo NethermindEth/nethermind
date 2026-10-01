@@ -1,0 +1,33 @@
+--- a/src/coreclr/tools/dotnet-pgo/Program.cs
++++ b/src/coreclr/tools/dotnet-pgo/Program.cs
+@@ -1281,8 +1281,11 @@
+ 
+                 TraceRuntimeDescToTypeSystemDesc idParser = new TraceRuntimeDescToTypeSystemDesc(p, tsc, clrInstanceId);
+ 
+                 int mismatchErrors = 0;
++                var modulesWithIdentity = p.EventsInProcess.ByEventType<ModuleLoadUnloadTraceData>()
++                    .Where(e => e.ManagedPdbSignature != Guid.Empty)
++                    .Select(e => (e.ModuleID, e.ClrInstanceID)).ToHashSet();
+                 foreach (var e in p.EventsInProcess.ByEventType<ModuleLoadUnloadTraceData>())
+                 {
+                     ModuleDesc loadedModule = idParser.ResolveModuleID(e.ModuleID, false);
+                     if (loadedModule == null)
+@@ -1294,8 +1297,18 @@
+ 
+                     EcmaModule ecmaModule = loadedModule as EcmaModule;
+                     if (ecmaModule == null)
+                     {
++                        continue;
++                    }
++
++                    if (e.ManagedPdbSignature == Guid.Empty)
++                    {
++                        if (!modulesWithIdentity.Contains((e.ModuleID, e.ClrInstanceID)))
++                        {
++                            PrintError($"No verifiable PDB identity for module '{e.ModuleILPath}'");
++                            mismatchErrors++;
++                        }
+                         continue;
+                     }
+ 
+                     bool matched = false;
