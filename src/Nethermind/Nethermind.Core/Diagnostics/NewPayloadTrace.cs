@@ -19,13 +19,15 @@ public static class NewPayloadTrace
 
     public const int HttpStart = 0, BodyRead = 1, MethodEntry = 2, Locked = 3, GcRegion = 4, HandleStart = 5, Decoded = 6,
         PreSuggest = 7, Suggested = 8, EnqueueStart = 9, Dequeued = 10, BranchStart = 11, ProcessOneStart = 12, TxsDone = 13,
-        ProcessOneEnd = 14, Verdict = 15, HandlerResumed = 16, HandleEnd = 17, ResponseDone = 18, CommitDone = 19, BranchEnd = 20;
+        ProcessOneEnd = 14, Verdict = 15, HandlerResumed = 16, HandleEnd = 17, ResponseDone = 18, CommitDone = 19, BranchEnd = 20,
+        RecDecoded = 21, RecStarted = 22, TxsDecoded = 23, TxRootJoined = 24;
 
-    private const int Count = 21;
+    private const int Count = 25;
     private static readonly string[] Names =
     [
         "http", "body", "entry", "locked", "gcregion", "handle", "decoded", "presuggest", "suggested", "enqueue", "dequeued",
-        "branch", "p1start", "txsdone", "p1end", "verdict", "resumed", "handleend", "response", "commit", "branchend"
+        "branch", "p1start", "txsdone", "p1end", "verdict", "resumed", "handleend", "response", "commit", "branchend",
+        "recdecoded", "recstarted", "txsdecoded", "txrootjoined"
     ];
 
     private sealed class Record
