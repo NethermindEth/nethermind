@@ -593,13 +593,13 @@ public class GloasBlockImporterTests
 
         BeaconStateGloas? heldBefore = states.GetGloasBlockState(parent.Root);
         SignedGloasChain.Block sibling = chain.Next(parent, parentSlot + 1, full: parentKind != EvictedParent.Empty, 0xE3);
-        BlockImportResult result = importer.Import(sibling.Forked, sibling.Root, verifySignatures: true);
+        BlockImportResult result = importer.ImportRequested(sibling.Forked, sibling.Root);
         ExecutionPayloadEnvelopeImportResult? envelope = null;
         BlockImportResult? afterEnvelope = null;
         if (parentKind == EvictedParent.FullUnverified)
         {
             envelope = importer.ImportEnvelope(parent.Envelope);
-            afterEnvelope = importer.Import(sibling.Forked, sibling.Root, verifySignatures: true);
+            afterEnvelope = importer.ImportRequested(sibling.Forked, sibling.Root);
         }
 
         using (Assert.EnterMultipleScope())
@@ -670,7 +670,7 @@ public class GloasBlockImporterTests
         }
 
         SignedGloasChain.Block sibling = chain.Next(parent, ForkSlot + 3, full: false, 0xE3);
-        BlockImportResult result = importer.Import(sibling.Forked, sibling.Root, verifySignatures: true);
+        BlockImportResult result = importer.ImportRequested(sibling.Forked, sibling.Root);
 
         using (Assert.EnterMultipleScope())
         {
@@ -768,8 +768,9 @@ public class GloasBlockImporterTests
     }
 
     /// <summary>
-    /// A correctly signed block from gossip on an evicted parent may regenerate it, but only a few times per wall-clock slot:
-    /// a validator's own blocks on many evicted parents cannot stall the import worker on replays. The next slot allows more.
+    /// A correctly signed block from gossip on an evicted parent may regenerate it, but only a few times per wall-clock slot,
+    /// and only once per slot and proposer (phase0/p2p-interface.md <c>beacon_block</c>): any cached key can sign, so signed
+    /// gossip cannot stall the import worker on replays. The next slot allows more.
     /// </summary>
     [Test]
     public void Signed_blocks_on_evicted_parents_regenerate_within_a_per_slot_budget()
@@ -777,24 +778,45 @@ public class GloasBlockImporterTests
         SignedGloasChain chain = new();
         List<SignedGloasChain.Block> blocks = [];
         SignedGloasChain.Block? tip = null;
-        for (ulong slot = ForkSlot; slot < ForkSlot + 2 * ForkSlot + 4; slot++)
+        for (ulong slot = ForkSlot; slot < 3 * ForkSlot + 8; slot++)
         {
             tip = chain.Next(tip, slot, full: false, (byte)slot);
             blocks.Add(tip);
         }
 
-        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (tip!.Signed.Message!.Slot + 1) * chain.Spec.SecondsPerSlot + 1));
+        ulong wallSlot = tip!.Signed.Message!.Slot + 2;
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
         Import(importer, [.. blocks]);
-        SignedGloasChain.Block[] siblings = [.. Enumerable.Range(1, 3).Select(i => chain.Next(blocks[i], blocks[i].Signed.Message!.Slot + 1, full: false, (byte)(0xF0 + i)))];
+        SignedGloasChain.Block[] siblings = [.. Enumerable.Range(1, 3).Select(i => chain.Next(blocks[i], 3 * ForkSlot + (ulong)i, full: false, (byte)(0xF0 + i)))];
 
-        BlockImportResult[] sameSlot = [.. siblings.Select(s => importer.Import(s.Forked, s.Root, verifySignatures: true))];
+        // The first sibling's slot and proposer, signed by that proposer on another evicted parent.
+        BeaconBlockGloas repeat = chain.Next(blocks[5], siblings[0].Signed.Message!.Slot, full: false, 0xF5).Signed.Message!;
+        repeat.ProposerIndex = siblings[0].Signed.Message!.ProposerIndex;
+        Hash256 repeatRoot = SszRoots.HashTreeRoot(repeat);
+        Hash256 domain = siblings[0].PostState.GetDomain(DomainType.BeaconProposer, siblings[0].PostState.GetCurrentEpoch());
+        ForkedSignedBeaconBlock repeatSigned = new ForkedSignedBeaconBlock.OfGloas(new SignedBeaconBlockGloas { Message = repeat, Signature = Sign(ValidatorKey((int)repeat.ProposerIndex), Domains.ComputeSigningRoot(repeatRoot, domain)) });
+
+        BlockImportResult Gossip(ForkedSignedBeaconBlock block, Hash256 root) => importer.Import(block, root, verifySignatures: true);
+        BlockImportResult[] sameSlot =
+        [
+            Gossip(siblings[0].Forked, siblings[0].Root),
+            Gossip(repeatSigned, repeatRoot),
+            Gossip(siblings[1].Forked, siblings[1].Root),
+            Gossip(siblings[2].Forked, siblings[2].Root),
+        ];
         timestamper.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
-        BlockImportResult nextSlot = importer.Import(siblings[2].Forked, siblings[2].Root, verifySignatures: true);
+        BlockImportResult nextSlot = Gossip(siblings[2].Forked, siblings[2].Root);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(sameSlot, Is.EqualTo(new[] { BlockImportResult.Imported, BlockImportResult.Imported, BlockImportResult.UnknownParent }));
+            Assert.That(sameSlot, Is.EqualTo(new[]
+            {
+                BlockImportResult.Imported,
+                BlockImportResult.UnknownParent,
+                BlockImportResult.Imported,
+                BlockImportResult.UnknownParent,
+            }));
             Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
         }
     }
