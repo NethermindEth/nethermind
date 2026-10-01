@@ -11,15 +11,35 @@ using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 
-namespace Nethermind.Optimism.CL.P2P;
+namespace Nethermind.Network.Libp2p;
 
 /// <summary>Dials every static peer the gossip router holds no connection to and opens gossipsub on the session.</summary>
 /// <remarks>The router redials a peer only while its reconnection is not suppressed, and a peer it disconnected for an invalid RPC stays
 /// suppressed; discovering a known peer again does nothing, so a lost static peer such as the sequencer is dialed here.</remarks>
 /// <param name="openGossip">Opens gossipsub on a session and completes when that channel ends; gossipsub v1.1 when omitted.</param>
-internal sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContainer router, IReadOnlyList<Multiaddress> staticPeers, ILogger logger,
+public sealed class StaticPeerKeeper(ILocalPeer localPeer, IRoutingStateContainer router, IReadOnlyList<Multiaddress> staticPeers, ILogger logger,
     Func<ISession, CancellationToken, Task>? openGossip = null) : IDisposable
 {
+    /// <summary>Long enough not to race the router's own reconnect, short enough to win back a lost peer within a minute.</summary>
+    public static TimeSpan CheckInterval { get; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Checks <paramref name="staticPeers"/> every <paramref name="interval"/> until <paramref name="token"/> is cancelled.</summary>
+    public static async Task RunAsync(ILocalPeer localPeer, IRoutingStateContainer router, IReadOnlyList<Multiaddress> staticPeers, TimeSpan interval, ILogger logger, CancellationToken token)
+    {
+        using StaticPeerKeeper keeper = new(localPeer, router, staticPeers, logger);
+        using PeriodicTimer timer = new(interval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                await keeper.CheckAsync(token);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
     private readonly Func<ISession, CancellationToken, Task> _openGossip = openGossip ?? (static (session, token) => session.DialAsync<GossipsubProtocolV11>(token));
 
     // At most one gossip dial per peer: it is the live channel once connected, and is abandoned if the next check still finds the peer unconnected.

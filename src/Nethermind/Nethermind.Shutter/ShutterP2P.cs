@@ -42,19 +42,29 @@ public class ShutterP2P : IShutterP2P
     private readonly ServiceProvider _serviceProvider;
     private readonly TimeSpan DisconnectionLogTimeout;
     private readonly TimeSpan DisconnectionLogInterval;
+    private readonly TimeSpan _staticPeerCheckInterval;
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
 
     public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IIPResolver ipResolver)
+        : this(shutterConfig, logManager, fileSystem, keyStoreConfig, ipResolver, StaticPeerKeeper.CheckInterval, configureGossip: null)
+    {
+    }
+
+    internal ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IIPResolver ipResolver,
+        TimeSpan staticPeerCheckInterval, Action<PubsubSettings>? configureGossip)
     {
         _logger = logManager.GetClassLogger<ShutterP2P>();
+        _staticPeerCheckInterval = staticPeerCheckInterval;
         _cfg = shutterConfig;
         _ipResolver = ipResolver;
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
         DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
 
         PubsubPeerDiscoverySettings discoverySettings = new() { Interval = 300 };
+        PubsubSettings pubsubSettings = CreatePubsubSettings(discoverySettings);
+        configureGossip?.Invoke(pubsubSettings);
         IServiceCollection serviceCollection = new ServiceCollection()
             .AddLibp2p(builder => builder.WithPubsub())
             .AddSingleton(new IdentifyProtocolSettings
@@ -62,7 +72,7 @@ public class ShutterP2P : IShutterP2P
                 ProtocolVersion = _cfg.P2PProtocolVersion,
                 AgentVersion = ProductInfo.ClientId
             })
-            .AddSingleton(CreatePubsubSettings(discoverySettings));
+            .AddSingleton(pubsubSettings);
 
         if (_cfg.P2PLogsEnabled)
         {
@@ -113,10 +123,13 @@ public class ShutterP2P : IShutterP2P
         await _router.StartAsync(_peer, cancellationToken);
         _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(listenAddress)], cancellationToken);
 
-        foreach (Multiaddress address in bootnodeP2PAddresses)
+        Multiaddress[] bootnodes = [.. bootnodeP2PAddresses];
+        foreach (Multiaddress address in bootnodes)
         {
             _peerStore.Discover([address]);
         }
+
+        _ = StaticPeerKeeper.RunAsync(_peer, _router, bootnodes, _staticPeerCheckInterval, _logger, cancellationToken);
 
         if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {listenAddress}");
 
@@ -156,6 +169,10 @@ public class ShutterP2P : IShutterP2P
             }
         }
     }
+
+    internal ILocalPeer PeerForTest => _peer;
+
+    internal IRoutingStateContainer RoutingStateForTest => _router;
 
     public async ValueTask DisposeAsync()
     {
