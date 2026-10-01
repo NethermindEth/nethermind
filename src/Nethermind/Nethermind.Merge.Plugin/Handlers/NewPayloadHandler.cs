@@ -656,7 +656,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
-            // TryGetBlock reports the decoding error; nothing to recover otherwise.
+            // TryGetBlock has already decoded these, so only an empty block has nothing to recover.
             return;
 
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
