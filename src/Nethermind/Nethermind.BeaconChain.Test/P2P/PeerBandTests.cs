@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
@@ -33,10 +34,51 @@ public class PeerBandTests
     private const ulong AnchorSlot = 13_410_304;
 
     [TestCase("/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAm", ExpectedResult = "16Uiu2HAm")]
-    [TestCase("/ip4/1.2.3.4/tcp/9000", ExpectedResult = "/ip4/1.2.3.4/tcp/9000")] // no /p2p/: the whole address is the identity
-    [TestCase("", ExpectedResult = "")]
     public string Peer_id_is_extracted_from_the_p2p_multiaddr_component(string address) =>
         PeerManager.ExtractPeerIdForTest(address);
+
+    /// <summary>The libp2p layer dials only an address that names its peer id, so no other address is ever keyed.</summary>
+    [TestCase("/ip4/1.2.3.4/tcp/9000")]
+    [TestCase("")]
+    public void An_address_without_a_peer_id_has_no_key(string address) =>
+        Assert.That(() => PeerManager.ExtractPeerIdForTest(address), Throws.ArgumentException);
+
+    /// <summary>A static peer the maintenance round could never dial stops the node at startup instead of failing every round.</summary>
+    /// <remarks>The libp2p dial keeps a failed name resolution as the answer for that peer id, so a DNS name is refused too.</remarks>
+    [TestCase("not a multiaddr")]
+    [TestCase("/ip4/1.2.3.4/tcp/9000")]
+    [TestCase("/dns4/example.org/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
+    public void A_static_peer_that_cannot_be_dialed_is_a_configuration_error(string address)
+    {
+        Node node = CreateNode();
+        node.Config.StaticPeers = address;
+
+        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    [Test]
+    public void A_static_peer_with_an_ip_address_and_peer_id_is_accepted()
+    {
+        Node node = CreateNode();
+        node.Config.StaticPeers = "/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e, /ip6/::1/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e";
+
+        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.Nothing);
+    }
+
+    /// <summary>An address whose peer id does not decode fails its own dial, not the maintenance round or caller around it.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_dial_address_that_does_not_decode_is_refused_without_throwing(CancellationToken token)
+    {
+        Node node = CreateNode();
+        await using (node.P2P)
+        {
+            await node.P2P.StartAsync(token);
+            PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+
+            Assert.That(await peerManager.TryAddPeerAsync("/ip4/127.0.0.1/tcp/1/p2p/not-a-peer-id", token), Is.False);
+        }
+    }
 
     /// <summary>
     /// A peer dropped for timing out is routine, and log watchers treat an exception type name in an Info line as a
@@ -752,12 +794,11 @@ public class PeerBandTests
     [Test]
     public void TryGetPeer_refuses_an_empty_id_even_when_an_unresolved_dialing_address_would_otherwise_match_it()
     {
-        // An address with no /p2p/ component extracts to itself, not "" - the only way a tracked
-        // entry's derived peer id is ever "" is a raw "" address, reached here directly since a real
-        // dial to "" fails and clears its reservation before a test could observe it.
+        // An address ending in /p2p/ is the only way a tracked entry's derived peer id is "", reached here directly
+        // since a real dial to it fails and clears its reservation before a test could observe it.
         Node node = CreateNode();
         PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
-        peerManager.ReserveDialingForTest("");
+        peerManager.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/");
         IPeerDirectory directory = peerManager;
 
         Assert.That(directory.TryGetPeer("", out _), Is.False, "an empty id must never be treated as a wildcard, even when a raw '' address is technically tracked");
