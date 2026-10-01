@@ -31,7 +31,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasUsed;
     /// <summary>State gas drawn from this frame's execution gas pool.</summary>
     public long StateGasSpill;
-    /// <summary>Spill consumed by state refunds and excluded from block execution gas.</summary>
+    /// <summary>State gas spill repaid to execution gas and excluded from net spill accounting.</summary>
     public long StateGasSpillRefunded;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
@@ -162,6 +162,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
         gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
+    }
+
+    /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RepayStateGasSpill(ref EthereumGasPolicy gas)
+    {
+        long repayment = Math.Min(gas.StateReservoir, GetUnrefundedStateGasSpill(in gas));
+        if (repayment <= 0)
+        {
+            return;
+        }
+
+        gas.Value += (ulong)repayment;
+        gas.StateReservoir -= repayment;
+        gas.StateGasSpillRefunded += repayment;
     }
 
     // On explicit REVERT, restore the child's remaining state reservoir plus its reverted

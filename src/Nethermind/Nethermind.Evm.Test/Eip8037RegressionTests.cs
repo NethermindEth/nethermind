@@ -1288,6 +1288,50 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         AssertStorage(new StorageCell(Recipient, 2), UInt256.One);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Eip8037_successful_child_merge_repays_parent_spill_into_gas_left(bool traceAccess)
+    {
+        byte[] childCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+
+        byte[] parentCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.GAS)
+            .DelegateCall(TestItem.AddressC, 400_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.GAS)
+            .Op(Instruction.GT)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            1_000_000,
+            parentCode,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        TestAllTracerWithOutput tracer = new() { IsTracingAccess = traceAccess };
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
+            AssertStorage(new StorageCell(Recipient, 1), UInt256.One);
+        }
+    }
+
     [Test]
     public void Eip8037_reverted_ancestor_discards_descendant_storage_refund_credit()
     {
