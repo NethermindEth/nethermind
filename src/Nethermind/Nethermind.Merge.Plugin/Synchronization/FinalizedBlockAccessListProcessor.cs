@@ -23,7 +23,6 @@ public sealed class FinalizedBlockAccessListProcessor(
     FinalizedBlockAccessListPolicy policy,
     IWorldState state,
     IReceiptStorage receiptStorage,
-    FinalizedBlockAccessListVerificationEnv verification,
     ILogManager logManager) : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FinalizedBlockAccessListProcessor>();
@@ -70,18 +69,13 @@ public sealed class FinalizedBlockAccessListProcessor(
                 return inner.ProcessOne(block, options, blockTracer, spec, token);
         }
 
-        if (!verification.Verify(block, list, spec, token))
-        {
-            if (_logger.IsDebug) _logger.Debug($"BAL state root unavailable or mismatched for {block}; executing instead.");
-            return inner.ProcessOne(block, options, blockTracer, spec, token);
-        }
-
         BlockAccessListStateReconstructor.Apply(state, list, spec, token);
         _transactionsExecuted?.Invoke();
         state.Commit(spec);
         state.RecalculateStateRoot();
         if (state.StateRoot != block.StateRoot)
-            throw new InvalidOperationException($"Verified BAL reconstruction changed root for {block}.");
+            throw new BlockProcessor.BlockAccessListSequentialRetryException(block.Header,
+                $"BAL reconstruction mismatched state root for {block}; retrying execution.");
         block.BlockAccessList = list;
         block.AccountChanges = state.GetAccountChanges();
         return (block, receipts);

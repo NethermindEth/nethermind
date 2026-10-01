@@ -14,12 +14,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.History;
-using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -29,10 +27,12 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class BlockDownloaderTests
 {
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    public async Task Finalized_catchup_downloads_retained_receipts_before_suggestion(bool missingBal, bool missingReceipts)
+    [TestCase(false, false, false)]
+    [TestCase(false, true, false)]
+    [TestCase(false, true, true)]
+    [TestCase(true, false, false)]
+    [TestCase(true, false, true)]
+    public async Task Finalized_catchup_downloads_retained_receipts_before_suggestion(bool missingBal, bool missingReceipts, bool truncated)
     {
         IForwardHeaderProvider headers = Substitute.For<IForwardHeaderProvider>();
         IBeaconSyncStrategy beacon = Substitute.For<IBeaconSyncStrategy>();
@@ -77,8 +77,19 @@ public partial class BlockDownloaderTests
             Assert.That(balRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
             Assert.That(suggested, Is.False);
         }
-        balRequest.BlockAccessLists = BuildBlockAccessLists(missingBal ? null : bal);
-        downloader.HandleResponse(balRequest, peer);
+        for (int attempt = 0; attempt < (missingBal ? 3 : 1); attempt++)
+        {
+            balRequest.BlockAccessLists = missingBal && truncated
+                ? new ArrayPoolList<byte[]?>(0)
+                : BuildBlockAccessLists(missingBal ? null : bal);
+            downloader.HandleResponse(balRequest, peer);
+            if (missingBal && attempt < 2)
+            {
+                balRequest = (await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+                Assert.That(balRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
+                Assert.That(suggested, Is.False);
+            }
+        }
         if (missingBal)
         {
             BlocksRequest fastRequest = (await downloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
@@ -91,9 +102,19 @@ public partial class BlockDownloaderTests
         {
             Assert.That(receiptRequest!.ReceiptsRequests, Has.Count.EqualTo(1));
             Assert.That(suggested, Is.False);
-            receiptRequest.Receipts = new ArrayPoolList<TxReceipt[]?>(1) { missingReceipts ? null : receipts };
-            downloader.HandleResponse(receiptRequest, peer);
-            receiptRequest = await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+            for (int attempt = 0; attempt < (missingReceipts ? 3 : 1); attempt++)
+            {
+                receiptRequest!.Receipts = missingReceipts && truncated
+                    ? new ArrayPoolList<TxReceipt[]?>(0)
+                    : new ArrayPoolList<TxReceipt[]?>(1) { missingReceipts ? null : receipts };
+                downloader.HandleResponse(receiptRequest, peer);
+                receiptRequest = await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+                if (missingReceipts && attempt < 2)
+                {
+                    Assert.That(receiptRequest!.ReceiptsRequests, Has.Count.EqualTo(1));
+                    Assert.That(suggested, Is.False);
+                }
+            }
         }
         using (Assert.EnterMultipleScope())
         {

@@ -28,6 +28,7 @@ public sealed class FinalizedBlockAccessListPolicy(
     private readonly Dictionary<ulong, Hash256> _ancestors = [];
     private Hash256? _checkpoint;
     private BlockHeader? _oldestAncestor;
+    private BlockHeader? _finalizedHeader;
 
     /// <summary>Whether this header belongs to the finalized ancestry and supports reconstruction.</summary>
     public bool CanReconstruct(BlockHeader header)
@@ -43,13 +44,7 @@ public sealed class FinalizedBlockAccessListPolicy(
         {
             Hash256? finalized = beaconSync.GetFinalizedHash();
             if (finalized is null || finalized == Keccak.Zero) return false;
-            if (_checkpoint != finalized || _oldestAncestor is null)
-            {
-                _ancestors.Clear();
-                _checkpoint = finalized;
-                _oldestAncestor = blockTree.FindHeader(finalized, BlockTreeLookupOptions.None);
-                if (_oldestAncestor is not null) _ancestors[_oldestAncestor.Number] = finalized;
-            }
+            if ((_checkpoint != finalized || _oldestAncestor is null) && !UpdateCheckpoint(finalized)) return false;
 
             while (_oldestAncestor is { } ancestor && ancestor.Number > header.Number)
             {
@@ -61,6 +56,40 @@ public sealed class FinalizedBlockAccessListPolicy(
 
             return header.Hash is { } hash && _ancestors.TryGetValue(header.Number, out Hash256? expected) && hash == expected;
         }
+    }
+
+    private bool UpdateCheckpoint(Hash256 finalized)
+    {
+        BlockHeader? latest = blockTree.FindHeader(finalized, BlockTreeLookupOptions.None);
+        if (latest is null) return false;
+
+        Dictionary<ulong, Hash256> extension = [];
+        BlockHeader cursor = latest;
+        if (_finalizedHeader is not null)
+        {
+            while (cursor.Number > _finalizedHeader.Number)
+            {
+                extension[cursor.Number] = cursor.Hash!;
+                BlockHeader? parent = blockTree.FindHeader(cursor.ParentHash!, BlockTreeLookupOptions.None);
+                if (parent is null || parent.Number != cursor.Number - 1) return false;
+                cursor = parent;
+            }
+        }
+
+        if (_finalizedHeader is null || cursor.Hash != _checkpoint)
+        {
+            _ancestors.Clear();
+            _oldestAncestor = latest;
+        }
+        else
+        {
+            foreach ((ulong number, Hash256 hash) in extension) _ancestors[number] = hash;
+        }
+
+        _checkpoint = finalized;
+        _finalizedHeader = latest;
+        _ancestors[latest.Number] = finalized;
+        return true;
     }
 
     /// <summary>Whether receipts must be available before this block can bypass execution.</summary>

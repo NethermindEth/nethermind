@@ -15,7 +15,6 @@ public sealed class FinalizedBlockAccessListModule(ISyncConfig syncConfig) : Mod
     protected override void Load(ContainerBuilder builder)
     {
         if (syncConfig.ReconstructFinalizedStateFromBlockAccessLists)
-            builder.AddScoped<FinalizedBlockAccessListVerificationEnv>()
-                .AddDecorator<IBlockProcessor, FinalizedBlockAccessListProcessor>();
+            builder.AddDecorator<IBlockProcessor, FinalizedBlockAccessListProcessor>();
     }
 }

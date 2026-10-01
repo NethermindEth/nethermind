@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System;
 using System.Threading;
 using Autofac;
@@ -17,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.History;
@@ -31,13 +34,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Processing;
 
+[TestFixture(false)]
+[TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
-public class FinalizedBlockAccessListTests
+public class FinalizedBlockAccessListTests(bool useFlatDb)
 {
     [Test]
     public void Finality_requires_ancestry_and_excludes_the_unfinalized_tail()
     {
-        using TestEnvironment env = new();
+        using TestEnvironment env = new(useFlatDb);
         Block block = env.CreateBlock();
         BlockHeader finalized = Build.A.BlockHeader.WithParent(block.Header).WithBlockAccessListHash(TestItem.KeccakB).TestObject;
         env.Tree.Insert(finalized);
@@ -57,7 +62,7 @@ public class FinalizedBlockAccessListTests
     [Test]
     public void Retries_finalized_header_lookup_when_it_arrives_later()
     {
-        using TestEnvironment env = new();
+        using TestEnvironment env = new(useFlatDb);
         Block block = env.CreateBlock(insert: false);
         env.Beacon.GetFinalizedHash().Returns(block.Hash);
         Assert.That(env.Policy.CanReconstruct(block.Header), Is.False);
@@ -68,7 +73,7 @@ public class FinalizedBlockAccessListTests
     [Test]
     public void Retention_controls_receipt_requirements([Values] bool store, [Values] bool pruned, [Values] bool retained)
     {
-        using TestEnvironment env = new();
+        using TestEnvironment env = new(useFlatDb);
         Block block = env.CreateBlock();
         env.ReceiptConfig.StoreReceipts = store;
         env.History.CutoffBlockNumber.Returns(pruned ? 2UL : (ulong?)null);
@@ -79,15 +84,17 @@ public class FinalizedBlockAccessListTests
     [Test]
     public void Reconstructs_state_only_when_both_commitments_match([Values] bool matchingRoot, [Values] bool matchingList)
     {
-        using TestEnvironment env = new();
+        using TestEnvironment env = new(useFlatDb);
         Block block = env.CreateBlock(matchingRoot: matchingRoot, matchingList: matchingList);
         env.Beacon.GetFinalizedHash().Returns(block.Hash);
-        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
-        env.Processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Amsterdam.Instance);
+        env.Branch.Process(env.Genesis.Header, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+        using IDisposable scope = env.State.BeginScope(block.Header);
         bool reconstructed = matchingRoot && matchingList;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(env.Recording.Calls, Is.EqualTo(reconstructed ? 0 : 1));
+            Assert.That(env.Recording.LastOptions.HasFlag(ProcessingOptions.ForceSequentialBlockAccessList),
+                Is.EqualTo(matchingList && !matchingRoot));
             Assert.That(env.State.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)(reconstructed ? 25 : 100)));
             Assert.That(env.State.StateRoot, Is.EqualTo(reconstructed ? block.StateRoot : env.Genesis.StateRoot));
         }
@@ -100,7 +107,7 @@ public class FinalizedBlockAccessListTests
     [TestCase(ProcessingOptions.EthereumMerge)]
     public void Replay_production_and_engine_validation_execute(ProcessingOptions options)
     {
-        using TestEnvironment env = new();
+        using TestEnvironment env = new(useFlatDb);
         Block block = env.CreateBlock();
         env.Beacon.GetFinalizedHash().Returns(block.Hash);
         using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
@@ -111,7 +118,7 @@ public class FinalizedBlockAccessListTests
     [Test]
     public void Missing_required_receipts_fall_back_without_mutating_state()
     {
-        using TestEnvironment env = new();
+        using TestEnvironment env = new(useFlatDb);
         Block block = env.CreateBlock(withTransaction: true);
         env.Beacon.GetFinalizedHash().Returns(block.Hash);
         env.ReceiptConfig.StoreReceipts = true;
@@ -127,7 +134,7 @@ public class FinalizedBlockAccessListTests
     [Test]
     public void Downloaded_receipts_are_verified_before_reconstruction([Values] bool validReceipts)
     {
-        using TestEnvironment env = new();
+        using TestEnvironment env = new(useFlatDb);
         Block block = env.CreateBlock(withTransaction: true);
         TxReceipt[] receipts = [new TxReceipt { StatusCode = 1, GasUsedTotal = 21000, Bloom = Bloom.Empty, Logs = [] }];
         block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, Amsterdam.Instance, null);
@@ -151,7 +158,7 @@ public class FinalizedBlockAccessListTests
     [Test]
     public void Default_configuration_keeps_normal_execution()
     {
-        using TestEnvironment env = new(enabled: false);
+        using TestEnvironment env = new(useFlatDb, enabled: false);
         Block block = env.CreateBlock();
         env.Beacon.GetFinalizedHash().Returns(block.Hash);
         using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
@@ -162,13 +169,58 @@ public class FinalizedBlockAccessListTests
     [Test]
     public void Unfinalized_blocks_and_traced_blocks_execute([Values] bool tracing)
     {
-        using TestEnvironment env = new();
+        using TestEnvironment env = new(useFlatDb);
         Block block = env.CreateBlock();
         env.Beacon.GetFinalizedHash().Returns(tracing ? block.Hash : env.Genesis.Hash);
         using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
         IBlockTracer tracer = tracing ? Substitute.For<IBlockTracer>() : NullBlockTracer.Instance;
         env.Processor.ProcessOne(block, ProcessingOptions.None, tracer, Amsterdam.Instance);
         Assert.That(env.Recording.Calls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Consecutive_finalized_blocks_reconstruct_through_branch_processing()
+    {
+        using TestEnvironment env = new(useFlatDb);
+        Block first = env.CreateBlock();
+        Block second = env.CreateBlock(parent: first, balance: 15);
+        Block third = env.CreateBlock(parent: second, balance: 5);
+        env.Beacon.GetFinalizedHash().Returns(third.Hash);
+        Block[] result = env.Branch.Process(env.Genesis.Header, [first, second, third], ProcessingOptions.None, NullBlockTracer.Instance);
+        using IDisposable scope = env.State.BeginScope(third.Header);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Length.EqualTo(3));
+            Assert.That(env.Recording.Calls, Is.Zero);
+            Assert.That(env.State.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)5));
+            Assert.That(env.State.StateRoot, Is.EqualTo(third.StateRoot));
+        }
+        foreach (Block block in result) block.DisposeAccountChanges();
+    }
+
+    [Test]
+    public void Finality_advances_without_rewalking_cached_ancestors()
+    {
+        using TestEnvironment env = new(useFlatDb);
+        Block first = env.CreateBlock();
+        Block second = env.CreateBlock(parent: first);
+        Block third = env.CreateBlock(parent: second);
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.FindHeader(first.Hash!, BlockTreeLookupOptions.None).Returns(first.Header);
+        tree.FindHeader(second.Hash!, BlockTreeLookupOptions.None).Returns(second.Header);
+        tree.FindHeader(third.Hash!, BlockTreeLookupOptions.None).Returns(third.Header);
+        tree.FindHeader(env.Genesis.Hash!, BlockTreeLookupOptions.None).Returns(env.Genesis.Header);
+        FinalizedBlockAccessListPolicy policy = new(new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = true },
+            env.Beacon, tree, new Nethermind.Specs.TestSpecProvider(Amsterdam.Instance), env.ReceiptConfig, () => env.History, env.Retention);
+        env.Beacon.GetFinalizedHash().Returns(second.Hash);
+        Assert.That(policy.CanReconstruct(first.Header), Is.True);
+        tree.ClearReceivedCalls();
+        env.Beacon.GetFinalizedHash().Returns(third.Hash);
+        Assert.That(policy.CanReconstruct(first.Header), Is.True);
+        Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        tree.DidNotReceive().FindHeader(env.Genesis.Hash!, BlockTreeLookupOptions.None);
+        tree.DidNotReceive().FindHeader(first.Hash!, BlockTreeLookupOptions.None);
+        tree.Received(1).FindHeader(second.Hash!, BlockTreeLookupOptions.None);
     }
 
     private sealed class TestEnvironment : IDisposable
@@ -182,15 +234,17 @@ public class FinalizedBlockAccessListTests
         public IWorldState State { get; }
         public IReceiptStorage Receipts { get; }
         public IBlockProcessor Processor { get; }
+        public IBranchProcessor Branch { get; }
         public RecordingProcessor Recording { get; }
         public FinalizedBlockAccessListPolicy Policy { get; }
         public Block Genesis { get; }
 
-        public TestEnvironment(bool enabled = true)
+        public TestEnvironment(bool useFlatDb, bool enabled = true)
         {
             SyncConfig sync = new() { ReconstructFinalizedStateFromBlockAccessLists = enabled };
             Beacon.MergeTransitionFinished.Returns(true);
-            _container = new ContainerBuilder().AddModule(new TestNethermindModule(Amsterdam.Instance))
+            _container = new ContainerBuilder().AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = useFlatDb }))
+                .AddSingleton<ISpecProvider>(new Nethermind.Specs.TestSpecProvider(Amsterdam.Instance))
                 .AddSingleton<ISyncConfig>(sync)
                 .AddSingleton<IReceiptConfig>(ReceiptConfig)
                 .AddSingleton<IBeaconSyncStrategy>(Beacon)
@@ -202,6 +256,7 @@ public class FinalizedBlockAccessListTests
             MainProcessingContext main = _container.Resolve<MainProcessingContext>();
             State = main.WorldState;
             Processor = main.BlockProcessor;
+            Branch = main.BranchProcessor;
             Recording = main.LifetimeScope.Resolve<RecordingProcessor>();
             Tree = _container.Resolve<IBlockTree>();
             Receipts = _container.Resolve<IReceiptStorage>();
@@ -217,20 +272,22 @@ public class FinalizedBlockAccessListTests
             Tree.SuggestBlock(Genesis, BlockTreeSuggestOptions.None);
         }
 
-        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false)
+        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false, Block? parent = null, UInt256? balance = null)
         {
+            parent ??= Genesis;
+            UInt256 finalBalance = balance ?? 25;
             Hash256 root;
             using (State.BeginScope(Genesis.Header))
             {
-                State.SubtractFromBalance(TestItem.AddressA, 75, Amsterdam.Instance, out _);
+                State.SubtractFromBalance(TestItem.AddressA, 100 - finalBalance, Amsterdam.Instance, out _);
                 State.Commit(Amsterdam.Instance);
                 State.RecalculateStateRoot();
                 root = State.StateRoot;
             }
             ReadOnlyBlockAccessList list = new([
-                new ReadOnlyAccountChanges(TestItem.AddressA, [], [], [new BalanceChange(1, 25)], [], [])], 0);
+                new ReadOnlyAccountChanges(TestItem.AddressA, [], [], [new BalanceChange(1, finalBalance)], [], [])], 0);
             byte[] encoded = Rlp.Encode(list).Bytes;
-            BlockBuilder builder = Build.A.Block.WithParent(Genesis).WithDifficulty(0).WithStateRoot(matchingRoot ? root : TestItem.KeccakC)
+            BlockBuilder builder = Build.A.Block.WithParent(parent).WithDifficulty(0).WithStateRoot(matchingRoot ? root : TestItem.KeccakC)
                 .WithBlockAccessListHash(matchingList ? Keccak.Compute(encoded) : TestItem.KeccakD);
             if (withTransaction) builder.WithTransactions(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject);
             Block block = builder.TestObject;
@@ -250,14 +307,17 @@ public class FinalizedBlockAccessListTests
             .AddModule(new FinalizedBlockAccessListModule(config));
     }
 
-    public sealed class RecordingProcessor : IBlockProcessor
+    public sealed class RecordingProcessor(IWorldState state) : IBlockProcessor
     {
         public int Calls { get; private set; }
-        public event Action TransactionsExecuted { add { } remove { } }
+        public ProcessingOptions LastOptions { get; private set; }
+        public event Action? TransactionsExecuted { add { } remove { } }
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block block, ProcessingOptions options,
             IBlockTracer tracer, IReleaseSpec spec, CancellationToken token = default)
         {
             Calls++;
+            LastOptions = options;
+            block.Header.StateRoot = state.StateRoot;
             return (block, []);
         }
     }

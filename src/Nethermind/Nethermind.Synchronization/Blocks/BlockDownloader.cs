@@ -509,7 +509,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if ((response.Receipts?.Count ?? 0) <= i)
                 {
-                    if (entry.CanExecuteMissingData) entry.SkipReceiptDownload = true;
+                    entry.RecordMissingReceipt();
                     entry.RetryReceiptRequest();
                     continue;
                 }
@@ -517,7 +517,7 @@ namespace Nethermind.Synchronization.Blocks
                 TxReceipt[]? receipts = response.Receipts[i];
                 if (receipts is null)
                 {
-                    if (entry.CanExecuteMissingData) entry.SkipReceiptDownload = true;
+                    entry.RecordMissingReceipt();
                     entry.RetryReceiptRequest();
                     continue;
                 }
@@ -551,7 +551,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Adding receipts to requests map {entry.Header.Number}");
-                entry.SkipReceiptDownload = false;
+                entry.ResetMissingReceipt();
                 entry.Receipts = receipts;
                 entry.PeerInfo = peer;
                 receiptsCount++;
@@ -602,7 +602,7 @@ namespace Nethermind.Synchronization.Blocks
                     result = SyncResponseHandlingResult.LesserQuality;
                 }
 
-                if (entry.CanExecuteMissingData) entry.SkipAccessListDownload = true;
+                entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
                 return false;
             }
@@ -610,7 +610,7 @@ namespace Nethermind.Synchronization.Blocks
             byte[]? encodedAccessList = blockAccessLists[index];
             if (encodedAccessList is null)
             {
-                if (entry.CanExecuteMissingData) entry.SkipAccessListDownload = true;
+                entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
                 return false;
             }
@@ -625,7 +625,7 @@ namespace Nethermind.Synchronization.Blocks
                 return false;
             }
 
-            entry.SkipAccessListDownload = false;
+            entry.ResetMissingAccessList();
             entry.EncodedAccessList = encodedAccessList;
             if (entry.Block is not null)
             {
@@ -840,6 +840,19 @@ namespace Nethermind.Synchronization.Blocks
             byte[]? EncodedAccessList
         )
         {
+            private const int MissingDataRetries = 3;
+            private int _missingAccessLists;
+            private int _missingReceipts;
+            public void RecordMissingAccessList()
+            {
+                if (CanExecuteMissingData && ++_missingAccessLists >= MissingDataRetries) SkipAccessListDownload = true;
+            }
+            public void RecordMissingReceipt()
+            {
+                if (CanExecuteMissingData && ++_missingReceipts >= MissingDataRetries) SkipReceiptDownload = true;
+            }
+            public void ResetMissingAccessList() { _missingAccessLists = 0; SkipAccessListDownload = false; }
+            public void ResetMissingReceipt() { _missingReceipts = 0; SkipReceiptDownload = false; }
             public bool CanExecuteMissingData { get; set; }
             public bool SkipAccessListDownload { get; set; }
             public bool SkipReceiptDownload { get; set; }

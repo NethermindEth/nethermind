@@ -24,7 +24,6 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
-    /// <summary>Whether finalized catch-up state is reconstructed from BALs. Disabled by default.</summary>
     [ConfigItem(Description = "Whether to reconstruct finalized catch-up state from EIP-7928 block access lists. Experimental; state roots are verified and unfinalized blocks execute normally. Receipts required by local retention are downloaded before processing.", DefaultValue = "false")]
     bool ReconstructFinalizedStateFromBlockAccessLists { get; set; }
 
