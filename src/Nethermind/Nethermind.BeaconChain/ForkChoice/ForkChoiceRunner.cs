@@ -1668,34 +1668,31 @@ public sealed class ForkChoiceRunner
     /// <summary>The spec's <c>store_target_checkpoint_state</c> computation, without the cache; see <see cref="GetCheckpointState"/>.</summary>
     private ForkedBeaconState ComputeCheckpointState(CheckpointRef checkpoint)
     {
-        ForkedBeaconState state = GetBlockState(checkpoint.Root);
+        ulong blockSlot = _protoArray.GetBlockSlot(checkpoint.Root) ?? throw new ForkChoiceException($"Block {checkpoint.Root} is unknown to fork choice");
         ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(checkpoint.Epoch);
-        if (state.Slot < startSlot)
-        {
-            state = AdvanceCopy(checkpoint.Root, state, startSlot, IsGloasSlot(startSlot) ? BeaconFork.Gloas : BeaconFork.Fulu);
-            // The epoch transitions above can apply pending deposits and grow the registry.
-            ExtendPubkeys(ValidatorsOf(state));
-        }
+        if (blockSlot >= startSlot)
+            return GetBlockState(checkpoint.Root);
 
+        // Only a copy is asked for, so a Fulu block state that has to be regenerated is not held for this.
+        ForkedBeaconState state = AdvanceCopy(checkpoint.Root, blockSlot, startSlot, IsGloasSlot(startSlot) ? BeaconFork.Gloas : BeaconFork.Fulu);
+        // The epoch transitions above can apply pending deposits and grow the registry.
+        ExtendPubkeys(ValidatorsOf(state));
         return state;
     }
 
-    /// <summary>A mutable copy of <paramref name="blockState"/> advanced to <paramref name="targetSlot"/>, crossing into <paramref name="targetFork"/> on the way when needed.</summary>
-    private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ForkedBeaconState blockState, ulong targetSlot, BeaconFork targetFork)
+    /// <summary>A mutable copy of the post-state of <paramref name="blockRoot"/> advanced to <paramref name="targetSlot"/>, crossing into <paramref name="targetFork"/> on the way when needed.</summary>
+    private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ulong blockSlot, ulong targetSlot, BeaconFork targetFork)
     {
         EpochCache cache = new() { Hasher = new BlockStateRootFirst(_protoArray.EnumerateAncestorNodes(blockRoot).First().StateRoot, CheckpointStateHasher()) };
-        ForkedBeaconState state = blockState switch
-        {
-            ForkedBeaconState.OfFulu => new ForkedBeaconState.OfFulu(_stateProvider.CopyBlockState(blockRoot)
-                ?? throw new ForkChoiceException($"No state for the block {blockRoot}")),
-            ForkedBeaconState.OfGloas gloas => new ForkedBeaconState.OfGloas(gloas.State.Clone()),
-            _ => throw new NotSupportedException($"Unhandled block state {blockState.GetType().Name}"),
-        };
+        ForkedBeaconState state = IsGloasSlot(blockSlot)
+            ? new ForkedBeaconState.OfGloas(((ForkedBeaconState.OfGloas)GetBlockState(blockRoot)).State.Clone())
+            : new ForkedBeaconState.OfFulu(_stateProvider.CopyBlockState(blockRoot) ?? throw new ForkChoiceException($"No state for the block {blockRoot}"));
 
         state = ForkedStateTransition.CrossBoundaryIfNeeded(state, targetFork, _spec, cache);
         switch (state)
         {
-            case ForkedBeaconState.OfFulu fulu:
+            // An anchor state can already be at the epoch start its earlier block opens.
+            case ForkedBeaconState.OfFulu fulu when fulu.Slot < targetSlot:
                 SlotProcessing.ProcessSlots(fulu.State, targetSlot, cache);
                 break;
             // The crossing stops at the boundary slot, which may already be the target.

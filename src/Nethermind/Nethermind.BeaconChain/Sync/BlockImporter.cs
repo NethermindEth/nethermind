@@ -375,7 +375,7 @@ public sealed class BlockImporter : IBlockImporter
         }
 
         bool onLineage = parentRoot == _states.LineageRoot;
-        BeaconStateFulu? parentState = onLineage ? _states.LineageState : _states.CopyBlockState(parentRoot);
+        BeaconStateFulu? parentState = onLineage ? _states.LineageState : _states.GetBlockState(parentRoot)?.Clone();
         if (parentState is null)
         {
             // The parent is known to fork choice but its post-state fell out of all retention
@@ -518,7 +518,7 @@ public sealed class BlockImporter : IBlockImporter
         }
         else
         {
-            parentState = _states.CopyBlockState(parentRoot) is { } fuluParent ? new ForkedBeaconState.OfFulu(fuluParent) : null;
+            parentState = _states.GetBlockState(parentRoot)?.Clone() is { } fuluParent ? new ForkedBeaconState.OfFulu(fuluParent) : null;
         }
 
         if (parentState is null)
