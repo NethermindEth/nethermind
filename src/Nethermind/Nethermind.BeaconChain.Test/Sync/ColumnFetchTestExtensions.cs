@@ -45,15 +45,29 @@ internal static class ColumnFetchTestExtensions
         return passes;
     }
 
-    /// <summary>Processes the gossip <paramref name="block"/>, then the work its ancestor fetches queue until none runs, as the worker would.</summary>
-    public static async Task ProcessGossipBlockAndFetchAncestorsAsync(this BeaconSyncOrchestrator orchestrator, ForkedSignedBeaconBlock block, CancellationToken token)
+    /// <summary>The longest a test waits for a fetch running off the worker to queue its result, so a fetch that never ends fails the test instead of hanging it.</summary>
+    public static readonly TimeSpan FetchWaitTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Processes the gossip <paramref name="block"/>, then the work its ancestor fetches queue until none runs, as the worker would;
+    /// fails after <paramref name="maxPasses"/> passes or <see cref="FetchWaitTimeout"/> without queued work.
+    /// </summary>
+    public static async Task ProcessGossipBlockAndFetchAncestorsAsync(this BeaconSyncOrchestrator orchestrator, ForkedSignedBeaconBlock block, CancellationToken token, int maxPasses = 64)
     {
         await orchestrator.ProcessGossipBlockAsync(block, token);
+        int passes = 0;
         while (orchestrator.AncestorFetchesInFlight > 0)
         {
+            if (++passes > maxPasses)
+            {
+                throw new InvalidOperationException($"{orchestrator.AncestorFetchesInFlight} ancestor fetches still ran after {maxPasses} passes");
+            }
+
             if (orchestrator.QueuedWorkCount == 0)
             {
-                await orchestrator.WaitForWorkAsync(token);
+                using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(token);
+                wait.CancelAfter(FetchWaitTimeout);
+                await orchestrator.WaitForWorkAsync(wait.Token);
             }
 
             await orchestrator.ProcessQueuedAsync(token);
