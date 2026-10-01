@@ -42,22 +42,22 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMaxConcurrentMerges)} must be at least 1, got {config.TrieNodeLogMaxConcurrentMerges}", -1);
         if (config.TrieNodeLogMergeBacklogMargin < 1)
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMergeBacklogMargin)} must be at least 1, got {config.TrieNodeLogMergeBacklogMargin}", -1);
-        if (config.TrieNodeLogIndexRatio < 1)
-            throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogIndexRatio)} must be at least 1, got {config.TrieNodeLogIndexRatio}", -1);
         _mergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _logger = logManager.GetClassLogger<TrieNodeLog>();
 
-        ReadOnlySpan<(string Name, FlatDbColumns[] Columns, long Budget, int ShardCount, string ShardCountSetting)> partitions =
+        // A generation's index is 1/IndexRatio of its bytes and rolls it at three-quarters occupancy, so the ratio
+        // follows the partition's typical record size: state nodes are mostly branches, storage has smaller leaves.
+        ReadOnlySpan<(string Name, FlatDbColumns[] Columns, long Budget, int ShardCount, string ShardCountSetting, int IndexRatio)> partitions =
         [
-            ("state", StateColumns, config.TrieNodeLogStateBytes, config.TrieNodeLogStateShardCount, nameof(IFlatDbConfig.TrieNodeLogStateShardCount)),
-            ("storage", StorageColumns, config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IFlatDbConfig.TrieNodeLogStorageShardCount)),
+            ("state", StateColumns, config.TrieNodeLogStateBytes, config.TrieNodeLogStateShardCount, nameof(IFlatDbConfig.TrieNodeLogStateShardCount), 64),
+            ("storage", StorageColumns, config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IFlatDbConfig.TrieNodeLogStorageShardCount), 32),
         ];
         List<TrieNodeLogShard> shards = [];
         try
         {
             for (int partition = 0; partition < PartitionCount; partition++)
             {
-                (string partitionName, FlatDbColumns[] columns, long budget, int shardCount, string shardCountSetting) = partitions[partition];
+                (string partitionName, FlatDbColumns[] columns, long budget, int shardCount, string shardCountSetting, int indexRatio) = partitions[partition];
                 if (shardCount < 1 || !BitOperations.IsPow2(shardCount))
                     throw new InvalidConfigurationException($"{shardCountSetting} must be a power of two, got {shardCount}", -1);
 
@@ -66,7 +66,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 for (int shard = 0; shard < shardCount; shard++)
                 {
                     string name = $"{partitionName}-{shard}";
-                    shards.Add(new TrieNodeLogShard(name, columns, Path.Combine(basePath, name), db, budget / shardCount, config.TrieNodeLogIndexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, logManager));
+                    shards.Add(new TrieNodeLogShard(name, columns, Path.Combine(basePath, name), db, budget / shardCount, indexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, logManager));
                 }
                 foreach (FlatDbColumns column in columns) db.GetColumnDb(column).SetWriteBuffer(WriteBufferAdjuster.MaxWriteBufferSize(column));
             }
