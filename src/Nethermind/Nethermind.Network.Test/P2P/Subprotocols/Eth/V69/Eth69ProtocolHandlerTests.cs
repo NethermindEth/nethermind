@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -121,6 +122,14 @@ public class Eth69ProtocolHandlerTests
         HandleIncomingStatusMessage();
 
         Assert.That(_handler.TotalDifficulty, Is.Null);
+    }
+
+    [Test]
+    public void Status_sets_announced_earliest_block()
+    {
+        HandleIncomingStatusMessage(earliestBlock: 25_349_537);
+
+        Assert.That(((ISyncPeer)_handler).EarliestBlock, Is.EqualTo(25_349_537));
     }
 
     [Test] // From Eth62ProtocolHandlerTests
@@ -274,7 +283,24 @@ public class Eth69ProtocolHandlerTests
         {
             Assert.That(_handler.HeadNumber, Is.EqualTo(msg.LatestBlock));
             Assert.That(_handler.HeadHash, Is.EqualTo(msg.LatestBlockHash));
+            Assert.That(((ISyncPeer)_handler).EarliestBlock, Is.EqualTo(msg.EarliestBlock));
         }
+    }
+
+    [Test]
+    public void BlockRangeUpdate_moves_announced_earliest_block()
+    {
+        HandleIncomingStatusMessage(earliestBlock: 10);
+
+        using BlockRangeUpdateMessage msg = new()
+        {
+            EarliestBlock = 500,
+            LatestBlock = 1_000,
+            LatestBlockHash = Keccak.Compute("1000")
+        };
+        HandleZeroMessage(msg, Eth69MessageCode.BlockRangeUpdate);
+
+        Assert.That(((ISyncPeer)_handler).EarliestBlock, Is.EqualTo(500));
     }
 
     private static IEnumerable<TestCaseData> InvalidBlockRangeUpdates()
@@ -304,6 +330,7 @@ public class Eth69ProtocolHandlerTests
             _session.Received().InitiateDisconnect(DisconnectReason.InvalidBlockRangeUpdate, Arg.Any<string>());
             Assert.That(_handler.HeadNumber, Is.EqualTo(headNumber));
             Assert.That(_handler.HeadHash, Is.EqualTo(headHash));
+            Assert.That(((ISyncPeer)_handler).EarliestBlock, Is.Zero);
         }
     }
 
@@ -317,9 +344,11 @@ public class Eth69ProtocolHandlerTests
             && m.LatestBlockHash == _genesisBlock.Hash
             && m.EarliestBlock == 0));
 
-    private void HandleIncomingStatusMessage()
+    private void HandleIncomingStatusMessage() => HandleIncomingStatusMessage(earliestBlock: 0);
+
+    private void HandleIncomingStatusMessage(ulong earliestBlock)
     {
-        using StatusMessage69 statusMsg = new() { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
+        using StatusMessage69 statusMsg = new() { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash!, EarliestBlock = earliestBlock, LatestBlock = earliestBlock };
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();

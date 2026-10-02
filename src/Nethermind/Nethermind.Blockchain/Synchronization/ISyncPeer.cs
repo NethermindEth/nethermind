@@ -29,6 +29,12 @@ namespace Nethermind.Blockchain.Synchronization
         UInt256? TotalDifficulty { get; set; }
 
         bool IsInitialized { get; set; }
+
+        /// <summary>
+        /// Lowest block whose body and receipts the peer announced it serves (the eth/69 <c>earliestBlock</c> of its
+        /// status and block range updates). <c>0</c> when the peer does not announce a range, as on eth/68 and older.
+        /// </summary>
+        ulong EarliestBlock => 0;
         bool IsPriority { get; set; }
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
