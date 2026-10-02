@@ -17,6 +17,7 @@ public sealed class RequestTiming
 
     private readonly Lock _lock = new();
     private long _startedAt = Stopwatch.GetTimestamp();
+    private object? _tracked;
     private long _channelOpenedAt;
     private long _firstChunkAt;
     private int _chunks;
@@ -34,6 +35,11 @@ public sealed class RequestTiming
     internal T Track<T>(T request) where T : class
     {
         ByRequest.AddOrUpdate(request, this);
+        lock (_lock)
+        {
+            _tracked = request;
+        }
+
         _measured = true;
         return request;
     }
@@ -54,10 +60,16 @@ public sealed class RequestTiming
                 throw new OperationCanceledException("The requester gave up on the request before its channel opened");
             }
 
+            // An attempt the requester abandoned for a new one must not send, however late its channel opens.
+            if (!ReferenceEquals(timing._tracked, request))
+            {
+                throw new OperationCanceledException("The requester abandoned this attempt before its channel opened");
+            }
+
             timing._running++;
+            Interlocked.CompareExchange(ref timing._channelOpenedAt, Stopwatch.GetTimestamp(), 0);
         }
 
-        Interlocked.CompareExchange(ref timing._channelOpenedAt, Stopwatch.GetTimestamp(), 0);
         return new Exchange(timing);
     }
 
@@ -71,10 +83,32 @@ public sealed class RequestTiming
         }
     }
 
-    /// <summary>Starts the timing again for a new attempt at the same request, which must then be tracked again.</summary>
+    /// <summary>Gives up the current attempt unless its channel already opened; from then on its protocol cannot open (see <see cref="Open"/>).</summary>
+    /// <returns><c>false</c> when the channel had opened, so the attempt goes on.</returns>
+    internal bool TryAbandon()
+    {
+        lock (_lock)
+        {
+            if (Volatile.Read(ref _channelOpenedAt) != 0)
+            {
+                return false;
+            }
+
+            _tracked = null;
+            return true;
+        }
+    }
+
+    /// <summary>Starts the timing again for a new attempt at the same request, which must then be tracked again with a new object.</summary>
+    /// <remarks>The earlier attempt's object can no longer open (see <see cref="Open"/>), so an abandoned attempt that opens late cannot send or mark the new one opened.</remarks>
     internal void Restart()
     {
-        Volatile.Write(ref _channelOpenedAt, 0);
+        lock (_lock)
+        {
+            _tracked = null;
+            Volatile.Write(ref _channelOpenedAt, 0);
+        }
+
         Volatile.Write(ref _firstChunkAt, 0);
         Volatile.Write(ref _chunks, 0);
         Volatile.Write(ref _startedAt, Stopwatch.GetTimestamp());

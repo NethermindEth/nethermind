@@ -372,6 +372,9 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>The fixed part of every request's budget; internal so a test need not wait out the production value.</summary>
     internal TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>How long a request's first channel may take to reach its protocol before it is opened again (see <see cref="RetryUnopenedAsync"/>).</summary>
+    internal TimeSpan ChannelOpenBound { get; init; } = TimeSpan.FromSeconds(2);
+
     /// <summary>Internal so a test can tell a session closed for an unanswered identify from a failure of the code under test.</summary>
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
 
@@ -469,14 +472,14 @@ public sealed class BeaconP2P : IAsyncDisposable
         try
         {
             using CancellationTokenSource cts = Timeout(session, token);
-            return await ExchangeAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(session, Tracked(timing, CopyOf(_statusSource.CurrentStatus)), cts, token, timing);
+            return await ExchangeAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(session, () => Tracked(timing, CopyOf(_statusSource.CurrentStatus)), cts, token, timing);
         }
         catch (Exception e) when (IsExchangeFailure(e) || e is TimeoutException || e is OperationCanceledException && !token.IsCancellationRequested)
         {
             if (_logger.IsTrace) _logger.Trace($"Status v2 with {session.RemoteAddress} failed ({e.Message}), falling back to v1");
             timing?.Restart();
             using CancellationTokenSource cts = Timeout(session, token);
-            return await ExchangeAsync<StatusProtocolV1, StatusMessageV2, StatusMessageV2>(session, Tracked(timing, CopyOf(_statusSource.CurrentStatus)), cts, token, timing);
+            return await ExchangeAsync<StatusProtocolV1, StatusMessageV2, StatusMessageV2>(session, () => Tracked(timing, CopyOf(_statusSource.CurrentStatus)), cts, token, timing);
         }
     }
 
@@ -488,7 +491,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         try
         {
             return await ExchangeAsync<BeaconBlocksByRangeProtocolV2, BeaconBlocksByRangeDial, IReadOnlyList<ForkedSignedBeaconBlock>>(
-                session, new BeaconBlocksByRangeDial(Tracked(timing, new BeaconBlocksByRangeRequest { StartSlot = startSlot, Count = count, Step = 1 }), received.Enqueue), cts, token, timing);
+                session, () => new BeaconBlocksByRangeDial(Tracked(timing, new BeaconBlocksByRangeRequest { StartSlot = startSlot, Count = count, Step = 1 }), received.Enqueue), cts, token, timing);
         }
         catch (Exception e) when (!token.IsCancellationRequested && !received.IsEmpty)
         {
@@ -499,7 +502,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(ISession session, Hash256[] roots, CancellationToken token, RequestTiming? timing = null)
     {
         using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
-        return await ExchangeAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(session, TrackedCopy(timing, roots), cts, token, timing);
+        return await ExchangeAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(session, () => TrackedCopy(timing, roots), cts, token, timing);
     }
 
     public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token, RequestTiming? timing = null)
@@ -511,7 +514,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         try
         {
             ForkedDataColumnSidecars sidecars = await ExchangeAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
-                session, new DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>(Tracked(timing, new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }), Gloas: false, sidecar =>
+                session, () => new DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>(Tracked(timing, new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }), Gloas: false, sidecar =>
                 {
                     if (received.IsEmpty)
                     {
@@ -541,7 +544,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
         ForkedDataColumnSidecars sidecars = await ExchangeAsync<DataColumnSidecarsByRootProtocol, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>, ForkedDataColumnSidecars>(
-            session, new DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>(TrackedCopy(timing, identifiers), Gloas: false), cts, token, timing);
+            session, () => new DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>(TrackedCopy(timing, identifiers), Gloas: false), cts, token, timing);
         return sidecars.Fulu;
     }
 
@@ -550,7 +553,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     {
         using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(count));
         ForkedDataColumnSidecars sidecars = await ExchangeAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
-            session, new DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>(Tracked(timing, new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }), Gloas: true), cts, token, timing);
+            session, () => new DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>(Tracked(timing, new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }), Gloas: true), cts, token, timing);
         return sidecars.Gloas;
     }
 
@@ -560,7 +563,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
         ForkedDataColumnSidecars sidecars = await ExchangeAsync<DataColumnSidecarsByRootProtocol, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>, ForkedDataColumnSidecars>(
-            session, new DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>(TrackedCopy(timing, identifiers), Gloas: true), cts, token, timing);
+            session, () => new DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>(TrackedCopy(timing, identifiers), Gloas: true), cts, token, timing);
         return sidecars.Gloas;
     }
 
@@ -568,27 +571,27 @@ public sealed class BeaconP2P : IAsyncDisposable
     {
         using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(count));
         return await ExchangeAsync<ExecutionPayloadEnvelopesByRangeProtocol, ExecutionPayloadEnvelopesByRangeRequest, IReadOnlyList<SignedExecutionPayloadEnvelope>>(
-            session, Tracked(timing, new ExecutionPayloadEnvelopesByRangeRequest { StartSlot = startSlot, Count = count }), cts, token, timing);
+            session, () => Tracked(timing, new ExecutionPayloadEnvelopesByRangeRequest { StartSlot = startSlot, Count = count }), cts, token, timing);
     }
 
     public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(ISession session, Hash256[] roots, CancellationToken token, RequestTiming? timing = null)
     {
         using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
-        return await ExchangeAsync<ExecutionPayloadEnvelopesByRootProtocol, Hash256[], IReadOnlyList<SignedExecutionPayloadEnvelope>>(session, TrackedCopy(timing, roots), cts, token, timing);
+        return await ExchangeAsync<ExecutionPayloadEnvelopesByRootProtocol, Hash256[], IReadOnlyList<SignedExecutionPayloadEnvelope>>(session, () => TrackedCopy(timing, roots), cts, token, timing);
     }
 
     /// <summary>Pings the peer with our metadata sequence number; returns theirs.</summary>
     public async Task<ulong> PingAsync(ISession session, CancellationToken token)
     {
         using CancellationTokenSource cts = Timeout(session, token);
-        return await ExchangeAsync<Eth2PingProtocol, ulong, ulong>(session, _metadataSource.Current.SeqNumber, cts, token, timing: null);
+        return await ExchangeAsync<Eth2PingProtocol, ulong, ulong>(session, () => _metadataSource.Current.SeqNumber, cts, token, timing: null);
     }
 
     /// <param name="timeout">Bounds the request; the request timeout when omitted.</param>
     public async Task<MetaDataV3> RequestMetaDataAsync(ISession session, CancellationToken token, TimeSpan? timeout = null)
     {
         using CancellationTokenSource cts = Timeout(session, token, timeout);
-        return await ExchangeAsync<MetaDataProtocolV3, ulong, MetaDataV3>(session, 0, cts, token, timing: null);
+        return await ExchangeAsync<MetaDataProtocolV3, ulong, MetaDataV3>(session, () => 0, cts, token, timing: null);
     }
 
     /// <summary>Sends <c>goodbye</c> best-effort; failures are ignored since the peer is being dropped anyway.</summary>
@@ -632,18 +635,82 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Runs one exchange under <paramref name="cts"/> (see <see cref="Timeout(ISession, CancellationToken, TimeSpan?)"/>) and names why it failed.</summary>
     /// <remarks>Networking req/resp requesting side distinguishes a local cancellation, a disconnected peer and an unanswered request.</remarks>
-    private async Task<TResponse> ExchangeAsync<TProtocol, TRequest, TResponse>(ISession session, TRequest request, CancellationTokenSource cts, CancellationToken token, RequestTiming? timing)
+    /// <param name="request">Builds the request for one channel; a second channel gets its own object, so the first cannot report on the second's timing.</param>
+    private async Task<TResponse> ExchangeAsync<TProtocol, TRequest, TResponse>(ISession session, Func<TRequest> request, CancellationTokenSource cts, CancellationToken token, RequestTiming? timing)
         where TProtocol : ISessionProtocol<TRequest, TResponse>
     {
         long startedAt = Stopwatch.GetTimestamp();
         try
         {
-            return await session.DialAsync<TProtocol, TRequest, TResponse>(request, cts.Token);
+            TRequest first = request();
+            // Only a tracked request tells whether its channel opened.
+            if (timing is not { ChannelOpened: not null } tracked)
+            {
+                return await session.DialAsync<TProtocol, TRequest, TResponse>(first, cts.Token);
+            }
+
+            return await RetryUnopenedAsync(
+                attempt => session.DialAsync<TProtocol, TRequest, TResponse>(first, attempt),
+                tracked.TryAbandon,
+                attempt =>
+                {
+                    tracked.Restart();
+                    return session.DialAsync<TProtocol, TRequest, TResponse>(request(), attempt);
+                },
+                ChannelOpenBound, cts.Token);
         }
         catch (Exception e) when (!token.IsCancellationRequested && NameFailure(e, session, cts, timing, Stopwatch.GetElapsedTime(startedAt)) is { } named)
         {
             throw named;
         }
+    }
+
+    /// <summary>Runs <paramref name="first"/>, and <paramref name="second"/> instead when the first channel has not reached its protocol within <paramref name="openBound"/>.</summary>
+    /// <remarks>
+    /// Nethermind.Libp2p.Protocols.Yamux 1.0.0 stores a channel this node opens only after it has sent the opening frame, so the peer's first frames can
+    /// arrive before it and be dropped; the negotiation then never completes and the request would wait out its whole budget. The first attempt is
+    /// cancelled before the second starts, which has the library close its channel, and there is one second attempt at most.
+    /// </remarks>
+    /// <param name="tryAbandonFirst">Gives the first attempt up unless its channel already reached its protocol, which it then can no longer do.</param>
+    internal static async Task<T> RetryUnopenedAsync<T>(Func<CancellationToken, Task<T>> first, Func<bool> tryAbandonFirst, Func<CancellationToken, Task<T>> second,
+        TimeSpan openBound, CancellationToken token)
+    {
+        using CancellationTokenSource firstLifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<T> attempt = first(firstLifetime.Token);
+        try
+        {
+            return await attempt.WaitAsync(openBound, firstLifetime.Token);
+        }
+        catch (TimeoutException) when (attempt.IsCompleted || !tryAbandonFirst())
+        {
+            return await attempt;
+        }
+        catch (TimeoutException)
+        {
+        }
+        finally
+        {
+            // Whatever ends the wait, an unfinished first attempt is cancelled before its source is disposed or a second opens.
+            if (!attempt.IsCompleted)
+            {
+                await firstLifetime.CancelAsync();
+                _ = attempt.ContinueWith(static failed => _ = failed.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+            }
+        }
+
+        return await second(token);
+    }
+
+    /// <summary>Dials the session's identify probe, opening its channel again once when the first never reached the probe within <paramref name="openBound"/>.</summary>
+    /// <returns>The peer's <c>agentVersion</c>, or <c>null</c> when its answer carries none.</returns>
+    internal static Task<string?> DialIdentifyAsync(ISession session, TimeSpan openBound, CancellationToken token)
+    {
+        IdentifyAgentVersionProbe.Attempt firstAttempt = new();
+        return RetryUnopenedAsync(
+            attempt => session.DialAsync<IdentifyAgentVersionProbe, IdentifyAgentVersionProbe.Attempt, string?>(firstAttempt, attempt),
+            firstAttempt.TryAbandon,
+            attempt => session.DialAsync<IdentifyAgentVersionProbe, IdentifyAgentVersionProbe.Attempt, string?>(new IdentifyAgentVersionProbe.Attempt(), attempt),
+            openBound, token);
     }
 
     /// <returns>The failure to throw in place of <paramref name="e"/>, or <c>null</c> when <paramref name="e"/> already says what happened.</returns>
@@ -847,7 +914,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             try
             {
                 using CancellationTokenSource cts = new(IdentifyAgentVersionProbe.ReadTimeout);
-                agentVersion = await session.DialAsync<IdentifyAgentVersionProbe, ulong, string?>(0, cts.Token);
+                agentVersion = await DialIdentifyAsync(session, _owner.ChannelOpenBound, cts.Token);
             }
             catch (Exception e)
             {
