@@ -2341,7 +2341,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             catch (Exception e)
             {
                 outcome = e is OperationCanceledException && token.IsCancellationRequested ? "cancelled by this node" : DescribeFailure(e);
-                if (e is ReqRespTimeoutException timeout && Volatile.Read(ref manager._lastAnswerAt) < startedAt
+                if (WithoutPartialReply(e) is ReqRespTimeoutException timeout && Volatile.Read(ref manager._lastAnswerAt) < startedAt
                     && Interlocked.Increment(ref _unblamedInARow) <= MaxConsecutiveFailures)
                 {
                     timeout.NotBlamed = true;
@@ -2398,7 +2398,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             {
                 response = await ExchangeAsync(protocol, request, token);
             }
-            catch (ReqRespTimeoutException e) when (e.NotBlamed)
+            catch (Exception e) when (WithoutPartialReply(e) is ReqRespTimeoutException { NotBlamed: true })
             {
                 Interlocked.Increment(ref _unblamedFailures);
                 throw;
@@ -2407,6 +2407,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             RecordRequestServed();
             return response;
         }
+
+        /// <summary>The failure a partial reply carries, so a timeout after some chunks is judged as the timeout it is.</summary>
+        private static Exception WithoutPartialReply(Exception e) =>
+            e is PartialBlocksException or PartialSidecarsException ? e.InnerException ?? e : e;
 
         public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
             Served(RequestName.BlocksByRange, timing => p2p.RequestBlocksByRangeAsync(Session, startSlot, count, token, timing), token);
