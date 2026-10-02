@@ -3826,15 +3826,12 @@ public partial class FrameTxProcessorTests
         _stateProvider.Commit(Spec);
 
         (ValueHash256, ulong, ValueHash256) written = (RecentRootStore.SourceId(Sender, salt), writeSlot, root);
-        using (Assert.EnterMultipleScope())
-        {
-            AssertRecentRootVerification(
-                Process(FrameTx(nonce: 1, RecentRootVerifyFrame(written), SelfVerifyFrame()), slotNumber: writeSlot),
-                expectedExecuted: false);
-            AssertRecentRootVerification(
-                Process(FrameTx(nonce: 1, RecentRootVerifyFrame(written), SelfVerifyFrame()), slotNumber: writeSlot + 1),
-                expectedExecuted: true);
-        }
+        AssertRecentRootVerification(
+            Process(FrameTx(nonce: 1, RecentRootVerifyFrame(written), SelfVerifyFrame()), slotNumber: writeSlot),
+            expectedExecuted: false);
+        AssertRecentRootVerification(
+            Process(FrameTx(nonce: 1, RecentRootVerifyFrame(written), SelfVerifyFrame()), slotNumber: writeSlot + 1),
+            expectedExecuted: true);
     }
 
     [Test]
