@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Primitives;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
@@ -26,6 +29,9 @@ internal static class BeaconStatesEndpoints
 {
     private const int MaxValidatorIds = 64;
 
+    /// <summary>One <c>postStateValidatorIdentities</c> SSZ entry: uint64 index, 48-byte pubkey, uint64 activation epoch.</summary>
+    private const int ValidatorIdentitySszLength = sizeof(ulong) + BlsPublicKey.Length + sizeof(ulong);
+
     /// <summary>altair/validator.md <c>SYNC_COMMITTEE_SUBNET_COUNT</c>.</summary>
     private const int SyncCommitteeSubnetCount = 4;
     public static void Map(WebApplication app, BeaconApiContext ctx)
@@ -36,6 +42,9 @@ internal static class BeaconStatesEndpoints
         app.MapGet("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => Validators(c, state_id, ctx.ForRequest()));
         app.MapGet("/eth/v1/beacon/states/{state_id}/validators/{validator_id}", (HttpContext c, string state_id, string validator_id) => ValidatorById(c, state_id, validator_id, ctx.ForRequest()));
         app.MapGet("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => ValidatorBalances(c, state_id, ctx.ForRequest()));
+        app.MapPost("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => ValidatorsPost(c, state_id, ctx.ForRequest()));
+        app.MapPost("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => ValidatorBalancesPost(c, state_id, ctx.ForRequest()));
+        app.MapPost("/eth/v1/beacon/states/{state_id}/validator_identities", (HttpContext c, string state_id) => ValidatorIdentities(c, state_id, ctx.ForRequest()));
         app.MapGet("/eth/v1/beacon/states/{state_id}/committees", (HttpContext c, string state_id) => Committees(c, state_id, ctx.ForRequest()));
         app.MapGet("/eth/v1/beacon/states/{state_id}/pending_deposits", (HttpContext c, string state_id) =>
             StateList(c, state_id, ctx.ForRequest(), static spec => spec.ElectraForkEpoch, static s => s.PendingDeposits!, static items => PendingDeposit.Encode(items), BeaconJsonWriter.WritePendingDepositsAsync));
@@ -299,7 +308,34 @@ internal static class BeaconStatesEndpoints
         List<string> idFilters = CollectQueryValues(c, "id", MaxValidatorIds + 1);
         if (idFilters.Count > MaxValidatorIds)
             return ApiErrors.Write(c, StatusCodes.Status414UriTooLong, "Too many validator IDs in request.", c.RequestAborted);
-        List<string> statusFilters = CollectQueryValues(c, "status");
+        return WriteValidators(c, stateId, ctx, idFilters, CollectQueryValues(c, "status"));
+    }
+
+    /// <summary>beacon-APIs v5.0.0-alpha.2 <c>postStateValidators</c>: the GET filters carried in a JSON body, without the URI length limit.</summary>
+    private static async Task ValidatorsPost(HttpContext c, string stateId, BeaconApiContext ctx)
+    {
+        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
+        {
+            await ContentNegotiation.WriteNotAcceptable(c);
+            return;
+        }
+
+        (bool read, ValidatorsRequestDto? request) = await TryReadJsonBody<ValidatorsRequestDto>(c, bodyRequired: true);
+        if (!read) return;
+
+        // The body schema makes statuses uniqueItems; repeats would multiply the per-validator status matching.
+        string[] statuses = request?.Statuses ?? [];
+        if (new HashSet<string>(statuses, StringComparer.Ordinal).Count != statuses.Length)
+        {
+            await ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Validator statuses must be unique.", c.RequestAborted);
+            return;
+        }
+
+        await WriteValidators(c, stateId, ctx, [.. request?.Ids ?? []], [.. statuses]);
+    }
+
+    private static Task WriteValidators(HttpContext c, string stateId, BeaconApiContext ctx, List<string> idFilters, List<string> statusFilters)
+    {
         foreach (string filter in statusFilters)
         {
             if (!ValidatorStatus.IsValidFilter(filter))
@@ -397,6 +433,26 @@ internal static class BeaconStatesEndpoints
         if (idFilters.Count > MaxValidatorIds)
             return ApiErrors.Write(c, StatusCodes.Status414UriTooLong, "Too many validator IDs in request.", c.RequestAborted);
 
+        return WriteValidatorBalances(c, stateId, ctx, idFilters);
+    }
+
+    /// <summary>beacon-APIs v5.0.0-alpha.2 <c>postStateValidatorBalances</c>: the GET id filter carried in an optional JSON array body.</summary>
+    private static async Task ValidatorBalancesPost(HttpContext c, string stateId, BeaconApiContext ctx)
+    {
+        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
+        {
+            await ContentNegotiation.WriteNotAcceptable(c);
+            return;
+        }
+
+        (bool read, string[]? ids) = await TryReadJsonBody<string[]>(c, bodyRequired: false);
+        if (!read) return;
+
+        await WriteValidatorBalances(c, stateId, ctx, [.. ids ?? []]);
+    }
+
+    private static Task WriteValidatorBalances(HttpContext c, string stateId, BeaconApiContext ctx, List<string> idFilters)
+    {
         if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
@@ -404,9 +460,13 @@ internal static class BeaconStatesEndpoints
 
         BeaconStateFulu state = resolved.State;
         ulong[] balances = state.Balances!;
+        if (!TryResolveIndices(state, idFilters, out List<int>? indices, out string? invalidId))
+        {
+            return WriteInvalidValidatorId(c, invalidId);
+        }
 
-        List<ValidatorBalanceEntryDto> entries = [];
-        if (idFilters.Count == 0)
+        List<ValidatorBalanceEntryDto> entries = new(indices?.Count ?? balances.Length);
+        if (indices is null)
         {
             for (int i = 0; i < balances.Length; i++)
             {
@@ -415,20 +475,9 @@ internal static class BeaconStatesEndpoints
         }
         else
         {
-            Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
-            foreach (string id in idFilters)
+            foreach (int index in indices)
             {
-                ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, ref pubkeyIndex, out int index);
-                if (lookup == ValidatorIdStatus.Invalid)
-                {
-                    return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-                        $"Invalid validator id '{id}': expected an index or a 0x-prefixed 48-byte pubkey.", c.RequestAborted);
-                }
-
-                if (lookup == ValidatorIdStatus.Ok)
-                {
-                    entries.Add(new ValidatorBalanceEntryDto(index.ToString(), balances[index].ToString()));
-                }
+                entries.Add(new ValidatorBalanceEntryDto(index.ToString(), balances[index].ToString()));
             }
         }
 
@@ -436,6 +485,135 @@ internal static class BeaconStatesEndpoints
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
+    }
+
+    /// <summary>
+    /// beacon-APIs v5.0.0-alpha.2 <c>postStateValidatorIdentities</c>: index, pubkey and activation epoch of the
+    /// validators named by an optional JSON array body, or of every validator when it is absent or empty.
+    /// </summary>
+    /// <remarks>
+    /// The operation names no SSZ container; the SSZ body is the list of the response's fixed-size
+    /// <c>(index: uint64, pubkey: Bytes48, activation_epoch: uint64)</c> entries, in that field order.
+    /// </remarks>
+    private static async Task ValidatorIdentities(HttpContext c, string stateId, BeaconApiContext ctx)
+    {
+        ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
+        if (format is null)
+        {
+            await ContentNegotiation.WriteNotAcceptable(c);
+            return;
+        }
+
+        (bool read, string[]? ids) = await TryReadJsonBody<string[]>(c, bodyRequired: false);
+        if (!read) return;
+
+        if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
+        {
+            await ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            return;
+        }
+
+        BeaconStateFulu state = resolved.State;
+        Validator[] validators = state.Validators!;
+        if (!TryResolveIndices(state, [.. ids ?? []], out List<int>? indices, out string? invalidId))
+        {
+            await WriteInvalidValidatorId(c, invalidId);
+            return;
+        }
+
+        int count = indices?.Count ?? validators.Length;
+        if (format == ContentNegotiation.ResponseFormat.Ssz)
+        {
+            byte[] ssz = new byte[count * ValidatorIdentitySszLength];
+            for (int i = 0; i < count; i++)
+            {
+                int index = indices?[i] ?? i;
+                Span<byte> entry = ssz.AsSpan(i * ValidatorIdentitySszLength, ValidatorIdentitySszLength);
+                BinaryPrimitives.WriteUInt64LittleEndian(entry, (ulong)index);
+                validators[index].Pubkey.Bytes.CopyTo(entry[sizeof(ulong)..]);
+                BinaryPrimitives.WriteUInt64LittleEndian(entry[(sizeof(ulong) + BlsPublicKey.Length)..], validators[index].ActivationEpoch);
+            }
+
+            c.Response.ContentType = ContentNegotiation.OctetStream;
+            await c.Response.Body.WriteAsync(ssz, c.RequestAborted);
+            return;
+        }
+
+        ValidatorIdentityDto[] entries = new ValidatorIdentityDto[count];
+        for (int i = 0; i < count; i++)
+        {
+            int index = indices?[i] ?? i;
+            entries[i] = new ValidatorIdentityDto(index.ToString(), validators[index].Pubkey.ToString(), validators[index].ActivationEpoch.ToString());
+        }
+
+        await BeaconApiJson.WriteEnvelopeAsync(c, entries,
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
+            c.RequestAborted);
+    }
+
+    /// <summary>Resolves request ids to registry indices in request order, dropping well-formed ids that name no validator.</summary>
+    /// <param name="indices"><c>null</c> when <paramref name="ids"/> is empty, which selects every validator.</param>
+    private static bool TryResolveIndices(BeaconStateFulu state, List<string> ids, out List<int>? indices, out string? invalidId)
+    {
+        indices = null;
+        invalidId = null;
+        if (ids.Count == 0) return true;
+
+        indices = new List<int>(ids.Count);
+        Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
+        foreach (string id in ids)
+        {
+            ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, ref pubkeyIndex, out int index);
+            if (lookup == ValidatorIdStatus.Invalid)
+            {
+                invalidId = id;
+                return false;
+            }
+
+            if (lookup == ValidatorIdStatus.Ok) indices.Add(index);
+        }
+
+        return true;
+    }
+
+    private static Task WriteInvalidValidatorId(HttpContext c, string? id) =>
+        ApiErrors.Write(c, StatusCodes.Status400BadRequest,
+            $"Invalid validator id '{id}': expected an index or a 0x-prefixed 48-byte pubkey.", c.RequestAborted);
+
+    /// <summary>Reads a POST JSON body, writing the error response itself when it cannot.</summary>
+    /// <returns><c>Ok</c> is false once an error has been written; <c>Value</c> is <c>null</c> only for an absent optional body; a JSON <c>null</c> body is 400.</returns>
+    private static async Task<(bool Ok, T? Value)> TryReadJsonBody<T>(HttpContext c, bool bodyRequired) where T : class
+    {
+        if (c.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody != true)
+        {
+            if (!bodyRequired) return (true, null);
+            await ApiErrors.Write(c, StatusCodes.Status400BadRequest, "A JSON request body is required.", c.RequestAborted);
+            return (false, null);
+        }
+
+        if (!ContentNegotiation.IsAcceptableContentType(c, ContentNegotiation.Json))
+        {
+            await ContentNegotiation.WriteUnsupportedMediaType(c, ContentNegotiation.Json);
+            return (false, null);
+        }
+
+        try
+        {
+            T? value = await JsonSerializer.DeserializeAsync<T>(c.Request.Body, BeaconApiJson.Options, c.RequestAborted);
+            if (value is not null) return (true, value);
+            await ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Malformed request body: a JSON null is not a filter.", c.RequestAborted);
+        }
+        catch (JsonException e)
+        {
+            await ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Malformed request body: {e.Message}", c.RequestAborted);
+        }
+        catch (BadHttpRequestException e)
+        {
+            await ApiErrors.Write(c, e.StatusCode, e.Message, c.RequestAborted);
+        }
+
+        return (false, null);
     }
 
     private static Task Committees(HttpContext c, string stateId, BeaconApiContext ctx)
@@ -671,6 +849,15 @@ internal static class BeaconStatesEndpoints
         [property: JsonPropertyName("balance")] string Balance,
         [property: JsonPropertyName("status")] string Status,
         [property: JsonPropertyName("validator")] ValidatorContainerDto Validator);
+
+    private sealed record ValidatorsRequestDto(
+        [property: JsonPropertyName("ids")] string[]? Ids,
+        [property: JsonPropertyName("statuses")] string[]? Statuses);
+
+    private sealed record ValidatorIdentityDto(
+        [property: JsonPropertyName("index")] string Index,
+        [property: JsonPropertyName("pubkey")] string Pubkey,
+        [property: JsonPropertyName("activation_epoch")] string ActivationEpoch);
 
     private sealed record ValidatorBalanceEntryDto(
         [property: JsonPropertyName("index")] string Index,
