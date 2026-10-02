@@ -166,7 +166,6 @@ public static partial class EvmInstructions
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter = jumpTarget + 1;
-            PrefetchCodeAtDestination(ref stack, programCounter);
             if (DispatchFlags.CountOpcodes)
                 vm.OpCodeCount++;
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
