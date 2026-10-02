@@ -802,7 +802,7 @@ internal static class BeaconJsonWriter
         WriteHexValue(w, bytes);
     }
 
-    private static void WriteHexValue(Utf8JsonWriter w, ReadOnlySpan<byte> bytes)
+    internal static void WriteHexValue(Utf8JsonWriter w, ReadOnlySpan<byte> bytes)
     {
         int length = 2 + bytes.Length * 2;
         byte[]? rented = length > 512 ? ArrayPool<byte>.Shared.Rent(length) : null;
