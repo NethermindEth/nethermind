@@ -35,6 +35,24 @@ public class BeaconP2PLoopbackTests
 
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
+    /// <summary>A dial its caller cancelled before it began does not keep the peer from being dialed afterwards.</summary>
+    /// <remarks>Nethermind.Libp2p 1.0.0 keeps a dial cancelled before its first await as the pending dial of the peer id for good.</remarks>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_cancelled_dial_does_not_lose_the_peer(CancellationToken token)
+    {
+        await using BeaconP2P server = PeerSessionNodes.Create().P2P;
+        await using BeaconP2P client = PeerSessionNodes.Create().P2P;
+        await server.StartAsync(token);
+        await client.StartAsync(token);
+        Multiaddress address = PeerSessionNodes.LoopbackAddress(server);
+        using CancellationTokenSource cancelled = new();
+        await cancelled.CancelAsync();
+
+        Assert.That(async () => await client.DialPeerAsync(address, cancelled.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the dial is cancelled");
+        Assert.That(await client.DialPeerAsync(address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
+    }
+
     [Test]
     [CancelAfter(30_000)]
     public async Task Start_rejects_an_occupied_TCP_port(CancellationToken token)
