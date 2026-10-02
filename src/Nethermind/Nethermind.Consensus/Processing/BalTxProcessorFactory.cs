@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -40,12 +41,13 @@ public class BalTxProcessorFactory(
     private readonly TransactionProcessorAdapterFactory _txProcessorAdapterFactory = txProcessorAdapterFactory ?? DefaultTxProcessorAdapterFactory;
     private readonly ITransactionProcessorFactory _transactionProcessorFactory = transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>();
 
-    public (ITransactionProcessor Processor, ITransactionProcessorAdapter Adapter) Create(IWorldState worldState, bool parallel)
+    /// <remarks>The caller owns the returned virtual machine and disposes it once it stops using the processor.</remarks>
+    public (ITransactionProcessor Processor, ITransactionProcessorAdapter Adapter, IDisposable VirtualMachine) Create(IWorldState worldState, bool parallel)
     {
         VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
         ITransactionProcessor processor = _transactionProcessorFactory.Create(
             BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine,
             _codeInfoRepositoryFactory(worldState), logManager, parallel);
-        return (processor, _txProcessorAdapterFactory(processor));
+        return (processor, _txProcessorAdapterFactory(processor), virtualMachine);
     }
 }
