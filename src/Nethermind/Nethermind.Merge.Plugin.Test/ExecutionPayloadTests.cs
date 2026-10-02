@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -288,13 +289,23 @@ public class ExecutionPayloadTests
 
         ExecutionPayload payload = new() { Transactions = rlps };
         Task<Hash256>? rootTask = payload.StartTxRootComputation();
+        ParallelUnbalancedWork.WorkerGroup firstWorkers = payload.Workers;
+        payload.PrepareWorkerGroup();
+        Assert.That(payload.Workers, Is.SameAs(firstWorkers));
         Result<Block> block = payload.TryGetBlock();
+        payload.StartTxRootComputation();
+        ParallelUnbalancedWork.WorkerGroup nextWorkers = payload.Workers;
+        Result<Block> resent = payload.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
             // A single processor computes the root inline instead of starting the task.
             Assert.That(rootTask, Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
+            Assert.That(block.Data.Workers, Is.SameAs(firstWorkers));
+            Assert.That(nextWorkers, Is.Not.SameAs(firstWorkers));
+            Assert.That(resent.Data!.Workers, Is.SameAs(nextWorkers));
+            Assert.That(resent.Data.Header.TxRoot, Is.EqualTo(block.Data.Header.TxRoot));
         }
     }
 
