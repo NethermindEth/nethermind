@@ -1438,7 +1438,10 @@ public sealed class ForkChoiceRunner
     /// Gloas block builds on an execution ancestor of the payload that block builds on, so the walk holds across EMPTY and FULL nodes.
     /// </remarks>
     /// <exception cref="ProtoArrayException">An ancestor was invalidated before.</exception>
-    public void ValidateExecutionChain(Hash256 chainRoot, Hash256 payloadHash)
+    public void ValidateExecutionChain(Hash256 chainRoot, Hash256 payloadHash) => ValidateExecutionChainAndGetPayloadRoot(chainRoot, payloadHash);
+
+    /// <summary>Validates the execution chain and returns the Gloas root whose own payload received VALID, if any.</summary>
+    internal Hash256? ValidateExecutionChainAndGetPayloadRoot(Hash256 chainRoot, Hash256 payloadHash)
     {
         foreach (ProtoNode node in _protoArray.EnumerateAncestorNodes(chainRoot))
         {
@@ -1450,9 +1453,13 @@ public sealed class ForkChoiceRunner
                 throw new ProtoArrayException($"Invalid execution payload {node.ExecutionBlockHash} became valid");
             _protoArray.ProcessExecutionPayloadValidation(node.Root);
             if (carriesPayload && node.IsGloas)
+            {
                 _validPayloads.Add(node.Root);
-            return;
+                return node.Root;
+            }
         }
+
+        return null;
     }
 
     /// <summary>specs/bellatrix/optimistic-sync.md: invalidates the blocks at <paramref name="subtreeRoots"/> and all their descendants, or none.</summary>
