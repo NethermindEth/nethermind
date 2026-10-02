@@ -25,6 +25,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? _filteredTracedSource;
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? _filteredSilentSource;
     private UInt256 _filteredInstructionMask;
+    private bool _useCallDestinations;
+    private bool _callDestinationsEip8024;
 
     private struct SilentInstructionFlag : IFlag
     {
@@ -63,6 +65,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // The fork comes from Spec here and in GetOpcodeTable, so the cache key and the table contents
         // cannot describe different forks.
         IReleaseSpec spec = Spec;
+        _useCallDestinations = spec.IsEip7979Enabled;
+        _callDestinationsEip8024 = spec.IsEip8024Enabled;
         // Per transaction, not per table build: a cached table would otherwise let a later block
         // outside the compiled fork range run against rules that do not describe it.
         SpecFlags.Validate(spec);

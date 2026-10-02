@@ -1468,10 +1468,9 @@ public partial class VirtualMachine<TGasPolicy>(
             vmState.InitializeStacks(codeSpan, out stack);
         }
 
-        IReleaseSpec spec = Spec;
-        if (spec.IsEip7979Enabled)
+        if (_useCallDestinations)
         {
-            stack.UseCallDestinations(spec.IsEip8024Enabled);
+            stack.UseCallDestinations(_callDestinationsEip8024);
         }
 
         // Operate on the frame gas by reference so exceptional halts keep the latest

@@ -102,7 +102,12 @@ public ref partial struct EvmStack
     internal void UseCallDestinations(bool eip8024)
     {
         if (CodeLength != 0 && _codeInfo is not null)
+        {
             _jumpDestinations = _codeInfo.GetJumpAndCallDestinationBitmap(eip8024);
+#if ZK_EVM
+            _jumpDestinationBits = ref MemoryMarshal.GetArrayDataReference(_jumpDestinations);
+#endif
+        }
     }
 
     /// <summary>
