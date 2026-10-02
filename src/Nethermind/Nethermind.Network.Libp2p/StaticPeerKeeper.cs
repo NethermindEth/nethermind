@@ -78,7 +78,7 @@ public sealed class StaticPeerKeeper : IDisposable
             try
             {
                 ISession session = await _localPeer.DialAsync(address, token);
-                // A second gossip channel to one peer can leave the router a stale entry, so a connect the router made meanwhile wins.
+                // A connect the router made meanwhile wins, so the peer gets no second gossip channel.
                 if (_router.ConnectedPeers.Contains(peerId))
                 {
                     continue;
