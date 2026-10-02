@@ -137,7 +137,7 @@ internal struct ReturnDataScratch
                 _retained = scratch = GC.AllocateUninitializedArray<byte>(size);
             }
 
-            returnData.CopyTo(scratch);
+            Core.Extensions.Bytes.Copy(returnData, scratch);
             output = scratch;
         }
         else

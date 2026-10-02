@@ -325,7 +325,12 @@ internal static class SszCodecHelpers
     {
         ValidateSszListLimit(data, limit, typeName, fieldName);
         byte[] result = global::System.GC.AllocateUninitializedArray<byte>(data.Length);
+#if ZK_EVM
+        // Reaches the zkVM's memmove without corelib's GC-transition wrapper; needs Nethermind.Core's internals.
+        global::Nethermind.Core.Extensions.Bytes.Copy(data, result);
+#else
         data.CopyTo(result);
+#endif
         return result;
     }
 

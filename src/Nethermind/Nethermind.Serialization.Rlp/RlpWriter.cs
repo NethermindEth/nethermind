@@ -28,7 +28,7 @@ public ref struct RlpWriter(Span<byte> data) : IRlpWriteBackend
 
     void IRlpWriteBackend.Write(scoped ReadOnlySpan<byte> bytesToWrite)
     {
-        bytesToWrite.CopyTo(_data.Slice(_position, bytesToWrite.Length));
+        Core.Extensions.Bytes.Copy(bytesToWrite, _data.Slice(_position, bytesToWrite.Length));
         _position += bytesToWrite.Length;
     }
 

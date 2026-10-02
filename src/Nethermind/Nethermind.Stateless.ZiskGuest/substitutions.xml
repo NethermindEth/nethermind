@@ -29,4 +29,10 @@
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
   </assembly>
+  <assembly fullname="Nethermind.Core">
+    <!-- ZisK runs memmove as a precompile, so Bytes.Copy calls it directly rather than through corelib. -->
+    <type fullname="Nethermind.Core.Extensions.ZiskMemmoveFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
 </linker>
