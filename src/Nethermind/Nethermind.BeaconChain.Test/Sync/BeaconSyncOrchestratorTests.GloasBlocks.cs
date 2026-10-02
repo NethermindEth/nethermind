@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -545,6 +546,7 @@ public partial class BeaconSyncOrchestratorTests
     /// <summary>
     /// A child of a parked block that the full queue cannot take is neither deferred by the importer nor marked seen, so a
     /// later copy can still be held once there is room; marked seen, the valid block would be refused from gossip for good.
+    /// Its gossip verdict is ignored at once, so its message does not wait for the next slot's sweep.
     /// </summary>
     [Test]
     public async Task Child_of_a_parked_block_the_full_queue_cannot_take_is_not_marked_seen()
@@ -560,11 +562,13 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ProcessGossipBlockAsync(filler, CancellationToken.None);
         }
 
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None);
+        (GossipVerdict verdict, List<MessageValidity> given) = RecordingVerdict();
+        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None, verdict);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(PendingQueueCapacity), "fixture: the queue is full");
+            Assert.That(given, Is.EqualTo(new[] { MessageValidity.Ignored }), "the verdict is given before any slot tick");
             Assert.That(harness.Router.IsProposalSeen(scenario.Child.Slot, scenario.Child.ProposerIndex), Is.False);
             Assert.That(harness.Importer.Imports.Any(i => i.Root == childRoot), Is.False, "the importer records no deferral for a block the queue cannot take");
         }
