@@ -66,6 +66,7 @@ public class BlockEndAccountTrieTiming
 
         inserts.Sort();
         hashes.Sort();
+        System.IO.File.AppendAllText("C:/tmp/trie-timing.txt", $"dirty {dirty} tree {treeSize}: insert median {inserts[inserts.Count / 2]:F3} ms, hash median {hashes[hashes.Count / 2]:F3} ms" + System.Environment.NewLine);
         TestContext.Out.WriteLine($"dirty {dirty}: insert median {inserts[inserts.Count / 2]:F3} ms (min {inserts[0]:F3}), hash median {hashes[hashes.Count / 2]:F3} ms (min {hashes[0]:F3})");
     }
 }

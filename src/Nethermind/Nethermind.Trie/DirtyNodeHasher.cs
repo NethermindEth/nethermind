@@ -86,6 +86,13 @@ internal static class DirtyNodeHasher
         return AllChildrenHashed(root);
     }
 
+    /// <summary>Hashes the dirty nodes of one subtree below the root, its own root included.</summary>
+    internal static void HashSubtreeOf(TrieNode subtreeRoot, in TreePath subtreeRootPath, ITrieNodeResolver resolver, ICappedArrayPool? pool)
+    {
+        if (!Avx2.IsSupported || !subtreeRoot.IsDirty || subtreeRoot.Keccak is not null) return;
+        HashSubtree(subtreeRoot, in subtreeRootPath, resolver, pool, MaxCollectedNodes, minimumDirtyNodes: 1);
+    }
+
     private static bool AllChildrenHashed(TrieNode root)
     {
         // A leaf root has no children to ask about, and asking throws.

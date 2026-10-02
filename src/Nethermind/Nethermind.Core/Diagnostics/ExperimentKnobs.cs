@@ -64,6 +64,9 @@ public static class ExperimentKnobs
     /// <summary>MODEXP whose exponent is a known prime modulus minus two is computed as a modular inverse.</summary>
     public static readonly bool ModExpInvert = On("NETHERMIND_EXP_MODEXP_INVERT");
 
+    /// <summary>The block-end account insert hashes each top-level subtree in the job that set it.</summary>
+    public static readonly bool HashAfterSet = On("NETHERMIND_EXP_HASH_AFTER_SET");
+
     /// <summary>When at least this many of the root's children are dirty, hash two nibbles down (up to 256 units); 0 = off.</summary>
     public static readonly int HashTwoLevels = Int("NETHERMIND_EXP_HASH_TWO_LEVELS", 0);
 }
