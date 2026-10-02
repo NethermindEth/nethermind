@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -185,6 +186,46 @@ public class OptimismGossipLoopbackTests
 
         Assert.That(async () => await node.Peer.DialAsync(sequencer.Address, cancelled.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the dial is cancelled");
         Assert.That(await node.Peer.DialAsync(sequencer.Address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
+    }
+
+    /// <summary>A dial still running when its peer is disposed leaves no session open: the library dial outlives its caller's token.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_peer_disposed_during_a_dial_leaves_no_session_open(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token);
+        await using Host node = await Host.StartAsync(token);
+        LocalPeer sequencerPeer = (LocalPeer)sequencer.Peer;
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        sequencerPeer.Sessions.CollectionChanged += (_, change) =>
+        {
+            if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
+        };
+        using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<ISession> dial = node.Peer.DialAsync(sequencer.Address, abandoned.Token);
+
+        await abandoned.CancelAsync();
+        await node.Peer.DisposeAsync();
+        try
+        {
+            await dial;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+        Assert.That(dial.IsCanceled, Is.True, "fixture: the caller stopped waiting before the dial finished");
+
+        // A closed session leaves within milliseconds; a session left open survives well past this bound.
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bounded.CancelAfter(TimeSpan.FromSeconds(3));
+        while (sequencerPeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        Assert.That(sequencerPeer.Sessions, Is.Empty, "the dial finished after disposal and its session stayed open");
     }
 
     /// <summary>A connected peer whose stored addresses were replaced by a set of two peer ids is still dialed by its existing session.</summary>

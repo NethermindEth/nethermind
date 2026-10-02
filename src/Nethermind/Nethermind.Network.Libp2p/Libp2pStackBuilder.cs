@@ -79,6 +79,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
     private sealed class IdentifyingPeer : LocalPeer, ILocalPeer
     {
         private readonly HostResolver _resolveHost;
+        private int _disposed;
 
         public IdentifyingPeer(Identity identity, PeerStore peerStore, IProtocolStackSettings settings, IdentifyNotifier notifier, ILoggerFactory? loggerFactory,
             HostResolver resolveHost)
@@ -138,7 +139,22 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
 
             // A dial cancelled before the library's first await would stay the peer's pending dial for good, so the token stops only this
             // wait; the dial itself ends within the library's connection timeout.
-            return await DialAsync([.. tcp], CancellationToken.None).WaitAsync(token);
+            Task<ISession> dial = DialAsync([.. tcp], CancellationToken.None);
+            _ = dial.ContinueWith(static (completed, state) =>
+            {
+                // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
+                if (completed.IsCompletedSuccessfully && Volatile.Read(ref ((IdentifyingPeer)state!)._disposed) == 1)
+                {
+                    _ = completed.Result.DisconnectAsync();
+                }
+            }, this, TaskScheduler.Default);
+            return await dial.WaitAsync(token);
+        }
+
+        ValueTask IAsyncDisposable.DisposeAsync()
+        {
+            Volatile.Write(ref _disposed, 1);
+            return DisposeAsync();
         }
 
         // A name that does not resolve leaves the other addresses of the peer to dial.
