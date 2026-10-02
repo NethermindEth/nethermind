@@ -72,7 +72,16 @@ namespace Nethermind.Runner.Ethereum
 
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
             string[] urls = _jsonRpcUrlCollection.Urls;
-            string[] listenUrls = await GetListenUrls(_jsonRpcUrlCollection.Values, Dns.GetHostAddressesAsync, cancellationToken);
+            string[] listenUrls;
+            try
+            {
+                listenUrls = await GetListenUrls(_jsonRpcUrlCollection.Values, Dns.GetHostAddressesAsync, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug("JSON RPC host resolution cancelled");
+                return;
+            }
             WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
             {
                 ApplicationName = "Nethermind"
@@ -150,7 +159,7 @@ namespace Nethermind.Runner.Ethereum
         /// </remarks>
         /// <exception cref="InvalidOperationException">
         /// A host name cannot be resolved, resolves to no addresses, or resolves to an unspecified address
-        /// (<c>0.0.0.0</c> or <c>::</c>), which Kestrel would bind to all interfaces.
+        /// (<c>0.0.0.0</c>, <c>::</c> or <c>::ffff:0.0.0.0</c>), which Kestrel would bind to all interfaces.
         /// </exception>
         internal static async Task<string[]> GetListenUrls(
             IEnumerable<JsonRpcUrl> urls,
@@ -185,7 +194,8 @@ namespace Nethermind.Runner.Ethereum
 
                 foreach (IPAddress address in addresses)
                 {
-                    if (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
+                    IPAddress unmappedAddress = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+                    if (unmappedAddress.Equals(IPAddress.Any) || unmappedAddress.Equals(IPAddress.IPv6Any))
                     {
                         throw new InvalidOperationException($"JSON RPC host '{url.Host}' resolves to the unspecified address {address}. Use 0.0.0.0 directly to listen on all interfaces.");
                     }
