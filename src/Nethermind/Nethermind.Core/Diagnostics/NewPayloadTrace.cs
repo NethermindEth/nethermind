@@ -20,19 +20,27 @@ public static class NewPayloadTrace
     public const int HttpStart = 0, BodyRead = 1, MethodEntry = 2, Locked = 3, GcRegion = 4, HandleStart = 5, Decoded = 6,
         PreSuggest = 7, Suggested = 8, EnqueueStart = 9, Dequeued = 10, BranchStart = 11, ProcessOneStart = 12, TxsDone = 13,
         ProcessOneEnd = 14, Verdict = 15, HandlerResumed = 16, HandleEnd = 17, ResponseDone = 18, CommitDone = 19, BranchEnd = 20,
-        RecDecoded = 21, RecStarted = 22, TxsDecoded = 23, TxRootJoined = 24;
+        RecDecoded = 21, RecStarted = 22, TxsDecoded = 23, TxRootJoined = 24,
+        // Block-end state work on the processing thread: commit with roots, then the state root.
+        MerkleStart = 25, JournalDone = 26, StorageRootsDone = 27, AccountsFlushed = 28, AccountsInserted = 29, StateRootDone = 30;
 
-    private const int Count = 25;
+    private const int Count = 31;
     private static readonly string[] Names =
     [
         "http", "body", "entry", "locked", "gcregion", "handle", "decoded", "presuggest", "suggested", "enqueue", "dequeued",
         "branch", "p1start", "txsdone", "p1end", "verdict", "resumed", "handleend", "response", "commit", "branchend",
-        "recdecoded", "recstarted", "txsdecoded", "txrootjoined"
+        "recdecoded", "recstarted", "txsdecoded", "txrootjoined",
+        "mstart", "mjournal", "mstorage", "mflush", "minsert", "mroot"
     ];
+
+    public const int StorageTries = 0, StorageSlots = 1, AccountsWritten = 2;
+    private const int CounterCount = 3;
+    private static readonly string[] CounterNames = ["ntries", "nslots", "naccts"];
 
     private sealed class Record
     {
         public readonly long[] Stamps = new long[Count];
+        public readonly long[] Counters = [-1, -1, -1];
         public long Block = -1;
         // The processing thread's /proc schedstat across ProcessOne: nanoseconds run and waited on a runqueue.
         public long RunStart, WaitStart, RunNs = -1, WaitNs = -1, Slices = -1, SlicesStart;
@@ -129,6 +137,19 @@ public static class NewPayloadTrace
         if (Enabled && Volatile.Read(ref s_active) is { } record && record.Stamps[point] == 0) record.Stamps[point] = Stopwatch.GetTimestamp();
     }
 
+    /// <summary>Stamps the active newPayload only when called on the block-processing thread.</summary>
+    public static void StampProcessing(int point)
+    {
+        if (Enabled && Threading.ProcessingThread.IsBlockProcessingThread) Stamp(point);
+    }
+
+    /// <summary>Sets a counter of the active newPayload, on the block-processing thread; the first value counts.</summary>
+    public static void SetCounter(int counter, long value)
+    {
+        if (Enabled && Threading.ProcessingThread.IsBlockProcessingThread && Volatile.Read(ref s_active) is { } record && record.Counters[counter] < 0)
+            record.Counters[counter] = value;
+    }
+
     private static void Print(Record record)
     {
         long start = record.Stamps[HttpStart] != 0 ? record.Stamps[HttpStart] : record.Stamps[MethodEntry];
@@ -149,6 +170,8 @@ public static class NewPayloadTrace
             .Append(" gc1=").Append(record.Gc1 < 0 ? "na" : record.Gc1.ToString())
             .Append(" gc2=").Append(record.Gc2 < 0 ? "na" : record.Gc2.ToString())
             .Append(" gcpause=").Append(record.PauseUs < 0 ? "na" : record.PauseUs.ToString());
+        for (int i = 0; i < CounterCount; i++)
+            line.Append(' ').Append(CounterNames[i]).Append('=').Append(record.Counters[i] < 0 ? "na" : record.Counters[i].ToString());
         Console.Out.WriteLine(line.ToString());
     }
 }

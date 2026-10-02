@@ -12,6 +12,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.State;
@@ -413,9 +414,24 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (_toUpdateRoots.Count == 0)
             return;
 
+        if (NewPayloadTrace.Enabled) TraceStorageFlush();
         UpdateRootHashes(writeBatch);
 
         _toUpdateRoots.Clear();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceStorageFlush()
+    {
+        long tries = 0, slots = 0;
+        foreach (KeyValuePair<AddressAsKey, bool> kvp in _toUpdateRoots)
+        {
+            if (!kvp.Value || !_storages.TryGetValue(kvp.Key, out PerContractState? contractState)) continue;
+            tries++;
+            slots += contractState.EstimatedChanges;
+        }
+        NewPayloadTrace.SetCounter(NewPayloadTrace.StorageTries, tries);
+        NewPayloadTrace.SetCounter(NewPayloadTrace.StorageSlots, slots);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
