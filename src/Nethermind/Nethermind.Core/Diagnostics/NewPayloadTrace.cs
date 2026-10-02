@@ -36,6 +36,21 @@ public static class NewPayloadTrace
         public long Block = -1;
         // The processing thread's /proc schedstat across ProcessOne: nanoseconds run and waited on a runqueue.
         public long RunStart, WaitStart, RunNs = -1, WaitNs = -1, Slices = -1, SlicesStart;
+        // Collections and GC pause time between the HTTP request's start and its response being written.
+        public int Gc0Start, Gc1Start, Gc2Start, Gc0 = -1, Gc1 = -1, Gc2 = -1;
+        public long PauseStartTicks, PauseUs = -1;
+
+        public void GcStart()
+        {
+            Gc0Start = GC.CollectionCount(0); Gc1Start = GC.CollectionCount(1); Gc2Start = GC.CollectionCount(2);
+            PauseStartTicks = GC.GetTotalPauseDuration().Ticks;
+        }
+
+        public void GcEnd()
+        {
+            Gc0 = GC.CollectionCount(0) - Gc0Start; Gc1 = GC.CollectionCount(1) - Gc1Start; Gc2 = GC.CollectionCount(2) - Gc2Start;
+            PauseUs = (GC.GetTotalPauseDuration().Ticks - PauseStartTicks) / 10;
+        }
     }
 
     /// <summary>Reads the calling thread's schedstat at the start of block execution.</summary>
@@ -77,6 +92,7 @@ public static class NewPayloadTrace
     {
         if (!Enabled) return;
         Record record = new();
+        record.GcStart();
         record.Stamps[HttpStart] = Stopwatch.GetTimestamp();
         s_request.Value = record;
     }
@@ -84,7 +100,11 @@ public static class NewPayloadTrace
     /// <summary>Stamps the request this async flow belongs to, whatever its method.</summary>
     public static void StampRequest(int point)
     {
-        if (Enabled && s_request.Value is { } record && record.Stamps[point] == 0) record.Stamps[point] = Stopwatch.GetTimestamp();
+        if (Enabled && s_request.Value is { } record && record.Stamps[point] == 0)
+        {
+            record.Stamps[point] = Stopwatch.GetTimestamp();
+            if (point == ResponseDone) record.GcEnd();
+        }
     }
 
     /// <summary>Makes this flow's request the active newPayload and prints the previous one.</summary>
@@ -124,7 +144,11 @@ public static class NewPayloadTrace
 
         line.Append(" schedrun=").Append(record.RunNs < 0 ? "na" : (record.RunNs / 1000).ToString())
             .Append(" schedwait=").Append(record.WaitNs < 0 ? "na" : (record.WaitNs / 1000).ToString())
-            .Append(" schedslices=").Append(record.Slices < 0 ? "na" : record.Slices.ToString());
+            .Append(" schedslices=").Append(record.Slices < 0 ? "na" : record.Slices.ToString())
+            .Append(" gc0=").Append(record.Gc0 < 0 ? "na" : record.Gc0.ToString())
+            .Append(" gc1=").Append(record.Gc1 < 0 ? "na" : record.Gc1.ToString())
+            .Append(" gc2=").Append(record.Gc2 < 0 ? "na" : record.Gc2.ToString())
+            .Append(" gcpause=").Append(record.PauseUs < 0 ? "na" : record.PauseUs.ToString());
         Console.Out.WriteLine(line.ToString());
     }
 }
