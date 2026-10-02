@@ -243,6 +243,35 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(ByRootRequestsFor(walk.Peer, heldParentRoot), Is.EqualTo(3), "each later child fetches the evicted parent");
     }
 
+    // fork-choice.md on_block: a range peer that delivers an invalid block is blamed, also when the block was held as fetched
+    // by root before and its fetched entry outlived the hold.
+    [Test]
+    public async Task Range_peer_delivering_an_invalid_block_once_held_as_fetched_is_blamed()
+    {
+        DeferredAncestorWalk walk = await WalkToBudgetDeferredAncestorAsync();
+        Hash256 heldParentRoot = walk.Blocks[1].ComputeMessageRoot();
+        for (int i = 0; i <= BeaconSyncOrchestrator.MaxHeldRefusedBackfills; i++)
+        {
+            await walk.Harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot + (ulong)i, seed: 0), CancellationToken.None);
+        }
+
+        walk.OtherParentFetch.SetResult([]);
+        await walk.Harness.Orchestrator.SettleWithinAsync(maxPasses: 10, CancellationToken.None);
+        walk.Harness.Importer.RegenerationRefused.Remove(walk.Blocks[0].ComputeMessageRoot());
+        await walk.Harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+        walk.Harness.Importer.Forged.Add(heldParentRoot);
+        IBeaconSyncPeer rangePeer = Substitute.For<IBeaconSyncPeer>();
+
+        walk.Harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(walk.Blocks[1], rangePeer));
+        await walk.Harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(walk.Harness.Importer.Known, Does.Contain(walk.Blocks[0].ComputeMessageRoot()).And.Not.Contain(heldParentRoot), "fixture: the evicted block did not import with its ancestor");
+            rangePeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+        }
+    }
+
     /// <summary>
     /// A held parent that leaves the hold without importing, because it is invalid or its deferred ancestor is, no longer holds
     /// its backfill: a later child in the same slot fetches it again.
