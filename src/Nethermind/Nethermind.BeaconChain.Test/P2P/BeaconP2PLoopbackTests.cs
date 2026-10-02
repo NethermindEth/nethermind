@@ -58,31 +58,44 @@ public class BeaconP2PLoopbackTests
     }
 
     /// <summary>A dial still running when its host is disposed leaves no session open: disposal does not end a dial in flight.</summary>
+    /// <param name="callerStopsWaiting">The caller cancels first while another waiter keeps the library dial running.</param>
     [Test]
     [CancelAfter(90_000)]
-    public async Task A_host_disposed_during_a_dial_leaves_no_session_open(CancellationToken token)
+    public async Task A_host_disposed_during_a_dial_leaves_no_session_open([Values] bool callerStopsWaiting, CancellationToken token)
     {
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         BeaconP2P client = PeerSessionNodes.Create().P2P;
         await server.StartAsync(token);
         await client.StartAsync(token);
         LocalPeer serverPeer = server.LocalPeerForTest!;
+        // The dialer's own session: closed as soon as it is added after disposal, so the remote may never list it.
         TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        serverPeer.Sessions.CollectionChanged += (_, change) =>
+        client.LocalPeerForTest!.Sessions.CollectionChanged += (_, change) =>
         {
             if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
         };
-        Task<ISession> dial = client.DialPeerAsync(PeerSessionNodes.LoopbackAddress(server), token);
+        Multiaddress address = PeerSessionNodes.LoopbackAddress(server);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<ISession> dial = client.DialPeerAsync(address, caller.Token);
+        Task<ISession> remaining = dial;
+        if (callerStopsWaiting)
+        {
+            remaining = client.LocalPeerForTest!.DialAsync(address, token);
+            await caller.CancelAsync();
+        }
 
-        bool inFlight = !dial.IsCompleted;
+        bool inFlight = !remaining.IsCompleted;
         await client.DisposeAsync();
         Assert.That(inFlight, Is.True, "fixture: disposal began before the dial finished");
-        try
+        foreach (Task<ISession> waiter in new[] { dial, remaining })
         {
-            await dial;
-        }
-        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
-        {
+            try
+            {
+                await waiter;
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+            }
         }
 
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);

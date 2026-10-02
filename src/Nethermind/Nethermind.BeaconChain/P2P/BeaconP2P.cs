@@ -451,16 +451,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         try
         {
-            Task<ISession> dial = localPeer.DialAsync(address, token);
-            // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
-            _ = dial.ContinueWith(static (completed, state) =>
-            {
-                if (Volatile.Read(ref ((BeaconP2P)state!)._disposed) == 1)
-                {
-                    _ = completed.Result.DisconnectAsync();
-                }
-            }, this, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            return await dial;
+            return await localPeer.DialAsync(address, token);
         }
         catch (Exception e) when (e is not OperationCanceledException && token.IsCancellationRequested)
         {
@@ -852,6 +843,11 @@ public sealed class BeaconP2P : IAsyncDisposable
                         _sessionInfo.TryAdd(session, new TaskCompletionSource<SessionInfo>(TaskCreationOptions.RunContinuationsAsynchronously));
                         _sessionClosed.GetOrAdd(session, static _ => new SessionLifetime());
                         CountSession(RemotePeerIdOf(session));
+                        // Disposal closes only the sessions it sees, so one a dial completes afterwards is closed here, off the library's lock.
+                        if (Volatile.Read(ref _disposed) == 1)
+                        {
+                            _ = Task.Run(session.DisconnectAsync);
+                        }
                     }
                 }
 
@@ -923,7 +919,18 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        Volatile.Write(ref _disposed, 1);
+        // Under the Sessions lock: a session added before this is in the library's disposal snapshot, one added after sees the flag.
+        if (_localPeer is { } localPeer)
+        {
+            lock (localPeer.Sessions)
+            {
+                Volatile.Write(ref _disposed, 1);
+            }
+        }
+        else
+        {
+            Volatile.Write(ref _disposed, 1);
+        }
         if (_startCts is not null)
         {
             await _startCts.CancelAsync();

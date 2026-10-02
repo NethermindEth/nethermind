@@ -297,13 +297,14 @@ public class OptimismGossipLoopbackTests
     }
 
     /// <summary>A dial still running when its peer is disposed leaves no session open: disposal does not end a dial in flight.</summary>
+    /// <param name="callerStopsWaiting">The caller cancels first while another waiter keeps the library dial running.</param>
     [Test]
     [CancelAfter(90_000)]
-    public async Task A_peer_disposed_during_a_dial_leaves_no_session_open(CancellationToken token)
+    public async Task A_peer_disposed_during_a_dial_leaves_no_session_open([Values] bool callerStopsWaiting, CancellationToken token)
     {
         await using Host sequencer = await Host.StartAsync(token);
         await using Host node = await Host.StartAsync(token);
-        await AssertNoSessionAfterShutdownAsync(node.Peer, sequencer, () => node.ShutDownAsync(), token);
+        await AssertNoSessionAfterShutdownAsync(node.Peer, sequencer, () => node.ShutDownAsync(), callerStopsWaiting, token);
     }
 
     /// <summary>A dial still running when the CL P2P host shuts down leaves no session open.</summary>
@@ -325,7 +326,7 @@ public class OptimismGossipLoopbackTests
         try
         {
             // As OptimismCL shuts down: the run token stops the listener, then the host is disposed.
-            await AssertNoSessionAfterShutdownAsync(peer, sequencer, async () => { await stop.CancelAsync(); p2p.Dispose(); }, token);
+            await AssertNoSessionAfterShutdownAsync(peer, sequencer, async () => { await stop.CancelAsync(); p2p.Dispose(); }, callerStopsWaiting: false, token);
         }
         finally
         {
@@ -335,25 +336,36 @@ public class OptimismGossipLoopbackTests
     }
 
     // Starts a dial from dialer, shuts down while it runs, and checks the session the dial opens at remote is closed.
-    private static async Task AssertNoSessionAfterShutdownAsync(ILocalPeer dialer, Host remote, Func<ValueTask> shutdown, CancellationToken token)
+    private static async Task AssertNoSessionAfterShutdownAsync(ILocalPeer dialer, Host remote, Func<ValueTask> shutdown, bool callerStopsWaiting, CancellationToken token)
     {
         LocalPeer remotePeer = (LocalPeer)remote.Peer;
+        // The dialer's own session: closed as soon as it is added after disposal, so the remote may never list it.
         TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        remotePeer.Sessions.CollectionChanged += (_, change) =>
+        ((LocalPeer)dialer).Sessions.CollectionChanged += (_, change) =>
         {
             if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
         };
-        Task<ISession> dial = dialer.DialAsync(remote.Address, token);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<ISession> dial = dialer.DialAsync(remote.Address, caller.Token);
+        Task<ISession> remaining = dial;
+        if (callerStopsWaiting)
+        {
+            remaining = ((LocalPeer)dialer).DialAsync(remote.Address, token);
+            await caller.CancelAsync();
+        }
 
-        bool inFlight = !dial.IsCompleted;
+        bool inFlight = !remaining.IsCompleted;
         await shutdown();
         Assert.That(inFlight, Is.True, "fixture: shutdown began before the dial finished");
-        try
+        foreach (Task<ISession> waiter in new[] { dial, remaining })
         {
-            await dial;
-        }
-        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
-        {
+            try
+            {
+                await waiter;
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+            }
         }
 
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
