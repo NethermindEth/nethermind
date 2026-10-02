@@ -203,8 +203,13 @@ internal sealed class EvmObjectPool<T>
         return false;
     }
 
+    /// <summary>Returns <paramref name="item"/> to the shared tier, bypassing the calling thread's local tier.</summary>
+    /// <remarks>
+    /// For an item whose owner ends its life on a thread that may never rent from this pool again: kept in that
+    /// thread's local tier, it would be out of reach of every other thread.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EnqueueShared(T item)
+    public void EnqueueShared(T item)
     {
         // Reserve before enqueueing so the bound costs no queue walk.
         if (Interlocked.Increment(ref _sharedCount) > _maxShared)

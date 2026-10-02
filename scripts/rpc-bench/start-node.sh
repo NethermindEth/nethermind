@@ -49,6 +49,10 @@ DOTNET_TRACE_HOST_PATH="${DOTNET_TRACE_HOST_PATH:-/opt/dotnet-trace}"
 # Pinned like every other tool on this rig: an unpinned install would drift the collector between
 # runs whose numbers are meant to be comparable.
 DOTNET_TRACE_VERSION="${DOTNET_TRACE_VERSION:-9.0.661903}"
+# Heap dump after the measured cell (stop-node.sh), analyzed into dotnet-dump text reports.
+DOTNET_DUMP="${DOTNET_DUMP:-false}"
+DOTNET_DUMP_HOST_PATH="${DOTNET_DUMP_HOST_PATH:-/opt/dotnet-dump}"
+DOTNET_DUMP_VERSION="${DOTNET_DUMP_VERSION:-10.0.745401}"
 # true = leave perf unstarted and dotTrace launched with data collection off; the workflow runs
 # start-profilers.sh once the warm-up is done, so the profiles cover only the measured phase.
 PROFILE_AFTER_WARMUP="${PROFILE_AFTER_WARMUP:-false}"
@@ -59,6 +63,7 @@ RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
+ARM_SCRATCH_DIR="${ARM_SCRATCH_DIR:-}"   # optional host directory, bind-mounted at this same absolute path
 NODE_ENV_VARS="${NODE_ENV_VARS:-}"
 NODE_CPUSET="${NODE_CPUSET:-}"
 NODE_MEMORY="${NODE_MEMORY:-}"
@@ -70,6 +75,8 @@ case "$DOTNET_TRACE" in
   *) die "DOTNET_TRACE must be true or false (got '$DOTNET_TRACE')" ;;
 esac
 [[ "$DOTNET_TRACE" != "true" || "$CLIENT" == "nethermind" ]] || die "dotnet-trace requires CLIENT=nethermind (EventPipe is .NET-specific)"
+[[ "$DOTNET_DUMP" == "true" || "$DOTNET_DUMP" == "false" ]] || die "DOTNET_DUMP must be true or false (got '$DOTNET_DUMP')"
+[[ "$DOTNET_DUMP" != "true" || "$CLIENT" == "nethermind" ]] || die "dotnet-dump requires CLIENT=nethermind (heap dumps are .NET-specific)"
 case "$DOTTRACE_MODE" in
   sampling|tracing|timeline) ;;
   *) die "DOTTRACE_MODE must be sampling, tracing, or timeline (got '$DOTTRACE_MODE')" ;;
@@ -102,6 +109,13 @@ mkdir -p "$STATE_DIR"
   die "set node_config.db_source to a valid snapshot path"
 }
 guard_paths
+if [[ -n "$ARM_SCRATCH_DIR" ]]; then
+  ARM_SCRATCH_DIR="$(realpath -e -- "$ARM_SCRATCH_DIR")" || die "cannot canonicalize ARM_SCRATCH_DIR '$ARM_SCRATCH_DIR'"
+  assert_sane_dir "$ARM_SCRATCH_DIR" "ARM_SCRATCH_DIR"
+  [[ -d "$ARM_SCRATCH_DIR" ]] || die "ARM_SCRATCH_DIR '$ARM_SCRATCH_DIR' is not a directory"
+  [[ "$ARM_SCRATCH_DIR" != "$SCRATCH_ROOT" && "$ARM_SCRATCH_DIR/" == "$SCRATCH_ROOT/"* ]] \
+    || die "ARM_SCRATCH_DIR must be a child of SCRATCH_ROOT"
+fi
 
 log "=== RPC benchmark node startup ==="
 log "Client:     $CLIENT  (instance: $INSTANCE)"
@@ -112,6 +126,7 @@ log "Scratch:    $SCRATCH_ROOT"
 log "dotTrace:   $DOTTRACE"
 log "perf:       $PERF (${PERF_FREQUENCY}Hz)"
 log "dotnet-trace: $DOTNET_TRACE"
+log "dotnet-dump: $DOTNET_DUMP"
 [[ "$PROFILE_AFTER_WARMUP" == "true" ]] && log "profilers:  deferred until start-profilers.sh runs after the warm-up"
 log "RPC port:   $RPC_PORT  (network: $NETWORK)"
 for f in _snapshot_metadata.json _snapshot_web3_clientVersion.json; do
@@ -125,6 +140,10 @@ log "  baseline: $(wc -l < "$BASELINE_FILE") lines, sha256=$(sha256sum "$BASELIN
 
 ANCHOR_FILE="$SCRATCH_ROOT/fingerprints/$(basename "$DB_SOURCE").txt"
 mkdir -p "$(dirname "$ANCHOR_FILE")"
+# stop-node.sh refreshes the anchor only after a clean non-direct verify, so under direct it is diagnostic only.
+if [[ "$DB_ISOLATION" == "direct" && -f "$ANCHOR_FILE" ]]; then
+  echo "::warning::direct mode does not refresh the fingerprint anchor; any existing anchor is diagnostic only."
+fi
 if [[ -f "$ANCHOR_FILE" ]] && [[ "$(head -n 1 "$ANCHOR_FILE")" == "$(head -n 1 "$BASELINE_FILE")" ]] \
     && ! diff -q "$ANCHOR_FILE" "$BASELINE_FILE" >/dev/null 2>&1; then
   log "::warning::Snapshot fingerprint differs from the last verified run's anchor ($ANCHOR_FILE) — an interrupted run may have modified it."
@@ -186,6 +205,7 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT at $DATA_MOUNT_TARGET
   echo "DB_ISOLATION=$DB_ISOLATION"
   echo "RUN_SCRATCH=$RUN_SCRATCH"
   echo "SCRATCH_ROOT=$SCRATCH_ROOT"
+  echo "ARM_SCRATCH_DIR=$ARM_SCRATCH_DIR"
   echo "DB_SOURCE=$DB_SOURCE"
   echo "DIAG_DIR=$DIAG_DIR"
   echo "DOTTRACE=$DOTTRACE"
@@ -193,6 +213,9 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT at $DATA_MOUNT_TARGET
   echo "PERF=$PERF"
   echo "PERF_FREQUENCY=$PERF_FREQUENCY"
   echo "DOTNET_TRACE=$DOTNET_TRACE"
+  echo "DOTNET_DUMP=$DOTNET_DUMP"
+  echo "DOTNET_DUMP_HOST_PATH=$DOTNET_DUMP_HOST_PATH"
+  printf 'NODE_IMAGE=%q\n' "$NODE_IMAGE"
   echo "PROFILE_AFTER_WARMUP=$PROFILE_AFTER_WARMUP"
   echo "RPC_PORT=$RPC_PORT"
 } > "$STATE_DIR/node$SUFFIX.env"
@@ -242,8 +265,17 @@ case "$CLIENT" in
     )
     ;;
 esac
-# shellcheck disable=SC2206
-node_args+=($ADDITIONAL_FLAGS)
+if [[ -n "$ADDITIONAL_FLAGS" ]]; then
+  # Flags are whitespace-delimited by the caller; read into an array so values cannot undergo
+  # pathname expansion before Docker receives them.
+  additional_args=()
+  while IFS= read -r additional_flags_line || [[ -n "$additional_flags_line" ]]; do
+    line_args=()
+    read -r -a line_args <<< "$additional_flags_line"
+    additional_args+=("${line_args[@]}")
+  done <<< "$ADDITIONAL_FLAGS"
+  node_args+=("${additional_args[@]}")
+fi
 
 docker_args=(
   -d --name "$CONTAINER_NAME"
@@ -252,6 +284,10 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
+if [[ -n "$ARM_SCRATCH_DIR" ]]; then
+  # Identical host and container paths: a per-arm flag naming this path means the same place on both sides.
+  docker_args+=(--mount "type=bind,source=$ARM_SCRATCH_DIR,target=$ARM_SCRATCH_DIR")
+fi
 # shellcheck disable=SC2086
 for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
 perf_client_env=()
@@ -283,6 +319,23 @@ if [[ "$DOTNET_TRACE" == "true" ]]; then
   docker_args+=(
     -v "$DOTNET_TRACE_HOST_PATH:$DOTNET_TRACE_CONTAINER_PATH:ro"
     -v "$DIAG_DIR/dotnet-trace:$DOTNET_TRACE_OUTPUT_PATH:rw"
+  )
+fi
+# dotnet-dump (nethermind only): mount the host tool read-only plus an output dir; stop-node.sh runs
+# the collect with docker exec after the measured cell, so nothing about the node's launch changes.
+if [[ "$DOTNET_DUMP" == "true" ]]; then
+  if [[ ! -x "$DOTNET_DUMP_HOST_PATH/dotnet-dump" ]]; then
+    log "dotnet-dump not found at $DOTNET_DUMP_HOST_PATH — installing $DOTNET_DUMP_VERSION via dotnet tool..."
+    dotnet tool install --version "$DOTNET_DUMP_VERSION" --tool-path "$DOTNET_DUMP_HOST_PATH" dotnet-dump \
+      || as_root dotnet tool install --version "$DOTNET_DUMP_VERSION" --tool-path "$DOTNET_DUMP_HOST_PATH" dotnet-dump \
+      || die "failed to install dotnet-dump $DOTNET_DUMP_VERSION (is the .NET SDK on the runner?)"
+  fi
+  assert_no_mounts_under "$DIAG_DIR/dotnet-dump"
+  as_root rm -rf "$DIAG_DIR/dotnet-dump"
+  mkdir -p "$DIAG_DIR/dotnet-dump"
+  docker_args+=(
+    -v "$DOTNET_DUMP_HOST_PATH:$DOTNET_DUMP_CONTAINER_PATH:ro"
+    -v "$DIAG_DIR/dotnet-dump:$DOTNET_DUMP_OUTPUT_PATH:rw"
   )
 fi
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")

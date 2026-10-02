@@ -1138,7 +1138,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             {
                 Assert.That(TestState.AccountExists(_callTargetAddress), Is.True);
                 Assert.That(TestState.GetBalance(_callTargetAddress), Is.EqualTo(UInt256.Zero));
-                Assert.That(TestState.GetCode(_callTargetAddress), Is.EqualTo(selfdestructCode));
+                Assert.That(TestState.GetCode(_callTargetAddress), Is.SequenceEqualTo(selfdestructCode));
             }
             else
             {
@@ -2227,7 +2227,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.EqualTo(delegationTarget));
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(targetCode));
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(targetCode));
             // Both the delegated account and the delegation target are traced as account reads in the BAL
             Assert.That(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(delegatedAccount), Is.Not.Null);
             Assert.That(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(delegationTarget), Is.Not.Null);
@@ -2259,7 +2259,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.Null);
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(priorCode));
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(priorCode));
         }
     }
 
@@ -2291,7 +2291,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.Null);
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(parentCode));
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(parentCode));
         }
     }
 
@@ -2316,7 +2316,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(code));
             Assert.That(delegationAddress, Is.Null);
             // GetCachedCodeInfo records a pure account read even through the cache layer
             AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressB));

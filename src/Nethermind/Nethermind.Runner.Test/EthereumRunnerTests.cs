@@ -20,12 +20,14 @@ using Autofac.Core.Lifetime;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -512,9 +514,7 @@ public class EthereumRunnerTests
         using ManualResetEventSlim release = new();
         TaskCompletionSource reporting = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        bool disposing = false;
-        ConcurrentExclusiveSchedulerPair scheduler = new(TaskScheduler.Default, maxConcurrencyLevel: 1);
-        TaskFactory cleanup = new(CancellationToken.None, TaskCreationOptions.None, TaskContinuationOptions.None, scheduler.ExclusiveScheduler);
+        TaskCompletionSource disposing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         InterfaceLogger slowLogger = Substitute.For<InterfaceLogger>();
         slowLogger.IsWarn.Returns(true);
         slowLogger.When(logger => logger.Warn(Arg.Any<string>())).Do(_ =>
@@ -526,38 +526,33 @@ public class EthereumRunnerTests
         ILogger slowBlocks = new(slowLogger);
         logs.GetLogger("SlowBlocks").Returns(slowBlocks);
         logs.GetClassLogger<ProcessingStats>().Returns(LimboLogs.Instance.GetClassLogger<ProcessingStats>());
-        Task warmup = cleanup.StartNew(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path), false,
+        Task warmup = StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path), false,
             cancellation.Token, configureContainer: builder =>
             {
-                builder.RegisterBuildCallback(container => container.CurrentScopeEnding += (_, _) => disposing = true);
+                builder.RegisterBuildCallback(container => container.CurrentScopeEnding += (_, _) => disposing.TrySetResult());
                 builder.RegisterType<StartupPipelineWarmer.WarmProcessingStats>().As<IProcessingStats>()
                     .WithParameter("logManager", logs)
                     .WithParameter("blocksConfig", new BlocksConfig { SlowBlockThresholdMs = 0 })
                     .InstancePerLifetimeScope();
                 builder.AddDecorator<IServiceStopper>((context, inner) => new ObservedServiceStopper(inner, context.Resolve<Func<GCKeeper>>(), stopped));
-            })).Unwrap();
+            });
         try
         {
             await reporting.Task.WaitAsync(RunnerTimeout);
             await stopped.Task.WaitAsync(RunnerTimeout);
-            // On the same serial scheduler, cleanup reaches either the report drain or disposal before this probe runs.
-            await cleanup.StartNew(() =>
+            Task disposalProbe = await Task.WhenAny(disposing.Task, warmup, Task.Delay(TimeSpan.FromMilliseconds(500), cancellation.Token));
+            using (Assert.EnterMultipleScope())
             {
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(warmup.IsCompleted, Is.False);
-                    Assert.That(disposing, Is.False, "reports still own their storage dependencies");
-                }
-            });
+                Assert.That(warmup.IsCompleted, Is.False);
+                Assert.That(disposalProbe, Is.Not.SameAs(disposing.Task), "reports still own their storage dependencies");
+            }
         }
         finally
         {
             release.Set();
             await warmup.WaitAsync(RunnerTimeout);
-            scheduler.Complete();
-            await scheduler.Completion.WaitAsync(RunnerTimeout);
         }
-        Assert.That(disposing, Is.True);
+        Assert.That(disposing.Task.IsCompleted, Is.True);
     }
 
     private sealed class ObservedServiceStopper(IServiceStopper inner, Func<GCKeeper> gcKeeper, TaskCompletionSource stopped) : IServiceStopper
@@ -798,6 +793,52 @@ public class EthereumRunnerTests
         finally
         {
             await runner.StopAsync();
+        }
+    }
+
+    [TestCase("gnosis", true)]
+    [TestCase("xdc", true)]
+    [TestCase("mainnet", false)]
+    public async Task Pool_initializer_retains_simulator_and_registers_shutdown_disposal(string network, bool chainSpecific)
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
+        configProvider.Initialize();
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        TxPool.TxPool? pool = null;
+        try
+        {
+            INethermindApi api = runner.Api;
+            api.TransactionComparerProvider = new TransactionComparerProvider(api.SpecProvider!, api.BlockTree!.AsReadOnly());
+            IFrameTxPrefixSimulator simulator = api.Context.Resolve<IFrameTxPrefixSimulator>();
+            IEthereumStepsLoader loader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
+            foreach (StepInfo step in loader.ResolveStepsImplementations())
+            {
+                if (!typeof(InitializeBlockchain).IsAssignableFrom(step.StepType)) continue;
+                Assert.That(step.StepType != typeof(InitializeBlockchain), Is.EqualTo(chainSpecific));
+                object initializer = runner.LifetimeScope.Resolve(step.StepType);
+                MethodInfo createPool = step.StepType.GetMethod("CreateTxPool", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
+                FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.That(simulatorField.GetValue(pool), Is.SameAs(simulator));
+                return;
+            }
+            Assert.Fail("No blockchain initializer resolved");
+        }
+        finally
+        {
+            await using TxPool.TxPool? poolCleanup = pool;
+            await runner.StopAsync();
+            if (pool is not null)
+            {
+                FieldInfo disposedField = typeof(TxPool.TxPool).GetField("_isDisposed", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.That(disposedField.GetValue(pool), Is.True);
+            }
         }
     }
 
