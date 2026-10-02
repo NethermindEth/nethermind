@@ -5189,9 +5189,13 @@ namespace Nethermind.TxPool.Test
 
         [Test]
         public async Task Revalidation_reapplies_the_noncanonical_paymaster_cap(
-            [Values] bool gainsCode, [Values] bool simulationIndeterminate)
+            [Values] bool gainsCode, [Values] bool simulationIndeterminate, [Values] bool admittedUnresolved)
         {
-            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            FrameTxSimulationResult acceptD = FrameTxSimulationResult.Accept(TestItem.AddressD);
+            FrameTxSimulationResult undecided = FrameTxSimulationResult.Undecided("simulator unavailable");
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(admittedUnresolved ? undecided : acceptD);
+            Block baseline = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(baseline);
             PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
             Transaction[] sponsored = new Transaction[senders.Length];
             UInt256 totalCost = UInt256.Zero;
@@ -5208,10 +5212,8 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            Block baseline = Build.A.Block.WithNumber(1).TestObject;
-            await RaiseBlockAddedToMainAndWaitForNewHead(baseline);
             if (gainsCode) _stateProvider.InsertCode([0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00], TestItem.AddressD);
-            if (simulationIndeterminate) SimulatesAs(simulator, FrameTxSimulationResult.Undecided("simulator unavailable"));
+            SimulatesAs(simulator, simulationIndeterminate ? undecided : acceptD);
             Block head = Build.A.Block.WithNumber(2).WithParent(baseline).TestObject;
             head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressD };
             await RaiseBlockAddedToMainAndWaitForNewHead(head);
@@ -5221,7 +5223,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(pending, Has.Length.EqualTo(expectedCount));
             if (!gainsCode) return;
 
-            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            SimulatesAs(simulator, acceptD);
             Transaction[] evicted = sponsored.Where(tx => tx.Hash != pending[0].Hash).ToArray();
             Assert.That(_txPool.SubmitTx(evicted[0], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
             _txPool.RemoveTransaction(pending[0].Hash);
