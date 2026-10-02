@@ -47,6 +47,8 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void HintWarmAccount(Address address) => inner.HintWarmAccount(address);
 
+        public void HintAccountWrite(Address address, Account? account) => inner.HintAccountWrite(address, account);
+
         public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
         public Account? Get(Address address)

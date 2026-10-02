@@ -37,6 +37,15 @@ public static class ExperimentKnobs
     /// <summary>How long each pre-wake work item spins, in microseconds.</summary>
     public static readonly int PreWakeMicroseconds = Int("NETHERMIND_EXP_PREWAKE_US", 300);
 
+    /// <summary>Committed account values are applied and hashed into an early state trie while the block executes.</summary>
+    public static readonly bool EarlyAccountApply = On("NETHERMIND_EXP_EARLY_ACCOUNTS");
+
+    /// <summary>Accounts applied to the early state trie between hashes (when its queue is not idle).</summary>
+    public static readonly int EarlyAccountHashEvery = Int("NETHERMIND_EXP_EARLY_ACCOUNTS_HASH_EVERY", 256);
+
+    /// <summary>The early account applier runs under SCHED_IDLE rather than at normal priority.</summary>
+    public static readonly bool EarlyAccountIdlePriority = On("NETHERMIND_EXP_EARLY_ACCOUNTS_IDLE");
+
     /// <summary>When at least this many of the root's children are dirty, hash two nibbles down (up to 256 units); 0 = off.</summary>
     public static readonly int HashTwoLevels = Int("NETHERMIND_EXP_HASH_TWO_LEVELS", 0);
 }

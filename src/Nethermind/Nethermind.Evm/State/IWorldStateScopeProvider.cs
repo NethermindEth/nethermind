@@ -67,6 +67,12 @@ public interface IWorldStateScopeProvider
         void HintWarmSlot(Address address, in UInt256 index) { }
 
         /// <summary>
+        /// An account value the block's own execution committed, so a backend can start applying it to the state trie
+        /// before the block-end write batch. Called with consumer values only, never speculative ones. No-op by default.
+        /// </summary>
+        void HintAccountWrite(Address address, Account? account) { }
+
+        /// <summary>
         /// Get the account information for the following address.
         /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.
         /// </summary>

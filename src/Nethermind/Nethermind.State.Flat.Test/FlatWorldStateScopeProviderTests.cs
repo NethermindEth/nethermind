@@ -804,6 +804,49 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void EarlyAccountApply_BlockEndBatchReachesTheSameRoot([Values(1, 3, 300)] int accountCount)
+    {
+        if (!Nethermind.Core.Diagnostics.ExperimentKnobs.EarlyAccountApply) Assert.Ignore("needs NETHERMIND_EXP_EARLY_ACCOUNTS=1");
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address[] addresses = new Address[accountCount + 2];
+        for (int i = 0; i < addresses.Length; i++) addresses[i] = Address.FromNumber((UInt256)(ulong)(i + 1));
+        static Account Value(int i, int round) => new((ulong)(i + round), (UInt256)(1000 * i + round));
+
+        // Every account once, then the first again; one account is written and later reverted to its (absent)
+        // pre-block value, and one is deleted.
+        for (int i = 0; i < accountCount; i++) scope.HintAccountWrite(addresses[i], Value(i, 1));
+        scope.HintAccountWrite(addresses[0], Value(0, 2));
+        scope.HintAccountWrite(addresses[accountCount], Value(accountCount, 1));
+        scope.HintAccountWrite(addresses[accountCount + 1], null);
+        Assert.That(scope.EarlyAccounts, Is.Not.Null);
+        Assert.That(() => scope.EarlyAccounts!.Drained, Is.True.After(5000, 10));
+
+        // The block end changes every account once more except the odd ones, which keep their applied value.
+        Dictionary<Address, Account> expected = [];
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accountCount))
+        {
+            for (int i = 0; i < accountCount; i++)
+            {
+                Account final = i % 2 == 1 ? Value(i, 1) : Value(i, 3);
+                if (i == 0) final = Value(0, 2);
+                writeBatch.Set(addresses[i], final);
+                expected[addresses[i]] = final;
+            }
+        }
+
+        scope.UpdateRootHash();
+        StateTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        foreach ((Address address, Account account) in expected) expectedTree.Set(address, account);
+        expectedTree.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedTree.RootHash));
+        Assert.That(scope.EarlyAccounts, Is.Null, "the batch takes the early trie");
+        Assert.That(scope.EarlyAccountsAdopted, Is.EqualTo(1), "the early trie is adopted, not dropped");
+    }
+
+    [Test]
     public void EarlyStorageApply_IsOnByDefaultButNotWithVerifyWithTrie()
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);

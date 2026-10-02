@@ -947,6 +947,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         accountChanges.After = account;
         _needsStateRootUpdate = true;
+        if (Core.Diagnostics.ExperimentKnobs.EarlyAccountApply) _tree?.HintAccountWrite(address, account);
     }
 
     private Account? GetAndAddToCache(Address address)

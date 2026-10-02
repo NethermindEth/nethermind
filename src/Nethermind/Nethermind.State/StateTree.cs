@@ -84,7 +84,7 @@ namespace Nethermind.State
         }
 
         [SkipLocalsInit]
-        internal void SetAccounts(Dictionary<AddressAsKey, Account?> accounts)
+        internal void SetAccounts(Dictionary<AddressAsKey, Account?> accounts, Flags flags = Flags.None)
         {
             using ArrayPoolListRef<BulkSetEntry> entries = new(accounts.Count);
             Unsafe.SkipInit(out KeyHashBatch batch);
@@ -98,7 +98,7 @@ namespace Nethermind.State
                 if (batch.IsFull) batch.Flush(entries.AsSpan());
             }
             batch.Flush(entries.AsSpan());
-            BulkSet(entries);
+            BulkSet(entries, flags);
         }
 
         public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);

@@ -297,6 +297,12 @@ public class PrewarmerScopeProvider(
             (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(address, in index);
         }
 
+        // Only the block's own commits carry values the trie may take early; a populator's are speculative.
+        public void HintAccountWrite(Address address, Account? account)
+        {
+            if (!isPrewarmer) baseScope.HintAccountWrite(address, account);
+        }
+
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             CodePrefetcher? code = null;
