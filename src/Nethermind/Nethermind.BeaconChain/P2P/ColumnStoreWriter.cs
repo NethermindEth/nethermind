@@ -22,6 +22,7 @@ public sealed class ColumnStoreWriter : IDisposable
     private readonly ILogger _logger;
     private readonly BlockingCollection<Action> _writes = new(MaxQueued);
     private readonly Thread _thread;
+    private readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ColumnStoreWriter(ILogManager logManager)
     {
@@ -47,7 +48,7 @@ public sealed class ColumnStoreWriter : IDisposable
         }
     }
 
-    /// <summary>Completes once every write posted before this call has run; already complete after <see cref="Dispose"/>.</summary>
+    /// <summary>Completes once every write posted before this call has run; after <see cref="Dispose"/> has started, once the writer has drained the queue.</summary>
     /// <remarks>Waits on the caller for room when the queue is full, as <see cref="Post"/> does.</remarks>
     public Task WhenWritten()
     {
@@ -59,22 +60,29 @@ public sealed class ColumnStoreWriter : IDisposable
         }
         catch (InvalidOperationException)
         {
-            return Task.CompletedTask;
+            return _drained.Task;
         }
     }
 
     private void Run()
     {
-        foreach (Action write in _writes.GetConsumingEnumerable())
+        try
         {
-            try
+            foreach (Action write in _writes.GetConsumingEnumerable())
             {
-                write();
+                try
+                {
+                    write();
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Data column sidecar store write failed: {e.Message}");
+                }
             }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Data column sidecar store write failed: {e.Message}");
-            }
+        }
+        finally
+        {
+            _drained.TrySetResult();
         }
     }
 
