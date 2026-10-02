@@ -13,7 +13,7 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The beacon API URL to checkpoint-sync the finalized beacon state and block from. When unset, defaults to a provider for the network selected via the execution layer's chain id.", DefaultValue = "null")]
     string? CheckpointSyncUrl { get; set; }
 
-    [ConfigItem(Description = "A local SSZ-encoded beacon state file to bootstrap from. Requires a sibling block file with the extension replaced by .block.ssz. For a state advanced beyond its block, the block's post-state is downloaded from the checkpoint sync URL.", DefaultValue = "null")]
+    [ConfigItem(Description = "A local SSZ-encoded beacon state file to bootstrap from. Requires a sibling block file with the extension replaced by .block.ssz. For a state advanced beyond its block, also requires the block's post-state in a sibling file with the extension replaced by .post-state.ssz.", DefaultValue = "null")]
     string? CheckpointStateFile { get; set; }
 
     [ConfigItem(Description = "An independently trusted weak subjectivity checkpoint as block_root:epoch_number, for example 0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9:9544. Checkpoint sync fails unless its anchor block is this checkpoint's block at the start of the epoch, so supply the checkpoint's state with CheckpointStateFile or a source serving it as finalized; a proven checkpoint stays accepted for the same database, and any other fails startup. When unset, no checkpoint is required.", DefaultValue = "null")]

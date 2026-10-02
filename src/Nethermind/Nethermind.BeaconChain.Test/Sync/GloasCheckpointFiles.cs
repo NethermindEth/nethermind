@@ -17,7 +17,7 @@ internal sealed class GloasCheckpointFiles : IDisposable
 {
     private readonly TempPath _directory = TempPath.GetTempDirectory();
 
-    private GloasCheckpointFiles(byte[] stateSsz, byte[]? blockSsz)
+    private GloasCheckpointFiles(byte[] stateSsz, byte[]? blockSsz, byte[]? postStateSsz = null)
     {
         Directory.CreateDirectory(_directory.Path);
         StateFile = Path.Combine(_directory.Path, "anchor.ssz");
@@ -25,6 +25,11 @@ internal sealed class GloasCheckpointFiles : IDisposable
         if (blockSsz is not null)
         {
             File.WriteAllBytes(Path.ChangeExtension(StateFile, ".block.ssz"), blockSsz);
+        }
+
+        if (postStateSsz is not null)
+        {
+            File.WriteAllBytes(PostStateFile, postStateSsz);
         }
     }
 
@@ -40,11 +45,14 @@ internal sealed class GloasCheckpointFiles : IDisposable
     /// <summary>The path to configure as <see cref="IBeaconChainConfig.CheckpointStateFile"/>.</summary>
     public string StateFile { get; }
 
+    /// <summary>The sibling file an advanced <see cref="StateFile"/> takes its block's post-state from.</summary>
+    public string PostStateFile => Path.ChangeExtension(StateFile, ".post-state.ssz");
+
     public static GloasCheckpointFiles Write(BeaconStateGloas state, ForkedSignedBeaconBlock? block) =>
         new(BeaconStateGloas.Encode(state), block is null ? null : SignedBeaconBlockCodec.Encode(block, Spec));
 
-    public static GloasCheckpointFiles Write(byte[] stateSsz, ForkedSignedBeaconBlock block) =>
-        new(stateSsz, SignedBeaconBlockCodec.Encode(block, Spec));
+    public static GloasCheckpointFiles Write(byte[] stateSsz, ForkedSignedBeaconBlock block, byte[]? postStateSsz = null) =>
+        new(stateSsz, SignedBeaconBlockCodec.Encode(block, Spec), postStateSsz);
 
     public void Dispose() => _directory.Dispose();
 
