@@ -1445,8 +1445,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// The router opens its own channel only to a peer it is told of, which stock identify does and the probe replacing it does not, or in answer
     /// to the remote's channel; without this, two such nodes never exchange gossip. A channel can end while the session lives, by a reset or the
     /// remote closing it, and the router then drops the peer, so it is checked every <see cref="GossipChannelCheckInterval"/> and opened again,
-    /// waiting longer after each new channel that does not last (see <see cref="NextGossipRedialDelay"/>). Each attempt is closed before the
-    /// next, so a peer that never completes the negotiation holds at most one.
+    /// waiting longer after each new channel that does not last <see cref="MaxGossipRedialDelay"/> (see <see cref="NextGossipRedialDelay"/>).
+    /// Each attempt is closed before the next, so a peer that never completes the negotiation holds at most one.
     /// </remarks>
     private async Task KeepGossipChannelAsync(ManagedPeer peer)
     {
@@ -1459,6 +1459,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         TimeSpan redialDelay = GossipChannelCheckInterval;
         CancellationTokenSource? attempt = null;
         Task dialing = Task.CompletedTask;
+        long dialedAt = 0;
         try
         {
             while (!closed.IsCancellationRequested)
@@ -1467,7 +1468,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 // Checked just before dialing: a channel the remote opened first makes the router dial back, and a second one would stay open unused.
                 if (_p2p.HasGossipChannel(remotePeerId))
                 {
-                    redialDelay = GossipChannelCheckInterval;
+                    // Pubsub 1.0.0 keeps a record of every channel that ends, so a peer that keeps closing new ones is held to the longest wait.
+                    if (Stopwatch.GetElapsedTime(dialedAt) >= MaxGossipRedialDelay)
+                    {
+                        redialDelay = GossipChannelCheckInterval;
+                    }
                 }
                 else
                 {
@@ -1480,6 +1485,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
                     attempt = CancellationTokenSource.CreateLinkedTokenSource(closed);
                     dialing = DialGossipAsync(peer.Session, remotePeerId, attempt.Token);
+                    dialedAt = Stopwatch.GetTimestamp();
                     wait = redialDelay;
                     redialDelay = NextGossipRedialDelay(redialDelay);
                 }
