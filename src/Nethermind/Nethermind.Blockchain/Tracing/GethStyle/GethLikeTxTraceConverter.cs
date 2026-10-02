@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Collections.Pooled;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -156,9 +155,10 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
     }
 
     /// <summary>Estimates opcode JSON size from lengths and counts without inspecting field contents.</summary>
+    /// <remarks>Fixed fields fit within 256 bytes. Opcode and error strings allow six bytes per escaped UTF-16 code unit;
+    /// return data is unescaped hex.</remarks>
     internal static long EstimateEntrySize(GethTxTraceEntry entry, int? storageCount) =>
-        // Fixed fields fit within 256 bytes; strings allow six bytes per escaped UTF-16 code unit.
-        256L + 6L * ((long)(entry.Opcode?.Length ?? 0) + (entry.Error?.Length ?? 0) + (entry.ReturnData?.Length ?? 0))
+        256L + 6L * ((long)(entry.Opcode?.Length ?? 0) + (entry.Error?.Length ?? 0)) + (entry.ReturnData?.Length ?? 0)
         + 69L * ((entry.Stack?.Length ?? 0) / EvmStack.WordSize + (long)(entry.Memory?.Length ?? 0) / EvmPooledMemory.WordSize)
         + 140L * (storageCount ?? entry.Storage?.Count ?? 0);
 

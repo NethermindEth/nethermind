@@ -28,6 +28,16 @@ public class GethLikeTxTraceSizeTests
     private static void AssertSize(GethTxTraceEntry entry, IDictionary<UInt256, UInt256>? storage) =>
         Assert.That(GethLikeTxTraceConverter.EstimateEntrySize(entry, storage?.Count), Is.GreaterThanOrEqualTo(SerializedSize(entry, storage)));
 
+    [Test]
+    public void Hex_return_data_increases_estimate_by_its_serialized_size([Values(1, 32, 1024)] int byteCount)
+    {
+        GethTxTraceEntry empty = new() { ReturnData = "0x" };
+        GethTxTraceEntry populated = new() { ReturnData = "0x" + new string('f', byteCount * 2) };
+
+        Assert.That(GethLikeTxTraceConverter.EstimateEntrySize(populated, null) - GethLikeTxTraceConverter.EstimateEntrySize(empty, null),
+            Is.EqualTo(SerializedSize(populated, null) - SerializedSize(empty, null)));
+    }
+
     private static long SerializedSize(GethTxTraceEntry entry, IDictionary<UInt256, UInt256>? storage)
     {
         ArrayBufferWriter<byte> buffer = new();
@@ -48,8 +58,11 @@ public class GethLikeTxTraceSizeTests
 
         string?[] strings = [null, "", "STOP", "opcode 0xc not defined", "0x0123456789abcdef", "\"\\\n\r\t\0", "<>&'+", "é漢", "😀", "\ud800", "\udc00"];
         foreach (string? text in strings)
-            yield return new() { Opcode = text, Error = text, ReturnData = text };
-        yield return new() { Opcode = new string('漢', 1024), Error = new string('\n', 1024), ReturnData = new string('\"', 1024) };
+            yield return new() { Opcode = text, Error = text };
+        string?[] returnData = [null, "", "0x", "0x0123456789abcdef", "0x" + new string('f', 2048)];
+        foreach (string? data in returnData)
+            yield return new() { ReturnData = data };
+        yield return new() { Opcode = new string('漢', 1024), Error = new string('\n', 1024), ReturnData = returnData[^1] };
         yield return new() { Stack = Array.Empty<byte>(), Memory = Array.Empty<byte>(), Storage = new Dictionary<UInt256, UInt256>() };
         yield return new() { Stack = new byte[32] };
         byte[] maximum = new byte[32];
@@ -81,7 +94,7 @@ public class GethLikeTxTraceSizeTests
                 Depth = random.Next(),
                 Refund = i % 2 == 0 ? random.NextInt64() : null,
                 Error = strings[(i + 1) % strings.Length],
-                ReturnData = strings[(i + 2) % strings.Length],
+                ReturnData = returnData[i % returnData.Length],
                 Stack = i % 3 == 0 ? (ReadOnlyMemory<byte>?)null : stack,
                 Memory = i % 3 == 1 ? (ReadOnlyMemory<byte>?)null : memory,
                 Storage = i % 3 == 2 ? null : storage
