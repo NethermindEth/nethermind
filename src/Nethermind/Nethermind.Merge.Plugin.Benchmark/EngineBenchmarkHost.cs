@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Net.Http.Headers;
@@ -137,14 +138,25 @@ internal static class EngineBenchmarkHost
                         return;
                     }
 
-                    using JsonRpcContext rpcContext = JsonRpcContext.Http(url);
-                    BenchmarkJsonRpcResponseSink sink = new(ctx);
-                    await processor.ProcessAsync(
-                        ctx.Request.BodyReader,
-                        rpcContext,
-                        sink,
-                        new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
-                        ctx.RequestAborted);
+                    // Like the runner's HTTP endpoint, collect the body first and hand the processor the complete buffer.
+                    int length = checked((int)ctx.Request.ContentLength!.Value);
+                    byte[] body = ArrayPool<byte>.Shared.Rent(length);
+                    try
+                    {
+                        await ctx.Request.Body.ReadExactlyAsync(body.AsMemory(0, length), ctx.RequestAborted);
+                        using JsonRpcContext rpcContext = JsonRpcContext.Http(url);
+                        BenchmarkJsonRpcResponseSink sink = new(ctx);
+                        await processor.ProcessAsync(
+                            body.AsMemory(0, length),
+                            rpcContext,
+                            sink,
+                            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
+                            ctx.RequestAborted);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(body);
+                    }
                 });
             });
     }
@@ -154,19 +166,28 @@ internal static class EngineBenchmarkHost
     /// Unlike an NSubstitute stub, it records no calls: a recorded call keeps its arguments reachable, so every
     /// payload would survive and the growing heap would make each GC slower than in production.
     /// </remarks>
-    public static IEngineRpcModule CreateEngine(object result)
+    /// <param name="result">The value every matching method returns.</param>
+    /// <param name="onCall">Work the real handler would do with the arguments before answering, run on each call.</param>
+    public static IEngineRpcModule CreateEngine(object result, Action<object?[]?>? onCall = null)
     {
         IEngineRpcModule engine = DispatchProxy.Create<IEngineRpcModule, FixedResultEngine>();
-        ((FixedResultEngine)(object)engine).Result = result;
+        FixedResultEngine proxy = (FixedResultEngine)(object)engine;
+        proxy.Result = result;
+        proxy.OnCall = onCall;
         return engine;
     }
 
     private class FixedResultEngine : DispatchProxy
     {
         internal object Result = null!;
+        internal Action<object?[]?>? OnCall;
 
-        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
-            targetMethod!.ReturnType.IsInstanceOfType(Result) ? Result : throw new NotSupportedException(targetMethod.Name);
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (!targetMethod!.ReturnType.IsInstanceOfType(Result)) throw new NotSupportedException(targetMethod.Name);
+            OnCall?.Invoke(args);
+            return Result;
+        }
     }
 
     public static Withdrawal[] BuildWithdrawals(int count)
