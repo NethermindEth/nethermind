@@ -75,7 +75,7 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
         }
 
         return column
-            ? columns.Handle(subnetId, gloas, message.Data.ToByteArray(), verdict)
+            ? columns.Handle(subnetId, gloas, message.Data.ToByteArray())
             : gossip.Handle(topicName!, gloas, message.Data.ToByteArray(), verdict);
     }
 
