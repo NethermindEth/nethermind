@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
+using Multiformats.Address.Protocols;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -39,6 +40,10 @@ public sealed class StaticPeerKeeper : IDisposable
         _logger = logger;
         _openGossip = openGossip ?? (static (session, token) => session.DialAsync<GossipsubProtocolV11>(token));
     }
+
+    /// <summary>Whether a dial can reach <paramref name="address"/>: an IP address or DNS name, a TCP port and a peer id, and nothing else.</summary>
+    /// <remarks>Dials resolve a leading DNS name themselves; a <c>/dnsaddr</c> name needs a TXT lookup they never make, so it is not dialable.</remarks>
+    public static bool CanDial(Multiaddress address) => address.Protocols is [IP4 or IP6 or DNS or DNS4 or DNS6, TCP, P2P];
 
     /// <summary>Long enough not to race the router's own reconnect, short enough to win back a lost peer within a minute.</summary>
     public static TimeSpan CheckInterval { get; } = TimeSpan.FromSeconds(30);
