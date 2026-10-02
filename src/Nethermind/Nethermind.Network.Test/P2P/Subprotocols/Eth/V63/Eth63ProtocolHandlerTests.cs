@@ -117,6 +117,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             receiptsMessage.Dispose();
         }
 
+        [Test]
+        public async Task Receipts_response_is_checked_against_expected_receipt_counts([Values] bool exceedsCount)
+        {
+            const int count = 3;
+            Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts([Keccak.Zero], [count], CancellationToken.None);
+
+            if (exceedsCount)
+            {
+                UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_ctx.ProtocolHandler.HandleMessage, UndecodableResponse.CreateReceipts(null, count + 1), Eth63MessageCode.Receipts);
+                return;
+            }
+
+            _ctx.ProtocolHandler.HandleMessage(ReceiptsPacket(1, count));
+
+            using IOwnedReadOnlyList<TxReceipt[]> result = await task;
+            Assert.That(result[0], Has.Length.EqualTo(count));
+        }
+
         private ArrayPoolList<T> RepeatPooled<T>(T txReceipts, int count) =>
             Enumerable.Repeat(txReceipts, count).ToPooledList(count).AddTo(_disposables);
 

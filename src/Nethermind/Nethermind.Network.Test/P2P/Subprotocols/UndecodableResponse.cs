@@ -40,11 +40,13 @@ internal static class UndecodableResponse
     /// A <c>[request-id, ...fields, [[item, ...]]]</c> receipts response with one block of <paramref name="receipts"/>
     /// items that are not receipts, so decoding it would fail with an RLP error.
     /// </summary>
-    public static IByteBuffer CreateReceipts(long requestId, int receipts, params Rlp[] fieldsBeforeReceipts)
+    /// <param name="requestId">The request id, or <see langword="null"/> for an eth/63 response, which is the block list alone.</param>
+    public static IByteBuffer CreateReceipts(long? requestId, int receipts, params Rlp[] fieldsBeforeReceipts)
     {
         Rlp block = Rlp.Encode(Enumerable.Repeat(new Rlp([0x01]), receipts).ToArray());
         Rlp blocks = Rlp.Encode(new[] { block });
-        return Unpooled.WrappedBuffer(Rlp.Encode([Rlp.Encode(requestId), .. fieldsBeforeReceipts, blocks]).Bytes);
+        Rlp response = requestId is long id ? Rlp.Encode([Rlp.Encode(id), .. fieldsBeforeReceipts, blocks]) : blocks;
+        return Unpooled.WrappedBuffer(response.Bytes);
     }
 
     /// <summary>
