@@ -1611,6 +1611,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Address? sender = null;
             Address? passedOver = null;
             readyElsewhere = 0;
+            ulong runGas = 0;
+            bool runFull = false;
             for (int i = FirstUnclaimed(); i < _txCount; i++)
             {
                 if (claimed[i] != 0) continue;
@@ -1619,6 +1621,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (txSender is null) continue;
 
                 bool overtaken = i <= mainThreadTxIndex;
+                if (!overtaken && runFull && txSender.Equals(sender))
+                {
+                    // Past the heavy-chain budget each further transaction of the sender is a run of its own, warmed
+                    // in parallel from parent state like a group split at load.
+                    readyElsewhere++;
+                    continue;
+                }
+
                 if (!overtaken && sender is not null && !txSender.Equals(sender))
                 {
                     // Adjacent transactions of one sender are the one run a claim would take.
@@ -1638,6 +1648,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 sender ??= txSender;
                 run.Add((i, tx));
+                runGas = runGas.SaturatingAdd(tx.GasLimit);
+                if (Core.Diagnostics.ExperimentKnobs.SplitLateHeavyChains && Degree >= 2 && runGas > SplitSenderGroupGasThreshold) runFull = true;
             }
 
             return run.Count > 0;
