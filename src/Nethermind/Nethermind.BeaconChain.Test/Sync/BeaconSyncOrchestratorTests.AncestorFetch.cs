@@ -108,7 +108,8 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    // A fetch can outlast the ancestor's arrival by another route; its block then imports even though no peer returned the ancestor.
+    // A fetch can outlast the ancestor's arrival by another route; its block then imports at once, though no peer returned the
+    // ancestor, while the fetch keeps its place in the bound until it ends.
     [Test]
     public async Task Gossip_block_imports_when_its_parent_arrives_elsewhere_while_the_fetch_waits()
     {
@@ -121,11 +122,15 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.ProcessGossipBlockAsync(child, cts.Token);
         await harness.Orchestrator.ImportBlockAsync(parent, cts.Token);
+        bool importedBeforeFetchEnded = harness.Importer.Known.Contains(child.ComputeMessageRoot());
+        int fetchesWhileWaiting = harness.Orchestrator.AncestorFetchesInFlight;
         fetches[parent.ComputeMessageRoot()].SetResult([]);
         await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(importedBeforeFetchEnded, Is.True, "the block does not wait for the fetch to end");
+            Assert.That(fetchesWhileWaiting, Is.EqualTo(1), "the fetch still running keeps its place in the bound");
             Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
             Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero, "nothing is held for a parent that already imported");
         }

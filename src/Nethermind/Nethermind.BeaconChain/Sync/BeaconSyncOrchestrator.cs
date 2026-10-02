@@ -1812,6 +1812,17 @@ public sealed class BeaconSyncOrchestrator(
             }
         }
 
+        // The chains waiting on a by-root fetch of this block resume now; the fetch keeps its place in the bound until it ends.
+        if (_ancestorFetches.TryGetValue(root, out List<(List<ForkedSignedBeaconBlock> Chain, List<IBeaconSyncPeer?> Sources)>? waiting) && waiting.Count > 0)
+        {
+            (List<ForkedSignedBeaconBlock> Chain, List<IBeaconSyncPeer?> Sources)[] resumed = [.. waiting];
+            waiting.Clear();
+            foreach ((List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources) in resumed)
+            {
+                await AdvanceBackfillAsync(chain, sources, token);
+            }
+        }
+
         // A busy worker skips stale slot ticks, so the head step runs here too: the engine API wants forkchoiceUpdated after each head change.
         if (++_importsSinceHeadStep >= HeadStepImportInterval || slotClock.UnixMilliseconds - _headStepMs >= (long)HeadStepInterval.TotalMilliseconds)
         {
