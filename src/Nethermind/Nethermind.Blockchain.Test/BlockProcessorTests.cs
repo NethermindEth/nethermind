@@ -3400,7 +3400,7 @@ public partial class BlockProcessorTests
         ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
         adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(call =>
         {
-            observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0);
+            observedBudgets.Add(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0);
             call.Arg<Transaction>().BlockGasUsed = 21_000;
             call.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, 21_000, [], []);
             return TransactionResult.Ok;

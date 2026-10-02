@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.Threading;
@@ -17,6 +18,28 @@ namespace Nethermind.Core.Threading;
 /// </remarks>
 public partial class ParallelUnbalancedWork
 {
+    internal static partial WorkerGroup? GetCurrentGroup();
+
+    /// <summary>A transferable budget with one independent caller and shared background runners.</summary>
+    /// <remarks>
+    /// Enter separately on each synchronous stage's thread. Independent callers serialize; callbacks
+    /// already running in this group reuse their runner slot. The group owns no disposable resources.
+    /// </remarks>
+    internal sealed partial class WorkerGroup
+    {
+        internal WorkerGroup(int concurrency)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
+            Concurrency = concurrency;
+            Initialize();
+        }
+
+        internal int Concurrency { get; }
+        private partial void Initialize();
+        internal partial WorkerScope Enter();
+        internal partial void Queue(IThreadPoolWorkItem work);
+    }
+
     /// <summary>Shares a worker budget between parallel operations on the calling thread and their nested work.</summary>
     /// <remarks>
     /// The budget includes the calling thread. Nested scopes inherit the outer budget.
@@ -29,6 +52,13 @@ public partial class ParallelUnbalancedWork
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
         return new(maxDegreeOfParallelism);
+    }
+
+    /// <summary>Caps nested work while dispatching its helpers through the enclosing worker budget.</summary>
+    internal static WorkerScope BeginLimitedWorkerScope(int maxDegreeOfParallelism)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
+        return new(maxDegreeOfParallelism, limitConcurrency: true);
     }
 
     /// <summary>Provides a shared worker budget for synchronous and background parallel operations.</summary>

@@ -127,10 +127,6 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                // Start tx-root computation before asynchronous GC-region admission so it can
-                // overlap that work; keep it inside the lock so competing requests cannot run
-                // trie work concurrently.
-                _ = executionPayload.StartTxRootComputation();
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
                 try
                 {
