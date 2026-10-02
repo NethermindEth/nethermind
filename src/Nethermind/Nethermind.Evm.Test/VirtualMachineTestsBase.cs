@@ -82,6 +82,7 @@ public abstract class VirtualMachineTestsBase
     {
         _stateDb?.Dispose();
         _worldStateCloser?.Dispose();
+        Machine?.Dispose();
     }
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
