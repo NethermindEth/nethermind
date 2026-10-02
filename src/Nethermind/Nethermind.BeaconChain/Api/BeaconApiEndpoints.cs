@@ -15,7 +15,7 @@ internal static class BeaconApiEndpoints
 {
     /// <summary>The whole of what an unauthenticated caller learns about an undecodable state: a fixed
     /// sentence, not whatever the codec put in its exception.</summary>
-    internal const string UnsupportedForkMessage = "This node cannot decode the requested beacon state: its fork is not supported by this driver, which processes Fulu states only";
+    internal const string UnsupportedForkMessage = "This node cannot decode the requested beacon state: its fork predates Electra, the first fork this driver decodes";
 
     public static void MapAll(WebApplication app, BeaconApiContext ctx)
     {
