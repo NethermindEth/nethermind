@@ -43,6 +43,8 @@ public static class NewPayloadTrace
         // Read syscalls and bytes fetched from storage (not the page cache) by the processing thread across the transactions.
         public long SyscrStart, RdStart, Syscr = -1, RdBytes = -1;
         public readonly long[] Reads = new long[ReadKinds], ReadUs = new long[ReadKinds], Slow = new long[ReadKinds], SlowUs = new long[ReadKinds];
+        // Slow account and slot reads by milliseconds since the transactions started, and by eighth of the block's transactions.
+        public readonly long[] SlowByTime = new long[TimeBuckets], SlowByTx = new long[TxBuckets];
     }
 
     private static bool ReadFaultsAndSwitches(out long majflt, out long minflt, out long voluntary)
@@ -135,17 +137,29 @@ public static class NewPayloadTrace
     private const int ReadKinds = 6;
     private static readonly string[] ReadNames = ["acct", "slot", "pacct", "dbacct", "pslot", "dbslot"];
     [ThreadStatic] private static bool t_inTxs;
+    private const int TimeBuckets = 6, TxBuckets = 8; // time buckets: <1, <2, <4, <8, <16 ms and the rest
+    private static long s_txsStart;
+    private static int s_txIndex, s_txCount;
+    private static readonly long[] s_slowByTime = new long[TimeBuckets], s_slowByTx = new long[TxBuckets];
     private static readonly long SlowTicks = Stopwatch.Frequency / 50_000; // 20 µs
     private static readonly long[] s_reads = new long[ReadKinds], s_readTicks = new long[ReadKinds], s_slow = new long[ReadKinds], s_slowTicks = new long[ReadKinds];
 
     /// <summary>Whether this thread is the processing thread inside the block's transactions; cheap enough per read.</summary>
     public static bool InTxs => t_inTxs;
 
-    public static void BeginTxs()
+    public static void BeginTxs(int txCount)
     {
         if (!Enabled) return;
         Array.Clear(s_reads); Array.Clear(s_readTicks); Array.Clear(s_slow); Array.Clear(s_slowTicks);
+        Array.Clear(s_slowByTime); Array.Clear(s_slowByTx);
+        s_txCount = txCount; s_txIndex = -1; s_txsStart = Stopwatch.GetTimestamp();
         t_inTxs = true;
+    }
+
+    /// <summary>The processing thread starts its next transaction.</summary>
+    public static void OnTx()
+    {
+        if (t_inTxs) s_txIndex++;
     }
 
     public static void EndTxs()
@@ -159,13 +173,25 @@ public static class NewPayloadTrace
                 record.Reads[i] = s_reads[i]; record.ReadUs[i] = s_readTicks[i] * 1_000_000 / Stopwatch.Frequency;
                 record.Slow[i] = s_slow[i]; record.SlowUs[i] = s_slowTicks[i] * 1_000_000 / Stopwatch.Frequency;
             }
+
+            Array.Copy(s_slowByTime, record.SlowByTime, TimeBuckets); Array.Copy(s_slowByTx, record.SlowByTx, TxBuckets);
         }
     }
 
     public static void AddRead(int kind, long ticks)
     {
         s_reads[kind]++; s_readTicks[kind] += ticks;
-        if (ticks >= SlowTicks) { s_slow[kind]++; s_slowTicks[kind] += ticks; }
+        if (ticks >= SlowTicks)
+        {
+            s_slow[kind]++; s_slowTicks[kind] += ticks;
+            if (kind <= SlotRead)
+            {
+                long ms = (Stopwatch.GetTimestamp() - s_txsStart) * 1000 / Stopwatch.Frequency;
+                int bucket = ms < 1 ? 0 : ms < 2 ? 1 : ms < 4 ? 2 : ms < 8 ? 3 : ms < 16 ? 4 : 5;
+                s_slowByTime[bucket]++;
+                if (s_txCount > 0) s_slowByTx[Math.Clamp(s_txIndex, 0, s_txCount - 1) * TxBuckets / s_txCount]++;
+            }
+        }
     }
 
     private static readonly AsyncLocal<Record?> s_request = new();
@@ -236,6 +262,7 @@ public static class NewPayloadTrace
             line.Append(' ').Append(kind).Append("reads=").Append(record.Reads[i]).Append(' ').Append(kind).Append("us=").Append(record.ReadUs[i])
                 .Append(' ').Append(kind).Append("slow=").Append(record.Slow[i]).Append(' ').Append(kind).Append("slowus=").Append(record.SlowUs[i]);
         }
+        line.Append(" slowt=").AppendJoin('/', record.SlowByTime).Append(" slowtx=").AppendJoin('/', record.SlowByTx);
         Console.Out.WriteLine(line.ToString());
     }
 }

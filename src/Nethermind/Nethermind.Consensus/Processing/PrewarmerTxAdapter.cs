@@ -6,6 +6,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -26,6 +27,7 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
         if (!prewarmerState.IsPrewarmer)
         {
             preWarmer.OnBeforeTxExecution();
+            NewPayloadTrace.OnTx();
         }
     }
 

@@ -150,7 +150,7 @@ public class BranchProcessor(
                 {
                     NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneStart);
                     NewPayloadTrace.SchedStart();
-                    NewPayloadTrace.BeginTxs();
+                    NewPayloadTrace.BeginTxs(suggestedBlock.Transactions.Length);
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
                     NewPayloadTrace.SchedEnd();
                     NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneEnd);
