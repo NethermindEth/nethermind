@@ -372,6 +372,52 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
+    /// A fetched ancestor of a gossip block that its first import, before it is held for a parked block, finds invalid blames
+    /// the peer that served it, as any invalid block served by root does; one refused only by this node's own fork-choice
+    /// admission, or because the importer no longer defers its parent, says nothing of the block, so its peer is not blamed.
+    /// </summary>
+    [Test]
+    public async Task Fetched_ancestor_of_a_parked_block_failing_its_first_import_blames_its_supplier_only_when_invalid([Values] HoldCheckFailure failure)
+    {
+        ParkedParentScenario scenario = CreateParkedParentScenario();
+        Harness harness = scenario.Harness;
+        Hash256 childRoot = scenario.Child.ComputeMessageRoot();
+        scenario.Peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == childRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([scenario.Child]));
+        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
+        switch (failure)
+        {
+            case HoldCheckFailure.Invalid:
+                harness.Importer.Forged.Add(childRoot);
+                break;
+            case HoldCheckFailure.LocalAdmission:
+                harness.Importer.AdmissionRefused.Add(childRoot);
+                break;
+            case HoldCheckFailure.ParentForgotten:
+                harness.Importer.Known.Remove(scenario.FullRoot);
+                harness.Importer.Import(scenario.Parent, scenario.Parent.ComputeMessageRoot(), verifySignatures: true);
+                harness.Importer.Known.Add(scenario.FullRoot);
+                break;
+        }
+
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Grandchild, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ByRootRequestsFor(scenario.Peer, childRoot), Is.EqualTo(1), "fixture: the ancestor is fetched");
+            Assert.That(harness.Importer.ByRootImports, Does.Contain(childRoot), "fixture: its first import is the hold check");
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
+            scenario.Peer.Received(failure == HoldCheckFailure.Invalid ? 1 : 0).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+        }
+    }
+
+    public enum HoldCheckFailure
+    {
+        Invalid,
+        LocalAdmission,
+        ParentForgotten,
+    }
+
+    /// <summary>
     /// A child of a parked block that the full queue cannot take is neither deferred by the importer nor marked seen, so a
     /// later copy can still be held once there is room; marked seen, the valid block would be refused from gossip for good.
     /// </summary>
