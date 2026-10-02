@@ -75,7 +75,7 @@ public static class BeaconStateAccessors
     public static Hash256 GetRandaoMix(this BeaconStateFulu state, ulong epoch)
     {
         ulong currentEpoch = state.GetCurrentEpoch();
-        ulong age = currentEpoch - epoch; // unsigned wraparound: also rejects epoch > currentEpoch
+        ulong age = currentEpoch - epoch; // unsigned wraparound rejects a later epoch, except one so near 2^64 that the wrapped age falls inside the window
         if (age >= Presets.EpochsPerHistoricalVector)
             throw new BeaconStateException(
                 $"Randao mix for epoch {epoch} is not available: state is at epoch {currentEpoch}, " +
