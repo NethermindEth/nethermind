@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.IO.Pipelines;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -50,6 +51,7 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
     private byte[] _sszEncoded = null!;
     private byte[] _jsonEncoded = null!;
     private byte[] _jsonRequestBody = null!;
+    private readonly Pipe _responsePipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
 
     private IHost _sszHost = null!;
     private IHost _jsonHost = null!;
@@ -110,16 +112,34 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
         return count;
     }
 
-    [Benchmark(Description = "SSZ  encode GetPayloadV3 result")]
-    public int SerializeSsz()
+    [Benchmark(Description = "SSZ  encode GetPayloadV3 result (into a pipe)")]
+    public long SerializeSsz()
     {
-        ArrayBufferWriter<byte> writer = new(_sszEncoded.Length);
-        return SszCodec.EncodeGetPayloadV3Response(_result, writer);
+        SszCodec.EncodeGetPayloadV3Response(_result, _responsePipe.Writer);
+        return DrainResponsePipe();
     }
 
-    [Benchmark(Description = "JSON encode GetPayloadV3Result")]
-    public byte[] SerializeJson() =>
-        JsonSerializer.SerializeToUtf8Bytes(_result, EthereumJsonSerializer.JsonOptions);
+    [Benchmark(Description = "JSON encode GetPayloadV3 response (into a pipe)")]
+    public long SerializeJson()
+    {
+        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(1), Result = _result };
+        JsonRpcResponseWriter.Write(_responsePipe.Writer, response, EthereumJsonSerializer.JsonOptions);
+        return DrainResponsePipe();
+    }
+
+    /// <summary>Flushes and consumes what an encode row wrote, as the transport would.</summary>
+    /// <remarks>
+    /// Both handlers write into the response <see cref="PipeWriter"/>, which hands out segments and never grows or
+    /// copies one buffer, so neither row encodes into a growable array.
+    /// </remarks>
+    private long DrainResponsePipe()
+    {
+        _responsePipe.Writer.FlushAsync().GetAwaiter().GetResult();
+        _responsePipe.Reader.TryRead(out ReadResult read);
+        long length = read.Buffer.Length;
+        _responsePipe.Reader.AdvanceTo(read.Buffer.End);
+        return length;
+    }
 
     [Benchmark(Description = "SSZ  GetPayloadV3 (full Kestrel round-trip)")]
     public async Task<int> SszRoundTrip()
