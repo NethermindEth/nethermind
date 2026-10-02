@@ -42,6 +42,68 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Filtered_candidates_back_off_without_delaying_other_peers([Values(1, 4)] int parallelism, [Values] bool isStatic)
+        {
+            const int candidates = 8;
+            await using Context ctx = new(parallelism, maxActivePeers: candidates + 1);
+            ctx.NetworkConfig.PeersUpdateInterval = 10;
+            ctx.RlpxPeer.UseRecentIpFilter(TimeSpan.FromMilliseconds(400));
+            Assert.That(ctx.RlpxPeer.ShouldContact(IPAddress.Parse("52.141.78.53")), Is.True);
+            foreach (NetworkNode node in ctx.CreateNodes(candidates)) ctx.PeerPool.GetOrAdd(new Node(node, isStatic));
+            ctx.PeerManager.Start();
+
+            int initialChecks = ctx.RlpxPeer.ShouldContactCallsCount;
+            await Task.Delay(200);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.RlpxPeer.ShouldContactCallsCount, Is.LessThanOrEqualTo(initialChecks + candidates));
+                Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero);
+            }
+
+            NetworkNode eligible = new(ctx.GenerateEnode().Replace("52.141.78.53", "52.141.78.54"));
+            ctx.PeerPool.GetOrAdd(eligible);
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(1, TimeSpan.FromMilliseconds(600));
+            Assert.That(ctx.PeerPool.ActivePeers.ContainsKey(eligible.NodeId), Is.True);
+
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(2, TimeSpan.FromSeconds(5));
+        }
+
+        [Test]
+        public async Task Filtered_static_candidates_do_not_repeat_selection([Values] bool staticOnly)
+        {
+            int selections = 0;
+            Node node = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
+            Peer peer = new(node, Substitute.For<INodeStats>());
+            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+            if (!staticOnly) peers.TryAdd(node.Id, peer);
+
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(_ =>
+            {
+                Interlocked.Increment(ref selections);
+                return peers;
+            });
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(new[] { peer });
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            NetworkConfig config = new() { MaxActivePeers = 2, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
+            PeerManager manager = new(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+
+            manager.Start();
+            try
+            {
+                Assert.That(() => Volatile.Read(ref selections), Is.GreaterThan(0).After(5000, 10));
+                await Task.Delay(200);
+                Assert.That(Volatile.Read(ref selections), Is.LessThanOrEqualTo(4));
+            }
+            finally
+            {
+                await manager.StopAsync();
+            }
+        }
+
+        [Test]
         public async Task Start_rejects_non_positive_peer_update_interval([Values(0, -1)] int interval)
         {
             await using Context ctx = new();
@@ -1229,6 +1291,7 @@ namespace Nethermind.Network.Test
             private readonly List<Session> _sessions = sessions;
             private NodeFilter _nodeFilter = NodeFilter.AcceptAll;
             private int _connectAsyncCallsCount;
+            private int _shouldContactCallsCount;
             private int _plainOperationCanceledCount;
             private bool _throwPlainOperationCanceledOnCancellation;
 
@@ -1316,6 +1379,8 @@ namespace Nethermind.Network.Test
 
             public int ConnectAsyncCallsCount => Volatile.Read(ref _connectAsyncCallsCount);
 
+            public int ShouldContactCallsCount => Volatile.Read(ref _shouldContactCallsCount);
+
             public int PlainOperationCanceledCount => Volatile.Read(ref _plainOperationCanceledCount);
 
             public void ThrowPlainOperationCanceledOnCancellation() => _throwPlainOperationCanceledOnCancellation = true;
@@ -1354,10 +1419,11 @@ namespace Nethermind.Network.Test
             public ConcurrentBag<IPAddress> ContactedIps { get; } = [];
 
             /// <summary>Replaces the accept-everything default with the production recent-IP filter.</summary>
-            public void UseRecentIpFilter() => _nodeFilter = NodeFilter.CreateExact(size: 256, timeout: TimeSpan.FromMinutes(5));
+            public void UseRecentIpFilter(TimeSpan? timeout = null) => _nodeFilter = NodeFilter.CreateExact(size: 256, timeout: timeout ?? TimeSpan.FromMinutes(5));
 
             public bool ShouldContact(IPAddress ip, bool exactOnly = false)
             {
+                Interlocked.Increment(ref _shouldContactCallsCount);
                 if (!_nodeFilter.TryAccept(ip, exactOnly)) return false;
 
                 ContactedIps.Add(ip);
