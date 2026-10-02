@@ -59,28 +59,42 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    // Blocks whose walks reach one unknown root share one request for it, also once the slot's budget has been renewed.
+    // Blocks whose walks reach one unknown root share one request for it, also once the slot's budget has been renewed, and
+    // also once the walk that fetched it waits on a deeper ancestor.
     [Test]
-    public async Task An_ancestor_being_fetched_is_not_requested_again()
+    public async Task An_ancestor_being_fetched_is_not_requested_again([Values] bool deeperAncestorFetched)
     {
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 2);
-        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 3, WallSlot - 2);
+        ForkedSignedBeaconBlock grandparent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
         (Harness harness, IBeaconSyncPeer peer, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = CreateWaitingByRootHarness();
         harness.Importer.Known.Add(anchorRoot);
+        if (!deeperAncestorFetched)
+        {
+            await harness.Orchestrator.ImportBlockAsync(grandparent, CancellationToken.None);
+        }
+
         ForkedSignedBeaconBlock first = ChildOf(parent, WallSlot);
         ForkedSignedBeaconBlock second = ChildOf(parent, WallSlot + 1);
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
 
         await harness.Orchestrator.ProcessGossipBlockAsync(first, cts.Token);
+        if (deeperAncestorFetched)
+        {
+            fetches[parent.ComputeMessageRoot()].SetResult([parent]);
+            await WaitForFetchAsync(fetches, grandparent.ComputeMessageRoot(), harness, cts.Token);
+        }
+
         SetWallSlot(harness, WallSlot + 1);
         await harness.Orchestrator.ProcessGossipBlockAsync(second, cts.Token);
         int requestsWhileWaiting = ByRootRequests(peer);
-        fetches[parent.ComputeMessageRoot()].SetResult([parent]);
+        ForkedSignedBeaconBlock fetched = deeperAncestorFetched ? grandparent : parent;
+        fetches[fetched.ComputeMessageRoot()].SetResult([fetched]);
         await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(requestsWhileWaiting, Is.EqualTo(1));
+            Assert.That(requestsWhileWaiting, Is.EqualTo(deeperAncestorFetched ? 2 : 1));
             Assert.That(harness.Importer.Known, Does.Contain(first.ComputeMessageRoot()).And.Contain(second.ComputeMessageRoot()));
         }
     }
