@@ -1111,6 +1111,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         string trimmedMethodName = methodName.Trim();
+        // Stats are keyed by the request's method, so whitespace variants must not mint new keys.
+        rpcRequest.Method = trimmedMethodName;
 
         ModuleResolution result = _rpcModuleProvider.Check(trimmedMethodName, context, out string? module, out ResolvedMethodInfo? method);
         if (result == ModuleResolution.Enabled)
