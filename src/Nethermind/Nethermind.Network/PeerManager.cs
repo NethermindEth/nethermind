@@ -41,7 +41,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
         private readonly ConditionalWeakTable<Peer, StrongBox<long>> _contactRetryAfter = [];
-        private const int FilteredPeerRetryDelayMs = 1000;
+        private readonly TimeProvider _timeProvider;
         private Task? _peerUpdateLoopTask;
         private Task? _peerUpdateTimerTask;
         private readonly IPeerPool _peerPool;
@@ -74,7 +74,20 @@ namespace Nethermind.Network
             INetworkConfig networkConfig,
             IEnode enode,
             ILogManager logManager)
+            : this(rlpxHost, peerPool, stats, networkConfig, enode, logManager, TimeProvider.System)
         {
+        }
+
+        internal PeerManager(
+            IRlpxHost rlpxHost,
+            IPeerPool peerPool,
+            INodeStatsManager stats,
+            INetworkConfig networkConfig,
+            IEnode enode,
+            ILogManager logManager,
+            TimeProvider timeProvider)
+        {
+            _timeProvider = timeProvider;
             _logger = logManager.GetClassLogger<PeerManager>();
             _rlpxHost = rlpxHost;
             _enode = enode;
@@ -458,7 +471,7 @@ namespace Nethermind.Network
 
             // Delay to prevent high CPU use. There is a shortcut path for newly discovered peer, so having
             // a lower delay probably won't do much.
-            await Task.Delay(TimeSpan.FromSeconds(1), _cancellationTokenSource.Token);
+            await Task.Delay(TimeSpan.FromSeconds(1), _timeProvider, _cancellationTokenSource.Token);
             return null;
         }
 
@@ -581,7 +594,7 @@ namespace Nethermind.Network
                 _currentSelection.PreCandidates.Add(peer);
             }
 
-            long now = Environment.TickCount64;
+            long now = _timeProvider.GetTimestamp();
             bool hasOnlyStaticNodes = false;
             if (_currentSelection.PreCandidates.Count == 0)
             {
@@ -597,7 +610,11 @@ namespace Nethermind.Network
             DateTime nowUTC = DateTime.UtcNow;
             foreach (Peer preCandidate in _currentSelection.PreCandidates)
             {
-                if (IsContactRetryDelayed(preCandidate, now)) continue;
+                if (IsContactRetryDelayed(preCandidate, now))
+                {
+                    _currentSelection.Counters.Increment(nameof(ActivePeerSelectionCounter.FilteredByContactRetryDelay));
+                    continue;
+                }
 
                 if (preCandidate.Node.Port == 0)
                 {
@@ -767,7 +784,8 @@ namespace Nethermind.Network
         private enum ActivePeerSelectionCounter
         {
             FilteredByZeroPort,
-            Incompatible
+            Incompatible,
+            FilteredByContactRetryDelay
         }
 
         private readonly struct PeerStats(Peer peer, bool failedValidation, long currentReputation)
@@ -791,7 +809,7 @@ namespace Nethermind.Network
 
         private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
         {
-            if (IsContactRetryDelayed(peer, Environment.TickCount64)) return;
+            if (IsContactRetryDelayed(peer, _timeProvider.GetTimestamp())) return;
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
 
             // Claim the slot before the first await: a caller suspended in the rate limiter is invisible
@@ -813,7 +831,7 @@ namespace Nethermind.Network
                 if (!ShouldContactPeer(peer))
                 {
                     StrongBox<long> retryAfter = _contactRetryAfter.GetValue(peer, static _ => new());
-                    Volatile.Write(ref retryAfter.Value, Environment.TickCount64 + FilteredPeerRetryDelayMs);
+                    Volatile.Write(ref retryAfter.Value, _timeProvider.GetTimestamp() + _timeProvider.TimestampFrequency);
                     return;
                 }
 

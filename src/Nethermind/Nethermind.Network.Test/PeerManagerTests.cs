@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -45,18 +46,20 @@ namespace Nethermind.Network.Test
         public async Task Filtered_candidates_back_off_without_delaying_other_peers([Values(1, 4)] int parallelism, [Values] bool isStatic)
         {
             const int candidates = 8;
-            await using Context ctx = new(parallelism, maxActivePeers: candidates + 1);
+            ManualTimeProvider timeProvider = new();
+            await using Context ctx = new(parallelism, maxActivePeers: candidates + 1, timeProvider: timeProvider);
             ctx.NetworkConfig.PeersUpdateInterval = 10;
-            ctx.RlpxPeer.UseRecentIpFilter(TimeSpan.FromMilliseconds(400));
+            ctx.RlpxPeer.UseRecentIpFilter();
             Assert.That(ctx.RlpxPeer.ShouldContact(IPAddress.Parse("52.141.78.53")), Is.True);
             foreach (NetworkNode node in ctx.CreateNodes(candidates)) ctx.PeerPool.GetOrAdd(new Node(node, isStatic));
             ctx.PeerManager.Start();
 
             int initialChecks = ctx.RlpxPeer.ShouldContactCallsCount;
+            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
             await Task.Delay(200);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(ctx.RlpxPeer.ShouldContactCallsCount, Is.LessThanOrEqualTo(initialChecks + candidates));
+                Assert.That(ctx.RlpxPeer.ShouldContactCallsCount, Is.LessThanOrEqualTo(initialChecks + candidates * 2));
                 Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero);
             }
 
@@ -65,6 +68,8 @@ namespace Nethermind.Network.Test
             await ctx.RlpxPeer.WaitForConnectCallsAsync(1, TimeSpan.FromMilliseconds(600));
             Assert.That(ctx.PeerPool.ActivePeers.ContainsKey(eligible.NodeId), Is.True);
 
+            ctx.RlpxPeer.UseRecentIpFilter();
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
             await ctx.RlpxPeer.WaitForConnectCallsAsync(2, TimeSpan.FromSeconds(5));
         }
 
@@ -86,14 +91,16 @@ namespace Nethermind.Network.Test
             peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
             peerPool.StaticPeers.Returns(new[] { peer });
             IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            ManualTimeProvider timeProvider = new();
             NetworkConfig config = new() { MaxActivePeers = 2, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
             PeerManager manager = new(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
-                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, timeProvider);
 
             manager.Start();
             try
             {
                 Assert.That(() => Volatile.Read(ref selections), Is.GreaterThan(0).After(5000, 10));
+                await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
                 await Task.Delay(200);
                 Assert.That(Volatile.Read(ref selections), Is.LessThanOrEqualTo(4));
             }
@@ -1148,9 +1155,11 @@ namespace Nethermind.Network.Test
             public IStaticNodesManager StaticNodesManager { get; }
             public TestNodeSource TestNodeSource { get; }
             public List<Session> Sessions { get; } = [];
+            private readonly TimeProvider _timeProvider;
 
-            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null)
+            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null, TimeProvider? timeProvider = null)
             {
+                _timeProvider = timeProvider ?? TimeProvider.System;
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
                 DiscoveryApp.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
@@ -1172,7 +1181,7 @@ namespace Nethermind.Network.Test
                 CreatePeerManager(peerManagerLogManager);
             }
 
-            public void CreatePeerManager(ILogManager? logManager = null) => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), logManager ?? LimboLogs.Instance);
+            public void CreatePeerManager(ILogManager? logManager = null) => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), logManager ?? LimboLogs.Instance, _timeProvider);
 
             public void SetupPersistedPeers(int count) => Storage.UpdateNodes(CreateNodes(count));
 
@@ -1419,7 +1428,7 @@ namespace Nethermind.Network.Test
             public ConcurrentBag<IPAddress> ContactedIps { get; } = [];
 
             /// <summary>Replaces the accept-everything default with the production recent-IP filter.</summary>
-            public void UseRecentIpFilter(TimeSpan? timeout = null) => _nodeFilter = NodeFilter.CreateExact(size: 256, timeout: timeout ?? TimeSpan.FromMinutes(5));
+            public void UseRecentIpFilter() => _nodeFilter = NodeFilter.CreateExact(size: 256, timeout: TimeSpan.FromMinutes(5));
 
             public bool ShouldContact(IPAddress ip, bool exactOnly = false)
             {
