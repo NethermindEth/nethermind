@@ -159,6 +159,9 @@ public class MessageDictionaryTests
     {
         yield return new TestCaseData(UndecodableResponse.Create(112)).SetName("Not pending request id");
         yield return new TestCaseData(Unpooled.WrappedBuffer([0x80])).SetName("Unreadable request id");
+        yield return new TestCaseData(Unpooled.WrappedBuffer(Array.Empty<byte>())).SetName("Empty payload");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc1])).SetName("List shorter than its header");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc2, 0x82, 0x01])).SetName("Request id shorter than its header");
     }
 
     private static Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> CreateRequest(int requestId)

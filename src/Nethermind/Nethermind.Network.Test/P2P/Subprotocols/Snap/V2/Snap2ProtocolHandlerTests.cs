@@ -115,7 +115,8 @@ public class Snap2ProtocolHandlerTests
     {
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
-        Snap2ProtocolHandler handler = CreateHandler(session, Substitute.For<ISnapServer>(), new MessageSerializationService());
+        Snap2ProtocolHandler handler = CreateHandler(session, Substitute.For<ISnapServer>(),
+            new MessageSerializationService(SerializerInfo.Create(new BlockAccessListsMessageSerializer())));
 
         UndecodableResponse.AssertRejectedAsUnrequested(handler.HandleMessage, Snap2MessageCode.BlockAccessLists);
     }

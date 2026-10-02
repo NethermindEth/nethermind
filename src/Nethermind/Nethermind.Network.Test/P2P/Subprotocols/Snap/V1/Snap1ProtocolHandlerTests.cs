@@ -251,7 +251,11 @@ public class Snap1ProtocolHandlerTests
         Snap1ProtocolHandler handler = new(
             session,
             Substitute.For<INodeStatsManager>(),
-            new MessageSerializationService(),
+            new MessageSerializationService(
+                SerializerInfo.Create(new AccountRangeMessageSerializer()),
+                SerializerInfo.Create(new StorageRangesMessageSerializer()),
+                SerializerInfo.Create(new ByteCodesMessageSerializer()),
+                SerializerInfo.Create(new TrieNodesMessageSerializer())),
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             new SyncConfig(),

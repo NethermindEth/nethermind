@@ -18,7 +18,17 @@ internal static class Eth66RequestId
         RlpReader ctx = new(content.AsSpan());
         try
         {
-            ctx.ReadSequenceLength();
+            if (!NextItemFits(ref ctx, ctx.Length))
+            {
+                return false;
+            }
+
+            int end = ctx.ReadSequenceLength() + ctx.Position;
+            if (!NextItemFits(ref ctx, end))
+            {
+                return false;
+            }
+
             requestId = ctx.DecodeLong();
             return true;
         }
@@ -27,4 +37,9 @@ internal static class Eth66RequestId
             return false;
         }
     }
+
+    // The RLP readers index prefix and content bytes without bounds checks, so a truncated
+    // payload would throw IndexOutOfRangeException instead of being reported as unreadable.
+    private static bool NextItemFits(ref RlpReader ctx, int end) =>
+        ctx.Position < end && ctx.Position + ctx.PeekNextRlpLength() <= end;
 }
