@@ -56,12 +56,13 @@ public class BeaconChainPluginTests
 
         await p2p.StartAsync(token);
 
-        // Without the validator the library accepts and forwards every message, including one on a topic that is not eth2's.
+        // Without the validator the library accepts and forwards every message, including one on a topic the spec requires rejecting.
         Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = "/eth2/beacon_block" }), Is.EqualTo(MessageValidity.Rejected));
-        const string blockTopic = "/eth2/00000000/beacon_block/ssz_snappy";
-        ITopic topic = p2p.GetTopic(blockTopic);
+        Message unknown = new() { Topic = "/eth2/00000000/beacon_blocks/ssz_snappy" };
+        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, unknown), Is.EqualTo(MessageValidity.Rejected));
+        ITopic topic = p2p.GetTopic(unknown.Topic);
         topic.Unsubscribe();
-        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = blockTopic }), Is.EqualTo(MessageValidity.Throttled));
+        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = unknown.Topic }), Is.EqualTo(MessageValidity.Throttled));
     }
 
     /// <summary>p2p-interface.md "Topics and messages": the router drops a message carrying from, seqno, signature or key before the validator runs.</summary>
@@ -112,6 +113,16 @@ public class BeaconChainPluginTests
             Assert.That(missing, Is.Empty);
             Assert.That(p2p.PubsubSettingsForTest.BehaviorPenaltyWeight, Is.Zero);
         }
+    }
+
+    /// <summary>fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column goes to the topic mesh neighbors, not to every peer subscribed to the topic.</summary>
+    [Test]
+    public async Task Gossipsub_publishes_to_the_topic_mesh_only()
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+
+        Assert.That(p2p.PubsubSettingsForTest.FloodPublish, Is.False);
     }
 
     /// <summary>p2p-interface.md "Gossipsub size limits": an encoded RPC may reach max_message_size(), max_compressed_len(10 MiB) + 1024 bytes.</summary>

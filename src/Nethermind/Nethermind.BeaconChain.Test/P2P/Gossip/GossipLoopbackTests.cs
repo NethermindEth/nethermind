@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
@@ -16,6 +18,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -27,13 +30,8 @@ public class GossipLoopbackTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
-    // The mesh itself forms in-process (subscriptions exchange, the topic is grafted both ways and
-    // the RPC reaches the peer router — verified with trace logging), but dotnet-libp2p
-    // 1.0.0-preview.45 `PubsubRouter.Publish` always signs messages (attaching from/seqno/signature)
-    // while `StrictNoSign` reception requires an empty signature, so the receiver rejects every
-    // self-published message. Run explicitly once the library can publish StrictNoSign-compliant
-    // messages; the GossipRouter handler path is covered by GossipRouterTests meanwhile.
-    [Explicit("dotnet-libp2p preview.45 cannot publish StrictNoSign-compliant messages, so loopback delivery is rejected by the receiving router")]
+    /// <summary>A block this host publishes passes the other host's <c>StrictNoSign</c> check and validator and reaches its gossip router.</summary>
+    /// <remarks>p2p-interface.md "Topics and messages": a published message omits from, seqno, signature and key, which the receiver enforces.</remarks>
     [Test]
     [CancelAfter(120_000)]
     public async Task Block_published_on_one_host_reaches_the_gossip_router_on_the_other(CancellationToken token)
@@ -41,14 +39,14 @@ public class GossipLoopbackTests
         SlotClock slotClock = new(Spec, Timestamper.Default);
         byte[] digest = ForkDigest.Compute(Spec, slotClock.CurrentEpoch);
         string blockTopic = GossipTopics.Topic(digest, GossipTopics.BeaconBlock);
+        GossipRouter router = new(Spec, slotClock, LimboLogs.Instance);
 
         await using BeaconP2P publisher = CreateHost();
-        await using BeaconP2P subscriber = CreateHost();
+        await using BeaconP2P subscriber = CreateHost(new GossipMessageValidator(router, new ColumnGossipRouter(Spec, slotClock, LimboLogs.Instance), Spec, slotClock));
         await publisher.StartAsync(token);
         await subscriber.StartAsync(token);
 
         ITopic publisherTopic = publisher.GetTopic(blockTopic);
-        GossipRouter router = new(Spec, slotClock, LimboLogs.Instance);
         router.Start(subscriber.GetTopic, digest);
         TaskCompletionSource<ForkedSignedBeaconBlock> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
         router.BeaconBlockReceived += block => received.TrySetResult(block);
@@ -67,6 +65,52 @@ public class GossipLoopbackTests
 
         ForkedSignedBeaconBlock receivedBlock = await received.Task;
         Assert.That(receivedBlock.Slot, Is.EqualTo(slotClock.CurrentSlot).Within(1), "the published block round-trips the mesh");
+    }
+
+    /// <summary>A column this host reconstructs reaches a mesh neighbor on that column's subnet, which enforces <c>StrictNoSign</c>.</summary>
+    /// <remarks>fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column of a subscribed subnet MUST be sent to the topic mesh neighbors.</remarks>
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Reconstructed_column_reaches_the_mesh_neighbor_on_its_subnet(CancellationToken token)
+    {
+        const ulong slot = 13_410_304;
+        const ulong reconstructed = Eip7594DasConstants.RequiredColumnsForReconstruction;
+        SlotClock slotClock = new(Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + slot * Spec.SecondsPerSlot + 6)));
+        byte[] digest = ForkDigest.Compute(Spec, Spec.GetEpoch(slot));
+        string topicId = GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(reconstructed));
+        // An imported block's header, so its sidecars pass every check and its reconstructed columns may be published.
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
+        DataColumnSidecarTestFixture.StoreAsImported(store, DataColumnSidecarTestFixture.BuildValidSidecar(0, slot));
+        ColumnGossipRouter columns = new(Spec, slotClock, LimboLogs.Instance, new DataColumnSidecarPool(), store);
+
+        await using BeaconP2P reconstructing = CreateHost(new GossipMessageValidator(new GossipRouter(Spec, slotClock, LimboLogs.Instance), columns, Spec, slotClock));
+        await using BeaconP2P neighbor = CreateHost();
+        await reconstructing.StartAsync(token);
+        await neighbor.StartAsync(token);
+        columns.Start(reconstructing.GetTopic, digest, [.. Enumerable.Range(0, (int)reconstructed + 1).Select(static subnet => (ulong)subnet)]);
+        TaskCompletionSource<byte[]> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        neighbor.GetTopic(topicId).OnMessage += (_, data) => received.TrySetResult(data);
+        neighbor.Discover([LoopbackAddress(reconstructing)]);
+        while (!IsMeshNeighbor(reconstructing, topicId, neighbor.LocalPeerId!))
+        {
+            await Task.Delay(100, token);
+        }
+
+        for (ulong column = 0; column < reconstructed; column++)
+        {
+            columns.Handle(column, gloasTopic: false, Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(column, slot))));
+        }
+
+        Assert.That(await received.Task, Is.EqualTo(Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(reconstructed, slot)))));
+    }
+
+    private static bool IsMeshNeighbor(BeaconP2P node, string topicId, PeerId peer)
+    {
+        IRoutingStateContainer router = node.RoutingStateForTest!;
+        lock (router)
+        {
+            return router.Mesh.TryGetValue(topicId, out HashSet<PeerId>? mesh) && mesh.Contains(peer);
+        }
     }
 
     /// <summary>A gossip message of any legal size crosses a real session whole, so its sender is not disconnected for a truncated RPC.</summary>
@@ -102,11 +146,12 @@ public class GossipLoopbackTests
         Assert.That(await received.Task, Is.EqualTo(message));
     }
 
-    private static BeaconP2P CreateHost()
+    private static BeaconP2P CreateHost(GossipMessageValidator? validator = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        return new BeaconP2P(config, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+        return new BeaconP2P(config, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance,
+            validator);
     }
 
     private static Multiaddress LoopbackAddress(BeaconP2P node)
