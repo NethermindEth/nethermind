@@ -58,7 +58,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null")]
     string? StaticPeers { get; set; }
 
-    [ConfigItem(Description = "Use tree is available through a DNS name. For the default of `<chain name>.ethdisco.net`, leave unspecified.", DefaultValue = "null")]
+    [ConfigItem(Description = "The EIP-1459 node list to discover peers from, as `enrtree://<signer public key>@<domain>`. A bare domain is also accepted, but then the list signature is not verified. For the default of `all.<chain name>.ethdisco.net`, leave unspecified.", DefaultValue = "null")]
     string? DiscoveryDns { get; set; }
 
     [ConfigItem(Description = "Whether to use static peers only.", DefaultValue = "false")]

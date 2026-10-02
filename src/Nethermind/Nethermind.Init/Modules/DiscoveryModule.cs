@@ -24,6 +24,11 @@ namespace Nethermind.Init.Modules;
 
 public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfig) : Module
 {
+    /// <summary>
+    /// The public key that signs the ethdisco.net node lists, as published by the Ethereum Foundation and used by geth.
+    /// </summary>
+    private const string EthDiscoTreeSigner = "AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE";
+
     protected override void Load(ContainerBuilder builder)
     {
         builder.Register(static context => new NodesLoaderOptions(
@@ -72,7 +77,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 if (networkConfig.DiscoveryDns == null)
                 {
                     string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
-                    networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
+                    networkConfig.DiscoveryDns = $"enrtree://{EthDiscoTreeSigner}@all.{chainName}.ethdisco.net";
                 }
 
                 networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. discoveryConfig.Bootnodes, .. chainSpec.Bootnodes];
