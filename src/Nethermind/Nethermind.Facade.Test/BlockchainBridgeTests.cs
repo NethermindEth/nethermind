@@ -27,13 +27,16 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Precompiles;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Facade.Test;
 
@@ -362,8 +365,14 @@ public class BlockchainBridgeTests
         Assert.That(_blockchainBridge.GetTxReceiptInfo(txHash), Is.EqualTo(result));
     }
 
+    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
+    [
+        .. CallSources(),
+        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
+    ];
+
     [Test]
-    public void Call_sets_maxFeePerBlobGas()
+    public void CreateAccessList_sets_maxFeePerBlobGas()
     {
         _timestamper.UtcNow = DateTime.MaxValue;
         BlockHeader header = Build.A.BlockHeader
@@ -375,20 +384,55 @@ public class BlockchainBridgeTests
             .TestObject;
         Transaction tx = new() { Type = TxType.Blob, MaxFeePerBlobGas = null, BlobVersionedHashes = [] };
 
-        _blockchainBridge.Call(header, tx);
-        _transactionProcessor.Received().SetBlockExecutionContext(
-            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB));
+        _blockchainBridge.CreateAccessList(header, tx, null, false);
         _transactionProcessor.Received().CallAndRestore(
             Arg.Is<Transaction>(static tx => tx.MaxFeePerBlobGas == 1),
             Arg.Any<ITxTracer>());
     }
 
-    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
+    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] CallSources() =>
     [
         (bridge, header, tx) => bridge.Call(header, tx),
         (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
-        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
     ];
+
+    private static IEnumerable<TestCaseData> ZeroBlobFeeCapCallCases()
+    {
+        Action<IBlockchainBridge, BlockHeader, Transaction>[] calls = CallSources();
+        foreach (bool capOmitted in new[] { true, false })
+        {
+            yield return new TestCaseData(TxType.Blob, calls[0], capOmitted).SetArgDisplayNames(nameof(TxType.Blob), "Call", capOmitted.ToString());
+            yield return new TestCaseData(TxType.Blob, calls[1], capOmitted).SetArgDisplayNames(nameof(TxType.Blob), "EstimateGas", capOmitted.ToString());
+            yield return new TestCaseData(TxType.FrameTx, calls[0], capOmitted).SetArgDisplayNames(nameof(TxType.FrameTx), "Call", capOmitted.ToString());
+        }
+    }
+
+    [TestCaseSource(nameof(ZeroBlobFeeCapCallCases))]
+    public void Blob_call_without_a_positive_blob_fee_cap_runs_at_a_zero_blob_base_fee(
+        TxType txType, Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, bool capOmitted)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(10_000_000)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new()
+        {
+            Type = txType,
+            GasLimit = Transaction.BaseTxGasCost,
+            MaxFeePerBlobGas = capOmitted ? null : UInt256.Zero,
+            BlobVersionedHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]]
+        };
+
+        bridgeCall(_blockchainBridge, header, tx);
+
+        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(UInt256.Zero));
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.BlobBaseFee == UInt256.Zero.ToValueHash()));
+    }
 
     [Test, Combinatorial]
     public void BlobBaseFee_is_set_for_non_blob_transaction([ValueSource(nameof(BridgeCallSources))] Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, [Values(0ul, 100ul)] ulong excessBlobGas)
@@ -988,6 +1032,89 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void Single_call_env_remembers_resolved_code_for_the_rest_of_one_call()
+    {
+        using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource);
+        IBlockchainBridge blockchainBridge = container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
+
+        // Any override sends a call to the single-call env; the second call reuses the pooled env of the first.
+        const int calls = 2;
+        for (int i = 0; i < calls; i++)
+            blockchainBridge.Call(Build.A.BlockHeader.TestObject, new Transaction(), blobBaseFeeOverride: UInt256.One);
+
+        AssertCodeSourceLookups(codeSource, calls);
+    }
+
+    [Test]
+    public void Envs_from_the_overridable_env_factory_do_not_memoize_code()
+    {
+        using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource);
+        // Tracing and eth_simulateV1 build on these envs and run several transactions in one scope.
+        IOverridableEnv env = container.Resolve<IOverridableEnvFactory>().Create();
+        using ILifetimeScope envLifetime = container.BeginLifetimeScope(builder => builder.AddModule(env));
+
+        using (Scope<ITransactionProcessor> scope = envLifetime.Resolve<IOverridableEnv<ITransactionProcessor>>().BuildAndOverride(Build.A.BlockHeader.TestObject))
+        {
+            scope.Component.CallAndRestore(new Transaction(), NullTxTracer.Instance);
+        }
+
+        AssertCodeSourceLookups(codeSource, CodeLookupsPerCall);
+    }
+
+    [TestCase(ExecutionOptions.CommitAndRestore, true)]
+    [TestCase(ExecutionOptions.Commit, false)]
+    [TestCase(ExecutionOptions.SkipValidationAndCommit, false)]
+    [TestCase(ExecutionOptions.BuildUp, false)]
+    public void Single_call_env_keeps_resolved_code_only_across_restored_transactions(ExecutionOptions first, bool kept)
+    {
+        using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource);
+        // The bridge restores every transaction it runs; this stands in for a consumer that runs several in one scope.
+        BlockchainBridgeFactory factory = (BlockchainBridgeFactory)container.Resolve<IBlockchainBridgeFactory>();
+        IOverridableEnv<BlockchainBridge.BlockProcessingComponents> env = factory.BuildSingleEnv();
+        using IDisposable envLifetime = (IDisposable)env;
+
+        using (Scope<BlockchainBridge.BlockProcessingComponents> scope = env.BuildAndOverride(Build.A.BlockHeader.TestObject))
+        {
+            ITransactionProcessor transactionProcessor = scope.Component.TransactionProcessor;
+            transactionProcessor.Process(new Transaction(), NullTxTracer.Instance, first);
+            transactionProcessor.CallAndRestore(new Transaction(), NullTxTracer.Instance);
+        }
+
+        AssertCodeSourceLookups(codeSource, kept ? 1 : 2);
+    }
+
+    private const int CodeLookupsPerCall = 3;
+
+    private static IContainer BuildCodeLookupContainer(out ICodeInfoRepository codeSource)
+    {
+        codeSource = Substitute.For<ICodeInfoRepository>();
+        codeSource.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
+            .Returns(new CodeInfo(new byte[] { 0x60, 0x00 }));
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddScoped(codeSource)
+            .AddScoped<ITransactionProcessor, CodeLookupTransactionProcessor>()
+            .Build();
+    }
+
+    private static void AssertCodeSourceLookups(ICodeInfoRepository codeSource, int expected) =>
+        codeSource.Received(expected).GetCachedCodeInfo(TestItem.AddressC, Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>());
+
+    // Stands in for the EVM: every call resolves the same contract's code a few times through the env's repository.
+    private sealed class CodeLookupTransactionProcessor(ICodeInfoRepository codeInfoRepository) : ITransactionProcessor
+    {
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+        {
+            for (int i = 0; i < CodeLookupsPerCall; i++) codeInfoRepository.GetCachedCodeInfo(TestItem.AddressC, Prague.Instance);
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(BlockHeader blockHeader) { }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
     }
 
     [Test]

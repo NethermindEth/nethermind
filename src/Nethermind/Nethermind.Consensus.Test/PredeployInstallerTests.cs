@@ -49,11 +49,23 @@ public class PredeployInstallerTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(state.GetCode(predeploy), Is.EqualTo(Eip8272Constants.RecentRootCode.ToArray()));
+                Assert.That(state.GetCode(predeploy).ToArray(), Is.EqualTo(Eip8272Constants.RecentRootCode.ToArray()));
                 Assert.That(state.GetNonce(predeploy), Is.EqualTo(expectedNonce));
                 Assert.That(state.GetBalance(predeploy), Is.EqualTo(balance));
             }
         }
+    }
+
+    [TestCase(0UL, 1UL)]
+    [TestCase(5UL, 5UL)]
+    public void Nonce_manager_predeploy_installs_its_code_at_the_higher_of_its_nonce_and_one(ulong existingNonce, ulong expectedNonce)
+    {
+        (IReleaseSpec spec, _, IWorldState writeState) =
+            Install(static spec => spec.IsEip8250Enabled.Returns(true), Eip8250Constants.NonceManagerAddress, nonce: existingNonce, code: []);
+
+        writeState.Received().InsertCode(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, spec);
+        writeState.Received().SetNonce(Eip8250Constants.NonceManagerAddress, expectedNonce);
+        writeState.DidNotReceive().SetNonce(Eip8250Constants.NonceManagerAddress, Arg.Is<ulong>(n => n != expectedNonce));
     }
 
     [Test]

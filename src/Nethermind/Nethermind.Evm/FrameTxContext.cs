@@ -80,6 +80,9 @@ public sealed class FrameTxContext(
     /// envelope's maximum prices.</summary>
     public UInt256 MaxCost { get; } = maxCost;
 
+    /// <summary>Whether a restored gas-search probe defers escrow without changing fee introspection.</summary>
+    internal bool SkipFeeReservation { get; init; }
+
     /// <summary>EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</summary>
     public UInt256 MaxPriorityFeePerGas { get; } = maxPriorityFeePerGas;
 
@@ -199,7 +202,7 @@ public sealed class FrameTxContext(
             if (Payer is not null) return FrameApprovalOutcome.Rejected;
             // EIP-8141 ordering: payment may not be approved before execution, unless this same APPROVE grants both.
             if (!approvesExecution && !SenderApproved) return FrameApprovalOutcome.Rejected;
-            if (worldState.GetBalance(resolvedTarget) < MaxCost) return FrameApprovalOutcome.Rejected;
+            if (!SkipFeeReservation && worldState.GetBalance(resolvedTarget) < MaxCost) return FrameApprovalOutcome.Rejected;
 
             if (NonceKeys is not { } keys || !KeyedNonceManager.UsesKeyedDomain(keys))
             {
@@ -240,7 +243,7 @@ public sealed class FrameTxContext(
         if (!plan.ApprovesPayment) return;
 
         if (plan.CreatesSender) worldState.CreateAccountIfNotExists(Sender, UInt256.Zero);
-        worldState.SubtractFromBalance(resolvedTarget, MaxCost, spec);
+        if (!SkipFeeReservation) worldState.SubtractFromBalance(resolvedTarget, MaxCost, spec);
         if (NonceKeys is { } nonceKeys)
         {
             KeyedNonceManager.ConsumeNonceSet(worldState, Sender, nonceKeys, Nonce);

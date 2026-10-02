@@ -645,7 +645,7 @@ namespace Nethermind.TxPool.Test
                     : new AccountStruct(0, UInt256.MaxValue);
                 return true;
             });
-            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? [] : throw MissingHeadState());
+            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? Array.Empty<byte>() : throw MissingHeadState());
             ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state);
 
             Assert.DoesNotThrow(() => _txPool = CreatePool(

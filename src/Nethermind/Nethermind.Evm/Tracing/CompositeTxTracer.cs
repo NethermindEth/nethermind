@@ -106,7 +106,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
-    public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

@@ -45,6 +45,8 @@ public sealed class FrameTxValidationTracer(
     /// <summary>Whether the executing frame is the prefix-opening deploy frame, the only one whose
     /// carve-outs let it write state.</summary>
     private bool _inDeployFrame;
+    private bool _inExpiryFrame;
+    private int _prefixFrameIndex;
 
     /// <summary>Set between a CREATE2 and the creation frame it is expected to open.</summary>
     private bool _createPending;
@@ -97,6 +99,7 @@ public sealed class FrameTxValidationTracer(
             && state.GetCodeHash(Eip8272Constants.RecentRootAddress) == Eip8272Constants.RecentRootCodeHash
                 ? RecentRootKeys(frame.Data.Span)
                 : null;
+        _inExpiryFrame = _prefixFrameIndex++ == 0 && !isDeployFrame && target == expiryVerifier;
 
         // The processor dispatches this target rather than an opcode, so it never meets the CALL* rule below,
         // and it is the one arbitrary address the prefix executes. A delegated factory is mutable by its
@@ -129,8 +132,9 @@ public sealed class FrameTxValidationTracer(
                 }
                 break;
             case Instruction.TIMESTAMP:
-                // Permitted only inside the canonical expiry verifier: address and code hash must match.
-                if (env.ExecutingAccount != expiryVerifier || state.GetCodeHash(expiryVerifier) != Eip8141Constants.ExpiryVerifierCodeHash)
+                // EIP-8141 permits TIMESTAMP only in the leading canonical expiry frame.
+                if (!_inExpiryFrame || env.CallDepth != 0
+                    || state.GetCodeHash(expiryVerifier) != Eip8141Constants.ExpiryVerifierCodeHash)
                 {
                     Violate("banned opcode TIMESTAMP in validation prefix");
                 }
