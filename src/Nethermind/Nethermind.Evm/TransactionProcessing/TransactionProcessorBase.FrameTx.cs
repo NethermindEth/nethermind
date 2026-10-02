@@ -98,7 +98,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     {
         if (!spec.IsEip8141Enabled)
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transactions are not enabled");
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(TxErrorMessages.InvalidTxType(spec.Name));
         }
 
         // eth_call and the other estimation/tracing entry points reach the processor with validation

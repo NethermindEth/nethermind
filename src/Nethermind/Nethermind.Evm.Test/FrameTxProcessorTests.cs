@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
@@ -132,7 +133,7 @@ public partial class FrameTxProcessorTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-                Assert.That(result.ErrorDescription, Does.Contain("frame transactions are not enabled"));
+                Assert.That(result.ErrorDescription, Does.Contain(TxErrorMessages.InvalidTxType(Spec.Name)));
                 Assert.That(_stateProvider.GetNonce(Sender), Is.Zero);
             }
         }

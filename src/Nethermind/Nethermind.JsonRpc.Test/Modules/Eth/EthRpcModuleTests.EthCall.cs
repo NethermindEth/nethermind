@@ -62,7 +62,7 @@ public partial class EthRpcModuleTests
         else
         {
             Assert.That(parsed["error"], Is.Not.Null, response);
-            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("frame transactions are not enabled"), response);
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(spec.Name)), response);
         }
     }
 
