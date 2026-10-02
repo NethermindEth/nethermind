@@ -7,7 +7,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Xml.Linq;
-using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.ZkEvm.Test.Extensions;
@@ -22,12 +21,6 @@ public class GuestSubstitutionsTests
 {
     private const BindingFlags AnyMethod =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly;
-
-    private static readonly Dictionary<string, Assembly> Assemblies = new()
-    {
-        ["System.Private.CoreLib"] = typeof(object).Assembly,
-        ["Nethermind.Core"] = typeof(ZkEvmBitOperations).Assembly,
-    };
 
     private static IEnumerable<TestCaseData> SubstitutedMethods()
     {
@@ -50,10 +43,10 @@ public class GuestSubstitutionsTests
     [TestCaseSource(nameof(SubstitutedMethods))]
     public void Substitution_names_an_existing_method(string assemblyName, string typeName, string signature)
     {
-        Assert.That(Assemblies.TryGetValue(assemblyName, out Assembly? assembly), Is.True,
-            $"{assemblyName} is not mapped to a loaded assembly; add it to {nameof(Assemblies)}");
+        // A missing assembly throws here; reference its project from this one.
+        Assembly assembly = Assembly.Load(assemblyName);
 
-        Type? type = assembly!.GetType(typeName);
+        Type? type = assembly.GetType(typeName);
         Assert.That(type, Is.Not.Null, $"{typeName} is not in {assemblyName}");
 
         // "ReturnType Name(ParamType,ParamType)", with full type names, as ILLink writes them.
