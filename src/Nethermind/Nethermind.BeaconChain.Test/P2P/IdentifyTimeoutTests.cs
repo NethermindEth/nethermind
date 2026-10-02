@@ -52,6 +52,9 @@ public class IdentifyTimeoutTests
         Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended within the identify bound");
         await heldListing;
         Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), $"no unidentified session is handed back ({dial.Exception?.GetBaseException().Message})");
+        // The failure PeerManager logs for the dial names the timeout rather than an empty aggregate.
+        Exception failure = dial.Exception!.InnerException!;
+        Assert.That(PeerManager.DescribeFailure(failure), Is.EqualTo("request timed out"), $"the dial failed with {failure.GetType().Name}: {failure.Message}");
         await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token, Within);
     }
 
