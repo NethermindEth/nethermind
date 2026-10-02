@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
 
@@ -58,4 +59,14 @@ public class TxFrameSignature(byte scheme, Address? signer, ReadOnlyMemory<byte>
     /// — which signs nothing the protocol checks — is elided too, and its bytes stay rewritable without
     /// disturbing any canonical-hash signature.</remarks>
     public bool SignsCanonicalHash => Msg.IsEmpty;
+
+    /// <summary>The address a <see cref="SchemeSecp256k1"/> <see cref="Signature"/> last recovered to, with the
+    /// digest it was recovered against.</summary>
+    /// <remarks>Lets block pre-processing recover signers in parallel, off the execution thread. A reader may use it
+    /// only when <see cref="SignerRecovery.Message"/> equals the digest it verifies, so a copy of the transaction
+    /// whose fields changed since never reuses a stale signer.</remarks>
+    public SignerRecovery? Recovered { get; set; }
+
+    /// <summary>A recovered signer and the digest it was recovered against.</summary>
+    public sealed record SignerRecovery(ValueHash256 Message, Address Signer);
 }
