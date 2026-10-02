@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using Multiformats.Address;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Network.Libp2p;
 
 namespace Nethermind.Shutter.Config;
 
@@ -87,7 +84,7 @@ public interface IShutterConfig : IConfig
         DefaultValue = "false", HiddenFromDocs = true)]
     bool P2PLogsEnabled { get; set; }
 
-    public void Validate(out IEnumerable<Multiaddress> bootnodeP2PAddresses)
+    public void Validate()
     {
         if (Validator && ValidatorInfoFile is null)
         {
@@ -133,29 +130,5 @@ public interface IShutterConfig : IConfig
         {
             throw new ArgumentNullException(nameof(BootnodeP2PAddresses));
         }
-
-        List<Multiaddress> bootnodes = [];
-        foreach (string bootnode in BootnodeP2PAddresses)
-        {
-            Multiaddress address;
-            try
-            {
-                address = Multiaddress.Decode(bootnode);
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                throw new ArgumentException($"Could not decode Shutter bootnode p2p address '{bootnode}'.", e);
-            }
-
-            if (!StaticPeerKeeper.CanDial(address))
-            {
-                throw new ArgumentException(
-                    $"Shutter bootnode '{bootnode}' must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>, or /dnsaddr/<name>/p2p/<peer-id>.");
-            }
-
-            bootnodes.Add(address);
-        }
-
-        bootnodeP2PAddresses = bootnodes;
     }
 }

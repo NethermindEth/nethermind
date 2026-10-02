@@ -66,7 +66,7 @@ public class OptimismCLP2P : IDisposable
         _logger = logManager.GetClassLogger<OptimismCLP2P>();
         _config = config;
         _executionEngineManager = executionEngineManager;
-        _staticPeerList = [.. staticPeerList.Select(ParseStaticPeer)];
+        _staticPeerList = StaticPeerKeeper.ParseStaticPeers(staticPeerList, "Optimism CL static peers", _logger);
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
         _ipResolver = ipResolver;
 
@@ -307,25 +307,8 @@ public class OptimismCLP2P : IDisposable
         return true;
     }
 
-    /// <summary>Decodes a static peer the static peer check can dial.</summary>
-    /// <exception cref="InvalidConfigurationException"><paramref name="node"/> does not decode or is not an IP or DNS host, TCP port and peer id.</exception>
-    internal static Multiaddress ParseStaticPeer(string node)
-    {
-        Multiaddress? address = null;
-        try
-        {
-            address = Multiaddress.Decode(node);
-        }
-        catch (Exception e) when (e is not OutOfMemoryException)
-        {
-        }
-
-        return address is not null && StaticPeerKeeper.CanDial(address)
-            ? address
-            : throw new InvalidConfigurationException(
-                $"Optimism CL static peer '{node}' must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>, or /dnsaddr/<name>/p2p/<peer-id>.",
-                ExitCodes.ForbiddenOptionValue);
-    }
+    /// <summary>Internal so a test can see which static peers startup kept.</summary>
+    internal IReadOnlyList<Multiaddress> StaticPeersForTest => _staticPeerList;
 
     public async Task Run(CancellationToken token)
     {
