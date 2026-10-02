@@ -252,10 +252,18 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            if (_logger.IsDebug) _logger.Debug($"Blocks [{startSlot}, {startSlot + count}) by range from {peer.Id} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms: {PeerManager.DescribeFailure(e)}");
+            // BeaconBlocksByRange: the blocks a reply delivered before it failed are a prefix of it, kept like a limited reply and checked for linkage below.
+            IReadOnlyList<ForkedSignedBeaconBlock> kept = (e as PartialBlocksException)?.Received ?? [];
+            Exception cause = e is PartialBlocksException { InnerException: { } inner } ? inner : e;
+            if (_logger.IsDebug) _logger.Debug($"Blocks [{startSlot}, {startSlot + count}) by range from {peer.Id} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms, keeping {kept.Count} blocks read: {PeerManager.DescribeFailure(cause)}");
             // Includes per-request timeouts, which cancel the request without cancelling the sync.
             peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Blocks-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
-            return null;
+            if (kept.Count == 0)
+            {
+                return null;
+            }
+
+            batch = kept;
         }
 
         if (_logger.IsDebug) _logger.Debug($"Blocks [{startSlot}, {startSlot + count}) by range from {peer.Id}: {batch.Count} blocks in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms");

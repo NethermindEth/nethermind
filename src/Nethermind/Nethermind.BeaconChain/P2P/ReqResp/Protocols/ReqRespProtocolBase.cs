@@ -28,6 +28,9 @@ public enum ReqRespFailureReason
 
     /// <summary>A peer answered with a non-success response code.</summary>
     PeerError,
+
+    /// <summary>The stream failed below the req/resp framing: a channel read, write or half-close did not succeed.</summary>
+    Transport,
 }
 
 /// <summary>An outbound request cut by one of its bounds; the message names the bound and what the request was waiting for.</summary>
@@ -444,6 +447,11 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
             {
                 RecordFailure(Id, ReqRespFailureReason.Timeout);
                 throw new ReqRespTimeoutException($"timed out after {Seconds(TtfbTimeout + RespTimeout)} waiting for the response", e);
+            }
+            catch (IOException)
+            {
+                RecordFailure(Id, ReqRespFailureReason.Transport);
+                throw;
             }
 
             timing?.ChunkRead();

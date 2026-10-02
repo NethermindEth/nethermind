@@ -34,8 +34,9 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
     /// <summary>Reads block chunks, each decoded as the SSZ shape of the fork its context bytes name.</summary>
     /// <param name="overallTimeout">Overrides <see cref="MaxBlocksResponseDuration"/>; test-only seam, production call sites omit it.</param>
     /// <param name="timing">Counts the chunks read, when the request is timed.</param>
+    /// <param name="onBlock">Called with each block that passed every check, before the next is read; may throw <see cref="Eth2ReqRespException"/> to refuse the chunk.</param>
     /// <exception cref="ReqRespTimeoutException">A bound fired, named in the message.</exception>
-    protected async Task<IReadOnlyList<ForkedSignedBeaconBlock>> ReadBlockChunksAsync(Stream stream, int maxBlocks, string protocolId, TimeSpan? overallTimeout = null, RequestTiming? timing = null)
+    protected async Task<IReadOnlyList<ForkedSignedBeaconBlock>> ReadBlockChunksAsync(Stream stream, int maxBlocks, string protocolId, TimeSpan? overallTimeout = null, RequestTiming? timing = null, Action<ForkedSignedBeaconBlock>? onBlock = null)
     {
         List<ForkedSignedBeaconBlock> blocks = [];
         using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxBlocksResponseDuration);
@@ -79,6 +80,7 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
                     throw new Eth2ReqRespException($"Block chunk context bytes do not match the fork digest of slot {block.Slot}");
                 }
 
+                onBlock?.Invoke(block);
                 blocks.Add(block);
                 timing?.ChunkRead();
                 cts.CancelAfter(RespTimeout);

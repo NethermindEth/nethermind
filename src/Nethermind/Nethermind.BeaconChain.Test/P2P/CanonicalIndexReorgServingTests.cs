@@ -38,7 +38,7 @@ public class CanonicalIndexReorgServingTests
         BeaconBlocksByRangeProtocolV2 protocol = new(fixture.Chain.Spec, fixture.Store);
 
         IReadOnlyList<ForkedSignedBeaconBlock> served = await ServeAsync(
-            protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeRequest { StartSlot = 1, Count = 4, Step = 1 }));
+            protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = 1, Count = 4, Step = 1 })));
 
         Assert.That(served.Select(static b => b.ComputeMessageRoot()), Is.EqualTo(new[] { reorg.B1.Root, reorg.BHead.Root }),
             "slots 2 and 3 are empty on chain B; serving chain A's blocks there breaks the parent links");
@@ -76,9 +76,9 @@ public class CanonicalIndexReorgServingTests
         BeaconBlocksByRangeProtocolV2 protocol = new(spec, store);
 
         IReadOnlyList<ForkedSignedBeaconBlock> served = await ServeAsync(
-            protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeRequest { StartSlot = anchorSlot, Count = 3, Step = 1 }));
+            protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = anchorSlot, Count = 3, Step = 1 })));
         Eth2ReqRespException? refused = Assert.ThrowsAsync<Eth2ReqRespException>(() => ServeAsync(
-            protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeRequest { StartSlot = anchorSlot - 1, Count = 3, Step = 1 })));
+            protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = anchorSlot - 1, Count = 3, Step = 1 }))));
 
         using (Assert.EnterMultipleScope())
         {
@@ -99,7 +99,7 @@ public class CanonicalIndexReorgServingTests
         store.PutMetadata(BeaconChainMetadataKeys.EarliestBlockSlot, []);
         store.BackfilledBlockFloor = start + 1;
         BeaconBlocksByRangeProtocolV2 protocol = new(spec, store);
-        BeaconBlocksByRangeRequest request = new() { StartSlot = belowFloor ? start : start + 1, Count = 2, Step = 1 };
+        BeaconBlocksByRangeDial request = new(new BeaconBlocksByRangeRequest { StartSlot = belowFloor ? start : start + 1, Count = 2, Step = 1 });
 
         if (belowFloor)
         {

@@ -316,7 +316,7 @@ public partial class ColumnBackfillTests
         BeaconBlocksByRangeProtocolV2 protocol = new(ImportableBlobBlock.FuluFromGenesis, fixture.Store);
 
         IReadOnlyList<ForkedSignedBeaconBlock> served = await CanonicalIndexReorgServingTests.ServeAsync(
-            protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeRequest { StartSlot = 0, Count = 6, Step = 1 }));
+            protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = 0, Count = 6, Step = 1 })));
 
         Assert.That(served.Select(static b => b.ComputeMessageRoot()), Is.EqualTo(fixture.Roots));
     }
