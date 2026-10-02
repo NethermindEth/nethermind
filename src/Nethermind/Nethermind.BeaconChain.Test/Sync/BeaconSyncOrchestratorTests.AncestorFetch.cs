@@ -123,31 +123,162 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     // A fetch can outlast the ancestor's arrival by another route; its block then imports at once, though no peer returned the
-    // ancestor, while the fetch keeps its place in the bound until it ends.
+    // ancestor, while the fetch keeps its place in the bound until it ends. An ancestor that arrived but waits for its data
+    // holds the block for its retry, whatever the fetch returns.
     [Test]
-    public async Task Gossip_block_imports_when_its_parent_arrives_elsewhere_while_the_fetch_waits()
+    public async Task Gossip_block_imports_when_its_parent_arrives_elsewhere_while_the_fetch_waits([Values] bool parentWaitsForData)
     {
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 1, WallSlot);
         ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
         ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        Hash256 parentRoot = parent.ComputeMessageRoot();
         (Harness harness, IBeaconSyncPeer _, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = CreateWaitingByRootHarness();
         harness.Importer.Known.Add(anchorRoot);
+        if (parentWaitsForData)
+        {
+            harness.Importer.Unavailable.Add(parentRoot);
+        }
+
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
 
         await harness.Orchestrator.ProcessGossipBlockAsync(child, cts.Token);
         await harness.Orchestrator.ImportBlockAsync(parent, cts.Token);
         bool importedBeforeFetchEnded = harness.Importer.Known.Contains(child.ComputeMessageRoot());
         int fetchesWhileWaiting = harness.Orchestrator.AncestorFetchesInFlight;
-        fetches[parent.ComputeMessageRoot()].SetResult([]);
+        fetches[parentRoot].SetResult(parentWaitsForData ? [parent] : []);
         await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
+        int heldAfterFetch = harness.Orchestrator.PendingGossipBlockCount;
+        harness.Importer.Unavailable.Remove(parentRoot);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, cts.Token);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(importedBeforeFetchEnded, Is.True, "the block does not wait for the fetch to end");
+            Assert.That(importedBeforeFetchEnded, Is.EqualTo(!parentWaitsForData), "the block does not wait for the fetch to end");
+            Assert.That(heldAfterFetch, Is.EqualTo(parentWaitsForData ? 1 : 0), "the block waits for its parent's retry");
             Assert.That(fetchesWhileWaiting, Is.EqualTo(1), "the fetch still running keeps its place in the bound");
             Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
             Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero, "nothing is held for a parent that already imported");
         }
+    }
+
+    // A forgery of the ancestor queued while its fetch ran does not cost the genuine copy the fetch returns: that copy waits beside
+    // the forgery, kept only once, and takes its place when it fails; the walk's block imports with it.
+    [Test]
+    public async Task Genuine_ancestor_fetched_while_a_forgery_of_it_waits_imports_with_the_walk([Values] bool genuineAlreadyWaiting)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 1, WallSlot);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        Hash256 parentRoot = parent.ComputeMessageRoot();
+        BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
+        ForkedSignedBeaconBlock forgery = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = forgedSignature });
+        (Harness harness, IBeaconSyncPeer _, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = CreateWaitingByRootHarness();
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(parentRoot);
+        harness.Importer.ForgedSignatures.Add(forgedSignature);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(child, cts.Token);
+        await harness.Orchestrator.ImportBlockAsync(forgery, cts.Token);
+        if (genuineAlreadyWaiting)
+        {
+            await harness.Orchestrator.ImportBlockAsync(parent, cts.Token, fetchedByRoot: true);
+        }
+
+        fetches[parentRoot].SetResult([parent]);
+        await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
+        int waiting = harness.Orchestrator.PendingRetryBlockCount;
+        harness.Importer.Unavailable.Remove(parentRoot);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting, Is.EqualTo(2), "the fetched copy waits beside the forgery");
+            Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(child.ComputeMessageRoot()));
+            Assert.That(harness.Importer.ByRootImports.Count(r => r == parentRoot), Is.EqualTo(2), "the genuine copy is tried once on arrival and once in the forgery's place");
+        }
+    }
+
+    // An ancestor queued from gossip while its fetch ran, and fetched as the same signed block, retries as fetched, also when it
+    // waits as a copy behind a queued forgery: a spent gossip regeneration budget defers it instead of dropping it and the walk's block.
+    [Test]
+    public async Task Ancestor_queued_from_gossip_and_fetched_while_waiting_retries_as_fetched([Values] bool behindForgery)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 1, WallSlot);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        Hash256 parentRoot = parent.ComputeMessageRoot();
+        (Harness harness, IBeaconSyncPeer _, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = CreateWaitingByRootHarness();
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(parentRoot);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+
+        BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
+        harness.Importer.ForgedSignatures.Add(forgedSignature);
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(child, cts.Token);
+        if (behindForgery)
+        {
+            await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = forgedSignature }), cts.Token);
+        }
+
+        await harness.Orchestrator.ImportBlockAsync(parent, cts.Token);
+        fetches[parentRoot].SetResult([parent]);
+        await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
+        harness.Importer.Unavailable.Remove(parentRoot);
+        harness.Importer.RegenerationRefused.Add(parentRoot);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, cts.Token);
+        harness.Importer.RegenerationRefused.Remove(parentRoot);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(child.ComputeMessageRoot()));
+            Assert.That(harness.Importer.ByRootImports, Does.Contain(parentRoot), "the waiting copy retries as fetched");
+        }
+    }
+
+    // A fetched ancestor that waits for a retry holds the walk's blocks until it imports, whatever it waits for.
+    [Test]
+    public async Task Walk_holds_its_blocks_behind_a_fetched_ancestor_waiting_for_a_retry([Values] RetryCause cause)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 1, WallSlot);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        Hash256 parentRoot = parent.ComputeMessageRoot();
+        (Harness harness, IBeaconSyncPeer _) = CreateBackfillHarness(parent);
+        harness.Importer.Known.Add(anchorRoot);
+        HashSet<Hash256> waitsFor = cause switch
+        {
+            RetryCause.Data => harness.Importer.Unavailable,
+            RetryCause.Engine => harness.Importer.EngineDown,
+            _ => harness.Importer.Early,
+        };
+        waitsFor.Add(parentRoot);
+        if (cause == RetryCause.Slot)
+        {
+            harness.Importer.Ticks.Clear();
+            harness.Importer.Ticks.Add(parent.Slot - 1);
+        }
+
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
+        int held = harness.Orchestrator.PendingGossipBlockCount;
+        waitsFor.Remove(parentRoot);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(held, Is.EqualTo(1), "the gossip block waits for its fetched parent's retry");
+            Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(child.ComputeMessageRoot()));
+            Assert.That(harness.Importer.ByRootImports, Does.Contain(parentRoot), "the fetched parent retries as fetched");
+        }
+    }
+
+    public enum RetryCause
+    {
+        Data,
+        Engine,
+        Slot,
     }
 
     // A fault outside the per-peer catch must still free the fetch's place, or each one would shrink the bound until restart.

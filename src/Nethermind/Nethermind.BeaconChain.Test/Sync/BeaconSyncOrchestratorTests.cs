@@ -1091,12 +1091,12 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
-    /// A gossip child whose parent's walk was fetching before either copy was queued, and is served the queued forgery, imports
-    /// with the genuine copy kept beside it, which takes the forgery's place: the walk acts on that copy's result, also when it
-    /// waits for the next slot's regeneration budget. Only the peer that served the forgery is blamed.
+    /// A gossip child whose parent's walk was fetching when a forgery and the genuine copy of the parent were queued is held for
+    /// the queued root, not for the copy the fetch returns, and imports with the genuine copy once it takes the forgery's place,
+    /// also when that copy waits for the next slot's regeneration budget. The supplier of the genuine copy is not blamed.
     /// </summary>
     [Test]
-    public async Task Walk_served_a_queued_forgery_continues_with_the_genuine_copy([Values] bool genuineWaitsForRegeneration)
+    public async Task Walk_whose_ancestor_is_queued_while_its_fetch_runs_imports_with_the_genuine_copy([Values] bool genuineWaitsForRegeneration)
     {
         const ulong NearWallSlot = WallSlot - 5;
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
@@ -1122,13 +1122,18 @@ public partial class BeaconSyncOrchestratorTests
         }
 
         await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, CancellationToken.None);
-        harness.Importer.RegenerationRefused.Remove(root);
+        int held = harness.Orchestrator.PendingGossipBlockCount;
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+        bool importedInFirstSlot = harness.Importer.Known.Contains(root);
+        harness.Importer.RegenerationRefused.Remove(root);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(held, Is.EqualTo(1), "the child is held for the queued root");
+            Assert.That(importedInFirstSlot, Is.EqualTo(!genuineWaitsForRegeneration));
             Assert.That(harness.Importer.Known, Does.Contain(root).And.Contain(child.ComputeMessageRoot()));
-            forger.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+            Assert.That(harness.Importer.Imports.Count(i => i.Root == root), Is.EqualTo(genuineWaitsForRegeneration ? 5 : 4), "the fetched forgery is never imported");
             supplier.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
         }
     }
