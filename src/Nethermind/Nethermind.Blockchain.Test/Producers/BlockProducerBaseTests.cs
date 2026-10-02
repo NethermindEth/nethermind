@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -15,7 +13,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -96,53 +93,5 @@ public partial class BlockProducerBaseTests
         ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;
         Block block = producerUnderTest.Prepare(Build.A.BlockHeader.WithTimestamp(futureTime).TestObject);
         Assert.That(new UInt256(block.Timestamp), Is.EqualTo(block.Difficulty));
-    }
-
-    [TestCase(false, TestName = "The building flag is raised while the built block executes and cleared after")]
-    [TestCase(true, TestName = "The building flag is cleared when executing the built block throws")]
-    public async Task Building_flag_brackets_the_built_block_execution(bool processorThrows)
-    {
-        IBlockTree blockTree = Build.A.BlockTree().TestObject;
-        IWorldState state = Substitute.For<IWorldState>();
-        state.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(true);
-        bool flagDuringExecution = false;
-        IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
-        processor.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                flagDuringExecution = blockTree.IsBuildingBlock;
-                return processorThrows ? throw new InvalidOperationException("execution failed") : call.Arg<Block>();
-            });
-        ProducerUnderTest producer = new(EmptyTxSource.Instance, processor, NullSealEngine.Instance, blockTree, state,
-            Substitute.For<IGasLimitCalculator>(), new IncrementalTimestamper(), LimboLogs.Instance, new BlocksConfig());
-
-        Task<Block?> build = producer.BuildBlock(Build.A.BlockHeader.TestObject, flags: IBlockProducer.Flags.DontSeal);
-        if (processorThrows) Assert.ThrowsAsync<InvalidOperationException>(async () => await build);
-        else await build;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(flagDuringExecution, Is.True, "gossiped validation cannot yield to a build it does not see");
-            Assert.That(blockTree.IsBuildingBlock, Is.False, "a flag left raised would defer gossip until the next build");
-        }
-    }
-
-    [Test]
-    public void Building_flag_stays_raised_until_the_last_overlapping_build_ends()
-    {
-        IBlockTree blockTree = Build.A.BlockTree().TestObject;
-
-        IDisposable first = blockTree.BeginBlockBuilding();
-        IDisposable second = blockTree.BeginBlockBuilding();
-        first.Dispose();
-        first.Dispose();
-        bool raisedWhileOneBuildRuns = blockTree.IsBuildingBlock;
-        second.Dispose();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(raisedWhileOneBuildRuns, Is.True, "the first build to finish, even disposed twice, must not clear the other's flag");
-            Assert.That(blockTree.IsBuildingBlock, Is.False);
-        }
     }
 }

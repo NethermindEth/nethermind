@@ -2024,17 +2024,6 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock { get; set; }
 
-        private int _buildingBlocks;
-
-        /// <remarks>Counts open builds, so producers that share this tree and overlap cannot clear each other's flag.</remarks>
-        public bool IsBuildingBlock => Volatile.Read(ref _buildingBlocks) > 0;
-
-        public IDisposable BeginBlockBuilding()
-        {
-            Interlocked.Increment(ref _buildingBlocks);
-            return new Reactive.AnonymousDisposable(() => Interlocked.Decrement(ref _buildingBlocks));
-        }
-
         /// <inheritdoc/>
         /// <remarks>
         /// AuRa finalization, era import and XDC can call this concurrently. Deciding whether finality advanced,

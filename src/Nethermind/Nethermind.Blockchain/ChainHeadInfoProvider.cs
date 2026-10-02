@@ -18,16 +18,18 @@ namespace Nethermind.Blockchain
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
         private readonly IBlockTree _blockTree;
+        private readonly IBlockBuildingTracker? _blockBuildingTracker;
         // For testing
         public bool HasSynced { private get; init; }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
-            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, IBlockBuildingTracker? blockBuildingTracker = null)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), blockBuildingTracker)
         {
         }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, IBlockBuildingTracker? blockBuildingTracker = null)
         {
+            _blockBuildingTracker = blockBuildingTracker;
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
             Block? head = blockTree.Head;
@@ -73,7 +75,7 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock => _blockTree.IsProcessingBlock;
 
-        public bool IsBuildingBlock => _blockTree.IsBuildingBlock;
+        public bool IsBuildingBlock => _blockBuildingTracker?.IsBuildingBlock ?? false;
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 

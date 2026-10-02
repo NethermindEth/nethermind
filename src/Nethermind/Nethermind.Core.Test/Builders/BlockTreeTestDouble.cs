@@ -24,7 +24,6 @@ public class BlockTreeTestDouble : IBlockTree
     private BlockHeader? _lowestInsertedBeaconHeader;
     private (ulong BlockNumber, Hash256 BlockHash) _syncPivot;
     private bool _isProcessingBlock;
-    private int _buildingBlocks;
 
     protected IBlockTree? Inner { get; }
 
@@ -163,15 +162,6 @@ public class BlockTreeTestDouble : IBlockTree
             if (Inner is not null) Inner.IsProcessingBlock = value;
             _isProcessingBlock = value;
         }
-    }
-
-    public virtual bool IsBuildingBlock => Inner?.IsBuildingBlock ?? _buildingBlocks > 0;
-
-    public virtual IDisposable BeginBlockBuilding()
-    {
-        if (Inner is not null) return Inner.BeginBlockBuilding();
-        Interlocked.Increment(ref _buildingBlocks);
-        return new Reactive.AnonymousDisposable(() => Interlocked.Decrement(ref _buildingBlocks));
     }
 
     public virtual AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>

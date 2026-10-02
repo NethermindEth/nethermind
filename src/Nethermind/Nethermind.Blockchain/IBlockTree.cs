@@ -287,15 +287,5 @@ namespace Nethermind.Blockchain
             public ulong Finalized => finalized;
         }
         bool IsProcessingBlock { get; set; }
-
-        /// <summary>True while this node's block producer executes a block it is building.</summary>
-        /// <remarks>Kept apart from <see cref="IsProcessingBlock"/>, which the import loop owns: a build can overlap an
-        /// import, and neither must clear the other's flag.</remarks>
-        bool IsBuildingBlock { get; }
-
-        /// <summary>Raises <see cref="IsBuildingBlock"/> until the returned scope is disposed.</summary>
-        /// <remarks>Builds may overlap, so the flag stays raised until the last open scope is disposed; disposing a
-        /// scope twice releases it once.</remarks>
-        IDisposable BeginBlockBuilding();
     }
 }
