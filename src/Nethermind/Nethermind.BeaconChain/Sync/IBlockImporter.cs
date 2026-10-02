@@ -91,8 +91,7 @@ public interface IBlockImporter
 
     /// <summary>
     /// Gossip-level proposer check: whether the block's claimed proposer matches the proposer
-    /// lookahead of a state the importer holds (the Fulu lineage state, or a Gloas block's parent
-    /// post-state). Returns <c>true</c> (defer to the state transition) when no held state's
+    /// lookahead of the retained parent post-state. Returns <c>true</c> (defer to the state transition) when no held state's
     /// lookahead window covers the block's slot.
     /// </summary>
     bool IsExpectedProposer(ForkedSignedBeaconBlock block);
@@ -148,6 +147,9 @@ public interface IBlockImporter
     /// <summary>Why the last import refused its block, where its result alone does not say.</summary>
     ImportRefusal LastRefusal => ImportRefusal.None;
 
+    /// <summary>Whether the last import failed an explicit gossip rejection check.</summary>
+    internal bool RejectGossip => false;
+
     /// <summary>
     /// Applies a VALID or INVALID <c>forkchoiceUpdated</c> verdict on <paramref name="headExecutionHash"/>, the head hash sent for
     /// <paramref name="headRoot"/>, to the payloads it names; recompute the head afterwards. Other statuses change nothing.
@@ -161,24 +163,24 @@ public interface IBlockImporter
     void OnFinalized(CheckpointRef finalized);
 
     /// <summary>Feeds a gossip aggregate to fork choice once its aggregator is authenticated; invalid aggregates are counted and dropped.</summary>
-    /// <returns>Whether fork choice accepted the aggregate, its selection proof and signatures included.</returns>
-    bool OnGossipAggregate(SignedAggregateAndProof aggregate);
+    /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
+    bool? OnGossipAggregate(SignedAggregateAndProof aggregate);
 
     /// <summary>Feeds a Gloas gossip aggregate to fork choice once its aggregator is authenticated; invalid aggregates are counted and dropped.</summary>
-    /// <returns>Whether fork choice accepted the aggregate, its selection proof and signatures included.</returns>
-    bool OnGossipAggregate(SignedAggregateAndProofGloas aggregate);
+    /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
+    bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate);
 
     /// <summary>Feeds a gossip attester slashing to fork choice; invalid slashings are counted and dropped.</summary>
-    /// <returns>Whether fork choice accepted the slashing, its signatures included.</returns>
-    bool OnGossipAttesterSlashing(AttesterSlashing slashing);
+    /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
+    bool? OnGossipAttesterSlashing(AttesterSlashing slashing);
 
     /// <summary>Feeds a Gloas gossip attester slashing to fork choice; invalid slashings are counted and dropped.</summary>
-    /// <returns>Whether fork choice accepted the slashing, its signatures included.</returns>
-    bool OnGossipAttesterSlashing(AttesterSlashingGloas slashing);
+    /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
+    bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing);
 
     /// <summary>Feeds a gossip payload attestation to fork choice; invalid votes are counted and dropped.</summary>
-    /// <returns>Whether fork choice verified and recorded the vote, its PTC membership and signature included.</returns>
-    bool OnGossipPayloadAttestation(PayloadAttestationMessage message);
+    /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
+    bool? OnGossipPayloadAttestation(PayloadAttestationMessage message);
 }
 
 /// <summary>Creates the importer once the anchor is known; lets tests script the consensus core.</summary>

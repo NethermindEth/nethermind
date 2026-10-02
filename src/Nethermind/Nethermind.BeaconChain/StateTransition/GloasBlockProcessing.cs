@@ -102,7 +102,8 @@ public static class GloasBlockProcessing
         // verify_block_signature indexes state.validators with the untrusted proposer_index (p2p beacon_block: [REJECT] a valid validator index).
         ulong proposerIndex = block.ProposerIndex;
         if (proposerIndex >= (ulong)state.Validators!.Length)
-            throw new BeaconStateException($"Block proposer index {proposerIndex} is not a validator index (registry size {state.Validators.Length})");
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The proposer index is a valid validator index".
+            throw new BeaconStateException($"Block proposer index {proposerIndex} is not a validator index (registry size {state.Validators.Length})") { RejectGossip = true };
         // Epoch processing inside process_slots can grow the registry past the cache.
         if (proposerIndex >= (ulong)pubkeys.Count)
             throw new BeaconStateException($"Block proposer index {proposerIndex} has no cached public key ({pubkeys.Count} cached)");
@@ -119,7 +120,8 @@ public static class GloasBlockProcessing
         if (block.Slot <= state.LatestBlockHeader!.Slot)
             throw new BeaconStateException($"Block slot {block.Slot} is not newer than latest header slot {state.LatestBlockHeader.Slot}");
         if (block.ProposerIndex != state.GetBeaconProposerIndex())
-            throw new BeaconStateException($"Block proposer {block.ProposerIndex} does not match expected proposer {state.GetBeaconProposerIndex()}");
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The block is proposed by the expected proposer for the slot".
+            throw new BeaconStateException($"Block proposer {block.ProposerIndex} does not match expected proposer {state.GetBeaconProposerIndex()}") { RejectGossip = true };
         if (block.ParentRoot != SszRoots.HashTreeRoot(state.LatestBlockHeader))
             throw new BeaconStateException($"Block parent root {block.ParentRoot} does not match latest header root");
 
@@ -661,7 +663,8 @@ public static class GloasBlockProcessing
         if (state.Slot <= Presets.GenesisSlot)
             throw new BeaconStateException("A bid cannot be processed at the genesis slot");
         if (bid.ParentBlockHash != state.LatestBlockHash)
-            throw new BeaconStateException("Bid parent block hash does not match the state's latest block hash");
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] If the parent is not full, the bid builds on the parent's execution head".
+            throw new BeaconStateException("Bid parent block hash does not match the state's latest block hash") { RejectGossip = true };
         if (bid.BlockHash == bid.ParentBlockHash)
             throw new BeaconStateException("Bid block hash must differ from its parent block hash");
         if (bid.ParentBlockRoot != state.GetBlockRootAtSlot(state.Slot - 1))

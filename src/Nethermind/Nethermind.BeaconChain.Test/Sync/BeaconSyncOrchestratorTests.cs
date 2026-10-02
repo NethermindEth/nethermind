@@ -643,7 +643,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public async Task Gossip_blocks_failing_validation_are_dropped_before_import()
+    public async Task Gossip_blocks_failing_validation_are_refused()
     {
         Harness harness = CreateHarness();
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150, 151);
@@ -666,7 +666,9 @@ public partial class BeaconSyncOrchestratorTests
         await orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(wrongProposer), CancellationToken.None);
         harness.Importer.ExpectedProposer = true;
 
-        Assert.That(harness.Importer.Imports, Is.Empty, "all gossip blocks were held or dropped before import");
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[160]),
+            "only the proposer check needs import to resolve earlier parent and timing checks");
+        harness.Importer.Imports.Clear();
 
         // Importing the parent through range sync drains only the valid queued child.
         await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None);
@@ -1898,6 +1900,10 @@ public partial class BeaconSyncOrchestratorTests
 
         public ImportRefusal LastRefusal { get; private set; }
 
+        bool IBlockImporter.RejectGossip => RejectGossip;
+
+        private bool RejectGossip { get; set; }
+
         /// <summary>Fulu block signatures that fail, so a copy of a block under another signature answers <see cref="BlockImportResult.Invalid"/>.</summary>
         public HashSet<BlsSignature> ForgedSignatures { get; } = [];
 
@@ -1970,6 +1976,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             Imports.Add((block.Slot, blockRoot, verifySignatures));
             LastRefusal = ImportRefusal.None;
+            RejectGossip = false;
             ImportOrder.Add((false, blockRoot));
             ImportedOnPoolThread.Add(Thread.CurrentThread.IsThreadPoolThread);
             _deferred.Remove(blockRoot);
@@ -1994,7 +2001,11 @@ public partial class BeaconSyncOrchestratorTests
             if (UnverifiedPayloads.Contains(block.ParentRoot)) return Defer(blockRoot);
             if (InvalidTransition.Contains(blockRoot)) return BlockImportResult.Invalid;
             if (Unavailable.Contains(blockRoot)) return BlockImportResult.DataUnavailable;
-            if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
+            if (Forged.Contains(blockRoot) || !ExpectedProposer)
+            {
+                RejectGossip = true;
+                return BlockImportResult.Invalid;
+            }
             if (block is ForkedSignedBeaconBlock.OfFulu { Block.Signature: var signature } && ForgedSignatures.Contains(signature)) return BlockImportResult.Invalid;
             if (EngineDown.Contains(blockRoot)) return BlockImportResult.EngineUnavailable;
             if (Early.Contains(blockRoot) && (Ticks.Count == 0 || Ticks[^1] < block.Slot)) return BlockImportResult.FutureSlot;
@@ -2009,7 +2020,11 @@ public partial class BeaconSyncOrchestratorTests
         /// <summary>As the real importer: a signed block is deferred, and a child of a deferred block is deferred too.</summary>
         private BlockImportResult Defer(Hash256 blockRoot)
         {
-            if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
+            if (Forged.Contains(blockRoot))
+            {
+                RejectGossip = true;
+                return BlockImportResult.Invalid;
+            }
             if (AdmissionRefused.Contains(blockRoot))
             {
                 LastRefusal = ImportRefusal.LocalAdmission;
@@ -2064,23 +2079,23 @@ public partial class BeaconSyncOrchestratorTests
 
         public void OnFinalized(CheckpointRef finalized) => Finalizations.Add(finalized);
 
-        public bool OnGossipAggregate(SignedAggregateAndProof aggregate) => Consume(aggregate);
+        public bool? OnGossipAggregate(SignedAggregateAndProof aggregate) => Consume(aggregate);
 
-        public bool OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => Consume(aggregate);
+        public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => Consume(aggregate);
 
         /// <summary>Whether fork choice accepts each gossip slashing and payload attestation, as a verified signature would.</summary>
-        public bool AcceptsGossipOperations { get; set; } = true;
+        public bool? AcceptsGossipOperations { get; set; } = true;
 
-        public bool OnGossipAttesterSlashing(AttesterSlashing slashing) => Consume(slashing);
+        public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => Consume(slashing);
 
-        public bool OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => Consume(slashing);
+        public bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => Consume(slashing);
 
-        public bool OnGossipPayloadAttestation(PayloadAttestationMessage message) => Consume(message);
+        public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message) => Consume(message);
 
         /// <summary>The committee of a slot as the head state answers it; <c>null</c> is a head state that cannot tell.</summary>
         public Func<ulong, ulong[]?> Ptc { get; set; } = static _ => EveryValidator;
 
-        private bool Consume(object operation)
+        private bool? Consume(object operation)
         {
             GossipOperations.Add(operation);
             TicksAtGossipOperations.Add(Ticks.Count);

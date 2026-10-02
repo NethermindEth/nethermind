@@ -100,7 +100,8 @@ public static class SignatureSets
         // verify_block_signature indexes state.validators with the untrusted proposer_index (p2p beacon_block: [REJECT] a valid validator index).
         ulong proposerIndex = block.ProposerIndex;
         if (proposerIndex >= (ulong)state.Validators!.Length)
-            throw new BeaconStateException($"Block proposer index {proposerIndex} is not a validator index (registry size {state.Validators.Length})");
+            // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The proposer index is a valid validator index".
+            throw new BeaconStateException($"Block proposer index {proposerIndex} is not a validator index (registry size {state.Validators.Length})") { RejectGossip = true };
         // Epoch processing inside process_slots can grow the registry past the cache.
         if (proposerIndex >= (ulong)pubkeys.Count)
             throw new BeaconStateException($"Block proposer index {proposerIndex} has no cached public key ({pubkeys.Count} cached)");

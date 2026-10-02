@@ -30,16 +30,15 @@ public partial class GossipRouterTests
     private static readonly Hash256 PtcBlockRoot = Keccak.Compute("ptc voted block");
     private const ulong PtcValidator = 7;
 
-    [TestCase(0, false, MessageValidity.Rejected)]
-    [TestCase(-1, false, MessageValidity.Ignored)]
-    [TestCase(1, false, MessageValidity.Ignored)]
-    [TestCase(0, true, MessageValidity.Ignored)]
-    public void Payload_attestation_failed_block_respects_prior_ignores(int slotOffset, bool verified, MessageValidity expected)
+    [Test]
+    public async Task Payload_attestation_failed_block_respects_prior_ignores([Values(-1, 0, 1)] int slotOffset, [Values] bool verified, [Values] bool held)
     {
         FailedBlockRoots failed = new();
         failed.Add(PtcBlockRoot, PtcSlot);
         ManualTimestamper time = new(SepoliaSlotStart(PtcSlot).AddSeconds(6));
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, time), LimboLogs.Instance, failedBlocks: failed);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Sepolia);
+        if (held) store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, time), LimboLogs.Instance, store, failedBlocks: failed);
         int received = 0;
         router.PayloadAttestationMessageReceived += (_, _) => received++;
         PayloadAttestationMessage vote = PtcVote(PtcBlockRoot, (ulong)((long)PtcSlot + slotOffset));
@@ -48,13 +47,15 @@ public partial class GossipRouterTests
             router.MarkPayloadAttestationVerified(vote);
         }
 
-        MessageValidity validity = Handle(router, vote);
-
-        using (Assert.EnterMultipleScope())
+        MessageValidity expected = held && !verified && slotOffset == 0 ? MessageValidity.Rejected : MessageValidity.Ignored;
+        byte[] payload = Snappy.CompressToArray(PayloadAttestationMessage.Encode(vote));
+        await AssertDeferredPeerPenaltyAsync(GossipTopics.PayloadAttestationMessage, payload, verdict =>
         {
-            Assert.That(validity, Is.EqualTo(expected));
-            Assert.That(received, Is.Zero);
-        }
+            verdict.Complete(router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, payload, verdict));
+            return Task.CompletedTask;
+        }, expected);
+
+        Assert.That(received, Is.Zero);
     }
 
     public enum PtcCase
