@@ -85,6 +85,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private static readonly TimeSpan DialTimeout = TimeSpan.FromSeconds(10);
     private const int MaxRedialsAfterSimultaneousDial = 3;
     internal static readonly TimeSpan RedialBackoff = TimeSpan.FromMilliseconds(100);
+    internal static readonly TimeSpan MaxGossipRedialDelay = TimeSpan.FromMinutes(1);
     private const string PeerIdSeparator = "/p2p/";
 
     // Bounds the per-peer-id ban/diagnostics table so years of churn on a public network cannot
@@ -225,6 +226,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <summary>The least time between two <c>status</c> requests to one peer outside the health checks; settable so a test need not wait it out.</summary>
     internal TimeSpan MinStatusRefreshInterval { get; set; } = TimeSpan.FromSeconds(12);
+
+    /// <summary>How often an admitted peer's gossip channel is checked, and the first wait after one is opened; settable so a test need not wait it out.</summary>
+    internal TimeSpan GossipChannelCheckInterval { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <inheritdoc/>
     /// <remarks>
@@ -1431,34 +1435,63 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
-        OpenGossipChannel(peer);
+        _ = KeepGossipChannelAsync(peer);
         PeerAdmitted?.Invoke(peer);
         return true;
     }
 
-    /// <summary>Opens this node's gossipsub channel to an admitted peer, unless the pubsub router holds one with it already.</summary>
+    /// <summary>Keeps a gossipsub channel open with an admitted peer while its session lasts; a peer leaves the pool only as its session closes or is closed.</summary>
     /// <remarks>
     /// The router opens its own channel only to a peer it is told of, which stock identify does and the probe replacing it does not, or in answer
-    /// to the remote's channel; without this, two such nodes never exchange gossip. The channel lasts as long as the session, so it is not awaited.
+    /// to the remote's channel; without this, two such nodes never exchange gossip. A channel can end while the session lives, by a reset or the
+    /// remote closing it, and the router then drops the peer, so it is checked every <see cref="GossipChannelCheckInterval"/> and opened again,
+    /// waiting longer after each new channel that does not last (see <see cref="NextGossipRedialDelay"/>). In this pubsub library the end of
+    /// either channel ends the other, so a lost channel leaves none of this node's open.
     /// </remarks>
-    private void OpenGossipChannel(ManagedPeer peer)
+    private async Task KeepGossipChannelAsync(ManagedPeer peer)
     {
-        // Checked just before dialing: a channel the remote opened first makes the router dial back, and a second one would stay open unused.
-        if (BeaconP2P.RemotePeerIdOf(peer.Session) is not { } remotePeerId || _p2p.HasGossipChannel(remotePeerId))
+        if (BeaconP2P.RemotePeerIdOf(peer.Session) is not { } remotePeerId)
         {
             return;
         }
 
-        _ = DialGossipAsync(peer.Session, remotePeerId);
-    }
-
-    // The newest gossipsub version the peer listed, in the order the pubsub router picks one when it connects itself.
-    private async Task DialGossipAsync(ISession session, PeerId remotePeerId)
-    {
-        IReadOnlyList<string> protocols = _p2p.SupportedProtocolsOf(remotePeerId);
-        CancellationToken closed = _p2p.SessionClosedToken(session);
+        CancellationToken closed = _p2p.SessionClosedToken(peer.Session);
+        TimeSpan redialDelay = GossipChannelCheckInterval;
         try
         {
+            while (!closed.IsCancellationRequested)
+            {
+                TimeSpan wait = GossipChannelCheckInterval;
+                // Checked just before dialing: a channel the remote opened first makes the router dial back, and a second one would stay open unused.
+                if (_p2p.HasGossipChannel(remotePeerId))
+                {
+                    redialDelay = GossipChannelCheckInterval;
+                }
+                else
+                {
+                    _ = DialGossipAsync(peer.Session, remotePeerId, closed);
+                    wait = redialDelay;
+                    redialDelay = NextGossipRedialDelay(redialDelay);
+                }
+
+                await Task.Delay(wait, closed);
+            }
+        }
+        catch (OperationCanceledException) when (closed.IsCancellationRequested)
+        {
+            // The session closed, which ends its channels too.
+        }
+    }
+
+    /// <summary>The wait after a gossip channel is opened again when the one opened before, then waited on for <paramref name="delay"/>, did not last.</summary>
+    internal static TimeSpan NextGossipRedialDelay(TimeSpan delay) => delay * 2 < MaxGossipRedialDelay ? delay * 2 : MaxGossipRedialDelay;
+
+    // The newest gossipsub version the peer listed, in the order the pubsub router picks one when it connects itself.
+    private async Task DialGossipAsync(ISession session, PeerId remotePeerId, CancellationToken closed)
+    {
+        try
+        {
+            IReadOnlyList<string> protocols = _p2p.SupportedProtocolsOf(remotePeerId);
             if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV13))
             {
                 await session.DialAsync<GossipsubProtocolV13>(closed);
