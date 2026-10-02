@@ -353,7 +353,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         // InclusionListTransactions aren't in RLP, so a hash-only ref re-resolved from the DB would drop
         // them and pass a censoring payload.
         BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx && block.InclusionListTransactions is null
-            ? new BlockRef(blockHash, processingOptions)
+            ? new BlockRef(blockHash, processingOptions, block.Workers)
             : new BlockRef(block, processingOptions);
 
         if (!_recoveryComplete)

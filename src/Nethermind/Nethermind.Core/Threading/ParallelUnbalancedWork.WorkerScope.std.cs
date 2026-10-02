@@ -9,6 +9,21 @@ namespace Nethermind.Core.Threading;
 
 public partial class ParallelUnbalancedWork
 {
+    internal static partial WorkerGroup? GetCurrentGroup() => WorkerScope.Current?.Group;
+
+    internal sealed partial class WorkerGroup
+    {
+        internal WorkerScope Root { get; private set; } = null!;
+        private partial void Initialize() => Root = new(this, detached: true);
+        internal partial WorkerScope Enter() => new(this, detached: false);
+        internal partial void Queue(IThreadPoolWorkItem work)
+        {
+            using WorkerScope scope = Enter();
+            if (Concurrency == 1) work.Execute();
+            else Root.Enqueue(new(), work);
+        }
+    }
+
     public sealed partial class WorkerScope : IThreadPoolWorkItem
     {
         [ThreadStatic] private static WorkerContext _context;
@@ -17,6 +32,7 @@ public partial class ParallelUnbalancedWork
         {
             internal WorkerScope? Scope;
             internal WorkerScope? Runner;
+            internal WorkerScope? GroupRunner;
             internal WorkQueue? Operation;
         }
 
@@ -24,10 +40,15 @@ public partial class ParallelUnbalancedWork
         /// <summary>Whether operations other than <paramref name="own"/> have queued callbacks; a lock-free hint.</summary>
         internal bool HasOtherReadyWork(WorkQueue own) =>
             Volatile.Read(ref _root._first) is { } first && (!ReferenceEquals(first, own) || Volatile.Read(ref first.Next) is not null);
-        private readonly WorkerScope? _previous;
+        private readonly WorkerContext _previous;
         private readonly WorkerScope _root;
         private readonly object _gate;
         private readonly Action<IThreadPoolWorkItem> _schedule;
+        private readonly object _callerGate;
+        private readonly bool _ownsCaller;
+        private readonly bool _limited;
+        private readonly WorkerScope? _parentEntry;
+        internal WorkerGroup? Group { get; }
         private WorkQueue? _first;
         private WorkQueue? _last;
         private int _pending;
@@ -36,23 +57,88 @@ public partial class ParallelUnbalancedWork
         private bool _disposed;
         internal int Concurrency { get; }
 
-        internal WorkerScope(int concurrency, Action<IThreadPoolWorkItem>? schedule = null)
+        internal WorkerScope(int concurrency, Action<IThreadPoolWorkItem>? schedule = null, bool limitConcurrency = false)
         {
             ref WorkerContext context = ref _context;
-            _previous = context.Scope;
-            _root = _previous?._root ?? this;
-            _gate = _previous?._gate ?? new();
-            Concurrency = _previous?.Concurrency ?? concurrency;
+            _previous = context;
+            if (limitConcurrency && context.Scope is { } parent && concurrency < parent.Concurrency)
+            {
+                _root = this;
+                _gate = new();
+                _callerGate = new();
+                Concurrency = concurrency;
+                Group = parent.Group;
+                _schedule = parent._root.ScheduleChildRunner;
+                _limited = true;
+                _ownsCaller = true;
+                Monitor.Enter(_callerGate);
+                context.Scope = this;
+                context.Operation = null;
+                return;
+            }
+            _root = context.Scope?._root ?? this;
+            _gate = context.Scope?._gate ?? new();
+            _callerGate = _root == this ? new() : _root._callerGate;
+            Concurrency = context.Scope?.Concurrency ?? concurrency;
+            Group = _root == this ? null : _root.Group;
             _schedule = schedule ?? QueueToThreadPool;
             context.Scope = this;
         }
 
+        internal WorkerScope(WorkerGroup group, bool detached)
+        {
+            _previous = detached ? default : _context;
+            _root = detached ? this : group.Root;
+            _gate = _root == this ? new() : _root._gate;
+            _callerGate = _root == this ? new() : _root._callerGate;
+            _schedule = QueueToThreadPool;
+            Concurrency = group.Concurrency;
+            Group = group;
+            if (detached) return;
+
+            bool groupRunner = ReferenceEquals(_previous.GroupRunner, _root);
+            _ownsCaller = !ReferenceEquals(_previous.Scope?._root, _root) && !ReferenceEquals(_previous.Runner, _root) && !groupRunner;
+            if (_ownsCaller) Monitor.Enter(_root._callerGate);
+            _context = new()
+            {
+                Scope = this,
+                Runner = ReferenceEquals(_previous.Runner, _root) || groupRunner ? _root : null,
+                GroupRunner = groupRunner ? _root : null,
+                Operation = ReferenceEquals(_previous.Scope?._root, _root) ? _previous.Operation : null
+            };
+        }
+
+        private WorkerScope(WorkerScope root)
+        {
+            _parentEntry = root.Group is { } group && !ReferenceEquals(group, GetCurrentGroup()) ? group.Enter() : null;
+            _previous = _context;
+            _root = root;
+            _gate = root._gate;
+            _callerGate = root._callerGate;
+            _schedule = root._schedule;
+            Concurrency = root.Concurrency;
+            Group = root.Group;
+            _ownsCaller = !ReferenceEquals(_previous.Scope?._root, root) && !ReferenceEquals(_previous.Runner, root);
+            if (_ownsCaller) Monitor.Enter(_callerGate);
+            _context.Scope = this;
+            if (!ReferenceEquals(_previous.Scope?._root, root)) _context.Operation = null;
+        }
+
+        internal WorkerScope? EnterForJoin()
+        {
+            if (_root._limited && !ReferenceEquals(_context.Scope?._root, _root) && !ReferenceEquals(_context.Runner, _root))
+                return new(_root);
+            return Group is { } group && !ReferenceEquals(group, GetCurrentGroup()) ? group.Enter() : null;
+        }
+
+        private void ScheduleChildRunner(IThreadPoolWorkItem work) => Enqueue(new(detached: true), work);
+
         /// <summary>One operation's unstarted callbacks, all the same work item.</summary>
-        internal sealed class WorkQueue(BackgroundWork? owner = null)
+        internal sealed class WorkQueue(BackgroundWork? owner = null, bool detached = false)
         {
             // Synchronous loops record the operation that started them.
             // Background operations start a new ancestry: their creator need not join them.
-            internal readonly WorkQueue? Parent = owner is null ? _context.Operation : null;
+            internal readonly WorkQueue? Parent = owner is null && !detached ? _context.Operation : null;
             internal readonly BackgroundWork? Owner = owner;
             // Cleared when the last callback is taken or withdrawn.
             internal IThreadPoolWorkItem? Work;
@@ -203,7 +289,12 @@ public partial class ParallelUnbalancedWork
         {
             ref WorkerContext context = ref _context;
             WorkerContext previous = context;
-            context = new() { Scope = this, Runner = this };
+            context = new()
+            {
+                Scope = this,
+                Runner = this,
+                GroupRunner = ReferenceEquals(this, Group?.Root) ? this : previous.GroupRunner
+            };
             try
             {
                 lock (_gate) _requested--;
@@ -234,7 +325,9 @@ public partial class ParallelUnbalancedWork
             if (_disposed) return;
             Debug.Assert(ReferenceEquals(_context.Scope, this), "Worker scopes must be disposed on their owning thread in reverse order.");
             _disposed = true;
-            _context.Scope = _previous;
+            _context = _previous;
+            if (_ownsCaller) Monitor.Exit(_root._callerGate);
+            _parentEntry?.Dispose();
         }
     }
 

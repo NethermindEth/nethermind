@@ -3,12 +3,16 @@
 
 using System;
 using System.Threading;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -21,6 +25,20 @@ namespace Nethermind.Consensus.Test.Processing;
 
 public class BranchProcessorVerdictTests
 {
+    [Test]
+    public void Hash_only_queue_reference_restores_the_worker_group()
+    {
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        tree.SuggestBlock(block, BlockTreeSuggestOptions.None);
+        ParallelUnbalancedWork.WorkerGroup group = new(2);
+        BlockRef reference = new(block.Hash!, ProcessingOptions.NoValidation, group);
+
+        Assert.That(reference.Resolve(tree), Is.True);
+        Assert.That(reference.Block!.Workers, Is.SameAs(group));
+    }
+
     /// <summary>
     /// A block that fails after its verdict keeps the invalid-block handling unless a request was actually answered
     /// VALID for it: only then does the failure belong to the commit rather than to the block. Sync and every other

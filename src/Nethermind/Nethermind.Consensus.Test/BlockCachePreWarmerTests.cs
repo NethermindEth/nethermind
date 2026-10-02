@@ -2288,11 +2288,11 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void Reactive_warmers_share_one_worker_budget([Values] bool cancel, [Values(1, 2)] int budget)
+    public void Reactive_warmers_share_one_worker_budget([Values] bool cancel, [Values(1, 2, 4)] int budget, [Values] bool shared)
     {
         PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
         using ManualResetEventSlim release = new(false);
-        using CountdownEvent occupied = new(budget);
+        using CountdownEvent occupied = new(Math.Min(budget, 2));
         using ManualResetEventSlim exceeded = new(false);
         using ManualResetEventSlim entered = new(false);
         using CancellationTokenSource cancellation = new();
@@ -2312,7 +2312,7 @@ public class BlockCachePreWarmerTests
         {
             // Only a budget above one gets a runner that could take the coordinator.
             Task warming = StartPrewarming(preWarmer, block, parent, Osaka.Instance, cancellation.Token, budget,
-                budget > 1 ? entered : null);
+                budget > 1 ? entered : null, shared ? new ParallelUnbalancedWork.WorkerGroup(budget) : null);
             bool filled;
             bool oversubscribed;
             try
@@ -2329,7 +2329,7 @@ public class BlockCachePreWarmerTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(filled, Is.True, "all available workers must actually enter warming");
-                Assert.That(oversubscribed || exceeded.IsSet, Is.False, "all warming paths must share the inherited worker budget");
+                Assert.That(oversubscribed || exceeded.IsSet, Is.False, "all warming paths must honor both the configured and inherited worker budgets");
                 Assert.That(policy.Timeouts, Is.Zero);
                 if (!cancel) Assert.That(policy.DiscoveryBuilds, Is.GreaterThan(0), "storage discovery must still run");
             }
@@ -2529,12 +2529,13 @@ public class BlockCachePreWarmerTests
     }
 
     private static Task StartPrewarming(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent,
-        IReleaseSpec spec, CancellationToken token = default, int workerBudget = 0, ManualResetEventSlim? warmerEntered = null)
+        IReleaseSpec spec, CancellationToken token = default, int workerBudget = 0, ManualResetEventSlim? warmerEntered = null,
+        ParallelUnbalancedWork.WorkerGroup? group = null)
     {
         if (workerBudget > 0)
             return Task.Run(() =>
             {
-                using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(workerBudget);
+                using ParallelUnbalancedWork.WorkerScope scope = group?.Enter() ?? ParallelUnbalancedWork.BeginWorkerScope(workerBudget);
                 // Queued ahead of the session: a helper that starts before this thread joins would otherwise take the
                 // coordinator and leave this thread's share of the budget idle in the join. Relies on the scope handing
                 // its runner queued work oldest-first and requesting no runner beyond the one this item already has.

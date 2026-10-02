@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -95,13 +96,16 @@ public class BranchProcessor(
 
         try
         {
-            // Start prewarming as early as possible
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-            Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
-
-            blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
-            BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
+            Task? prefetchBlockhash;
+            suggestedBlock.Workers ??= new(Environment.ProcessorCount);
+            using (suggestedBlock.Workers.Enter())
+            {
+                prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+                prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
+                BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
+            }
 
             BlockHeader? preBlockBaseBlock = baseBlock;
 
@@ -114,14 +118,15 @@ public class BranchProcessor(
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
+                suggestedBlock.Workers ??= new(Environment.ProcessorCount);
+                using ParallelUnbalancedWork.WorkerScope workers = suggestedBlock.Workers.Enter();
                 if (i > 0)
                 {
                     // Refresh spec
                     spec = specProvider.GetSpec(suggestedBlock.Header);
                 }
-                // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();
-                if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
+                if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock!, spec, backgroundCancellation.Token);
                 prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -278,10 +283,14 @@ public class BranchProcessor(
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {
-        public static void CalculateInBackground(Block suggestedBlock) =>
+        public static void CalculateInBackground(Block suggestedBlock)
+        {
             // Memory has been reserved on the transactions to delay calculate the hashes
             // We calculate the hashes in the background to release that memory
-            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlock), preferLocal: false);
+            TxHashCalculator work = new(suggestedBlock);
+            if (ParallelUnbalancedWork.GetCurrentGroup() is { } group) group.Queue(work);
+            else ThreadPool.UnsafeQueueUserWorkItem(work, preferLocal: false);
+        }
 
         void IThreadPoolWorkItem.Execute()
         {

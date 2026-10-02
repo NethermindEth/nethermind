@@ -6,7 +6,22 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Threading;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Threading;
@@ -15,6 +30,167 @@ public partial class ParallelUnbalancedWorkTests
 {
     private const string BoundedPoolChildArgument = "--nethermind-bounded-parallel-pool";
     private const int BoundedPoolWorkerCount = 4;
+
+    [Test, NonParallelizable]
+    public Task Shared_pipeline_completes_on_a_bounded_pool([Values(2, 4)] int budget) =>
+        RunBoundedPoolChild($"pipeline-{budget}");
+
+    [Test]
+    public async Task Worker_group_bounds_background_and_independent_callers([Values(1, 2, 4)] int budget)
+    {
+        ParallelUnbalancedWork.WorkerGroup group = new(budget);
+        int active = 0;
+        int maximum = 0;
+        int wrongGroup = 0;
+        int calls = 0;
+        void Observe(int _)
+        {
+            if (!ReferenceEquals(ParallelUnbalancedWork.GetCurrentGroup(), group)) Interlocked.Increment(ref wrongGroup);
+            int current = Interlocked.Increment(ref active);
+            int observed = Volatile.Read(ref maximum);
+            while (current > observed)
+            {
+                int previous = Interlocked.CompareExchange(ref maximum, current, observed);
+                if (previous == observed) break;
+                observed = previous;
+            }
+            Thread.SpinWait(20_000);
+            Interlocked.Increment(ref calls);
+            Interlocked.Decrement(ref active);
+        }
+
+        TaskCompletionSource background = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        group.Queue(new CallbackWork(() =>
+        {
+            try
+            {
+                using ParallelUnbalancedWork.WorkerScope nested = ParallelUnbalancedWork.BeginWorkerScope(64);
+                ParallelUnbalancedWork.For(0, 64, Observe);
+                background.SetResult();
+            }
+            catch (Exception exception) { background.SetException(exception); }
+        }));
+        Task[] callers = new Task[3];
+        for (int i = 0; i < callers.Length; i++)
+            callers[i] = Task.Run(() =>
+            {
+                using ParallelUnbalancedWork.WorkerScope entered = group.Enter();
+                ParallelUnbalancedWork.For(0, 64, Observe);
+            });
+        await Task.WhenAll(callers).WaitAsync(TimeSpan.FromSeconds(10));
+        await background.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(256));
+            Assert.That(maximum, Is.InRange(1, budget));
+            Assert.That(wrongGroup, Is.Zero);
+            Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Limited_scope_caps_fanouts_and_preserves_parent_runner([Values(1, 2)] int budget)
+    {
+        ParallelUnbalancedWork.WorkerGroup group = new(4);
+        using ManualResetEventSlim entered = new();
+        using ParallelUnbalancedWork.WorkerScope parent = group.Enter();
+        int active = 0;
+        int maximum = 0;
+        int calls = 0;
+        void Observe(int _)
+        {
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current!.Concurrency, Is.EqualTo(budget));
+            using (group.Enter()) Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.SameAs(group));
+            int current = Interlocked.Increment(ref active);
+            int observed = Volatile.Read(ref maximum);
+            while (current > observed)
+            {
+                int previous = Interlocked.CompareExchange(ref maximum, current, observed);
+                if (previous == observed) break;
+                observed = previous;
+            }
+            Thread.SpinWait(20_000);
+            Interlocked.Increment(ref calls);
+            Interlocked.Decrement(ref active);
+        }
+
+        using ParallelUnbalancedWork.BackgroundWork warming = ParallelUnbalancedWork.BackgroundFor(0, 1,
+            ParallelUnbalancedWork.DefaultOptions, _ =>
+            {
+                using ParallelUnbalancedWork.WorkerScope limited = ParallelUnbalancedWork.BeginLimitedWorkerScope(budget);
+                entered.Set();
+                using ParallelUnbalancedWork.BackgroundWork first = ParallelUnbalancedWork.BackgroundFor(0, 64,
+                    ParallelUnbalancedWork.DefaultOptions, Observe);
+                using ParallelUnbalancedWork.BackgroundWork second = ParallelUnbalancedWork.BackgroundFor(0, 64,
+                    ParallelUnbalancedWork.DefaultOptions, Observe);
+                ParallelUnbalancedWork.For(0, 64, Observe);
+                first.WaitForCompletion();
+                second.WaitForCompletion();
+            });
+        Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True, "the coordinator must start on a parent runner");
+        warming.WaitForCompletion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(192));
+            Assert.That(maximum, Is.InRange(1, budget));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(parent));
+        }
+    }
+
+    [Test]
+    public async Task Limited_scope_background_work_restores_context_after_handoff([Values] bool cancel)
+    {
+        ParallelUnbalancedWork.WorkerGroup group = new(4);
+        using CancellationTokenSource cancellation = new();
+        ParallelUnbalancedWork.BackgroundWork work;
+        int calls = 0;
+        using (group.Enter())
+        using (ParallelUnbalancedWork.BeginLimitedWorkerScope(1))
+        {
+            work = ParallelUnbalancedWork.BackgroundFor(0, 64,
+                new ParallelOptions { CancellationToken = cancellation.Token }, _ =>
+                {
+                    Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.SameAs(group));
+                    Assert.That(ParallelUnbalancedWork.WorkerScope.Current!.Concurrency, Is.EqualTo(1));
+                    Interlocked.Increment(ref calls);
+                });
+        }
+        if (cancel) cancellation.Cancel();
+        await Task.Run(() =>
+        {
+            using (work)
+            {
+                if (cancel) Assert.Throws<OperationCanceledException>(work.WaitForCompletion);
+                else work.WaitForCompletion();
+            }
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.Null);
+        }).WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(cancel ? 0 : 64));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Worker_group_restores_context_and_releases_caller_after_failure()
+    {
+        ParallelUnbalancedWork.WorkerGroup group = new(2);
+        using (ParallelUnbalancedWork.WorkerScope outer = ParallelUnbalancedWork.BeginWorkerScope(1))
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                using ParallelUnbalancedWork.WorkerScope entered = group.Enter();
+                throw new InvalidOperationException();
+            });
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer));
+        }
+        await Task.Run(() =>
+        {
+            using ParallelUnbalancedWork.WorkerScope entered = group.Enter();
+            Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.SameAs(group));
+        }).WaitAsync(TimeSpan.FromSeconds(10));
+    }
 
     [Test]
     public void Worker_scope_assisting_restores_the_callers_scope([Values] bool nested, [Values] bool throws)
@@ -338,38 +514,41 @@ public partial class ParallelUnbalancedWorkTests
     {
         if (Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires queued workers.");
         foreach (string childVariant in new[] { "plain", "local" })
+            await RunBoundedPoolChild(childVariant);
+    }
+
+    private static async Task RunBoundedPoolChild(string childVariant)
+    {
+        ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
         {
-            ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            start.ArgumentList.Add(typeof(ParallelUnbalancedWorkTests).Assembly.Location);
-            start.ArgumentList.Add(BoundedPoolChildArgument);
-            start.ArgumentList.Add(childVariant);
-            using Process child = new() { StartInfo = start };
-            Assert.That(child.Start(), Is.True);
-            Task<string> output = child.StandardOutput.ReadToEndAsync();
-            Task<string> error = child.StandardError.ReadToEndAsync();
-            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
-            try
-            {
-                await child.WaitForExitAsync(timeout.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                child.Kill(entireProcessTree: true);
-                await child.WaitForExitAsync();
-                Assert.Fail($"The bounded-pool test did not return.\n{await output}\n{await error}");
-            }
-            Assert.That(child.ExitCode, Is.Zero, $"{childVariant}: {await output}\n{await error}");
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add(typeof(ParallelUnbalancedWorkTests).Assembly.Location);
+        start.ArgumentList.Add(BoundedPoolChildArgument);
+        start.ArgumentList.Add(childVariant);
+        using Process child = new() { StartInfo = start };
+        Assert.That(child.Start(), Is.True);
+        Task<string> output = child.StandardOutput.ReadToEndAsync();
+        Task<string> error = child.StandardError.ReadToEndAsync();
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        try
+        {
+            await child.WaitForExitAsync(timeout.Token);
         }
+        catch (OperationCanceledException)
+        {
+            child.Kill(entireProcessTree: true);
+            await child.WaitForExitAsync();
+            Assert.Fail($"The bounded-pool test did not return.\n{await output}\n{await error}");
+        }
+        Assert.That(child.ExitCode, Is.Zero, $"{childVariant}: {await output}\n{await error}");
     }
 
     private static Task<int> Main(string[] args)
     {
-        if (args is not [BoundedPoolChildArgument, string variant] || variant is not ("plain" or "local"))
+        if (args is not [BoundedPoolChildArgument, string variant] || variant is not ("plain" or "local" or "pipeline-2" or "pipeline-4"))
             return MicrosoftTestingPlatformEntryPoint.Main(args);
 
         // Run before the test host starts so all bounded pool slots can be held by confirmed blockers.
@@ -378,9 +557,12 @@ public partial class ParallelUnbalancedWorkTests
             Assert.That(Thread.CurrentThread.IsThreadPoolThread, Is.False);
             ThreadPool.GetMaxThreads(out _, out int completionPortThreads);
             Assert.That(ThreadPool.SetMinThreads(1, 1), Is.True);
-            Assert.That(ThreadPool.SetMaxThreads(BoundedPoolWorkerCount, completionPortThreads), Is.True);
-            Assert.That(ThreadPool.SetMinThreads(BoundedPoolWorkerCount, 1), Is.True);
-            RunWithOccupiedPool(withLocal: variant == "local");
+            int workers = variant == "pipeline-2" ? 2 : BoundedPoolWorkerCount;
+            Assert.That(ThreadPool.SetMaxThreads(workers, completionPortThreads), Is.True);
+            Assert.That(ThreadPool.SetMinThreads(workers, 1), Is.True);
+            if (variant.StartsWith("pipeline-", StringComparison.Ordinal))
+                Task.Run(() => RunSharedPipeline(workers)).WaitAsync(TimeSpan.FromSeconds(25)).GetAwaiter().GetResult();
+            else RunWithOccupiedPool(withLocal: variant == "local");
             return Task.FromResult(0);
         }
         catch (Exception exception)
@@ -388,6 +570,84 @@ public partial class ParallelUnbalancedWorkTests
             Console.Error.WriteLine(exception);
             return Task.FromResult(1);
         }
+    }
+
+    private static void RunSharedPipeline(int budget)
+    {
+        foreach (string outcome in new[] { "success", "cancel", "failure" })
+        {
+            using ManualResetEventSlim warmed = new();
+            using CancellationTokenSource cancellation = new();
+            ParallelUnbalancedWork.WorkerGroup group = new(budget);
+            IHasAccessList hint = Substitute.For<IHasAccessList>();
+            hint.GetAccessList(Arg.Any<Block>(), Arg.Any<IReleaseSpec>()).Returns(_ =>
+            {
+                Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.SameAs(group));
+                warmed.Set();
+                return null;
+            });
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new BlocksConfig { PreWarmStateConcurrency = Math.Min(budget, 2) }))
+                .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(London.Instance))
+                .AddSingleton<IHasAccessList>(hint)
+                .Build();
+            IMainProcessingContext context = container.Resolve<IMainProcessingContext>();
+            IWorldState state = context.WorldState;
+            BlockHeader parent;
+            using (state.BeginScope(IWorldState.PreGenesis))
+            {
+                state.CreateAccount(TestItem.AddressA, 10_000.Ether);
+                state.CreateAccount(TestItem.AddressB, UInt256.One);
+                state.InsertCode(TestItem.AddressB, new byte[] { 0x60, 0x00, 0x54, 0x50, 0x00 }, London.Instance);
+                state.Set(new StorageCell(TestItem.AddressB, UInt256.Zero), UInt256.One);
+                state.Commit(London.Instance);
+                state.CommitTree(0);
+                parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(state.StateRoot).TestObject;
+            }
+            container.Resolve<IBlockTree>().SuggestBlock(Build.A.Block.WithHeader(parent).TestObject, BlockTreeSuggestOptions.None);
+            Transaction[] txs = new Transaction[64];
+            for (int i = 0; i < txs.Length; i++)
+                txs[i] = Build.A.Transaction.WithType(TxType.EIP1559).WithNonce((ulong)i).WithChainId(BlockchainIds.Mainnet)
+                    .WithGasLimit(100_000).WithMaxFeePerGas(30.GWei).WithMaxPriorityFeePerGas(1.GWei)
+                    .WithTo(TestItem.AddressB).Signed(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+            Block block = Build.A.Block.WithParent(parent).WithNumber(1).WithGasLimit(30_000_000)
+                .WithBaseFeePerGas(1.GWei).WithTransactions(txs).TestObject;
+            block.Header.IsPostMerge = true;
+            block.Workers = group;
+            RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
+            using (group.Enter()) recovery.StartRecovery(block.Hash!, block.Transactions, London.Instance);
+            context.BranchProcessor.BlockProcessing += (_, _) =>
+            {
+                Assert.That(warmed.Wait(TimeSpan.FromSeconds(10)), Is.True, "prewarming must start with recovery sharing the bounded pool");
+                if (outcome == "cancel")
+                {
+                    cancellation.Cancel();
+                    cancellation.Token.ThrowIfCancellationRequested();
+                }
+            };
+            if (outcome == "failure") context.BlockProcessor.TransactionsExecuted += FailAfterTransactions;
+            try
+            {
+                void Process() => context.BranchProcessor.Process(parent, [block], ProcessingOptions.NoValidation,
+                    NullBlockTracer.Instance, cancellation.Token);
+                if (outcome == "cancel") Assert.Throws<OperationCanceledException>(Process);
+                else if (outcome == "failure") Assert.Throws<InvalidOperationException>(Process);
+                else
+                {
+                    Process();
+                    Assert.That(block.Transactions, Has.All.Property(nameof(Transaction.SenderAddress)).EqualTo(TestItem.AddressA));
+                }
+            }
+            finally
+            {
+                context.BlockProcessor.TransactionsExecuted -= FailAfterTransactions;
+                ISenderRecoveryProgress? progress = recovery.GetInFlight(block.Transactions);
+                if (progress is not null) Assert.That(progress.WaitForCompletion(10_000), Is.True);
+            }
+            Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.Null);
+        }
+
+        static void FailAfterTransactions() => throw new InvalidOperationException("Injected execution failure");
     }
 
     private static void RunWithOccupiedPool(bool withLocal)

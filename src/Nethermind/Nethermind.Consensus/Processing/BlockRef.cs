@@ -4,11 +4,14 @@
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Consensus.Processing
 {
     internal class BlockRef
     {
+        private readonly ParallelUnbalancedWork.WorkerGroup? _workers;
+
         public BlockRef(Block block, ProcessingOptions processingOptions = ProcessingOptions.None)
         {
             Block = block;
@@ -17,12 +20,14 @@ namespace Nethermind.Consensus.Processing
             BlockHash = block.Hash!;
         }
 
-        public BlockRef(Hash256 blockHash, ProcessingOptions processingOptions = ProcessingOptions.None)
+        public BlockRef(Hash256 blockHash, ProcessingOptions processingOptions = ProcessingOptions.None,
+            ParallelUnbalancedWork.WorkerGroup? workers = null)
         {
             Block = null;
             IsInDb = true;
             BlockHash = blockHash;
             ProcessingOptions = processingOptions;
+            _workers = workers;
         }
 
         public bool IsInDb { get; set; }
@@ -41,6 +46,7 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 Block = block;
+                block.Workers ??= _workers;
                 IsInDb = false;
             }
 

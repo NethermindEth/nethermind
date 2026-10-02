@@ -129,19 +129,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        Result<Block> decodingResult;
+        using (request.Workers.Enter())
+        {
+            StartSenderRecovery(request);
+            decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        }
         if (decodingResult.IsError)
         {
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
-
-        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
-        // recovers inline whatever it reaches before the background recovery does. Started only once the block is
-        // built: TryGetBlock has already finished hashing the transactions-trie root before recovery competes for
-        // pool workers.
-        StartSenderRecovery(request);
+        block.Workers = request.Workers;
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
@@ -656,7 +656,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
-            // TryGetBlock has already decoded these, so only an empty block has nothing to recover.
+            // TryGetBlock reports the decoding error; nothing to recover otherwise.
             return;
 
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));

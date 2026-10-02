@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -15,6 +16,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -41,6 +44,58 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 {
     private static readonly FieldInfo? BlockValidationTasksField =
         typeof(NewPayloadHandler).GetField("_blockValidationTasks", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    [Test]
+    public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash)
+    {
+        using ManualResetEventSlim finishRecovery = new();
+        TaskCompletionSource<ParallelUnbalancedWork.WorkerGroup?> entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
+        ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<ValueHash256>()).Returns(_ =>
+        {
+            entered.TrySetResult(ParallelUnbalancedWork.GetCurrentGroup());
+            if (ParallelUnbalancedWork.GetCurrentGroup()?.Concurrency > 1 && !finishRecovery.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("Recovery was not released");
+            return TestItem.AddressA;
+        });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IEthereumEcdsa>(ecdsa)
+            .Build();
+        RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+        Block block = Build.A.Block.WithParentHash(TestItem.KeccakC).WithNumber(1)
+            .WithDifficulty(0).WithNonce(0).WithTransactions(tx).TestObject;
+        block.Header.IsPostMerge = true;
+        ExecutionPayload payload = ExecutionPayload.Create(block);
+        Transaction[] transactions = payload.TryGetTransactions().Data!;
+        if (invalidHash) payload.BlockHash = TestItem.KeccakB;
+        using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
+            wasProcessed: true, validateSuggestedBlock: true, senderRecovery: recovery,
+            specProvider: container.Resolve<ISpecProvider>());
+        ISenderRecoveryProgress? progress = null;
+        try
+        {
+            ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
+            progress = recovery.GetInFlight(transactions);
+            ParallelUnbalancedWork.WorkerGroup? observed = payload.Workers.Concurrency == 1
+                ? null : await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(observed, payload.Workers.Concurrency == 1 ? Is.Null : Is.SameAs(payload.Workers));
+                Assert.That(entered.Task.IsCompleted, Is.EqualTo(payload.Workers.Concurrency > 1));
+                Assert.That(result.Data.Status, Is.EqualTo(invalidHash ? PayloadStatus.Invalid : PayloadStatus.Valid));
+                Assert.That(progress, payload.Workers.Concurrency == 1 ? Is.Null : Is.Not.Null);
+            }
+        }
+        finally
+        {
+            finishRecovery.Set();
+            progress ??= recovery.GetInFlight(transactions);
+            if (progress is not null)
+                Assert.That(progress.WaitForCompletion(10_000), Is.True);
+        }
+    }
 
     [Test]
     public async Task Canonical_payload_far_behind_head_does_not_walk_the_full_ancestry()
@@ -649,7 +704,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         int timeoutMs = 50,
         Func<bool>? wasProcessedNow = null,
         Func<bool>? parentProcessedNow = null,
-        Action<IBlockTree, IStateReader>? configure = null)
+        Action<IBlockTree, IStateReader>? configure = null,
+        RecoverSignatures? senderRecovery = null,
+        ISpecProvider? specProvider = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -725,8 +782,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             mergeConfig,
             receiptConfig,
             stateReader,
-            new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
-            Substitute.For<ISpecProvider>(),
+            senderRecovery ?? new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
+            specProvider ?? Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
             LimboLogs.Instance);
     }

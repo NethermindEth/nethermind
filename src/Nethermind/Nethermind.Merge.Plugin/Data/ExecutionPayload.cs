@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
@@ -127,6 +128,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             _unboundFields &= ~PayloadFields.Transactions;
             _encodedTransactions = value;
             _transactions = null;
+            _txRootWork?.Dispose();
+            _txRootCompletion?.TrySetCanceled();
+            _ = _txRootTask?.Exception;
+            _txRootWork = null;
+            _txRootCompletion = null;
             _txRootTask = null;
         }
     }
@@ -220,6 +226,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns>The decoded execution block or a decoding error.</returns>
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
+        using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
         byte[][] encodedTransactions = Transactions;
         // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
         // and carries no task machinery for it.
@@ -228,9 +235,16 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
         {
+            _txRootWork?.Dispose();
+            _txRootCompletion?.TrySetCanceled();
             txRootTask?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return transactions.Error;
         }
+
+        _txRootWork?.WaitForCompletion();
+        _txRootWork?.Dispose();
+        _txRootWork = null;
+        _txRootCompletion = null;
 
         BlockHeader header = new(
             ParentHash,
@@ -259,7 +273,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
         Block block = new(header, transactions.Data, Array.Empty<BlockHeader>(), Withdrawals)
         {
-            EncodedTransactions = encodedTransactions
+            EncodedTransactions = encodedTransactions,
+            Workers = Workers
         };
         return block;
     }
@@ -269,6 +284,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     protected Transaction[]? _transactions = null;
 
     private Task<Hash256>? _txRootTask;
+    private TaskCompletionSource<Hash256>? _txRootCompletion;
+    private ParallelUnbalancedWork.BackgroundWork? _txRootWork;
+    private ParallelUnbalancedWork.WorkerGroup? _workers;
+    internal ParallelUnbalancedWork.WorkerGroup Workers => _workers ??= new(RuntimeInformation.ProcessorCount);
 
     private const int MinTxsForParallelDecoding = 32;
 
@@ -286,9 +305,19 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     internal Task<Hash256>? StartTxRootComputation()
     {
         byte[][] encodedTransactions = _encodedTransactions;
-        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && !RuntimeInformation.IsSingleProcessor
-            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
-            : null;
+        if (_txRootTask is not null || encodedTransactions.Length < MinTxsForParallelDecoding || RuntimeInformation.IsSingleProcessor)
+            return _txRootTask;
+
+        using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
+        TaskCompletionSource<Hash256> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _txRootCompletion = completion;
+        _txRootTask = completion.Task;
+        _txRootWork = ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions, _ =>
+        {
+            try { completion.SetResult(TxTrie.CalculateRoot(encodedTransactions)); }
+            catch (Exception exception) { completion.SetException(exception); }
+        });
+        return _txRootTask;
     }
 
     /// <summary>

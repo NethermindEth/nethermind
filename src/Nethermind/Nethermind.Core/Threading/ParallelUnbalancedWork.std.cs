@@ -497,7 +497,13 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             }
         }
 
-        public partial bool TryHelp() => !_joined && _scope is not null && _scope.TryExecute(_queue!);
+        public partial bool TryHelp()
+        {
+            using WorkerScope? entered = EnterGroup();
+            return !_joined && _scope is not null && _scope.TryExecute(_queue!);
+        }
+
+        private WorkerScope? EnterGroup() => _scope?.EnterForJoin();
 
         public partial void WaitForCompletion()
         {
@@ -517,6 +523,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
 
         private void Join()
         {
+            using WorkerScope? entered = EnterGroup();
             if (_joined) return;
             if (_dependency is not null)
             {
