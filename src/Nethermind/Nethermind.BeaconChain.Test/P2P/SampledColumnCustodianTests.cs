@@ -87,6 +87,39 @@ public class SampledColumnCustodianTests
         }
     }
 
+    /// <summary>fulu/p2p-interface.md: the ENR's <c>cgc</c> tells a peer's custody before its metadata does, so it stands until metadata answers.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_dialed_peer_whose_metadata_never_answers_custodies_what_its_enr_advertises(CancellationToken token)
+    {
+        using PrivateKey supernodeKey = new(SupernodeKey);
+        Node client = CreateNode();
+        SetMatchingStatus(client);
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        // Does not list the metadata protocol, so only the ENR tells its custody.
+        await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
+            new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus), identity: BeaconP2P.IdentityFromStoredKey(supernodeKey.KeyBytes));
+        string address = silent.Address.ToString().Replace("0.0.0.0", "127.0.0.1");
+        if (!address.Contains("/p2p/", StringComparison.Ordinal))
+        {
+            address += $"/p2p/{silent.Peer.Identity.PeerId}";
+        }
+
+        await using (client.P2P)
+        {
+            await client.P2P.StartAsync(token);
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+
+            bool admitted = await peerManager.TryAddPeerAsync(address, token, Enr(supernodeKey, PortOf(address), Eip7594DasConstants.NumberOfCustodyGroups));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admitted, Is.True);
+                Assert.That(discovery.WantedColumns, Is.Empty, "the ENR advertises custody of every column");
+            }
+        }
+    }
+
     [Test]
     [CancelAfter(60_000)]
     public async Task Trimming_to_the_target_keeps_the_last_custodian_of_a_sampled_column([Values(1, 2)] int supernodeCount, CancellationToken token)
@@ -500,11 +533,12 @@ public class SampledColumnCustodianTests
         }
     }
 
-    private static string Enr(PrivateKey key, Node node, ulong custodyGroupCount)
-    {
-        int port = int.Parse(LoopbackAddress(node.P2P).Split('/')[4]);
-        return new BeaconNodeRecordProvider(key, IPAddress.Loopback, port, port, EnrForkId.Compute(BeaconChainSpec.Mainnet, 0), custodyGroupCount).Current.ToString();
-    }
+    private static string Enr(PrivateKey key, Node node, ulong custodyGroupCount) => Enr(key, PortOf(LoopbackAddress(node.P2P)), custodyGroupCount);
+
+    private static string Enr(PrivateKey key, int port, ulong custodyGroupCount) =>
+        new BeaconNodeRecordProvider(key, IPAddress.Loopback, port, port, EnrForkId.Compute(BeaconChainSpec.Mainnet, 0), custodyGroupCount).Current.ToString();
+
+    private static int PortOf(string address) => int.Parse(address.Split('/')[4]);
 
     /// <summary>This node's identity and sampled columns, resolved as discovery's start does without binding a socket.</summary>
     /// <param name="identity">Pins the identity, and so the sampled columns; random when omitted.</param>
