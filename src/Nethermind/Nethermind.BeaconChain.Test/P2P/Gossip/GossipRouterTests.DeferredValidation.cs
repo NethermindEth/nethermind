@@ -175,6 +175,7 @@ public partial class GossipRouterTests
     {
         private readonly IContainer _container;
         private readonly List<Rpc> _sentToNeighbor;
+        private readonly List<Rpc> _sentToSender;
         private readonly Action<Rpc> _fromSender;
         private readonly Action<Rpc> _fromNeighbor;
 
@@ -189,6 +190,7 @@ public partial class GossipRouterTests
             _fromSender = sender.Receive;
             _fromNeighbor = neighbor.Receive;
             _sentToNeighbor = neighbor.Sent;
+            _sentToSender = sender.Sent;
             Sender = sender.Peer;
             Neighbor = neighbor.Peer;
         }
@@ -205,7 +207,7 @@ public partial class GossipRouterTests
 
         public PeerId Neighbor { get; }
 
-        public static async Task<DeferredFixture> Create(int maxPending, long maxPendingBytes, TimeSpan timeout)
+        public static async Task<DeferredFixture> Create(int maxPending, long maxPendingBytes, TimeSpan timeout, string protocol = PubsubRouter.GossipsubProtocolVersionV11)
         {
             IContainer container = BeaconChainTestContainer.Builder().Build();
             PubsubSettings settings;
@@ -224,8 +226,8 @@ public partial class GossipRouterTests
             pubsub.VerifyMessage = validation.Verify;
             pubsub.OnDeferredMessage = validation.ValidateAsync;
             pubsub.GetTopic(BlockTopic);
-            (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) sender = ConnectSubscribedPeer(pubsub, BlockTopic);
-            (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) neighbor = ConnectSubscribedPeer(pubsub, BlockTopic);
+            (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) sender = ConnectSubscribedPeer(pubsub, BlockTopic, protocol);
+            (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) neighbor = ConnectSubscribedPeer(pubsub, BlockTopic, protocol);
             ((IRoutingStateContainer)pubsub).Mesh[BlockTopic].UnionWith([sender.Peer, neighbor.Peer]);
             return new DeferredFixture(container, pubsub, router, validation, raised, sender, neighbor);
         }
@@ -234,8 +236,15 @@ public partial class GossipRouterTests
         {
             Rpc rpc = new();
             rpc.Publish.Add(new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(data) });
-            (from == Sender ? _fromSender : _fromNeighbor)(rpc);
+            ReceiveRpc(from, rpc);
         }
+
+        public void ReceiveRpc(PeerId from, Rpc rpc) => (from == Sender ? _fromSender : _fromNeighbor)(rpc);
+
+        public IReadOnlyList<Rpc> SentTo(PeerId peer) => peer == Sender ? _sentToSender : _sentToNeighbor;
+
+        public IEnumerable<MessageId> IdontwantsTo(PeerId peer) =>
+            SentTo(peer).SelectMany(static rpc => rpc.Control?.Idontwant ?? []).SelectMany(static idontwant => idontwant.MessageIDs).Select(static id => new MessageId(id.ToByteArray()));
 
         public bool SentToNeighbor(byte[] data) =>
             _sentToNeighbor.SelectMany(static rpc => rpc.Publish).Any(message => message.Topic == BlockTopic && message.Data.Span.SequenceEqual(data));

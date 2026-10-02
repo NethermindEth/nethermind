@@ -213,6 +213,61 @@ public class GossipLoopbackTests
         Assert.That(await forwarded.Task, Is.EqualTo(message));
     }
 
+    /// <summary>
+    /// A digest rotation leaves the retired topics on the wire: a connected peer learns the node left them, and a peer that connects
+    /// afterwards is told only of the topics the node still subscribes.
+    /// </summary>
+    /// <remarks>altair/p2p-interface.md "Transitioning the gossip": two epochs after the fork, pre-fork topics SHOULD be unsubscribed from.</remarks>
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Retired_topics_are_left_on_the_wire_and_not_announced_to_a_later_peer(CancellationToken token)
+    {
+        SlotClock slotClock = new(Spec, Timestamper.Default);
+        byte[] retiredDigest = ForkDigest.Compute(Spec, slotClock.CurrentEpoch);
+        byte[] currentDigest = ForkDigest.Compute(Spec, 0);
+        string retired = GossipTopics.Topic(retiredDigest, GossipTopics.BeaconBlock);
+        string current = GossipTopics.Topic(currentDigest, GossipTopics.BeaconBlock);
+        GossipRouter router = new(Spec, slotClock, LimboLogs.Instance);
+
+        await using BeaconP2P node = CreateHost(new GossipMessageValidator(router, new ColumnGossipRouter(Spec, slotClock, LimboLogs.Instance), Spec, slotClock));
+        await using BeaconP2P connected = CreateHost();
+        await using BeaconP2P later = CreateHost();
+        await node.StartAsync(token);
+        await connected.StartAsync(token);
+        await later.StartAsync(token);
+        router.Start(node.GetTopic, retiredDigest);
+        router.SubscribeDigest(currentDigest);
+        connected.Discover([LoopbackAddress(node)]);
+        while (!Subscribes(connected, retired, node.LocalPeerId!))
+        {
+            await Task.Delay(100, token);
+        }
+
+        router.UnsubscribeDigest(retiredDigest);
+        while (Subscribes(connected, retired, node.LocalPeerId!))
+        {
+            await Task.Delay(100, token);
+        }
+
+        later.Discover([LoopbackAddress(node)]);
+        while (!Subscribes(later, current, node.LocalPeerId!))
+        {
+            await Task.Delay(100, token);
+        }
+
+        Assert.That(Subscribes(later, retired, node.LocalPeerId!), Is.False, "a peer connecting after the rotation is not told of the retired topic");
+    }
+
+    /// <summary>Whether <paramref name="observer"/> knows <paramref name="peer"/> as a gossipsub subscriber of <paramref name="topicId"/>.</summary>
+    private static bool Subscribes(BeaconP2P observer, string topicId, PeerId peer)
+    {
+        IRoutingStateContainer router = observer.RoutingStateForTest!;
+        lock (router)
+        {
+            return router.GossipsubPeers.TryGetValue(topicId, out HashSet<PeerId>? peers) && peers.Contains(peer);
+        }
+    }
+
     /// <summary>A gossip message of any legal size crosses a real session whole, so its sender is not disconnected for a truncated RPC.</summary>
     /// <remarks>p2p-interface.md "Gossipsub size limits" allow a compressed payload up to max_compressed_len(10 MiB); a message over one yamux window
     /// spans several frames, and Nethermind.Libp2p 1.0.0 truncated such an RPC in the yamux channel (see ContiguousChunkProtocol).</remarks>
