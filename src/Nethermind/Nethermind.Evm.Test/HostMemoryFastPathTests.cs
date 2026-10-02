@@ -456,6 +456,14 @@ public class HostMemoryFastPathTests
         /// <remarks>An untraced PUSH2 that runs the jump after it counts that jump, and the JUMPDEST it lands on, there.</remarks>
         public int MachineOpCodeCount { get; private set; }
 
+        /// <summary>The entry an untraced table dispatches <paramref name="opcode"/> to, and the plain handler in its fallback half.</summary>
+        public (nint Entry, nint Plain) Handlers(Table table, Instruction opcode)
+        {
+            delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers =
+                table is Table.NoTraceCancelable ? _vm.GetOpcodeHandlers<OffFlag, OnFlag>() : _vm.GetOpcodeHandlers<OffFlag, OffFlag>();
+            return ((nint)handlers[(int)opcode], (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + (int)opcode]);
+        }
+
         /// <summary>Runs <paramref name="code"/> through every table and records how each differs from the plain untraced one.</summary>
         public void Compare(byte[] code, ulong gas, Setup setup, byte[] input, List<string> mismatches, byte[]? stack = null)
         {

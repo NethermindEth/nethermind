@@ -170,8 +170,9 @@ public class HostCompareBranchFusionTests
 
     /// <summary>
     /// Every case matches the plain handlers on ample gas and on every amount up to what it uses; with ample gas, a case
-    /// that fuses counts none of its opcodes on the machine, where a PUSH2 running the JUMPI would count it, and never
-    /// falls back on a plain handler, which would leave the branch to the next opcode's handler to fuse.
+    /// that fuses counts none of its opcodes on the machine, where the cancelable table's PUSH2 running the JUMPI would
+    /// count it, and never falls back on a plain handler, which would leave the branch to the next opcode's handler to
+    /// fuse.
     /// </summary>
     /// <param name="fuses">Whether the branches fuse; <see langword="null"/> where the case faults.</param>
     [TestCaseSource(nameof(Cases))]
@@ -186,17 +187,46 @@ public class HostCompareBranchFusionTests
             harness.Compare(code, gas, Setup.Fresh, [], mismatches, stack);
         harness.Compare(code, AmpleGas, Setup.Fresh, [], mismatches, stack);
 
+        // The untraced table's PUSH2 counts the JUMP or JUMPI it runs in the dispatch counter, not on the machine, so only
+        // the cancelable table's plain half still tells a fused branch from a PUSH2 that runs the JUMPI.
+        harness.Run(code, AmpleGas, Table.PlainNoTraceCancelable, Setup.Fresh, stack: stack);
+        int plainCancelableMachineOpCodes = harness.MachineOpCodeCount;
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
             Assert.That(HostMemoryFastPathTests.IsFault(plain.Exception), Is.EqualTo(fuses is null), "the case faults");
-            foreach (Table table in (Table[])[Table.NoTrace, Table.NoTraceCancelable])
+            (Table Table, int PlainOpCodes)[] tables = [(Table.NoTrace, plainMachineOpCodes), (Table.NoTraceCancelable, plainCancelableMachineOpCodes)];
+            foreach ((Table table, int plainOpCodes) in tables)
             {
                 harness.Run(code, AmpleGas, table, Setup.Fresh, stack: stack, countFallbacks: true);
                 if (fuses == true)
-                    Assert.That((harness.MachineOpCodeCount, harness.Fallbacks, plainMachineOpCodes > 0), Is.EqualTo((0, 0, true)), $"{table} fuses");
+                    Assert.That((harness.MachineOpCodeCount, harness.Fallbacks), Is.EqualTo((0, 0)), $"{table} fuses");
                 else
-                    Assert.That(harness.MachineOpCodeCount, Is.EqualTo(plainMachineOpCodes), $"{table} does not fuse");
+                    Assert.That(harness.MachineOpCodeCount, Is.EqualTo(plainOpCodes), $"{table} does not fuse");
+            }
+
+            if (fuses == true)
+                Assert.That(plainCancelableMachineOpCodes, Is.Positive, "a PUSH2 running the JUMPI counts it on the machine");
+        }
+    }
+
+    /// <summary>
+    /// Both untraced tables dispatch every comparison to its fused handler, not to the plain one. The untraced table's
+    /// PUSH2 counts a JUMPI it runs in the dispatch counter, as a fused branch does, so the opcode counts above cannot
+    /// tell the two apart there.
+    /// </summary>
+    [TestCase(Table.NoTrace)]
+    [TestCase(Table.NoTraceCancelable)]
+    public void Untraced_tables_install_the_fused_comparisons(Table table)
+    {
+        Harness harness = new();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Instruction opcode in (Instruction[])[Instruction.ISZERO, Instruction.EQ, Instruction.LT, Instruction.GT, Instruction.SLT, Instruction.SGT])
+            {
+                (nint entry, nint plain) = harness.Handlers(table, opcode);
+                Assert.That(entry, Is.Not.EqualTo(plain), $"{table} {opcode}");
             }
         }
     }
