@@ -804,7 +804,9 @@ public partial class EngineModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(newPayloadHandler.LastStatus?.Status,
-                    Is.EqualTo(newPayloadStatus == PayloadStatus.Accepted ? PayloadStatus.Valid : PayloadStatus.Syncing),
+                    Is.EqualTo(newPayloadStatus == PayloadStatus.Accepted
+                        ? satisfied ? PayloadStatus.Valid : PayloadStatus.InclusionListUnsatisfied
+                        : PayloadStatus.Syncing),
                     newPayloadHandler.LastStatus?.ValidationError);
                 Assert.That(newPayload.Data.Status, Is.EqualTo(newPayloadStatus));
                 Assert.That(newPayload.Data.InclusionListSatisfied, Is.Null);
@@ -1219,7 +1221,7 @@ public partial class EngineModuleTests
             ResultWrapper<PayloadStatusV1> result = await Inner.HandleAsync(request);
             LastStatus = result.Data;
             // ACCEPTED models a deferred answer for a valid payload, never a hidden invalidity or timeout.
-            return Status is { } status && result.Data.Status == PayloadStatus.Valid
+            return Status is { } status && result.Data.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied
                 ? ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = status }) : result;
         }
     }

@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
-using Nethermind.Evm.Tracing;
 using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Eip8288;
