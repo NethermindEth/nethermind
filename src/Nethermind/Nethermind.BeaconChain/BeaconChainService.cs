@@ -62,7 +62,7 @@ public sealed class BeaconChainService(
     /// <remarks>Does nothing, not even the schema check, once an external consensus client has been detected.</remarks>
     /// <exception cref="ArgumentOutOfRangeException"><see cref="IBeaconChainConfig.StateSnapshotIntervalEpochs"/> is below 1.</exception>
     /// <exception cref="InvalidOperationException">The database cannot be brought to the current schema version (see <see cref="BeaconChainStore.EnsureSchemaVersion"/>), or its anchor state or block is missing; thrown before the run starts, so node startup fails.</exception>
-    /// <exception cref="InvalidDataException">The persisted anchor state holds an invalid sync committee key or a malformed body, carries the fork version of another fork than its slot's, or its block is of another fork, or it does not prove the configured weak subjectivity checkpoint.</exception>
+    /// <exception cref="InvalidDataException">The persisted anchor state holds an invalid sync committee key or a malformed body, carries the fork version of another fork than its slot's, or its block is of another fork or does not hash to the anchor root, or it does not prove the configured weak subjectivity checkpoint.</exception>
     /// <exception cref="InvalidConfigurationException">The configured weak subjectivity checkpoint is malformed.</exception>
     /// <exception cref="BeaconStateException">The persisted anchor state or block record is too short or not of its slot's shape.</exception>
     /// <exception cref="NotSupportedException">The persisted anchor state is at a slot before Electra, or carries a fork version the configured schedule does not have.</exception>
@@ -183,6 +183,13 @@ public sealed class BeaconChainService(
             // The importer takes only an anchor state and block of the same fork; checkpoint sync refuses such a pair before it is persisted.
             BeaconFork blockFork = block is ForkedSignedBeaconBlock.OfGloas ? BeaconFork.Gloas : BeaconFork.Fulu;
             throw new InvalidDataException($"The anchor block {anchorRoot} at slot {block.Slot} is a {blockFork} block, but the anchor state at slot {state.Slot} is a {state.Fork} state. Delete the beaconChain database to checkpoint-sync again.");
+        }
+
+        // The anchor root is the fork-choice anchor_root, hash_tree_root(anchor_block) (fork-choice.md get_forkchoice_store).
+        Hash256 blockRoot = block.ComputeMessageRoot();
+        if (blockRoot != anchorRoot)
+        {
+            throw new InvalidDataException($"The persisted anchor block at slot {block.Slot} has root {blockRoot}, not the anchor root {anchorRoot} it is stored under; the database is corrupt. Delete the beaconChain database to checkpoint-sync again.");
         }
 
         checkpointSync.ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(state, anchorRoot);
