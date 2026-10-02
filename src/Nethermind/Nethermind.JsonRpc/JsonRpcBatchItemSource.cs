@@ -13,11 +13,8 @@ namespace Nethermind.JsonRpc;
 /// </remarks>
 internal interface IJsonRpcBatchItemSource
 {
-    /// <summary>The item count if the source already knows it, otherwise <c>null</c> - see <see cref="ScanCount"/>.</summary>
-    int? KnownCount { get; }
-
-    /// <summary>Counts the items by scanning the batch. Only worth calling when <see cref="KnownCount"/> is <c>null</c> and the count is actually needed.</summary>
-    int ScanCount();
+    /// <summary>The number of items in the batch.</summary>
+    int Count { get; }
 
     /// <summary>Advances to the next batch item and decodes it.</summary>
     /// <param name="request">The decoded request, or <c>null</c> when the item is not a usable JSON-RPC request object.</param>
@@ -37,9 +34,7 @@ internal struct DocumentBatchItemSource(JsonElement rootElement) : IJsonRpcBatch
     private readonly int _count = rootElement.GetArrayLength();
     private JsonElement.ArrayEnumerator _items = rootElement.EnumerateArray();
 
-    public readonly int? KnownCount => _count;
-
-    public readonly int ScanCount() => _count;
+    public readonly int Count => _count;
 
     public bool TryGetNext(out JsonRpcRequest? request, out JsonDocument? ownedDocument, out Exception? decodeException)
     {
@@ -72,17 +67,17 @@ internal struct DocumentBatchItemSource(JsonElement rootElement) : IJsonRpcBatch
 }
 
 /// <summary>Batch items sliced straight out of the request bytes, without parsing the array into a document first.</summary>
-internal struct MemoryBatchItemSource(ReadOnlyMemory<byte> batchBody) : IJsonRpcBatchItemSource
+/// <param name="batchBody">One complete, already validated JSON array.</param>
+/// <param name="count">The number of items in <paramref name="batchBody"/>, counted while validating it.</param>
+internal struct MemoryBatchItemSource(ReadOnlyMemory<byte> batchBody, int count) : IJsonRpcBatchItemSource
 {
     private readonly ReadOnlyMemory<byte> _batchBody = batchBody;
+    private readonly int _count = count;
     private JsonReaderState _readerState;
     private int _offset;
     private bool _started;
 
-    /// <remarks>Null because counting means a second pass over the body; the caller decides whether that is worth it.</remarks>
-    public readonly int? KnownCount => null;
-
-    public readonly int ScanCount() => JsonRpcArrayReader.CountItems(_batchBody);
+    public readonly int Count => _count;
 
     public bool TryGetNext(out JsonRpcRequest? request, out JsonDocument? ownedDocument, out Exception? decodeException)
     {

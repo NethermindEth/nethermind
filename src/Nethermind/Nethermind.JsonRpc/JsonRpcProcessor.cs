@@ -402,13 +402,14 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     {
         JsonRpcRequest? directRequest = null;
         ReadOnlyMemory<byte> batchBody = default;
+        int batchCount = 0;
         bool isBatch = false;
 
         try
         {
             if (!JsonRpcRequestDecoder.TryReadSingleObjectRequest(body, out directRequest))
             {
-                isBatch = JsonRpcRequestDecoder.TryGetSingleDocumentBody(body, JsonTokenType.StartArray, out batchBody);
+                isBatch = JsonRpcRequestDecoder.TryGetBatchBody(body, out batchBody, out batchCount);
             }
         }
         catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
@@ -427,7 +428,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return (CompleteBodyOutcome.NotApplicable, null);
         }
 
-        await RunBatchAsync(new MemoryBatchItemSource(batchBody), context, sink, cancellationToken);
+        await RunBatchAsync(new MemoryBatchItemSource(batchBody, batchCount), context, sink, cancellationToken);
 
         return (CompleteBodyOutcome.Handled, null);
     }
@@ -536,19 +537,14 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         CancellationToken cancellationToken)
         where TSource : struct, IJsonRpcBatchItemSource
     {
-        // Counting a batch of raw bytes means a second pass over them, so it is only paid for when the limit it
-        // feeds actually applies. A parsed document already knows its length.
-        int? requestCount = source.KnownCount ?? (context.IsAuthenticated ? null : source.ScanCount());
+        int requestCount = source.Count;
         if (!context.IsAuthenticated && requestCount > _jsonRpcConfig.MaxBatchSize)
         {
-            await WriteBatchSizeLimitErrorAsync(requestCount.Value, sink, cancellationToken);
+            await WriteBatchSizeLimitErrorAsync(requestCount, sink, cancellationToken);
             return;
         }
 
-        if (_logger.IsDebug)
-        {
-            _logger.Debug(requestCount is null ? "JSON RPC batch request" : $"{requestCount} JSON RPC requests");
-        }
+        if (_logger.IsDebug) _logger.Debug($"{requestCount} JSON RPC requests");
 
         long startTime = Stopwatch.GetTimestamp();
         int requestIndex = 0;
@@ -586,8 +582,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
                 if (_logger.IsTrace)
                 {
-                    string progress = requestCount is null ? requestIndex.ToString() : $"{requestIndex}/{requestCount}";
-                    _logger.Trace($"  {progress} JSON RPC request - {request} handled after {response.Report.HandlingTimeMicroseconds}");
+                    _logger.Trace($"  {requestIndex}/{requestCount} JSON RPC request - {request} handled after {response.Report.HandlingTimeMicroseconds}");
                     _diagnostics.TraceResult(response);
                 }
 
@@ -596,8 +591,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             }
 
             // JSON-RPC 2.0: an empty batch is itself an Invalid Request, answered with one error object rather
-            // than an empty array. Detected by exhausting the source, so it costs no extra pass and also covers
-            // authenticated callers, whose batches are deliberately never counted up front.
+            // than an empty array. Detected by exhausting the source, so it costs no extra pass.
             if (!batchStarted)
             {
                 await WriteInvalidRequestAsync(sink, startTime, cancellationToken);
