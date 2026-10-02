@@ -239,7 +239,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Transaction tx = transactions[i];
             // Deliberately not filtered on the sender: selection runs while recovery is still in flight, and
             // dropping a heavy transaction here would switch discovery off for it for the whole block.
-            if (tx.GasLimit <= StorageDiscoveryGasThreshold || tx.To is null) continue;
+            if (tx.GasLimit <= (Core.Diagnostics.ExperimentKnobs.DiscoveryGasThreshold > 0 ? (ulong)Core.Diagnostics.ExperimentKnobs.DiscoveryGasThreshold : StorageDiscoveryGasThreshold) || tx.To is null) continue;
             if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
 
             (candidates ??= new(MaxDiscoveryCandidates)).Add((i, tx));
