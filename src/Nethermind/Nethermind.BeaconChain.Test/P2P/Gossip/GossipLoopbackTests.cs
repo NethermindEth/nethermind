@@ -49,7 +49,7 @@ public class GossipLoopbackTests
         ITopic publisherTopic = publisher.GetTopic(blockTopic);
         router.Start(subscriber.GetTopic, digest);
         TaskCompletionSource<ForkedSignedBeaconBlock> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        router.BeaconBlockReceived += block => received.TrySetResult(block);
+        router.BeaconBlockReceived += (block, _) => received.TrySetResult(block);
 
         subscriber.Discover([LoopbackAddress(publisher)]);
 
@@ -111,6 +111,106 @@ public class GossipLoopbackTests
         {
             return router.Mesh.TryGetValue(topicId, out HashSet<PeerId>? mesh) && mesh.Contains(peer);
         }
+    }
+
+    /// <summary>
+    /// A message the relay defers reaches its other mesh neighbor only once its verdict is <see cref="MessageValidity.Accepted"/>; a
+    /// <see cref="MessageValidity.Rejected"/> one never does, and its delivering peer, not the neighbor, is pruned from the relay's mesh.
+    /// </summary>
+    /// <remarks>phase0 p2p-interface.md "Topics and messages": ACCEPT once every validation passed; a REJECTed message is not forwarded and MAY descore its sender.</remarks>
+    [TestCase(MessageValidity.Accepted)]
+    [TestCase(MessageValidity.Rejected)]
+    [TestCase(MessageValidity.Ignored)]
+    [CancelAfter(120_000)]
+    public async Task Relay_forwards_a_deferred_block_only_once_it_is_accepted_and_charges_its_sender_for_a_reject(MessageValidity verdict, CancellationToken token)
+    {
+        SlotClock slotClock = new(Spec, Timestamper.Default);
+        byte[] digest = ForkDigest.Compute(Spec, slotClock.CurrentEpoch);
+        string blockTopic = GossipTopics.Topic(digest, GossipTopics.BeaconBlock);
+        GossipRouter router = new(Spec, slotClock, LimboLogs.Instance);
+        TaskCompletionSource<GossipVerdict> raised = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        router.BeaconBlockReceived += (_, pending) => raised.TrySetResult(pending);
+
+        await using BeaconP2P sender = CreateHost();
+        await using BeaconP2P relay = CreateHost(new GossipMessageValidator(router, new ColumnGossipRouter(Spec, slotClock, LimboLogs.Instance), Spec, slotClock));
+        await using BeaconP2P neighbor = CreateHost();
+        await sender.StartAsync(token);
+        await relay.StartAsync(token);
+        await neighbor.StartAsync(token);
+        router.Start(relay.GetTopic, digest);
+        ITopic senderTopic = sender.GetTopic(blockTopic);
+        TaskCompletionSource<byte[]> forwarded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        neighbor.GetTopic(blockTopic).OnMessage += (_, data) => forwarded.TrySetResult(data);
+        sender.Discover([LoopbackAddress(relay)]);
+        neighbor.Discover([LoopbackAddress(relay)]);
+        while (!IsMeshNeighbor(relay, blockTopic, sender.LocalPeerId!) || !IsMeshNeighbor(relay, blockTopic, neighbor.LocalPeerId!)
+            || !IsMeshNeighbor(sender, blockTopic, relay.LocalPeerId!))
+        {
+            await Task.Delay(100, token);
+        }
+
+        byte[] message = Snappy.CompressToArray(SignedBeaconBlock.Encode(TestChain.CreateBlock(slotClock.CurrentSlot, Hash256.Zero)));
+        senderTopic.Publish(message);
+        GossipVerdict pending = await raised.Task.WaitAsync(token);
+        bool forwardedEarly = await Task.WhenAny(forwarded.Task, Task.Delay(2_000, token)) == forwarded.Task;
+        int pendingAtRelay = ((PubsubRouter)relay.RoutingStateForTest!).PendingValidationCount;
+
+        bool applied = pending.Complete(verdict);
+        bool forwardedAfter = await Task.WhenAny(forwarded.Task, Task.Delay(verdict == MessageValidity.Accepted ? 30_000 : 3_000, token)) == forwarded.Task;
+        await ((IRoutingStateContainer)relay.RoutingStateForTest!).Heartbeat();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((forwardedEarly, pendingAtRelay), Is.EqualTo((false, 1)), "the relay holds the message while its verdict is pending");
+            Assert.That(applied, Is.True, "the router applied the verdict");
+            Assert.That(forwardedAfter, Is.EqualTo(verdict == MessageValidity.Accepted), "only an accepted message is forwarded");
+            if (forwardedAfter)
+            {
+                Assert.That(await forwarded.Task, Is.EqualTo(message));
+            }
+
+            Assert.That(IsMeshNeighbor(relay, blockTopic, sender.LocalPeerId!), Is.EqualTo(verdict != MessageValidity.Rejected), "only a rejected message's sender is pruned");
+            Assert.That(IsMeshNeighbor(relay, blockTopic, neighbor.LocalPeerId!), Is.True, "the neighbor that sent nothing keeps its place");
+        }
+    }
+
+    /// <summary>A data column sidecar that passes every check on the relay, under an imported block's header, reaches the relay's other mesh neighbor.</summary>
+    /// <remarks>fulu/p2p-interface.md data_column_sidecar_{subnet_id}: a sidecar that passes every check is accepted, so the router forwards it.</remarks>
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Relay_forwards_a_column_that_passes_every_check(CancellationToken token)
+    {
+        const ulong slot = 13_410_304;
+        const ulong column = 5;
+        SlotClock slotClock = new(Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + slot * Spec.SecondsPerSlot + 6)));
+        byte[] digest = ForkDigest.Compute(Spec, Spec.GetEpoch(slot));
+        string topicId = GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(column));
+        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
+        DataColumnSidecarTestFixture.StoreAsImported(store, sidecar);
+        ColumnGossipRouter columns = new(Spec, slotClock, LimboLogs.Instance, new DataColumnSidecarPool(), store);
+
+        await using BeaconP2P sender = CreateHost();
+        await using BeaconP2P relay = CreateHost(new GossipMessageValidator(new GossipRouter(Spec, slotClock, LimboLogs.Instance), columns, Spec, slotClock));
+        await using BeaconP2P neighbor = CreateHost();
+        await sender.StartAsync(token);
+        await relay.StartAsync(token);
+        await neighbor.StartAsync(token);
+        columns.Start(relay.GetTopic, digest, [column]);
+        ITopic senderTopic = sender.GetTopic(topicId);
+        TaskCompletionSource<byte[]> forwarded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        neighbor.GetTopic(topicId).OnMessage += (_, data) => forwarded.TrySetResult(data);
+        sender.Discover([LoopbackAddress(relay)]);
+        neighbor.Discover([LoopbackAddress(relay)]);
+        while (!IsMeshNeighbor(relay, topicId, neighbor.LocalPeerId!) || !IsMeshNeighbor(sender, topicId, relay.LocalPeerId!))
+        {
+            await Task.Delay(100, token);
+        }
+
+        byte[] message = Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar));
+        senderTopic.Publish(message);
+
+        Assert.That(await forwarded.Task, Is.EqualTo(message));
     }
 
     /// <summary>A gossip message of any legal size crosses a real session whole, so its sender is not disconnected for a truncated RPC.</summary>

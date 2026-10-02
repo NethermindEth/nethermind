@@ -164,6 +164,10 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/> or <see cref="BlockImportResult.FutureSlot"/>, keyed by block root, awaiting a retry.</summary>
     private readonly Dictionary<Hash256, PendingRetry> _pendingRetry = [];
 
+    /// <summary>The pending verdicts of gossip blocks and envelopes whose import has not settled, by the signed copy that carried them.</summary>
+    /// <remarks>Each verdict ends within the router's pending validation timeout, so every slot tick drops the ended ones.</remarks>
+    private readonly Dictionary<object, GossipVerdict> _gossipVerdicts = new(ReferenceEqualityComparer.Instance);
+
     /// <summary>Other signed copies of the blocks in <see cref="_pendingRetry"/>, by block root, oldest first; one takes the queued copy's place once that fails verification.</summary>
     /// <remarks>
     /// Gossip deduplicates by message id, a hash of the whole message data with the signature (p2p-interface.md <c>message-id</c>), so copies under one block root reach this node apart, and a
@@ -293,12 +297,13 @@ public sealed class BeaconSyncOrchestrator(
 
     internal abstract record WorkItem;
     internal sealed record RangeBlockItem(ForkedSignedBeaconBlock Block, IBeaconSyncPeer? Source = null, CancellationToken RoundToken = default) : WorkItem;
-    internal sealed record GossipBlockItem(ForkedSignedBeaconBlock Block) : WorkItem;
-    internal sealed record GossipAggregateItem(SignedAggregateAndProof Aggregate) : WorkItem;
-    internal sealed record GossipGloasAggregateItem(SignedAggregateAndProofGloas Aggregate) : WorkItem;
-    internal sealed record GossipAttesterSlashingItem(AttesterSlashing Slashing) : WorkItem;
-    internal sealed record GossipGloasAttesterSlashingItem(AttesterSlashingGloas Slashing) : WorkItem;
-    internal sealed record GossipPayloadAttestationItem(PayloadAttestationMessage Message) : WorkItem;
+    // A gossip item carries its message's pending verdict, which the worker gives once the checks the router left to it finish.
+    internal sealed record GossipBlockItem(ForkedSignedBeaconBlock Block, GossipVerdict? Verdict = null) : WorkItem;
+    internal sealed record GossipAggregateItem(SignedAggregateAndProof Aggregate, GossipVerdict? Verdict = null) : WorkItem;
+    internal sealed record GossipGloasAggregateItem(SignedAggregateAndProofGloas Aggregate, GossipVerdict? Verdict = null) : WorkItem;
+    internal sealed record GossipAttesterSlashingItem(AttesterSlashing Slashing, GossipVerdict? Verdict = null) : WorkItem;
+    internal sealed record GossipGloasAttesterSlashingItem(AttesterSlashingGloas Slashing, GossipVerdict? Verdict = null) : WorkItem;
+    internal sealed record GossipPayloadAttestationItem(PayloadAttestationMessage Message, GossipVerdict? Verdict = null) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
 
     /// <summary>The sidecar pool holds every sampled column awaited for <paramref name="BlockRoot"/>; queued at most once per watch.</summary>
@@ -324,7 +329,7 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>An execution payload envelope to import; <paramref name="Source"/> is the req/resp peer that served it, if any.</summary>
     internal abstract record EnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source) : WorkItem;
-    internal sealed record GossipEnvelopeItem(SignedExecutionPayloadEnvelope Envelope) : EnvelopeItem(Envelope, null);
+    internal sealed record GossipEnvelopeItem(SignedExecutionPayloadEnvelope Envelope, GossipVerdict? Verdict = null) : EnvelopeItem(Envelope, null);
     internal sealed record RangeEnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source) : EnvelopeItem(Envelope, Source);
     internal sealed record FetchedEnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source) : EnvelopeItem(Envelope, Source);
 
@@ -758,42 +763,54 @@ public sealed class BeaconSyncOrchestrator(
                 }
                 break;
             case GossipBlockItem gossip:
-                await ProcessGossipBlockAsync(gossip.Block, token);
+                await ProcessGossipBlockAsync(gossip.Block, token, gossip.Verdict);
                 break;
-            case GossipAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate }:
-                if (!gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) && _importer!.OnGossipAggregate(aggregate))
+            // Each vote and slashing passes its remaining gossip checks, signatures included, only when fork choice accepts it; a refusal is not yet
+            // told apart from a missing dependency, so it is ignored rather than charged to its sender.
+            case GossipAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate } aggregateItem:
+                bool aggregateAccepted = !gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) && _importer!.OnGossipAggregate(aggregate);
+                if (aggregateAccepted)
                 {
                     gossipRouter.MarkAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex);
                 }
 
+                Settle(aggregateItem.Verdict, aggregateAccepted);
                 break;
-            case GossipGloasAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate }:
-                if (!gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) && _importer!.OnGossipAggregate(aggregate))
+            case GossipGloasAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate } gloasAggregateItem:
+                bool gloasAggregateAccepted = !gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) && _importer!.OnGossipAggregate(aggregate);
+                if (gloasAggregateAccepted)
                 {
                     gossipRouter.MarkAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex);
                 }
 
+                Settle(gloasAggregateItem.Verdict, gloasAggregateAccepted);
                 break;
-            case GossipAttesterSlashingItem { Slashing: AttesterSlashing slashing }:
-                if (_importer!.OnGossipAttesterSlashing(slashing))
+            case GossipAttesterSlashingItem { Slashing: AttesterSlashing slashing } slashingItem:
+                bool slashingAccepted = _importer!.OnGossipAttesterSlashing(slashing);
+                if (slashingAccepted)
                 {
                     MarkSlashedIndicesSeen(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
                 }
 
+                Settle(slashingItem.Verdict, slashingAccepted);
                 break;
-            case GossipGloasAttesterSlashingItem { Slashing: AttesterSlashingGloas slashing }:
-                if (_importer!.OnGossipAttesterSlashing(slashing))
+            case GossipGloasAttesterSlashingItem { Slashing: AttesterSlashingGloas slashing } gloasSlashingItem:
+                bool gloasSlashingAccepted = _importer!.OnGossipAttesterSlashing(slashing);
+                if (gloasSlashingAccepted)
                 {
                     MarkSlashedIndicesSeen(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
                 }
 
+                Settle(gloasSlashingItem.Verdict, gloasSlashingAccepted);
                 break;
             case GossipPayloadAttestationItem payloadAttestation:
-                if (!gossipRouter.IsPayloadAttestationVerified(payloadAttestation.Message) && _importer!.OnGossipPayloadAttestation(payloadAttestation.Message))
+                bool voteAccepted = !gossipRouter.IsPayloadAttestationVerified(payloadAttestation.Message) && _importer!.OnGossipPayloadAttestation(payloadAttestation.Message);
+                if (voteAccepted)
                 {
                     gossipRouter.MarkPayloadAttestationVerified(payloadAttestation.Message);
                 }
 
+                Settle(payloadAttestation.Verdict, voteAccepted);
                 break;
             // on_tick steps through every skipped slot, so only the newest tick of a backlog needs the per-slot work;
             // each older one would send another forkchoiceUpdated for the same head.
@@ -873,6 +890,59 @@ public sealed class BeaconSyncOrchestrator(
         SlotTickItem tick => $"the slot tick of slot {tick.Slot}",
         _ => item.GetType().Name,
     };
+
+    private static void Settle(GossipVerdict? verdict, bool accepted) => verdict?.Complete(accepted ? MessageValidity.Accepted : MessageValidity.Ignored);
+
+    /// <summary>Gives the pending verdict of the gossip block <paramref name="block"/>, if any, once its import settled.</summary>
+    /// <remarks>
+    /// phase0 p2p-interface.md beacon_block: the importer verifies the expected proposer and its signature, after every check gossip orders
+    /// before them, ahead of these results, so the block is accepted then. A block waiting for its columns, its parent or its parent's payload
+    /// (gloas/p2p-interface.md beacon_block: IGNORE until the parent payload is verified, MAY queue) keeps its verdict for the retry; any other
+    /// result is ignored rather than charged to its sender.
+    /// </remarks>
+    private void SettleBlockVerdict(ForkedSignedBeaconBlock block, BlockImportResult result)
+    {
+        if (_gossipVerdicts.Count == 0 || result is BlockImportResult.DataUnavailable or BlockImportResult.UnknownParent or BlockImportResult.ParentPayloadUnverified
+            || !_gossipVerdicts.Remove(block, out GossipVerdict? verdict))
+        {
+            return;
+        }
+
+        verdict.Complete(result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable or BlockImportResult.FutureSlot
+            ? MessageValidity.Accepted
+            : MessageValidity.Ignored);
+    }
+
+    /// <summary>Gives the pending verdict of the gossip envelope <paramref name="envelope"/>, if any, once its import settled.</summary>
+    /// <remarks>
+    /// gloas/p2p-interface.md execution_payload: an envelope whose payload is recorded passed every gossip check, its signature included. One
+    /// waiting for its block, data or the engine keeps its verdict for the retry; a local fault is throttled, so a later copy is checked again.
+    /// </remarks>
+    private void SettleEnvelopeVerdict(SignedExecutionPayloadEnvelope envelope, ExecutionPayloadEnvelopeImportResult? result)
+    {
+        if (_gossipVerdicts.Count == 0
+            || result is ExecutionPayloadEnvelopeImportResult.UnknownBlock or ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable
+            || !_gossipVerdicts.Remove(envelope, out GossipVerdict? verdict))
+        {
+            return;
+        }
+
+        verdict.Complete(result switch
+        {
+            ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic => MessageValidity.Accepted,
+            null => MessageValidity.Throttled,
+            _ => MessageValidity.Ignored,
+        });
+    }
+
+    /// <summary>Keeps the pending verdict of a gossip block or envelope until its import settles; a second verdict for the same copy is ignored.</summary>
+    private void TrackGossipVerdict(object message, GossipVerdict? verdict)
+    {
+        if (verdict is not null && !_gossipVerdicts.TryAdd(message, verdict))
+        {
+            verdict.Complete(MessageValidity.Ignored);
+        }
+    }
 
     // phase0/p2p-interface.md attester_slashing: the seen set holds the intersecting indices of slashings whose signatures verified.
     private void MarkSlashedIndicesSeen(ulong[] indices1, ulong[] indices2)
@@ -1046,6 +1116,8 @@ public sealed class BeaconSyncOrchestrator(
         {
             gossipRouter.MarkProposalSeen(block.Slot, block.ProposerIndex);
         }
+
+        SettleBlockVerdict(block, result);
 
         PendingRetry? promoted = null;
         if (result == BlockImportResult.Imported)
@@ -1767,6 +1839,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             // A local fault is not the sender's, and it must not stop the worker every other message goes through.
             if (_logger.IsError) _logger.Error($"Dropping the execution payload envelope for beacon block {message.BeaconBlockRoot}: its import failed", e);
+            SettleEnvelopeVerdict(envelope, null);
             return null;
         }
 
@@ -1795,6 +1868,7 @@ public sealed class BeaconSyncOrchestrator(
                 break;
         }
 
+        SettleEnvelopeVerdict(envelope, result);
         return result;
     }
 
@@ -1913,8 +1987,15 @@ public sealed class BeaconSyncOrchestrator(
         return false;
     }
 
-    private Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeItemAsync(EnvelopeItem item, CancellationToken token) =>
-        ImportEnvelopeAsync(item.Envelope, token, item.Source);
+    private Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeItemAsync(EnvelopeItem item, CancellationToken token)
+    {
+        if (item is GossipEnvelopeItem { Verdict: { } verdict })
+        {
+            TrackGossipVerdict(item.Envelope, verdict);
+        }
+
+        return ImportEnvelopeAsync(item.Envelope, token, item.Source);
+    }
 
     private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token)
     {
@@ -1982,31 +2063,39 @@ public sealed class BeaconSyncOrchestrator(
     /// (the import runs with <c>verifySignatures: true</c> right below), so no separate
     /// pre-verification pass is needed.
     /// </summary>
-    internal async Task ProcessGossipBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token)
+    /// <param name="verdict">The block's pending gossip verdict, given once its import settles, or at once when it is dropped here.</param>
+    internal async Task ProcessGossipBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, GossipVerdict? verdict = null)
     {
         IBlockImporter importer = _importer!;
         Hash256 root = block.ComputeMessageRoot();
         if (importer.IsKnown(root))
         {
+            verdict?.Complete(MessageValidity.Ignored);
             return;
         }
 
         if (_lastHead is { } head && block.Slot <= BeaconStateAccessors.ComputeStartSlotAtEpoch(head.Finalized.Epoch))
         {
+            verdict?.Complete(MessageValidity.Ignored);
             return;
         }
 
         if (gossipRouter.IsProposalSeen(block.Slot, block.ProposerIndex))
         {
             if (_logger.IsDebug) _logger.Debug($"Ignoring repeat gossip proposal for slot {block.Slot} by proposer {block.ProposerIndex}");
+            verdict?.Complete(MessageValidity.Ignored);
             return;
         }
 
+        // The head lineage may not be the block's branch, so an unexpected proposer here is not yet proof of the spec's REJECT.
         if (!importer.IsExpectedProposer(block))
         {
             if (_logger.IsWarn) _logger.Warn($"Dropping gossip block at slot {block.Slot} with unexpected proposer {block.ProposerIndex}");
+            verdict?.Complete(MessageValidity.Ignored);
             return;
         }
+
+        TrackGossipVerdict(block, verdict);
 
         // The parent's import drains this child, so the parent is not fetched again.
         if (IsWaitingForPayload(block.ParentRoot))
@@ -2160,6 +2249,7 @@ public sealed class BeaconSyncOrchestrator(
             BlockImportResult imported = fetchedByRoot ? _importer!.ImportRequested(block, root, fetchedByRoot: true) : _importer!.Import(block, root, verifySignatures: true);
             return (imported, _importer!.LastRefusal);
         });
+        SettleBlockVerdict(block, result);
         if (result != BlockImportResult.ParentPayloadUnverified)
         {
             if (fetchedByRoot)
@@ -2629,6 +2719,11 @@ public sealed class BeaconSyncOrchestrator(
     internal async Task ProcessSlotAsync(ulong slot, CancellationToken token)
     {
         gossipRouter.ReleaseDueMessages();
+        foreach (KeyValuePair<object, GossipVerdict> ended in _gossipVerdicts.Where(static pair => pair.Value.IsCompleted).ToArray())
+        {
+            _gossipVerdicts.Remove(ended.Key);
+        }
+
         _importer!.OnSlotTick(slot);
         await RunHeadStepAsync(token);
         if (_lastHead is { } stalled && HasHeadStalled(stalled.HeadSlot, slot) && GossipStarted && stalled.HeadSlot + GossipStartDistanceSlots < slot)
@@ -2674,19 +2769,29 @@ public sealed class BeaconSyncOrchestrator(
     internal void RouteGossipEvents()
     {
         gossipRouter.RequiresPtc = true;
-        gossipRouter.BeaconBlockReceived += block => _work.Writer.TryWrite(new GossipBlockItem(block));
-        gossipRouter.AggregateAndProofReceived += aggregate => QueueVote(new GossipAggregateItem(aggregate));
-        gossipRouter.GloasAggregateAndProofReceived += aggregate => QueueVote(new GossipGloasAggregateItem(aggregate));
-        gossipRouter.AttesterSlashingReceived += slashing => QueueVote(new GossipAttesterSlashingItem(slashing));
-        gossipRouter.GloasAttesterSlashingReceived += slashing => QueueVote(new GossipGloasAttesterSlashingItem(slashing));
-        gossipRouter.ExecutionPayloadEnvelopeReceived += envelope => _work.Writer.TryWrite(new GossipEnvelopeItem(envelope));
-        gossipRouter.PayloadAttestationMessageReceived += vote =>
+        // A queue that is full refuses the work for local load, which the router throttles: no penalty, and a later copy is checked again.
+        gossipRouter.BeaconBlockReceived += (block, verdict) => ThrottleUnless(_work.Writer.TryWrite(new GossipBlockItem(block, verdict)), verdict);
+        gossipRouter.AggregateAndProofReceived += (aggregate, verdict) => ThrottleUnless(QueueVote(new GossipAggregateItem(aggregate, verdict)), verdict);
+        gossipRouter.GloasAggregateAndProofReceived += (aggregate, verdict) => ThrottleUnless(QueueVote(new GossipGloasAggregateItem(aggregate, verdict)), verdict);
+        gossipRouter.AttesterSlashingReceived += (slashing, verdict) => ThrottleUnless(QueueVote(new GossipAttesterSlashingItem(slashing, verdict)), verdict);
+        gossipRouter.GloasAttesterSlashingReceived += (slashing, verdict) => ThrottleUnless(QueueVote(new GossipGloasAttesterSlashingItem(slashing, verdict)), verdict);
+        gossipRouter.ExecutionPayloadEnvelopeReceived += (envelope, verdict) => ThrottleUnless(_work.Writer.TryWrite(new GossipEnvelopeItem(envelope, verdict)), verdict);
+        gossipRouter.PayloadAttestationMessageReceived += (vote, verdict) =>
         {
-            if (!QueueVote(new GossipPayloadAttestationItem(vote)))
+            if (!QueueVote(new GossipPayloadAttestationItem(vote, verdict)))
             {
                 gossipRouter.ReleasePayloadAttestation(vote);
+                verdict.Complete(MessageValidity.Throttled);
             }
         };
+
+        static void ThrottleUnless(bool queued, GossipVerdict verdict)
+        {
+            if (!queued)
+            {
+                verdict.Complete(MessageValidity.Throttled);
+            }
+        }
     }
 
     private bool QueueVote(WorkItem vote)

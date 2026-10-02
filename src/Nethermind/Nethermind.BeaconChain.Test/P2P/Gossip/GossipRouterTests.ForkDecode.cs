@@ -29,7 +29,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateSepoliaRouter();
         List<ForkedSignedBeaconBlock> received = [];
-        router.BeaconBlockReceived += received.Add;
+        router.BeaconBlockReceived += (message, _) => received.Add(message);
         Dictionary<string, FakeTopic> topics = [];
         byte[] digest = gloasTopic ? SepoliaGloasDigest : SepoliaFuluDigest;
         router.Start(id => topics[id] = new FakeTopic(), digest);
@@ -40,7 +40,7 @@ public partial class GossipRouterTests
         }
         else
         {
-            topics[GossipTopics.Topic(digest, GossipTopics.BeaconBlock)].Deliver(SepoliaBlockMessage(gloasBlock));
+            router.Handle(GossipTopics.BeaconBlock, gloasTopic, SepoliaBlockMessage(gloasBlock));
         }
 
         if (gloasTopic == gloasBlock)
@@ -62,7 +62,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateSepoliaRouter();
         List<ForkedSignedBeaconBlock> received = [];
-        router.BeaconBlockReceived += received.Add;
+        router.BeaconBlockReceived += (message, _) => received.Add(message);
         Dictionary<string, FakeTopic> topics = [];
         router.Start(id => topics[id] = new FakeTopic(), SepoliaFuluDigest);
         Action<byte[]> fuluTopicHandler = router.HandlerFor(GossipTopics.BeaconBlock);
@@ -70,7 +70,7 @@ public partial class GossipRouterTests
         router.SubscribeDigest(SepoliaGloasDigest);
         router.UnsubscribeDigest(SepoliaFuluDigest);
         fuluTopicHandler(SepoliaBlockMessage(gloas: false));
-        topics[GossipTopics.Topic(SepoliaGloasDigest, GossipTopics.BeaconBlock)].Deliver(SepoliaBlockMessage(gloas: true));
+        router.Handle(GossipTopics.BeaconBlock, gloasTopic: true, SepoliaBlockMessage(gloas: true));
 
         Assert.That(received.Select(static b => b.GetType()), Is.EqualTo(new[] { typeof(ForkedSignedBeaconBlock.OfFulu), typeof(ForkedSignedBeaconBlock.OfGloas) }),
             "a Fulu-topic message delivered after rotation stays Fulu, and the current topic is Gloas");

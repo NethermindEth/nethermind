@@ -40,8 +40,8 @@ namespace Nethermind.BeaconChain.P2P;
 /// connected count within the configured peer band.
 /// </summary>
 /// <remarks>
-/// The libp2p stack this plugin consumes has no gossipsub peer scoring at all, so this class is the
-/// only line of defence against a misbehaving mesh neighbour: it cannot penalise a peer, only
+/// The gossipsub peer score counts only invalid gossip deliveries (<see cref="Gossip.GossipScoring"/>) and is lost when a
+/// peer disconnects, so this class is the line of defence that outlasts a session: it cannot penalise a peer, only
 /// disconnect it, cap how many it admits, and remember which ones kept faulting. See
 /// <see cref="BanRecord"/> for the per-peer-id history that survives a single disconnect (the ban
 /// list and diagnostics), as opposed to <see cref="ManagedPeer"/>, which only lives as long as the

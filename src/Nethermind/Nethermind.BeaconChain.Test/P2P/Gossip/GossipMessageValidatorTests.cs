@@ -128,7 +128,7 @@ public class GossipMessageValidatorTests
             && (Array.IndexOf(GossipTopics.SubscribedTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.GloasTopicNames, name) >= 0) ? name! : "unhandled";
         StringLabel key = new(label);
         long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key);
-        MessageValidity validity = validator.Verify(Message(topic, data));
+        MessageValidity validity = validator.Validate(Message(topic, data), GossipVerdict.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -153,7 +153,7 @@ public class GossipMessageValidatorTests
         ulong wallEpoch = (ulong)((long)Sepolia.GloasForkEpoch + wallEpochFromGloas);
         (GossipMessageValidator validator, GossipRouter router, List<object> _) = Create(new ManualTimestamper(SlotStart(wallEpoch * Sepolia.SlotsPerEpoch).AddSeconds(6)));
 
-        MessageValidity validity = validator.Verify(Message(Topic(gloasDigest ? GloasDigest : FuluDigest, GossipTopics.BeaconBlock), [0xff, 0xff, 0xff, 0xff]));
+        MessageValidity validity = validator.Validate(Message(Topic(gloasDigest ? GloasDigest : FuluDigest, GossipTopics.BeaconBlock), [0xff, 0xff, 0xff, 0xff]), GossipVerdict.None);
 
         Assert.That((validity, router.GetDropCount(reason)), Is.EqualTo((expected, 1L)), "an invalid snappy payload is Rejected only on a handled digest");
     }
@@ -167,7 +167,7 @@ public class GossipMessageValidatorTests
         ulong wallEpoch = Sepolia.GloasForkEpoch + 2;
         (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create(new ManualTimestamper(SlotStart(wallEpoch * Sepolia.SlotsPerEpoch).AddMilliseconds(msIntoEpoch)));
 
-        validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(slot: FirstGloasSlot + 3))));
+        validator.Validate(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(slot: FirstGloasSlot + 3))), GossipVerdict.None);
 
         Assert.That((raised.Count, router.GetDropCount(GossipDropReason.StaleSlot)), Is.EqualTo(consumed ? (1, 0L) : (0, 1L)));
     }
@@ -178,7 +178,7 @@ public class GossipMessageValidatorTests
         (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create();
         router.MarkProposalSeen(WallSlot, GloasBlock().Message!.ProposerIndex);
 
-        MessageValidity validity = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock())));
+        MessageValidity validity = validator.Validate(Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock())), GossipVerdict.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -238,7 +238,7 @@ public class GossipMessageValidatorTests
                 break;
         }
 
-        MessageValidity validity = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(candidate)));
+        MessageValidity validity = validator.Validate(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(candidate)), GossipVerdict.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -254,11 +254,11 @@ public class GossipMessageValidatorTests
         ManualTimestamper timestamper = new(SlotStart(WallSlot).AddSeconds(6));
         (GossipMessageValidator validator, GossipRouter _, List<object> raised) = Create(timestamper);
 
-        MessageValidity early = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock(WallSlot + 1))));
+        MessageValidity early = validator.Validate(Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock(WallSlot + 1))), GossipVerdict.None);
         Assert.That((early, raised.Count), Is.EqualTo((MessageValidity.Ignored, 0)), "held, not raised, while its slot is more than the clock disparity away");
 
         timestamper.Set(SlotStart(WallSlot + 1));
-        validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(slot: WallSlot + 1))));
+        validator.Validate(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(slot: WallSlot + 1))), GossipVerdict.None);
 
         Assert.That(raised.Select(static e => e.GetType()), Is.EqualTo(new[] { typeof(ForkedSignedBeaconBlock.OfGloas), typeof(SignedAggregateAndProofGloas) }),
             "the held block is raised when the next message arrives in its slot, before that message");
@@ -274,13 +274,13 @@ public class GossipMessageValidatorTests
         };
         GossipRouter router = new(Sepolia, clock, LimboLogs.Instance, status: status);
         List<object> raised = [];
-        router.BeaconBlockReceived += raised.Add;
-        router.AggregateAndProofReceived += raised.Add;
-        router.GloasAggregateAndProofReceived += raised.Add;
-        router.AttesterSlashingReceived += raised.Add;
-        router.GloasAttesterSlashingReceived += raised.Add;
-        router.ExecutionPayloadEnvelopeReceived += raised.Add;
-        router.PayloadAttestationMessageReceived += raised.Add;
+        router.BeaconBlockReceived += (message, _) => raised.Add(message);
+        router.AggregateAndProofReceived += (message, _) => raised.Add(message);
+        router.GloasAggregateAndProofReceived += (message, _) => raised.Add(message);
+        router.AttesterSlashingReceived += (message, _) => raised.Add(message);
+        router.GloasAttesterSlashingReceived += (message, _) => raised.Add(message);
+        router.ExecutionPayloadEnvelopeReceived += (message, _) => raised.Add(message);
+        router.PayloadAttestationMessageReceived += (message, _) => raised.Add(message);
         return (new GossipMessageValidator(router, new ColumnGossipRouter(Sepolia, clock, LimboLogs.Instance), Sepolia, clock), router, raised);
     }
 

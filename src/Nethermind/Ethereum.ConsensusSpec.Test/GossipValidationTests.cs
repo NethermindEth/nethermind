@@ -324,21 +324,21 @@ public class GossipValidationTests
             SeedFailedBlocks(testCase.CasePath, spec, gloas));
         int raised = 0;
         Action? markVerified = null;
-        router.BeaconBlockReceived += _ => raised++;
-        router.AggregateAndProofReceived += a =>
+        router.BeaconBlockReceived += (_, _) => raised++;
+        router.AggregateAndProofReceived += (a, _) =>
         {
             raised++;
             markVerified = () => router.MarkAggregateSeen(a.Message!.Aggregate!.Data!, a.Message.Aggregate.CommitteeBits!, a.Message.Aggregate.AggregationBits!, a.Message.AggregatorIndex);
         };
-        router.GloasAggregateAndProofReceived += a =>
+        router.GloasAggregateAndProofReceived += (a, _) =>
         {
             raised++;
             markVerified = () => router.MarkAggregateSeen(a.Message!.Aggregate!.Data!, a.Message.Aggregate.CommitteeBits!, a.Message.Aggregate.AggregationBits!, a.Message.AggregatorIndex);
         };
-        router.AttesterSlashingReceived += _ => raised++;
-        router.GloasAttesterSlashingReceived += _ => raised++;
-        router.ExecutionPayloadEnvelopeReceived += _ => raised++;
-        router.PayloadAttestationMessageReceived += _ => raised++;
+        router.AttesterSlashingReceived += (_, _) => raised++;
+        router.GloasAttesterSlashingReceived += (_, _) => raised++;
+        router.ExecutionPayloadEnvelopeReceived += (_, _) => raised++;
+        router.PayloadAttestationMessageReceived += (_, _) => raised++;
 
         List<string> failures = [];
         List<string> uncheckedRejects = [];

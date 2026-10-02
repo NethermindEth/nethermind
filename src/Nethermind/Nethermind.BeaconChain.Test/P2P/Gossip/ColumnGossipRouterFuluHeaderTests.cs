@@ -600,6 +600,40 @@ public class ColumnGossipRouterFuluHeaderTests
         }
     }
 
+    /// <summary>
+    /// A queued sidecar keeps its message's verdict until the retry checks it again: accepted once its proposer verifies, so the router
+    /// forwards it then, and rejected once the lookahead names another proposer, so its sender is charged then.
+    /// </summary>
+    /// <remarks>fulu/p2p-interface.md: [REJECT] the sidecar is proposed by the expected proposer_index, checked when it can be verified.</remarks>
+    [TestCase(0UL, MessageValidity.Accepted)]
+    [TestCase(1UL, MessageValidity.Rejected)]
+    public void A_queued_sidecar_gets_its_verdict_from_the_retry(ulong expectedProposer, MessageValidity expected)
+    {
+        ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(OtherRoot, 0) };
+        (ColumnGossipRouter router, _, _) = Create(null, lookaheads: lookaheads, forkChoice: new ForkChoiceSnapshotHolder { Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true) });
+        DataColumnSidecar sidecar = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        List<MessageValidity> given = [];
+        GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
+
+        MessageValidity routed = router.Handle(Column, gloasTopic: false, Message(sidecar), verdict);
+        // As DeferredGossipValidation does: the verdict of the checks that ran is given unless a consumer took the verdict over.
+        if (!verdict.IsHandedOff)
+        {
+            verdict.Complete(routed);
+        }
+
+        MessageValidity[] givenWhileQueued = [.. given];
+        lookaheads.Current = Lookahead(ParentRoot, expectedProposer);
+        router.Handle(Column, gloasTopic: false, UndecodableMessage);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((routed, givenWhileQueued), Is.EqualTo((MessageValidity.Ignored, Array.Empty<MessageValidity>())), "a queued sidecar's verdict waits for the retry");
+            Assert.That(given, Is.EqualTo(new[] { expected }));
+            Assert.That(verdict.IsHandedOff, Is.True, "the retry never undoes the hand-off, which the queuing handler may read only after the retry ran");
+        }
+    }
+
     [Test]
     public void A_column_pooled_by_a_retry_is_not_validated_again_by_later_publications([Values(1, 3)] int laterSnapshots)
     {

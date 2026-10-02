@@ -18,7 +18,6 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Network.Libp2p;
@@ -103,7 +102,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     /// <summary>The most stored blocks decoded per slot for envelopes whose block is not cached and not canonical at a recent slot.</summary>
     /// <remarks>
-    /// The pinned pubsub library has no peer scoring, so a REJECT costs its sender nothing and cannot bound decode work. An envelope
+    /// A REJECT costs only the delivering peer's gossip score, which a new peer id escapes, so it cannot bound decode work. An envelope
     /// naming the canonical block at its own slot, for the current or previous slot, is decoded outside the budget: that is the honest
     /// case, and the block is then cached. A root the store does not hold costs a key lookup, not a decode.
     /// </remarks>
@@ -125,7 +124,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private readonly LruKeyCache<ValueHash256> _seenPayloadAttestationMessages = new(SeenCacheSize, "beacon gossip seen payload attestation messages");
     private readonly long[] _dropCounts = new long[Enum.GetValues<GossipDropReason>().Length];
     private readonly Lock _subscriptionLock = new();
-    private readonly Dictionary<string, List<(ITopic Topic, Action<PeerId, byte[]> Handler)>> _subscriptions = [];
+    private readonly Dictionary<string, List<ITopic>> _subscriptions = [];
 
     // Written by the import worker once a block's proposer signature verifies; read on the network thread.
     private readonly LruKeyCache<(ulong Slot, ulong Proposer)> _seenProposals = new(SeenProposalCacheSize, "beacon gossip proposals");
@@ -163,14 +162,16 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private Func<string, ITopic>? _getTopic;
     private bool _gloasDigest;
 
+    // Each event passes the message's pending verdict, which its subscriber gives once the checks left to the import pipeline finish.
+
     /// <summary>Raised with the block decoded as the SSZ shape of its topic's fork.</summary>
-    public event Action<ForkedSignedBeaconBlock>? BeaconBlockReceived;
-    public event Action<SignedAggregateAndProof>? AggregateAndProofReceived;
-    public event Action<SignedAggregateAndProofGloas>? GloasAggregateAndProofReceived;
-    public event Action<AttesterSlashing>? AttesterSlashingReceived;
-    public event Action<AttesterSlashingGloas>? GloasAttesterSlashingReceived;
-    public event Action<SignedExecutionPayloadEnvelope>? ExecutionPayloadEnvelopeReceived;
-    public event Action<PayloadAttestationMessage>? PayloadAttestationMessageReceived;
+    public event Action<ForkedSignedBeaconBlock, GossipVerdict>? BeaconBlockReceived;
+    public event Action<SignedAggregateAndProof, GossipVerdict>? AggregateAndProofReceived;
+    public event Action<SignedAggregateAndProofGloas, GossipVerdict>? GloasAggregateAndProofReceived;
+    public event Action<AttesterSlashing, GossipVerdict>? AttesterSlashingReceived;
+    public event Action<AttesterSlashingGloas, GossipVerdict>? GloasAttesterSlashingReceived;
+    public event Action<SignedExecutionPayloadEnvelope, GossipVerdict>? ExecutionPayloadEnvelopeReceived;
+    public event Action<PayloadAttestationMessage, GossipVerdict>? PayloadAttestationMessageReceived;
 
     public long GetDropCount(GossipDropReason reason) => Interlocked.Read(ref _dropCounts[(int)reason]);
 
@@ -395,17 +396,14 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 return;
             }
 
-            bool gloas = IsGloasDigest(forkDigest);
-            List<(ITopic Topic, Action<PeerId, byte[]> Handler)> subscriptions = [];
-            string[] names = gloas ? [.. GossipTopics.SubscribedTopicNames, .. GossipTopics.GloasTopicNames] : GossipTopics.SubscribedTopicNames;
+            // The pubsub validator consumes every message (GossipMessageValidator); a topic handler would process an Accepted one twice.
+            List<ITopic> subscriptions = [];
+            string[] names = IsGloasDigest(forkDigest) ? [.. GossipTopics.SubscribedTopicNames, .. GossipTopics.GloasTopicNames] : GossipTopics.SubscribedTopicNames;
             foreach (string name in names)
             {
                 ITopic topic = _getTopic(GossipTopics.Topic(forkDigest, name));
-                Action<byte[]> handle = HandlerFor(name, gloas);
-                Action<PeerId, byte[]> handler = (_, message) => handle(message);
-                topic.OnMessage += handler;
                 topic.Subscribe();
-                subscriptions.Add((topic, handler));
+                subscriptions.Add(topic);
             }
 
             _subscriptions[key] = subscriptions;
@@ -413,20 +411,19 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         }
     }
 
-    /// <summary>Unsubscribes the gossip topics of <paramref name="forkDigest"/> and detaches their handlers; does nothing when none are subscribed.</summary>
+    /// <summary>Unsubscribes the gossip topics of <paramref name="forkDigest"/>; does nothing when none are subscribed.</summary>
     public void UnsubscribeDigest(byte[] forkDigest)
     {
         lock (_subscriptionLock)
         {
             string key = Convert.ToHexStringLower(forkDigest);
-            if (!_subscriptions.Remove(key, out List<(ITopic Topic, Action<PeerId, byte[]> Handler)>? subscriptions))
+            if (!_subscriptions.Remove(key, out List<ITopic>? subscriptions))
             {
                 return;
             }
 
-            foreach ((ITopic topic, Action<PeerId, byte[]> handler) in subscriptions)
+            foreach (ITopic topic in subscriptions)
             {
-                topic.OnMessage -= handler;
                 topic.Unsubscribe();
             }
 
@@ -449,94 +446,100 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>Validates a raw message on the topic <paramref name="name"/> of a Fulu or Gloas digest and, when it passes, raises its typed event.</summary>
     /// <returns>
     /// <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>. A message whose event is raised is
-    /// <see cref="MessageValidity.Ignored"/> too: its signature and state checks run later, so it must not be forwarded.
+    /// <see cref="MessageValidity.Ignored"/> too: its signature and state checks run later, and its verdict is the event subscriber's to give.
     /// </returns>
-    internal MessageValidity Handle(string name, bool gloasTopic, byte[] message) => name switch
+    internal MessageValidity Handle(string name, bool gloasTopic, byte[] message) => Handle(name, gloasTopic, message, GossipVerdict.None);
+
+    /// <inheritdoc cref="Handle(string, bool, byte[])"/>
+    /// <param name="verdict">The message's pending verdict, handed off with a raised event or a message held for the next slot.</param>
+    internal MessageValidity Handle(string name, bool gloasTopic, byte[] message, GossipVerdict verdict) => name switch
     {
-        GossipTopics.BeaconBlock => HandleBeaconBlock(message, gloasTopic),
-        GossipTopics.BeaconAggregateAndProof => gloasTopic ? HandleGloasAggregateAndProof(message) : HandleFuluAggregateAndProof(message),
-        GossipTopics.AttesterSlashing => gloasTopic ? HandleGloasAttesterSlashing(message) : HandleFuluAttesterSlashing(message),
-        GossipTopics.ExecutionPayload => HandleExecutionPayloadEnvelope(message),
-        GossipTopics.PayloadAttestationMessage => HandlePayloadAttestationMessage(message),
+        GossipTopics.BeaconBlock => HandleBeaconBlock(message, gloasTopic, verdict),
+        GossipTopics.BeaconAggregateAndProof => gloasTopic ? HandleGloasAggregateAndProof(message, verdict) : HandleFuluAggregateAndProof(message, verdict),
+        GossipTopics.AttesterSlashing => gloasTopic ? HandleGloasAttesterSlashing(message, verdict) : HandleFuluAttesterSlashing(message, verdict),
+        GossipTopics.ExecutionPayload => HandleExecutionPayloadEnvelope(message, verdict),
+        GossipTopics.PayloadAttestationMessage => HandlePayloadAttestationMessage(message, verdict),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown gossip topic name"),
     };
 
     /// <summary>Handles a <c>beacon_block</c> message on the topic of the digest passed to <see cref="Start"/>.</summary>
-    public MessageValidity HandleBeaconBlock(byte[] message) => HandleBeaconBlock(message, _gloasDigest);
+    public MessageValidity HandleBeaconBlock(byte[] message) => HandleBeaconBlock(message, _gloasDigest, GossipVerdict.None);
 
     // phase0 p2p: MUST reject messages containing an incorrect type, so the topic's fork fixes the decoded shape.
-    private MessageValidity HandleBeaconBlock(byte[] message, bool gloasTopic) =>
-        Handle(GossipTopics.BeaconBlock, message,
+    private MessageValidity HandleBeaconBlock(byte[] message, bool gloasTopic, GossipVerdict verdict) =>
+        Handle(GossipTopics.BeaconBlock, message, verdict,
             payload => DecodeBlock(payload, gloasTopic),
             block => ValidateBlock(block, gloasTopic),
-            block => BeaconBlockReceived?.Invoke(block));
+            (block, pending) => BeaconBlockReceived?.Invoke(block, pending));
 
     /// <summary>Handles a <c>beacon_aggregate_and_proof</c> message on the topic of the digest passed to <see cref="Start"/>.</summary>
     public MessageValidity HandleAggregateAndProof(byte[] message) =>
-        _gloasDigest ? HandleGloasAggregateAndProof(message) : HandleFuluAggregateAndProof(message);
+        _gloasDigest ? HandleGloasAggregateAndProof(message, GossipVerdict.None) : HandleFuluAggregateAndProof(message, GossipVerdict.None);
 
-    private MessageValidity HandleFuluAggregateAndProof(byte[] message) =>
-        Handle(GossipTopics.BeaconAggregateAndProof, message,
+    private MessageValidity HandleFuluAggregateAndProof(byte[] message, GossipVerdict verdict) =>
+        Handle(GossipTopics.BeaconAggregateAndProof, message, verdict,
             static payload => { SignedAggregateAndProof.Decode(payload, out SignedAggregateAndProof aggregate); return aggregate; },
             aggregate => ValidateAggregate(aggregate.Message!.Aggregate!.Data!, aggregate.Message.Aggregate.CommitteeBits!, aggregate.Message.Aggregate.AggregationBits!, aggregate.Message.AggregatorIndex, gloas: false),
-            aggregate => AggregateAndProofReceived?.Invoke(aggregate));
+            (aggregate, pending) => AggregateAndProofReceived?.Invoke(aggregate, pending));
 
-    private MessageValidity HandleGloasAggregateAndProof(byte[] message) =>
-        Handle(GossipTopics.BeaconAggregateAndProof, message,
+    private MessageValidity HandleGloasAggregateAndProof(byte[] message, GossipVerdict verdict) =>
+        Handle(GossipTopics.BeaconAggregateAndProof, message, verdict,
             static payload => { SignedAggregateAndProofGloas.Decode(payload, out SignedAggregateAndProofGloas aggregate); return aggregate; },
             aggregate => ValidateAggregate(aggregate.Message!.Aggregate!.Data!, aggregate.Message.Aggregate.CommitteeBits!, aggregate.Message.Aggregate.AggregationBits!, aggregate.Message.AggregatorIndex, gloas: true),
-            aggregate => GloasAggregateAndProofReceived?.Invoke(aggregate),
+            (aggregate, pending) => GloasAggregateAndProofReceived?.Invoke(aggregate, pending),
             MaxSignedAggregateAndProofSizeGloas);
 
     /// <summary>Handles an <c>attester_slashing</c> message on the topic of the digest passed to <see cref="Start"/>.</summary>
     public MessageValidity HandleAttesterSlashing(byte[] message) =>
-        _gloasDigest ? HandleGloasAttesterSlashing(message) : HandleFuluAttesterSlashing(message);
+        _gloasDigest ? HandleGloasAttesterSlashing(message, GossipVerdict.None) : HandleFuluAttesterSlashing(message, GossipVerdict.None);
 
-    private MessageValidity HandleFuluAttesterSlashing(byte[] message) =>
-        Handle(GossipTopics.AttesterSlashing, message,
+    private MessageValidity HandleFuluAttesterSlashing(byte[] message, GossipVerdict verdict) =>
+        Handle(GossipTopics.AttesterSlashing, message, verdict,
             static payload => { AttesterSlashing.Decode(payload, out AttesterSlashing slashing); return slashing; },
             slashing => ValidateAttesterSlashing(
                 slashing.Attestation1!.AttestingIndices!, slashing.Attestation1.Data!, slashing.Attestation2!.AttestingIndices!, slashing.Attestation2.Data!, gloas: false),
-            slashing => AttesterSlashingReceived?.Invoke(slashing));
+            (slashing, pending) => AttesterSlashingReceived?.Invoke(slashing, pending));
 
-    private MessageValidity HandleGloasAttesterSlashing(byte[] message) =>
-        Handle(GossipTopics.AttesterSlashing, message,
+    private MessageValidity HandleGloasAttesterSlashing(byte[] message, GossipVerdict verdict) =>
+        Handle(GossipTopics.AttesterSlashing, message, verdict,
             static payload => { AttesterSlashingGloas.Decode(payload, out AttesterSlashingGloas slashing); return slashing; },
             slashing => ValidateAttesterSlashing(
                 slashing.Attestation1!.AttestingIndices!, slashing.Attestation1.Data!, slashing.Attestation2!.AttestingIndices!, slashing.Attestation2.Data!, gloas: true),
-            slashing => GloasAttesterSlashingReceived?.Invoke(slashing),
+            (slashing, pending) => GloasAttesterSlashingReceived?.Invoke(slashing, pending),
             MaxAttesterSlashingSizeGloas);
 
     /// <summary>
     /// Runs every <c>execution_payload</c> rule except the envelope signature, which needs the block's state: an envelope
-    /// passing them, or naming a block not held yet, is raised for the import pipeline to verify and is never forwarded.
+    /// passing them, or naming a block not held yet, is raised for the import pipeline to verify, which gives its verdict.
     /// </summary>
-    public MessageValidity HandleExecutionPayloadEnvelope(byte[] message) =>
-        Handle(GossipTopics.ExecutionPayload, message,
+    public MessageValidity HandleExecutionPayloadEnvelope(byte[] message) => HandleExecutionPayloadEnvelope(message, GossipVerdict.None);
+
+    private MessageValidity HandleExecutionPayloadEnvelope(byte[] message, GossipVerdict verdict) =>
+        Handle(GossipTopics.ExecutionPayload, message, verdict,
             static payload => { SignedExecutionPayloadEnvelope.Decode(payload, out SignedExecutionPayloadEnvelope envelope); return envelope; },
             ValidateEnvelope,
-            envelope => ExecutionPayloadEnvelopeReceived?.Invoke(envelope));
+            (envelope, pending) => ExecutionPayloadEnvelopeReceived?.Invoke(envelope, pending));
 
     /// <summary>
     /// Runs every <c>payload_attestation_message</c> rule except the signature (and PTC membership until <see cref="RequiresPtc"/> is set):
-    /// a vote passing them is raised for fork choice to verify and is never forwarded.
+    /// a vote passing them is raised for fork choice to verify, which gives its verdict.
     /// </summary>
     /// <remarks>
     /// The spec IGNOREs a repeat only after a valid vote, but the signature cannot be checked here and each forged vote under a PTC
     /// member's index would cost fork choice a BLS verify: a pair is raised at most <see cref="PayloadAttestationVerifyAttempts"/> times
     /// until <see cref="MarkPayloadAttestationVerified"/> records a vote that verified.
     /// </remarks>
-    private MessageValidity HandlePayloadAttestationMessage(byte[] message) =>
-        Handle(GossipTopics.PayloadAttestationMessage, message,
+    private MessageValidity HandlePayloadAttestationMessage(byte[] message, GossipVerdict verdict) =>
+        Handle(GossipTopics.PayloadAttestationMessage, message, verdict,
             static payload => { PayloadAttestationMessage.Decode(payload, out PayloadAttestationMessage vote); return vote; },
             ValidatePayloadAttestation,
-            vote => PayloadAttestationMessageReceived?.Invoke(vote),
+            (vote, pending) => PayloadAttestationMessageReceived?.Invoke(vote, pending),
             PayloadAttestationMessageSize,
             _seenPayloadAttestationMessages,
             ReleasePayloadAttestationAttempt);
 
-    private MessageValidity Handle<T>(string name, byte[] message, Func<byte[], T> decode, Func<T, Verdict?> validate, Action<T> raise, int maxSize = Eth2MessageId.MaxGossipSize,
-        LruKeyCache<ValueHash256>? seenMessages = null, Action<T>? releaseClaim = null) where T : class
+    private MessageValidity Handle<T>(string name, byte[] message, GossipVerdict pendingVerdict, Func<byte[], T> decode, Func<T, Verdict?> validate, Action<T, GossipVerdict> raise,
+        int maxSize = Eth2MessageId.MaxGossipSize, LruKeyCache<ValueHash256>? seenMessages = null, Action<T>? releaseClaim = null) where T : class
     {
         seenMessages ??= _seenMessages;
         ReleaseDueMessages();
@@ -585,14 +588,29 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return Drop(name, GossipDropReason.Duplicate, MessageValidity.Ignored);
         }
 
+        // A consumer that refuses the message for local load leaves no id in the pubsub router, so a later copy is checked again.
+        pendingVerdict.ReleaseOnThrottle(() => seenMessages.Delete(seenKey));
+
         if (verdict?.DeferToSlot is { } slot)
         {
-            return Defer(slot, () => raise(value)) ? MessageValidity.Ignored : Drop(name, GossipDropReason.FutureSlot, MessageValidity.Ignored);
+            if (!Defer(slot, () => raise(value, pendingVerdict)))
+            {
+                return Drop(name, GossipDropReason.FutureSlot, MessageValidity.Ignored);
+            }
+
+            pendingVerdict.HandOff();
+            return MessageValidity.Ignored;
         }
 
         Interlocked.Increment(ref Metrics.GossipAcceptedCount);
-        raise(value);
+        Raise(raise, value, pendingVerdict);
         return MessageValidity.Ignored;
+    }
+
+    private static void Raise<T>(Action<T, GossipVerdict> raise, T value, GossipVerdict verdict)
+    {
+        verdict.HandOff();
+        raise(value, verdict);
     }
 
     // validate_beacon_block_gossip: seen, future and finalized IGNOREs, then (Gloas) the two limit REJECTs. The parent-slot, bid-parent,
