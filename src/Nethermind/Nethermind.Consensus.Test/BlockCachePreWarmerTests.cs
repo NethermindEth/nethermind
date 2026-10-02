@@ -292,6 +292,20 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    /// <summary>Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.</summary>
+    [Test]
+    public void CollectCalldataAddresses_ScansInclusionListTransactionsAfterTheBlocks()
+    {
+        Block block = BuildCalldataAddressBlock(out Address first, out Address second, out _);
+        Address third = new("0x5a52e96bacdabb82fd05763e25335261b270efcb");
+        byte[] data = new byte[4 + BlockCachePreWarmer.MinCalldataWordsForAddressWarm * 32];
+        third.Bytes.CopyTo(data.AsSpan(4 + 12));
+        block.InclusionListTransactions = [Build.A.Transaction.WithData(data).WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyD).TestObject];
+
+        using ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block);
+        Assert.That(collected, Is.EqualTo(new[] { first, second, third }));
+    }
+
     [TestCase("0000000000000000000000000000000000000000000000000000000000000000", false, TestName = "IsAddressWord_Zero_IsNot")]
     [TestCase("00000000000000000000000095323debf3e1084237250e6b17a40b9299d7daf0", true, TestName = "IsAddressWord_LeftPaddedAddress_Is")]
     [TestCase("00000000000000000000000000000001f3e1084237250e6b17a40b9299d7daf0", true, TestName = "IsAddressWord_OnlyTheFourthAddressByteSet_Is")]

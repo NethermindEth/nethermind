@@ -1203,6 +1203,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <remarks>
     /// Words are deduplicated as they are: an ABI address word is the address left-padded to 32 bytes, the
     /// <see cref="ValueHash256"/> that <see cref="Address.ToHash"/> builds, so a repeated word allocates nothing.
+    /// Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.
     /// </remarks>
     internal static ArrayPoolList<Address>? CollectCalldataAddresses(Block block)
     {
@@ -1210,9 +1211,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         ArrayPoolList<Address>? addresses = null;
         try
         {
-            foreach (Transaction tx in block.Transactions)
+            int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
+            for (int i = 0; i < count; i++)
             {
-                ReadOnlySpan<byte> data = tx.Data.Span;
+                ReadOnlySpan<byte> data = AddressWarmer.TransactionAt(block, i).Data.Span;
                 if (data.Length < 4 + MinCalldataWordsForAddressWarm * 32) continue;
                 for (int offset = 4; offset + 32 <= data.Length; offset += 32)
                 {
@@ -1368,7 +1370,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         /// <summary>Indexes past the block transactions address inclusion-list ones, which may be promoted into the block.</summary>
-        private static Transaction TransactionAt(Block block, int i)
+        internal static Transaction TransactionAt(Block block, int i)
         {
             Transaction[] txs = block.Transactions;
             return i < txs.Length ? txs[i] : block.InclusionListTransactions![i - txs.Length];
