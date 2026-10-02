@@ -361,8 +361,12 @@ public class GossipLoopbackTests
         await node.StartAsync(token);
         await remote.StartAsync(token);
         ISession dropped = await node.DialPeerAsync(PeerSessionNodes.LoopbackAddress(remote), token);
+        ISession? accepted = null;
+        await PeerSessionNodes.WaitUntilAsync(() => remote.TryGetEstablishedSession(node.LocalPeerId!, out accepted), "fixture: the remote never recorded the session", token);
+        // Nethermind.Libp2p 1.0.0 can keep a listener's idle session after the dialer closes it, so both ends close it.
         await dropped.DisconnectAsync();
-        await PeerSessionNodes.WaitUntilAsync(() => node.SessionCountForTest == 0 && remote.SessionCountForTest == 0, "the dropped session never closed", token);
+        await accepted!.DisconnectAsync();
+        Assert.That((node.SessionCountForTest, remote.SessionCountForTest), Is.EqualTo((0, 0)), "fixture: the dropped session is closed at both ends");
         PeerManager manager = CreatePeerManager(node);
         manager.AddPeerForTest(dropped, PeerSessionNodes.LoopbackAddressText(remote), removeWhenSessionCloses: false);
         TaskCompletionSource admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
