@@ -1395,6 +1395,27 @@ public sealed class BeaconSyncOrchestrator(
         return next;
     }
 
+    /// <summary>Whether the signed block <paramref name="block"/> waits in the retry set as the queued block <paramref name="root"/> or as a kept copy of it.</summary>
+    private bool IsWaitingCopy(Hash256 root, ForkedSignedBeaconBlock block) =>
+        (_pendingRetry.TryGetValue(root, out PendingRetry queued) && IsSameSignedBlock(queued.Block, block))
+        || (_pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies) && copies.Exists(copy => IsSameSignedBlock(copy.Block, block)));
+
+    /// <summary>Gives the waiting signed block <paramref name="block"/> of <paramref name="root"/>, queued or kept, the by-root origin and supplier when it came from gossip.</summary>
+    private void RecordFetchedProvenance(Hash256 root, ForkedSignedBeaconBlock block, IBeaconSyncPeer? servedBy)
+    {
+        if (_pendingRetry.TryGetValue(root, out PendingRetry queued) && IsSameSignedBlock(queued.Block, block))
+        {
+            if (queued.Origin == ImportOrigin.Gossip)
+            {
+                _pendingRetry[root] = queued with { Origin = ImportOrigin.ByRoot, ServedBy = servedBy };
+            }
+        }
+        else
+        {
+            QueueRetryCopy(root, new PendingRetry(block, slotClock.CurrentSlot, ImportOrigin.ByRoot, servedBy, AwaitsRegeneration: false));
+        }
+    }
+
     /// <summary>Forgets the kept copy of <paramref name="root"/> that is the signed block <paramref name="block"/>.</summary>
     private void RemoveRetryCopy(Hash256 root, ForkedSignedBeaconBlock block)
     {
@@ -2235,9 +2256,9 @@ public sealed class BeaconSyncOrchestrator(
                 break;
             }
 
-            if (i > 0 && result == BlockImportResult.UnknownParent && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
+            if (i > 0 && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
             {
-                // The ancestor waits for the next slot's regeneration budget; its descendants import after it.
+                // The ancestor waits for its data, the engine, its slot or the next slot's regeneration budget; its descendants import after it.
                 HoldChainBehindRetriedAncestor(chain, sources, i - 1);
             }
 
@@ -2353,8 +2374,22 @@ public sealed class BeaconSyncOrchestrator(
             return;
         }
 
-        // The ancestor may have imported, or begun to wait for its payload, by another route while the fetch ran.
-        bool arrivedElsewhere = _importer!.IsKnown(fetched.Root) || IsWaitingForPayload(fetched.Root);
+        // A queued copy under another signature may be a forgery, so the fetched copy is imported once to wait beside it or to be blamed.
+        if (fetched.Block is { } fetchedBlock && _pendingRetry.ContainsKey(fetched.Root))
+        {
+            if (IsWaitingCopy(fetched.Root, fetchedBlock))
+            {
+                // The waiting copy was fetched too, so it retries as fetched, on the by-root regeneration budget.
+                RecordFetchedProvenance(fetched.Root, fetchedBlock, fetched.Source);
+            }
+            else
+            {
+                await ImportBlockAsync(fetchedBlock, token, fetchedByRoot: true, servedBy: fetched.Source);
+            }
+        }
+
+        // The ancestor may have imported, or begun to wait for a retry or its payload, by another route while the fetch ran.
+        bool arrivedElsewhere = _importer!.IsKnown(fetched.Root) || IsWaitingForPayload(fetched.Root) || _pendingRetry.ContainsKey(fetched.Root);
         foreach ((List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources) in chains)
         {
             if (!arrivedElsewhere)
