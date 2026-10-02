@@ -268,21 +268,6 @@ public class FrameTxDecoderTests
         Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing element"));
     }
 
-    [Test]
-    public void Decode_PayloadLengthOverrunningTheBuffer_ThrowsTruncated()
-    {
-        byte[] payload = TypedPayload(FrameTxBody());
-        payload[1]++;
-
-        void Decode()
-        {
-            RlpReader reader = new(payload);
-            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
-        }
-
-        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("payload is incomplete"));
-    }
-
     private static IEnumerable<TestCaseData> TrailingListCases()
     {
         yield return new TestCaseData(Rlp.OfEmptyList).SetName("Decode_PayloadWithTrailingEmptyList_Throws");
@@ -682,7 +667,7 @@ public class FrameTxDecoderTests
             "the overrun must keep the short-form prefix, or it declares a length of length instead");
         payload[1] += (byte)overrun;
 
-        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>());
+        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>().With.Message.Contains("payload is incomplete"));
     }
 
     /// <summary>An RLP list of <paramref name="count"/> single-byte items, without materialising the items.</summary>
