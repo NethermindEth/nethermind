@@ -180,21 +180,26 @@ public static partial class EvmInstructions
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
-        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage) switch
+        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage, vm.Spec.IsEip8279Enabled) switch
         {
-            (true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag>(ref stack, ref gas, vm),
-            (true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, vm),
-            (false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag>(ref stack, ref gas, vm),
-            (false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag>(ref stack, ref gas, vm),
+            (true, true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag, OnFlag>(ref stack, ref gas, vm),
+            (true, true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag, OffFlag>(ref stack, ref gas, vm),
+            (true, false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag, OnFlag>(ref stack, ref gas, vm),
+            (true, false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag, OffFlag>(ref stack, ref gas, vm),
+            (false, true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag, OnFlag>(ref stack, ref gas, vm),
+            (false, true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag, OffFlag>(ref stack, ref gas, vm),
+            (false, false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag, OnFlag>(ref stack, ref gas, vm),
+            (false, false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag, OffFlag>(ref stack, ref gas, vm),
         };
 
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst, Eip8038, Eip2929>(
+    internal static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IFlag
         where Eip2929 : struct, IFlag
+        where Eip8279 : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
@@ -205,6 +210,9 @@ public static partial class EvmInstructions
         if (address is null ||
             !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
+
+        // EIP-8279: the account enters the block access list on this first touch, metered before any charge.
+        if (Eip8279.IsActive && !vm.TryMeterColdBalAccess(address)) goto OutOfGas;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
@@ -278,22 +286,27 @@ public static partial class EvmInstructions
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
-        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage) switch
+        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage, vm.Spec.IsEip8279Enabled) switch
         {
-            (true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
-            (true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
-            (false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
-            (false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
+            (true, true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (true, true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
+            (true, false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (true, false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
+            (false, true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (false, true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
+            (false, false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (false, false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
         };
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst, Eip8038, Eip2929>(
+    internal static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IFlag
         where Eip2929 : struct, IFlag
+        where Eip8279 : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
@@ -302,6 +315,9 @@ public static partial class EvmInstructions
         // Pop the account address from the stack.
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
+
+        // EIP-8279: the account enters the block access list on this first touch, metered before its charge.
+        if (Eip8279.IsActive && !vm.TryMeterColdBalAccess(address)) goto OutOfGas;
 
         // Charge gas for accessing the account's state.
         if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))

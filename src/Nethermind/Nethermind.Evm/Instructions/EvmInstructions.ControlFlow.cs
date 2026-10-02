@@ -242,8 +242,14 @@ public static partial class EvmInstructions
         if (inheritor is null)
             goto StackUnderflow;
 
+        bool meterInheritor = TSpec.IsEip8279Enabled && vm.IsColdBalAccess(inheritor);
+
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
+            goto OutOfGas;
+
+        // EIP-8279: the beneficiary enters the block access list on this first touch.
+        if (meterInheritor && !vm.TryMeterBalData(Eip8279Constants.AddressBytes))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
@@ -274,6 +280,11 @@ public static partial class EvmInstructions
               && TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas));
 
         if (outOfGas) goto OutOfGas;
+
+        // EIP-8279: a sweep to another account puts the beneficiary's post balance in the block access list.
+        if (TSpec.IsEip8279Enabled && !result.IsZero && !inheritor.Equals(executingAccount)
+            && !vm.TryMeterBalData(Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
 
         // Transfer the self-destruct balance without creating an empty beneficiary.
         if (!inheritorAccountExists)
