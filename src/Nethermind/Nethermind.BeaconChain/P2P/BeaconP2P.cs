@@ -185,8 +185,8 @@ public sealed class BeaconP2P : IAsyncDisposable
                 // phase0 p2p "Gossipsub size limits": an encoded RPC, an IWANT answer included, may reach max_message_size().
                 MaxRpcBytes = Eth2MessageId.MaxMessageSize,
                 MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
-                // The router redials every closed gossip peer each period, past PeerManager's bans, band and backoff; PeerManager owns redials.
-                ReconnectionPeriod = System.Threading.Timeout.Infinite,
+                // The router would redial closed gossip peers past PeerManager's bans, band and backoff; PeerManager owns redials.
+                ReconnectionAttempts = 0,
                 // fulu/das-core.md "Reconstruction and cross-seeding": this node publishes only reconstructed columns, which go to the topic mesh neighbors.
                 FloodPublish = false,
                 // The sum of DeferredGossipValidation's bounds, which reserve every message they defer, so the router dispatches each of them.
@@ -435,8 +435,8 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Dials the peer, or returns the existing session when one is already established (for example inbound).</summary>
     /// <remarks>
-    /// The existing-session check prefers a session whose handshake completed; the library's own check also hands back one
-    /// still upgrading. The same check runs again after a failed dial: when both sides dial at once ours loses the upgrade to
+    /// The existing-session check prefers a session whose handshake completed; the library's own check waits for one
+    /// still upgrading and fails with it. The same check runs again after a failed dial: when both sides dial at once ours loses the upgrade to
     /// the session the remote opened, and that session is the connection to hand back, not a failure. The caller's own
     /// cancellation is neither: it propagates even when such a session exists.
     /// </remarks>
@@ -451,23 +451,16 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         try
         {
-            // Nethermind.Libp2p 1.0.0 keeps a dial cancelled before its first await as the peer id's pending dial for good, so the token
-            // stops only this wait; the dial itself ends within the library's connection timeout.
-            Task<ISession> dial = localPeer.DialAsync(address, CancellationToken.None);
+            Task<ISession> dial = localPeer.DialAsync(address, token);
+            // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
             _ = dial.ContinueWith(static (completed, state) =>
             {
-                // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
-                if (completed.IsCompletedSuccessfully)
+                if (Volatile.Read(ref ((BeaconP2P)state!)._disposed) == 1)
                 {
-                    if (Volatile.Read(ref ((BeaconP2P)state!)._disposed) == 1)
-                    {
-                        _ = completed.Result.DisconnectAsync();
-                    }
+                    _ = completed.Result.DisconnectAsync();
                 }
-                // A caller that stopped waiting leaves the failure unobserved; observing it keeps it out of UnobservedTaskException.
-                else _ = completed.Exception;
-            }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            return await dial.WaitAsync(token);
+            }, this, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return await dial;
         }
         catch (Exception e) when (e is not OperationCanceledException && token.IsCancellationRequested)
         {
@@ -976,11 +969,9 @@ public sealed class BeaconP2P : IAsyncDisposable
             catch (Exception e)
             {
                 slot?.TrySetCanceled();
-                // The pinned library disconnects the session only when this task faults; a cancelled one counts as connected.
                 if (e is OperationCanceledException)
                 {
                     Interlocked.Increment(ref _owner._identifyTimeouts);
-                    throw new TimeoutException($"No identify answer from {session.RemoteAddress} within {IdentifyAgentVersionProbe.ReadTimeout}", e);
                 }
 
                 throw;

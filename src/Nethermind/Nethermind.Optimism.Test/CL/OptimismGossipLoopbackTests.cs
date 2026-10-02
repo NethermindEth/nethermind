@@ -150,7 +150,7 @@ public class OptimismGossipLoopbackTests
 
     /// <summary>A dial that cannot start, to addresses any peer can announce for another through pubsub peer discovery, does not keep that
     /// peer from being connected later.</summary>
-    /// <remarks>Nethermind.Libp2p 1.0.0 keeps a dial that fails before its first await as the pending dial of the peer id for good.</remarks>
+    /// <remarks>Nethermind.Libp2p 1.0.0 kept such a dial as the pending dial of the peer id for good.</remarks>
     [TestCase("/dns4/sequencer.invalid/tcp/{port}/p2p/{id}", TestName = "A name whose first lookup fails")]
     [TestCase("/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name")]
     [TestCase("/ip4/127.0.0.1/tcp/{port}/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name after an address")]
@@ -282,7 +282,7 @@ public class OptimismGossipLoopbackTests
     }
 
     /// <summary>A dial its caller cancelled before it began does not keep the peer from being dialed afterwards.</summary>
-    /// <remarks>Nethermind.Libp2p 1.0.0 keeps a dial cancelled before its first await as the pending dial of the peer id for good.</remarks>
+    /// <remarks>Nethermind.Libp2p 1.0.0 kept such a dial as the pending dial of the peer id for good.</remarks>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_cancelled_dial_does_not_lose_the_peer(CancellationToken token)
@@ -296,7 +296,7 @@ public class OptimismGossipLoopbackTests
         Assert.That(await node.Peer.DialAsync(sequencer.Address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
     }
 
-    /// <summary>A dial still running when its peer is disposed leaves no session open: the library dial outlives its caller's token.</summary>
+    /// <summary>A dial still running when its peer is disposed leaves no session open: disposal does not end a dial in flight.</summary>
     [Test]
     [CancelAfter(90_000)]
     public async Task A_peer_disposed_during_a_dial_leaves_no_session_open(CancellationToken token)
@@ -334,7 +334,7 @@ public class OptimismGossipLoopbackTests
         }
     }
 
-    // Starts a dial from dialer, stops waiting for it, shuts down, and checks the session the dial opens at remote is closed.
+    // Starts a dial from dialer, shuts down while it runs, and checks the session the dial opens at remote is closed.
     private static async Task AssertNoSessionAfterShutdownAsync(ILocalPeer dialer, Host remote, Func<ValueTask> shutdown, CancellationToken token)
     {
         LocalPeer remotePeer = (LocalPeer)remote.Peer;
@@ -343,21 +343,20 @@ public class OptimismGossipLoopbackTests
         {
             if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
         };
-        using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task<ISession> dial = dialer.DialAsync(remote.Address, abandoned.Token);
+        Task<ISession> dial = dialer.DialAsync(remote.Address, token);
 
-        await abandoned.CancelAsync();
+        bool inFlight = !dial.IsCompleted;
         await shutdown();
+        Assert.That(inFlight, Is.True, "fixture: shutdown began before the dial finished");
         try
         {
             await dial;
         }
-        catch (OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
         }
 
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
-        Assert.That(dial.IsCanceled, Is.True, "fixture: the caller stopped waiting before the dial finished");
 
         // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
         // a session left open was still open after 40 s.

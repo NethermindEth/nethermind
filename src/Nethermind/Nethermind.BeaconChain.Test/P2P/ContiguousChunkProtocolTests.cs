@@ -14,7 +14,7 @@ using NUnit.Framework;
 namespace Nethermind.BeaconChain.Test.P2P;
 
 /// <summary>An exact-length read above the relay gets every byte, however the yamux frames below it were split into segments.</summary>
-/// <remarks>Nethermind.Libp2p 1.0.0 <c>Channel.ReadAsync</c> keeps only the first segment of each later chunk; pubsub reads a whole RPC that way.</remarks>
+/// <remarks>Nethermind.Libp2p 1.0.1 <c>Channel.ReadAsync</c> keeps only the first segment of each later chunk; pubsub reads a whole RPC that way.</remarks>
 public class ContiguousChunkProtocolTests
 {
     // Each chunk is one yamux frame as it is handed up, given by its segment lengths: Noise frames of up to 65,535 bytes, and small frames.
