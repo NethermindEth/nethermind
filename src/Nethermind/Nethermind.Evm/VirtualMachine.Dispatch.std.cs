@@ -210,7 +210,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             pc++;
             opCodeCount++;
             EvmExceptionType exceptionType;
-            if (!TTracingInst.IsActive && TOpcode.HasUntracedFastPath)
+            if (!TTracingInst.IsActive && !TCancelable.IsActive && typeof(TOpcode) == typeof(Push2Opcode<OffFlag>))
+            {
+                exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag>(ref stack, ref gas, null!, ref pc, ref opCodeCount);
+            }
+            else if (!TTracingInst.IsActive && TOpcode.HasUntracedFastPath)
             {
                 exceptionType = EvmExceptionType.None;
             }
