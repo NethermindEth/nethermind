@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -220,21 +221,52 @@ public class RangeSyncPeerSelectionTests
         }
     }
 
+    /// <summary>Sync components log from several threads at once; a lost or null line fails the log assertions with a false cause.</summary>
+    [Test]
+    public void Log_capture_keeps_every_line_written_from_concurrent_threads()
+    {
+        const int Writers = 8;
+        const int LinesPerWriter = 20_000;
+        AllLevelsCapture log = new();
+
+        Parallel.For(0, Writers + 1, new ParallelOptions { MaxDegreeOfParallelism = Writers + 1 }, writer =>
+        {
+            for (int i = 0; i < LinesPerWriter; i++)
+            {
+                if (writer < Writers)
+                    log.Debug($"{writer}:{i}");
+                else if (i % 200 == 0)
+                    _ = log.Lines.Length;
+            }
+        });
+
+        string[] lines = log.Lines;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lines, Has.Length.EqualTo(Writers * LinesPerWriter));
+            Assert.That(lines, Has.None.Null);
+        }
+    }
+
+    /// <summary>Keeps every enabled line; safe to write from concurrent threads and to read while they write.</summary>
     internal sealed class AllLevelsCapture : InterfaceLogger
     {
-        public List<string> Lines { get; } = [];
+        private readonly ConcurrentQueue<string> _lines = new();
 
-        public bool IsInfo => true;
-        public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => true;
-        public bool IsError => true;
+        /// <summary>A snapshot of the lines logged so far, in order.</summary>
+        public string[] Lines => [.. _lines];
 
-        public void Info(string text) => Lines.Add(text);
-        public void Warn(string text) => Lines.Add(text);
-        public void Debug(string text) => Lines.Add(text);
-        public void Trace(string text) => Lines.Add(text);
-        public void Error(string text, Exception? ex = null) => Lines.Add(text);
+        public bool IsInfo { get; init; } = true;
+        public bool IsWarn { get; init; } = true;
+        public bool IsDebug { get; init; } = true;
+        public bool IsTrace { get; init; } = true;
+        public bool IsError { get; init; } = true;
+
+        public void Info(string text) => _lines.Enqueue(text);
+        public void Warn(string text) => _lines.Enqueue(text);
+        public void Debug(string text) => _lines.Enqueue(text);
+        public void Trace(string text) => _lines.Enqueue(text);
+        public void Error(string text, Exception? ex = null) => _lines.Enqueue(text);
     }
 
     /// <summary>Failures shrink the batch; the fallback window stays the default batch, so the peer serving from slot 20 is still asked after the shrink.</summary>

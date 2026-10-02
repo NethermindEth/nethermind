@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -1930,9 +1931,12 @@ public class BlockImporterTests
         }
     }
 
+    /// <summary>Keeps warnings and errors; safe to write from concurrent threads.</summary>
     private sealed class WarningCapture : InterfaceLogger
     {
-        public List<string> Warnings { get; } = [];
+        private readonly ConcurrentQueue<string> _warnings = new();
+
+        public string[] Warnings => [.. _warnings];
 
         public bool IsInfo => false;
         public bool IsWarn => true;
@@ -1941,9 +1945,9 @@ public class BlockImporterTests
         public bool IsError => true;
 
         public void Info(string text) { }
-        public void Warn(string text) => Warnings.Add(text);
+        public void Warn(string text) => _warnings.Enqueue(text);
         public void Debug(string text) { }
         public void Trace(string text) { }
-        public void Error(string text, Exception? ex = null) => Warnings.Add(text);
+        public void Error(string text, Exception? ex = null) => _warnings.Enqueue(text);
     }
 }

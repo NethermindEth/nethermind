@@ -150,32 +150,35 @@ public class DataColumnSidecarsByRangeLoopbackTests
             await Task.Delay(System.Threading.Timeout.Infinite, ct);
             return new ForkedDataColumnSidecars([], []);
         });
-        await using BeaconP2P client = CreateHost(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new DataColumnSidecarPool());
+        await using BeaconP2P client = CreateShortTimeoutClient();
         Assert.That(DataColumnSidecarsByRangeProtocol.ResponseBudget(16, 8), Is.GreaterThan(TimeSpan.FromSeconds(30)));
 
         long startedAt = Stopwatch.GetTimestamp();
         ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await client.RequestDataColumnSidecarsByRangeAsync(session, 100, 16, [0, 1, 2, 3, 4, 5, 6, 7], token));
-        Assert.That(cut!.Message, Does.Match(@"^timed out after 1[56](\.\d)? s: the request budget ran out$"), "the failure names the bound that fired");
+        Assert.That(cut!.Message, Does.Match(@"^timed out after [23](\.\d)? s: the request budget ran out$"), "the failure names the bound that fired");
 
-        Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(22)));
+        Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(16)), "cut well before the 16 s minimum of any scaled budget");
     }
 
-    /// <summary>Once a peer delivers, it may take the scaled budget: 16 slots of 16 columns are cut neither at the fixed request timeout nor at one second per slot on top of it.</summary>
+    /// <summary>Once a peer delivers, it may take the scaled budget: 2 slots of 16 columns are cut neither at the fixed request timeout nor at one second per slot on top of it.</summary>
     [Test]
-    [CancelAfter(90_000)]
+    [CancelAfter(60_000)]
     public async Task A_reply_that_keeps_delivering_past_the_fixed_request_timeout_succeeds_within_the_scaled_budget(CancellationToken token)
     {
+        const ulong slots = 2;
+        ulong[] columns = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+        TimeSpan delivering = ShortRequestTimeout + TimeSpan.FromSeconds(slots + 2);
         DataColumnSidecar first = DataColumnSidecarTestFixture.BuildValidSidecar(3, 5, blobCount: 1);
         ISession session = SessionThatDials(async (dial, ct) =>
         {
             dial.OnSidecar!(first);
-            await Task.Delay(TimeSpan.FromSeconds(38), ct);
+            await Task.Delay(delivering, ct);
             return new ForkedDataColumnSidecars([first], []);
         });
-        await using BeaconP2P client = CreateHost(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new DataColumnSidecarPool());
-        Assert.That(DataColumnSidecarsByRangeProtocol.ResponseBudget(16, 16), Is.GreaterThan(TimeSpan.FromSeconds(60)));
+        await using BeaconP2P client = CreateShortTimeoutClient();
+        Assert.That(DataColumnSidecarsByRangeProtocol.ResponseBudget(slots, columns.Length), Is.GreaterThan(delivering + TimeSpan.FromSeconds(10)));
 
-        IReadOnlyList<DataColumnSidecar> served = await client.RequestDataColumnSidecarsByRangeAsync(session, 5, 16, [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], token);
+        IReadOnlyList<DataColumnSidecar> served = await client.RequestDataColumnSidecarsByRangeAsync(session, 5, slots, columns, token);
 
         Assert.That(served, Is.EqualTo(new[] { first }));
     }
@@ -266,6 +269,8 @@ public class DataColumnSidecarsByRangeLoopbackTests
         Assert.That(deliveryFailure, Is.Null, "a chunk that arrives after the request's timeout is disposed has nothing left to extend");
     }
 
+    private static readonly TimeSpan ShortRequestTimeout = TimeSpan.FromSeconds(2);
+
     private static ISession SessionThatDials(Func<DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, CancellationToken, Task<ForkedDataColumnSidecars>> dial)
     {
         ISession session = Substitute.For<ISession>();
@@ -276,4 +281,10 @@ public class DataColumnSidecarsByRangeLoopbackTests
 
     private static BeaconP2P CreateHost(BeaconChainStore store, DataColumnSidecarPool pool, SlotClock? clock = null) =>
         PeerSessionNodes.Watched(logs => new BeaconP2P(new BeaconChainConfig { P2PPort = 0 }, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), pool, new ExecutionPayloadEnvelopePool(), logs, clock: clock));
+
+    /// <summary>A client whose fixed request budget is <see cref="ShortRequestTimeout"/>, far below any scaled by-range budget.</summary>
+    private static BeaconP2P CreateShortTimeoutClient() =>
+        PeerSessionNodes.Watched(logs => new BeaconP2P(new BeaconChainConfig { P2PPort = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new BeaconChainStatusHolder(Spec, Timestamper.Default),
+            new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logs)
+        { RequestTimeout = ShortRequestTimeout });
 }

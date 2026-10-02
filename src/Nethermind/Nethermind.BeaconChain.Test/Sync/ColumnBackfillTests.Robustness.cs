@@ -51,6 +51,7 @@ public partial class ColumnBackfillTests
         public CancellationTokenSource? Cts;
         private Task _run = Task.CompletedTask;
         public ILogManager LogManager = LimboLogs.Instance;
+        public TimeSpan WindowPause = TimeSpan.FromMilliseconds(1);
 
         public static HistoryFixture Build(int[] blobSlots, ulong anchorSlot, FaultyColumnsDb? db = null)
         {
@@ -116,7 +117,7 @@ public partial class ColumnBackfillTests
             Backfill = new ColumnBackfill(Store, Pool, rangeSync, pool, Clock, Spec, Status, new DiscoveryNodeCustodySource(Discovery), LogManager)
             {
                 RetryDelay = TimeSpan.FromMilliseconds(50),
-                WindowPause = TimeSpan.FromMilliseconds(1),
+                WindowPause = WindowPause,
                 HeadPollDelay = TimeSpan.FromMilliseconds(10),
             };
             Cts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -258,11 +259,7 @@ public partial class ColumnBackfillTests
         Task run = p.Start(token, bad, honest);
         await p.UntilFloor(0, token);
         await run.WaitAsync(token);
-        string[] lines;
-        lock (log.Lines)
-        {
-            lines = [.. log.Lines];
-        }
+        string[] lines = log.Lines;
 
         using (Assert.EnterMultipleScope())
         {
@@ -338,6 +335,8 @@ public partial class ColumnBackfillTests
         p.Pool = new DataColumnSidecarPool(store: p.Store, clock: p.Clock);
         await p.Pool.SeedCompletelyServableFloor(p.HeadSlot, token);
         p.Status.CurrentStatus = new StatusMessageV2 { ForkDigest = new byte[4], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero, HeadSlot = p.Clock.CurrentSlot - 1 };
+        // Nothing is held below the wall clock, so the walk down to the boundary crosses about 8,000 empty windows.
+        p.WindowPause = TimeSpan.Zero;
         Task run = p.Start(token, p.Honest("honest"));
         await run.WaitAsync(token);
 
