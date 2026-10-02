@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -66,7 +67,7 @@ public class NativeLeanProtocolTests
         }
     }
 
-    private static async Task<Context> Create(ILeanProofVerifier? verifier = null)
+    private static async Task<Context> Create(ILeanProofVerifier? verifier = null, byte version = 1)
     {
         Scheduler scheduler = new();
         BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
@@ -78,8 +79,10 @@ public class NativeLeanProtocolTests
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
         session.HasAgreedCapability(Arg.Any<Capability>()).Returns(true);
-        IProtocolHandlerFactory factory = chain.Container.Resolve<IProtocolHandlerFactory[]>().First(f => f.ProtocolCode == "lean");
-        Assert.That(factory.TryCreate(session, 1, out IProtocolHandler? handler), Is.True);
+        IProtocolHandler? handler = null;
+        foreach (IProtocolHandlerFactory factory in chain.Container.Resolve<IProtocolHandlerFactory[]>())
+            if (factory.ProtocolCode == "lean" && factory.TryCreate(session, version, out handler)) break;
+        Assert.That(handler, Is.Not.Null);
         return new(chain, session, (LeanProtocolHandler)handler!, scheduler);
     }
 
@@ -126,12 +129,14 @@ public class NativeLeanProtocolTests
         Receive(after, new LeanProofWrapperMessage([0]), new LeanProofWrapperMessageSerializer());
         await after.Scheduler.Completion;
         after.Session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        Assert.That(after.Chain.Container.Resolve<LeanReassemblyBudget>().RetainedAssemblies, Is.Zero);
     }
 
-    [Test]
-    public async Task Unnegotiated_capability_is_rejected()
+    [TestCase((byte)1)]
+    [TestCase((byte)2)]
+    public async Task Unnegotiated_capability_is_rejected(byte version)
     {
-        using Context context = await Create();
+        using Context context = await Create(version: version);
         context.Session.HasAgreedCapability(Arg.Any<Capability>()).Returns(false);
         Receive(context, Status(context), new LeanStatusMessageSerializer());
         context.Session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
@@ -143,8 +148,13 @@ public class NativeLeanProtocolTests
         using Context source = await Create();
         using Context target = await Create();
         TaskCompletionSource<byte[]> broadcast = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        source.Session.When(session => session.DeliverMessage(Arg.Any<LeanProofWrapperMessage>()))
-            .Do(call => broadcast.TrySetResult(call.Arg<LeanProofWrapperMessage>().Wrapper));
+        source.Session.DeliverMessageAsync(Arg.Any<LeanProofWrapperMessage>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                byte[] wrapper = call.Arg<LeanProofWrapperMessage>().Wrapper;
+                broadcast.TrySetResult(wrapper);
+                return new ValueTask<int>(wrapper.Length);
+            });
         Receive(source, Status(source), new LeanStatusMessageSerializer());
         Receive(target, Status(source), new LeanStatusMessageSerializer());
         Transaction transaction = NativeBlockProductionTests.CreateTransaction(source.Chain);
@@ -164,6 +174,55 @@ public class NativeLeanProtocolTests
         }
     }
 
+    [Test]
+    public async Task Lean2_chunks_reassemble_a_real_recursive_wrapper_before_admission()
+    {
+        using Context source = await Create(version: 2);
+        using Context target = await Create(version: 2);
+        using LeanP2PCapabilityResolver resolver = new(source.Chain.BlockTree, source.Chain.SpecProvider);
+        HashSet<Capability> capabilities = [];
+        resolver.Resolve(capabilities);
+        Assert.That(capabilities, Does.Contain(new Capability("lean", 1)).And.Contain(new Capability("lean", 2)));
+        source.Session.HasAgreedCapability(Arg.Any<Capability>())
+            .Returns(call => call.Arg<Capability>().ProtocolCode == "lean" && call.Arg<Capability>().Version == 2);
+        target.Session.HasAgreedCapability(Arg.Any<Capability>())
+            .Returns(call => call.Arg<Capability>().ProtocolCode == "lean" && call.Arg<Capability>().Version == 2);
+        TaskCompletionSource<int> complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int earlyAdmissions = 0;
+        source.Session.DeliverMessageAsync(Arg.Any<LeanProofChunkMessage>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                LeanProofChunkMessage chunk = call.Arg<LeanProofChunkMessage>();
+                Receive(target, chunk, new LeanProofChunkMessageSerializer());
+                if (chunk.Index < chunk.Count - 1 && target.Scheduler.Scheduled != 0)
+                    Interlocked.Increment(ref earlyAdmissions);
+                if (chunk.Index == chunk.Count - 1) complete.TrySetResult(chunk.Count);
+                return new ValueTask<int>(LeanProofChunkMessage.HeaderSize + chunk.Data.Length);
+            });
+        source.Handler.Init();
+        target.Handler.Init();
+        Receive(source, Status(source), new LeanStatusMessageSerializer());
+        Receive(target, Status(source), new LeanStatusMessageSerializer());
+        Transaction transaction = NativeBlockProductionTests.CreateTransaction(source.Chain);
+        source.Chain.Container.Resolve<LeanProofStore>().AddVerified(
+            [NativeLeanProofVerifierTests.Dependency("sphincs"), NativeLeanProofVerifierTests.Dependency("stark")],
+            [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("stark")], null);
+        Assert.That(source.Chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        int chunks = await complete.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await target.Scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.Handler.ProtocolVersion, Is.EqualTo(2));
+            Assert.That(chunks, Is.GreaterThan(1));
+            Assert.That(earlyAdmissions, Is.Zero);
+            Assert.That(target.Scheduler.Scheduled, Is.EqualTo(1));
+            Assert.That(target.Chain.Container.Resolve<ILeanProofVerifier>(), Is.TypeOf<NativeLeanProofVerifier>());
+            Assert.That(target.Chain.Container.Resolve<LeanProofStore>().Covers(transaction), Is.True);
+            Assert.That(target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _), Is.True);
+            target.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
     private static byte[] CreateValidWrapper(Context context)
     {
         Transaction transaction = NativeBlockProductionTests.CreateTransaction(context.Chain);
@@ -177,6 +236,40 @@ public class NativeLeanProtocolTests
             Proofs = Eip8288Dependencies.Canonicalize([sphincs, stark]).Select(dependency =>
                 NativeLeanProofVerifierTests.Witness(dependency.Scheme == Eip8288Constants.LeanSphincsScheme ? "sphincs" : "stark")).ToList()
         }).Bytes;
+    }
+
+    [Test]
+    public async Task Legacy_wrapper_admission_and_disposal_share_the_global_receive_budget()
+    {
+        using Context context = await Create();
+        Receive(context, Status(context), new LeanStatusMessageSerializer());
+        context.Scheduler.Defer = true;
+        LeanReassemblyBudget budget = context.Chain.Container.Resolve<LeanReassemblyBudget>();
+        List<IDisposable> leases = [];
+        try
+        {
+            for (int i = 0; i < LeanReassemblyBudget.MaxAssemblies; i++)
+                leases.Add(budget.TryRent(1, static () => { }) ?? throw new InvalidOperationException("Could not fill receive budget"));
+            byte[] wrapper = CreateValidWrapper(context);
+            Receive(context, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
+            Assert.That(context.Scheduler.Scheduled, Is.Zero);
+            leases[^1].Dispose();
+            Receive(context, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
+            Assert.That(budget.RetainedAssemblies, Is.EqualTo(LeanReassemblyBudget.MaxAssemblies));
+            await context.Scheduler.RunPending();
+            Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            Assert.That(budget.RetainedAssemblies, Is.EqualTo(LeanReassemblyBudget.MaxAssemblies - 1));
+            Receive(context, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
+            Assert.That(budget.RetainedAssemblies, Is.EqualTo(LeanReassemblyBudget.MaxAssemblies));
+            context.Handler.Dispose();
+            Assert.That(budget.RetainedAssemblies, Is.EqualTo(LeanReassemblyBudget.MaxAssemblies - 1));
+        }
+        finally
+        {
+            foreach (IDisposable lease in leases) lease.Dispose();
+        }
+        Assert.That(budget.RetainedBytes, Is.Zero);
+        Assert.That(budget.RetainedAssemblies, Is.Zero);
     }
 
     [Test]
@@ -280,6 +373,7 @@ public class NativeLeanProtocolTests
         await context.Scheduler.Completion;
         context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.Zero);
+        Assert.That(context.Chain.Container.Resolve<LeanReassemblyBudget>().RetainedAssemblies, Is.Zero);
         context.Scheduler.Token = CancellationToken.None;
         Receive(context, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
         await context.Scheduler.Completion;

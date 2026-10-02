@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Messages;
@@ -21,11 +22,13 @@ public sealed class LeanStatusMessage(ulong chainId, Hash256 genesisHash, byte[]
 }
 
 /// <summary>One complete RLP proof wrapper on the negotiated lean protocol.</summary>
-public sealed class LeanProofWrapperMessage(byte[] wrapper) : P2PMessage
+public sealed class LeanProofWrapperMessage(byte[] wrapper, IDisposable? lease = null) : P2PMessage
 {
     public override string Protocol => LeanProtocolHandler.Code;
     public override int PacketType => 1;
     public byte[] Wrapper { get; } = wrapper;
+    private IDisposable? _lease = lease;
+    public override void Dispose() => Interlocked.Exchange(ref _lease, null)?.Dispose();
 }
 
 /// <summary>Fixed-width chain ID, genesis hash and guest key encoding.</summary>

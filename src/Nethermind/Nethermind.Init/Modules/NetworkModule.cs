@@ -83,6 +83,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<Subprotocols.Lean.LeanProofGossip>()
             .AddMessageSerializer<Subprotocols.Lean.LeanStatusMessage, Subprotocols.Lean.LeanStatusMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.LeanProofWrapperMessage, Subprotocols.Lean.LeanProofWrapperMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.LeanProofChunkMessage, Subprotocols.Lean.LeanProofChunkMessageSerializer>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()
@@ -181,6 +182,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             // Protocol handler factories
             .AddProtocolHandler<Subprotocols.Lean.LeanProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Lean.Lean2ProtocolHandler>()
+            .AddSingleton<Subprotocols.Lean.LeanReassemblyBudget>()
             .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Snap.V2.Snap2ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()

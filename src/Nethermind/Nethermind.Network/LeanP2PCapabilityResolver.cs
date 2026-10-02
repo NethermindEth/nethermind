@@ -30,7 +30,11 @@ public sealed class LeanP2PCapabilityResolver : IP2PCapabilityResolver, IDisposa
 
     public void Resolve(ISet<Capability> capabilities)
     {
-        if (Volatile.Read(ref _enabled)) capabilities.Add(new Capability(LeanProtocolHandler.Code, LeanProtocolHandler.Version));
+        if (Volatile.Read(ref _enabled))
+        {
+            capabilities.Add(new Capability(LeanProtocolHandler.Code, LeanProtocolHandler.Version));
+            capabilities.Add(new Capability(Lean2ProtocolHandler.Code, Lean2ProtocolHandler.Version));
+        }
     }
 
     private bool IsEnabled() => _blockTree.Head is { } head && _specProvider.GetSpec(head.Header).IsEip8288Enabled;

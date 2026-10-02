@@ -26,6 +26,7 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
     private readonly Queue<IByteBuffer> _deferred = [];
     private int _deferredBytes;
     private bool _removed;
+    private TaskCompletionSource _writableChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private IChannelHandlerContext _context;
     private Action<Task, object?> _delayThenWrite;
     private Action<Task, object?> _observeWriteCompletion;
@@ -65,6 +66,44 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         }
     }
 
+    /// <inheritdoc/>
+    public async ValueTask<int> EnqueueAsync<T>(T message, CancellationToken cancellationToken) where T : P2PMessage
+    {
+        if (_sendLatency != TimeSpan.Zero) await Task.Delay(_sendLatency, cancellationToken).ConfigureAwait(false);
+        Task write;
+        int length;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Task wait;
+            lock (_deferredLock)
+            {
+                if (_removed || !_context.Channel.Active) return 0;
+                if (_context.Channel.IsWritable && _deferred.Count == 0)
+                {
+                    IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
+                    length = buffer.ReadableBytes;
+                    // The pipeline owns the buffer once WriteAndFlushAsync is called.
+                    write = _context.WriteAndFlushAsync(buffer);
+                    break;
+                }
+                wait = _writableChanged.Task;
+            }
+            await wait.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        await write.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // A bulk producer must return to the scheduler between actual writes.
+        await Task.Yield();
+        return length;
+    }
+
+    private void WakeBulkWriters()
+    {
+        TaskCompletionSource previous = _writableChanged;
+        _writableChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        previous.TrySetResult();
+    }
+
     private void DrainDeferred()
     {
         while (!_removed && _context.Channel.Active && _context.Channel.IsWritable && _deferred.TryDequeue(out IByteBuffer? buffer))
@@ -72,11 +111,16 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
             _deferredBytes -= buffer.ReadableBytes;
             SendBuffer(buffer);
         }
+        if (_deferred.Count == 0 && _context.Channel.IsWritable) WakeBulkWriters();
     }
 
     public override void ChannelWritabilityChanged(IChannelHandlerContext context)
     {
-        lock (_deferredLock) DrainDeferred();
+        lock (_deferredLock)
+        {
+            DrainDeferred();
+            WakeBulkWriters();
+        }
         context.FireChannelWritabilityChanged();
     }
 
@@ -193,6 +237,12 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         void LogTrace(Exception exception) => _logger.Trace($"Channel is not active - {exception.Message}");
     }
 
+    public override void ChannelInactive(IChannelHandlerContext context)
+    {
+        lock (_deferredLock) WakeBulkWriters();
+        context.FireChannelInactive();
+    }
+
     public override void HandlerAdded(IChannelHandlerContext context) => _context = context;
 
     public override void HandlerRemoved(IChannelHandlerContext context)
@@ -200,6 +250,7 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         lock (_deferredLock)
         {
             _removed = true;
+            WakeBulkWriters();
             while (_deferred.TryDequeue(out IByteBuffer? buffer)) buffer.Release();
             _deferredBytes = 0;
         }

@@ -279,6 +279,29 @@ namespace Nethermind.Network.P2P
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this}");
         }
 
+        public async ValueTask<int> DeliverMessageAsync<T>(T message, CancellationToken cancellationToken) where T : P2PMessage
+        {
+            try
+            {
+                lock (_sessionStateLock)
+                {
+                    if (State < SessionState.Initialized) ThrowInvalidSessionState();
+                    if (IsClosed) return 0;
+                }
+                message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
+                int size = await _packetSender.EnqueueAsync(message, cancellationToken).ConfigureAwait(false);
+                if (size != 0)
+                {
+                    _activityObserver?.OnSessionActivity(this);
+                    MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size));
+                    RecordOutgoingMessageMetric(message, size);
+                    Interlocked.Add(ref Metrics.P2PBytesSent, size);
+                }
+                return size;
+            }
+            finally { message.Dispose(); }
+        }
+
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);
 
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)

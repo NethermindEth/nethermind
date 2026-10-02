@@ -130,6 +130,57 @@ public class LeanProofGossipTests
         Assert.That(remainingSends, Is.EqualTo(2));
     }
 
+    [Test]
+    public async Task Async_peer_memos_only_completed_transfer_and_does_not_restart_active_object()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            Hash = TestItem.KeccakA,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+        };
+        LeanProofStore store = new();
+        store.AddVerified([dependency], [[1]], null);
+        ManualTimeProvider time = new();
+        await using LeanProofGossip gossip = new(CreateService([transaction], store, new Verifier()), LimboLogs.Instance, time);
+        TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource second = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int sends = 0;
+        gossip.AddPeer(async (_, token) =>
+        {
+            if (Interlocked.Increment(ref sends) == 1)
+            {
+                first.SetResult();
+                await completed.Task.WaitAsync(token);
+                return false; // An incomplete transfer must remain eligible for retry.
+            }
+            second.SetResult();
+            return true;
+        });
+        await time.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+        await first.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(10));
+        Assert.That(sends, Is.EqualTo(1), "cadence does not cancel or restart an active object");
+        completed.SetResult();
+        for (int attempt = 0; attempt < 20 && !second.Task.IsCompleted; attempt++)
+        {
+            await Task.Delay(10);
+            time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+        }
+        await second.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(sends, Is.EqualTo(2));
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+        await Task.Delay(20);
+        Assert.That(sends, Is.EqualTo(2), "successful completion is memoized");
+    }
+
     private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier)
     {
         ITxPool pool = Substitute.For<ITxPool>();

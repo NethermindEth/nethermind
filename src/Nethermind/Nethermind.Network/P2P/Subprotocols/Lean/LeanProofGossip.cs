@@ -19,21 +19,25 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
     internal const int RefreshJitterMilliseconds = 5000;
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly Lock _lock = new();
-    private sealed class Peer(Func<byte[], bool> send)
+    private sealed class Peer(Delegate key, Func<byte[], CancellationToken, ValueTask<bool>> send)
     {
-        public Func<byte[], bool> Send { get; } = send;
+        public Delegate Key { get; } = key;
+        public Func<byte[], CancellationToken, ValueTask<bool>> Send { get; } = send;
+        public byte[]? Pending;
+        public Task? Worker;
         public Dictionary<ValueHash256, long> Recent { get; } = [];
         public TimeSpan RefreshDelay { get; } = TimeSpan.FromSeconds(RefreshIntervalSeconds)
             + TimeSpan.FromMilliseconds(Random.Shared.Next(RefreshJitterMilliseconds));
         public int Sending;
     }
 
-    private readonly Dictionary<Func<byte[], bool>, Peer> _peers = [];
+    private readonly Dictionary<Delegate, Peer> _peers = [];
     private readonly CancellationTokenSource _stop = new();
     private readonly ILogger _logger = logManager.GetClassLogger<LeanProofGossip>();
     private Task? _loop;
     private bool _disposed;
     private byte[]? _lastWrapper;
+    private ValueHash256? _lastWrapperHash;
 
     /// <summary>Starts the shared producer, including nodes serving wrappers before their first peer connects.</summary>
     public void Start()
@@ -45,14 +49,18 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
         }
     }
 
-    public void AddPeer(Func<byte[], bool> send)
+    public void AddPeer(Func<byte[], bool> send) => AddPeerCore(send, (bytes, _) => new(send(bytes)));
+
+    public void AddPeer(Func<byte[], CancellationToken, ValueTask<bool>> send) => AddPeerCore(send, send);
+
+    private void AddPeerCore(Delegate key, Func<byte[], CancellationToken, ValueTask<bool>> send)
     {
         byte[]? last;
-        Peer peer = new(send);
+        Peer peer = new(key, send);
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_peers.TryAdd(send, peer)) return;
+            if (!_peers.TryAdd(key, peer)) return;
             _loop ??= Task.Run(RunAsync);
             last = _lastWrapper;
         }
@@ -60,9 +68,14 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
             TrySend(peer, last, ValueKeccak.Compute(last));
     }
 
-    public void RemovePeer(Func<byte[], bool> send)
+    public void RemovePeer(Func<byte[], bool> send) => RemovePeerCore(send);
+
+    public void RemovePeer(Func<byte[], CancellationToken, ValueTask<bool>> send) => RemovePeerCore(send);
+
+    private void RemovePeerCore(Delegate key)
     {
-        lock (_lock) _peers.Remove(send);
+        lock (_lock)
+            if (_peers.Remove(key, out Peer? peer)) peer.Pending = null;
     }
 
     private async Task RunAsync()
@@ -84,7 +97,12 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
                     lock (_lock)
                     {
                         if (_disposed) break;
-                        _lastWrapper = encoded;
+                        if (_lastWrapperHash == hash) encoded = _lastWrapper!;
+                        else
+                        {
+                            _lastWrapper = encoded;
+                            _lastWrapperHash = hash;
+                        }
                     }
                     foreach (Peer peer in peers)
                     {
@@ -101,29 +119,74 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
 
     private void TrySend(Peer peer, byte[] wrapper, ValueHash256 hash)
     {
-        if (Interlocked.CompareExchange(ref peer.Sending, 1, 0) != 0) return;
+        lock (_lock)
+        {
+            if (_disposed || !_peers.TryGetValue(peer.Key, out Peer? current) || current != peer) return;
+            if (peer.Recent.TryGetValue(hash, out long sentAt)
+                && _clock.GetElapsedTime(sentAt, _clock.GetTimestamp()) < peer.RefreshDelay) return;
+            peer.Pending = wrapper;
+            if (peer.Sending != 0) return;
+            peer.Sending = 1;
+            // One active transfer and the latest selection; a cadence never cancels an active object.
+            peer.Worker = RunPeerAsync(peer, _stop.Token);
+        }
+    }
+
+    private async Task RunPeerAsync(Peer peer, CancellationToken cancellationToken)
+    {
+        bool ownsWorker = true;
         try
         {
-            long now = _clock.GetTimestamp();
-            lock (_lock)
-                if (_disposed || !_peers.TryGetValue(peer.Send, out Peer? current) || current != peer
-                    || (peer.Recent.TryGetValue(hash, out long sentAt) && _clock.GetElapsedTime(sentAt, now) < peer.RefreshDelay)) return;
-            if (peer.Send(wrapper))
+            while (true)
+            {
+                byte[] wrapper;
+                ValueHash256 hash;
                 lock (_lock)
                 {
-                    if (peer.Recent.Count == 64 && !peer.Recent.ContainsKey(hash))
+                    if (_disposed || !_peers.TryGetValue(peer.Key, out Peer? current) || current != peer || peer.Pending is null)
                     {
-                        ValueHash256 oldestHash = default;
-                        long oldestTime = long.MaxValue;
-                        foreach ((ValueHash256 known, long timestamp) in peer.Recent)
-                            if (timestamp < oldestTime) { oldestHash = known; oldestTime = timestamp; }
-                        peer.Recent.Remove(oldestHash);
+                        peer.Sending = 0;
+                        ownsWorker = false;
+                        return;
                     }
-                    peer.Recent[hash] = now;
+                    wrapper = peer.Pending;
+                    peer.Pending = null;
+                    hash = ValueKeccak.Compute(wrapper);
+                    if (peer.Recent.TryGetValue(hash, out long sentAt)
+                        && _clock.GetElapsedTime(sentAt, _clock.GetTimestamp()) < peer.RefreshDelay) continue;
+                }
+                if (await peer.Send(wrapper, cancellationToken).ConfigureAwait(false))
+                    lock (_lock)
+                    {
+                        if (peer.Recent.Count == 64 && !peer.Recent.ContainsKey(hash))
+                        {
+                            ValueHash256 oldestHash = default;
+                            long oldestTime = long.MaxValue;
+                            foreach ((ValueHash256 known, long timestamp) in peer.Recent)
+                                if (timestamp < oldestTime) { oldestHash = known; oldestTime = timestamp; }
+                            peer.Recent.Remove(oldestHash);
+                        }
+                        peer.Recent[hash] = _clock.GetTimestamp();
+                    }
+                else return;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception exception) { if (_logger.IsDebug) _logger.Debug($"Lean proof peer send failed: {exception.Message}"); }
+        finally
+        {
+            lock (_lock)
+                if (ownsWorker)
+                {
+                    peer.Sending = 0;
+                    if (!_disposed && !cancellationToken.IsCancellationRequested && peer.Pending is not null
+                        && _peers.TryGetValue(peer.Key, out Peer? current) && current == peer)
+                    {
+                        peer.Sending = 1;
+                        peer.Worker = RunPeerAsync(peer, cancellationToken);
+                    }
                 }
         }
-        catch (Exception exception) { if (_logger.IsDebug) _logger.Debug($"Lean proof peer send failed: {exception.Message}"); }
-        finally { Volatile.Write(ref peer.Sending, 0); }
     }
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -131,16 +194,21 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
     public async ValueTask DisposeAsync()
     {
         Task? loop;
+        List<Task> workers = [];
         lock (_lock)
         {
             if (_disposed) return;
             _disposed = true;
+            foreach (Peer peer in _peers.Values)
+                if (peer.Worker is not null) workers.Add(peer.Worker);
             _peers.Clear();
             _lastWrapper = null;
+            _lastWrapperHash = null;
             loop = _loop;
         }
         await _stop.CancelAsync().ConfigureAwait(false);
         if (loop is not null) await loop.ConfigureAwait(false);
+        await Task.WhenAll(workers).ConfigureAwait(false);
         _stop.Dispose();
     }
 }

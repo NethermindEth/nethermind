@@ -144,42 +144,58 @@ pending for another block.
 
 ## Negotiated proof gossip
 
-When the prototype fork is active at the node's head, it advertises `lean/1` alongside
-normal Ethereum capabilities. Only peers that negotiate `lean/1` exchange proof wrappers.
-The Network project references Consensus directly for the shared proof admission service
-and background scheduler already used by its Ethereum handlers. Keeping `lean/1` in the
-existing protocol registry shares negotiation and shutdown with those handlers.
+When the prototype fork is active at the node's head, it advertises `lean/1` and
+`lean/2` alongside normal Ethereum capabilities. Peers choose their highest common
+version; `lean/1` remains a whole-wrapper fallback. The existing protocol registry
+shares negotiation and shutdown with Ethereum handlers, using the Consensus proof
+admission service and background scheduler.
 
 Message 0 is a 72-byte status: chain ID (u64 big-endian), genesis hash (32 bytes), pinned
 recursive guest key (32 bytes). All three must match before message 1 is accepted;
-a mismatch disables only `lean/1`, preserving the session's other protocols.
-Message 1 carries a complete RLP mempool wrapper, including full transactions, bounded
-by 10 MiB and 4096 transactions. This leaves room for worst-case Snappy expansion within
-the 16 MiB inbound frame cap. Outgoing selection reserves 8 MiB for the proof before
-encoding transactions. Each peer retains at most one active and one latest pending
-wrapper (20 MiB total); newer pending wrappers replace older ones. A 20 MiB/s
-per-peer receive budget is checked before copying wrappers. Each verification
-returns pending work to the shared scheduler. Invalid proofs
-or encodings disconnect the peer; ordinary pool rejection does not.
+a mismatch disables only lean, preserving the session's other protocols.
+The RLP mempool wrapper includes full transactions and is bounded by 10 MiB and
+4096 transactions. Outgoing selection reserves 8 MiB for the proof before encoding
+transactions. `lean/1` sends the whole wrapper within the 16 MiB frame cap.
 
-One node-wide worker aggregates eligible pending transactions every second, using the
-shared RPC/peer validation and proof store. Bounded wrapper selection rotates through
-the pool, advancing past the last selected transaction; unchanged selections reuse
-their verified proof. Blocked sends retry on the next cadence without resending the
-same wrapper immediately to peers that accepted it. Unchanged wrappers refresh every
-30–35 seconds, with per-peer jitter, so dropped queued work and policy rejections can
-recover without acknowledgements or retained outbound queues. Generic STARK witnesses
-remain carried and verified. Exact verified dependency sets reuse proofs from the bounded
-store across rotation cycles; each peer remembers at most 64 recent delivered hashes.
-Only admitted transactions retain witness coverage. `eth_getProofWrapper` returns a copy
-of the latest background-produced wrapper and never invokes the prover. Cancellation
-is checked between native calls. Shutdown cancels peer work and joins the aggregation worker.
+`lean/2` streams independent chunks: a 48-byte header holds the whole-wrapper
+Keccak commitment and big-endian total length, index, count and chunk size, followed
+by chunk bytes. The default chunk is 64 KiB, with 16/32/64/128 KiB supported and
+128 KiB as the maximum. Geometry is checked before allocation. The commitment is
+unauthenticated transport integrity; the complete wrapper's proof and transactions
+still pass shared admission before gaining proof-backed pool coverage. This is an
+[EIP-8411](https://eips.ethereum.org/EIPS/eip-8411)-inspired bounded transfer, without
+signed bids or Merkle authentication of individual chunks.
+
+Both protocol versions share a 64 MiB / 64-object receive budget covering incomplete
+reassembly and completed wrappers queued or undergoing verification. `lean/2` retains
+at most two objects per peer (up to 20 MiB). `lean/1` has one active and one pending
+wrapper; decoding a replacement can temporarily add a third copy before replacing
+the pending wrapper, with that copy also charged to the global budget.
+Incomplete objects expire after 30 seconds without a new chunk, or five minutes
+absolutely; duplicates do not extend their lifetime, and timer expiry needs no new
+inbound traffic. Queue replacement and shutdown release leases. A 20 MiB/s per-peer
+receive budget is checked before copying. Each verification returns pending work to
+the shared scheduler. Invalid proofs or encodings disconnect the peer; ordinary pool
+rejection does not.
+
+One node-wide worker aggregates eligible pending transactions every second. Bounded
+selection rotates past the last selected transaction; unchanged dependency sets reuse
+verified proofs. Each peer keeps one active transfer and the latest pending selection;
+a cadence never cancels an active object. Chunk sends await actual channel writes and
+yield between chunks so control and ETH traffic can interleave. A whole transfer is
+memoized only after every write succeeds. Unchanged wrappers refresh every 30–35 seconds
+with per-peer jitter, recovering dropped queued work without admission acknowledgements.
+Generic STARK witnesses remain carried and verified. Each peer remembers at most 64
+recent delivered hashes. Only admitted transactions retain witness coverage.
+`eth_getProofWrapper` returns a copy of the background-produced wrapper without invoking
+the prover. Cancellation is checked between native calls; shutdown cancels peer work
+and joins the worker.
 
 During channel backpressure, the shared sender retains up to 64 non-bulk messages
-within 12 MiB and drains them on writability; bulk gossip retries its latest view.
-Control and ETH responses still wait for the current compressed frame to drain.
-The current merger accepts one fragmented context at a time, so interleaving larger
-objects requires a negotiated application chunk format and bounded reassembly.
+within 12 MiB and drains them before bulk writes. Control responses wait for the current
+chunk's compressed frame to drain. The RLPx merger still accepts one fragmented context
+at a time; application chunks are complete independent messages rather than interleaved
+fragments of one RLPx object.
 
 ## Proof-bearing inclusion lists
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
@@ -173,6 +174,91 @@ namespace Nethermind.Network.Test.P2P
                 if (retained.ReferenceCount > 0) retained.SafeRelease();
                 if (rejected.ReferenceCount > 0) rejected.SafeRelease();
             }
+        }
+
+        [Test]
+        public async Task Bulk_send_waits_for_actual_write_completion_without_blocking_control_messages()
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
+            TestMessage chunk = new("lean", 1);
+            TestMessage control = new("eth");
+            using DisposableByteBuffer bulk = Unpooled.Buffer(32).WriteZero(32).AsDisposable();
+            using DisposableByteBuffer small = Unpooled.Buffer(4).WriteZero(4).AsDisposable();
+            serializer.ZeroSerialize(chunk, Arg.Any<IByteBufferAllocator>()).Returns(bulk);
+            serializer.ZeroSerialize(control, Arg.Any<IByteBufferAllocator>()).Returns(small);
+            TaskCompletionSource written = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            context.WriteAndFlushAsync(bulk).Returns(written.Task);
+            context.WriteAndFlushAsync(small).Returns(Task.CompletedTask);
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            try
+            {
+                Task<int> send = sender.EnqueueAsync(chunk, CancellationToken.None).AsTask();
+                Assert.That(send.IsCompleted, Is.False);
+                Assert.That(sender.Enqueue(control), Is.EqualTo(4));
+                await context.Received(1).WriteAndFlushAsync(small);
+                written.SetResult();
+                Assert.That(await send.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(32));
+            }
+            finally { sender.HandlerRemoved(context); }
+        }
+
+        [Test]
+        public async Task Bulk_waits_unallocated_behind_deferred_control_traffic()
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
+            context.Channel.IsWritable.Returns(false);
+            TestMessage chunk = new("lean", 1);
+            TestMessage control = new("eth");
+            using DisposableByteBuffer bulk = Unpooled.Buffer(32).WriteZero(32).AsDisposable();
+            using DisposableByteBuffer small = Unpooled.Buffer(4).WriteZero(4).AsDisposable();
+            serializer.ZeroSerialize(chunk, Arg.Any<IByteBufferAllocator>()).Returns(bulk);
+            serializer.ZeroSerialize(control, Arg.Any<IByteBufferAllocator>()).Returns(small);
+            TaskCompletionSource controlWritten = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            context.WriteAndFlushAsync(small).Returns(_ => { controlWritten.SetResult(); return Task.CompletedTask; });
+            context.WriteAndFlushAsync(bulk).Returns(_ =>
+            {
+                Assert.That(controlWritten.Task.IsCompletedSuccessfully, Is.True);
+                return Task.CompletedTask;
+            });
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            try
+            {
+                Task<int> send = sender.EnqueueAsync(chunk, CancellationToken.None).AsTask();
+                serializer.DidNotReceive().ZeroSerialize(chunk, Arg.Any<IByteBufferAllocator>());
+                Assert.That(sender.Enqueue(control), Is.EqualTo(4));
+                context.Channel.IsWritable.Returns(true);
+                sender.ChannelWritabilityChanged(context);
+                Assert.That(await send.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(32));
+            }
+            finally { sender.HandlerRemoved(context); }
+        }
+
+        [Test]
+        public async Task Cancelled_or_closed_bulk_waiter_never_serializes([Values] bool close)
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage chunk) = SetupChannel(true);
+            context.Channel.IsWritable.Returns(false);
+            using CancellationTokenSource cancellation = new();
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            Task<int> send = sender.EnqueueAsync(chunk, cancellation.Token).AsTask();
+            try
+            {
+                if (close)
+                {
+                    sender.HandlerRemoved(context);
+                    Assert.That(await send.WaitAsync(TimeSpan.FromSeconds(5)), Is.Zero);
+                }
+                else
+                {
+                    cancellation.Cancel();
+                    Assert.That(async () => await send, Throws.InstanceOf<OperationCanceledException>());
+                }
+                serializer.DidNotReceive().ZeroSerialize(chunk, Arg.Any<IByteBufferAllocator>());
+            }
+            finally { if (!close) sender.HandlerRemoved(context); }
         }
 
         private class TestMessage(string protocol = "", int packetType = 0) : P2PMessage
