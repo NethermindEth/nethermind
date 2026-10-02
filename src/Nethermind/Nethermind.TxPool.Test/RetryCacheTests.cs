@@ -265,6 +265,27 @@ public class RetryCacheTests
     }
 
     [Test]
+    public void TryAwaitAnnouncement_ClaimStartsAFullTimeout()
+    {
+        TestHandler claimant = new();
+        TestHandler laterPeer = new();
+        Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 3 / 4));
+        Assert.That(_cache.Announced(1, claimant), Is.EqualTo(AnnounceResult.RequestRequired));
+        Assert.That(_cache.Announced(1, laterPeer), Is.EqualTo(AnnounceResult.Delayed));
+
+        // Past the push's deadline, inside the claim's: the claimed request is still in flight.
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+        _cache.ProcessRetryTick();
+        Assert.That(laterPeer.WasCalled, Is.False, "a late claim must get a full timeout before a retry");
+
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2 + 1));
+        _cache.ProcessRetryTick();
+        Assert.That(laterPeer.HandleMessageCallCount, Is.EqualTo(1), "once the claim's own timeout passes, the next announcer is asked");
+        _cache.Received(1);
+    }
+
+    [Test]
     public void TryAwaitAnnouncement_ExpiresUnclaimedWithoutRequesting()
     {
         Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);

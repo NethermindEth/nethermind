@@ -864,11 +864,19 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             return false;
         }
 
-        if (_retryRequests.TryUpdate(resourceId, entry with { SourceHandler = handler }, entry))
+        // The claimed request starts its own timeout: a late claim must not inherit what is left of the push's,
+        // so it is enqueued again under a new generation and the push's queue item goes stale.
+        bool requeued = TryReserveExpiringQueueSlot();
+        RetryRequestEntry claimed = requeued
+            ? entry with { SourceHandler = handler, RequestGeneration = Interlocked.Increment(ref _requestGeneration) }
+            : entry with { SourceHandler = handler };
+        if (_retryRequests.TryUpdate(resourceId, claimed, entry))
         {
+            if (requeued) Enqueue(resourceId, claimed);
             return true;
         }
 
+        if (requeued) Interlocked.Decrement(ref _expiringQueueCounter);
         ReleaseHandlerSlot(handler);
         return false;
     }
