@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading;
 using System.Threading.Tasks;
 using Collections.Pooled;
@@ -190,7 +191,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             CancellationToken token = session.Token;
             (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
-                suggestedBlock, spec, speculativelyWarmed, recovery, _concurrencyLevel, token, warmSystemAccessLists: true);
+                suggestedBlock, spec, speculativelyWarmed, recovery, _concurrencyLevel, token, warmSystemAccessLists: true, warmCalldataAddresses: true);
             // A block access list already enumerates the block's reads; discovery adds nothing.
             List<(int Index, Transaction Tx)>? discoveryCandidates = addressWarmer.HasBal
                 ? null
@@ -614,7 +615,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(_speculativeConcurrencyLevel);
         // The delta comes from the txpool, where every sender is already recovered, so there is no recovery to wait on.
-        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, spec, speculativelyWarmed: null, recovery: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists);
+        // The address warmer runs inline ahead of the delta's transaction warming, so the calldata pass is left to the
+        // block: it repeats the scan anyway, with the full fan-out, and here it would only delay the warming.
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
+            delta, spec, speculativelyWarmed: null, recovery: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists, warmCalldataAddresses: false);
         // Run inline rather than through the pool: this pass is going to block on the warmer anyway, and the block
         // that ends the gap joins this thread, so a queued item would put thread-pool dispatch latency on its path.
         ((IThreadPoolWorkItem)addressWarmer).Execute();
@@ -631,7 +635,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return addressWarmer.SystemAccessListsWarmed;
     }
 
-    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, ISenderRecoveryProgress? recovery, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists)
+    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, ISenderRecoveryProgress? recovery, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists, bool warmCalldataAddresses)
     {
         BlockState blockState = new(this, block, spec, speculativelyWarmed, recovery);
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
@@ -640,7 +644,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
         ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
-        AddressWarmer addressWarmer = new(parallelOptions, block, spec, warmSystemAccessLists, this, bal);
+        AddressWarmer addressWarmer = new(parallelOptions, block, spec, warmSystemAccessLists, warmCalldataAddresses, this, bal);
         return (blockState, parallelOptions, addressWarmer);
     }
 
@@ -1195,29 +1199,48 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     internal const int MinCalldataWordsForAddressWarm = 8;
     internal const int MaxCalldataAddressesPerBlock = 4096;
 
-    internal static List<Address>? CollectCalldataAddresses(Block block)
+    /// <summary>The distinct addresses the block's large calldata names as ABI words, in calldata order; the caller disposes the list.</summary>
+    /// <remarks>
+    /// Words are deduplicated as they are: an ABI address word is the address left-padded to 32 bytes, the
+    /// <see cref="ValueHash256"/> that <see cref="Address.ToHash"/> builds, so a repeated word allocates nothing.
+    /// </remarks>
+    internal static ArrayPoolList<Address>? CollectCalldataAddresses(Block block)
     {
-        HashSet<AddressAsKey>? seen = null;
-        List<Address>? addresses = null;
-        foreach (Transaction tx in block.Transactions)
+        PooledSet<ValueHash256>? seen = null;
+        ArrayPoolList<Address>? addresses = null;
+        try
         {
-            ReadOnlySpan<byte> data = tx.Data.Span;
-            if (data.Length < 4 + MinCalldataWordsForAddressWarm * 32) continue;
-            for (int offset = 4; offset + 32 <= data.Length; offset += 32)
+            foreach (Transaction tx in block.Transactions)
             {
-                ReadOnlySpan<byte> word = data.Slice(offset, 32);
-                if (word[..12].IndexOfAnyExcept((byte)0) >= 0 || word.Slice(12, 4).IndexOfAnyExcept((byte)0) < 0) continue;
-                Address address = new(word[12..]);
-                if (!(seen ??= []).Add(address)) continue;
-                (addresses ??= []).Add(address);
-                if (addresses.Count == MaxCalldataAddressesPerBlock) return addresses;
+                ReadOnlySpan<byte> data = tx.Data.Span;
+                if (data.Length < 4 + MinCalldataWordsForAddressWarm * 32) continue;
+                for (int offset = 4; offset + 32 <= data.Length; offset += 32)
+                {
+                    ReadOnlySpan<byte> word = data.Slice(offset, 32);
+                    if (!IsAddressWord(word) || !(seen ??= new PooledSet<ValueHash256>(64)).Add(new ValueHash256(word))) continue;
+                    (addresses ??= new ArrayPoolList<Address>(64)).Add(new Address(word[12..]));
+                    if (addresses.Count == MaxCalldataAddressesPerBlock) return addresses;
+                }
             }
-        }
 
-        return addresses;
+            return addresses;
+        }
+        finally
+        {
+            seen?.Dispose();
+        }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, IReleaseSpec spec, bool warmSystemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
+    /// <summary>Whether a 32-byte word is an ABI address: the top twelve bytes zero and the address's top four bytes not all zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsAddressWord(ReadOnlySpan<byte> word)
+    {
+        // Bit i is set when byte i is zero.
+        uint zeros = Vector256.Equals(Vector256.Create(word), Vector256<byte>.Zero).ExtractMostSignificantBits();
+        return (zeros & 0xFFFu) == 0xFFFu && (zeros & 0xF000u) != 0xF000u;
+    }
+
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, IReleaseSpec spec, bool warmSystemAccessLists, bool warmCalldataAddresses, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
@@ -1335,7 +1358,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         },
                         WarmingState<(Block, int, int)>.FinallyAction);
 
-                    WarmCalldataAddresses(parallelOptions, block, envPool);
+                    if (warmCalldataAddresses) WarmCalldataAddresses(parallelOptions, block, envPool);
                 }
             }
             catch (OperationCanceledException)
@@ -1396,11 +1419,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// </remarks>
         private static void WarmCalldataAddresses(ParallelOptions parallelOptions, Block block, ObjectPool<IPrewarmerEnv> envPool)
         {
-            List<Address>? addresses = CollectCalldataAddresses(block);
+            using ArrayPoolList<Address>? addresses = CollectCalldataAddresses(block);
             if (addresses is null || parallelOptions.CancellationToken.IsCancellationRequested) return;
 
             int rangeSize = Math.Max(8, addresses.Count / (parallelOptions.MaxDegreeOfParallelism * 4));
-            WarmingState<(List<Address> Addresses, int RangeSize)> baseState = new(envPool, (addresses, rangeSize), block.Header);
+            WarmingState<(ArrayPoolList<Address> Addresses, int RangeSize)> baseState = new(envPool, (addresses, rangeSize), block.Header);
             ParallelUnbalancedWork.For(
                 0,
                 (addresses.Count + rangeSize - 1) / rangeSize,
@@ -1408,13 +1431,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 baseState.InitThreadState,
                 static (range, state) =>
                 {
-                    (List<Address> addresses, int rangeSize) = state.Payload;
+                    (ArrayPoolList<Address> addresses, int rangeSize) = state.Payload;
                     IWorldState worldState = state.Scope!.WorldState;
                     int end = Math.Min((range + 1) * rangeSize, addresses.Count);
                     for (int i = range * rangeSize; i < end; i++) WarmupSender(addresses[i], null, worldState);
                     return state;
                 },
-                WarmingState<(List<Address>, int)>.FinallyAction);
+                WarmingState<(ArrayPoolList<Address>, int)>.FinallyAction);
         }
 
         private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
