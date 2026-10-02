@@ -93,6 +93,23 @@ public class GuestJumpDestinationTests
         Assert.That(stack.IsJumpDestination(0), Is.False);
     }
 
+    [Test]
+    public void Call_destination_switch_updates_the_guest_bit_test([Values] bool eip8024)
+    {
+        byte[] code = [PUSH1, (byte)Instruction.CALLDEST, (byte)Instruction.CALLDEST];
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+
+        stack.UseCallDestinations(eip8024);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stack.IsAnalyzedJumpDestination(1), Is.False, "PUSH data");
+            Assert.That(stack.IsAnalyzedJumpDestination(2), Is.True, "CALLDEST");
+        }
+    }
+
     /// <remarks>
     /// The scan classifies a byte by comparing it <em>signed</em> against <c>[JUMPDEST, PUSH32]</c>, which
     /// is only equivalent across the whole byte range - which this walks. The trailing JUMPDESTs are enough that
