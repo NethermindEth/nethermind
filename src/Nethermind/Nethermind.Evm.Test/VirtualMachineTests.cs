@@ -3305,11 +3305,11 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         return tracer.ReturnValue;
     }
 
-    /// <summary>Runs <paramref name="run"/> with the frame and environment caches swapped for empty ones.</summary>
-    // Runs an observation on the cached path twice (first use, then reuse of the cached frames) and once with the cache off.
+    /// <summary>Runs <paramref name="observe"/> twice on the cached path (first use, then reuse of the cached frames) and once with the cache off.</summary>
     private (string Cached, string Warm, string Uncached) CachedWarmUncached(Func<string> observe) =>
         (observe(), observe(), Uncached(observe));
 
+    /// <summary>Runs <paramref name="run"/> with the frame and environment caches swapped for empty ones.</summary>
     private T Uncached<T>(Func<T> run)
     {
         VmState<EthereumGasPolicy>?[] cachedFrames = Machine.FrameCache;
