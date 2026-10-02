@@ -190,16 +190,29 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         }
     }
 
-    /// <summary>Refuses queries past <paramref name="maxQueries"/>, which ends a dnsaddr resolution whose records name each other.</summary>
+    /// <summary>Refuses queries past <paramref name="maxQueries"/>, which ends a dnsaddr resolution whose records name each other, and answers an
+    /// address query that fails with no addresses, so a name without IPv6 addresses still gets its IPv4 query.</summary>
     private sealed class CountedDnsLookup(IDnsLookup inner, int maxQueries) : IDnsLookup
     {
         private int _queries;
 
         public Task<IEnumerable<string>> QueryTxtAsync(string name) => Count() ? inner.QueryTxtAsync(name) : Refuse<string>(name);
 
-        public Task<IEnumerable<IPAddress>> QueryAAsync(string name) => Count() ? inner.QueryAAsync(name) : Refuse<IPAddress>(name);
+        public Task<IEnumerable<IPAddress>> QueryAAsync(string name) => Count() ? OrNone(inner.QueryAAsync(name)) : Refuse<IPAddress>(name);
 
-        public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => Count() ? inner.QueryAaaaAsync(name) : Refuse<IPAddress>(name);
+        public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => Count() ? OrNone(inner.QueryAaaaAsync(name)) : Refuse<IPAddress>(name);
+
+        private static async Task<IEnumerable<IPAddress>> OrNone(Task<IEnumerable<IPAddress>> query)
+        {
+            try
+            {
+                return await query;
+            }
+            catch (SocketException)
+            {
+                return [];
+            }
+        }
 
         private bool Count() => Interlocked.Increment(ref _queries) <= maxQueries;
 
