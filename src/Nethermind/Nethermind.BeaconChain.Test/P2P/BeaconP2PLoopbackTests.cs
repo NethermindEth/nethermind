@@ -53,6 +53,54 @@ public class BeaconP2PLoopbackTests
         Assert.That(await client.DialPeerAsync(address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
     }
 
+    /// <summary>A dial its caller stopped waiting for, which then fails, leaves no unobserved failure behind.</summary>
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(60_000)]
+    public async Task An_abandoned_dial_that_fails_is_observed(CancellationToken token)
+    {
+        await using BeaconP2P client = PeerSessionNodes.Create().P2P;
+        await client.StartAsync(token);
+        using TcpListener closed = new(IPAddress.Loopback, 0);
+        closed.Start();
+        int port = ((IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        string refusing = $"/ip4/127.0.0.1/tcp/{port}/p2p/{new Identity().PeerId}";
+        int unobserved = 0;
+        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs args)
+        {
+            if (args.Exception.Flatten().InnerExceptions.Any(e => e.Message.Contains(refusing)))
+            {
+                Interlocked.Increment(ref unobserved);
+            }
+        }
+
+        TaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            await AbandonAsync(client, Multiaddress.Decode(refusing), token);
+            // The library dial fails within milliseconds on a refused connection; its task is then collectable.
+            await Task.Delay(1000, token);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+
+        Assert.That(Volatile.Read(ref unobserved), Is.Zero, "the failed dial reached UnobservedTaskException");
+    }
+
+    // Kept out of the test method so no local holds the dial task when the collector runs.
+    private static async Task AbandonAsync(BeaconP2P client, Multiaddress address, CancellationToken token)
+    {
+        using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await abandoned.CancelAsync();
+        Assert.That(async () => await client.DialPeerAsync(address, abandoned.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the caller stops waiting");
+    }
+
     [Test]
     [CancelAfter(30_000)]
     public async Task Start_rejects_an_occupied_TCP_port(CancellationToken token)
