@@ -417,6 +417,13 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>Internal so a test can tell a session closed for an unanswered identify from a failure of the code under test.</summary>
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
 
+    /// <summary>Whether the pubsub router holds a gossip channel with <paramref name="peerId"/>, opened by either side.</summary>
+    internal bool HasGossipChannel(PeerId peerId) => _router is IRoutingStateContainer router && router.ConnectedPeers.Contains(peerId);
+
+    /// <summary>The protocols <paramref name="peerId"/> listed in its identify answer; empty when none is recorded.</summary>
+    internal IReadOnlyList<string> SupportedProtocolsOf(PeerId peerId) =>
+        _serviceProvider.GetRequiredService<PeerStore>().GetPeerInfo(peerId)?.SupportedProtocols ?? [];
+
     /// <summary>Internal so a test can see which peers the started router holds a gossip connection to.</summary>
     internal IRoutingStateContainer? RoutingStateForTest => _router;
 

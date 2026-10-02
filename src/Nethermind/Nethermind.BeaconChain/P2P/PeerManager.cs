@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Exceptions;
+using Nethermind.Libp2p.Protocols;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 
@@ -1428,8 +1431,59 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
+        OpenGossipChannel(peer);
         PeerAdmitted?.Invoke(peer);
         return true;
+    }
+
+    /// <summary>Opens this node's gossipsub channel to an admitted peer, unless the pubsub router holds one with it already.</summary>
+    /// <remarks>
+    /// The router opens its own channel only to a peer it is told of, which stock identify does and the probe replacing it does not, or in answer
+    /// to the remote's channel; without this, two such nodes never exchange gossip. The channel lasts as long as the session, so it is not awaited.
+    /// </remarks>
+    private void OpenGossipChannel(ManagedPeer peer)
+    {
+        // Checked just before dialing: a channel the remote opened first makes the router dial back, and a second one would stay open unused.
+        if (BeaconP2P.RemotePeerIdOf(peer.Session) is not { } remotePeerId || _p2p.HasGossipChannel(remotePeerId))
+        {
+            return;
+        }
+
+        _ = DialGossipAsync(peer.Session, remotePeerId);
+    }
+
+    // The newest gossipsub version the peer listed, in the order the pubsub router picks one when it connects itself.
+    private async Task DialGossipAsync(ISession session, PeerId remotePeerId)
+    {
+        IReadOnlyList<string> protocols = _p2p.SupportedProtocolsOf(remotePeerId);
+        CancellationToken closed = _p2p.SessionClosedToken(session);
+        try
+        {
+            if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV13))
+            {
+                await session.DialAsync<GossipsubProtocolV13>(closed);
+            }
+            else if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV12))
+            {
+                await session.DialAsync<GossipsubProtocolV12>(closed);
+            }
+            else if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV11))
+            {
+                await session.DialAsync<GossipsubProtocolV11>(closed);
+            }
+            else if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV10))
+            {
+                await session.DialAsync<GossipsubProtocol>(closed);
+            }
+            else if (_logger.IsDebug)
+            {
+                _logger.Debug($"Beacon chain peer {remotePeerId} lists no gossipsub version; no gossip channel is opened");
+            }
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Gossip channel to {remotePeerId} ended: {DescribeFailure(e)}");
+        }
     }
 
     private void OnSessionEstablished(ISession session, BeaconP2P.SessionInfo info)
