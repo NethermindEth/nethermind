@@ -180,22 +180,16 @@ public static partial class EvmInstructions
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
-        => vm.Spec.IsEip8279Enabled
-            ? InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag>(ref stack, ref gas, vm)
-            : InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag>(ref stack, ref gas, vm);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst, Eip8279>(
-        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-        where Eip8279 : struct, IFlag
-        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage) switch
+        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage, vm.Spec.IsEip8279Enabled) switch
         {
-            (true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag, Eip8279>(ref stack, ref gas, vm),
-            (true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag, Eip8279>(ref stack, ref gas, vm),
-            (false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag, Eip8279>(ref stack, ref gas, vm),
-            (false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag, Eip8279>(ref stack, ref gas, vm),
+            (true, true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag, OnFlag>(ref stack, ref gas, vm),
+            (true, true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag, OffFlag>(ref stack, ref gas, vm),
+            (true, false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag, OnFlag>(ref stack, ref gas, vm),
+            (true, false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag, OffFlag>(ref stack, ref gas, vm),
+            (false, true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag, OnFlag>(ref stack, ref gas, vm),
+            (false, true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag, OffFlag>(ref stack, ref gas, vm),
+            (false, false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag, OnFlag>(ref stack, ref gas, vm),
+            (false, false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag, OffFlag>(ref stack, ref gas, vm),
         };
 
     [SkipLocalsInit]
@@ -292,22 +286,16 @@ public static partial class EvmInstructions
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
-        => vm.Spec.IsEip8279Enabled
-            ? InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag>(ref stack, ref gas, vm, programCounter)
-            : InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag>(ref stack, ref gas, vm, programCounter);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst, Eip8279>(
-        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-        where Eip8279 : struct, IFlag
-        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage) switch
+        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage, vm.Spec.IsEip8279Enabled) switch
         {
-            (true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag, Eip8279>(ref stack, ref gas, vm, programCounter),
-            (true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag, Eip8279>(ref stack, ref gas, vm, programCounter),
-            (false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag, Eip8279>(ref stack, ref gas, vm, programCounter),
-            (false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag, Eip8279>(ref stack, ref gas, vm, programCounter),
+            (true, true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (true, true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
+            (true, false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (true, false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
+            (false, true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (false, true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
+            (false, false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
+            (false, false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
         };
 
     [SkipLocalsInit]
