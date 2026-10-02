@@ -52,10 +52,12 @@ public class IdentifyTimeoutTests
         Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended within the identify bound");
         await heldListing;
         Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), $"no unidentified session is handed back ({dial.Exception?.GetBaseException().Message})");
-        // The failure PeerManager logs for the dial names the timeout rather than an empty aggregate.
+        // The library reports the identify failure or the closed transport, whichever ends first; either names a cause, never an empty aggregate.
         Exception failure = dial.Exception!.InnerException!;
-        Assert.That(PeerManager.DescribeFailure(failure), Is.EqualTo("request timed out"), $"the dial failed with {failure.GetType().Name}: {failure.Message}");
+        Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo(new AggregateException().Message), $"the dial failed with {failure.GetType().Name}: {failure.Message}");
+        Assert.That(failure.Message, Does.Not.Contain("closed before it was established"), "an identify timeout is not reported as a closed session");
         await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token, Within);
+        Assert.That(node.IdentifyTimeoutsForTest, Is.EqualTo(1), "the stall is counted as an identify timeout");
     }
 
     [Test]
@@ -74,6 +76,47 @@ public class IdentifyTimeoutTests
         await WaitUntilAsync(() => node.SessionCountForTest == 1, "fixture: the peer's session never reached the node", token);
         await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token, Within);
         Assert.That(Volatile.Read(ref established), Is.Zero, "an unidentified session is never reported as established");
+    }
+
+    /// <summary>A session closed during identify fails the dial as a closed session, not as an identify timeout.</summary>
+    /// <param name="localClose">This node closes the session, as it does with one added after disposal; otherwise the peer closes it.</param>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_session_closed_during_identify_is_not_an_identify_timeout([Values] bool localClose, CancellationToken token)
+    {
+        await using PlainPeer peer = await PlainPeer.StartAsync(
+            settings => localClose ? new StallingIdentifyProtocol(Stall.Answer, settings) : new ClosingIdentifyProtocol(settings), token);
+        await using BeaconP2P node = Create().P2P;
+        await node.StartAsync(token);
+
+        Task<ISession> dial = node.DialPeerAsync(peer.Address, token);
+        if (localClose)
+        {
+            await WaitUntilAsync(() => node.SessionCountForTest == 1, "fixture: the dial never opened a session", token);
+            LocalPeer.Session session;
+            lock (node.LocalPeerForTest!.Sessions)
+            {
+                session = node.LocalPeerForTest.Sessions[0];
+            }
+
+            await session.DisconnectAsync();
+        }
+
+        Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended");
+        Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), "fixture: the dial failed");
+        Exception failure = dial.Exception!.InnerException!;
+        string description = $"the dial failed with {failure.GetType().Name}: {failure.Message}";
+        Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo("request timed out").And.Not.EqualTo(new AggregateException().Message), description);
+        Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.SessionClosed), description);
+        await WaitUntilAsync(() => node.SessionCountForTest == 0, "fixture: the closed session stayed listed", token, Within);
+        // The session closes before its identify handling ends; past the identify bound that handling has ended either way.
+        await Task.Delay(IdentifyAgentVersionProbe.ReadTimeout, token);
+        Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a closed session is not counted as an identify timeout");
+    }
+
+    private sealed class ClosingIdentifyProtocol(IProtocolStackSettings settings) : IdentifyProtocol(settings), ISessionListenerProtocol, IProtocol
+    {
+        public new Task ListenAsync(IChannel downChannel, ISessionContext context) => context.DisconnectAsync();
     }
 
     private sealed class StallingIdentifyProtocol(Stall stall, IProtocolStackSettings settings) : IdentifyProtocol(settings), ISessionListenerProtocol, IProtocol
