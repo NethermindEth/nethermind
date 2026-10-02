@@ -163,10 +163,10 @@ namespace Nethermind.AuRa.Test
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(stateProvider.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(Array.Empty<byte>()));
-                Assert.That(stateProvider.GetCode(TestItem.AddressB).ToArray(), Is.EqualTo(Array.Empty<byte>()));
-                Assert.That(stateProvider.GetCode(TestItem.AddressC).ToArray(), Is.EqualTo(Array.Empty<byte>()));
-                Assert.That(stateProvider.GetCode(TestItem.AddressD).ToArray(), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.SequenceEqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.SequenceEqualTo(Array.Empty<byte>()));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
@@ -174,10 +174,10 @@ namespace Nethermind.AuRa.Test
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(stateProvider.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(Bytes.FromHexString("0x123")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressB).ToArray(), Is.EqualTo(Bytes.FromHexString("0x321")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressC).ToArray(), Is.EqualTo(Bytes.FromHexString("0x123")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressD).ToArray(), Is.EqualTo(Bytes.FromHexString("0x321")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(Bytes.FromHexString("0x321")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.SequenceEqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.SequenceEqualTo(Bytes.FromHexString("0x321")));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
@@ -185,10 +185,10 @@ namespace Nethermind.AuRa.Test
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(stateProvider.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(Bytes.FromHexString("0x456")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressB).ToArray(), Is.EqualTo(Bytes.FromHexString("0x654")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressC).ToArray(), Is.EqualTo(Bytes.FromHexString("0x456")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressD).ToArray(), Is.EqualTo(Bytes.FromHexString("0x654")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(Bytes.FromHexString("0x654")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.SequenceEqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.SequenceEqualTo(Bytes.FromHexString("0x654")));
             }
         }
 
