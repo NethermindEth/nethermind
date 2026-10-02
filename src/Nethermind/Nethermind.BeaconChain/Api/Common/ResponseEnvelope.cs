@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
@@ -15,7 +16,7 @@ namespace Nethermind.BeaconChain.Api.Common;
 /// <summary>Derives the beacon-api response envelope flags and the <c>Eth-Consensus-Version</c> header.</summary>
 internal static class ResponseEnvelope
 {
-    private static readonly ConditionalWeakTable<ForkChoiceSnapshot, Lazy<Dictionary<Hash256, ExecutionStatus>>> ExecutionStatuses = [];
+    private static readonly ConditionalWeakTable<ForkChoiceSnapshot, Lazy<Dictionary<Hash256, ForkChoiceSnapshotNode>>> SnapshotNodes = [];
     public const string ConsensusVersionHeader = "Eth-Consensus-Version";
 
     public static string ForkName(BeaconFork fork) => fork switch
@@ -42,13 +43,12 @@ internal static class ResponseEnvelope
     {
         if (ctx.ForkChoiceSnapshot is { } snapshot)
         {
-            Dictionary<Hash256, ExecutionStatus> statuses = ExecutionStatuses.GetValue(snapshot,
-                static current => new Lazy<Dictionary<Hash256, ExecutionStatus>>(() => IndexExecutionStatuses(current))).Value;
-            if (statuses.TryGetValue(root, out ExecutionStatus status)) return status == ExecutionStatus.Optimistic;
+            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = IndexNodes(snapshot);
+            if (nodes.TryGetValue(root, out ForkChoiceSnapshotNode? node)) return node.ExecutionStatus == ExecutionStatus.Optimistic;
 
             // types/primitive.yaml ExecutionOptimistic: only a verified checkpoint verifies its canonical ancestors.
-            if (statuses.TryGetValue(snapshot.FinalizedCheckpoint.Root, out ExecutionStatus finalizedStatus)
-                && finalizedStatus is ExecutionStatus.Valid or ExecutionStatus.Irrelevant
+            if (nodes.TryGetValue(snapshot.FinalizedCheckpoint.Root, out ForkChoiceSnapshotNode? finalizedNode)
+                && finalizedNode.ExecutionStatus is ExecutionStatus.Valid or ExecutionStatus.Irrelevant
                 && ctx.Store.TryGetBlockSlot(root, out ulong slot)
                 && slot <= snapshot.FinalizedCheckpoint.Epoch * ctx.Spec.SlotsPerEpoch
                 && IsFinalized(ctx, slot, root))
@@ -60,12 +60,51 @@ internal static class ResponseEnvelope
         return true;
     }
 
-    private static Dictionary<Hash256, ExecutionStatus> IndexExecutionStatuses(ForkChoiceSnapshot snapshot)
+    /// <summary>Whether the execution payload of the block is unverified (types/primitive.yaml ExecutionOptimistic); for a Gloas block, the payload its bid commits to.</summary>
+    /// <remarks>
+    /// A Gloas block's own fork-choice status is that of the payload its bid builds on, so it never vouches for this payload.
+    /// Once fork choice no longer holds the block, the payload is verified only when a verified child builds on it
+    /// (specs/gloas/fork-choice.md get_parent_payload_status FULL); a payload that no child built on stays unverified.
+    /// </remarks>
+    public static bool PayloadExecutionOptimistic(BeaconApiContext ctx, ResolvedBlock resolved)
     {
-        Dictionary<Hash256, ExecutionStatus> statuses = new(snapshot.Nodes.Count);
-        foreach (ForkChoiceSnapshotNode node in snapshot.Nodes) statuses[node.Root] = node.ExecutionStatus;
-        return statuses;
+        if (resolved.Block is not ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message.BlockHash: { } payloadHash })
+        {
+            return ExecutionOptimistic(ctx, resolved.Root);
+        }
+
+        if (ctx.ForkChoiceSnapshot is not { } snapshot)
+        {
+            return true;
+        }
+
+        if (IndexNodes(snapshot).TryGetValue(resolved.Root, out ForkChoiceSnapshotNode? node))
+        {
+            return !node.PayloadValid;
+        }
+
+        ctx.Store.TryGetChildren(resolved.Root, out Hash256[] children, out _);
+        foreach (Hash256 child in children)
+        {
+            if (!ExecutionOptimistic(ctx, child)
+                && ctx.Store.TryGetForkedBlock(child, out ForkedSignedBeaconBlock? childBlock)
+                && childBlock is ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message.ParentBlockHash: { } builtOn }
+                && builtOn == payloadHash)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
+
+    private static Dictionary<Hash256, ForkChoiceSnapshotNode> IndexNodes(ForkChoiceSnapshot snapshot) =>
+        SnapshotNodes.GetValue(snapshot, static current => new Lazy<Dictionary<Hash256, ForkChoiceSnapshotNode>>(() =>
+        {
+            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = new(current.Nodes.Count);
+            foreach (ForkChoiceSnapshotNode node in current.Nodes) nodes[node.Root] = node;
+            return nodes;
+        })).Value;
 
     /// <summary>Whether the block is canonical at or before the finalized checkpoint's start slot (Beacon API types/primitive.yaml Finalized).</summary>
     /// <remarks>A non-canonical block at a finalized epoch is exactly what finalization discarded, so the epoch alone must not vouch for it.</remarks>

@@ -258,7 +258,7 @@ public class BeaconApiGloasBlockTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(envelope.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "version", "execution_optimistic", "finalized", "data" }));
-            // No execution verdict is kept per envelope, and the block's VALID status does not cover a payload a descendant may have skipped.
+            // Fork choice holds the block VALID but not its payload: that status covers only the payload the bid builds on.
             Assert.That(envelope.GetProperty("execution_optimistic").GetBoolean(), Is.True);
             Assert.That((await ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{Root}", Json))).RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
             Assert.That(envelope.GetProperty("version").GetString(), Is.EqualTo("gloas"));
@@ -288,6 +288,34 @@ public class BeaconApiGloasBlockTests
             Assert.That(payload.GetProperty("block_access_list").GetString(), Is.EqualTo("0xc001"));
             Assert.That(payload.GetProperty("slot_number").GetString(), Is.EqualTo(GloasSlot.ToString()));
         }
+    }
+
+    /// <summary>
+    /// types/primitive.yaml ExecutionOptimistic follows the envelope's own payload: fork choice's verdict on it while fork choice holds the block,
+    /// then a verified child that builds on it. A child that built EMPTY over it verifies nothing.
+    /// </summary>
+    [Test]
+    public async Task Execution_payload_envelope_optimism_follows_its_own_payload([Values] bool heldByForkChoice, [Values] bool payloadVerified)
+    {
+        Hash256 childRoot = TestRoot(0x95);
+        SignedBeaconBlockGloas child = RichGloasBlock(GloasSlot + 1, Root);
+        child.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash = payloadVerified ? FilledHash(0x87) : FilledHash(0x81);
+        ForkChoiceSnapshotNode node = heldByForkChoice
+            ? new ForkChoiceSnapshotNode(GloasSlot, Root, Parent, 0, 0, 0, ExecutionStatus.Valid, FilledHash(0x87), PayloadValid: payloadVerified)
+            : new ForkChoiceSnapshotNode(GloasSlot + 1, childRoot, Root, 0, 0, 0, ExecutionStatus.Valid, FilledHash(0x88));
+        ForkChoiceSnapshotHolder forkChoice = new()
+        {
+            Current = new ForkChoiceSnapshot(new CheckpointRef(0, Parent), new CheckpointRef(0, Parent), Hash256.Zero, [node]),
+        };
+        await using BeaconApiTestHost host = await StartAsync(Spec, forkChoice);
+        host.Store.PutBlock(Parent, MinimalBlock(GloasSlot - 40));
+        host.Store.PutForkedBlock(Root, new ForkedSignedBeaconBlock.OfGloas(_block));
+        host.Store.PutExecutionPayloadEnvelope(Root, _envelope);
+        host.Store.PutForkedBlock(childRoot, new ForkedSignedBeaconBlock.OfGloas(child));
+
+        HttpResponseMessage response = await host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{Root}", Json);
+
+        Assert.That((await ReadJsonAsync(response)).RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(!payloadVerified));
     }
 
     [Test]
