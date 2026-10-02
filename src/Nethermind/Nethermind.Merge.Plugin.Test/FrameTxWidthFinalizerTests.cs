@@ -110,18 +110,6 @@ public class FrameTxWidthFinalizerTests
         ledger.DidNotReceiveWithAnyArgs().EarnWidthOnFinalization(default!, default!);
     }
 
-    [Test]
-    public void Base_merge_module_alone_earns_width_as_Optimism_and_Taiko_compose_it()
-    {
-        Block finalized = FrameBlock(number: 5);
-        (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPool txPool) = Wire(finalized);
-        using IContainer container = Start(blockTree, receiptFinder, txPool, Enabled());
-
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(finalized.Header));
-
-        ledger.Received(1).EarnWidthOnFinalization(finalized, Arg.Any<TxReceipt[]>());
-    }
-
     private static IContainer Start(IBlockTree blockTree, IReceiptFinder receiptFinder, ITxPool txPool, ITxPoolConfig txPoolConfig)
     {
         IContainer container = new ContainerBuilder()

@@ -570,9 +570,8 @@ public class FrameTxMempoolDosMeasurement
     /// <see cref="GasCostOf.ColdSLoad"/> under EIP-2929, which is the per-slot margin, and no foreign state change can
     /// move the number.
     /// </summary>
-    [TestCase(8)]
-    [TestCase(16)]
-    public async Task Margin_each_added_sender_slot_costs_one_cold_sload(int slots)
+    [Test]
+    public async Task Margin_each_added_sender_slot_costs_one_cold_sload([Values(8, 16)] int slots)
     {
         _frameExecutionGasLimit = VerifyGas;
         await BuildHarness(OwnStorageReadPrefix(slots));

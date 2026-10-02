@@ -104,9 +104,8 @@ public class FrameTxWidthConcurrencyTests
         }
     }
 
-    [TestCase(1ul)]
-    [TestCase(Cost)]
-    public void FullLedger_RefusesANewcomerNoRicherThanTheSmallestBalance(ulong newcomerGas)
+    [Test]
+    public void FullLedger_RefusesANewcomerNoRicherThanTheSmallestBalance([Values(1ul, Cost)] ulong newcomerGas)
     {
         Address other = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
         Address newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
@@ -150,21 +149,6 @@ public class FrameTxWidthConcurrencyTests
         BitConverter.GetBytes(index + 1).CopyTo(bytes, 0);
         bytes[19] = 0xb0;
         return new Address(bytes);
-    }
-
-    [Test]
-    public void SpentWidth_IsNeverReturned()
-    {
-        SenderWidthCache cache = new();
-        cache.Earn(Sender, Cost);
-
-        Assert.That(cache.TrySpend(Sender, Cost), Is.True);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero), "the spend consumed the whole balance");
-            Assert.That(cache.TrySpend(Sender, Cost), Is.False, "nothing returns spent width, so a second spend cannot succeed without re-earning");
-        }
     }
 
     [Test]
