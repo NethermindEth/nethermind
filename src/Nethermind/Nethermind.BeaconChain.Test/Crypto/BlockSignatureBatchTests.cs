@@ -73,8 +73,9 @@ public class BlockSignatureBatchTests
     /// 168 and 528 such points) is refused by the serial and the deferred call sites.
     /// </summary>
     /// <remarks>
-    /// The optimal ate pairing alone also refuses each of them, so neither call site's subgroup check changes a verdict here: the
-    /// pairing is not linear in a signature outside G2, and an off-G2 signature it accepts would need a discrete log in GT.
+    /// The pairing alone refuses each point, so the subgroup checks in <c>BlsSigner.Verify</c> and in the serial fallback do not
+    /// change a verdict here; the check in <c>BlsSignatureSet.TryCreate</c> still does, because without it the set is deferred.
+    /// Off G2 the pairing is not bilinear, so <c>S + T</c> passes only on a chance collision in GT.
     /// </remarks>
     [TestCase(13, 168)]
     [TestCase(23, 528)]
