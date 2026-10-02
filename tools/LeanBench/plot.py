@@ -41,12 +41,26 @@ def main():
     })
     charts = []
 
+    def case_label(value):
+        if value.startswith("object-"):
+            size = int(value[7:])
+            return f"{size // (1024 * 1024)} MiB" if size >= 1024 * 1024 else f"{size // 1024} KiB"
+        if value == "shared-sphincs1-tx16":
+            return "1 SPHINCS claim / 16 tx"
+        for prefix, name in (("sphincs", "SPHINCS"), ("stark", "STARK"), ("mixed", "Mixed")):
+            if value.startswith(prefix):
+                return f"{name} ×{value[len(prefix):]}"
+        return value
+
     def save(fig, name, caption):
         fig.text(0.01, 0.012, "Measured on one host; see metadata and raw samples for scope.",
                  fontsize=8, color="#586174")
         fig.tight_layout(rect=(0, 0.04, 1, 0.96))
         for suffix in ("png", "svg"):
-            fig.savefig(args.output / f"{name}.{suffix}", bbox_inches="tight")
+            output = args.output / f"{name}.{suffix}"
+            fig.savefig(output, bbox_inches="tight")
+            if suffix == "svg":
+                output.write_text("\n".join(line.rstrip() for line in output.read_text().splitlines()) + "\n")
         plt.close(fig)
         charts.append((name, caption))
 
@@ -67,6 +81,7 @@ def main():
         maximum = max(row["offeredTxPerSecond"] for group in loads.values() for row in group)
         axes[0].plot([0, maximum], [0, maximum], "--", color="#9ba3b1", label="Offered load")
         for label, group in sorted(loads.items()):
+            label = case_label(label)
             group.sort(key=lambda row: row["offeredTxPerSecond"])
             x = [row["offeredTxPerSecond"] for row in group]
             axes[0].plot(x, [row["acceptedTxPerSecond"] for row in group], "o-", label=label)
@@ -82,6 +97,7 @@ def main():
         fig, axes = plt.subplots(1, 3, figsize=(15, 5.0))
         fig.suptitle(scope)
         for label, group in sorted(loads.items()):
+            label = case_label(label)
             x = [row["offeredTxPerSecond"] for row in group]
             axes[0].plot(x, [row["wireMbps"] for row in group], "o-", label=label)
             axes[1].plot(x, [row["p95LatencyMs"] for row in group], "o-", label=label)
@@ -89,7 +105,7 @@ def main():
                          / max(1, row["offeredTransactions"]) for row in group]
             axes[2].plot(x, fractions, "o-", label=label)
         axes[0].set(ylabel="Encoded RLPx throughput (Mbit/s)", title="Includes proofs and framing")
-        axes[1].set(ylabel="95th percentile admission latency (ms)", title="Includes bounded-queue wait")
+        axes[1].set(ylabel="95th percentile completed-batch latency (ms)", title="Includes bounded-queue wait")
         axes[2].set(ylabel="Dropped or rejected fraction", ylim=(0, 1), title="Admission and queue pressure")
         for ax in axes:
             ax.set_xlabel("Offered transactions / second")
@@ -98,6 +114,7 @@ def main():
 
         fig, ax = plt.subplots(figsize=(8, 5))
         for label, group in sorted(loads.items()):
+            label = case_label(label)
             ax.plot([row["offeredTxPerSecond"] for row in group],
                     [row["processCpuMs"] / max(1, row["durationSeconds"] * 1000) for row in group],
                     "o-", label=label)
@@ -136,24 +153,25 @@ def main():
     generic = [row for row in rows if row["kind"] == "crypto" and row["starkCount"] > 0]
     if generic:
         fig, axes = plt.subplots(1, 2, figsize=(12.5, 5))
-        names = [row["case"] for row in generic]
+        names = [case_label(row["case"]) for row in generic]
         positions = list(range(len(generic)))
         prove = [row["proveWallMs"] / max(1, row["measuredBatches"]) for row in generic]
         verify = [row["verifyWallMs"] / max(1, row["measuredBatches"]) for row in generic]
-        axes[0].bar([n - .2 for n in positions], prove, .4, label="Prove")
+        axes[0].bar([n - .2 for n in positions], prove, .4, label="Build aggregate")
         axes[0].bar([n + .2 for n in positions], verify, .4, label="Verify")
         axes[1].bar(positions, [row["proofBytesMean"] / 1024 for row in generic])
-        axes[0].set(ylabel="Wall time / batch (ms)", title="Generic STARK and mixed aggregates")
+        axes[0].set(ylabel="Wall time / batch (ms)", title="Generic STARK envelopes and mixed aggregation")
         axes[1].set(ylabel="Serialized proof size (KiB)", title="Generic STARK witnesses remain uncompressed")
         axes[0].legend()
         for ax in axes:
             ax.set_xticks(positions, labels=names, rotation=20, ha="right")
-        save(fig, "generic-stark-cost", "Real generic STARK verification; mixed batches add recursive SPHINCS aggregation.")
+        save(fig, "generic-stark-cost", "Generic witnesses are generated before timing; mixed batches add timed SPHINCS proving.")
 
     transport = series("transport")
     if transport:
         fig, axes = plt.subplots(1, 2, figsize=(12.5, 5.0))
         for label, group in sorted(transport.items()):
+            label = case_label(label)
             group.sort(key=lambda row: row["offeredObjectsPerSecond"])
             x = [row["offeredObjectsPerSecond"] for row in group]
             line, = axes[0].plot(x, [row["goodputMbps"] for row in group], "o-", label=label + " goodput")
@@ -177,6 +195,8 @@ def main():
         'img{max-width:100%}section{margin:40px 0}pre{white-space:pre-wrap;background:#f4f6fa;padding:20px}</style>'
         '<h1>Lean integration measurements</h1><p>Localhost results are not WAN or mainnet capacity estimates. '
         'Load durations include drain time; consult raw rejection reasons and samples.</p>'
+        '<p><a href="../results.json">Raw JSON and samples</a> · '
+        '<a href="../results.csv">Row CSV</a> · <a href="../samples.csv">Sample CSV</a></p>'
         + sections + '<h2>Measurement metadata</h2><pre>' + meta + '</pre>')
     print(json.dumps({"output": str(args.output), "charts": [name for name, _ in charts]}))
 
