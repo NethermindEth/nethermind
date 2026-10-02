@@ -545,6 +545,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
+    // Experiment knob (EXPB): warm discovered cells with this many reads in flight on plain thread-pool workers,
+    // outside the shared worker budget; the reads block on I/O, not on CPU. Unset keeps the shared budget.
+    private static readonly int DiscoveryIoParallelism =
+        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_EXP_DISC_IO_DOP"), out int discoveryIoParallelism) && discoveryIoParallelism > 0
+            ? discoveryIoParallelism
+            : 0;
+
     private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
     {
         int cellCount = discoveredCells.Count;
@@ -557,15 +564,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Array.Sort(cells, 0, cellCount, _cellAddressComparer);
             ParallelOptions parallelOptions = new()
             {
-                MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, cellCount),
+                MaxDegreeOfParallelism = Math.Min(DiscoveryIoParallelism > 0 ? DiscoveryIoParallelism : _concurrencyLevel, cellCount),
                 CancellationToken = cancellationToken
             };
 
             // Wide ranges so one scope build serves many reads rather than a handful.
             int rangeSize = Math.Max(16, cellCount / (parallelOptions.MaxDegreeOfParallelism * 4));
+            int rangeCount = (cellCount - 1) / rangeSize + 1;
 
             // Reads through a prewarmer scope populate PreBlockCaches, so plain parallel reads are the warm-up.
-            ParallelUnbalancedWork.For(0, (cellCount - 1) / rangeSize + 1, parallelOptions, range =>
+            Action<int> warmRange = range =>
             {
                 int start = range * rangeSize;
                 int end = Math.Min(start + rangeSize, cellCount);
@@ -594,7 +602,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 {
                     _envPool.Return(env);
                 }
-            });
+            };
+            if (DiscoveryIoParallelism > 0) Parallel.For(0, rangeCount, parallelOptions, warmRange);
+            else ParallelUnbalancedWork.For(0, rangeCount, parallelOptions, warmRange);
             return true;
         }
         catch (OperationCanceledException)
