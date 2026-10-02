@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -246,6 +247,45 @@ public class RpcModuleProviderTests
         {
             Assert.That(value, Is.EqualTo(new[] { 42 }));
             Assert.That(parameter.ReparseString, Is.True);
+        }
+    }
+
+    [TestCase(nameof(DirectInvokerRpcModule.direct_with_converter), "[[1,2],3]", new[] { 42 })]
+    [TestCase(nameof(DirectInvokerRpcModule.direct_required_value_param), "[5,3]", 5)]
+    public void Parameter_value_reader_stops_on_the_last_token_of_its_value(string methodName, string json, object expected)
+    {
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(new DirectInvokerRpcModule()));
+        RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter = _moduleProvider.Resolve(methodName)!.ExpectedParameters[0];
+
+        Utf8JsonReader reader = new(Encoding.UTF8.GetBytes(json));
+        reader.Read();
+        reader.Read();
+        object? value = parameter.ValueReader!(ref reader);
+        reader.Read();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo(expected));
+            Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.Number), "the next parameter must start where this one ended");
+            Assert.That(reader.GetInt32(), Is.EqualTo(3));
+        }
+    }
+
+    [TestCase(nameof(DirectInvokerRpcModule.direct_with_underreading_converter))]
+    [TestCase(nameof(DirectInvokerRpcModule.direct_with_overreading_converter))]
+    public void Parameter_value_reader_rejects_a_converter_that_does_not_read_exactly_one_value(string methodName)
+    {
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(new DirectInvokerRpcModule()));
+        RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter = _moduleProvider.Resolve(methodName)!.ExpectedParameters[0];
+
+        Assert.That(() => ReadFirstElement(parameter, "[[1,2],3]"u8.ToArray()), Throws.TypeOf<JsonException>());
+
+        static object? ReadFirstElement(RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter, byte[] json)
+        {
+            Utf8JsonReader reader = new(json);
+            reader.Read();
+            reader.Read();
+            return parameter.ValueReader!(ref reader);
         }
     }
 
@@ -507,6 +547,14 @@ public class RpcModuleProviderTests
             [JsonRpcParameter(ConverterType = typeof(SingleIntArrayConverter))] int[] values) =>
             ResultWrapper<int>.Success(values[0]);
 
+        public ResultWrapper<int> direct_with_underreading_converter(
+            [JsonRpcParameter(ConverterType = typeof(UnderReadingIntArrayConverter))] int[] values) =>
+            ResultWrapper<int>.Success(values.Length);
+
+        public ResultWrapper<int> direct_with_overreading_converter(
+            [JsonRpcParameter(ConverterType = typeof(OverReadingIntArrayConverter))] int[] values) =>
+            ResultWrapper<int>.Success(values.Length);
+
         public ResultWrapper<string, bool> direct_typed_error_data() =>
             ResultWrapper<string, bool>.Fail("typed", ErrorCodes.InvalidParams, false);
 
@@ -538,6 +586,27 @@ public class RpcModuleProviderTests
         {
             reader.Skip();
             return [42];
+        }
+
+        public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+    }
+
+    public sealed class UnderReadingIntArrayConverter : JsonConverter<int[]>
+    {
+        public override int[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => [];
+
+        public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+    }
+
+    public sealed class OverReadingIntArrayConverter : JsonConverter<int[]>
+    {
+        public override int[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            reader.Skip();
+            reader.Read();
+            return [];
         }
 
         public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options) =>
