@@ -286,6 +286,26 @@ public class RetryCacheTests
     }
 
     [Test]
+    public void TryAwaitAnnouncement_ClaimRacingExpiryKeepsALiveLifecycle()
+    {
+        const int attempts = 1_000;
+        for (int resourceId = 0; resourceId < attempts; resourceId++)
+        {
+            Assert.That(_cache.TryAwaitAnnouncement(resourceId), Is.True);
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs + 1));
+
+            bool claimed = false;
+            Parallel.Invoke(
+                _cache.ProcessRetryTick,
+                () => claimed = _cache.TryClaimUnrequested(resourceId, new TestHandler()));
+
+            // Expiry losing to the claim must not leave it a deactivated bag, or the claimed request is owed no deferral.
+            if (claimed) Assert.That(_cache.TryDefer(resourceId), Is.True, $"attempt {resourceId}");
+            _cache.Received(resourceId);
+        }
+    }
+
+    [Test]
     public void TryAwaitAnnouncement_ExpiresUnclaimedWithoutRequesting()
     {
         Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);

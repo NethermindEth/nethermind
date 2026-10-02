@@ -498,6 +498,15 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         if (_retryRequests.TryGetValue(item.ResourceId, out currentEntry)
             && currentEntry.RequestGeneration == item.RequestGeneration)
         {
+            // An entry nobody claimed made no request and holds no handlers, so nothing is left in flight to fire
+            // for. Its bag is not touched: a claim that wins the compare-and-remove keeps a live lifecycle.
+            if (currentEntry.SourceHandler is null)
+            {
+                TryRemove(item.ResourceId, currentEntry);
+                retryHandler = null;
+                return false;
+            }
+
             BatchedHandlerPreference handlerPreference = new(
                 batchedRetryRequests?.Requests,
                 _maxPreferredRetryResourcesPerHandlerPerTick);
@@ -510,10 +519,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 return true;
             }
 
-            // An entry nobody claimed made no request, so nothing is left in flight to fire for.
-            bool requested = currentEntry.SourceHandler is not null;
-            if (requested) _requestingResources.Set(item.ResourceId);
-            if (!TryRemove(item.ResourceId, currentEntry) && requested)
+            _requestingResources.Set(item.ResourceId);
+            if (!TryRemove(item.ResourceId, currentEntry))
             {
                 _requestingResources.Delete(item.ResourceId);
             }
@@ -864,19 +871,23 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             return false;
         }
 
-        // The claimed request starts its own timeout: a late claim must not inherit what is left of the push's,
-        // so it is enqueued again under a new generation and the push's queue item goes stale.
-        bool requeued = TryReserveExpiringQueueSlot();
-        RetryRequestEntry claimed = requeued
-            ? entry with { SourceHandler = handler, RequestGeneration = Interlocked.Increment(ref _requestGeneration) }
-            : entry with { SourceHandler = handler };
+        // The claimed request starts its own timeout under a new generation, so the push's queue item goes stale.
+        // Without a queue slot the claim is refused: an expiry already past the push's item would leave the
+        // claimed entry with no item left to expire it.
+        if (!TryReserveExpiringQueueSlot())
+        {
+            ReleaseHandlerSlot(handler);
+            return false;
+        }
+
+        RetryRequestEntry claimed = entry with { SourceHandler = handler, RequestGeneration = Interlocked.Increment(ref _requestGeneration) };
         if (_retryRequests.TryUpdate(resourceId, claimed, entry))
         {
-            if (requeued) Enqueue(resourceId, claimed);
+            Enqueue(resourceId, claimed);
             return true;
         }
 
-        if (requeued) Interlocked.Decrement(ref _expiringQueueCounter);
+        Interlocked.Decrement(ref _expiringQueueCounter);
         ReleaseHandlerSlot(handler);
         return false;
     }
