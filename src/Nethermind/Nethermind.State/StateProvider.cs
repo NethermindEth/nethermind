@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
@@ -879,6 +880,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _metrics.IncrementStateTreeWrites(writes);
         if (skipped > 0)
             _metrics.IncrementStateSkippedWrites(skipped);
+        NewPayloadTrace.SetCounter(NewPayloadTrace.AccountsWritten, writes);
     }
 
     public bool WarmUp(Address address)
