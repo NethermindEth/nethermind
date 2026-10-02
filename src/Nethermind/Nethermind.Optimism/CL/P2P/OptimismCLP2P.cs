@@ -323,7 +323,7 @@ public class OptimismCLP2P : IDisposable
         return address is not null && StaticPeerKeeper.CanDial(address)
             ? address
             : throw new InvalidConfigurationException(
-                $"Optimism CL static peer '{node}' must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>; /dnsaddr is not supported.",
+                $"Optimism CL static peer '{node}' must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>, or /dnsaddr/<name>/p2p/<peer-id>.",
                 ExitCodes.ForbiddenOptionValue);
     }
 

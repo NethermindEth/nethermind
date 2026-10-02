@@ -155,12 +155,8 @@ public class OptimismGossipLoopbackTests
     [CancelAfter(60_000)]
     public async Task A_dial_that_cannot_start_does_not_lose_the_peer(string announced, CancellationToken token)
     {
-        int lookups = 0;
-        HostResolver failsOnce = (_, _, _) => ++lookups == 1
-            ? Task.FromException<IPAddress[]>(new SocketException((int)SocketError.HostNotFound))
-            : Task.FromResult(new[] { IPAddress.Loopback });
         await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
-        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite, failsOnce);
+        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite, new LoopbackDns(txt: ""));
         PeerId sequencerId = sequencer.Peer.Identity.PeerId;
         string port = sequencer.Address.ToString().Split('/')[4];
         Multiaddress[] poison = [.. announced.Split('|').Select(address => Multiaddress.Decode(address
@@ -169,6 +165,21 @@ public class OptimismGossipLoopbackTests
         Assert.That(async () => await node.Peer.DialAsync(poison, token), Throws.Exception, "fixture: the dial fails");
 
         Multiaddress named = Multiaddress.Decode($"/dns4/sequencer.invalid/tcp/{port}/p2p/{sequencerId}");
+        using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
+        await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
+    }
+
+    /// <summary>A static peer named by a dnsaddr TXT record is connected at the address the record names.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_static_peer_named_by_dnsaddr_is_connected(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
+        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite,
+            new LoopbackDns(txt: $"dnsaddr={sequencer.Address}"));
+
+        Multiaddress named = Multiaddress.Decode($"/dnsaddr/sequencer.test/p2p/{sequencerId}");
         using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
@@ -261,6 +272,22 @@ public class OptimismGossipLoopbackTests
         }
     }
 
+    /// <summary>Answers every name with the loopback address and <paramref name="txt"/>, after failing the first query as a lookup that times out does.</summary>
+    private sealed class LoopbackDns(string txt) : IDnsLookup
+    {
+        private int _queries;
+
+        public Task<IEnumerable<string>> QueryTxtAsync(string name) => Answer<string>([txt]);
+
+        public Task<IEnumerable<IPAddress>> QueryAAsync(string name) => Answer<IPAddress>([IPAddress.Loopback]);
+
+        public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => Answer<IPAddress>([]);
+
+        private Task<IEnumerable<T>> Answer<T>(T[] records) => Interlocked.Increment(ref _queries) == 1
+            ? Task.FromException<IEnumerable<T>>(new SocketException((int)SocketError.TimedOut))
+            : Task.FromResult<IEnumerable<T>>(records);
+    }
+
     private sealed class Host(ServiceProvider services, ILocalPeer peer) : IAsyncDisposable
     {
         public ServiceProvider Services => services;
@@ -272,16 +299,16 @@ public class OptimismGossipLoopbackTests
         // The libp2p dial needs the peer id, which a listen address may not carry.
         public Multiaddress Address => Multiaddress.Decode($"{peer.ListenAddresses.First().ToString().Split("/p2p/")[0]}/p2p/{peer.Identity.PeerId}");
 
-        public static async Task<Host> StartAsync(CancellationToken token, Action<PubsubSettings>? configure = null, HostResolver? resolveHost = null)
+        public static async Task<Host> StartAsync(CancellationToken token, Action<PubsubSettings>? configure = null, IDnsLookup? dnsLookup = null)
         {
             PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings(BlocksTopic);
             configure?.Invoke(settings);
             IServiceCollection collection = new ServiceCollection()
                 .AddLibp2p(static builder => builder.WithPubsub())
                 .AddSingleton(settings);
-            if (resolveHost is not null)
+            if (dnsLookup is not null)
             {
-                collection.AddSingleton(resolveHost);
+                collection.AddSingleton(dnsLookup);
             }
 
             ServiceProvider services = collection.BuildServiceProvider();

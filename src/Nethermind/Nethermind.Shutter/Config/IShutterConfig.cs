@@ -150,7 +150,7 @@ public interface IShutterConfig : IConfig
             if (!StaticPeerKeeper.CanDial(address))
             {
                 throw new ArgumentException(
-                    $"Shutter bootnode '{bootnode}' must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>; /dnsaddr is not supported.");
+                    $"Shutter bootnode '{bootnode}' must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>, or /dnsaddr/<name>/p2p/<peer-id>.");
             }
 
             bootnodes.Add(address);
