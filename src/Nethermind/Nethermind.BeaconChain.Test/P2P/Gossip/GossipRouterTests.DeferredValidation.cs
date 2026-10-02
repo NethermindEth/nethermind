@@ -114,6 +114,28 @@ public partial class GossipRouterTests
     }
 
     /// <summary>
+    /// A batched IWANT answer carrying many columns and a block from one peer is not held to the peer's share, as each column is checked as
+    /// it is dispatched; only the block counts against it.
+    /// </summary>
+    [Test]
+    public async Task One_rpc_of_many_columns_from_one_peer_is_not_held_to_its_share()
+    {
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 128, maxPendingBytes: 1 << 24, TimeSpan.FromSeconds(30));
+        byte[] digest = ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot));
+        MessageValidity[] columns = [.. Enumerable.Range(0, 24).Select(subnet => fixture.Validation.Verify(fixture.Sender,
+            new Message { Topic = GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName((ulong)subnet)), Data = ByteString.CopyFrom([(byte)subnet]) }))];
+
+        MessageValidity block = fixture.Validation.Verify(fixture.Sender, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Validation.MaxPendingPerSource, Is.LessThan(columns.Length), "fixture: more columns than the peer's share");
+            Assert.That(columns, Is.All.EqualTo(MessageValidity.Deferred));
+            Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
+        }
+    }
+
+    /// <summary>
     /// Aggregates and payload attestations are reserved apart, up to the vote queue: past it they are throttled, and a full vote bound
     /// leaves the room for blocks, columns and envelopes untouched. Every message is reserved before the router dispatches it.
     /// </summary>

@@ -42,6 +42,9 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
     /// <remarks>A message on any other topic is dropped by <see cref="Validate"/> without decoding, which may run under the monitor.</remarks>
     internal bool IsDeferred(string topic) => Route(topic, out _, out _, out _, out _) is null;
 
+    /// <summary>Whether <paramref name="topic"/> is a <c>data_column_sidecar_{subnet_id}</c> topic.</summary>
+    internal static bool IsColumn(string topic) => GossipTopics.TryParse(topic, out _, out string? name) && GossipTopics.TryParseDataColumnSidecarTopicName(name!, out _);
+
     /// <summary>Whether <paramref name="topic"/> carries aggregates or payload attestations, small votes that come in their hundreds each slot.</summary>
     internal static bool IsVote(string topic) =>
         GossipTopics.TryParse(topic, out _, out string? name) && name is GossipTopics.BeaconAggregateAndProof or GossipTopics.PayloadAttestationMessage;
