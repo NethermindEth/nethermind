@@ -7,7 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
+using Nethermind.Core.Test.Modules;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -23,41 +23,41 @@ public class FrameTxWidthFinalizerTests
     [Test]
     public void Finalized_block_earns_width_from_its_receipts_once()
     {
-        Block finalized = FrameBlock(number: 5);
-        (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger) = Wire(finalized);
-        using IContainer container = Start(blockTree, receiptFinder, ledger, Enabled());
+        using FinalizingChain chain = new(Enabled(), canonicalLength: 5);
+        Block finalized = chain.Canonical[5];
 
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(finalized.Header));
+        chain.FinalizeAt(finalized);
 
         using (Assert.EnterMultipleScope())
         {
-            ledger.Received(1).EarnWidthOnFinalization(finalized, Arg.Any<TxReceipt[]>());
-            receiptFinder.Received(1).Get(finalized, Arg.Any<bool>(), false);
+            chain.Ledger.Received(1).EarnWidthOnFinalization(Same(finalized), Arg.Any<TxReceipt[]>());
+            chain.ReceiptFinder.Received(1).Get(Same(finalized), Arg.Any<bool>(), false);
         }
     }
 
     [Test]
     public void Failure_mid_gap_resumes_without_crediting_a_block_twice([Values] bool lowerFinalizationBeforeResuming)
     {
-        Block first = FrameBlock(number: 5);
-        Block gap = FrameBlock(number: 6);
-        Block last = FrameBlock(number: 7);
-        (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger) = Wire(first, gap, last);
+        using FinalizingChain chain = new(Enabled(), canonicalLength: 8);
+        Block first = chain.Canonical[5];
+        Block gap = chain.Canonical[6];
+        Block last = chain.Canonical[7];
+        Block next = chain.Canonical[8];
         int lastAttempts = 0;
-        ledger.When(l => l.EarnWidthOnFinalization(last, Arg.Any<TxReceipt[]>()))
+        chain.Ledger.When(l => l.EarnWidthOnFinalization(Same(last), Arg.Any<TxReceipt[]>()))
             .Do(_ => { if (++lastAttempts == 1) throw new InvalidOperationException(); });
-        using IContainer container = Start(blockTree, receiptFinder, ledger, Enabled());
 
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(first.Header));
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(last.Header));
-        if (lowerFinalizationBeforeResuming) blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(first.Header));
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(last.Header));
+        chain.FinalizeAt(first);
+        chain.FinalizeAt(last);
+        if (lowerFinalizationBeforeResuming) chain.FinalizeAt(first);
+        chain.FinalizeAt(next);
 
         using (Assert.EnterMultipleScope())
         {
-            ledger.Received(1).EarnWidthOnFinalization(first, Arg.Any<TxReceipt[]>());
-            ledger.Received(1).EarnWidthOnFinalization(gap, Arg.Any<TxReceipt[]>());
-            ledger.Received(2).EarnWidthOnFinalization(last, Arg.Any<TxReceipt[]>());
+            chain.Ledger.Received(1).EarnWidthOnFinalization(Same(first), Arg.Any<TxReceipt[]>());
+            chain.Ledger.Received(1).EarnWidthOnFinalization(Same(gap), Arg.Any<TxReceipt[]>());
+            chain.Ledger.Received(2).EarnWidthOnFinalization(Same(last), Arg.Any<TxReceipt[]>());
+            chain.Ledger.Received(1).EarnWidthOnFinalization(Same(next), Arg.Any<TxReceipt[]>());
         }
     }
 
@@ -66,87 +66,97 @@ public class FrameTxWidthFinalizerTests
     {
         const ulong firstNumber = 5;
         ulong lastNumber = firstNumber + 4 * FrameTxWidthFinalizer.MaxBlocksPerFinalization;
-        Block first = FrameBlock(number: firstNumber);
-        Block skipped = FrameBlock(number: lastNumber - FrameTxWidthFinalizer.MaxBlocksPerFinalization);
-        Block oldestCredited = FrameBlock(number: skipped.Number + 1);
-        Block last = FrameBlock(number: lastNumber);
-        (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger) = Wire(first, skipped, oldestCredited, last);
-        using IContainer container = Start(blockTree, receiptFinder, ledger, Enabled());
+        using FinalizingChain chain = new(Enabled(), canonicalLength: lastNumber);
+        Block skipped = chain.Canonical[lastNumber - FrameTxWidthFinalizer.MaxBlocksPerFinalization];
+        Block oldestCredited = chain.Canonical[skipped.Number + 1];
+        Block last = chain.Canonical[lastNumber];
 
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(first.Header));
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(last.Header));
+        chain.FinalizeAt(chain.Canonical[firstNumber]);
+        chain.FinalizeAt(last);
 
         using (Assert.EnterMultipleScope())
         {
-            ledger.DidNotReceive().EarnWidthOnFinalization(skipped, Arg.Any<TxReceipt[]>());
-            ledger.Received(1).EarnWidthOnFinalization(oldestCredited, Arg.Any<TxReceipt[]>());
-            ledger.Received(1).EarnWidthOnFinalization(last, Arg.Any<TxReceipt[]>());
+            chain.Ledger.DidNotReceive().EarnWidthOnFinalization(Same(skipped), Arg.Any<TxReceipt[]>());
+            chain.Ledger.Received(1).EarnWidthOnFinalization(Same(oldestCredited), Arg.Any<TxReceipt[]>());
+            chain.Ledger.Received(1).EarnWidthOnFinalization(Same(last), Arg.Any<TxReceipt[]>());
         }
     }
 
     [Test]
     public void Reorged_out_block_earns_nothing()
     {
-        Block canonical = FrameBlock(number: 5);
-        Block reorgedOut = FrameBlock(number: 5);
-        (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger) = Wire(canonical);
-        using IContainer container = Start(blockTree, receiptFinder, ledger, Enabled());
+        using FinalizingChain chain = new(Enabled(), canonicalLength: 5);
+        Block canonical = chain.Canonical[5];
+        Block reorgedOut = FrameBlock(chain.Canonical[4], nonce: 1);
+        chain.BlockTree.SuggestBlock(reorgedOut, BlockTreeSuggestOptions.ForceDontSetAsMain);
 
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(canonical.Header));
+        chain.FinalizeAt(canonical);
 
-        ledger.Received(1).EarnWidthOnFinalization(canonical, Arg.Any<TxReceipt[]>());
-        ledger.DidNotReceive().EarnWidthOnFinalization(reorgedOut, Arg.Any<TxReceipt[]>());
+        chain.Ledger.Received(1).EarnWidthOnFinalization(Same(canonical), Arg.Any<TxReceipt[]>());
+        chain.Ledger.DidNotReceive().EarnWidthOnFinalization(Same(reorgedOut), Arg.Any<TxReceipt[]>());
     }
 
     [Test]
     public void Disabled_width_never_earns_on_finalization()
     {
-        Block finalized = FrameBlock(number: 5);
-        (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger) = Wire(finalized);
-        using IContainer container = Start(blockTree, receiptFinder, ledger, new TxPoolConfig { FrameTxWidthEnabled = false });
+        using FinalizingChain chain = new(new TxPoolConfig { FrameTxWidthEnabled = false }, canonicalLength: 5);
 
-        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(finalized.Header));
+        chain.FinalizeAt(chain.Canonical[5]);
 
-        ledger.DidNotReceiveWithAnyArgs().EarnWidthOnFinalization(default!, default!);
+        chain.Ledger.DidNotReceiveWithAnyArgs().EarnWidthOnFinalization(default!, default!);
     }
 
-    private static IContainer Start(IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPoolConfig txPoolConfig)
-    {
-        IContainer container = new ContainerBuilder()
-            .AddModule(new BaseMergePluginModule())
-            .AddSingleton(blockTree)
-            .AddSingleton(receiptFinder)
-            .AddSingleton<ITxPool>(_ => Substitute.For<ITxPool>())
-            .AddSingleton(ledger)
-            .AddSingleton(txPoolConfig)
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
-            .Build();
-        container.Resolve<ITxPool>();
-        return container;
-    }
+    private static TxPoolConfig Enabled() => new() { FrameTxWidthEnabled = true };
 
-    private static (IBlockTree, IReceiptFinder, IFrameTxWidthLedger) Wire(params Block[] canonical)
-    {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        foreach (Block block in canonical)
-        {
-            blockTree.FindBlock(block.Number, BlockTreeLookupOptions.RequireCanonical).Returns(block);
-            receiptFinder.Get(block, Arg.Any<bool>(), Arg.Any<bool>()).Returns([new TxReceipt { GasUsed = GasUsed }]);
-        }
+    private static Block Same(Block block) => Arg.Is<Block>(found => found.Hash == block.Hash);
 
-        return (blockTree, receiptFinder, Substitute.For<IFrameTxWidthLedger>());
-    }
-
-    private static ITxPoolConfig Enabled() => new TxPoolConfig { FrameTxWidthEnabled = true };
-
-    private static Block FrameBlock(ulong number)
+    private static Block FrameBlock(Block parent, ulong nonce = 0)
     {
         Transaction tx = Build.A.Transaction
             .WithType(TxType.FrameTx)
-            .WithNonce(number)
+            .WithNonce(nonce)
             .WithSenderAddress(TestItem.AddressA)
             .TestObject;
-        return Build.A.Block.WithNumber(number).WithTransactions(tx).TestObject;
+        return Build.A.Block.WithParent(parent).WithTransactions(tx).TestObject;
+    }
+
+    private sealed class FinalizingChain : IDisposable
+    {
+        private readonly IContainer _container;
+
+        public FinalizingChain(TxPoolConfig txPoolConfig, ulong canonicalLength)
+        {
+            ReceiptFinder.Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).Returns([new TxReceipt { GasUsed = GasUsed }]);
+            _container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(txPoolConfig))
+                .AddModule(new BaseMergePluginModule())
+                .AddSingleton(ReceiptFinder)
+                .AddSingleton(Ledger)
+                .AddSingleton<ITxPool>(_ => NullTxPool.Instance)
+                .Build();
+            _container.Resolve<ITxPool>();
+            BlockTree = _container.Resolve<IBlockTree>();
+
+            Canonical = new Block[canonicalLength + 1];
+            Canonical[0] = Build.A.Block.Genesis.TestObject;
+            BlockTreeBuilder.AddBlock(BlockTree, Canonical[0]);
+            for (ulong number = 1; number <= canonicalLength; number++)
+            {
+                Canonical[number] = FrameBlock(Canonical[number - 1]);
+                BlockTreeBuilder.AddBlock(BlockTree, Canonical[number]);
+            }
+        }
+
+        public IReceiptFinder ReceiptFinder { get; } = Substitute.For<IReceiptFinder>();
+
+        public IFrameTxWidthLedger Ledger { get; } = Substitute.For<IFrameTxWidthLedger>();
+
+        public IBlockTree BlockTree { get; }
+
+        public Block[] Canonical { get; }
+
+        public void FinalizeAt(Block block) => BlockTree.ForkChoiceUpdated(block.Hash, block.Hash);
+
+        public void Dispose() => _container.Dispose();
     }
 }
