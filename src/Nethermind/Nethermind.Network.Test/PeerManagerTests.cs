@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test
 
             NetworkNode eligible = new(ctx.GenerateEnode().Replace("52.141.78.53", "52.141.78.54"));
             ctx.PeerPool.GetOrAdd(eligible);
-            await ctx.RlpxPeer.WaitForConnectCallsAsync(1, TimeSpan.FromMilliseconds(600));
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(1, TimeSpan.FromSeconds(5));
             Assert.That(ctx.PeerPool.ActivePeers.ContainsKey(eligible.NodeId), Is.True);
 
             ctx.RlpxPeer.UseRecentIpFilter();

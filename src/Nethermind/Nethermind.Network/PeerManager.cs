@@ -598,23 +598,20 @@ namespace Nethermind.Network
             bool hasOnlyStaticNodes = false;
             if (_currentSelection.PreCandidates.Count == 0)
             {
-                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !IsContactRetryDelayed(sn, now) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
+                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !IsCandidateContactRetryDelayed(sn, now) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
                 hasOnlyStaticNodes = _currentSelection.PreCandidates.Count > 0;
             }
 
             if (_currentSelection.PreCandidates.Count == 0 && !hasOnlyStaticNodes)
             {
+                RecordCandidateFilterMetrics();
                 return;
             }
 
             DateTime nowUTC = DateTime.UtcNow;
             foreach (Peer preCandidate in _currentSelection.PreCandidates)
             {
-                if (IsContactRetryDelayed(preCandidate, now))
-                {
-                    _currentSelection.Counters.Increment(nameof(ActivePeerSelectionCounter.FilteredByContactRetryDelay));
-                    continue;
-                }
+                if (IsCandidateContactRetryDelayed(preCandidate, now)) continue;
 
                 if (preCandidate.Node.Port == 0)
                 {
@@ -648,7 +645,7 @@ namespace Nethermind.Network
 
             if (!hasOnlyStaticNodes)
             {
-                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !IsContactRetryDelayed(sn, now) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
+                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !IsCandidateContactRetryDelayed(sn, now) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
             }
 
             foreach (Peer peer in _currentSelection.Candidates)
@@ -662,6 +659,18 @@ namespace Nethermind.Network
 
             CollectionsMarshal.AsSpan(_currentSelection.Candidates).Sort(default(PeerComparer));
 
+            RecordCandidateFilterMetrics();
+        }
+
+        private bool IsCandidateContactRetryDelayed(Peer peer, long now)
+        {
+            if (!IsContactRetryDelayed(peer, now)) return false;
+            _currentSelection.Counters.Increment(nameof(ActivePeerSelectionCounter.FilteredByContactRetryDelay));
+            return true;
+        }
+
+        private void RecordCandidateFilterMetrics()
+        {
             foreach (KeyValuePair<string, int> currentSelectionCounter in _currentSelection.Counters)
             {
                 Metrics.PeerCandidateFilter.AddBy(
