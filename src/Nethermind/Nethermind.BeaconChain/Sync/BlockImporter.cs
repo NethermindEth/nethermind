@@ -922,14 +922,13 @@ public sealed class BlockImporter : IBlockImporter
         ExecutionPayloadEnvelopeImportResult result = _envelopes.Import(envelope);
         if (result is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic)
         {
-            _store.PutExecutionPayloadEnvelope(blockRoot!, envelope);
-            _runner.OnExecutionPayloadVerified(blockRoot!);
+            bool valid = false;
             // specs/bellatrix/optimistic-sync.md: a VALID newPayload makes the payload and its ancestors VALID; an invalidated payload stays unverified and keeps its verdict.
-            if (result == ExecutionPayloadEnvelopeImportResult.Valid && _runner.IsPayloadVerified(blockRoot!) && _runner.GetExecutionBlockHash(blockRoot!) is { } payloadHash)
+            if (result == ExecutionPayloadEnvelopeImportResult.Valid && _runner.GetExecutionBlockHash(blockRoot!) is { } payloadHash)
             {
                 try
                 {
-                    ValidateExecutionChain(blockRoot!, payloadHash);
+                    valid = _runner.ValidateExecutionChainAndGetPayloadRoot(blockRoot!, payloadHash) == blockRoot;
                 }
                 catch (ProtoArrayException e)
                 {
@@ -937,6 +936,9 @@ public sealed class BlockImporter : IBlockImporter
                     if (_logger.IsError) _logger.Error($"Execution layer reported the payload of {blockRoot} VALID against an invalid ancestor: {e.Message}");
                 }
             }
+
+            _store.PutExecutionPayloadEnvelope(blockRoot!, envelope, valid);
+            _runner.OnExecutionPayloadVerified(blockRoot!);
         }
 
         return result;

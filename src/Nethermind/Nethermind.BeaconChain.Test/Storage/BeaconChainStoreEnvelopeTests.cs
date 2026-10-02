@@ -24,13 +24,15 @@ public class BeaconChainStoreEnvelopeTests
 {
     private static readonly ulong SlotsPerEpoch = Sepolia.SlotsPerEpoch;
 
-    [Test]
-    public void Stored_envelope_reads_back_from_a_new_store_over_the_same_database([Values] bool valid)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Stored_envelope_reads_back_from_a_new_store_over_the_same_database(bool valid, bool verdictWithEnvelope)
     {
         MemColumnsDb<BeaconChainDbColumns> db = new();
         SignedExecutionPayloadEnvelope envelope = Envelope(FirstGloasSlot + 3);
-        new BeaconChainStore(db, Sepolia).PutExecutionPayloadEnvelope(RootOf(envelope), envelope);
-        if (valid) new BeaconChainStore(db, Sepolia).SetExecutionPayloadValid(RootOf(envelope));
+        new BeaconChainStore(db, Sepolia).PutExecutionPayloadEnvelope(RootOf(envelope), envelope, valid && verdictWithEnvelope);
+        if (valid && !verdictWithEnvelope) new BeaconChainStore(db, Sepolia).SetExecutionPayloadValid(RootOf(envelope));
 
         BeaconChainStore reopened = new(db, Sepolia);
 
@@ -40,6 +42,31 @@ public class BeaconChainStoreEnvelopeTests
             Assert.That(SignedExecutionPayloadEnvelope.Encode(read!), Is.EqualTo(SignedExecutionPayloadEnvelope.Encode(envelope)));
             Assert.That(reopened.TryGetExecutionPayloadEnvelope(Keccak.Compute("missing"), out _), Is.False);
             Assert.That(reopened.IsExecutionPayloadValid(RootOf(envelope)), Is.EqualTo(valid), "legacy envelopes have no EL verdict");
+        }
+    }
+
+    [Test]
+    public void Valid_verdict_without_a_stored_envelope_creates_no_keys([Values] bool pruned)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, Sepolia);
+        SignedExecutionPayloadEnvelope envelope = Envelope(FirstGloasSlot + 1);
+        ulong pastEnvelope = Sepolia.GloasForkEpoch + BeaconChainStore.MinEpochsForBlockRequests + 2;
+        if (pruned)
+        {
+            store.PutExecutionPayloadEnvelope(RootOf(envelope), envelope, valid: true);
+            Prune(store, pastEnvelope, ulong.MaxValue);
+        }
+
+        store.SetExecutionPayloadValid(RootOf(envelope));
+        BeaconChainStore reopened = new(db, Sepolia);
+        Prune(reopened, pastEnvelope, ulong.MaxValue);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reopened.IsExecutionPayloadValid(RootOf(envelope)), Is.False, "late verdicts cannot outlive their envelope");
+            Assert.That(db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).GetAllKeys(), Is.Empty,
+                "a missing envelope has no slot index to prune an orphan marker");
         }
     }
 
@@ -113,10 +140,8 @@ public class BeaconChainStoreEnvelopeTests
         BeaconChainStore store = new(db, Sepolia);
         SignedExecutionPayloadEnvelope below = Envelope(FirstGloasSlot + 1);
         SignedExecutionPayloadEnvelope finalized = Envelope(FirstGloasSlot + 6);
-        store.PutExecutionPayloadEnvelope(RootOf(below), below);
-        store.PutExecutionPayloadEnvelope(RootOf(finalized), finalized);
-        store.SetExecutionPayloadValid(RootOf(below));
-        store.SetExecutionPayloadValid(RootOf(finalized));
+        store.PutExecutionPayloadEnvelope(RootOf(below), below, valid: true);
+        store.PutExecutionPayloadEnvelope(RootOf(finalized), finalized, valid: true);
         ulong windowAboveBoth = Sepolia.GloasForkEpoch + BeaconChainStore.MinEpochsForBlockRequests + 10;
 
         Prune(store, windowAboveBoth, FirstGloasSlot + 6);

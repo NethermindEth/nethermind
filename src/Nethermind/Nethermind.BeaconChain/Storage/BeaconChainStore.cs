@@ -908,6 +908,10 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// </remarks>
     /// <exception cref="ArgumentException">The envelope has no payload, names a beacon block other than <paramref name="blockRoot"/>, or encodes to more than <c>MAX_PAYLOAD_SIZE</c> bytes.</exception>
     public void PutExecutionPayloadEnvelope(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope)
+        => PutExecutionPayloadEnvelope(blockRoot, envelope, valid: false);
+
+    /// <summary>Stores the envelope, index and any VALID marker in one batch so pruning cannot leave an orphan verdict.</summary>
+    internal void PutExecutionPayloadEnvelope(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope, bool valid)
     {
         ulong slot = GetExecutionPayloadEnvelopeSlot(blockRoot, envelope);
         byte[] ssz = SignedExecutionPayloadEnvelope.Encode(envelope);
@@ -939,6 +943,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             {
                 envelopes.Set(EnvelopeBoundsKey, EnvelopeBounds(bounded ? Math.Min(lowest, slot) : slot, bounded ? Math.Max(highest, slot) : slot));
             }
+
+            if (valid)
+                envelopes.Set(ExecutionPayloadVerdictKey(blockRoot.Bytes), [1]);
         }
     }
 
@@ -1031,7 +1038,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
     /// <summary>Deletes the envelopes of at most <see cref="EnvelopePruneBatchSlots"/> slots from the lower slot bound up, stopping below <paramref name="keepFrom"/>.</summary>
     /// <returns><c>false</c> when no stored slot is below <paramref name="keepFrom"/>.</returns>
-    /// <remarks>The bounds are read again for each batch, so <see cref="PutExecutionPayloadEnvelope"/> waits for one batch only and a slot it adds meanwhile is still pruned.</remarks>
+    /// <remarks>The bounds are read again for each batch, so <see cref="PutExecutionPayloadEnvelope(Hash256, SignedExecutionPayloadEnvelope)"/> waits for one batch only and a slot it adds meanwhile is still pruned.</remarks>
     private bool PruneExecutionPayloadEnvelopeBatch(ulong keepFrom)
     {
         lock (_envelopeIndexLock)

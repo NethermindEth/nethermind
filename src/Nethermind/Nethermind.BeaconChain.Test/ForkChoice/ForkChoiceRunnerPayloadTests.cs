@@ -430,6 +430,36 @@ public class ForkChoiceRunnerPayloadTests
     }
 
     [Test]
+    public void Valid_verdict_stops_at_a_pre_gloas_carrier([Values] bool throughEmptyHead)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkChoiceRunner runner = chain.CreateRunner();
+        Hash256 headRoot = chain.AnchorRoot;
+        Hash256 payloadHash = runner.GetExecutionBlockHash(chain.AnchorRoot)!;
+        if (throughEmptyHead)
+        {
+            TickToSlot(runner, BoundarySlot);
+            BeaconStateGloas state = UpgradedAnchor(chain);
+            SignedBeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, payloadHash, Hash(0xE2)));
+            runner.OnBlock(block, state);
+            headRoot = SszRoots.HashTreeRoot(block.Message!);
+        }
+
+        ProtoNode carrier = runner.EnumerateAncestors(chain.AnchorRoot).First();
+        Assert.That(carrier.ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid));
+        // An unreadable parent detects traversal past a validated carrier without a chain-depth timing assertion.
+        carrier.Parent = int.MaxValue;
+
+        Hash256? payloadRoot = runner.ValidateExecutionChainAndGetPayloadRoot(headRoot, payloadHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payloadRoot, Is.Null, "a pre-Gloas payload needs no envelope verdict and must end the carrier search");
+            Assert.That(runner.GetBlockExecutionStatus(headRoot), Is.EqualTo(ExecutionStatus.Valid));
+        }
+    }
+
+    [Test]
     public void Valid_verdict_promotes_the_head_and_its_ancestors_only()
     {
         GloasForkChoiceHarness harness = new();
