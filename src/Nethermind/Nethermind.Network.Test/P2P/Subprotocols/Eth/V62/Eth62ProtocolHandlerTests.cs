@@ -453,6 +453,27 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
+        // The flood controller requests the disconnect on the first invalid transaction; a real session is closing from
+        // then on, so the rest of the message must not reach the pool's (possibly expensive) validation.
+        [Test]
+        public void Stops_submitting_the_rest_of_a_message_after_an_invalid_transaction_requests_a_disconnect()
+        {
+            _session.When(static s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
+                .Do(_ => _session.IsClosing.Returns(true));
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None)
+                .Returns(AcceptTxResult.Invalid, AcceptTxResult.Accepted, AcceptTxResult.Accepted);
+            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.Transactions);
+
+            using (Assert.EnterMultipleScope())
+            {
+                _session.Received(1).InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
+                _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+            }
+        }
+
         // TxFloodController's legacy-downgrade threshold is _notAcceptedSinceLastCheck > 600 (60s check interval,
         // downgrade once unaccepted-per-second exceeds 10) - one report per skip, so this pair pins the boundary
         // exactly rather than just "eventually downgrades", which a double-report bug would still satisfy.

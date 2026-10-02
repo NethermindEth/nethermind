@@ -298,6 +298,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 while (currentIdx < transactionsSpan.Length)
                 {
+                    // A disconnect requested by an earlier transaction (e.g. an invalid one) ends the message here,
+                    // so a closing peer cannot have the rest of it validated. Disposal handled in finally.
+                    if (Session.IsClosing)
+                    {
+                        return ValueTask.CompletedTask;
+                    }
+
                     if (cancellationToken.IsCancellationRequested)
                     {
                         if (currentIdx == request.StartIndex)
