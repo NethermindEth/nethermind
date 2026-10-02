@@ -96,27 +96,19 @@ public static class DataColumnReconstruction
             recoveredColumnProofs[c] = new SszKzgCommitment[blobCount];
         }
 
+        SszBlobCell[]?[] cellsByColumn = new SszBlobCell[]?[Eip7594DasConstants.NumberOfColumns];
+        for (int c = 0; c < Eip7594DasConstants.NumberOfColumns; c++)
+        {
+            cellsByColumn[c] = byIndex[c]?.Column;
+        }
+
         using ArrayPoolSpan<byte> heldCellsForRow = new(distinct * Ckzg.BytesPerCell);
         using ArrayPoolSpan<byte> recoveredCells = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell);
         using ArrayPoolSpan<byte> recoveredProofs = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
 
         for (int b = 0; b < blobCount; b++)
         {
-            int pos = 0;
-            for (int c = 0; c < Eip7594DasConstants.NumberOfColumns; c++)
-            {
-                if (byIndex[c] is { } held)
-                {
-                    held.Column![b].AsSpan().CopyTo(heldCellsForRow.Slice(pos * Ckzg.BytesPerCell, Ckzg.BytesPerCell));
-                    pos++;
-                }
-            }
-
-            try
-            {
-                Ckzg.RecoverCellsAndKzgProofs(recoveredCells, recoveredProofs, heldColumnIndices, heldCellsForRow, distinct, DasKzg.Handle);
-            }
-            catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+            if (!TryRecoverRow(cellsByColumn, heldColumnIndices, b, heldCellsForRow, recoveredCells, recoveredProofs))
             {
                 fullMatrix = [];
                 return false;
@@ -145,5 +137,96 @@ public static class DataColumnReconstruction
 
         fullMatrix = matrix;
         return true;
+    }
+
+    /// <summary>Recovers the blobs at <paramref name="rows"/> of one block from the cells of at least half of its columns.</summary>
+    /// <remarks>
+    /// fulu/das-core.md recover_matrix, keeping the first half of each row: in consensus-specs v1.6.0
+    /// fulu/polynomial-commitments-sampling.md coset_for_cell, the first <c>CELLS_PER_EXT_BLOB / 2</c> cells evaluate the
+    /// blob's own bit-reversed domain, so in order they are the blob. When those columns are all held, no KZG work is done.
+    /// Like <see cref="TryReconstruct"/>, this trusts that every cell passed verification before it was stored.
+    /// </remarks>
+    /// <param name="cellsByColumn">
+    /// <c>NUMBER_OF_COLUMNS</c> entries, <c>null</c> where the column is not held; a held column has a cell for every row in <paramref name="rows"/>.
+    /// </param>
+    /// <param name="rows">The blob indices to recover; the result keeps their order.</param>
+    /// <param name="blobs">The recovered blobs, one per entry of <paramref name="rows"/>.</param>
+    /// <returns><c>false</c> when fewer than half of the columns are held, or the native recovery fails.</returns>
+    internal static bool TryRecoverBlobs(SszBlobCell[]?[] cellsByColumn, IReadOnlyList<int> rows, out byte[][] blobs)
+    {
+        blobs = [];
+        const int systematicColumns = Eip7594DasConstants.RequiredColumnsForReconstruction;
+        if (cellsByColumn.Length != Eip7594DasConstants.NumberOfColumns)
+        {
+            return false;
+        }
+
+        using ArrayPoolSpan<ulong> heldColumnIndices = new(systematicColumns);
+        int held = 0;
+        for (int c = 0; c < Eip7594DasConstants.NumberOfColumns && held < systematicColumns; c++)
+        {
+            if (cellsByColumn[c] is not null)
+            {
+                heldColumnIndices[held++] = (ulong)c;
+            }
+        }
+
+        if (held < systematicColumns)
+        {
+            return false;
+        }
+
+        byte[][] recovered = new byte[rows.Count][];
+        if (heldColumnIndices[systematicColumns - 1] == systematicColumns - 1)
+        {
+            for (int i = 0; i < rows.Count; i++)
+            {
+                byte[] blob = recovered[i] = new byte[Ckzg.BytesPerBlob];
+                for (int c = 0; c < systematicColumns; c++)
+                {
+                    cellsByColumn[c]![rows[i]].AsSpan().CopyTo(blob.AsSpan(c * Ckzg.BytesPerCell, Ckzg.BytesPerCell));
+                }
+            }
+
+            blobs = recovered;
+            return true;
+        }
+
+        using ArrayPoolSpan<byte> heldCellsForRow = new(systematicColumns * Ckzg.BytesPerCell);
+        using ArrayPoolSpan<byte> recoveredCells = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell);
+        using ArrayPoolSpan<byte> recoveredProofs = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (!TryRecoverRow(cellsByColumn, heldColumnIndices, rows[i], heldCellsForRow, recoveredCells, recoveredProofs))
+            {
+                return false;
+            }
+
+            recovered[i] = recoveredCells.Slice(0, Ckzg.BytesPerBlob).ToArray();
+        }
+
+        blobs = recovered;
+        return true;
+    }
+
+    /// <summary>Runs <c>recover_cells_and_kzg_proofs</c> on blob <paramref name="row"/> from the cells of the columns at <paramref name="heldColumnIndices"/>.</summary>
+    /// <returns><c>false</c> when the native recovery call fails.</returns>
+    private static bool TryRecoverRow(SszBlobCell[]?[] cellsByColumn, Span<ulong> heldColumnIndices, int row,
+        Span<byte> heldCellsForRow, Span<byte> recoveredCells, Span<byte> recoveredProofs)
+    {
+        for (int i = 0; i < heldColumnIndices.Length; i++)
+        {
+            cellsByColumn[heldColumnIndices[i]]![row].AsSpan().CopyTo(heldCellsForRow.Slice(i * Ckzg.BytesPerCell, Ckzg.BytesPerCell));
+        }
+
+        try
+        {
+            Ckzg.RecoverCellsAndKzgProofs(recoveredCells, recoveredProofs, heldColumnIndices, heldCellsForRow, heldColumnIndices.Length, DasKzg.Handle);
+            return true;
+        }
+        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+        {
+            return false;
+        }
     }
 }
