@@ -187,6 +187,21 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
+    /// <summary>A static peer named by /dns, whose name has IPv4 addresses only, is connected at its IPv4 address.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_static_peer_named_by_dns_with_ipv4_only_is_connected(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite, new LoopbackDns(txt: "", noIpv6: true));
+        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
+        string port = sequencer.Address.ToString().Split('/')[4];
+
+        Multiaddress named = Multiaddress.Decode($"/dns/sequencer.test/tcp/{port}/p2p/{sequencerId}");
+        using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
+        await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
+    }
+
     /// <summary>A static peer named by a dnsaddr TXT record is connected at the address the record names.</summary>
     [Test]
     [CancelAfter(60_000)]
@@ -373,7 +388,7 @@ public class OptimismGossipLoopbackTests
     }
 
     /// <summary>Answers every name with the loopback address and <paramref name="txt"/>, after failing the first query as a lookup that times out does.</summary>
-    private sealed class LoopbackDns(string txt) : IDnsLookup
+    private sealed class LoopbackDns(string txt, bool noIpv6 = false) : IDnsLookup
     {
         private int _queries;
 
@@ -381,7 +396,9 @@ public class OptimismGossipLoopbackTests
 
         public Task<IEnumerable<IPAddress>> QueryAAsync(string name) => Answer<IPAddress>([IPAddress.Loopback]);
 
-        public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => Answer<IPAddress>([]);
+        // The operating system resolver fails a query for a family the name has no addresses of.
+        public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) =>
+            noIpv6 ? Task.FromException<IEnumerable<IPAddress>>(new SocketException((int)SocketError.NoData)) : Answer<IPAddress>([]);
 
         private Task<IEnumerable<T>> Answer<T>(T[] records) => Interlocked.Increment(ref _queries) == 1
             ? Task.FromException<IEnumerable<T>>(new SocketException((int)SocketError.TimedOut))
