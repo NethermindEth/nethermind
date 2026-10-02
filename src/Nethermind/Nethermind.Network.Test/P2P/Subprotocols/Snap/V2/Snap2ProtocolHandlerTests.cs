@@ -110,6 +110,17 @@ public class Snap2ProtocolHandlerTests
         snapServer.Received(1).GetBlockAccessLists(Arg.Any<IReadOnlyList<ValueHash256>>(), requestedBytes, Arg.Any<CancellationToken>());
     }
 
+    [Test]
+    public void Should_reject_unrequested_block_access_lists_before_decoding()
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        Snap2ProtocolHandler handler = CreateHandler(session, Substitute.For<ISnapServer>(),
+            new MessageSerializationService(SerializerInfo.Create(new BlockAccessListsMessageSerializer())));
+
+        UndecodableResponse.AssertRejectedAsUnrequested(handler.HandleMessage, Snap2MessageCode.BlockAccessLists);
+    }
+
     // The interface call is the one BalFetcher makes. It must reach the handler and not ISnapSyncPeer's
     // default implementation, which is mapped at Snap1ProtocolHandler and answers with an empty list.
     [Test]

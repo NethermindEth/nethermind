@@ -254,6 +254,13 @@ public class Eth71ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_reject_unrequested_block_access_lists_before_decoding()
+    {
+        HandleIncomingStatusMessage();
+        UndecodableResponse.AssertRejectedAsUnrequested(_handler.HandleMessage, Eth71MessageCode.BlockAccessLists);
+    }
+
+    [Test]
     public async Task Should_return_empty_list_when_requesting_zero_hashes()
     {
         HandleIncomingStatusMessage();

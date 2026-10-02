@@ -354,6 +354,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Assert.That(act, Throws.TypeOf<SubprotocolException>());
         }
 
+        [Test]
+        public void Should_reject_unrequested_response_before_decoding(
+            [Values(Eth66MessageCode.BlockHeaders, Eth66MessageCode.BlockBodies, Eth66MessageCode.Receipts, Eth66MessageCode.NodeData)] int messageCode)
+        {
+            HandleIncomingStatusMessage();
+            UndecodableResponse.AssertRejectedAsUnrequested(_handler.HandleMessage, messageCode);
+        }
+
 
         [TestCase(0, 0)]
         [TestCase(1, 1)]

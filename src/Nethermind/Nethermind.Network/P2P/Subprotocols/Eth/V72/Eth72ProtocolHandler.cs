@@ -9,7 +9,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -178,7 +177,7 @@ public class Eth72ProtocolHandler(
             case Eth66MessageCode.PooledTransactions:
                 if (CanReceiveTransactions)
                 {
-                    if (!TryPeekRequestId(message.Content, out long requestId))
+                    if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
                     {
                         throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage66)}.");
                     }
@@ -215,7 +214,7 @@ public class Eth72ProtocolHandler(
             case Eth72MessageCode.Cells:
                 if (CanReceiveTransactions)
                 {
-                    if (!TryPeekRequestId(message.Content, out long requestId))
+                    if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
                     {
                         throw new SubprotocolException($"Could not read request ID from {nameof(CellsMessage72)}.");
                     }
@@ -1259,22 +1258,6 @@ public class Eth72ProtocolHandler(
             return existing.ExpiresAt <= now || sentRequest.CorrelationExpiresAt <= now
                 ? CellRequestClaimResult.Expired
                 : CellRequestClaimResult.Claimed;
-        }
-    }
-
-    private static bool TryPeekRequestId(IByteBuffer content, out long requestId)
-    {
-        requestId = 0;
-        RlpReader ctx = new(content.AsSpan());
-        try
-        {
-            ctx.ReadSequenceLength();
-            requestId = ctx.DecodeLong();
-            return true;
-        }
-        catch (RlpException)
-        {
-            return false;
         }
     }
 

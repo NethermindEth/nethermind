@@ -237,6 +237,13 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_reject_unrequested_receipts_before_decoding()
+    {
+        HandleIncomingStatusMessage();
+        UndecodableResponse.AssertRejectedAsUnrequested(_handler.HandleMessage, Eth69MessageCode.Receipts);
+    }
+
+    [Test]
     public void Should_send_BlockRangeUpdate()
     {
         (BlockHeader earliest, BlockHeader latest) = (Build.A.BlockHeader.WithNumber(0).TestObject, Build.A.BlockHeader.WithNumber(42).TestObject);
