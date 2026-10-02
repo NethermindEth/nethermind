@@ -90,6 +90,7 @@ public partial class BeaconSyncOrchestratorTests
         int requestsWhileWaiting = ByRootRequests(peer);
         ForkedSignedBeaconBlock fetched = deeperAncestorFetched ? grandparent : parent;
         fetches[fetched.ComputeMessageRoot()].SetResult([fetched]);
+        CompleteOutstandingFetches(fetches);
         await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
 
         using (Assert.EnterMultipleScope())
@@ -346,6 +347,18 @@ public partial class BeaconSyncOrchestratorTests
 
             await harness.Orchestrator.WaitForWorkAsync(token);
             await harness.Orchestrator.ProcessQueuedAsync(token);
+        }
+    }
+
+    /// <summary>Ends every by-root request still waiting with no blocks, so a settle cannot wait on one a regression started.</summary>
+    private static void CompleteOutstandingFetches(Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches)
+    {
+        lock (fetches)
+        {
+            foreach (TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>> fetch in fetches.Values)
+            {
+                fetch.TrySetResult([]);
+            }
         }
     }
 
