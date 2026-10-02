@@ -51,6 +51,15 @@ public enum GossipDropReason
 
     /// <summary>A block whose slot is not higher than the slot of its held parent.</summary>
     NotAboveParentSlot,
+
+    /// <summary>A Fulu block whose proposer is not the one the published proposer lookahead names for its slot on its branch.</summary>
+    UnexpectedProposer,
+
+    /// <summary>A Fulu block whose proposer signature does not verify.</summary>
+    InvalidProposerSignature,
+
+    /// <summary>A Fulu block whose finalized checkpoint is not an ancestor.</summary>
+    NotFinalizedDescendant,
 }
 
 /// <summary>
@@ -68,7 +77,12 @@ public enum GossipDropReason
 /// <param name="store">Where a block's parent and an execution payload envelope's block and bid are read from; <c>null</c> holds no block, so every envelope passing the stateless rules is consumed unchecked.</param>
 /// <param name="status">Where the finalized checkpoint is read from; <c>null</c> applies no finalized-slot rule.</param>
 /// <param name="failedBlocks">Roots known to have failed block validation; <c>null</c> applies no failed-root rule.</param>
-public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILogManager logManager, BeaconChainStore? store = null, IBeaconChainStatusSource? status = null, FailedBlockRoots? failedBlocks = null)
+/// <param name="headers">
+/// Checks a Fulu block's header against the published fork-choice snapshot, lookahead and key cache, so the block is accepted, and forwarded,
+/// before its data and execution payload are; <c>null</c> leaves the verdict to the import pipeline.
+/// </param>
+public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILogManager logManager, BeaconChainStore? store = null, IBeaconChainStatusSource? status = null,
+    FailedBlockRoots? failedBlocks = null, ColumnGossipRouter? headers = null)
 {
     /// <summary>The spec <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>.</summary>
     public const long MaximumGossipClockDisparityMs = 500;
@@ -129,6 +143,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     // Written by the import worker once a block's proposer signature verifies; read on the network thread.
     private readonly LruKeyCache<(ulong Slot, ulong Proposer)> _seenProposals = new(SeenProposalCacheSize, "beacon gossip proposals");
 
+    // The (slot, proposer) of each Fulu block accepted on its header, ahead of the import that marks _seenProposals.
+    private readonly LruKeyCache<(ulong Slot, ulong Proposer)> _acceptedProposals = new(SeenProposalCacheSize, "beacon gossip accepted proposals");
+
     // Written by the import worker once an envelope verifies; read on the network thread.
     private readonly LruKeyCache<(Hash256 Root, ulong BuilderIndex)> _seenEnvelopes = new(SeenEnvelopeCacheSize, "beacon gossip envelopes");
 
@@ -187,7 +204,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     /// <summary>Records that an envelope for <paramref name="blockRoot"/> from <paramref name="builderIndex"/> passed every gossip check, its signature included.</summary>
     /// <remarks>The spec IGNOREs later envelopes for the pair only once a valid one is seen, so an unverified envelope must never mark it.</remarks>
-    internal void MarkEnvelopeSeen(Hash256 blockRoot, ulong builderIndex) => _seenEnvelopes.Set((blockRoot, builderIndex));
+    /// <returns>Whether the pair was not marked yet, so this envelope is the first valid one for it.</returns>
+    internal bool MarkEnvelopeSeen(Hash256 blockRoot, ulong builderIndex) => _seenEnvelopes.Set((blockRoot, builderIndex));
 
     /// <summary>Whether p2p-interface.md Seen covers this aggregate by its epoch/aggregator or its data, committee and bits.</summary>
     internal bool IsAggregateSeen(AttestationData data, BitArray committeeBits, BitArray aggregationBits, ulong aggregatorIndex)
@@ -563,11 +581,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         }
 
         T value;
-        Verdict? verdict;
         try
         {
             value = decode(payload!);
-            verdict = validate(value);
         }
         catch (Exception e)
         {
@@ -575,7 +591,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return Drop(name, GossipDropReason.InvalidSsz, MessageValidity.Rejected);
         }
 
-        if (verdict is { DeferToSlot: null } drop)
+        // A fault while validating is local, never the sender's: it reaches the caller, which throttles the message without a penalty.
+        Verdict? verdict = validate(value);
+        if (verdict is { DeferToSlot: null, Settled: false } drop)
         {
             return Drop(name, drop.Reason, drop.Validity);
         }
@@ -589,20 +607,34 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         }
 
         // A consumer that refuses the message for local load leaves no id in the pubsub router, so a later copy is checked again.
-        pendingVerdict.ReleaseOnThrottle(() => seenMessages.Delete(seenKey));
-
+        Action releaseSeen = () => seenMessages.Delete(seenKey);
         if (verdict?.DeferToSlot is { } slot)
         {
-            if (!Defer(slot, () => raise(value, pendingVerdict)))
+            // phase0 p2p: [IGNORE] a future slot, which MAY be queued; the message is ignored now, so no verdict waits for its slot.
+            GossipVerdict held = GossipVerdict.Local();
+            held.ReleaseOnThrottle(releaseSeen);
+            return Defer(slot, () => Raise(raise, value, held)) ? MessageValidity.Ignored : Drop(name, GossipDropReason.FutureSlot, MessageValidity.Ignored);
+        }
+
+        pendingVerdict.ReleaseOnThrottle(releaseSeen);
+        Interlocked.Increment(ref Metrics.GossipAcceptedCount);
+        if (verdict is { Settled: true } settled)
+        {
+            // Every gossip rule ran here, so the consumer gets a verdict no router waits on. A message it refuses for local load is throttled,
+            // and its claims released, so a later copy is checked and imported; otherwise the router forwards it now.
+            bool refused = false;
+            GossipVerdict consumed = GossipVerdict.Local();
+            consumed.ReleaseOnThrottle(() => refused = true);
+            Raise(raise, value, consumed);
+            if (refused)
             {
-                return Drop(name, GossipDropReason.FutureSlot, MessageValidity.Ignored);
+                settled.Release?.Invoke();
             }
 
-            pendingVerdict.HandOff();
+            pendingVerdict.Complete(refused ? MessageValidity.Throttled : settled.Validity);
             return MessageValidity.Ignored;
         }
 
-        Interlocked.Increment(ref Metrics.GossipAcceptedCount);
         Raise(raise, value, pendingVerdict);
         return MessageValidity.Ignored;
     }
@@ -618,7 +650,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private Verdict? ValidateBlock(ForkedSignedBeaconBlock block, bool gloasTopic)
     {
         ulong slot = block.Slot;
-        if (IsProposalSeen(slot, block.ProposerIndex))
+        if (IsProposalSeen(slot, block.ProposerIndex) || _acceptedProposals.Get((slot, block.ProposerIndex)))
         {
             return Verdict.Ignore(GossipDropReason.Duplicate);
         }
@@ -685,12 +717,51 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             blobCount = (ulong)(body.BlobKzgCommitments?.Length ?? 0);
         }
 
-        return blobCount > (spec.GetBlobParameters(spec.GetEpoch(slot))?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra)
-            ? Invalid(GossipDropReason.LimitExceeded)
+        if (blobCount > (spec.GetBlobParameters(spec.GetEpoch(slot))?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra))
+        {
+            return Invalid(GossipDropReason.LimitExceeded);
+        }
+
+        return timing is null && block is ForkedSignedBeaconBlock.OfFulu { Block: { Message: { } message } signed } && headers is not null
+            ? CheckHeader(message, signed.Signature)
             : timing;
 
         // An early next-slot block has not yet passed the future-slot IGNORE ordered before every REJECT.
         Verdict Invalid(GossipDropReason reason) => timing is null ? Verdict.Reject(reason) : Verdict.Ignore(reason);
+    }
+
+    // phase0 p2p-interface.md beacon_block: the parent, slot, finalized-ancestor, proposer-signature and expected-proposer rules. A block that
+    // passes them all is accepted before its data and execution payload are checked, which beacon_block does not require; one that cannot be
+    // checked yet is ignored, so no verdict waits on it.
+    private Verdict CheckHeader(BeaconBlock message, BlsSignature signature)
+    {
+        BeaconBlockHeader header = new()
+        {
+            Slot = message.Slot,
+            ProposerIndex = message.ProposerIndex,
+            ParentRoot = message.ParentRoot,
+            StateRoot = message.StateRoot,
+            BodyRoot = SszRoots.HashTreeRoot(message.Body!),
+        };
+        switch (headers!.CheckBlockHeader(header, SszRoots.HashTreeRoot(header), signature))
+        {
+            case ColumnGossipRouter.BlockHeaderCheck.Verified:
+                // [IGNORE] the first block with a valid signature for its (slot, proposer_index); Set is false when a concurrent copy won.
+                (ulong, ulong) proposal = (message.Slot, message.ProposerIndex);
+                return _acceptedProposals.Set(proposal)
+                    ? Verdict.Settle(MessageValidity.Accepted, () => _acceptedProposals.Delete(proposal))
+                    : Verdict.Ignore(GossipDropReason.Duplicate);
+            case ColumnGossipRouter.BlockHeaderCheck.NotAboveParentSlot:
+                return Verdict.Reject(GossipDropReason.NotAboveParentSlot);
+            case ColumnGossipRouter.BlockHeaderCheck.NotFinalizedDescendant:
+                return Verdict.Reject(GossipDropReason.NotFinalizedDescendant);
+            case ColumnGossipRouter.BlockHeaderCheck.UnexpectedProposer:
+                return Verdict.Reject(GossipDropReason.UnexpectedProposer);
+            case ColumnGossipRouter.BlockHeaderCheck.InvalidSignature:
+                return Verdict.Reject(GossipDropReason.InvalidProposerSignature);
+            default:
+                return Verdict.Settle(MessageValidity.Ignored);
+        }
     }
 
     private static ForkedSignedBeaconBlock DecodeBlock(byte[] payload, bool gloasTopic)
@@ -832,8 +903,10 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         {
             // Handle does not pass this topic's fork, so an unheld envelope for a pre-Gloas slot is dropped by its payload slot
             // rather than queued; a held Gloas block reaches the spec's slot-match REJECT instead.
+            // [IGNORE] the block has not been seen, which MAY be queued: the envelope still imports once it is, but its block-dependent rules
+            // did not run here, so it is not accepted later.
             case EnvelopeBlockLookup.NotHeld:
-                return SignedBeaconBlockCodec.IsGloasSlot(payload.SlotNumber, spec) ? null : Verdict.Ignore(GossipDropReason.InvalidField);
+                return SignedBeaconBlockCodec.IsGloasSlot(payload.SlotNumber, spec) ? Verdict.Settle(MessageValidity.Ignored) : Verdict.Ignore(GossipDropReason.InvalidField);
             case EnvelopeBlockLookup.BudgetSpent:
                 return Verdict.Ignore(GossipDropReason.StoreDecodeBudgetSpent);
         }
@@ -1164,8 +1237,12 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         public static readonly EnvelopeBlock NotGloas = new(false, 0, 0, null, null);
     }
 
-    private readonly record struct Verdict(GossipDropReason Reason, MessageValidity Validity, ulong? DeferToSlot = null)
+    /// <param name="Settled">Whether the message is raised with <paramref name="Validity"/> given at once, rather than dropped or left to the consumer.</param>
+    /// <param name="Release">Undoes the claims the checks made, for a settled message its consumer refuses for local load.</param>
+    private readonly record struct Verdict(GossipDropReason Reason, MessageValidity Validity, ulong? DeferToSlot = null, bool Settled = false, Action? Release = null)
     {
+        public static Verdict Settle(MessageValidity validity, Action? release = null) => new(default, validity, Settled: true, Release: release);
+
         public static Verdict Reject(GossipDropReason reason) => new(reason, MessageValidity.Rejected);
 
         public static Verdict Ignore(GossipDropReason reason) => new(reason, MessageValidity.Ignored);

@@ -164,9 +164,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/> or <see cref="BlockImportResult.FutureSlot"/>, keyed by block root, awaiting a retry.</summary>
     private readonly Dictionary<Hash256, PendingRetry> _pendingRetry = [];
 
-    /// <summary>The pending verdicts of gossip blocks and envelopes whose import has not settled, by the signed copy that carried them.</summary>
-    /// <remarks>Each verdict ends within the router's pending validation timeout, so every slot tick drops the ended ones.</remarks>
-    private readonly Dictionary<object, GossipVerdict> _gossipVerdicts = new(ReferenceEqualityComparer.Instance);
+    /// <summary>The pending verdicts of gossip blocks whose import has not settled, by the signed copy that carried them.</summary>
+    /// <remarks>Only a block whose proposer signature verified keeps one; every slot tick drops the ended ones and ignores those no longer held.</remarks>
+    private readonly Dictionary<ForkedSignedBeaconBlock, GossipVerdict> _gossipVerdicts = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>Other signed copies of the blocks in <see cref="_pendingRetry"/>, by block root, oldest first; one takes the queued copy's place once that fails verification.</summary>
     /// <remarks>
@@ -896,14 +896,13 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Gives the pending verdict of the gossip block <paramref name="block"/>, if any, once its import settled.</summary>
     /// <remarks>
     /// phase0 p2p-interface.md beacon_block: the importer verifies the expected proposer and its signature, after every check gossip orders
-    /// before them, ahead of these results, so the block is accepted then. A block waiting for its columns, its parent or its parent's payload
-    /// (gloas/p2p-interface.md beacon_block: IGNORE until the parent payload is verified, MAY queue) keeps its verdict for the retry; any other
-    /// result is ignored rather than charged to its sender.
+    /// before them, ahead of these results, so the block is accepted then. Only a block that waits for its parent's payload after its signature
+    /// verified keeps its verdict for the retry (gloas/p2p-interface.md beacon_block: IGNORE until the parent payload is seen, MAY queue);
+    /// any other result, a missing parent or data included, is ignored at once rather than charged to its sender.
     /// </remarks>
     private void SettleBlockVerdict(ForkedSignedBeaconBlock block, BlockImportResult result)
     {
-        if (_gossipVerdicts.Count == 0 || result is BlockImportResult.DataUnavailable or BlockImportResult.UnknownParent or BlockImportResult.ParentPayloadUnverified
-            || !_gossipVerdicts.Remove(block, out GossipVerdict? verdict))
+        if (_gossipVerdicts.Count == 0 || result is BlockImportResult.ParentPayloadUnverified || !_gossipVerdicts.Remove(block, out GossipVerdict? verdict))
         {
             return;
         }
@@ -913,35 +912,39 @@ public sealed class BeaconSyncOrchestrator(
             : MessageValidity.Ignored);
     }
 
-    /// <summary>Gives the pending verdict of the gossip envelope <paramref name="envelope"/>, if any, once its import settled.</summary>
-    /// <remarks>
-    /// gloas/p2p-interface.md execution_payload: an envelope whose payload is recorded passed every gossip check, its signature included. One
-    /// waiting for its block, data or the engine keeps its verdict for the retry; a local fault is throttled, so a later copy is checked again.
-    /// </remarks>
-    private void SettleEnvelopeVerdict(SignedExecutionPayloadEnvelope envelope, ExecutionPayloadEnvelopeImportResult? result)
+    /// <summary>Ignores the pending verdict of <paramref name="block"/>, if any: the block is held or dropped before its signature is checked.</summary>
+    private void IgnoreBlockVerdict(ForkedSignedBeaconBlock block)
     {
-        if (_gossipVerdicts.Count == 0
-            || result is ExecutionPayloadEnvelopeImportResult.UnknownBlock or ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable
-            || !_gossipVerdicts.Remove(envelope, out GossipVerdict? verdict))
-        {
-            return;
-        }
-
-        verdict.Complete(result switch
-        {
-            ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic => MessageValidity.Accepted,
-            null => MessageValidity.Throttled,
-            _ => MessageValidity.Ignored,
-        });
-    }
-
-    /// <summary>Keeps the pending verdict of a gossip block or envelope until its import settles; a second verdict for the same copy is ignored.</summary>
-    private void TrackGossipVerdict(object message, GossipVerdict? verdict)
-    {
-        if (verdict is not null && !_gossipVerdicts.TryAdd(message, verdict))
+        if (_gossipVerdicts.Remove(block, out GossipVerdict? verdict))
         {
             verdict.Complete(MessageValidity.Ignored);
         }
+    }
+
+    /// <summary>Keeps the pending verdict of a gossip block until its import settles; a second verdict for the same copy is ignored.</summary>
+    private void TrackGossipVerdict(ForkedSignedBeaconBlock block, GossipVerdict? verdict)
+    {
+        if (verdict is not null && !verdict.IsCompleted && !_gossipVerdicts.TryAdd(block, verdict))
+        {
+            verdict.Complete(MessageValidity.Ignored);
+        }
+    }
+
+    /// <summary>Drops the ended verdicts and ignores those of blocks no longer held, so an evicted block's message waits no longer.</summary>
+    private void SweepGossipVerdicts()
+    {
+        foreach ((ForkedSignedBeaconBlock block, GossipVerdict verdict) in _gossipVerdicts.ToArray())
+        {
+            if (verdict.IsCompleted || !IsHeld(block))
+            {
+                _gossipVerdicts.Remove(block);
+                verdict.Complete(MessageValidity.Ignored);
+            }
+        }
+
+        bool IsHeld(ForkedSignedBeaconBlock block) =>
+            (_pendingRetry.TryGetValue(block.ComputeMessageRoot(), out PendingRetry retry) && ReferenceEquals(retry.Block, block))
+            || (_pendingByParent.TryGetValue(block.ParentRoot, out List<ForkedSignedBeaconBlock>? siblings) && siblings.Contains(block));
     }
 
     // phase0/p2p-interface.md attester_slashing: the seen set holds the intersecting indices of slashings whose signatures verified.
@@ -1839,7 +1842,6 @@ public sealed class BeaconSyncOrchestrator(
         {
             // A local fault is not the sender's, and it must not stop the worker every other message goes through.
             if (_logger.IsError) _logger.Error($"Dropping the execution payload envelope for beacon block {message.BeaconBlockRoot}: its import failed", e);
-            SettleEnvelopeVerdict(envelope, null);
             return null;
         }
 
@@ -1868,7 +1870,6 @@ public sealed class BeaconSyncOrchestrator(
                 break;
         }
 
-        SettleEnvelopeVerdict(envelope, result);
         return result;
     }
 
@@ -1987,14 +1988,36 @@ public sealed class BeaconSyncOrchestrator(
         return false;
     }
 
-    private Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeItemAsync(EnvelopeItem item, CancellationToken token)
+    private async Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeItemAsync(EnvelopeItem item, CancellationToken token)
     {
-        if (item is GossipEnvelopeItem { Verdict: { } verdict })
+        if (item is GossipEnvelopeItem { Verdict: { IsCompleted: false, IsLocal: false } verdict })
         {
-            TrackGossipVerdict(item.Envelope, verdict);
+            // gloas/p2p-interface.md execution_payload: [REJECT] the signature is valid for the builder (or self-building proposer) of the block it
+            // names, after the block-seen IGNORE; the payload's execution is not a gossip rule, so the envelope is accepted before the engine call.
+            bool? signed;
+            try
+            {
+                signed = await _importThread.RunAsync(() => _importer!.VerifyEnvelopeSignature(item.Envelope));
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Checking the gossip envelope for beacon block {item.Envelope.Message?.BeaconBlockRoot} failed", e);
+                verdict.Complete(MessageValidity.Throttled);
+                return null;
+            }
+
+            if (signed == false)
+            {
+                verdict.Complete(MessageValidity.Rejected);
+                return null;
+            }
+
+            // [IGNORE] a later envelope for a (block root, builder index) that already has a valid one; claimed before any data or engine wait.
+            ExecutionPayloadEnvelope message = item.Envelope.Message!;
+            verdict.Complete(signed == true && gossipRouter.MarkEnvelopeSeen(message.BeaconBlockRoot!, message.BuilderIndex) ? MessageValidity.Accepted : MessageValidity.Ignored);
         }
 
-        return ImportEnvelopeAsync(item.Envelope, token, item.Source);
+        return await ImportEnvelopeAsync(item.Envelope, token, item.Source);
     }
 
     private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token)
@@ -2100,12 +2123,18 @@ public sealed class BeaconSyncOrchestrator(
         // The parent's import drains this child, so the parent is not fetched again.
         if (IsWaitingForPayload(block.ParentRoot))
         {
-            await HoldForWaitingParentAsync(block, token);
+            if (!await HoldForWaitingParentAsync(block, token))
+            {
+                IgnoreBlockVerdict(block);
+            }
+
             return;
         }
 
         if (!importer.IsKnown(block.ParentRoot))
         {
+            // phase0 p2p-interface.md beacon_block: [IGNORE] the parent has not been seen; the held block still imports once it is.
+            IgnoreBlockVerdict(block);
             SignalChainAhead(block.Slot, $"gossip block at slot {block.Slot} has an unknown parent {block.ParentRoot}");
             // While far behind, range sync will deliver the parent chain anyway - just hold the
             // block; in steady state fetch the missing ancestors by root.
@@ -2719,11 +2748,7 @@ public sealed class BeaconSyncOrchestrator(
     internal async Task ProcessSlotAsync(ulong slot, CancellationToken token)
     {
         gossipRouter.ReleaseDueMessages();
-        foreach (KeyValuePair<object, GossipVerdict> ended in _gossipVerdicts.Where(static pair => pair.Value.IsCompleted).ToArray())
-        {
-            _gossipVerdicts.Remove(ended.Key);
-        }
-
+        SweepGossipVerdicts();
         _importer!.OnSlotTick(slot);
         await RunHeadStepAsync(token);
         if (_lastHead is { } stalled && HasHeadStalled(stalled.HeadSlot, slot) && GossipStarted && stalled.HeadSlot + GossipStartDistanceSlots < slot)

@@ -135,7 +135,7 @@ public class BeaconChainPluginTests
         }
     }
 
-    /// <summary>The pending validation bounds come from the config; the router's byte bound leaves room for the RPC being read, which the node's own count excludes.</summary>
+    /// <summary>The pending validation bounds come from the config; the router's own bounds are the node's plus the vote queue, so it never drops a deferred message unseen.</summary>
     [Test]
     public async Task Gossipsub_pending_validation_bounds_follow_the_config()
     {
@@ -143,7 +143,8 @@ public class BeaconChainPluginTests
         await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
         PubsubSettings settings = p2p.PubsubSettingsForTest;
 
-        Assert.That((settings.MaxPendingValidationMessages, settings.MaxPendingValidationBytes), Is.EqualTo((7, 1000 + 12_234_442)));
+        // The router dispatches every message the node reserved room for: its bounds are twice the node's own plus a full vote queue of the largest votes.
+        Assert.That((settings.MaxPendingValidationMessages, settings.MaxPendingValidationBytes), Is.EqualTo((2 * (7 + 1024), 2 * (1000 + 1024 * 32 * 1024))));
     }
 
     /// <summary>fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column goes to the topic mesh neighbors, not to every peer subscribed to the topic.</summary>

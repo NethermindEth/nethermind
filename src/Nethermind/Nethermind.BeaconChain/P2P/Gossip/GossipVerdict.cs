@@ -25,6 +25,7 @@ public sealed class GossipVerdict
 
     private readonly Func<MessageValidity, bool>? _complete;
     private readonly Action? _onEnd;
+    private readonly bool _local;
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _state;
     private int _handOffs;
@@ -33,10 +34,22 @@ public sealed class GossipVerdict
     /// <param name="complete">Gives the router a verdict for the deferred message and returns whether the router applied it.</param>
     /// <param name="onEnd">Runs once, when the verdict is given or abandoned.</param>
     internal GossipVerdict(Func<MessageValidity, bool>? complete, Action? onEnd)
+        : this(complete, onEnd, local: false)
+    {
+    }
+
+    private GossipVerdict(Func<MessageValidity, bool>? complete, Action? onEnd, bool local)
     {
         _complete = complete;
         _onEnd = onEnd;
+        _local = local;
     }
+
+    /// <summary>A verdict no router waits on that still runs <see cref="ReleaseOnThrottle"/>, for a message whose router verdict was given already.</summary>
+    internal static GossipVerdict Local() => new(static _ => true, null, local: true);
+
+    /// <summary>Whether the router's verdict for the message was given already, so a consumer runs no gossip rule for it.</summary>
+    internal bool IsLocal => _local;
 
     /// <summary>Ends once the verdict is given or abandoned.</summary>
     internal Task Completion => _completion.Task;
@@ -97,6 +110,11 @@ public sealed class GossipVerdict
         try
         {
             bool applied = _complete(validity);
+            if (_local)
+            {
+                return applied;
+            }
+
             if (!applied && validity != MessageValidity.Throttled)
             {
                 // The router expired the message before the import pipeline gave its verdict.

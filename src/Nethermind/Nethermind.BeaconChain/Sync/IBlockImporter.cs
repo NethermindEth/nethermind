@@ -130,6 +130,10 @@ public interface IBlockImporter
     /// <exception cref="System.InvalidOperationException">The engine notifier returned no verdict; a local fault, not a rejection.</exception>
     ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope);
 
+    /// <summary>Checks the signature of a gossip envelope against the post-state of the block it names, without its data or execution payload.</summary>
+    /// <returns><c>null</c> when that block's state is not held; otherwise whether the builder, or the self-building proposer, signed it.</returns>
+    bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope);
+
     /// <summary>Advances fork-choice time to the start of <paramref name="slot"/>; call at least once per slot.</summary>
     void OnSlotTick(ulong slot);
 
