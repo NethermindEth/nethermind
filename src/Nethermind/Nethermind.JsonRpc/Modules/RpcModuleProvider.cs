@@ -673,6 +673,9 @@ namespace Nethermind.JsonRpc.Modules
             {
                 JsonConverter<T> converter = (JsonConverter<T>)typeInfo.Converter;
                 JsonSerializerOptions options = typeInfo.Options;
+                // STJ's own converters re-resolve metadata on Read, which only works on read-only options. GetTypeInfo
+                // resolves on mutable options without locking them, so lock them as the first serializer call would.
+                options.MakeReadOnly();
                 return (ref Utf8JsonReader reader) =>
                 {
                     JsonTokenType startToken = reader.TokenType;

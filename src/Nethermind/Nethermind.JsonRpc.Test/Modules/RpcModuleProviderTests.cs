@@ -289,6 +289,31 @@ public class RpcModuleProviderTests
         }
     }
 
+    /// <remarks>
+    /// At node startup the modules resolve parameter metadata from options no serializer call has used, so they are
+    /// still mutable. STJ's object converters re-resolve metadata on <c>Read</c>, which fails on mutable options.
+    /// </remarks>
+    [Test]
+    public void Parameter_value_reader_reads_an_object_whose_options_no_serializer_has_used()
+    {
+        JsonSerializerOptions unusedOptions = new(EthereumJsonSerializer.JsonRpcRequestOptions);
+        JsonTypeInfo typeInfo = unusedOptions.GetTypeInfo(typeof(ObjectParameter));
+        ParameterInfo info = typeof(DirectInvokerRpcModule).GetMethod(nameof(DirectInvokerRpcModule.direct_with_object_param))!.GetParameters()[0];
+        RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter = new(
+            info, typeof(ObjectParameter), typeInfo, null,
+            RpcModuleProvider.ResolvedMethodInfo.ParameterKind.Typed, null, false,
+            RpcModuleProvider.ResolvedMethodInfo.ParameterDetails.None);
+
+        Assert.That(ReadObject(parameter, """{"value":7}"""u8.ToArray()), Has.Property(nameof(ObjectParameter.Value)).EqualTo(7));
+
+        static object? ReadObject(RpcModuleProvider.ResolvedMethodInfo.ExpectedParameter parameter, byte[] json)
+        {
+            Utf8JsonReader reader = new(json);
+            reader.Read();
+            return parameter.ValueReader!(ref reader);
+        }
+    }
+
     [Test]
     public void Rpc_payload_type_info_caches_generated_metadata_and_resolves_fallbacks()
     {
@@ -547,6 +572,8 @@ public class RpcModuleProviderTests
             [JsonRpcParameter(ConverterType = typeof(SingleIntArrayConverter))] int[] values) =>
             ResultWrapper<int>.Success(values[0]);
 
+        public ResultWrapper<int> direct_with_object_param(ObjectParameter parameter) => ResultWrapper<int>.Success(parameter.Value);
+
         public ResultWrapper<int> direct_with_underreading_converter(
             [JsonRpcParameter(ConverterType = typeof(UnderReadingIntArrayConverter))] int[] values) =>
             ResultWrapper<int>.Success(values.Length);
@@ -590,6 +617,11 @@ public class RpcModuleProviderTests
 
         public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options) =>
             throw new NotSupportedException();
+    }
+
+    public sealed class ObjectParameter
+    {
+        public int Value { get; set; }
     }
 
     public sealed class UnderReadingIntArrayConverter : JsonConverter<int[]>
