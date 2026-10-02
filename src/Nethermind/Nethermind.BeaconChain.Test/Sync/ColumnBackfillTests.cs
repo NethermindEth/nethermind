@@ -254,10 +254,10 @@ public partial class ColumnBackfillTests
     }
 
     /// <summary>
-    /// A peer is penalized only once a linked block shows its reply left out a slot it covered: of two cut replies below a reply that links, neither is shown wrong,
+    /// A peer is penalized only once a linked block shows its reply left out a slot it covered: two honest cut replies below a reply that links are not,
     /// while a whole reply that skipped the block above a cut reply is, once that block arrives, and the cut reply is not.
     /// </summary>
-    [TestCase(false, TestName = "Cut replies below a reply that links are not penalized without a block they left out")]
+    [TestCase(false, TestName = "Honest cut replies below a reply that links are kept and not penalized")]
     [TestCase(true, TestName = "A whole reply that left out a block is penalized and the cut reply below it is not")]
     [CancelAfter(60_000)]
     public async Task Only_a_reply_shown_to_leave_out_a_linked_block_is_penalized(bool skippingReply, CancellationToken token)
@@ -268,8 +268,8 @@ public partial class ColumnBackfillTests
             new TimeoutException("request timed out"), [.. source.RequestBlocksByRangeAsync(start, 2, token).Result]));
         StubPeer second = skippingReply
             ? new("skipping", HeadSlot, (_, _) => [.. source.RequestBlocksByRangeAsync(3, 1, token).Result])
-            : new("forged-cut", HeadSlot, (_, _) => throw new PartialBlocksException(
-                new TimeoutException("request timed out"), [new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(2, Hash256.Zero))]));
+            : new("honest-cut", HeadSlot, (start, _) => throw new PartialBlocksException(
+                new TimeoutException("request timed out"), [.. source.RequestBlocksByRangeAsync(start, 1, token).Result]));
         StubPeer honest = fixture.Peer("honest");
 
         Task run = fixture.StartBackfill(token, canonicalCut, second, honest);
@@ -281,6 +281,7 @@ public partial class ColumnBackfillTests
             Assert.That(canonicalCut.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
             Assert.That(second.Reports, Is.EqualTo(skippingReply ? new[] { PeerFailureReason.ProtocolViolation } : new[] { PeerFailureReason.RequestFailed }));
             Assert.That(honest.Reports, Is.Empty);
+            Assert.That(canonicalCut.RootBlockRequests + second.RootBlockRequests + honest.RootBlockRequests, Is.Zero, "every block comes by range");
             Assert.That(fixture.Roots[..4].All(fixture.Store.HasBlock), Is.True);
         }
     }
