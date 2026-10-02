@@ -282,6 +282,44 @@ public partial class GossipRouterTests
         public override DateTimeOffset GetUtcNow() => Now;
     }
 
+    internal static async Task AssertDeferredPeerPenaltyAsync(string name, byte[] payload, Func<GossipVerdict, Task> validate, MessageValidity expected)
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+        string topic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), name);
+        using PubsubRouter pubsub = new(new PeerStore(), GossipScoring.Configure(p2p.PubsubSettingsForTest, [topic], Spec));
+        pubsub.GetTopic(topic);
+        (PeerId sender, _, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topic);
+        (PeerId neighbor, _, _) = ConnectSubscribedPeer(pubsub, topic);
+        IRoutingStateContainer routing = pubsub;
+        routing.Mesh[topic].UnionWith([sender, neighbor]);
+        TaskCompletionSource<GossipVerdict> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        MessageValidity? given = null;
+        pubsub.VerifyMessage = static (_, _) => MessageValidity.Deferred;
+        pubsub.OnDeferredMessage = (_, message) =>
+        {
+            GossipVerdict verdict = new(validity =>
+            {
+                given = validity;
+                return pubsub.CompleteValidation(message, validity);
+            }, null);
+            pending.SetResult(verdict);
+            return verdict.Completion;
+        };
+        Rpc rpc = new();
+        rpc.Publish.Add(new Message { Topic = topic, Data = ByteString.CopyFrom(payload) });
+        receive(rpc);
+        await validate(await pending.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+        await pubsub.Heartbeat();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(given, Is.EqualTo(expected), "the worker must distinguish invalid input from unavailable local data");
+            Assert.That(routing.Mesh[topic].Contains(sender), Is.EqualTo(expected != MessageValidity.Rejected), "invalid-message scoring charges the delivering peer");
+            Assert.That(routing.Mesh[topic], Does.Contain(neighbor), "a peer that did not deliver the invalid message keeps its score");
+        }
+    }
+
     private static readonly string BlockTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
 
     /// <summary>A pubsub router with the host's settings and deferred validation, a sending peer and a mesh neighbor, and the verdicts of the blocks it raised.</summary>
