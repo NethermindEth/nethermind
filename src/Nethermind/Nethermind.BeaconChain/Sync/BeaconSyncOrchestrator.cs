@@ -1119,11 +1119,11 @@ public sealed class BeaconSyncOrchestrator(
                 BlameInvalidFetchedBlock(result, refusal, servedBy, root);
             }
 
-            // Another signed copy under a range block's root says nothing of the range peer that served the range copy.
-            if (result == BlockImportResult.Invalid && origin == ImportOrigin.Range && (rangeItem is not null || _rangeHeld?.DeferredRoot == root || isRangeHeld))
+            // The copy range sync delivered answers for its supplier whatever other route also brought it; another signed copy does not.
+            if (result == BlockImportResult.Invalid && (rangeItem is not null || isRangeHeld))
             {
                 // fork-choice.md on_block: rejected range blocks end the round and only their supplier is blamed.
-                servedBy?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
+                rangeSource?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
                 _rangeHeld = null;
                 ClearRangeHeldRoots();
                 EndRangeSyncRound();
