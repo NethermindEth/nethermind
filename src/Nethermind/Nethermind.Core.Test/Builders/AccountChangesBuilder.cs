@@ -14,7 +14,7 @@ namespace Nethermind.Core.Test.Builders
         // Per-slot working buffer keyed by slot; we materialize into a sorted ReadOnlySlotChanges[]
         // (sorted by slot key) on every Rebuild so the produced BAL matches the on-wire invariant.
         private readonly SortedDictionary<UInt256, List<StorageChange>> _slotChangesScratch
-            = new(GenericComparer.GetOptimized<UInt256>());
+            = [with(GenericComparer.GetOptimized<UInt256>())];
         private readonly List<UInt256> _storageReads = [];
         private readonly List<BalanceChange> _balanceChanges = [];
         private readonly List<NonceChange> _nonceChanges = [];

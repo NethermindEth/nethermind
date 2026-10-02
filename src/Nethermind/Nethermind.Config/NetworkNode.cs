@@ -61,7 +61,7 @@ public class NetworkNode
             return [];
         }
 
-        List<NetworkNode> nodes = new(nodeRecords.Length);
+        List<NetworkNode> nodes = [with(nodeRecords.Length)];
 
         foreach (string nodeString in nodeRecords)
         {

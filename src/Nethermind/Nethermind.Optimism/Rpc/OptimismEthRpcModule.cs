@@ -98,7 +98,7 @@ public class OptimismEthRpcModule(
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
 
         int count = Math.Min(receipts.Length, transactions.Length);
-        ReceiptsForRpc<OptimismReceiptForRpc> result = new(count);
+        ReceiptsForRpc<OptimismReceiptForRpc> result = [with(count)];
         try
         {
             for (int i = 0; i < count; i++)

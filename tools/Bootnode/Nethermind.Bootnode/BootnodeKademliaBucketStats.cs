@@ -48,7 +48,7 @@ internal sealed class BootnodeKademliaBucketRegistry
             sources = [.. _sources];
         }
 
-        List<BootnodeKademliaBucketSnapshot> snapshot = new(sources.Length * 8);
+        List<BootnodeKademliaBucketSnapshot> snapshot = [with(sources.Length * 8)];
         for (int i = 0; i < sources.Length; i++)
         {
             sources[i].AppendSnapshot(snapshot);

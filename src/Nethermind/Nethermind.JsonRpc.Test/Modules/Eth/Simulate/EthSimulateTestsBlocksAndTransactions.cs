@@ -2193,7 +2193,7 @@ public class EthSimulateTestsBlocksAndTransactions
         // SLOTNUM PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN — returns the slot number as a 32-byte word.
         byte[] probeBytecode = Bytes.FromHexString("0x4b5f5260205ff3");
 
-        List<BlockStateCall<TransactionForRpc>> blockStateCalls = new(blockCount);
+        List<BlockStateCall<TransactionForRpc>> blockStateCalls = [with(blockCount)];
         for (int i = 0; i < blockCount; i++)
         {
             blockStateCalls.Add(new BlockStateCall<TransactionForRpc>

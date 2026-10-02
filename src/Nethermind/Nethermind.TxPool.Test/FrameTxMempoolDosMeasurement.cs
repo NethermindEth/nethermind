@@ -190,7 +190,7 @@ public class FrameTxMempoolDosMeasurement
         _logManager = LimboLogs.Instance;
         _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
-        _simulateMicros = new List<double>(Warmup + Samples + 1);
+        _simulateMicros = [with(Warmup + Samples + 1)];
         _frameExecutionGasLimit = VerifyGas;
         _frameCalldataPrefix = [];
         _frameSignatures = [];
@@ -314,7 +314,7 @@ public class FrameTxMempoolDosMeasurement
             "one simulation per submission is what makes the two spans comparable");
 
         // Samples are paired, so subtraction gives the non-EVM cost for each submission.
-        List<double> nonEvmMicros = new(Samples);
+        List<double> nonEvmMicros = [with(Samples)];
         for (int i = 0; i < Samples; i++) nonEvmMicros.Add(submitMicros[i] - _simulateMicros[i]);
 
         List<double> simulateMicros = [.. _simulateMicros];
@@ -355,7 +355,7 @@ public class FrameTxMempoolDosMeasurement
     private List<double> TimeSamples(
         Transaction[] samples, Func<AcceptTxResult, bool> isExpected, Func<int, AcceptTxResult, string> describeFailure)
     {
-        List<double> submitMicros = new(samples.Length);
+        List<double> submitMicros = [with(samples.Length)];
         for (int i = 0; i < samples.Length; i++)
         {
             long start = Stopwatch.GetTimestamp();
@@ -471,7 +471,7 @@ public class FrameTxMempoolDosMeasurement
 
         for (int i = 0; i < RecoveryCalibrationSamples; i++) _ethereumEcdsa.RecoverAddress(signature, digest);
 
-        List<double> micros = new(RecoveryCalibrationSamples);
+        List<double> micros = [with(RecoveryCalibrationSamples)];
         for (int i = 0; i < RecoveryCalibrationSamples; i++)
         {
             long start = Stopwatch.GetTimestamp();

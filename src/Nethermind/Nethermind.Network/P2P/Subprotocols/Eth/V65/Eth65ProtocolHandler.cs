@@ -55,7 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private sealed class ResponseHashesPolicy : PooledObjectPolicy<HashSet<ValueHash256>>
         {
-            public override HashSet<ValueHash256> Create() => new(MaxNumberOfTxsInOneMsg);
+            public override HashSet<ValueHash256> Create() => [with(MaxNumberOfTxsInOneMsg)];
 
             public override bool Return(HashSet<ValueHash256> hashes)
             {
@@ -137,7 +137,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         internal ValueTask<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            ArrayPoolList<Transaction> txsToSend = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
+            ArrayPoolList<Transaction> txsToSend = [with(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg))];
 
             // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
             // first 256 hashes miss, keep scanning without growing the deduplication set.
@@ -219,14 +219,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 return;
             }
 
-            ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
+            ArrayPoolList<Hash256> hashes = [with(NewPooledTransactionHashesMessage.MaxCount)];
 
             foreach (Transaction tx in txs)
             {
                 if (hashes.Count == NewPooledTransactionHashesMessage.MaxCount)
                 {
                     SendNewPooledTransactionMessage(hashes);
-                    hashes = new(NewPooledTransactionHashesMessage.MaxCount);
+                    hashes = [with(NewPooledTransactionHashesMessage.MaxCount)];
                 }
 
                 if (tx.Hash is not null)
@@ -289,7 +289,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private ArrayPoolList<ValueHash256> AddMarkUnknownHashes(ReadOnlySpan<ValueHash256> hashes, bool registerForRetry)
         {
-            ArrayPoolList<ValueHash256> discoveredTxHashesAndSizes = new(hashes.Length);
+            ArrayPoolList<ValueHash256> discoveredTxHashesAndSizes = [with(hashes.Length)];
 
             for (int i = 0; i < hashes.Length; i++)
             {

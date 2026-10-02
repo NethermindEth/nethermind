@@ -783,8 +783,7 @@ public class HistoryPruner : IHistoryPruner
         int lower = LowerBound(sortedAnswered, fromInclusive);
         int upper = LowerBound(sortedAnswered, toExclusive);
 
-        ArrayPoolList<ulong> candidates = new(upper - lower);
-        candidates.AddRange(sortedAnswered[lower..upper]);
+        ArrayPoolList<ulong> candidates = [with(sortedAnswered[lower..upper])];
         return candidates;
     }
 
@@ -798,7 +797,7 @@ public class HistoryPruner : IHistoryPruner
     /// and one sequential header pass rather than two random reads a height. A false positive only over-retains.</summary>
     private ArrayPoolList<ulong> CandidatesFromLevels(ulong fromInclusive, ulong toExclusive, IOwnedReadOnlyList<ChainLevelInfo?> levels)
     {
-        ArrayPoolList<ulong> candidates = new(64);
+        ArrayPoolList<ulong> candidates = [with(64)];
         Dictionary<ValueHash256, BlockHeader> prefetched = _headerStore.PrefetchByNumberRange(fromInclusive, toExclusive);
 
         for (int i = 0; i < levels.Count; i++)

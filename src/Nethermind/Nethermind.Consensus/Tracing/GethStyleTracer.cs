@@ -331,7 +331,7 @@ public class GethStyleTracer(
         int[]? firstLogIndexes = FirstLogIndexes(block);
         if (firstLogIndexes is null) return false;
 
-        Dictionary<Hash256, int> firstLogIndexByTx = new(block.Transactions.Length);
+        Dictionary<Hash256, int> firstLogIndexByTx = [with(block.Transactions.Length)];
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             firstLogIndexByTx[block.Transactions[i].Hash!] = firstLogIndexes[i];

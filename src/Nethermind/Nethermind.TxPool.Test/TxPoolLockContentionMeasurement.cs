@@ -216,7 +216,7 @@ public class TxPoolLockContentionMeasurement
     {
         // The singleton [0] aliases the account nonce, so it is the ordinary, unkeyed shape.
         UInt256[] nonceKeys = keysPerTx == 1 ? [UInt256.Zero] : BuildNonceKeys(keysPerTx);
-        List<Address> seeded = new(senders);
+        List<Address> seeded = [with(senders)];
 
         for (int i = 0; i < senders; i++)
         {

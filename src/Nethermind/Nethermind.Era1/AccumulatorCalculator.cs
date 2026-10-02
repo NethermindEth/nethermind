@@ -13,7 +13,7 @@ namespace Nethermind.Era1;
 /// </summary>
 public class AccumulatorCalculator : IDisposable
 {
-    private readonly ArrayPoolList<ValueHash256> _roots = new(EraWriter.MaxEra1Size);
+    private readonly ArrayPoolList<ValueHash256> _roots = [with(EraWriter.MaxEra1Size)];
 
     public void Add(Hash256 headerHash, UInt256 td)
     {

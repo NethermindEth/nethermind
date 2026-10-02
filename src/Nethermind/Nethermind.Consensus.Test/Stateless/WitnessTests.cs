@@ -17,7 +17,7 @@ public class WitnessTests
     [Test]
     public void Decoded_headers_preserve_chain_linkage([Values(1, 2, 256)] int count, [Values] bool breakChain)
     {
-        ArrayPoolList<byte[]> encoded = new(count);
+        ArrayPoolList<byte[]> encoded = [with(count)];
         Hash256 parent = Keccak.Zero;
         for (int i = 0; i < count; i++)
         {

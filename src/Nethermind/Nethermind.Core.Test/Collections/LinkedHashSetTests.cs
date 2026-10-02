@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void initializes_with_capacity()
         {
-            LinkedHashSet<int> linkedHashSet = new(2);
+            LinkedHashSet<int> linkedHashSet = [with(2)];
             for (int i = 0; i < _defaultSet.Length; i++)
             {
                 linkedHashSet.Add(_defaultSet[i]);

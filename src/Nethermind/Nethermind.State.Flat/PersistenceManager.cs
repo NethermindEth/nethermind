@@ -322,7 +322,7 @@ public class PersistenceManager(
     {
         // Ownership of allStateIds transfers to the compactor on the EnqueueAsync handoff below; until then
         // this method owns it and must dispose it on any early exit (e.g. conversion cancellation).
-        ArrayPoolList<StateId> allStateIds = new(64);
+        ArrayPoolList<StateId> allStateIds = [with(64)];
         bool handedOff = false;
         try
         {

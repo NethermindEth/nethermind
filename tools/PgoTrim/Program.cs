@@ -152,7 +152,7 @@ while (lineIdx < lines.Length)
                 {
                     // Read all handle lines — must keep ALL including all-NULL
                     // because the JIT reader expects exact record counts
-                    List<string> handleLines = new(count);
+                    List<string> handleLines = [with(count)];
                     bool hasNonNull = false;
                     for (int j = 1; j <= count && lineIdx + j < lines.Length; j++)
                     {

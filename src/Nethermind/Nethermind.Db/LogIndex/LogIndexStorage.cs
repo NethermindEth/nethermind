@@ -570,7 +570,7 @@ namespace Nethermind.Db.LogIndex
                     {
                         stats?.IncrementLogs();
 
-                        List<int> addressBlocks = aggregate.Address.GetOrAdd(log.Address, static _ => new(1));
+                        List<int> addressBlocks = aggregate.Address.GetOrAdd(log.Address, static _ => [with(1)]);
 
                         if (addressBlocks.Count == 0 || addressBlocks[^1] != blockNumber)
                             addressBlocks.Add(blockNumber);
@@ -580,7 +580,7 @@ namespace Nethermind.Db.LogIndex
                         {
                             stats?.IncrementTopics();
 
-                            List<int> topicBlocks = aggregate.Topic[topicIndex].GetOrAdd(log.Topics[topicIndex], static _ => new(1));
+                            List<int> topicBlocks = aggregate.Topic[topicIndex].GetOrAdd(log.Topics[topicIndex], static _ => [with(1)]);
 
                             if (topicBlocks.Count == 0 || topicBlocks[^1] != blockNumber)
                                 topicBlocks.Add(blockNumber);

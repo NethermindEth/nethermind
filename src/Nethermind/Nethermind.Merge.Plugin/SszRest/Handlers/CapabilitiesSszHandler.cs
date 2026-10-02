@@ -58,7 +58,7 @@ public sealed class CapabilitiesSszHandler(ISpecProvider specProvider) : SszEndp
         else
         {
             int limit = Math.Min(timestampForkCount + 1, SszRestPaths.SupportedForksOrdered.Count);
-            List<string> forkSlice = new(limit);
+            List<string> forkSlice = [with(limit)];
             for (int i = 0; i < limit; i++)
             {
                 forkSlice.Add(SszRestPaths.SupportedForksOrdered[i]);

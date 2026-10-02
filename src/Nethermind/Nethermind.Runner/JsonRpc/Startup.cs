@@ -387,7 +387,7 @@ public class Startup : IStartup
     {
         if (cidrs is null || cidrs.Length == 0) return [];
 
-        List<TrustedCidr> parsed = new(cidrs.Length);
+        List<TrustedCidr> parsed = [with(cidrs.Length)];
         foreach (string? cidr in cidrs)
         {
             if (string.IsNullOrWhiteSpace(cidr)) continue;

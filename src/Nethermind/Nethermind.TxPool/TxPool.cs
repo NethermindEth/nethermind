@@ -491,7 +491,7 @@ namespace Nethermind.TxPool
         {
             if (!filterToReadyTx) return bySender;
 
-            Dictionary<AddressAsKey, Transaction[]> ready = new(bySender.Count);
+            Dictionary<AddressAsKey, Transaction[]> ready = [with(bySender.Count)];
             foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
             {
                 if (bucket.Length != 0 && HasReadyTransaction(bucket, sender, baseFee)) ready.Add(sender, bucket);

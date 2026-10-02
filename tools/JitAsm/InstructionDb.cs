@@ -18,7 +18,7 @@ internal sealed class InstructionDb(string archName)
     private const string Magic = "UOPS";
     private const ushort Version = 2;
 
-    private readonly Dictionary<string, List<InstructionInfo>> _instructions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<InstructionInfo>> _instructions = [with(StringComparer.OrdinalIgnoreCase)];
 
     public string ArchName { get; } = archName;
 

@@ -359,7 +359,7 @@ public class StorageProviderTests(bool useFlat)
     {
         PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
         Dictionary<UInt256, int> tooSmall = new(100, UInt256Comparer.Instance);
-        Dictionary<UInt256, int> otherComparer = new(2048);
+        Dictionary<UInt256, int> otherComparer = [with(2048)];
         Dictionary<UInt256, int> fitting = new(2048, UInt256Comparer.Instance);
 
         pool.Return(tooSmall);

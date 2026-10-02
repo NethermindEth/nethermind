@@ -67,7 +67,7 @@ public class ChainLevelHelper(
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is {startingPoint}");
 
         int effectiveMax = maxCount + skipLastBlockCount;
-        List<BlockHeader> headers = new(effectiveMax);
+        List<BlockHeader> headers = [with(effectiveMax)];
         int i = 0;
 
         while (i < effectiveMax)

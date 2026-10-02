@@ -65,7 +65,7 @@ public class TrieNodeTests
         expected.SetChild(changedIndex, replacement);
         if (replacementKind == 3) restored.UnresolveChild(changedIndex);
 
-        List<TrieNode> dirtyChildren = new(dirtyBranchCount);
+        List<TrieNode> dirtyChildren = [with(dirtyBranchCount)];
         for (int i = 1; i <= dirtyBranchCount; i++)
         {
             int index = (changedIndex + i) % TrieNode.BranchesCount;
@@ -1451,7 +1451,7 @@ public class TrieNodeTests
     {
         public readonly Dictionary<(TreePath path, TrieNode), int> VisitExtensionReceived = [];
         public readonly Dictionary<(TreePath path, TrieNode), int> VisitBranchReceived = [];
-        public readonly Dictionary<(TreePath path, TrieNode, byte[]), int> VisitLeafReceived = new(new LeafComparer());
+        public readonly Dictionary<(TreePath path, TrieNode, byte[]), int> VisitLeafReceived = [with(new LeafComparer())];
 
         public bool IsFullDbScan => false;
 

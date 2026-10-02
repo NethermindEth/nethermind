@@ -86,7 +86,7 @@ internal readonly struct PendingCellsBuffer
             ? added.Cells
             : BlobCellsHelper.SelectFlattenedCells(added.Cells, added.CellMask, missingMask, blobCount);
         byte[][] mergedCells = BlobCellsHelper.MergeFlattenedCells(Cells, CellMask, addedCells, missingMask, blobCount);
-        List<PendingCellsSource> mergedSources = new(Sources.Length + added.Sources.Length);
+        List<PendingCellsSource> mergedSources = [with(Sources.Length + added.Sources.Length)];
         for (int i = 0; i < Sources.Length; i++)
         {
             AddSource(mergedSources, Sources[i]);
@@ -120,7 +120,7 @@ internal readonly struct PendingCellsBuffer
                 continue;
             }
 
-            (retainedSources ??= new(Sources.Length - 1)).Add(source);
+            (retainedSources ??= [with(Sources.Length - 1)]).Add(source);
             retainedMask |= source.CellMask;
         }
 

@@ -38,7 +38,7 @@ public static class SszRestPaths
                 ordered.Push(spec);
         }
 
-        Dictionary<string, Forks.NamedReleaseSpec> result = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, Forks.NamedReleaseSpec> result = [with(StringComparer.OrdinalIgnoreCase)];
         foreach (Forks.NamedReleaseSpec spec in ordered)
             result[ForkName(spec)!] = spec;
         return result;

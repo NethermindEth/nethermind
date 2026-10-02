@@ -65,7 +65,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
                 int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
                 ctx.GuardLimit(count, SnapMessageLimits.AccountRangeEntriesRlpLimit);
-                pathsWithAccounts = new ArrayPoolList<PathWithAccount>(count);
+                pathsWithAccounts = [with(count)];
                 for (int i = 0; i < count; i++)
                 {
                     int length = ctx.ReadSequenceLength();

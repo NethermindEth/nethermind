@@ -59,7 +59,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private int _returnDataByteCount;
     private byte[]? _returnDataHexBuffer;
 
-    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = new(InitialStorageMapCapacity);
+    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = [with(InitialStorageMapCapacity)];
     private readonly Stack<PooledDictionary<UInt256, UInt256>> _storageMapPool = new();
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
@@ -208,7 +208,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         {
             contractStorage = _storageMapPool.TryPop(out PooledDictionary<UInt256, UInt256>? pooled)
                 ? pooled
-                : new PooledDictionary<UInt256, UInt256>(InitialStorageMapCapacity);
+                : [with(InitialStorageMapCapacity)];
             _storageByAddress[address] = contractStorage;
         }
         contractStorage[storageIndex] = new UInt256(value, isBigEndian: true);

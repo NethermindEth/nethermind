@@ -81,7 +81,7 @@ public sealed class HistoricalSummariesRpcProvider(
             || historicalSummaries.ValueKind != JsonValueKind.Array)
             return [];
 
-        List<HistoricalSummary> summaries = new(historicalSummaries.GetArrayLength());
+        List<HistoricalSummary> summaries = [with(historicalSummaries.GetArrayLength())];
         foreach (JsonElement summary in historicalSummaries.EnumerateArray())
         {
             if (summary.TryGetProperty("block_summary_root", out JsonElement blockSummaryRootEl)

@@ -31,7 +31,7 @@ internal sealed class SszTypeConverterInfo
             return [];
         }
 
-        Dictionary<string, SszTypeConverterInfo> result = new(StringComparer.Ordinal);
+        Dictionary<string, SszTypeConverterInfo> result = [with(StringComparer.Ordinal)];
         foreach (INamedTypeSymbol converterType in EnumerateAvailableTypes(compilation))
         {
             SszTypeConverterInfo? basicTypeConverter = basicTypeConverterAttribute is null

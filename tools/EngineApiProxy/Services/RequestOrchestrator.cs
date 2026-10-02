@@ -277,7 +277,7 @@ public class RequestOrchestrator(
             // Create getPayload request
             JsonRpcRequest getPayloadRequest = new(
                 _config.GetPayloadMethod,
-                new JsonArray(payloadId),
+                [with(payloadId)],
                 Guid.NewGuid().ToString())
             {
                 OriginalHeaders = CopyAuthHeader(originalHeaders)
@@ -554,7 +554,7 @@ public class RequestOrchestrator(
         request.Id?.DeepClone())
     {
         OriginalHeaders = request.OriginalHeaders is not null
-            ? new Dictionary<string, string>(request.OriginalHeaders)
+            ? [with(request.OriginalHeaders)]
             : null
     };
 

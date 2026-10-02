@@ -92,7 +92,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         for (ulong blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Store snapshot of accounts and root hash at this block
-            accountsAtBlock[blockNumber] = new SortedDictionary<Hash256, Account>(accounts);
+            accountsAtBlock[blockNumber] = [with(accounts)];
             rootHashAtBlock[blockNumber] = remote.StateTree.RootHash;
 
             // Modify tree for next block

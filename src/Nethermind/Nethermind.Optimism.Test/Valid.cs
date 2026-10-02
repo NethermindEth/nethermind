@@ -90,7 +90,7 @@ public class Valid
     public static Valid operator |(Valid v1, Valid v2)
     {
         IEnumerable<Interval> sorted = v1._intervals.Concat(v2._intervals).Order();
-        List<Interval> merged = new(v1._intervals.Count + v2._intervals.Count);
+        List<Interval> merged = [with(v1._intervals.Count + v2._intervals.Count)];
 
         Interval current = Interval.Empty;
         foreach (Interval next in sorted)

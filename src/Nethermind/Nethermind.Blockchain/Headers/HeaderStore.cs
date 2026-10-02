@@ -118,7 +118,7 @@ public class HeaderStore(
 
     private Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive, int capacity)
     {
-        Dictionary<ValueHash256, BlockHeader> prefetched = new(capacity);
+        Dictionary<ValueHash256, BlockHeader> prefetched = [with(capacity)];
         if (toExclusive <= fromInclusive || headerDb is not ISortedKeyValueStore sorted) return prefetched;
 
         Span<byte> startKey = stackalloc byte[NumberPrefixedKeyLength];
@@ -150,7 +150,7 @@ public class HeaderStore(
 
         if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
 
-        ArrayPoolList<BlockHeader> result = new(count) { cursor };
+        ArrayPoolList<BlockHeader> result = [with(count), cursor];
         while (result.Count < count && cursor.ParentHash is not null)
         {
             ulong parentNumber = cursor.Number - 1;

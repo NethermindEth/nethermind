@@ -386,7 +386,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
     private IReadOnlyList<string> GetQcSignerAddresses(QuorumCertificate quorumCert)
     {
         Signature[] signatures = quorumCert.Signatures ?? [];
-        List<string> signerList = new(signatures.Length);
+        List<string> signerList = [with(signatures.Length)];
         Vote signVote = new(quorumCert.ProposedBlockInfo, quorumCert.GapNumber);
         ValueHash256 signHash = VoteHash(signVote);
         for (int i = 0; i < signatures.Length; i++)

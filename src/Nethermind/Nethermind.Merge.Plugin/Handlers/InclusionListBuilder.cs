@@ -172,7 +172,7 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
 
     private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)
     {
-        InclusionListBytes result = new(txs.Count);
+        InclusionListBytes result = [with(txs.Count)];
         try
         {
             int size = 0;

@@ -179,7 +179,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
                 GasUsed = null,
                 TracedAt = DateTime.UtcNow
             },
-            OpcodeCounts = new Dictionary<byte, long>(trace.Opcodes)
+            OpcodeCounts = [with(trace.Opcodes)]
         };
 
     /// <summary>

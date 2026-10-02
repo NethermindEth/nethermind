@@ -762,7 +762,7 @@ public class GethGenesisLoaderTests
         int forkClassesChecked = 0;
 
         // Every *Time and *Block property must label a fork class
-        HashSet<string> forksWithLabel = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> forksWithLabel = [with(StringComparer.OrdinalIgnoreCase)];
         foreach (PropertyInfo prop in configType.GetProperties())
         {
             bool isTime = IsForkLabel(prop, "Time");

@@ -248,7 +248,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
 
         // Drop the leaf nodes from the proof; the leaves are still present in the returned accounts.
-        ArrayPoolList<byte[]> trimmedProofs = new(proofs.Count);
+        ArrayPoolList<byte[]> trimmedProofs = [with(proofs.Count)];
         for (int i = 0; i < proofs.Count; i++)
         {
             byte[] proof = proofs[i].ToArray();

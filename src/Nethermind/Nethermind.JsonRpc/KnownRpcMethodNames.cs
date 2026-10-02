@@ -91,7 +91,7 @@ internal static class KnownRpcMethodNames
                 methodNamesByLength.Add(new MethodName(methodName));
             }
 
-            Dictionary<int, MethodName[]> updatedByLength = new(buildersByLength.Count);
+            Dictionary<int, MethodName[]> updatedByLength = [with(buildersByLength.Count)];
             foreach (KeyValuePair<int, List<MethodName>> pair in buildersByLength)
             {
                 updatedByLength.Add(pair.Key, [.. pair.Value]);

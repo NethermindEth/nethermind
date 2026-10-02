@@ -40,8 +40,8 @@ public class Vector256FieldPackingBenchmarks
             _packed[i] = new PackedKey(new PackedHash(value), i & 63);
         }
 
-        _paddedMap = new Dictionary<PaddedKey, int>(Count);
-        _packedMap = new Dictionary<PackedKey, int>(Count);
+        _paddedMap = [with(Count)];
+        _packedMap = [with(Count)];
         for (int i = 0; i < Count; i++)
         {
             _paddedMap[_padded[i]] = i;
@@ -52,7 +52,7 @@ public class Vector256FieldPackingBenchmarks
     [Benchmark(Baseline = true)]
     public int Padded_DictionaryInsert()
     {
-        Dictionary<PaddedKey, int> map = new(Count);
+        Dictionary<PaddedKey, int> map = [with(Count)];
         foreach (PaddedKey key in _padded) map[key] = 0;
         return map.Count;
     }
@@ -60,7 +60,7 @@ public class Vector256FieldPackingBenchmarks
     [Benchmark]
     public int Packed_DictionaryInsert()
     {
-        Dictionary<PackedKey, int> map = new(Count);
+        Dictionary<PackedKey, int> map = [with(Count)];
         foreach (PackedKey key in _packed) map[key] = 0;
         return map.Count;
     }

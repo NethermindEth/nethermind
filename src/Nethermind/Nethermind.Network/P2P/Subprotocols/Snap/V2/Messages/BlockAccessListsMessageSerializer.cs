@@ -84,7 +84,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
             int checkPosition = ctx.Position + contentLength;
             int entryCount = ctx.PeekNumberOfItemsRemaining(checkPosition, SnapMessageLimits.MaxRequestHashes + 1);
             Rlp.GuardLimit(entryCount, contentLength, RlpLimit);
-            ArrayPoolList<byte[]> blockAccessLists = new(entryCount);
+            ArrayPoolList<byte[]> blockAccessLists = [with(entryCount)];
 
             try
             {

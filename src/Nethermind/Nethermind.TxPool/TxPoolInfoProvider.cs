@@ -19,8 +19,8 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     {
         IDictionary<AddressAsKey, Transaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
 
-        Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> pendingTransactions = new(standardBySender.Count);
-        Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> queuedTransactions = new(standardBySender.Count);
+        Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> pendingTransactions = [with(standardBySender.Count)];
+        Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> queuedTransactions = [with(standardBySender.Count)];
 
         foreach (KeyValuePair<AddressAsKey, Transaction[]> group in standardBySender)
         {

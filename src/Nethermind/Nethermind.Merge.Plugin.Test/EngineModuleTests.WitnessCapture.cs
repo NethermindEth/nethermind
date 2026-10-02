@@ -746,7 +746,7 @@ public partial class EngineModuleTests
         stateReader.RunTreeVisitor(collector, parent);
         AccountProof proof = collector.BuildResult();
 
-        HashSet<ValueHash256> witnessNodes = new(witness.State.Count);
+        HashSet<ValueHash256> witnessNodes = [with(witness.State.Count)];
         foreach (byte[] node in witness.State)
             witnessNodes.Add(ValueKeccak.Compute(node));
 

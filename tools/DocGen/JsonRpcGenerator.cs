@@ -38,7 +38,7 @@ internal static class JsonRpcGenerator
         "Nethermind.JsonRpc"
     ];
     private const string _objectTypeName = "_object_";
-    private static readonly SortedSet<string> _guessedTypeNames = new(StringComparer.Ordinal);
+    private static readonly SortedSet<string> _guessedTypeNames = [with(StringComparer.Ordinal)];
     private static readonly Dictionary<Type, string> _knownTypeNames = new()
     {
         [typeof(Address)] = "_string_ (address)",

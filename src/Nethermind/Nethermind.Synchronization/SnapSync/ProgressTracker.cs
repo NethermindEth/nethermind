@@ -271,7 +271,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             Interlocked.Increment(ref _activeCodeRequests);
 
-            ArrayPoolList<ValueHash256> codesToQuery = new(CODES_BATCH_SIZE);
+            ArrayPoolList<ValueHash256> codesToQuery = [with(CODES_BATCH_SIZE)];
             for (int i = 0; i < CODES_BATCH_SIZE && CodesToRetrieve.TryDequeue(out ValueHash256 codeHash); i++)
             {
                 codesToQuery.Add(codeHash);
@@ -288,7 +288,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             Interlocked.Increment(ref _activeStorageRequests); // for race condition so that snap does not exit prematurely
 
-            ArrayPoolList<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
+            ArrayPoolList<PathWithAccount> storagesToQuery = [with(STORAGE_BATCH_SIZE)];
             for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
             {
                 storagesToQuery.Add(storage);

@@ -64,7 +64,7 @@ public class SeedFlatHistoryGenesis(
             }
         }
 
-        List<KeyValuePair<Address, Account>> accounts = new(allocations.Count);
+        List<KeyValuePair<Address, Account>> accounts = [with(allocations.Count)];
         foreach ((Address address, ChainSpecAllocation allocation) in allocations)
         {
             Account account = allocation.Code is { Length: > 0 } code
