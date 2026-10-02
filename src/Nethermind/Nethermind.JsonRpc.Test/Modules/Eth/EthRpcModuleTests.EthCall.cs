@@ -691,7 +691,7 @@ public partial class EthRpcModuleTests
             string transactionJson = $$"""{"from":"{{TestItem.AddressA}}","to":"{{to}}"}""";
             object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
 
-            // The first request marks the text as seen, the second shares its array, the third reads the shared one.
+            // With interning enabled, these requests mark the text as seen, add its array, then read the shared one.
             List<string> viaJson = [];
             for (int i = 0; i < 3; i++) viaJson.Add(await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride));
 
@@ -711,10 +711,10 @@ public partial class EthRpcModuleTests
             }
         }
 
-        // Shared by the requests above: reading the text again gets one array.
         Dictionary<Address, AccountOverride>? again = JsonSerializer.Deserialize<Dictionary<Address, AccountOverride>>(stateOverrideJson, EthereumJsonSerializer.JsonRpcRequestOptions);
         Dictionary<Address, AccountOverride>? andAgain = JsonSerializer.Deserialize<Dictionary<Address, AccountOverride>>(stateOverrideJson, EthereumJsonSerializer.JsonRpcRequestOptions);
-        Assert.That(andAgain![new Address(contract)].Code, Is.SameAs(again![new Address(contract)].Code));
+        bool internCode = Environment.GetEnvironmentVariable("NETHERMIND_DIAGNOSTIC_DISABLE_OVERRIDE_CODE_INTERNER") != "1";
+        Assert.That(ReferenceEquals(andAgain![new Address(contract)].Code, again![new Address(contract)].Code), Is.EqualTo(internCode));
     }
 
     [Test]

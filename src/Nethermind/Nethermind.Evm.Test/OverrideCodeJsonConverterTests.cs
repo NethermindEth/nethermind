@@ -4,12 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -19,28 +21,41 @@ namespace Nethermind.Evm.Test;
 public class OverrideCodeJsonConverterTests
 {
     [Test]
-    public void The_same_text_gets_one_shared_array()
+    public void Repeated_reads_share_code_info_with_or_without_interning([Values] bool internCode)
     {
         OverrideCodeInterner interner = new();
-        OverrideCodeJsonConverter converter = new(interner);
+        OverrideCodeJsonConverter converter = new(internCode ? interner : null);
         string text = UniqueCodeText(100);
         byte[] expected = Bytes.FromHexString(text);
 
         byte[]?[] reads = Enumerable.Range(0, 4).Select(_ => Read(converter, $"\"{text}\"")).ToArray();
+        OverrideCodeCache cache = new();
+        CodeInfo[] infos = reads.Select(code =>
+        {
+            cache.Get(code!, out _, out CodeInfo info);
+            _ = info.ExecutionCodeSpan;
+            return info;
+        }).ToArray();
+
+        Assert.That(MemoryMarshal.TryGetArray(infos[0].Code, out ArraySegment<byte> execution), Is.True);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reads, Has.All.EqualTo(expected));
-            // The first read only marks the text as seen; the second adds its array, which later reads get.
+            // With interning enabled, the first read marks the text as seen and the second adds its array.
             Assert.That(reads[1], Is.Not.SameAs(reads[0]));
-            Assert.That(reads[2], Is.SameAs(reads[1]));
-            Assert.That(reads[3], Is.SameAs(reads[1]));
-            Assert.That(interner.Count, Is.EqualTo(1));
+            Assert.That(ReferenceEquals(reads[2], reads[1]), Is.EqualTo(internCode));
+            Assert.That(ReferenceEquals(reads[3], reads[1]), Is.EqualTo(internCode));
+            Assert.That(interner.Count, Is.EqualTo(internCode ? 1 : 0));
+            Assert.That(infos, Has.All.SameAs(infos[0]));
+            Assert.That(infos[0].ExecutionCodeSpan.SequenceEqual(expected), Is.True);
+            Assert.That(reads, Has.All.Not.SameAs(execution.Array));
+            Assert.That(execution.Array, Has.Length.EqualTo(expected.Length + CodeInfo.ExecutionPadding));
         }
     }
 
     [Test]
-    public void Account_override_code_is_interned_through_its_attribute()
+    public void Account_override_code_attribute_respects_the_process_variant()
     {
         string text = UniqueCodeText(200);
         string json = $$"""{"balance":"0x1","code":"{{text}}"}""";
@@ -49,12 +64,11 @@ public class OverrideCodeJsonConverterTests
             .Select(_ => JsonSerializer.Deserialize<AccountOverride>(json, EthereumJsonSerializer.JsonRpcRequestOptions)!.Code)
             .ToArray();
 
-        Assert.That(reads[4], Is.SameAs(reads[3]));
-        Assert.That(reads[4], Is.EqualTo(Bytes.FromHexString(text)));
+        AssertProcessVariant(reads, text);
     }
 
     [Test]
-    public void Account_override_code_is_interned_through_the_generated_rpc_metadata()
+    public void Account_override_generated_rpc_metadata_respects_the_process_variant()
     {
         JsonSerializerOptions options = new(EthereumJsonSerializer.JsonRpcRequestOptions)
         {
@@ -67,8 +81,7 @@ public class OverrideCodeJsonConverterTests
         Assert.That(typeInfo.OriginatingResolver, Is.SameAs(EthRpcJsonContext.Default));
         byte[]?[] reads = Enumerable.Range(0, 5).Select(_ => ((AccountOverride)JsonSerializer.Deserialize(json, typeInfo)!).Code).ToArray();
 
-        Assert.That(reads[4], Is.SameAs(reads[3]));
-        Assert.That(reads[4], Is.EqualTo(Bytes.FromHexString(text)));
+        AssertProcessVariant(reads, text);
     }
 
     [Test]
@@ -411,6 +424,16 @@ public class OverrideCodeJsonConverterTests
     private sealed class PlainAccountOverride
     {
         public byte[]? Code { get; set; }
+    }
+
+    private static void AssertProcessVariant(byte[]?[] reads, string text)
+    {
+        bool internCode = Environment.GetEnvironmentVariable("NETHERMIND_DIAGNOSTIC_DISABLE_OVERRIDE_CODE_INTERNER") != "1";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReferenceEquals(reads[^1], reads[^2]), Is.EqualTo(internCode));
+            Assert.That(reads, Has.All.EqualTo(Bytes.FromHexString(text)));
+        }
     }
 
     private static string Outcome(Func<string, byte[]?> read, string json)

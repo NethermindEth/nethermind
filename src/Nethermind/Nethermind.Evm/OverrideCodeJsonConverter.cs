@@ -17,15 +17,19 @@ namespace Nethermind.Evm;
 /// </remarks>
 public sealed class OverrideCodeJsonConverter : ByteArrayConverter
 {
-    private readonly OverrideCodeInterner _interner;
+    private static readonly bool InternerDisabled = Environment.GetEnvironmentVariable("NETHERMIND_DIAGNOSTIC_DISABLE_OVERRIDE_CODE_INTERNER") == "1";
+    private readonly OverrideCodeInterner? _interner;
 
-    public OverrideCodeJsonConverter() : this(OverrideCodeInterner.Shared) { }
+    static OverrideCodeJsonConverter() => Console.Error.WriteLine(
+        $"RPC override diagnostic: variant={(InternerDisabled ? "V1" : "H")}; interner={(InternerDisabled ? "disabled" : "enabled")}; code-info-cache=4-way");
 
-    internal OverrideCodeJsonConverter(OverrideCodeInterner interner) => _interner = interner;
+    public OverrideCodeJsonConverter() : this(InternerDisabled ? null : OverrideCodeInterner.Shared) { }
+
+    internal OverrideCodeJsonConverter(OverrideCodeInterner? interner) => _interner = interner;
 
     public override byte[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType != JsonTokenType.String || reader.HasValueSequence || reader.ValueIsEscaped)
+        if (_interner is null || reader.TokenType != JsonTokenType.String || reader.HasValueSequence || reader.ValueIsEscaped)
             return base.Read(ref reader, typeToConvert, options);
 
         ReadOnlySpan<byte> text = reader.ValueSpan;
