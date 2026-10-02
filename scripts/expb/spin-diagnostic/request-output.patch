@@ -1,0 +1,47 @@
+--- a/src/expb/payloads/executor/executor.py
++++ b/src/expb/payloads/executor/executor.py
+@@ -1316,6 +1316,18 @@
+         # Prepare k6 container environment variables
+         k6_container_environment = self.config.get_k6_environment()
+ 
++        request_flag = os.environ.get("EXPB_DIAGNOSTIC_REQUESTS", "0")
++        if request_flag not in ("0", "1"):
++            raise ValueError("EXPB_DIAGNOSTIC_REQUESTS must be 0 or 1")
++        if request_flag == "1":
++            output = self.config.outputs_dir / "diagnostic-requests.jsonl"
++            if output.exists():
++                raise RuntimeError("diagnostic request output already exists")
++            # Retain other exporters; replace only the existing JSON output.
++            k6_container_command = [arg for arg in k6_container_command if not arg.startswith("--out=json=")]
++            k6_container_command += ["--out=json=/expb/diagnostic-requests.jsonl",
++                                     "--env=EXPB_DIAGNOSTIC_REQUESTS=1"]
++
+         # Execute k6 container
+         run_kwargs = dict(
+             image=self.config.get_k6_container_image(),
+--- a/src/expb/payloads/executor/services/templates/k6-script.js.j2
++++ b/src/expb/payloads/executor/services/templates/k6-script.js.j2
+@@ -19,6 +19,7 @@
+ const perPayloadMetricsLogs = (__ENV.EXPB_PER_PAYLOAD_METRICS_LOGS || '0') === '1';
+ const verbosePostLogs = (__ENV.EXPB_VERBOSE_POST_LOGS || '0') === '1';
+ const maxDiagnosticBodyLength = 512;
++const diagnosticRequests = (__ENV.EXPB_DIAGNOSTIC_REQUESTS || '0') === '1';
+ 
+ // Load k6 options JSON
+ const config = JSON.parse(open(__ENV.EXPB_CONFIG_FILE_PATH));
+@@ -219,6 +220,7 @@
+     const tags = {
+       jrpc_method: pair.method,
+       kind: 'newPayload',
++      ...(diagnosticRequests ? { diagnostic_idx: String(idx), diagnostic_warmup: warmup ? '1' : '0' } : {}),
+       ...base_tags
+     };
+ 
+@@ -264,6 +266,7 @@
+     const tags = {
+       jrpc_method: pair.fcuMethod,
+       kind: 'forkchoiceUpdated',
++      ...(diagnosticRequests ? { diagnostic_idx: String(idx), diagnostic_warmup: warmup ? '1' : '0' } : {}),
+       ...base_tags
+     };
+ 

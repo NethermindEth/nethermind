@@ -291,6 +291,29 @@ jobs:
         run: |
           set -euo pipefail
 
+          # This isolated diagnostic branch never runs the generic single-image/reaper path.
+          if ! [[ "${EVENT_NAME}" == workflow_dispatch &&
+                  "${DISPATCH_DOCKER_IMAGES}" == nethermindeth/nethermind@sha256:4d2c2d915cb960efc0f0e07bcdf25d268c515e0423aa182ec67ac07ac196fa6e &&
+                  "${DISPATCH_ENABLE_RETROSPECTIVE:-false}" == false &&
+                  "${DISPATCH_REBUILD_DOCKER}" == false && "${DISPATCH_RUN_COUNT}" == 1 &&
+                  "${DISPATCH_EXPB_REPO}" == NethermindEth/execution-payloads-benchmarks &&
+                  "${DISPATCH_EXPB_BRANCH}" == 797db21d602901e35dad6c2c5aa7b570f614d7ff &&
+                  "${DISPATCH_CLIENT}" == nethermind && "${DISPATCH_ARCH}" == amd64 &&
+                  "${DISPATCH_STATE_LAYOUT}" == flat && "${DISPATCH_PAYLOAD_SET}" == realblocks &&
+                  "${DISPATCH_AMOUNT}" == 1000 && "${DISPATCH_DELAY_SECONDS}" == 0 &&
+                  "${DISPATCH_MEASUREMENT_MODE}" == standard && "${DISPATCH_MEASUREMENT_SOURCE}" == auto &&
+                  "${DISPATCH_DOTTRACE}" == false && "${DISPATCH_PERF}" == false &&
+                  -z "${DISPATCH_TRACE_BLOCKS}" && -z "${DISPATCH_ADDITIONAL_EXTRA_FLAGS}" &&
+                  "${DISPATCH_FLAT_WRITE_BUFFER_FLOOR}" == 67108864 &&
+                  "${DISPATCH_EXPB_ENV}" == 'EXPB_SCHED_CAPTURE=1,EXPB_DIAGNOSTIC_RUNTIME_TRACE=1,EXPB_DIAGNOSTIC_REQUESTS=1,EXPB_DIAGNOSTIC_CLIENT_IDENTITY=1' ]]; then
+            echo '::error::This diagnostic branch accepts only the pinned default/0 realblocks replay.'
+            exit 1
+          fi
+          case "${DISPATCH_CLIENT_ENV}" in
+            ''|DOTNET_ThreadPool_UnfairSemaphoreSpinLimit=0) ;;
+            *) echo '::error::Unexpected diagnostic client environment.'; exit 1 ;;
+          esac
+
           should_run="true"
           mode="single"
           client="nethermind"
@@ -2757,8 +2780,9 @@ jobs:
     needs: [resolve, resolve-images]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'multi'
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
-    timeout-minutes: 720
+    timeout-minutes: 60
     env:
+      EXPB_SPIN_DIAGNOSTIC: "1"
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
       FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
       FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
@@ -2822,123 +2846,20 @@ jobs:
           done
           find "${SNAPSHOT_SOURCE}" -mindepth 1 -maxdepth 1 -printf 'Snapshot entry: %f\n' | sort
 
-      - name: Reap leftover benchmark containers and networks
+      - name: Require an idle benchmark environment
         shell: bash
         run: |
-          set -uo pipefail
-          # A hard-cancelled run leaves its container running: it holds the snapshot overlay the next
-          # step unmounts - so the plain umount there would fall back to a lazy detach that leaves the
-          # filesystem alive - and it holds the deterministic name, network and ports the replacement
-          # run needs. arm-runner-maintenance.yml reaps containers ahead of the same sweep for this
-          # reason; expb names and labels every container and network it creates `expb`. The rest of
-          # the filter list matches that file, because the sweep is anchored on the whole benchmark
-          # data dir and rpc-bench parks its scratch overlays under it too.
+          set -euo pipefail
           for filter in name=expb label=expb name=rpcbench- name=nethermind-rpcbench name=ethcallchaos-bench name=jsonbench-; do
-            docker ps -aq --filter "${filter}" | xargs -r docker rm -f || true
-            # Orphaned expb networks fail scenario re-runs with a 409 on the name collision.
-            docker network ls -q --filter "${filter}" | xargs -r docker network rm >/dev/null 2>&1 || true
+            remaining="$(docker ps -aq --filter "${filter}")"
+            [[ -z "${remaining}" ]] || { echo 'Existing benchmark containers: preserve ownership and stop this diagnostic'; exit 1; }
           done
-          exit 0
-
-      - name: Reap stale expb overlay mounts
-        shell: bash
-        run: |
-          set -uo pipefail
-          # A cancelled run never unmounts its snapshot overlay, so the next `mount -t overlay` over the
-          # same path fails with exit status 32 and the benchmark dies ~90s in; container, network and
-          # volume pruning all leave the mount in place. Anchored on the benchmark data dir rather than on
-          # expb's `paths.work` leaf, so renaming that cannot silently turn this into a no-op, and
-          # rpc-bench's scratch overlays on the same box get swept too.
-          #
-          # This body is duplicated verbatim in arm-runner-maintenance.yml and in both benchmark jobs of
-          # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
-          # actions/checkout, which none of the three jobs has and which arm-runner-maintenance.yml must
-          # not depend on - it is the workflow you dispatch when the disk is full.
-          # scripts/ci/test_reap_stale_overlays.py asserts the three copies are byte-identical and drives
-          # this body against synthetic mount tables.
-          # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
-          # script path, so only that test can point this at a table it wrote.
-          MOUNTS="${1:-/proc/self/mounts}"
-          as_root() { if [[ "$(id -u)" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
-          # Any mount left on this target, whatever its type - the check that an unmount actually took.
-          still_mounted() { awk -v t="$1" '$2 == t { found = 1 } END { exit !found }' "${MOUNTS}"; }
-
-          # The sweep root is what every rm -rf below is bounded by, so canonicalize it - '..' or a
-          # trailing slash must not widen it - and refuse '/' or a single top-level component outright.
-          root="${EXPB_DATA_DIR:-}"
-          [[ -n "${root}" ]] || { echo "::warning::EXPB_DATA_DIR is empty - skipping overlay reap."; exit 0; }
-          root="$(realpath -m -- "${root}")" || { echo "::warning::cannot canonicalize EXPB_DATA_DIR - skipping overlay reap."; exit 0; }
-          case "${root}" in
-            /?*/?*) ;;
-            *) echo "::warning::EXPB_DATA_DIR '${root}' is too shallow for a recursive sweep - skipping."; exit 0 ;;
-          esac
-
-          # Deepest first, so nested mounts unwind. Options are kept per mount line rather than per target:
-          # stacked overlays share a target and `umount` pops one layer at a time, so a target's scratch
-          # dirs must not be deleted until every layer on it is gone.
-          declare -A scratch=()
-          targets=()
-          while IFS=$'\t' read -r mp opts; do
-            [[ -n "${scratch[${mp}]+set}" ]] || targets+=("${mp}")
-            scratch["${mp}"]+="${opts}"$'\n'
-          done < <(awk -v d="${root}" -v OFS='\t' '$3 == "overlay" && index($2, d "/") == 1 { print $2, $4 }' "${MOUNTS}" | sort -r)
-
-          if [[ "${#targets[@]}" -eq 0 ]]; then
-            echo "No stale expb overlay mounts under ${root}."
-            # Surface what we did not match, so layout drift shows up in the log instead of a reassuring
-            # "clean"; docker's own overlays live under /var/lib and are not ours. Capped inside awk
-            # rather than piped into `head`, whose early exit would SIGPIPE awk and - under the errexit
-            # GitHub runs this body with - abort the step before the trailing `exit 0`.
-            awk '$3 == "overlay" && index($2, "/var/lib/") != 1 && ++n <= 20 { print "  unmatched overlay: " $2 }' "${MOUNTS}"
-            exit 0
+          mounts="$(findmnt -rn -t overlay -o TARGET || true)"
+          if printf '%s\n' "${mounts}" | grep -Eq '/expb-data/work/|/expb-overlay/'; then
+            echo 'Existing benchmark overlay mount: preserve ownership and stop this diagnostic'
+            exit 1
           fi
 
-          for mp in "${targets[@]}"; do
-            # An octal-escaped target is unusable twice over: `awk -v` decodes the escape back, so
-            # still_mounted cannot find the line and would report a phantom success, and `umount`
-            # cannot address the literal path either. Refuse it like an escaped scratch path.
-            if [[ "${mp}" == *"\\"* ]]; then
-              echo "::warning::refusing escaped overlay mount target: ${mp}"
-              continue
-            fi
-            # Plain unmount first: `umount -l` can report success while a container-held reference still
-            # blocks the next mount. Lazy is the fallback for that case. The loop is bounded so that
-            # stacked layers unwind and a `umount` that returns 0 without detaching cannot spin the step.
-            for _ in 1 2 3 4 5 6 7 8; do
-              still_mounted "${mp}" || break
-              as_root umount "${mp}" 2>/dev/null || as_root umount -l "${mp}" 2>/dev/null || break
-            done
-            if still_mounted "${mp}"; then
-              echo "::warning::${mp} is still mounted - leaving its overlay scratch dirs in place"
-              continue
-            fi
-            echo "unmounted ${mp}"
-            # upper/work hold the cancelled run's writes: the GB the unmount alone leaves behind, and state
-            # the next overlay would silently layer on top of its snapshot. The paths come from the kernel's
-            # own mount options rather than being guessed.
-            while IFS= read -r d; do
-              [[ -n "${d}" ]] || continue
-              # /proc/self/mounts octal-escapes space, tab and backslash in paths; refuse rather than point
-              # rm -rf at a path whose decoding we would have to assume.
-              if [[ "${d}" == *"\\"* ]]; then
-                echo "::warning::refusing escaped overlay scratch path: ${d}"
-                continue
-              fi
-              c="$(realpath -m -- "${d}")" || { echo "::warning::cannot canonicalize scratch path: ${d}"; continue; }
-              # Strict descendant only - a plain '$root/*' glob also matches the data dir itself, which
-              # holds the snapshots this box exists for.
-              if [[ "${c}" != "${root}"/?* ]]; then
-                echo "::warning::refusing overlay scratch path outside ${root}: ${d}"
-                continue
-              fi
-              if as_root rm -rf -- "${c}"; then
-                echo "removed ${c}"
-              else
-                echo "::warning::failed to remove ${c}"
-              fi
-            done < <(printf '%s' "${scratch[${mp}]}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p' | sort -u)
-          done
-          exit 0
       - name: Check benchmark disk space
         shell: bash
         run: |
@@ -2981,8 +2902,7 @@ jobs:
           else
             expb_source="git+https://github.com/${EXPB_REPO}"
           fi
-          uv tool install --force --from "${expb_source}" expb
-          echo "EXPB_SOURCE=${expb_source}" >> "${GITHUB_ENV}"
+          bash "${GITHUB_WORKSPACE}/scripts/expb/spin-diagnostic/install-diagnostic.sh"
           expb_bin="$(uv tool dir --bin)/expb"
           requested_flags=()
           if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
@@ -3048,6 +2968,23 @@ jobs:
           mkdir -p "${EXPB_CAMPAIGN_DIR}"
           touch "${RUNNER_TEMP}/.expb-run-marker"
           python3 "${GITHUB_WORKSPACE}/scripts/expb/sequential_driver.py"
+      - name: Preserve diagnostic observations
+        id: collect-diagnostic
+        if: always() && steps.run-campaign.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "${GITHUB_WORKSPACE}/scripts/expb/spin-diagnostic/collect_diagnostic.py"
+      - name: Upload private diagnostic archive and numeric observations
+        id: upload-diagnostic
+        if: always() && steps.run-campaign.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: spin-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/spin-public-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: error
       - name: Upload campaign artifact
         id: upload-campaign
         if: always()
@@ -3175,7 +3112,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ steps.run-campaign.outcome }}" != "success" ]]; then
+          if [[ "${{ steps.run-campaign.outcome }}" != "success" || "${{ steps.collect-diagnostic.outcome }}" != "success" || "${{ steps.upload-diagnostic.outcome }}" != "success" ]]; then
             echo "::error::The EXPB campaign failed; inspect the campaign artifact."
             exit 1
           fi

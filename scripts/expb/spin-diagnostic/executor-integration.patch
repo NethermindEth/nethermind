@@ -1,0 +1,55 @@
+--- a/src/expb/payloads/executor/executor.py
++++ b/src/expb/payloads/executor/executor.py
+@@ -10,6 +10,7 @@
+ import tarfile
+ import tempfile
+ import time
++from contextlib import nullcontext
+ from collections.abc import Callable
+ from concurrent.futures import Future, ThreadPoolExecutor
+ from pathlib import Path
+@@ -26,6 +27,7 @@
+ from expb.configs.scenarios import Scenarios
+ from expb.logging import Logger
+ from expb.payloads.executor.executor_config import ExecutorConfig
++from expb.payloads.executor.scheduler_collector import SchedulerCollector
+ from expb.payloads.executor.exports_utils import add_pyroscope_config
+ from expb.payloads.executor.perf import fold_perf_script, summarize_folded
+ from expb.payloads.executor.services.alloy import (
+@@ -1980,14 +1982,28 @@
+             enable_k6_logging = (
+                 options.print_logs_to_console or options.per_payload_metrics_logs
+             )
+-            _ = self.run_k6(
+-                execution_client_engine_url=execution_client_engine_url,
+-                payload_server_url=payload_server_url,
+-                container_network=containers_network,
+-                collect_per_payload_metrics=options.collect_per_payload_metrics,
+-                enable_logging=enable_k6_logging,
+-                per_payload_metrics_logs=options.per_payload_metrics_logs,
+-            )
++            scheduler_flag = os.environ.get("EXPB_SCHED_CAPTURE", "0")
++            if scheduler_flag not in ("0", "1"):
++                raise ValueError("EXPB_SCHED_CAPTURE must be 0 or 1")
++            scheduler = nullcontext()
++            if scheduler_flag == "1":
++                host_pid = self._client_host_pid(execution_client_container)
++                if host_pid is None:
++                    raise RuntimeError("scheduler capture requires the client host PID")
++                scheduler = SchedulerCollector(
++                    self.config.outputs_dir / "scheduler-private",
++                    host_pid,
++                    execution_client_container.id,
++                )
++            with scheduler:
++                _ = self.run_k6(
++                    execution_client_engine_url=execution_client_engine_url,
++                    payload_server_url=payload_server_url,
++                    container_network=containers_network,
++                    collect_per_payload_metrics=options.collect_per_payload_metrics,
++                    enable_logging=enable_k6_logging,
++                    per_payload_metrics_logs=options.per_payload_metrics_logs,
++                )
+ 
+             self._log_system_diagnostics("System state after benchmark")
+             self.log.info(

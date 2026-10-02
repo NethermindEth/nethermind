@@ -1,0 +1,268 @@
+--- a/src/expb/payloads/executor/executor.py
++++ b/src/expb/payloads/executor/executor.py
+@@ -28,6 +28,7 @@
+ from expb.logging import Logger
+ from expb.payloads.executor.executor_config import ExecutorConfig
+ from expb.payloads.executor.scheduler_collector import SchedulerCollector
++from expb.payloads.executor.client_identity import ClientIdentity
+ from expb.payloads.executor.exports_utils import add_pyroscope_config
+ from expb.payloads.executor.perf import fold_perf_script, summarize_folded
+ from expb.payloads.executor.services.alloy import (
+@@ -2063,15 +2064,30 @@
+                     host_pid,
+                     execution_client_container.id,
+                 )
++            identity_flag = os.environ.get("EXPB_DIAGNOSTIC_CLIENT_IDENTITY", "0")
++            if identity_flag not in ("0", "1"):
++                raise ValueError("EXPB_DIAGNOSTIC_CLIENT_IDENTITY must be 0 or 1")
++            identity = nullcontext()
++            if identity_flag == "1":
++                identity_pid = self._client_host_pid(execution_client_container)
++                if identity_pid is None:
++                    raise RuntimeError("client identity requires the client host PID")
++                identity = ClientIdentity(
++                    self.config.outputs_dir / "client-identity",
++                    execution_client_container,
++                    identity_pid,
++                    self.config.get_execution_client_env(),
++                )
+             with scheduler:
+-                _ = self.run_k6(
+-                    execution_client_engine_url=execution_client_engine_url,
+-                    payload_server_url=payload_server_url,
+-                    container_network=containers_network,
+-                    collect_per_payload_metrics=options.collect_per_payload_metrics,
+-                    enable_logging=enable_k6_logging,
+-                    per_payload_metrics_logs=options.per_payload_metrics_logs,
+-                )
++                with identity:
++                    _ = self.run_k6(
++                        execution_client_engine_url=execution_client_engine_url,
++                        payload_server_url=payload_server_url,
++                        container_network=containers_network,
++                        collect_per_payload_metrics=options.collect_per_payload_metrics,
++                        enable_logging=enable_k6_logging,
++                        per_payload_metrics_logs=options.per_payload_metrics_logs,
++                    )
+ 
+             self._log_system_diagnostics("System state after benchmark")
+             self.log.info(
+--- /dev/null
++++ b/src/expb/payloads/executor/client_identity.py
+@@ -0,0 +1,216 @@
++# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
++# SPDX-License-Identifier: LGPL-3.0-only
++"""Read-only identity and counter boundaries for the pinned c88 diagnostic image."""
++import hashlib
++import json
++import os
++from pathlib import Path, PurePosixPath
++import re
++import stat
++import sys
++
++from expb.payloads.executor.scheduler_collector import (
++    CaptureError, clock_origin, proc_identity, save_json, target_snapshot,
++)
++
++MIB = 1024 * 1024
++IMAGE = "nethermindeth/nethermind@sha256:4d2c2d915cb960efc0f0e07bcdf25d268c515e0423aa182ec67ac07ac196fa6e"
++REVISION = "c88b947b93d6781d3ed09f73592f7c66ba398743"
++SPIN_KEYS = ("DOTNET_ThreadPool_UnfairSemaphoreSpinLimit", "COMPlus_ThreadPool_UnfairSemaphoreSpinLimit")
++
++
++def bounded_read(path, limit):
++    with path.open("rb") as stream:
++        content = stream.read(limit + 1)
++    if len(content) > limit:
++        raise CaptureError("identity input exceeds byte limit")
++    return content
++
++
++def spin_env(entries):
++    result = {}
++    for entry in entries:
++        key, separator, value = entry.partition("=")
++        if key not in SPIN_KEYS:
++            continue
++        if not separator or key in result or value != "0" or key != SPIN_KEYS[0]:
++            raise CaptureError("unexpected or duplicated spin override")
++        result[key] = value
++    return result
++
++
++def hash_file(path):
++    before = path.stat()
++    if path.is_symlink() or not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= 64 * MIB:
++        raise CaptureError("unexpected identity file kind or size")
++    digest, count = hashlib.sha256(), 0
++    with path.open("rb") as stream:
++        for chunk in iter(lambda: stream.read(MIB), b""):
++            count += len(chunk)
++            if count > 64 * MIB:
++                raise CaptureError("identity file grew beyond byte limit")
++            digest.update(chunk)
++    after = path.stat()
++    if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
++            after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) or count != before.st_size:
++        raise CaptureError("identity file changed while hashing")
++    return {"bytes": count, "sha256": digest.hexdigest()}
++
++
++class ClientIdentity:
++    def __init__(self, directory, container, pid, expected_env, *, proc=Path("/proc"), cgroups=Path("/sys/fs/cgroup")):
++        if sys.platform != "linux":
++            raise CaptureError("client identity requires Linux procfs")
++        self.directory, self.container, self.pid = Path(directory), container, pid
++        self.proc, self.cgroups = proc, cgroups
++        self.expected_env = spin_env(key + "=" + str(value) for key, value in expected_env.items())
++        self.before = None
++        self.directory.mkdir(mode=0o700, parents=False, exist_ok=False)
++        info = self.directory.lstat()
++        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
++            raise CaptureError("client identity directory is not private")
++        try:
++            self.identity = self._identity()
++            save_json(self.directory / "identity.json", self.identity)
++        except BaseException as error:
++            save_json(self.directory / "initialization-failed.json", {"status": "FAILED", "error_type": type(error).__name__})
++            raise
++
++    def _docker(self):
++        self.container.reload()
++        attrs = self.container.attrs
++        image = self.container.image
++        image.reload()
++        image_id = attrs["Image"]
++        if (attrs["Id"] != self.container.id or not re.fullmatch("[0-9a-f]{64}", self.container.id)
++                or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) or image.attrs["Id"] != image_id
++                or attrs["State"]["Status"] != "running" or attrs["RestartCount"] != 0
++                or attrs["Config"]["Image"] != IMAGE or IMAGE not in (image.attrs.get("RepoDigests") or [])):
++            raise CaptureError("container/image identity differs from pinned running client")
++        revision = (image.attrs.get("Config", {}).get("Labels") or {}).get("org.opencontainers.image.revision")
++        if revision != REVISION:
++            raise CaptureError("image revision does not attest the pinned c88 source")
++        environment = spin_env(attrs["Config"].get("Env") or [])
++        if environment != self.expected_env:
++            raise CaptureError("Docker spin environment differs from planned variant")
++        return {"container_id": self.container.id, "image_id": image_id, "repo_digest": IMAGE,
++                "revision": revision, "started_at": attrs["State"]["StartedAt"],
++                "container_init_pid": attrs["State"]["Pid"], "spin_env": environment}
++
++    def _cgroup(self):
++        lines = bounded_read(self.proc / str(self.pid) / "cgroup", 65536).decode().splitlines()
++        paths = [line[3:] for line in lines if line.startswith("0::")]
++        if len(paths) != 1 or not paths[0].startswith("/") or ".." in PurePosixPath(paths[0]).parts:
++            raise CaptureError("expected one cgroup v2 path")
++        if not re.search(r"[/:-]" + self.container.id + r"(?:\.scope|/|$)", paths[0]):
++            raise CaptureError("counter cgroup does not belong to the client")
++        location = (self.cgroups / paths[0].lstrip("/")).resolve(strict=True)
++        if not location.is_relative_to(self.cgroups.resolve(strict=True)):
++            raise CaptureError("counter cgroup escapes the host cgroup root")
++        return paths[0], location
++
++    def _identity(self):
++        docker = self._docker()
++        target = target_snapshot(self.pid, self.container.id, self.proc)["leader"]
++        process = self.proc / str(self.pid)
++        environment = spin_env(bounded_read(process / "environ", MIB).decode().split("\0"))
++        if environment != self.expected_env:
++            raise CaptureError("actual process spin environment differs from planned variant")
++        cgroup, _ = self._cgroup()
++        mapped = set()
++        for line in bounded_read(process / "maps", 8 * MIB).decode().splitlines():
++            fields = line.split(None, 5)
++            if len(fields) == 6 and "libcoreclr.so" in fields[5]:
++                mapped.add(fields[5])
++        if len(mapped) != 1:
++            raise CaptureError("expected exactly one mapped CoreCLR runtime")
++        runtime_path = mapped.pop()
++        runtime = PurePosixPath(runtime_path)
++        if (not runtime.is_absolute() or ".." in runtime.parts or runtime.name != "libcoreclr.so"
++                or "/10.0.12/" not in runtime_path or not re.fullmatch(r"/[A-Za-z0-9/._-]+", runtime_path)):
++            raise CaptureError("unexpected mapped runtime path")
++        # Keep the procfs magic link intact; resolving it would select the host root.
++        root = process / "root"
++        app = root / "nethermind"
++        dlls = sorted(app.glob("*.dll"))
++        if len(dlls) > 256:
++            raise CaptureError("DLL inventory exceeds file bound")
++        files = [app / "nethermind.runtimeconfig.json", app / "nethermind", *dlls]
++        if not any(path.name == "nethermind.dll" for path in dlls):
++            raise CaptureError("pinned app DLL is missing")
++        files.append(root.joinpath(*runtime.parts[1:]))
++        hashes, total = {}, 0
++        for path in files:
++            details = hash_file(path)
++            total += details["bytes"]
++            if total > 512 * MIB:
++                raise CaptureError("identity inventory exceeds total byte bound")
++            hashes["/" + path.relative_to(root).as_posix()] = details
++        config = json.loads(bounded_read(app / "nethermind.runtimeconfig.json", MIB))
++        properties = config.get("runtimeOptions", {}).get("configProperties", {})
++        if "System.Threading.ThreadPool.UnfairSemaphoreSpinLimit" in properties:
++            raise CaptureError("pinned master runtimeconfig must not override spin")
++        if proc_identity(process) != target:
++            raise CaptureError("client process changed during identity capture")
++        return {"docker": docker, "process": target, "process_spin_env": environment,
++                "runtimeconfig_spin": None, "runtime_path": runtime_path, "file_hashes": hashes,
++                "cgroup": cgroup, "clock": clock_origin(),
++                "boot_id": bounded_read(self.proc / "sys/kernel/random/boot_id", 128).decode().strip(),
++                "clock_ticks_per_second": os.sysconf("SC_CLK_TCK")}
++
++    def _counters(self):
++        before = clock_origin()
++        process = self.proc / str(self.pid)
++        identity = proc_identity(process)
++        if identity != self.identity["process"]:
++            raise CaptureError("client process changed before counter boundary")
++        fields = bounded_read(process / "stat", 65536).decode().rsplit(") ", 1)[1].split()
++        cgroup, location = self._cgroup()
++        if cgroup != self.identity["cgroup"] or int(fields[19]) != identity["start_ticks"]:
++            raise CaptureError("client counter identity changed")
++        cpu = {}
++        for line in bounded_read(location / "cpu.stat", 65536).decode().splitlines():
++            key, value = line.split()
++            if not re.fullmatch("[a-z_]+", key) or not value.isdecimal() or key in cpu:
++                raise CaptureError("unexpected cpu.stat field")
++            cpu[key] = int(value)
++        if not {"usage_usec", "user_usec", "system_usec"} <= cpu.keys():
++            raise CaptureError("CPU usage counters unavailable")
++        cpu_max = bounded_read(location / "cpu.max", 128).decode().strip()
++        cpuset = bounded_read(location / "cpuset.cpus.effective", 4096).decode().strip()
++        if not re.fullmatch(r"(?:max|[1-9]\d*) [1-9]\d*", cpu_max) or not re.fullmatch(r"\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*", cpuset):
++            raise CaptureError("CPU quota/cpuset unavailable or malformed")
++        if proc_identity(process) != identity:
++            raise CaptureError("client process changed during counter boundary")
++        return {"clock_before": before, "clock_after": clock_origin(), "process": identity,
++                "process_ticks": int(fields[11]) + int(fields[12]), "cgroup": cgroup, "cpu_stat": cpu,
++                "cpu_max": cpu_max, "cpuset_cpus_effective": cpuset}
++
++    def __enter__(self):
++        self.before = self._counters()
++        save_json(self.directory / "before.json", self.before)
++        return self
++
++    def __exit__(self, exc_type, exc, traceback):
++        result = {"status": "FAILED", "replay_completed": exc_type is None}
++        try:
++            after = self._counters()
++            result["after"] = after
++            if any(after[key] != self.before[key] for key in ("cpu_max", "cpuset_cpus_effective")):
++                raise CaptureError("CPU quota/cpuset changed across replay")
++            repeated = self._identity()
++            for key in self.identity.keys() - {"clock"}:
++                if repeated[key] != self.identity[key]:
++                    raise CaptureError("client identity changed across replay")
++            delta = {"process_ticks": after["process_ticks"] - self.before["process_ticks"],
++                     "cgroup_usage_usec": after["cpu_stat"]["usage_usec"] - self.before["cpu_stat"]["usage_usec"]}
++            if min(delta.values()) < 0:
++                raise CaptureError("CPU counters decreased across replay")
++            result["delta"] = delta
++            if exc_type is None:
++                result["status"] = "RECORDED_REQUIRES_REQUEST_WINDOW_REVIEW"
++        except BaseException as error:
++            result["error_type"] = type(error).__name__
++            raise
++        finally:
++            save_json(self.directory / "after.json", result)

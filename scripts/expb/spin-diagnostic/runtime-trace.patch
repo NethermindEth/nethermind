@@ -1,0 +1,167 @@
+--- a/src/expb/payloads/executor/executor.py
++++ b/src/expb/payloads/executor/executor.py
+@@ -115,6 +115,13 @@
+         self._dottrace_active: bool = False
+         self._dotnet_trace_process: subprocess.Popen | None = None
+         self._dotnet_trace_diag_dir: Path | None = None
++        runtime_trace_flag = os.environ.get("EXPB_DIAGNOSTIC_RUNTIME_TRACE", "0")
++        if runtime_trace_flag not in ("0", "1"):
++            raise ValueError("EXPB_DIAGNOSTIC_RUNTIME_TRACE must be 0 or 1")
++        self._diagnostic_runtime_trace = runtime_trace_flag == "1"
++        self._diagnostic_trace_file: Path | None = None
++        self._diagnostic_trace_error: str | None = None
++        self._diagnostic_trace_returncode: int | None = None
+         self._dotnet_root_cache: str | None = None
+         self._perf_process: subprocess.Popen | None = None
+         self._perf_dir: Path | None = None
+@@ -478,6 +485,8 @@
+         perf: bool = False,
+         restart_retries: int = 0,
+     ) -> Container:
++        if self._diagnostic_runtime_trace and dottrace:
++            raise ValueError("diagnostic runtime trace cannot be combined with dotTrace")
+         # Command
+         execution_container_command = self.config.get_execution_client_command()
+         # Environment
+@@ -567,18 +576,27 @@
+             )
+             diag_socket = self._dotnet_trace_diag_dir / "diag.sock"
+             nettrace_file = dotnet_trace_dir / f"{self.config.test_id}.nettrace"
++            if self._diagnostic_runtime_trace:
++                self._diagnostic_trace_file = nettrace_file
++                if nettrace_file.exists():
++                    self._diagnostic_trace_error = "diagnostic trace output already exists"
++                    raise RuntimeError(self._diagnostic_trace_error)
+             # EXPB_DOTNET_TRACE_CLREVENTS / EXPB_DOTNET_TRACE_CLREVENTLEVEL override the
+             # runtime-event capture, e.g. "gc" at "verbose" adds GCAllocationTick for an
+             # allocation-by-type profile of the whole run.
+             clrevents = os.environ.get(
+-                "EXPB_DOTNET_TRACE_CLREVENTS", "gc+contention+threading+exception"
++                "EXPB_DOTNET_TRACE_CLREVENTS",
++                "gc" if self._diagnostic_runtime_trace else "gc+contention+threading+exception",
+             )
+             clreventlevel = os.environ.get(
+                 "EXPB_DOTNET_TRACE_CLREVENTLEVEL", "informational"
+             )
++            if self._diagnostic_runtime_trace and (clrevents != "gc" or clreventlevel != "informational"):
++                self._diagnostic_trace_error = "diagnostic runtime trace requires gc at informational level"
++                raise ValueError(self._diagnostic_trace_error)
+             capture_args = (
+                 ["--clrevents", clrevents, "--clreventlevel", clreventlevel]
+-                if dottrace
++                if dottrace or self._diagnostic_runtime_trace
+                 else ["--profile", "cpu-sampling"]
+             )
+             collect_log = (dotnet_trace_dir / "dotnet-trace-collect.log").open("ab")
+@@ -600,7 +618,15 @@
+             )
+             # A collector that cannot start dies at once, leaving no .nettrace and no
+             # signal until somebody opens the artifact.
+-            time.sleep(0.5)
++            if self._diagnostic_runtime_trace:
++                deadline = time.monotonic() + 5
++                while not diag_socket.is_socket() and self._dotnet_trace_process.poll() is None:
++                    if time.monotonic() >= deadline:
++                        self._diagnostic_trace_error = "diagnostic runtime listener did not become ready"
++                        raise RuntimeError(self._diagnostic_trace_error)
++                    time.sleep(0.1)
++            else:
++                time.sleep(0.5)
+             if self._dotnet_trace_process.poll() is not None:
+                 tail = (
+                     (dotnet_trace_dir / "dotnet-trace-collect.log")
+@@ -614,6 +640,9 @@
+                     collect_log=tail[-2000:],
+                 )
+                 self._dotnet_trace_process = None
++                if self._diagnostic_runtime_trace:
++                    self._diagnostic_trace_error = "diagnostic runtime collector exited before client start"
++                    raise RuntimeError(self._diagnostic_trace_error)
+             execution_container_volumes.append(
+                 f"{self._dotnet_trace_diag_dir}:{self._DOTNET_TRACE_DIAG_PATH}:rw"
+             )
+@@ -637,7 +666,7 @@
+             self.log.info(
+                 "dotnet-trace collection enabled",
+                 trace_output=str(nettrace_file),
+-                capture=("clrevents" if dottrace else "cpu-sampling"),
++                capture=("clrevents" if dottrace or self._diagnostic_runtime_trace else "cpu-sampling"),
+             )
+ 
+         if perf:
+@@ -1615,16 +1644,25 @@
+ 
+     def _stop_dotnet_trace_collector(self) -> None:
+         if self._dotnet_trace_process is None:
++            if self._diagnostic_runtime_trace and self._dotnet_trace_diag_dir is not None:
++                shutil.rmtree(self._dotnet_trace_diag_dir, ignore_errors=True)
++                self._dotnet_trace_diag_dir = None
+             return
+         collector = self._dotnet_trace_process
+         self._dotnet_trace_process = None
++        if self._diagnostic_runtime_trace and collector.poll() is not None:
++            self._diagnostic_trace_error = "diagnostic runtime collector exited before controlled stop"
+         try:
+             # SIGINT finalizes the .nettrace; the session usually ends on its own
+             # once the client runtime disconnects.
+             collector.send_signal(signal.SIGINT)
+             collector.wait(timeout=120)
++            if self._diagnostic_runtime_trace:
++                self._diagnostic_trace_returncode = collector.returncode
+             self.log.info("dotnet-trace collection stopped")
+         except Exception as e:
++            if self._diagnostic_runtime_trace:
++                self._diagnostic_trace_error = f"diagnostic runtime collector did not stop cleanly: {e}"
+             collector.kill()
+             self.log.error("dotnet-trace collector did not stop cleanly", error=e)
+         if self._dotnet_trace_diag_dir is not None:
+@@ -1734,6 +1772,15 @@
+         self.remove_directories()
+         self.log.info("Cleanup completed")
+ 
++    def _validate_diagnostic_runtime_trace(self) -> None:
++        if self._diagnostic_trace_error is not None:
++            raise RuntimeError(self._diagnostic_trace_error)
++        if self._diagnostic_trace_returncode != 0:
++            raise RuntimeError("diagnostic runtime collector did not complete successfully")
++        trace = self._diagnostic_trace_file
++        if trace is None or not trace.is_file() or trace.stat().st_size == 0:
++            raise RuntimeError("diagnostic runtime trace is missing or empty")
++
+     # Scenario Execution
+     def execute_scenario(
+         self,
+@@ -1847,7 +1894,7 @@
+             dottrace_mode = (
+                 options.dottrace_mode if options.dottrace else self.config.dottrace_mode
+             )
+-            dotnet_trace_enabled = options.dotnet_trace or self.config.dotnet_trace
++            dotnet_trace_enabled = options.dotnet_trace or self.config.dotnet_trace or self._diagnostic_runtime_trace
+             stop_signal = (
+                 "SIGINT"
+                 if self.config.execution_client_extra_commands or dottrace_enabled
+@@ -1950,6 +1997,15 @@
+             if options.perf:
+                 self._start_perf(execution_client_container, options.perf_frequency)
+ 
++            if self._diagnostic_runtime_trace and (
++                self._dotnet_trace_process is None
++                or self._dotnet_trace_process.poll() is not None
++                or self._diagnostic_trace_file is None
++                or not self._diagnostic_trace_file.is_file()
++            ):
++                self._diagnostic_trace_error = "diagnostic runtime trace is not recording before replay"
++                raise RuntimeError(self._diagnostic_trace_error)
++
+             # Start extra commands in parallel
+             self.start_extra_commands(execution_client_container)
+ 
+@@ -2016,6 +2072,8 @@
+                     cpu_stabilizer.restore()
+                 if timer_stabilizer is not None:
+                     timer_stabilizer.restore()
++                if self._diagnostic_runtime_trace:
++                    self._validate_diagnostic_runtime_trace()
+             finally:
+                 for sig, handler in prev_handlers.items():
+                     signal.signal(sig, handler)

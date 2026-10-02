@@ -313,6 +313,10 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     config = base
     try:
         config, scenario = render(base, image, run)
+        if get("EXPB_SPIN_DIAGNOSTIC") == "1":
+            sys.path.insert(0, str(Path(__file__).resolve().parent / "spin-diagnostic"))
+            from configure_campaign import prepare
+            config = prepare(config, scenario, directory)
         # The artifact is retained and uploaded; only the private runtime copy may contain export credentials.
         artifact_config = dict(config)
         artifact_config.pop("export", None)
@@ -449,6 +453,8 @@ def main() -> int:
         if len({x["id"] for x in images}) != len(images) or any(x["id"] in {".", ".."} or not re.fullmatch(r"[A-Za-z0-9_.-]+", x["id"]) for x in images): raise ValueError("image IDs must be unique and shell-safe")
         run_count = int(get("RUN_COUNT", "1"))
         if run_count < 1: raise ValueError("RUN_COUNT must be positive")
+        if get("EXPB_SPIN_DIAGNOSTIC") == "1" and (len(images) != 1 or run_count != 1):
+            raise ValueError("diagnostic branch requires exactly one fresh process per dispatch")
         # Dispatch input is the same for every sample, so a malformed value fails the campaign here rather than as a sample.
         render(base, images[0], 1)
         parse_pairs(get("EXPB_ENV_PASSTHROUGH"))
