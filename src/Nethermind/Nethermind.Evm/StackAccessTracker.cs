@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
@@ -121,6 +122,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         /// </remarks>
         public bool WarmUp(Address address)
         {
+            Debug.Assert(_lastWarmAddress is null || AccessedAddresses.Contains(_lastWarmAddress));
             if (_lastWarmAddress is not null && _lastWarmAddress.Equals(address)) return false;
 
             bool wasCold = AccessedAddresses.Add(address);

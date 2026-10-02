@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -163,7 +164,7 @@ namespace Nethermind.Core.Test.Collections
 
         /// <remarks>
         /// A weak hash puts many items on one home slot, so the probe runs cross each other and wrap around the end
-        /// of the table: the cases where freeing the wrong slot, or freeing out of order, would lose an item.
+        /// of the table: the cases where freeing the wrong slot, or growing in a different insertion order, would lose an item.
         /// </remarks>
         [TestCase(1)]
         [TestCase(3)]
@@ -277,6 +278,44 @@ namespace Nethermind.Core.Test.Collections
                 Assert.That(journalSet.Contains(2), Is.True);
             }
         }
+
+        [Test]
+        public void Lookup_in_a_full_table_throws([Values("Add", "Contains", "FindFreeSlot")] string operation)
+        {
+            JournalSet<int> journalSet = new(new ModuloComparer(1));
+            Assert.That(journalSet.Add(1), Is.True);
+            Array table = GetTable(journalSet);
+            object occupiedSlot = table.Cast<object>().Single(slot => (int)slot.GetType().GetField("Entry")!.GetValue(slot)! != 0);
+            for (int i = 0; i < table.Length; i++) table.SetValue(occupiedSlot, i);
+
+            if (operation == "FindFreeSlot")
+            {
+                MethodInfo findFreeSlot = typeof(JournalSet<int>).GetMethod(operation, BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.That(() => findFreeSlot.Invoke(journalSet, [0]),
+                    Throws.InstanceOf<TargetInvocationException>().With.InnerException.InstanceOf<InvalidOperationException>());
+            }
+            else
+            {
+                Assert.That(() => operation == "Add" ? journalSet.Add(2) : journalSet.Contains(2), Throws.InvalidOperationException);
+            }
+        }
+
+        [Test]
+        public void Missing_slot_throws_when_freeing([Values] bool clear)
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            Assert.That(journalSet.Add(1), Is.True);
+            Array.Clear(GetTable(journalSet));
+
+            Assert.That(() =>
+            {
+                if (clear) journalSet.Clear();
+                else journalSet.Restore(-1);
+            }, Throws.InvalidOperationException);
+        }
+
+        private static Array GetTable(JournalSet<int> journalSet)
+            => (Array)typeof(JournalSet<int>).GetField("_table", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(journalSet)!;
 
         private sealed class ModuloComparer(int distinctHashes) : EqualityComparer<int>
         {

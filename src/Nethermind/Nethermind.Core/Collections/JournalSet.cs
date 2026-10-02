@@ -26,10 +26,9 @@ namespace Nethermind.Core.Collections
     /// own in a large bucket array; in an eth_call profile that bucket load was 43% of the access-list probe.
     /// </para>
     /// <para>
-    /// <see cref="Restore"/> frees the newest entries first. With linear probing that is exact and needs no
-    /// tombstones: an entry went into the first free slot on its probe path, so freeing the newest entry leaves the
-    /// table as it was before that entry was added. Growth re-adds the entries in insertion order, which keeps the
-    /// table equal to one built by adding the entries one by one, so the argument holds across growth too.
+    /// <see cref="Restore"/> removes only a suffix of the insertion order, so linear probing needs no tombstones:
+    /// the remaining prefix has the same slots as if that prefix alone had been inserted. Growth must re-add entries
+    /// in insertion order to preserve this property across growth; the order of freeing suffix entries does not matter.
     /// </para>
     /// </remarks>
     public sealed class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int>
@@ -85,7 +84,6 @@ namespace Nethermind.Core.Collections
 
             ArgumentOutOfRangeException.ThrowIfLessThan(snapshot, -1);
 
-            // Newest first: see the remarks on the class.
             for (int i = count - 1; i > snapshot; i--)
             {
                 FreeSlotOf(i);
@@ -195,6 +193,7 @@ namespace Nethermind.Core.Collections
             ReadOnlySpan<T> items = CollectionsMarshal.AsSpan(_items);
             uint mask = (uint)_tableSize - 1;
             uint index = Home(hash);
+            uint start = index;
             while (true)
             {
                 ref Slot slot = ref Unsafe.Add(ref table, index);
@@ -205,6 +204,7 @@ namespace Nethermind.Core.Collections
                 }
 
                 index = (index + 1) & mask;
+                if (index == start) ThrowInvalidTable();
             }
         }
 
@@ -213,9 +213,11 @@ namespace Nethermind.Core.Collections
             ref Slot table = ref MemoryMarshal.GetArrayDataReference(_table);
             uint mask = (uint)_tableSize - 1;
             uint index = Home(hash);
+            uint start = index;
             while (Unsafe.Add(ref table, index).Entry != 0)
             {
                 index = (index + 1) & mask;
+                if (index == start) ThrowInvalidTable();
             }
 
             return ref Unsafe.Add(ref table, index);
@@ -227,14 +229,20 @@ namespace Nethermind.Core.Collections
             ref Slot table = ref MemoryMarshal.GetArrayDataReference(_table);
             uint mask = (uint)_tableSize - 1;
             uint slot = Home(_hashes[index]);
+            uint start = slot;
             int entry = index + 1;
             while (Unsafe.Add(ref table, slot).Entry != entry)
             {
                 slot = (slot + 1) & mask;
+                if (slot == start) ThrowInvalidTable();
             }
 
             Unsafe.Add(ref table, slot) = default;
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidTable()
+            => throw new InvalidOperationException($"{nameof(JournalSet<T>)} probe exhausted the table");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void Grow()
