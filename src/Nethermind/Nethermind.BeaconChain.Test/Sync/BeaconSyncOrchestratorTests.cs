@@ -1443,7 +1443,7 @@ public partial class BeaconSyncOrchestratorTests
     [CancelAfter(30_000)]
     public async Task Only_a_block_whose_data_never_arrived_is_warned_about(CancellationToken token)
     {
-        Nethermind.Core.Test.TestLogger logger = new();
+        RangeSyncPeerSelectionTests.AllLevelsCapture logger = new();
         Harness harness = CreateHarness(logManager: new OneLoggerLogManager(new ILogger(logger)));
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
@@ -1451,7 +1451,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Unavailable.Add(block.ComputeMessageRoot());
         await harness.Orchestrator.ImportBlockAsync(block, token);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, token);
-        int warningsWhileWaiting = logger.LogList.Count(static l => l.StartsWith("Dropping block"));
+        int warningsWhileWaiting = logger.Lines.Count(static l => l.StartsWith("Dropping block"));
 
         ulong expirySlot = WallSlot + 2 * Spec.SlotsPerEpoch + 1;
         harness.Timestamper.Set(SlotStart(expirySlot));
@@ -1460,7 +1460,7 @@ public partial class BeaconSyncOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(warningsWhileWaiting, Is.Zero);
-            Assert.That(logger.LogList.Count(l => l.StartsWith($"Dropping block {block.ComputeMessageRoot()}")), Is.EqualTo(1));
+            Assert.That(logger.Lines.Count(l => l.StartsWith($"Dropping block {block.ComputeMessageRoot()}")), Is.EqualTo(1));
         }
     }
 

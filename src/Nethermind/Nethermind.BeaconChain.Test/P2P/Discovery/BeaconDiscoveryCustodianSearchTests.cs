@@ -38,21 +38,26 @@ public class BeaconDiscoveryCustodianSearchTests
     // BeaconDiscovery.CandidateCapacity, the bound of the queue from the node sources to the custody ranking.
     private const int BeaconDiscoveryQueueCapacity = 256;
 
+    /// <summary>With no custodian request, the sweep loop waits its interval and then sweeps; the production interval is within forty seconds.</summary>
     [Test]
-    [CancelAfter(45_000)]
+    [CancelAfter(30_000)]
     public async Task The_periodic_table_sweep_reoffers_nodes_within_forty_seconds(CancellationToken token)
     {
+        Assert.That(BeaconDiscovery.TableSweepInterval, Is.LessThanOrEqualTo(TimeSpan.FromSeconds(40)));
+        TimeSpan interval = TimeSpan.FromMilliseconds(300);
         await using BeaconDiscovery discovery = CreateDiscovery();
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         TaskCompletionSource swept = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Stopwatch waited = Stopwatch.StartNew();
         Task sweep = discovery.SweepTableAsync(() =>
         {
             swept.TrySetResult();
             return [];
-        }, BeaconDiscovery.CreateNodeChannel().Writer, BeaconDiscovery.TableSweepInterval, TimeSpan.Zero, stop.Token);
+        }, BeaconDiscovery.CreateNodeChannel().Writer, interval, TimeSpan.Zero, stop.Token);
         try
         {
-            await swept.Task.WaitAsync(TimeSpan.FromSeconds(40), token);
+            await swept.Task.WaitAsync(TimeSpan.FromSeconds(20), token);
+            Assert.That(waited.Elapsed, Is.GreaterThanOrEqualTo(interval - TimeSpan.FromMilliseconds(50)), "the sweep waits its interval first");
         }
         finally
         {
