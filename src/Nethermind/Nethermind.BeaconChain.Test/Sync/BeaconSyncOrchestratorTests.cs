@@ -1178,6 +1178,43 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// Two range peers serve copies of one block under different signatures, both invalid: once the first copy fails and ends
+    /// the held chain, the second copy, promoted in its place, still blames the peer that served it.
+    /// </summary>
+    [Test]
+    public async Task Promoted_range_copy_from_a_second_range_peer_blames_that_peer()
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1);
+        BlsSignature firstSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
+        BlsSignature secondSignature = new(Enumerable.Repeat((byte)0x22, 96).ToArray());
+        ForkedSignedBeaconBlock firstCopy = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = firstSignature });
+        ForkedSignedBeaconBlock secondCopy = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = secondSignature });
+        Hash256 root = firstCopy.ComputeMessageRoot();
+        IBeaconSyncPeer firstPeer = Substitute.For<IBeaconSyncPeer>();
+        IBeaconSyncPeer secondPeer = Substitute.For<IBeaconSyncPeer>();
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(root);
+        harness.Importer.ForgedSignatures.UnionWith([firstSignature, secondSignature]);
+
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(firstCopy, firstPeer));
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(secondCopy, secondPeer));
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        int waiting = harness.Orchestrator.PendingRetryBlockCount;
+        harness.Importer.Unavailable.Remove(root);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting, Is.EqualTo(2), "fixture: both copies wait for their data");
+            firstPeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+            secondPeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero);
+        }
+    }
+
     public enum CopyArrival
     {
         ForgeryFirst,

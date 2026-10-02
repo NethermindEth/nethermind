@@ -1120,10 +1120,12 @@ public sealed class BeaconSyncOrchestrator(
             }
 
             // The copy range sync delivered answers for its supplier whatever other route also brought it; another signed copy does not.
-            if (result == BlockImportResult.Invalid && (rangeItem is not null || isRangeHeld))
+            // A range copy waiting for a retry keeps its supplier once the held chain is gone, as when another range copy failed first.
+            bool queuedRangeCopy = isQueued && queued.Origin == ImportOrigin.Range;
+            if (result == BlockImportResult.Invalid && (rangeItem is not null || isRangeHeld || queuedRangeCopy))
             {
                 // fork-choice.md on_block: rejected range blocks end the round and only their supplier is blamed.
-                rangeSource?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
+                (rangeItem is not null || isRangeHeld ? rangeSource : queued.ServedBy)?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
                 _rangeHeld = null;
                 ClearRangeHeldRoots();
                 EndRangeSyncRound();
