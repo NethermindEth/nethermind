@@ -19,7 +19,7 @@ internal static class OffSubgroupKeys
     // ethereum/bls12-381-tests v0.1.2 deserialization_fails_not_in_G2: an on-curve point outside G2.
     private static readonly byte[] NotInG2 = Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
-    // h_eff's cofactor part of #E'(Fp2) = h2 * r for the BLS12-381 twist.
+    // The G2 cofactor h2: #E'(Fp2) = h2 * r for the BLS12-381 twist.
     private static readonly BigInteger G2Cofactor = BigInteger.Parse("05d543a95414e7f1091d50792876a202cd91de4547085abaa68a205b2e5a7ddfa628f1cb4d9e82ef21537e293a6691ae1616ec6e786f0c70cf1c38e31c7238e5", System.Globalization.NumberStyles.HexNumber);
 
     // The G1 subgroup order r, little-endian: r times a point keeps only its component outside the subgroup.
