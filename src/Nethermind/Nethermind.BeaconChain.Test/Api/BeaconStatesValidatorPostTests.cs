@@ -130,6 +130,21 @@ public class BeaconStatesValidatorPostTests
         Assert.That(body, Is.EqualTo(expected));
     }
 
+    /// <summary>
+    /// Both POST bodies are uniqueItems; an id repeated, or given once as an index and once as a pubkey, yields one entry,
+    /// so a body of repeated ids cannot multiply the response. The GET balances id filter shares the rule.
+    /// </summary>
+    [Test]
+    public async Task Repeated_ids_naming_one_validator_give_one_entry([Values("validator_balances", "validator_identities", "get_validator_balances")] string endpoint)
+    {
+        string pubkey = PubkeyOf(1).ToString();
+        using HttpResponseMessage response = endpoint == "get_validator_balances"
+            ? await _host.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validator_balances?id=1&id=1&id={pubkey}", Json)
+            : await Post(endpoint, $"[\"1\",\"1\",\"{pubkey}\"]");
+        JsonElement data = await ReadEnvelope(response, expectedFinalized: false);
+        Assert.That(data.EnumerateArray().Select(e => e.GetProperty("index").GetString()), Is.EqualTo(new[] { "1" }));
+    }
+
     /// <summary>apis/beacon/states/validator_balances.yaml and validator_identities.yaml: an absent or empty body selects every validator.</summary>
     [Test]
     public async Task Optional_body_absent_or_empty_selects_every_validator(
