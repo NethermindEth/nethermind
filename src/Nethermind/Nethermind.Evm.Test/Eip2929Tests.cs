@@ -39,7 +39,8 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Default_tracer_preserves_cold_access_gas([Values(Instruction.SLOAD, Instruction.BALANCE)] Instruction instruction)
+        public void Tracer_access_mode_controls_gas_charging(
+            [Values(Instruction.SLOAD, Instruction.BALANCE)] Instruction instruction, [Values] bool traceAccess)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
             byte[] code = instruction == Instruction.SLOAD
@@ -47,14 +48,17 @@ namespace Nethermind.Evm.Test
                 : Prepare.EvmCode.PushData(TestItem.AddressC).Op(instruction).Op(Instruction.POP).Done;
 
             TestAllTracerWithOutput tracer = new();
+            if (traceAccess) tracer.IsTracingAccess = true;
             Execute(tracer, code);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(tracer.IsTracingAccess, Is.False);
+                Assert.That(tracer.IsTracingAccess, Is.EqualTo(traceAccess));
+                Assert.That(tracer.AccessReportCount, Is.EqualTo(traceAccess ? 1 : 0));
                 Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
                 AssertGas(tracer, GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.Base
-                    + (instruction == Instruction.SLOAD ? GasCostOf.ColdSLoad : GasCostOf.ColdAccountAccess));
+                    + (traceAccess ? GasCostOf.WarmStateRead
+                        : instruction == Instruction.SLOAD ? GasCostOf.ColdSLoad : GasCostOf.ColdAccountAccess));
             }
         }
 
