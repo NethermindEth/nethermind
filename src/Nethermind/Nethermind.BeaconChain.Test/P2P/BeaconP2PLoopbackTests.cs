@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -53,6 +54,49 @@ public class BeaconP2PLoopbackTests
 
         Assert.That(async () => await client.DialPeerAsync(address, cancelled.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the dial is cancelled");
         Assert.That(await client.DialPeerAsync(address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
+    }
+
+    /// <summary>A dial still running when its host is disposed leaves no session open: the library dial outlives its caller's token.</summary>
+    [Test]
+    [CancelAfter(90_000)]
+    public async Task A_host_disposed_during_a_dial_leaves_no_session_open(CancellationToken token)
+    {
+        await using BeaconP2P server = PeerSessionNodes.Create().P2P;
+        BeaconP2P client = PeerSessionNodes.Create().P2P;
+        await server.StartAsync(token);
+        await client.StartAsync(token);
+        LocalPeer serverPeer = server.LocalPeerForTest!;
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        serverPeer.Sessions.CollectionChanged += (_, change) =>
+        {
+            if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
+        };
+        using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<ISession> dial = client.DialPeerAsync(PeerSessionNodes.LoopbackAddress(server), abandoned.Token);
+
+        await abandoned.CancelAsync();
+        await client.DisposeAsync();
+        try
+        {
+            await dial;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+        Assert.That(dial.IsCanceled, Is.True, "fixture: the caller stopped waiting before the dial finished");
+
+        // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
+        // a session left open was still open after 40 s.
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bounded.CancelAfter(TimeSpan.FromSeconds(45));
+        while (serverPeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        Assert.That(serverPeer.Sessions, Is.Empty, "the dial finished after disposal and its session stayed open");
     }
 
     /// <summary>A dial its caller stopped waiting for, which then fails, leaves no unobserved failure behind.</summary>
