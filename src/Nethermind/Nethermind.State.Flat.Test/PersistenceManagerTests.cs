@@ -9,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -1046,7 +1047,7 @@ public class PersistenceManagerTests
 
         Assert.That(persistedToPersist, Is.Null);
         Assert.That(toPersist, Is.Not.Null);
-        Assert.That(toPersist!.To.StateRoot.Bytes.ToArray(), Is.EqualTo(target2.StateRoot.Bytes.ToArray()));
+        Assert.That(toPersist!.To.StateRoot.Bytes, Is.SequenceEqualTo(target2.StateRoot.Bytes));
 
         toPersist.Dispose();
     }
@@ -1717,7 +1718,7 @@ public class PersistenceManagerTests
 
         StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
-        Assert.That(result.StateRoot.Bytes.ToArray(), Is.EqualTo(finalizedState.StateRoot.Bytes.ToArray()));
+        Assert.That(result.StateRoot.Bytes, Is.SequenceEqualTo(finalizedState.StateRoot.Bytes));
     }
 
     [Test]

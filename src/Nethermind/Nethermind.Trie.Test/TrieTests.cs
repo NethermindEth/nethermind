@@ -105,7 +105,7 @@ namespace Nethermind.Trie.Test
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Not.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf2));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf2));
         }
 
         [Test]
@@ -126,7 +126,7 @@ namespace Nethermind.Trie.Test
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Not.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf2));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf2));
         }
 
         [Test]
@@ -217,9 +217,9 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(6));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyC), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -320,7 +320,7 @@ namespace Nethermind.Trie.Test
             {
                 Hash256 key = TestItem.Keccaks[j];
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j);
-                Assert.That(checkTree.Get(key.Bytes).ToArray(), Is.EqualTo(value), $@"{i} {j}");
+                Assert.That(checkTree.Get(key.Bytes), Is.SequenceEqualTo(value), $@"{i} {j}");
             }
         }
 
@@ -354,7 +354,7 @@ namespace Nethermind.Trie.Test
             {
                 Hash256 key = TestItem.Keccaks[j];
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j);
-                Assert.That(checkTree.Get(key.Bytes).ToArray(), Is.EqualTo(value), $@"{i} {j}");
+                Assert.That(checkTree.Get(key.Bytes), Is.SequenceEqualTo(value), $@"{i} {j}");
             }
 
             // read missing
@@ -393,7 +393,7 @@ namespace Nethermind.Trie.Test
             {
                 Hash256 key = TestItem.Keccaks[j];
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
-                Assert.That(checkTree.Get(key.Bytes).ToArray(), Is.EqualTo(value), $@"{i} {j}");
+                Assert.That(checkTree.Get(key.Bytes), Is.SequenceEqualTo(value), $@"{i} {j}");
             }
         }
 
@@ -430,7 +430,7 @@ namespace Nethermind.Trie.Test
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
 
                 _logger.Trace($"Checking {key.Bytes.ToHexString()} = {value.ToHexString()}");
-                Assert.That(checkTree.Get(key.Bytes).ToArray(), Is.EqualTo(value), $@"{i} {j}");
+                Assert.That(checkTree.Get(key.Bytes), Is.SequenceEqualTo(value), $@"{i} {j}");
             }
         }
 
@@ -531,10 +531,10 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(8));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyD).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyC), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyD), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -555,9 +555,9 @@ namespace Nethermind.Trie.Test
             Assert.That(memDb.Keys, Has.Count.EqualTo(6));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyD).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyC), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyD), Is.SequenceEqualTo(_longLeaf1));
         }
 
         private static PatriciaTree CreateCheckTree(ITrieStore trieStore, PatriciaTree patriciaTree)
@@ -579,8 +579,8 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(4));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf2));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf2));
         }
 
         [Test]
@@ -595,8 +595,8 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(4));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -639,8 +639,8 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(4));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -670,9 +670,9 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(7));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(key1).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(key2).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(key3).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key1), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key2), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key3), Is.SequenceEqualTo(_longLeaf1));
         }
 
         [Test]
@@ -722,8 +722,8 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(8));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(key1).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(key2).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key1), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(key2), Is.SequenceEqualTo(_longLeaf1));
             Assert.That(checkTree.Get(key3).ToArray(), Is.Empty);
         }
 
@@ -747,10 +747,10 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(8));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.EqualTo(_longLeaf1));
-            Assert.That(checkTree.Get(_keyD).ToArray(), Is.EqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyA), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyB), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyC), Is.SequenceEqualTo(_longLeaf1));
+            Assert.That(checkTree.Get(_keyD), Is.SequenceEqualTo(_longLeaf1));
         }
 
         public record TrieStoreConfigurations(
@@ -1307,7 +1307,7 @@ namespace Nethermind.Trie.Test
                 foreach ((Hash256, Hash256) it in kv)
                 {
                     (Hash256 key, Hash256 value) = it;
-                    Assert.That(tree.Get(key.Bytes).ToArray(), Is.EqualTo(value.BytesToArray()));
+                    Assert.That(tree.Get(key.Bytes), Is.SequenceEqualTo(value.BytesToArray()));
                 }
             });
         }

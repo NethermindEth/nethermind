@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.State.Flat.History.Proofs;
@@ -68,8 +69,8 @@ public class CommitmentEmitterTests
         {
             Assert.That(ParentRowCodec.LastBlock(row), Is.EqualTo(closing), "the newer block keeps the row");
             Assert.That(filled, Is.EqualTo(presence), "a full-vector window carries a reference for every present child however the two writers interleave");
-            Assert.That(carried[1].ToArray(), Is.EqualTo(newer[1].ToArray()), "a child both writers carried resolves to the newer block's reference");
-            Assert.That(carried[5].ToArray(), Is.EqualTo(newer[5].ToArray()), "a child only the newer block carried is present in the merged row");
+            Assert.That(carried[1], Is.SequenceEqualTo(newer[1]), "a child both writers carried resolves to the newer block's reference");
+            Assert.That(carried[5], Is.SequenceEqualTo(newer[5]), "a child only the newer block carried is present in the merged row");
         }
 
         ChildVector.Return(carried);

@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -421,7 +422,7 @@ public class FlatDbManagerTests
             }
             else
             {
-                Assert.That(slot!.WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedSlotHex)));
+                Assert.That(slot!.WithoutLeadingZeros(), Is.SequenceEqualTo(Convert.FromHexString(expectedSlotHex)));
             }
         }
     }

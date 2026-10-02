@@ -43,7 +43,7 @@ public class EvmWordExtensionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(value.MinimalByteLength(), Is.EqualTo(value.ToBigEndian().AsSpan().WithoutLeadingZeros().Length));
-            Assert.That(value.ToBigEndian().AsSpan(32 - value.MinimalByteLength()).ToArray(), Is.EqualTo(expected));
+            Assert.That(value.ToBigEndian().AsSpan(32 - value.MinimalByteLength()), Is.SequenceEqualTo(expected));
             Assert.That(encoded, Is.EqualTo(expected));
             Assert.That(buffered, Is.EqualTo(expected));
             Assert.That(new UInt256(encoded, isBigEndian: true), Is.EqualTo(value));

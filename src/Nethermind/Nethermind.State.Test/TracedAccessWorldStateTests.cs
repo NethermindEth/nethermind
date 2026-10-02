@@ -417,7 +417,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(codeForCodeOp), codeForCodeOp, Spec);
             }),
             (Action<TracedAccessWorldState>)(tws =>
-                Assert.That(tws.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(codeForCodeOp))))
+                Assert.That(tws.GetCode(TestItem.AddressA), Is.SequenceEqualTo(codeForCodeOp))))
             .SetName("GetCode_RecordsAccountRead");
 
         yield return new TestCaseData(

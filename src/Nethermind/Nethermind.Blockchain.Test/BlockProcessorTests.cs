@@ -1637,7 +1637,7 @@ public partial class BlockProcessorTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
-                    Assert.That(stateProvider.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(code));
+                    Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(code));
                 }
             });
     }
@@ -1924,7 +1924,7 @@ public partial class BlockProcessorTests
         Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        Assert.That(stateProvider.GetCode(predeploy).ToArray(), Is.EqualTo(code));
+        Assert.That(stateProvider.GetCode(predeploy), Is.SequenceEqualTo(code));
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         if (!spec.IsEip8250Enabled)
         {
@@ -1954,7 +1954,7 @@ public partial class BlockProcessorTests
         Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        Assert.That(stateProvider.GetCode(predeploy).ToArray(), Is.EqualTo(code));
+        Assert.That(stateProvider.GetCode(predeploy), Is.SequenceEqualTo(code));
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
             "a re-install must not churn state or the BAL once the code is already present");

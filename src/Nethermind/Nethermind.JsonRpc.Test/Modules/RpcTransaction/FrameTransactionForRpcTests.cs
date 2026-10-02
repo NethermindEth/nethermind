@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -874,7 +875,7 @@ public class FrameTransactionForRpcTests
                 Assert.That(frames[i].ExecutionGasLimit, Is.EqualTo(expected[i].ExecutionGasLimit));
                 Assert.That(frames[i].StateGasLimit, Is.EqualTo(expected[i].StateGasLimit));
                 Assert.That(frames[i].Value, Is.EqualTo(expected[i].Value));
-                Assert.That(frames[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()));
+                Assert.That(frames[i].Data, Is.SequenceEqualTo(expected[i].Data));
             }
         }
     }

@@ -567,7 +567,7 @@ public class FrameTxReceiptDecoderTests
             for (int i = 0; i < expected.Length; i++)
             {
                 Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address), $"log {i} address");
-                Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"log {i} data");
+                Assert.That(actual[i].Data, Is.SequenceEqualTo(expected[i].Data), $"log {i} data");
                 Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics), $"log {i} topics");
             }
         }

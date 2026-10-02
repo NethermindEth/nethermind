@@ -865,7 +865,7 @@ public class BlockAccessListBasedWorldStateTests
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            Assert.That(bws.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(priorTxCode));
+            Assert.That(bws.GetCode(TestItem.AddressA), Is.SequenceEqualTo(priorTxCode));
         }
     }
 
@@ -890,7 +890,7 @@ public class BlockAccessListBasedWorldStateTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(byAddress.IsNull(), Is.False);
-                Assert.That(byAddress.ToArray(), Is.EqualTo(hasCode ? code : Array.Empty<byte>()));
+                Assert.That(byAddress, Is.SequenceEqualTo(hasCode ? code : Array.Empty<byte>()));
                 Assert.That(bws.GetCode(ValueKeccak.Compute(code)).IsNull(), Is.True, "undeclared code is left to the by-address read");
             }
         }
@@ -918,7 +918,7 @@ public class BlockAccessListBasedWorldStateTests
             CodeInfo codeInfo = new CodeInfoRepository(traced, new EthereumPrecompileProvider())
                 .GetCachedCodeInfo(TestItem.AddressA, followDelegation: false, Spec, out _);
 
-            Assert.That(codeInfo.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(codeInfo.CodeSpan, Is.SequenceEqualTo(code));
             codeDb.KeyWasRead(ValueKeccak.Compute(code).ToByteArray(), 0);
         }
     }

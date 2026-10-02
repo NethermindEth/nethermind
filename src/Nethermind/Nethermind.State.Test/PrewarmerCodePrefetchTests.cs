@@ -48,7 +48,7 @@ public class PrewarmerCodePrefetchTests
         PrewarmerScopeProvider parentReaders = new(provider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
         using (IWorldStateScopeProvider.IScope reader = parentReaderTakes ? parentReaders.BeginScope(parent) : null)
         {
-            Assert.That((reader ?? scope).CodeDb.GetCode(in CodeHash).ToArray(), Is.EqualTo(Code));
+            Assert.That((reader ?? scope).CodeDb.GetCode(in CodeHash), Is.SequenceEqualTo(Code));
         }
 
         codeKv.KeyWasRead(CodeHash.ToByteArray(), 1);

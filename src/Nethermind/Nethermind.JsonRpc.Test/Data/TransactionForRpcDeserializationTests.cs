@@ -6,6 +6,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -210,7 +211,7 @@ public class TransactionForRpcDeserializationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rpc.Input, Is.EqualTo(data));
-            Assert.That(rpc.ToTransaction().Data!.Data.ToArray(), Is.EqualTo(data));
+            Assert.That(rpc.ToTransaction().Data!.Data, Is.SequenceEqualTo(data));
             Assert.That(document.RootElement.GetProperty("input").GetString(), Is.EqualTo("0x602a"));
             Assert.That(document.RootElement.TryGetProperty("data", out _), Is.False);
         }

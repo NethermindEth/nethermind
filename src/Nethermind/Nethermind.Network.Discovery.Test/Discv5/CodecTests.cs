@@ -4,6 +4,7 @@
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv5;
@@ -95,7 +96,7 @@ public class CodecTests
 
             Assert.That(decoded, Is.True);
             Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
-            Assert.That(packet.AuthData.ToArray(), Is.EqualTo(NodeAId));
+            Assert.That(packet.AuthData, Is.SequenceEqualTo(NodeAId));
             Assert.That(decrypted, Is.True);
             Assert.That(message, Is.InstanceOf<PingMsg>());
             PingMsg ping = (PingMsg)message;
@@ -128,7 +129,7 @@ public class CodecTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(decoded, Is.True);
-                Assert.That(packet.MessageAd.Span[16..].ToArray(), Is.EqualTo(header));
+                Assert.That(packet.MessageAd.Span[16..], Is.SequenceEqualTo(header));
                 Assert.That(packet.AuthData.Length, Is.EqualTo(headerLength - 23));
             }
         }
@@ -159,7 +160,7 @@ public class CodecTests
             {
                 Assert.That(decoded, Is.True);
                 Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
-                Assert.That(packet.AuthData.ToArray(), Is.EqualTo(NodeAId));
+                Assert.That(packet.AuthData, Is.SequenceEqualTo(NodeAId));
             }
         });
     }
@@ -315,8 +316,8 @@ public class CodecTests
         Assert.That(decoded, Is.InstanceOf<TalkReqMsg>());
         TalkReqMsg decodedTalkReq = (TalkReqMsg)decoded;
         Assert.That(decodedTalkReq.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(decodedTalkReq.Protocol.ToArray(), Is.EqualTo(message.Protocol.ToArray()));
-        Assert.That(decodedTalkReq.Request.ToArray(), Is.EqualTo(message.Request.ToArray()));
+        Assert.That(decodedTalkReq.Protocol, Is.SequenceEqualTo(message.Protocol));
+        Assert.That(decodedTalkReq.Request, Is.SequenceEqualTo(message.Request));
     }
 
     [Test]
@@ -330,7 +331,7 @@ public class CodecTests
         Assert.That(decoded, Is.InstanceOf<TalkRespMsg>());
         TalkRespMsg decodedTalkResp = (TalkRespMsg)decoded;
         Assert.That(decodedTalkResp.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(decodedTalkResp.Response.ToArray(), Is.EqualTo(message.Response.ToArray()));
+        Assert.That(decodedTalkResp.Response, Is.SequenceEqualTo(message.Response));
     }
 
     [Test]

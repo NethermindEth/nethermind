@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
@@ -122,7 +123,7 @@ public class MerkleTests
         for (int level = 0; level < 64; level++)
         {
             Merkle.ZeroHashes[level].ToLittleEndian(actual);
-            Assert.That(actual.ToArray(), Is.EqualTo(expected), $"ZeroHashes[{level}]");
+            Assert.That(actual, Is.SequenceEqualTo(expected), $"ZeroHashes[{level}]");
             expected = HashUtility.Hash(expected, expected);
         }
     }

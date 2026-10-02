@@ -60,7 +60,7 @@ namespace Nethermind.Core.Test.Crypto
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.True);
-                Assert.That(recovered.ToArray(), Is.EqualTo(ecdsa.RecoverPublicKey(tx, useSignatureChainId)!.PrefixedBytes));
+                Assert.That(recovered, Is.SequenceEqualTo(ecdsa.RecoverPublicKey(tx, useSignatureChainId)!.PrefixedBytes));
                 Assert.That(PublicKey.ComputeAddress(recovered[1..]), Is.EqualTo(key.Address));
             }
         }

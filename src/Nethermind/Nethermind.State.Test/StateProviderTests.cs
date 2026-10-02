@@ -331,23 +331,23 @@ public class StateProviderTests(bool useFlat)
 
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1).ToArray(), Is.EqualTo(code));
+        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(code));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 3));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1).ToArray(), Is.EqualTo(code));
+        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(code));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 2));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1).ToArray(), Is.EqualTo(Array.Empty<byte>()));
+        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 1));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1).ToArray(), Is.EqualTo(Array.Empty<byte>()));
+        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 0));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
-        Assert.That(provider.GetCode(_address1).ToArray(), Is.EqualTo(Array.Empty<byte>()));
+        Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, -1));
         Assert.That(provider.AccountExists(_address1), Is.EqualTo(false));
     }
@@ -440,7 +440,7 @@ public class StateProviderTests(bool useFlat)
         Assert.That(provider.AccountExists(TestItem.AddressB), Is.False);
         if (redeployAfterRestore)
         {
-            Assert.That(provider.GetCode(codeHash).ToArray(), Is.EqualTo(code));
+            Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
         }
         else
         {
@@ -472,7 +472,7 @@ public class StateProviderTests(bool useFlat)
         provider.Restore(snapshot);
         provider.Commit(spec);
 
-        Assert.That(provider.GetCode(keptCodeHash).ToArray(), Is.EqualTo(keptCode));
+        Assert.That(provider.GetCode(keptCodeHash), Is.SequenceEqualTo(keptCode));
         Assert.That(() => provider.GetCode(revertedCodeHash), Throws.InstanceOf<InvalidOperationException>());
     }
 
@@ -501,7 +501,7 @@ public class StateProviderTests(bool useFlat)
         provider.Commit(spec);
 
         Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
-        Assert.That(provider.GetCode(codeHash).ToArray(), Is.EqualTo(code));
+        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
     }
 
     [Test]
@@ -533,7 +533,7 @@ public class StateProviderTests(bool useFlat)
         provider.Commit(spec);
 
         Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
-        Assert.That(provider.GetCode(codeHash).ToArray(), Is.EqualTo(code));
+        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
     }
 
     [Test]
@@ -605,7 +605,7 @@ public class StateProviderTests(bool useFlat)
 
         // Dropping the re-stage is only safe because the code is already durable, which is what lets
         // the account keep carrying its hash.
-        Assert.That(provider.GetCode(codeHash).ToArray(), Is.EqualTo(code));
+        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
 
         (long codeWrites, long codeBytesWritten) = ReadCodeWriteCounters((WorldState)provider);
         Assert.That(codeWrites, Is.Zero);
@@ -674,7 +674,7 @@ public class StateProviderTests(bool useFlat)
                 worldState.InsertCode(addr, code, spec);
                 worldState.Commit(spec);
 
-                Assert.That(worldState.GetCode(addr).ToArray(), Is.EqualTo(code));
+                Assert.That(worldState.GetCode(addr), Is.SequenceEqualTo(code));
             }
 
             // End of scope #1 — overlay's temp KV is discarded.
@@ -690,7 +690,7 @@ public class StateProviderTests(bool useFlat)
 
                 Action getCode = () => worldState.GetCode(addr);
                 Assert.That(getCode, Throws.Nothing);
-                Assert.That(worldState.GetCode(addr).ToArray(), Is.EqualTo(code));
+                Assert.That(worldState.GetCode(addr), Is.SequenceEqualTo(code));
             }
         }
         finally
@@ -791,7 +791,7 @@ public class CodeDbTests
             ? new StateReader(Substitute.For<ITrieStore>(), backing, LimboLogs.Instance).GetCode(hash)
             : new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(backing, isPersistent: true).GetCode(hash);
 
-        Assert.That(read.ToArray(), Is.EqualTo(code));
+        Assert.That(read, Is.SequenceEqualTo(code));
         backing.KeyWasReadWithFlags(hash.Bytes.ToArray(), ReadFlags.HintCacheMiss);
     }
 

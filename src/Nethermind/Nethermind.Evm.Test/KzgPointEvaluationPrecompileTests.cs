@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
@@ -29,7 +30,7 @@ public class KzgPointEvaluationPrecompileTests
     public bool Test_PointEvaluationPrecompile_Produces_Correct_Outputs(byte[] input)
     {
         (ReadOnlyMemory<byte> output, bool success) = KzgPointEvaluationPrecompile.Instance.Run(input, Cancun.Instance);
-        Assert.That(output.ToArray(), Is.EqualTo(success ? _predefinedSuccessAnswer : _predefinedFailureAnswer));
+        Assert.That(output, Is.SequenceEqualTo(success ? _predefinedSuccessAnswer : _predefinedFailureAnswer));
         return success;
     }
 

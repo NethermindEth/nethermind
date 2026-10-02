@@ -165,7 +165,7 @@ namespace Nethermind.Core.Test.Encoding
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(decoded.Data.ToArray(), Is.EqualTo(expectedData));
+                Assert.That(decoded.Data, Is.SequenceEqualTo(expectedData));
                 Assert.That(decoded.PreHash.Span.SequenceEqual(bytes), Is.True);
             }
         }
@@ -360,7 +360,7 @@ namespace Nethermind.Core.Test.Encoding
             if (valid)
             {
                 Signature signature = Decode().Signature!;
-                Assert.That((isR ? signature.R : signature.S).ToArray(), Is.EqualTo((byte[])[0x00, .. Enumerable.Repeat((byte)0x05, length)]));
+                Assert.That((isR ? signature.R : signature.S), Is.SequenceEqualTo((byte[])[0x00, .. Enumerable.Repeat((byte)0x05, length)]));
             }
             else
             {

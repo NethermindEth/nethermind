@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Serialization.Ssz.Merkleization;
@@ -443,7 +444,7 @@ public class EncodingTest
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(decoded.Items.AsSpan().ToArray(), Is.EqualTo(expectedItems));
+                Assert.That(decoded.Items.AsSpan(), Is.SequenceEqualTo(expectedItems));
                 Assert.That(actual, Is.EqualTo(expected));
             }
         }
@@ -670,7 +671,7 @@ public class EncodingTest
             Assert.That(convertedEncoded, Has.Length.EqualTo(4 + itemCount * itemLength));
             Assert.That(decoded.Items, Has.Length.EqualTo(itemCount));
             for (int i = 0; i < itemCount; i++)
-                Assert.That(decoded.Items![i].Data.ToArray(), Is.EqualTo(items[i]), $"item {i} must round-trip exactly");
+                Assert.That(decoded.Items![i].Data, Is.SequenceEqualTo(items[i]), $"item {i} must round-trip exactly");
         }
     }
 
@@ -944,7 +945,7 @@ public class EncodingTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
-            Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+            Assert.That(decoded.Bytes, Is.SequenceEqualTo(original.Bytes));
         }
     }
 
@@ -959,7 +960,7 @@ public class EncodingTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
-            Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+            Assert.That(decoded.Bytes, Is.SequenceEqualTo(original.Bytes));
         }
     }
 
@@ -984,7 +985,7 @@ public class EncodingTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded.Length, Is.EqualTo(108));
-            Assert.That(encoded.AsSpan(0, 4).ToArray(), Is.EqualTo([0x04, 0x03, 0x02, 0x01]));
+            Assert.That(encoded.AsSpan(0, 4), Is.SequenceEqualTo(new byte[] { 0x04, 0x03, 0x02, 0x01 }));
             Assert.That(decoded.FixedBytes.Value, Is.EqualTo(original.FixedBytes.Value));
             Assert.That(decoded.FixedBytesVector!.Select(x => x.Value), Is.EqualTo(original.FixedBytesVector!.Select(x => x.Value)));
             Assert.That(decoded.Hash, Is.EqualTo(original.Hash));

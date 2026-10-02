@@ -423,7 +423,7 @@ public class HealingTreeTests
 
             if (keyScheme == INodeStorage.KeyScheme.HalfPath)
             {
-                Assert.That(mainWorldState.GetCode(_codeAddress).ToArray(), Is.EqualTo(_code));
+                Assert.That(mainWorldState.GetCode(_codeAddress), Is.SequenceEqualTo(_code));
             }
         }
     }

@@ -66,8 +66,8 @@ public class SnapServerTests
         using IByteArrayList result = _server.GetByteCodes([hashA, hashB], long.MaxValue, CancellationToken.None);
 
         Assert.That(result.Count, Is.EqualTo(2));
-        Assert.That(result[0].ToArray(), Is.EqualTo(codeA));
-        Assert.That(result[1].ToArray(), Is.EqualTo(codeB));
+        Assert.That(result[0], Is.SequenceEqualTo(codeA));
+        Assert.That(result[1], Is.SequenceEqualTo(codeB));
         // Peers ask for hash-random code, so serving must not churn the block cache.
         _codeDb.KeyWasReadWithFlags(hashA.ToByteArray(), ReadFlags.HintCacheMiss);
         _codeDb.KeyWasReadWithFlags(hashB.ToByteArray(), ReadFlags.HintCacheMiss);
@@ -94,7 +94,7 @@ public class SnapServerTests
 
         // The missing hash contributes no entry, so only the present code is returned.
         Assert.That(result.Count, Is.EqualTo(1));
-        Assert.That(result[0].ToArray(), Is.EqualTo(code));
+        Assert.That(result[0], Is.SequenceEqualTo(code));
     }
 
     [Test]
@@ -162,8 +162,8 @@ public class SnapServerTests
             [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256], long.MaxValue, CancellationToken.None);
 
         Assert.That(result.Count, Is.EqualTo(2));
-        Assert.That(result[0].ToArray(), Is.EqualTo(balA));
-        Assert.That(result[1].ToArray(), Is.EqualTo(balB));
+        Assert.That(result[0], Is.SequenceEqualTo(balA));
+        Assert.That(result[1], Is.SequenceEqualTo(balB));
     }
 
     [Test]
@@ -179,7 +179,7 @@ public class SnapServerTests
 
         Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[0].Length, Is.EqualTo(0));
-        Assert.That(result[1].ToArray(), Is.EqualTo(bal));
+        Assert.That(result[1], Is.SequenceEqualTo(bal));
     }
 
     [Test]
@@ -195,7 +195,7 @@ public class SnapServerTests
 
         Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[0].Length, Is.EqualTo(0));
-        Assert.That(result[1].ToArray(), Is.EqualTo(bal));
+        Assert.That(result[1], Is.SequenceEqualTo(bal));
     }
 
     [Test]

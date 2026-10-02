@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -41,7 +42,7 @@ public class StateProviderCodeFlushTests
 
             // Both code arguments take a matcher: NSubstitute refuses a mix of literal and matcher across arguments of one type.
             tracer.Received(1).ReportCodeChange(address, Arg.Is<ReadOnlyMemory<byte>>(previous => previous.IsNull()), Arg.Is<ReadOnlyMemory<byte>>(bytes => bytes.ToArray().SequenceEqual(code)));
-            Assert.That(provider.GetCode(hash).ToArray(), Is.EqualTo(code), "committed and staged code must remain readable");
+            Assert.That(provider.GetCode(hash), Is.SequenceEqualTo(code), "committed and staged code must remain readable");
         }
         Assert.That(codeDb.Writes, Is.EqualTo(commitRoots ? 2 : 0), "tracing must not force a staged-only commit to flush");
     }
@@ -58,7 +59,7 @@ public class StateProviderCodeFlushTests
 
         provider.InsertCode(TestItem.AddressA, hash, code, Prague.Instance);
 
-        Assert.That(provider.GetCode(hash).ToArray(), Is.EqualTo(code.ToArray()));
+        Assert.That(provider.GetCode(hash), Is.SequenceEqualTo(code));
     }
 
     [Test]
