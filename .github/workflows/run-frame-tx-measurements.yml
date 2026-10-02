@@ -27,11 +27,11 @@ on:
         required: false
         type: string
         default: ''
-      runner:
-        description: Runner the job must land on, e.g. benchmark-3. The job stops at once on any other. Empty accepts any and records it.
+      machine_type:
+        description: GCE machine type of the runner created for this run. Runs only compare on the same type.
         required: false
         type: string
-        default: ''
+        default: c2-standard-8
 
 # Deliberate: no github.ref in the group, so dispatches never overlap; don't "fix" to the repo default.
 # A third dispatch replaces the pending second one, so dispatch one at a time and wait for it to finish.
@@ -44,24 +44,57 @@ permissions:
   contents: read
 
 jobs:
+  # A dedicated on-demand VM per run: the shared benchmark runners queue for hours and hold several machine
+  # types. STANDARD provisioning, so a spot reclaim cannot cut a run short.
+  create_runner:
+    name: Create the measurement runner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    outputs:
+      runner_label: ${{ steps.label.outputs.value }}
+    steps:
+      - name: Derive runner label
+        id: label
+        run: echo "value=frame-tx-measurements-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: ${{ steps.label.outputs.value }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          machine_type: ${{ inputs.machine_type }}
+          local_ssd_count: 1
+          provisioning_model: STANDARD
+          # Suite timeout plus boot, checkout and build.
+          max_run_duration: ${{ fromJSON('{"cost":"50m","producer":"70m","import":"70m","import-tails":"160m","honest":"50m"}')[inputs.suite] }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
   measure:
     name: Measure the frame-transaction validation prefix
-    runs-on: [self-hosted, reproducible-benchmarks]
+    needs: [create_runner]
+    runs-on: ${{ needs.create_runner.outputs.runner_label }}
     # Suite budget plus build and setup; see the campaign SPEC.
-    timeout-minutes: ${{ fromJSON('{"cost":20,"producer":35,"import":40,"import-tails":120,"honest":20}')[inputs.suite] }}
+    timeout-minutes: ${{ fromJSON('{"cost":30,"producer":50,"import":50,"import-tails":140,"honest":30}')[inputs.suite] }}
     steps:
-      # Numbers belong to the machine that measured them, and the pool holds several: a run on another one would
-      # not compare with the runs it is meant to repeat.
-      - name: Check the runner
-        env:
-          EXPECTED_RUNNER: ${{ inputs.runner }}
-        run: |
-          if [[ -n "${EXPECTED_RUNNER}" && "${RUNNER_NAME}" != "${EXPECTED_RUNNER}" ]]; then
-            echo "::error::this job landed on ${RUNNER_NAME}, not ${EXPECTED_RUNNER}. Stopping before any work; dispatch again for that runner."
-            exit 1
-          fi
-          echo "runner=${RUNNER_NAME} cpu=$(lscpu | sed -n 's/^Model name: *//p')"
-
       # Must run before checkout, or a checkout/setup failure skips the wipe while the always() steps below still fire.
       - name: Resolve the output directory
         run: |
@@ -149,6 +182,7 @@ jobs:
         env:
           SUITE: ${{ inputs.suite }}
           RAISE_VERIFY_GAS: ${{ inputs.raise_verify_gas_const }}
+          MACHINE_TYPE: ${{ inputs.machine_type }}
         run: |
           set -uo pipefail
 
@@ -174,6 +208,7 @@ jobs:
             echo "sha=${GITHUB_SHA}"
             echo "suite=${SUITE}"
             echo "runner=${RUNNER_NAME}"
+            echo "machine_type=${MACHINE_TYPE}"
             echo "cpu_model=$(lscpu | sed -n 's/^Model name: *//p')"
             echo "run_id=${GITHUB_RUN_ID}"
             echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
@@ -374,3 +409,46 @@ jobs:
           path: ${{ env.OUTPUT_DIR }}/
           if-no-files-found: warn
           retention-days: 30
+
+  destroy_runner:
+    name: Destroy the measurement runner
+    needs: [create_runner, measure]
+    # A failed create still needs teardown: creation may have got part way before giving up.
+    if: always() && needs.create_runner.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy runner
+        id: destroy
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: ${{ needs.create_runner.outputs.runner_label }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          expect_instance: ${{ needs.create_runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Report teardown
+        if: always()
+        env:
+          TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
+          PREEMPTED: ${{ steps.destroy.outputs.preempted }}
+        run: echo "terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"
