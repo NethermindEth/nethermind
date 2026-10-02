@@ -88,6 +88,42 @@ public class TrieNodeTests
         AssertChildHashesMatchScalarKeccak(dirtyChildren);
     }
 
+    /// <remarks>Empty slots keep the branch under 532 bytes, so its unchanged children are copied from its RLP rather than patched.</remarks>
+    [Test]
+    public void Reencoding_sparse_branch_matches_fresh_encoding(
+        [Values(0, 5, 13, 14, 15)] int changedIndex, [Values(0, 1, 2)] int replacementKind, [Values] bool inlinedLastChild)
+    {
+        Context context = new();
+        TrieNode original = new(NodeType.Branch);
+        TrieNode expected = new(NodeType.Branch);
+        for (int i = 0; i < TrieNode.BranchesCount; i++)
+        {
+            if (i % 3 == 1) continue;
+            Hash256 hash = Keccak.Compute([(byte)i]);
+            original.SetChild(i, inlinedLastChild && i == 15 ? context.TiniestLeaf : new TrieNode(NodeType.Unknown, hash));
+            expected.SetChild(i, inlinedLastChild && i == 15 ? context.TiniestLeaf : new TrieNode(NodeType.Unknown, hash));
+        }
+
+        TreePath path = TreePath.Empty;
+        CappedArray<byte> oldRlp = original.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        Assert.That(oldRlp.Length, Is.LessThan(532));
+        TrieNode restored = new(NodeType.Branch, oldRlp);
+        restored.ResolveNode(NullTrieNodeResolver.Instance, path);
+        restored = restored.Clone();
+        TrieNode? replacement = replacementKind switch
+        {
+            0 => null,
+            1 => context.TiniestLeaf,
+            _ => new TrieNode(NodeType.Unknown, Keccak.Compute([0xff]))
+        };
+        restored.SetChild(changedIndex, replacement);
+        expected.SetChild(changedIndex, replacement);
+
+        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        Assert.That(actual, Is.SequenceEqualTo(expectedRlp));
+    }
+
     /// <remarks>
     /// The encodings above could still agree on a wrong hash, so only a comparison against a
     /// separately computed digest covers the batch kernels.
@@ -440,6 +476,40 @@ public class TrieNodeTests
                 }
             }
         }
+    }
+
+    [TestCase(new int[0])]
+    [TestCase(new[] { 0 })]
+    [TestCase(new[] { 7 })]
+    [TestCase(new[] { 15 })]
+    [TestCase(new[] { 0, 15 })]
+    [TestCase(new[] { 2, 9, 11 })]
+    public void Finds_the_only_child_of_a_branch(int[] children)
+    {
+        Context ctx = new();
+        TrieNode original = new(NodeType.Branch);
+        foreach (int i in children) original.SetChild(i, ctx.TiniestLeaf);
+        TreePath path = TreePath.Empty;
+        TrieNode restored = new(NodeType.Branch, original.RlpEncode(NullTrieNodeResolver.Instance, ref path));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original.FindOnlyChild(), Is.EqualTo(OnlyChild(children)), "original");
+            Assert.That(restored.FindOnlyChild(), Is.EqualTo(OnlyChild(children)), "restored");
+            if (children.Length != 0)
+            {
+                // A cleared slot overrides the child its RLP still holds.
+                TrieNode edited = restored.Clone();
+                edited.SetChild(children[0], null);
+                Assert.That(edited.FindOnlyChild(), Is.EqualTo(OnlyChild(children[1..])), "edited");
+            }
+        }
+
+        static int OnlyChild(int[] children) => children.Length switch
+        {
+            0 => -1,
+            1 => children[0],
+            _ => TrieNode.SeveralChildren,
+        };
     }
 
     [Test]

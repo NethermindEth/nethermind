@@ -765,25 +765,12 @@ namespace Nethermind.Trie
         {
             Debug.Assert(node.IsBranch, "MaybeCombineNode requires a branch node.");
 
-            int onlyChildIdx = -1;
-            for (int i = 0; i < TrieNode.BranchesCount; i++)
-            {
-                if (!node.IsChildNull(i)) // presence check only, no resolution (useful for witness recording, stateless execution and perfs)
-                {
-                    if (onlyChildIdx == -1)
-                    {
-                        onlyChildIdx = i;
-                    }
-                    else
-                    {
-                        // 63%
-                        // 2+ non-null children, no need to collapse any node
-                        // Nothing resolved, nothing captured (for witness recording, stateless execution)
-                        return node;
-                    }
-                }
-
-            }
+            // Presence check only, no resolution (useful for witness recording, stateless execution and perfs)
+            int onlyChildIdx = node.FindOnlyChild();
+            // 63%
+            // 2+ non-null children, no need to collapse any node
+            // Nothing resolved, nothing captured (for witness recording, stateless execution)
+            if (onlyChildIdx == TrieNode.SeveralChildren) return node;
 
             if (onlyChildIdx == -1) return null; // No child at all
 

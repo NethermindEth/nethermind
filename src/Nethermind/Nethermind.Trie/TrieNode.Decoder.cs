@@ -999,7 +999,19 @@ namespace Nethermind.Trie
                 int runStart = cursor;
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
-                for (; Unsafe.IsAddressLessThan(ref child, ref end); child = ref Unsafe.Add(ref child, 1))
+                // The unchanged children after the last changed one need no walk: they run up to the value,
+                // which is the last byte. A non-empty value ending in 0x80 would break this, but branches
+                // carry no value here (see Value), and the encoder drops it anyway.
+                ref object? last = ref end;
+                if (nodeRlp.Data[^1] == 128)
+                {
+                    while (Unsafe.IsAddressGreaterThan(ref last, ref child) && Unsafe.Add(ref last, -1) is null)
+                    {
+                        last = ref Unsafe.Add(ref last, -1);
+                    }
+                }
+
+                for (; Unsafe.IsAddressLessThan(ref child, ref last); child = ref Unsafe.Add(ref child, 1))
                 {
                     object? data = child;
                     if (data is null)
@@ -1047,6 +1059,12 @@ namespace Nethermind.Trie
                         nodeRlp.SkipItem(ref cursor);
                         runStart = cursor;
                     }
+                }
+
+                if (!Unsafe.AreSame(ref last, ref end))
+                {
+                    cursor = nodeRlp.Data.Length - 1;
+                    Debug.Assert(item.SeekChildPosition(nodeRlp, BranchesCount) == cursor, "Branch value is not empty");
                 }
 
                 int tailLength = cursor - runStart;
