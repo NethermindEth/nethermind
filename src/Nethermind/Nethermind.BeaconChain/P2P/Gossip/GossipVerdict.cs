@@ -28,7 +28,7 @@ public sealed class GossipVerdict
     private readonly bool _local;
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _state;
-    private int _handOffs;
+    private int _handedOff;
     private Action? _onThrottled;
 
     /// <param name="complete">Gives the router a verdict for the deferred message and returns whether the router applied it.</param>
@@ -58,10 +58,7 @@ public sealed class GossipVerdict
     public bool IsCompleted => Volatile.Read(ref _state) != Pending;
 
     /// <summary>Whether a consumer took the verdict over, so the code that handed it the message must not give one; once taken over it stays so.</summary>
-    internal bool IsHandedOff => HandOffCount > 0;
-
-    /// <summary>How many times a consumer took the verdict over, so a retry can tell whether it queued the message again.</summary>
-    internal int HandOffCount => Volatile.Read(ref _handOffs);
+    internal bool IsHandedOff => Volatile.Read(ref _handedOff) != 0;
 
     /// <summary>Runs <paramref name="release"/> if the verdict given is <see cref="MessageValidity.Throttled"/>: refused for local load, so a later copy must be checked again.</summary>
     /// <remarks>Register before the verdict is handed off; a consumer may give it at once.</remarks>
@@ -78,7 +75,7 @@ public sealed class GossipVerdict
     {
         if (_complete is not null)
         {
-            Interlocked.Increment(ref _handOffs);
+            Volatile.Write(ref _handedOff, 1);
         }
     }
 
