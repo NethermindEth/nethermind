@@ -4,13 +4,22 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
+using Nethermind.Logging.NLog;
 using Nethermind.Runner.Logging;
+using Nethermind.Seq.Config;
 using NLog;
 using NLog.Config;
 using NLog.Layouts;
 using NLog.Targets;
+using NLog.Targets.Seq;
+using NSubstitute;
 using NUnit.Framework;
+using ILogger = Nethermind.Logging.ILogger;
+using InterfaceLogger = Nethermind.Logging.InterfaceLogger;
 
 
 namespace Nethermind.Runner.Test.Logging;
@@ -18,13 +27,28 @@ namespace Nethermind.Runner.Test.Logging;
 [TestFixture, NonParallelizable]
 public class NLogConfiguratorTests
 {
+    private readonly List<IDisposable> _reloadSubscriptions = [];
     private LoggingConfiguration? _previousConfig;
+    private Nethermind.Logging.ILogManager _previousStaticLogManager = null!;
+    private string _logDirectory = null!;
 
     [SetUp]
-    public void SetUp() => _previousConfig = LogManager.Configuration;
+    public void SetUp()
+    {
+        _previousConfig = LogManager.Configuration;
+        _previousStaticLogManager = Nethermind.Logging.Static.LogManager;
+        _logDirectory = Path.Combine(Path.GetTempPath(), $"{nameof(NLogConfiguratorTests)}-{Guid.NewGuid():N}");
+    }
 
     [TearDown]
-    public void TearDown() => LogManager.Configuration = _previousConfig;
+    public void TearDown()
+    {
+        _reloadSubscriptions.ForEach(static subscription => subscription.Dispose());
+        _reloadSubscriptions.Clear();
+        LogManager.Configuration = _previousConfig;
+        Nethermind.Logging.Static.LogManager = _previousStaticLogManager;
+        if (Directory.Exists(_logDirectory)) Directory.Delete(_logDirectory, recursive: true);
+    }
 
     [TestCase("ecs", "log.level", "info")]
     [TestCase("logstash", "level", "INFO")]
@@ -193,6 +217,127 @@ public class NLogConfiguratorTests
         Assert.That(fileTarget.Layout, Is.SameAs(fileLayoutBefore));
         Assert.That(consoleTarget.Layout, Is.Not.SameAs(fileLayoutBefore));
     }
+
+    [Test]
+    public void Failure_while_reapplying_overrides_is_logged_instead_of_thrown()
+    {
+        InterfaceLogger interfaceLogger = Substitute.For<InterfaceLogger>();
+        interfaceLogger.IsError.Returns(true);
+        bool failing = false;
+        ISeqConfig seqConfig = Substitute.For<ISeqConfig>();
+        seqConfig.MinLevel.Returns(_ => failing ? throw new InvalidOperationException("seq") : "Info");
+        StartUp("Warn", "ecs", seqConfig, null, new ILogger(interfaceLogger));
+        failing = true;
+
+        Assert.DoesNotThrow(static () => LogManager.Configuration = LoadShippedConfiguration());
+
+        interfaceLogger.Received().Error(Arg.Any<string>(), Arg.Is<Exception>(static ex => ex is InvalidOperationException));
+        // The steps ahead of the failing one still ran.
+        LoggingRule consoleRule = LogManager.Configuration!.LoggingRules.Single(static rule =>
+            rule.LoggerNamePattern == "*" && rule.Targets.Any(static target => target.Name == "auto-colored-console-async"));
+        Assert.That(consoleRule.Levels.Select(static level => level.Name), Is.EqualTo(new[] { "Warn", "Error", "Fatal" }));
+    }
+
+    [Test]
+    public void Invalid_console_format_is_not_retried_on_configuration_reload()
+    {
+        InterfaceLogger interfaceLogger = Substitute.For<InterfaceLogger>();
+        interfaceLogger.IsError.Returns(true);
+        StartUp(null, "xml", new SeqConfig(), null, new ILogger(interfaceLogger));
+        interfaceLogger.ClearReceivedCalls();
+
+        LogManager.Configuration = LoadShippedConfiguration();
+
+        interfaceLogger.DidNotReceive().Error(Arg.Any<string>(), Arg.Any<Exception>());
+    }
+
+    [Test]
+    public void Overrides_are_not_reapplied_when_the_configuration_is_cleared()
+    {
+        LogManager.Configuration = LoadShippedConfiguration();
+        _reloadSubscriptions.Add(NLogConfigurator.ConfigureCommandLineOverrides("Warn", "plain", default));
+
+        // As on shutdown: the event carries no configuration, and NLog loads NLog.config again on the next read.
+        LogManager.Configuration = null;
+
+        LoggingRule consoleRule = LogManager.Configuration!.LoggingRules.Single(static rule =>
+            rule.LoggerNamePattern == "*" && rule.Targets.Any(static target => target.Name == "auto-colored-console-async"));
+        Assert.That(consoleRule.Levels.Select(static level => level.Name), Is.EqualTo(new[] { "Info", "Warn", "Error", "Fatal" }));
+    }
+
+    [TestCase("Info", "Synchronization.*:Debug", new[] { "Debug", "Info", "Warn", "Error", "Fatal" })]
+    [TestCase("Warn", "Synchronization.*:Debug", new[] { "Debug", "Info", "Warn", "Error", "Fatal" })]
+    [TestCase("Info", "Synchronization.*:Error", new[] { "Error", "Fatal" })]
+    public void Init_log_rules_keep_their_levels_after_configuration_reload(string logLevel, string logRules, string[] expectedLevels)
+    {
+        ReloadShippedConfiguration(logLevel, "plain", new SeqConfig(), logRules: logRules);
+
+        LoggingRule rule = LogManager.Configuration!.LoggingRules.Single(static rule => rule.LoggerNamePattern == "Synchronization.*");
+        Assert.That(rule.Levels.Select(static level => level.Name), Is.EqualTo(expectedLevels));
+    }
+
+    private static IEnumerable<TestCaseData> ReloadScenarios()
+    {
+        SeqConfig seqConfig = new() { MinLevel = "Info", ServerUrl = "http://seq.example:5341", ApiKey = "k3y" };
+
+        yield return new TestCaseData(null, "xml", null, seqConfig, false)
+            .SetArgDisplayNames("invalid console format with seq enabled");
+        yield return new TestCaseData("Warn", "ecs", "Synchronization.*:Debug;Network.*:Error", seqConfig, false)
+            .SetArgDisplayNames("every override");
+        yield return new TestCaseData("Warn", "ecs", "Synchronization.*:Debug;Network.*:Error", seqConfig, true)
+            .SetArgDisplayNames("every override with a later NLogManager subscribed");
+        yield return new TestCaseData("Error", "plain", null, new SeqConfig { MinLevel = "Warn" }, false)
+            .SetArgDisplayNames("log level with a seq floor");
+        yield return new TestCaseData(null, "plain", null, new SeqConfig { MinLevel = "Off" }, false)
+            .SetArgDisplayNames("seq disabled");
+    }
+
+    [TestCaseSource(nameof(ReloadScenarios))]
+    public void Configuration_reload_restores_the_state_left_by_startup(string? logLevel, string format, string? logRules, SeqConfig seqConfig, bool withLaterNLogManager)
+    {
+        StartUp(logLevel, format, seqConfig, logRules);
+        if (withLaterNLogManager) _reloadSubscriptions.Add(new NLogManager("critical.log", _logDirectory));
+        string[] afterStartup = DescribeConfiguration();
+
+        LogManager.Configuration = LoadShippedConfiguration();
+
+        Assert.That(DescribeConfiguration(), Is.EqualTo(afterStartup));
+    }
+
+    private static string[] DescribeConfiguration()
+    {
+        LoggingConfiguration configuration = LogManager.Configuration!;
+        IEnumerable<string> rules = configuration.LoggingRules.Select(static rule =>
+            $"rule {rule.LoggerNamePattern} -> {string.Join(",", rule.Targets.Select(static target => target.Name))} final={rule.Final} levels={string.Join(",", rule.Levels)}");
+        IEnumerable<string> targets = configuration.AllTargets.Select(static target => target switch
+        {
+            SeqTarget seq => $"seq {seq.Name} url={seq.ServerUrl} key={seq.ApiKey}",
+            FileTarget file => $"file {file.Name} {file.FileName}",
+            TargetWithLayout withLayout => $"{withLayout.GetType().Name} {withLayout.Name} {withLayout.Layout.GetType().Name}",
+            _ => $"{target.GetType().Name} {target.Name}"
+        });
+        return rules.Concat(targets).ToArray();
+    }
+
+    private void ReloadShippedConfiguration(string? logLevel, string format, ISeqConfig seqConfig, ILogger logger = default, string? logRules = null)
+    {
+        StartUp(logLevel, format, seqConfig, logRules, logger);
+
+        // Replacing the configuration raises ConfigurationChanged, exactly as an autoReload does.
+        LogManager.Configuration = LoadShippedConfiguration();
+    }
+
+    /// <summary>Applies the logging configuration in the order <c>Program</c> does at startup.</summary>
+    private void StartUp(string? logLevel, string format, ISeqConfig seqConfig, string? logRules, ILogger logger = default)
+    {
+        LogManager.Configuration = LoadShippedConfiguration();
+        _reloadSubscriptions.Add(NLogConfigurator.ConfigureCommandLineOverrides(logLevel, format, logger));
+        _reloadSubscriptions.Add(new NLogManager("nethermind.log", _logDirectory, logRules));
+        _reloadSubscriptions.Add(NLogConfigurator.ConfigureSeq(seqConfig, logger));
+    }
+
+    private static LoggingConfiguration LoadShippedConfiguration() =>
+        new XmlLoggingConfiguration(Path.Combine(AppContext.BaseDirectory, "NLog.config"));
 
     private static MemoryTarget SetUpAndConfigure(string format)
     {
