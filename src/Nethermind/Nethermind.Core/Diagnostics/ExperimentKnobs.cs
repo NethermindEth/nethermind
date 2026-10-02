@@ -46,6 +46,9 @@ public static class ExperimentKnobs
     /// <summary>The early account applier runs under SCHED_IDLE rather than at normal priority.</summary>
     public static readonly bool EarlyAccountIdlePriority = On("NETHERMIND_EXP_EARLY_ACCOUNTS_IDLE");
 
+    /// <summary>The prewarmer also reads the accounts that large calldata names as ABI address words.</summary>
+    public static readonly bool CalldataAddressWarm = On("NETHERMIND_EXP_CALLDATA_ADDRESSES");
+
     /// <summary>When at least this many of the root's children are dirty, hash two nibbles down (up to 256 units); 0 = off.</summary>
     public static readonly int HashTwoLevels = Int("NETHERMIND_EXP_HASH_TWO_LEVELS", 0);
 }

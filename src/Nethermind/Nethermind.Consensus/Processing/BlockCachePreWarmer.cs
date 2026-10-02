@@ -1309,6 +1309,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             return state;
                         },
                         WarmingState<(Block, int, int)>.FinallyAction);
+
+                    if (Core.Diagnostics.ExperimentKnobs.CalldataAddressWarm) WarmCalldataAddresses(parallelOptions, block, envPool);
                 }
             }
             catch (OperationCanceledException)
@@ -1356,6 +1358,49 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             return warmed;
+        }
+
+        /// <summary>
+        /// Reads the accounts that large calldata names as ABI words, all of them across the fan-out: a batch transfer
+        /// names its recipients there, and one worker reading them in transaction order is slower than the main thread.
+        /// </summary>
+        private static void WarmCalldataAddresses(ParallelOptions parallelOptions, Block block, ObjectPool<IPrewarmerEnv> envPool)
+        {
+            const int MinWords = 8;
+            const int MaxAddresses = 4096;
+            HashSet<AddressAsKey> seen = [];
+            List<Address> addresses = [];
+            foreach (Transaction tx in block.Transactions)
+            {
+                ReadOnlySpan<byte> data = tx.Data.Span;
+                if (data.Length < 4 + MinWords * 32) continue;
+                for (int offset = 4; offset + 32 <= data.Length && addresses.Count < MaxAddresses; offset += 32)
+                {
+                    ReadOnlySpan<byte> word = data.Slice(offset, 32);
+                    // Twelve zero bytes and an address whose top four bytes are not all zero: small integers never match.
+                    if (word[..12].IndexOfAnyExcept((byte)0) >= 0 || word.Slice(12, 4).IndexOfAnyExcept((byte)0) < 0) continue;
+                    Address address = new(word[12..]);
+                    if (seen.Add(address)) addresses.Add(address);
+                }
+            }
+
+            if (addresses.Count == 0 || parallelOptions.CancellationToken.IsCancellationRequested) return;
+            int rangeSize = Math.Max(8, addresses.Count / (parallelOptions.MaxDegreeOfParallelism * 4));
+            WarmingState<(List<Address> Addresses, int RangeSize)> baseState = new(envPool, (addresses, rangeSize), block.Header);
+            ParallelUnbalancedWork.For(
+                0,
+                (addresses.Count + rangeSize - 1) / rangeSize,
+                parallelOptions,
+                baseState.InitThreadState,
+                static (range, state) =>
+                {
+                    (List<Address> addresses, int rangeSize) = state.Payload;
+                    IWorldState worldState = state.Scope!.WorldState;
+                    int end = Math.Min((range + 1) * rangeSize, addresses.Count);
+                    for (int i = range * rangeSize; i < end; i++) WarmupSender(addresses[i], null, worldState);
+                    return state;
+                },
+                WarmingState<(List<Address>, int)>.FinallyAction);
         }
 
         private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
