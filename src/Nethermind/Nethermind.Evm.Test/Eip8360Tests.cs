@@ -272,7 +272,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(FactorySlot(0), Is.EqualTo(ToWord(tcreated)));
-            Assert.That(TestState.GetCode(child), Is.EqualTo(childRuntime), "the CREATE child persists");
+            Assert.That(TestState.GetCode(child), Is.SequenceEqualTo(childRuntime), "the CREATE child persists");
             Assert.That(TestState.GetNonce(child), Is.EqualTo(1UL));
             AssertFinalized(tcreated, UInt256.Zero);
         }
