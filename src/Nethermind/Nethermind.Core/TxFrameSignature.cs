@@ -64,7 +64,8 @@ public class TxFrameSignature(byte scheme, Address? signer, ReadOnlyMemory<byte>
     /// digest it was recovered against.</summary>
     /// <remarks>Lets block pre-processing recover signers in parallel, off the execution thread. A reader may use it
     /// only when <see cref="SignerRecovery.Message"/> equals the digest it verifies, so a copy of the transaction
-    /// whose fields changed since never reuses a stale signer.</remarks>
+    /// whose fields changed since never reuses a stale signer. Keying on the digest alone is sound only because
+    /// <see cref="Signature"/> is immutable per instance.</remarks>
     public SignerRecovery? Recovered { get; set; }
 
     /// <summary>A recovered signer and the digest it was recovered against.</summary>
