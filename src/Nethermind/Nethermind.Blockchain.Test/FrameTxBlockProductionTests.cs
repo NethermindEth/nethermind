@@ -4,15 +4,18 @@
 using System;
 using System.Linq;
 using System.Threading;
+using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -20,8 +23,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -202,9 +205,7 @@ public class FrameTxBlockProductionTests
 
     private static TxReceipt[] ProcessBlock(Chain chain, ulong slot, params Transaction[] transactions)
     {
-        BlockProcessor.BlockValidationTransactionsExecutor executor = new(
-            new ExecuteTransactionProcessorAdapter(chain.Processor),
-            chain.State);
+        IBlockProcessor.IBlockTransactionsExecutor executor = chain.ValidationExecutor;
         Block block = Build.A.Block.WithNumber(1).WithSlotNumber(slot).WithBaseFeePerGas(0).WithGasLimit(30_000_000)
             .WithTransactions(transactions).TestObject;
 
@@ -293,17 +294,20 @@ public class FrameTxBlockProductionTests
     /// contracts a test's SENDER frames target.</summary>
     private sealed class Chain : IDisposable
     {
+        private readonly IContainer _container;
+        private readonly ILifetimeScope _lifetime;
         private readonly IDisposable _scope;
 
         public Chain(params (Address Address, byte[] Code)[] contracts)
         {
-            SpecProvider = new TestSpecProvider(Eip8141Prototype.Instance);
-            State = TestWorldStateFactory.CreateForTest();
+            _container = new ContainerBuilder().AddModule(new TestNethermindModule(Eip8141Prototype.Instance)).Build();
+            _lifetime = _container.BeginLifetimeScope(builder => builder
+                .AddSingleton<IWorldStateScopeProvider>(_container.Resolve<IWorldStateManager>().GlobalWorldState)
+                .AddModule(_container.Resolve<IBlockValidationModule[]>()));
+            SpecProvider = _lifetime.Resolve<ISpecProvider>();
+            State = _lifetime.Resolve<IWorldState>();
             _scope = State.BeginScope(IWorldState.PreGenesis);
-            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance);
-            Processor = new EthereumTransactionProcessor(
-                BlobBaseFeeCalculator.Instance, SpecProvider, State, virtualMachine,
-                new EthereumCodeInfoRepository(State), LimboLogs.Instance);
+            Processor = _lifetime.Resolve<ITransactionProcessor>();
 
             Deploy(Sender, Prepare.EvmCode
                 .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, 100.Ether);
@@ -317,6 +321,7 @@ public class FrameTxBlockProductionTests
         public IWorldState State { get; }
         public ITransactionProcessor Processor { get; }
         public IReleaseSpec Spec => SpecProvider.GenesisSpec;
+        public IBlockProcessor.IBlockTransactionsExecutor ValidationExecutor => _lifetime.Resolve<IBlockProcessor.IBlockTransactionsExecutor>();
 
         private void Deploy(Address address, byte[] code, UInt256 balance = default)
         {
@@ -324,7 +329,12 @@ public class FrameTxBlockProductionTests
             State.InsertCode(address, code, Spec);
         }
 
-        public void Dispose() => _scope.Dispose();
+        public void Dispose()
+        {
+            _scope.Dispose();
+            _lifetime.Dispose();
+            _container.Dispose();
+        }
     }
 
     private static TxFrame SelfApprove() =>
