@@ -2343,6 +2343,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             {
                 using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(token, p2p.SessionClosedToken(Session));
                 await slots.WaitAsync(waiting.Token);
+                // A slot freed as the session closes can be granted before the close is seen; the request still never left.
+                if (p2p.SessionClosedToken(Session).IsCancellationRequested)
+                {
+                    slots.Release();
+                    throw new OperationCanceledException(waiting.Token);
+                }
             }
             catch (Exception e)
             {
