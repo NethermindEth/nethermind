@@ -23,8 +23,8 @@ using NUnit.Framework;
 namespace Nethermind.BeaconChain.Test.P2P;
 
 /// <summary>
-/// <c>status</c> v2 falls back to v1 only when v2 failed as an exchange or went unanswered, which is how the pinned
-/// multistream reports a protocol the peer does not speak; a local fault or the caller's cancellation is no reason to retry.
+/// <c>status</c> v2 falls back to v1 only when v2 failed as an exchange or went unanswered, which is how a protocol the peer
+/// does not speak surfaces once the peer answers <c>na</c>; a local fault or the caller's cancellation is no reason to retry.
 /// </summary>
 public class StatusFallbackTests
 {
