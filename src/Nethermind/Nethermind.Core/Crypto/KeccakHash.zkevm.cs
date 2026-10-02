@@ -150,6 +150,18 @@ public sealed partial class KeccakHash
 
             AbsorbPaddedTail(ref lane, data, length);
         }
+        else if (length == 32)
+        {
+            AbsorbShortFixed(ref lane, data, 32);
+        }
+        else if (length == 64)
+        {
+            AbsorbShortFixed(ref lane, data, 64);
+        }
+        else if (length == 20)
+        {
+            AbsorbShortFixed(ref lane, data, 20);
+        }
         else
         {
             Unsafe.Add(ref lane, 0) = 0;
@@ -180,6 +192,38 @@ public sealed partial class KeccakHash
         KeccakF(state);
         return Unsafe.As<ulong, ValueHash256>(ref lane);
     }
+
+    /// <summary>Writes every rate lane of a state from a sub-rate message and its 0x01 pad byte.</summary>
+    /// <param name="length">A constant from 8 to 135: each lane then folds to one store of an input word,
+    /// the padded last word or zero, rather than a zeroing pass and a lane dispatch.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void AbsorbShortFixed(ref ulong lane, byte* data, nuint length)
+    {
+        Unsafe.Add(ref lane, 0) = ShortMessageLane(data, length, 0);
+        Unsafe.Add(ref lane, 1) = ShortMessageLane(data, length, 1);
+        Unsafe.Add(ref lane, 2) = ShortMessageLane(data, length, 2);
+        Unsafe.Add(ref lane, 3) = ShortMessageLane(data, length, 3);
+        Unsafe.Add(ref lane, 4) = ShortMessageLane(data, length, 4);
+        Unsafe.Add(ref lane, 5) = ShortMessageLane(data, length, 5);
+        Unsafe.Add(ref lane, 6) = ShortMessageLane(data, length, 6);
+        Unsafe.Add(ref lane, 7) = ShortMessageLane(data, length, 7);
+        Unsafe.Add(ref lane, 8) = ShortMessageLane(data, length, 8);
+        Unsafe.Add(ref lane, 9) = ShortMessageLane(data, length, 9);
+        Unsafe.Add(ref lane, 10) = ShortMessageLane(data, length, 10);
+        Unsafe.Add(ref lane, 11) = ShortMessageLane(data, length, 11);
+        Unsafe.Add(ref lane, 12) = ShortMessageLane(data, length, 12);
+        Unsafe.Add(ref lane, 13) = ShortMessageLane(data, length, 13);
+        Unsafe.Add(ref lane, 14) = ShortMessageLane(data, length, 14);
+        Unsafe.Add(ref lane, 15) = ShortMessageLane(data, length, 15);
+        Unsafe.Add(ref lane, 16) = ShortMessageLane(data, length, 16);
+    }
+
+    /// <summary>Rate lane <paramref name="index"/> of a sub-rate message of at least eight bytes followed by the 0x01 pad byte.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe ulong ShortMessageLane(byte* data, nuint length, nuint index) =>
+        index < length >> 3 ? Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong))
+        : index == length >> 3 ? PaddedLastWord(data + length, length & 7)
+        : 0;
 
     /// <summary>XORs a sub-rate tail of <paramref name="length"/> bytes and the 0x01 pad byte after it into the state.</summary>
     /// <remarks>A whole block must precede the tail, which keeps the word ending the message in bounds.</remarks>
