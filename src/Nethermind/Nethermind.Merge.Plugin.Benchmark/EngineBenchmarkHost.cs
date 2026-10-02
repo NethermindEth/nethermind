@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -155,16 +156,16 @@ internal static class EngineBenchmarkHost
     /// </remarks>
     public static IEngineRpcModule CreateEngine(object result)
     {
-        IEngineRpcModule engine = System.Reflection.DispatchProxy.Create<IEngineRpcModule, FixedResultEngine>();
+        IEngineRpcModule engine = DispatchProxy.Create<IEngineRpcModule, FixedResultEngine>();
         ((FixedResultEngine)(object)engine).Result = result;
         return engine;
     }
 
-    public class FixedResultEngine : System.Reflection.DispatchProxy
+    private class FixedResultEngine : DispatchProxy
     {
         internal object Result = null!;
 
-        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args) =>
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
             targetMethod!.ReturnType.IsInstanceOfType(Result) ? Result : throw new NotSupportedException(targetMethod.Name);
     }
 
