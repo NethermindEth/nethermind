@@ -53,7 +53,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     {
         int count = state.Length + 1;
         int bucketCount = (int)BitOperations.RoundUpToPowerOf2((uint)count);
-        // Locals rather than the fields, which the loop would reload after every keccak call.
+        // Locals rather than the fields, which the loops would reload after every call.
         int bucketMask = _bucketMask = bucketCount - 1;
         int[] heads = _heads = new int[bucketCount];
         int[] next = _next = new int[count];
@@ -62,11 +62,14 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         state.CopyTo(values);
         values[state.Length] = [128];
         keys[state.Length] = EmptyRootKey;
+        // Hashed straight into the key array: a returned hash would be copied twice on the way there. A pass of
+        // its own, so the bucketing pass below makes no calls and keeps its locals in registers.
+        for (int i = 0; i < state.Length; i++)
+            KeccakHash.ComputeHashBytesToSpan(state[i], MemoryMarshal.AsBytes(keys.AsSpan(i, 1)));
+
         int[] lengths = new int[bucketCount];
         for (int i = 0; i < count; i++)
         {
-            // Hashed straight into the key array: a returned hash would be copied twice on the way there.
-            if (i != state.Length) KeccakHash.ComputeHashBytesToSpan(state[i], MemoryMarshal.AsBytes(keys.AsSpan(i, 1)));
             ref readonly NodeKey key = ref keys[i];
             int bucket = key.Bucket(bucketMask);
             int head = heads[bucket];
@@ -99,12 +102,14 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// <remarks>
     /// <see cref="NodeStorage"/> falls back to a half-path key when the hash key misses. Nothing writes
     /// a half-path key under <see cref="INodeStorage.KeyScheme.Hash"/>, so that probe can only miss here.
+    /// The keccak is viewed as a <see cref="NodeKey"/>, which wraps it alone, rather than copied into one: a copy
+    /// holds its four words in callee-saved registers across the whole inlined resolve.
     /// </remarks>
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-        => Find(new NodeKey(keccak));
+        => Find(in Unsafe.As<ValueHash256, NodeKey>(ref Unsafe.AsRef(in keccak)));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private byte[]? Find(NodeKey key)
+    private byte[]? Find(in NodeKey key)
     {
         if (_nodes.Count != 0 && _nodes.TryGetValue(key, out byte[]? value)) return value;
         int entry = _heads[key.Bucket(_bucketMask)];
@@ -184,7 +189,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     {
         private readonly ValueHash256 _hash = hash;
 
-        internal int Bucket(int mask) => (int)Unsafe.ReadUnaligned<uint>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
+        internal int Bucket(int mask) => (int)Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
 
         public bool Equals(NodeKey other)
         {
