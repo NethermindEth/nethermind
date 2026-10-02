@@ -20,7 +20,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
-/// <summary><c>/eth/v1/beacon/*</c>: genesis, headers (by id, slot or parent), block root, and block content as SSZ or JSON.</summary>
+/// <summary><c>/eth/v1/beacon/*</c>: genesis, headers (by id, slot or parent), block root, block content as SSZ or JSON, and the block's attestations.</summary>
 internal static class BeaconEndpoints
 {
     public static void Map(WebApplication app, BeaconApiContext ctx)
@@ -30,6 +30,45 @@ internal static class BeaconEndpoints
         app.MapGet("/eth/v1/beacon/headers/{block_id}", (HttpContext c, string block_id) => HeaderById(c, block_id, ctx.ForRequest()));
         app.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (HttpContext c, string block_id) => BlockRoot(c, block_id, ctx.ForRequest()));
         app.MapGet("/eth/v2/beacon/blocks/{block_id}", (HttpContext c, string block_id) => BlockContent(c, block_id, ctx.ForRequest()));
+        app.MapGet("/eth/v2/beacon/blocks/{block_id}/attestations", (HttpContext c, string block_id) => BlockAttestations(c, block_id, ctx.ForRequest()));
+    }
+
+    /// <summary>beacon-APIs v5.0.0-alpha.2 <c>getBlockAttestationsV2</c>: the attestations included in the block body, in body order.</summary>
+    /// <remarks>
+    /// The published operation is JSON only and its version enum stops at fulu; a Gloas block is served under
+    /// <c>gloas</c> with the Gloas <c>Attestation</c> (consensus-specs v1.7.0-beta.2 gloas/beacon-chain.md), never under a fulu label.
+    /// </remarks>
+    private static Task BlockAttestations(HttpContext c, string blockId, BeaconApiContext ctx)
+    {
+        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
+        {
+            return ContentNegotiation.WriteNotAcceptable(c);
+        }
+
+        if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
+        {
+            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+        }
+
+        ulong slot = resolved.Slot;
+        BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(slot));
+        Action<Utf8JsonWriter> writeAttestations = resolved.Block switch
+        {
+            ForkedSignedBeaconBlock.OfFulu fulu when fork != BeaconFork.Gloas => w => BeaconJsonWriter.WriteAttestations(w, fulu.Block.Message!.Body!.Attestations!),
+            ForkedSignedBeaconBlock.OfGloas gloas when fork == BeaconFork.Gloas => w => BeaconJsonWriter.WriteAttestations(w, gloas.Block.Message!.Body!.Attestations!),
+            _ => throw new BeaconStateException(
+                $"Block {resolved.Root} at slot {slot} was read as {resolved.Block.GetType().Name}, which is not the shape of the {ResponseEnvelope.ForkName(fork)} fork"),
+        };
+
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, slot);
+        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, slot, resolved.Root),
+            s =>
+            {
+                writeAttestations(s.Writer);
+                return Task.CompletedTask;
+            });
     }
 
     private static Task Genesis(HttpContext c, BeaconApiContext ctx)
