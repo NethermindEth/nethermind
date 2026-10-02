@@ -10,6 +10,8 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -17,12 +19,27 @@ using Nethermind.Int256;
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAccessList
+public class BlockhashStore(IWorldState worldState, ITransactionProcessor? processor = null) : IBlockhashStore, IHasAccessList
 {
+    private static readonly ValueHash256 CodeHash = ValueKeccak.Compute(Eip2935Constants.Code);
 
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
         if (!TryGetParentHashCell(blockHeader, spec, out StorageCell blockHashStoreCell)) return;
+
+        // A direct write of the parent hash matches only the canonical bytecode; other code runs as a system call.
+        if (processor is not null && worldState.GetCodeHash(blockHashStoreCell.Address) != CodeHash)
+        {
+            SystemCall transaction = new()
+            {
+                GasLimit = Eip8037Constants.SystemCallGasLimit,
+                Data = blockHeader.ParentHash!.Bytes.ToArray(),
+                To = blockHashStoreCell.Address,
+                SenderAddress = Address.SystemUser,
+            };
+            processor.Execute(transaction, NullTxTracer.Instance);
+            return;
+        }
 
         worldState.Set(blockHashStoreCell, blockHeader.ParentHash!.ToUInt256());
         worldState.RecordBytecodeAccess(blockHashStoreCell.Address);

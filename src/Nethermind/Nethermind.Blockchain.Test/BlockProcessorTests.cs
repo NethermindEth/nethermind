@@ -428,6 +428,32 @@ public partial class BlockProcessorTests
         Assert.That(gasLeft, Is.EqualTo((UInt256)(Eip8037Constants.SystemCallBaseGasLimit - GasCostOf.Base)));
     }
 
+    // Before Amsterdam the history system call also runs the code the account holds, with a 30M gas limit,
+    // and a failing call is ignored.
+    [TestCase("5a60015500", 30_000_000 - GasCostOf.Base)] // GAS PUSH1 1 SSTORE
+    [TestCase("5f5ffd", 0UL)] // PUSH0 PUSH0 REVERT
+    public async Task Eip2935_HistorySystemCall_RunsAccountCodeBeforeAmsterdam(string code, ulong slot1)
+    {
+        IReleaseSpec spec = Osaka.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .WithGenesisPostProcessor((_, state) =>
+            {
+                state.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
+                state.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Bytes.FromHexString(code), spec);
+            }));
+
+        Block block = await chain.AddBlock();
+
+        chain.StateReader.GetStorage(block.Header, Eip2935Constants.BlockHashHistoryAddress, UInt256.Zero, out UInt256 parentHash);
+        chain.StateReader.GetStorage(block.Header, Eip2935Constants.BlockHashHistoryAddress, UInt256.One, out UInt256 stored);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parentHash, Is.EqualTo(UInt256.Zero), "only the account code writes its storage");
+            Assert.That(stored, Is.EqualTo((UInt256)slot1));
+        }
+    }
+
     [Test]
     public async Task TransactionTraceBoundary_WhenThePrefixIsSeeded_TellsNoHandlerAboutMisnumberedReceipts()
     {

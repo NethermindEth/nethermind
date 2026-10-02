@@ -33,7 +33,7 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        BlockhashStore blockhashStore = new(preExecution.WorldState);
+        BlockhashStore blockhashStore = new(preExecution.WorldState, preExecution.TxProcessor);
         if (!spec.IsEip8037Enabled)
         {
             blockhashStore.ApplyBlockhashStateChanges(header, spec);

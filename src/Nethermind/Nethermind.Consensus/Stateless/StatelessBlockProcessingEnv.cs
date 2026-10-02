@@ -108,7 +108,7 @@ public class StatelessBlockProcessingEnv(
             WorldState,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(txProcessor, WorldState),
-            new BlockhashStore(WorldState),
+            new BlockhashStore(WorldState, txProcessor),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor),
