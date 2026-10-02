@@ -23,7 +23,7 @@ public class IdentifyTimeoutTests
 
     public enum Stall
     {
-        /// <summary>The peer does not list identify, which the pinned multistream leaves unanswered rather than refused.</summary>
+        /// <summary>The peer does not list identify: it answers <c>na</c>, and the library's dial then waits out its bound rather than failing.</summary>
         Negotiation,
 
         /// <summary>The peer accepts the identify stream and never writes its answer.</summary>
