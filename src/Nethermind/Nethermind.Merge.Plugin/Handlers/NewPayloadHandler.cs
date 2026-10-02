@@ -546,10 +546,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         private readonly Dictionary<(Transaction Transaction, int Index), bool> _verdicts = [];
 
-        /// <inheritdoc/>
         public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec) => inner.AreSignaturesValid(transaction, spec);
 
-        /// <inheritdoc/>
         public bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
         {
             List<(Transaction Transaction, int Index)> missing = [];
