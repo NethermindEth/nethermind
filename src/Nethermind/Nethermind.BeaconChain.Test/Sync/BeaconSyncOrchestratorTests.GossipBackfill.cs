@@ -64,7 +64,7 @@ public partial class BeaconSyncOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ByRootRequests(peer), Is.EqualTo(2), "one for the repeated parent, one for another parent");
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(3), "the later children of the waiting parent are held, and so is the block whose parent no peer returned");
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(4), "every child of the waiting parent is held, and so is the block whose parent no peer returned");
         }
     }
 
