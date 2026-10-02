@@ -58,6 +58,9 @@ public static class ExperimentKnobs
     /// <summary>Each discovery candidate warms its own new cells as soon as its run ends, not at the round's barrier.</summary>
     public static readonly bool DiscoveryWarmPerCandidate = On("NETHERMIND_EXP_DISCOVERY_WARM_PER_CANDIDATE");
 
+    /// <summary>A heavy transaction is warmed once with expensive precompiles answered by placeholders and computed in parallel.</summary>
+    public static readonly bool PrecompileLookahead = On("NETHERMIND_EXP_PRECOMPILE_LOOKAHEAD");
+
     /// <summary>MODEXP whose exponent is a known prime modulus minus two is computed as a modular inverse.</summary>
     public static readonly bool ModExpInvert = On("NETHERMIND_EXP_MODEXP_INVERT");
 

@@ -1241,6 +1241,26 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
+            if (Core.Diagnostics.ExperimentKnobs.PrecompileLookahead && tx.GasLimit > SplitSenderGroupGasThreshold)
+            {
+                // Placeholders let the calls whose inputs do not depend on an earlier precompile's result be scheduled at
+                // once; the pass is rolled back, so the warm below runs on the same state and finds them cached.
+                int issued = 0;
+                try
+                {
+                    using (PrecompileLookahead.Begin())
+                    {
+                        scope.TransactionProcessor.Process(tx, tracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.Restore);
+                        issued = PrecompileLookahead.Issued;
+                    }
+                }
+                catch (Exception ex) when (ex is EvmException or OverflowException)
+                {
+                }
+
+                if (Core.Diagnostics.NewPayloadTrace.Enabled && issued > 0) Core.Diagnostics.NewPayloadTrace.Note($"pla:{txIndex}:{issued}@{Core.Diagnostics.NewPayloadTrace.NowUs()}");
+            }
+
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, tracer);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
