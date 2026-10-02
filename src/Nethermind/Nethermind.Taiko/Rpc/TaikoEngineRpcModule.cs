@@ -56,6 +56,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
         IInclusionListTxSource inclusionListTxSource,
+        IInclusionListComplianceEvaluator inclusionListComplianceEvaluator,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
         IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
@@ -67,6 +68,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
+        IBlockTree blockTree,
         IShareableTxProcessorSource txProcessorSource,
         IRlpDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
@@ -91,6 +93,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getPayloadBodiesByRangeV2Handler,
                 getInclusionListTransactionsHandler,
                 inclusionListTxSource,
+                inclusionListComplianceEvaluator,
                 newPayloadWithWitnessHandlerV4,
                 newPayloadWithWitnessHandlerV5,
                 newPayloadWithWitnessHandlerV6,
@@ -99,7 +102,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 specProvider,
                 gcKeeper,
                 processingQueue,
-                logManager), ITaikoEngineRpcModule
+                logManager,
+                blockTree), ITaikoEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
@@ -124,6 +128,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
         IInclusionListTxSource inclusionListTxSource,
+        IInclusionListComplianceEvaluator inclusionListComplianceEvaluator,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
         IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
@@ -134,6 +139,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
+        IBlockTree blockTree,
         IShareableTxProcessorSource txProcessorSource,
         IRlpDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
@@ -159,6 +165,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             getPayloadBodiesByRangeV2Handler,
             getInclusionListTransactionsHandler,
             inclusionListTxSource,
+            inclusionListComplianceEvaluator,
             newPayloadWithWitnessHandlerV4,
             newPayloadWithWitnessHandlerV5,
             newPayloadWithWitnessHandlerV6,
@@ -170,6 +177,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             logManager,
             txPool,
             blockFinder,
+            blockTree,
             txProcessorSource,
             txDecoder,
             l1OriginStore,

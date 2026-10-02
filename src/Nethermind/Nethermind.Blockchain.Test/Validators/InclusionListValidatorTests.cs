@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -82,11 +83,34 @@ public class InclusionListValidatorTests
             .WithGasUsed(gasUsed)
             .WithBaseFeePerGas(baseFee)
             .WithTransactions(blockTxs)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
             .WithInclusionListTransactions(il)
             .TestObject;
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
         Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
+    }
+
+    [Test]
+    public void Blob_appendability_requires_capacity_and_base_fee(
+        [Values(0UL, Eip4844Constants.GasPerBlob - 1, Eip4844Constants.GasPerBlob)] ulong remainingBlobGas,
+        [Values] bool underpriced,
+        [Values] bool included)
+    {
+        IReleaseSpec spec = Bogota.Instance;
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithBlobGasUsed(spec.GasCosts.MaxBlobGasPerBlock - remainingBlobGas)
+            .WithExcessBlobGas(2 * spec.BlobBaseFeeUpdateFraction)
+            .TestObject;
+        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee), Is.True);
+        Transaction tx = BuildBlobTx(maxFeePerBlobGas: underpriced ? blobBaseFee - UInt256.One : blobBaseFee);
+        if (included) block = new Block(block.Header, [tx], block.Uncles);
+
+        bool expected = included || underpriced || remainingBlobGas < Eip4844Constants.GasPerBlob;
+        Assert.That(InclusionListValidator.IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(expected));
     }
 
     // Withdrawals land after the block's transactions, so judging against the raw post-block balance
@@ -112,9 +136,32 @@ public class InclusionListValidatorTests
         return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
+    // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
+    // is appendable even though it exceeds the header's max(execution, state). Numbers are those of
+    // test_preparation_rollback_restores_block_state_budget, where a 97_920-gas state total sits under a
+    // 513_317-gas execution total.
+    [TestCase(34_067_749UL, true, ExpectedResult = false, TestName = "Entry at the exact state budget is appendable")]
+    [TestCase(34_067_750UL, true, ExpectedResult = true, TestName = "Entry one gas past the state budget is not appendable")]
+    // Without the per-dimension totals — no in-memory copy of the executed block left — both fall back to that max.
+    [TestCase(34_067_749UL, false, ExpectedResult = true, TestName = "Entry is judged on the combined gas when dimensions are unknown")]
+    public bool Appendability_is_judged_per_block_gas_dimension(ulong ilGasLimit, bool dimensionsKnown)
+    {
+        Block block = Build.A.Block
+            .WithGasLimit(34_165_669)
+            .WithGasUsed(513_317)
+            .WithBaseFeePerGas(UInt256.Zero)
+            .WithTransactions([])
+            .WithInclusionListTransactions([BuildTx(gasLimit: ilGasLimit, to: TestItem.AddressB)])
+            .TestObject;
+        if (dimensionsKnown) block.Header.GasUsedPerDimension = (513_317, 97_920);
+
+        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+    }
+
     /// <summary>EIP-8369 Profile 2: an omitted frame transaction is judged when it is a candidate and excused
     /// when it is not, so both sides of the boundary are pinned rather than only the excuse.</summary>
     public static IEnumerable<TestCaseData> FrameCases
+
     {
         get
         {
@@ -221,6 +268,25 @@ public class InclusionListValidatorTests
 
             Assert.That(InclusionListValidator.IsSatisfied(block, state, spec, _txValidator, maxVerifyGasPerTx), Is.EqualTo(satisfied));
         }
+    }
+
+    [TestCase(0UL, ExpectedResult = false)]
+    [TestCase(1UL, ExpectedResult = true)]
+    public bool Profile_2_appendability_uses_the_exact_state_reservation(ulong excess)
+    {
+        Transaction candidate = WithHash(BuildFrameTx([
+            SelfVerify(),
+            new(FrameMode.Default, FrameFlags.None, TestItem.AddressC, 50_000, 200_000, UInt256.Zero, default),
+        ]), "state-reservation");
+        Block block = Profile2Block([candidate], blockTxCount: 0);
+        IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(candidate, spec, out _, out ulong stateReservation), Is.True);
+        ulong stateUsed = block.GasLimit - stateReservation + excess;
+        block.Header.GasUsed = stateUsed;
+        block.Header.GasUsedPerDimension = (28_000_000, stateUsed);
+        Assert.That((bool)_txValidator.IsWellFormed(candidate, spec, block.GasLimit), Is.True);
+
+        return IsSatisfied(block, new FakeReplayer((_, _) => true));
     }
 
     private static readonly Transaction _candidate = Candidate(1, 100_000);

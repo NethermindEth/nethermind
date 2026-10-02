@@ -120,7 +120,7 @@ namespace Nethermind.Trie
                 // without materializing a TrieNode via FindCachedOrUnknown + ResolveKey.
                 TrieNode? nodeRef = null;
                 Hash256? childKeccak;
-                if (item._nodeData![0] is Hash256 dataKeccak)
+                if (item.DataItem(0) is Hash256 dataKeccak)
                 {
                     childKeccak = dataKeccak;
                 }
@@ -240,6 +240,9 @@ namespace Nethermind.Trie
                 // walk for one bounded copy. The walk is kept where it does something else as well:
                 // spreading the children over cores, or collecting branch pairs for batched hashing.
                 bool useParallel = UseParallel(canBeParallel, item);
+                using ParallelUnbalancedWork.WorkerScope? workers = useParallel
+                    ? ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount)
+                    : null;
                 if (useParallel || (Avx512F.VL.IsSupported && HasBatchableChildPair(item)))
                 {
                     contentLength = valueRlpLength + (useParallel
@@ -346,7 +349,7 @@ namespace Nethermind.Trie
                 {
                     int index = BitOperations.TrailingZeroCount(remaining);
                     remaining ^= (ushort)(1 << index);
-                    if (Unsafe.As<TrieNode>(item._nodeData![index])!.FullRlp.Length == FullBranchRlpLength)
+                    if (Unsafe.As<TrieNode>(item.DataItem(index))!.FullRlp.Length == FullBranchRlpLength)
                     {
                         fullMask |= (ushort)(1 << index);
                     }
@@ -422,7 +425,7 @@ namespace Nethermind.Trie
                     {
                         int index = BitOperations.TrailingZeroCount(packMask);
                         packMask ^= (ushort)(1 << index);
-                        CappedArray<byte> rlp = Unsafe.As<TrieNode>(item._nodeData![index])!.FullRlp;
+                        CappedArray<byte> rlp = Unsafe.As<TrieNode>(item.DataItem(index))!.FullRlp;
                         if (PaddedLength(rlp.Length) != paddedLength || rlp.Length < Hash256.Size)
                         {
                             ThrowUnexpectedPreparedChildLength();
@@ -459,14 +462,14 @@ namespace Nethermind.Trie
                         int index = BitOperations.TrailingZeroCount(storeMask);
                         storeMask ^= (ushort)(1 << index);
                         ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
-                        Unsafe.As<TrieNode>(item._nodeData![index])!.SetPreparedKey(in hash);
+                        Unsafe.As<TrieNode>(item.DataItem(index))!.SetPreparedKey(in hash);
                     }
                 }
 
                 ResolvePreparedKeys(item, candidateMask);
 
                 static int ChildRlpLength(TrieNode node, int index) =>
-                    Unsafe.As<TrieNode>(node._nodeData![index])!.FullRlp.Length;
+                    Unsafe.As<TrieNode>(node.DataItem(index))!.FullRlp.Length;
 
                 [DoesNotReturn, StackTraceHidden]
                 static void ThrowUnexpectedPreparedChildLength() =>
@@ -479,7 +482,7 @@ namespace Nethermind.Trie
                 {
                     int index = BitOperations.TrailingZeroCount(candidateMask);
                     candidateMask ^= (ushort)(1 << index);
-                    Unsafe.As<TrieNode>(item._nodeData![index])!.ResolvePreparedKey();
+                    Unsafe.As<TrieNode>(item.DataItem(index))!.ResolvePreparedKey();
                 }
             }
 
@@ -496,7 +499,7 @@ namespace Nethermind.Trie
                 candidateMask ^= (ushort)(1 << firstIndex);
                 if (candidateMask == 0)
                 {
-                    Unsafe.As<TrieNode>(item._nodeData![firstIndex])!.ResolvePreparedKey();
+                    Unsafe.As<TrieNode>(item.DataItem(firstIndex))!.ResolvePreparedKey();
                     return;
                 }
 
@@ -506,12 +509,12 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    Unsafe.As<TrieNode>(item._nodeData![firstIndex])!.ResolvePreparedKey();
+                    Unsafe.As<TrieNode>(item.DataItem(firstIndex))!.ResolvePreparedKey();
                     do
                     {
                         int index = BitOperations.TrailingZeroCount(candidateMask);
                         candidateMask ^= (ushort)(1 << index);
-                        Unsafe.As<TrieNode>(item._nodeData![index])!.ResolvePreparedKey();
+                        Unsafe.As<TrieNode>(item.DataItem(index))!.ResolvePreparedKey();
                     } while (candidateMask != 0);
                 }
             }
@@ -551,7 +554,7 @@ namespace Nethermind.Trie
                     {
                         int index = BitOperations.TrailingZeroCount(candidateMask);
                         candidateMask ^= (ushort)(1 << index);
-                        CappedArray<byte> rlp = Unsafe.As<TrieNode>(item._nodeData![index])!.FullRlp;
+                        CappedArray<byte> rlp = Unsafe.As<TrieNode>(item.DataItem(index))!.FullRlp;
                         if (rlp.Length != FullBranchRlpLength)
                             throw new TrieException("A prepared full branch changed before batched hashing.");
                         Span<byte> input = inputs.Slice(i * inputLength, inputLength);
@@ -573,7 +576,7 @@ namespace Nethermind.Trie
                         int index = BitOperations.TrailingZeroCount(batchMask);
                         batchMask ^= (ushort)(1 << index);
                         ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
-                        Unsafe.As<TrieNode>(item._nodeData![index])!.SetPreparedKey(in hash);
+                        Unsafe.As<TrieNode>(item.DataItem(index))!.SetPreparedKey(in hash);
                     }
                 } while (BitOperations.PopCount((uint)candidateMask) >= minimumBatch);
 
@@ -590,8 +593,8 @@ namespace Nethermind.Trie
                 {
                     int secondIndex = BitOperations.TrailingZeroCount(candidateMask);
                     candidateMask ^= (ushort)(1 << secondIndex);
-                    TrieNode first = Unsafe.As<TrieNode>(item._nodeData![firstIndex])!;
-                    TrieNode second = Unsafe.As<TrieNode>(item._nodeData[secondIndex])!;
+                    TrieNode first = Unsafe.As<TrieNode>(item.DataItem(firstIndex))!;
+                    TrieNode second = Unsafe.As<TrieNode>(item.DataItem(secondIndex))!;
                     CappedArray<byte> firstRlp = first.FullRlp;
                     CappedArray<byte> secondRlp = second.FullRlp;
                     if (firstRlp.Length != FullBranchRlpLength || secondRlp.Length != FullBranchRlpLength)
@@ -616,7 +619,7 @@ namespace Nethermind.Trie
                     candidateMask ^= (ushort)(1 << firstIndex);
                     if (candidateMask == 0)
                     {
-                        Unsafe.As<TrieNode>(item._nodeData![firstIndex])!.ResolvePreparedKey();
+                        Unsafe.As<TrieNode>(item.DataItem(firstIndex))!.ResolvePreparedKey();
                         return;
                     }
                 }
@@ -651,7 +654,7 @@ namespace Nethermind.Trie
                     (local: 0, localMask: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
-                        object? data = state.item._nodeData![i];
+                        object? data = state.item.DataItem(i);
                         if (ReferenceEquals(data, _nullNode) || data is null)
                         {
                             state.local++;
@@ -978,7 +981,7 @@ namespace Nethermind.Trie
                     {
                         int index = BitOperations.TrailingZeroCount(candidates);
                         candidates ^= (ushort)(1 << index);
-                        Rlp.Encode(destination, positions[index], Unsafe.As<TrieNode>(item._nodeData![index])!.Keccak!);
+                        Rlp.Encode(destination, positions[index], Unsafe.As<TrieNode>(item.DataItem(index))!.Keccak!);
                     } while (candidates != 0);
                 }
                 return position;

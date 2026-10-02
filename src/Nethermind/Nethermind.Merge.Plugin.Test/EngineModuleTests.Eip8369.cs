@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -19,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -60,6 +62,8 @@ public partial class EngineModuleTests
             Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(newPayload.Data.InclusionListSatisfied, Is.EqualTo(sendClaims));
             Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(sendClaims));
+            Assert.That(chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash, il), Is.Null,
+                "raw inclusion-list bytes cannot recover membership or claimed indices");
         }
     }
 

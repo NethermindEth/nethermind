@@ -645,7 +645,7 @@ namespace Nethermind.TxPool.Test
                     : new AccountStruct(0, UInt256.MaxValue);
                 return true;
             });
-            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? [] : throw MissingHeadState());
+            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? Array.Empty<byte>() : throw MissingHeadState());
             ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state);
 
             Assert.DoesNotThrow(() => _txPool = CreatePool(
@@ -2531,7 +2531,7 @@ namespace Nethermind.TxPool.Test
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)(blobIndex == blobCount ? tx2 : tx1).NetworkWrapper!;
                     int index = blobIndex == blobCount ? 0 : blobIndex;
                     Assert.That(blobs[i].AsSpan().SequenceEqual(wrapper.Blobs[index]), Is.True, $"Blob at index {i}");
-                    Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob).ToArray()));
+                    Assert.That(proofs[i], Is.SequenceEqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob)));
                 }
                 Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(2));
             }

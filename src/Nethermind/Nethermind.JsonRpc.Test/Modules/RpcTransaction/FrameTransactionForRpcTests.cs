@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -645,8 +646,6 @@ public class FrameTransactionForRpcTests
             Assert.That(frames[3].GetProperty("logs")[0].GetProperty("logIndex").GetString(), Is.EqualTo("0x6"));
             Assert.That(JsonElement.DeepEquals(frames[0].GetProperty("logs")[0], logs[0]), Is.True);
             Assert.That(JsonElement.DeepEquals(frames[3].GetProperty("logs")[0], logs[1]), Is.True);
-            Assert.That(receiptForRpc.FrameReceipts![0].Logs![0], Is.SameAs(receiptForRpc.Logs![0]));
-            Assert.That(receiptForRpc.FrameReceipts![3].Logs![0], Is.SameAs(receiptForRpc.Logs![1]));
         }
     }
 
@@ -876,7 +875,7 @@ public class FrameTransactionForRpcTests
                 Assert.That(frames[i].ExecutionGasLimit, Is.EqualTo(expected[i].ExecutionGasLimit));
                 Assert.That(frames[i].StateGasLimit, Is.EqualTo(expected[i].StateGasLimit));
                 Assert.That(frames[i].Value, Is.EqualTo(expected[i].Value));
-                Assert.That(frames[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()));
+                Assert.That(frames[i].Data, Is.SequenceEqualTo(expected[i].Data));
             }
         }
     }

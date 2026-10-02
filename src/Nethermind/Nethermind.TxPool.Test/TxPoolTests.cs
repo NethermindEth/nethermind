@@ -3560,11 +3560,10 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // Simulation admits this layout and stops at the payer, so it never reaches the trailing VERIFY frame
-        // that can invalidate the transaction later. FrameTxValidationPrefixSimulationTests runs the real one.
-        [TestCase(false, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingSenderFrame_IsAccepted")]
+        // A successful simulation does not make an unrecognized prefix eligible for the public pool.
+        [TestCase(false, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingSenderFrame_IsRejected")]
         [TestCase(true, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingVerifyFrame_IsRejected")]
-        public void SubmitTx_FrameTransactionBehindAnUnrecognizedPrefix_IsJudgedOnItsTrailingFrame(bool trailingVerify)
+        public void SubmitTx_FrameTransactionWithAnUnrecognizedPrefix_IsRejected(bool trailingVerify)
         {
             CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
@@ -3577,8 +3576,8 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.EqualTo(trailingVerify ? AcceptTxResult.FrameTxVerifyAfterPrefix : AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(trailingVerify ? 0 : 1));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxUnrecognizedPrefix));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
             }
         }
 
@@ -5147,6 +5146,51 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Revalidation_reapplies_the_noncanonical_paymaster_cap(
+            [Values] bool gainsCode, [Values] bool simulationIndeterminate)
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+            Transaction[] sponsored = new Transaction[senders.Length];
+            UInt256 totalCost = UInt256.Zero;
+            for (int i = 0; i < senders.Length; i++)
+            {
+                EnsureSenderBalance(senders[i].Address, UInt256.MaxValue);
+                sponsored[i] = SponsoredFrameTx(senders[i], TestItem.PrivateKeyD);
+                Assert.That(FrameTxValidation.TryCalculateMaxCost(sponsored[i], Eip8141Prototype.Instance, out UInt256 cost), Is.True);
+                totalCost += cost;
+            }
+            EnsureSenderBalance(TestItem.AddressD, totalCost);
+            foreach (Transaction tx in sponsored)
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Block baseline = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(baseline);
+            if (gainsCode) _stateProvider.InsertCode([0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00], TestItem.AddressD);
+            if (simulationIndeterminate) SimulatesAs(simulator, FrameTxSimulationResult.Undecided("simulator unavailable"));
+            Block head = Build.A.Block.WithNumber(2).WithParent(baseline).TestObject;
+            head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressD };
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+
+            Transaction[] pending = _txPool.GetPendingTransactions();
+            int expectedCount = gainsCode ? Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster : sponsored.Length;
+            Assert.That(pending, Has.Length.EqualTo(expectedCount));
+            if (!gainsCode) return;
+
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            Transaction[] evicted = sponsored.Where(tx => tx.Hash != pending[0].Hash).ToArray();
+            Assert.That(_txPool.SubmitTx(evicted[0], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+            _txPool.RemoveTransaction(pending[0].Hash);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(evicted[1], Eip8141Prototype.Instance, out UInt256 remainingCost), Is.True);
+            EnsureSenderBalance(TestItem.AddressD, remainingCost);
+            _txPool.ResetAddress(TestItem.AddressD);
+            Assert.That(_txPool.SubmitTx(evicted[1], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted),
+                "head eviction releases payer exposure and the paymaster slot, leaving the transaction resubmittable");
+        }
+
+        [Test]
         public void SubmitTx_FrameTransactions_SharingNonCanonicalPaymaster_BoundByPendingCap_ReleasedOnRemoval()
         {
             // Distinct senders share one code-carrying pay target, so the non-canonical paymaster cap
@@ -5760,6 +5804,76 @@ namespace Nethermind.TxPool.Test
             // The bucket's tie-break decides whether a keyed entry sorting at a plain nonce is seen before or after
             // it, so a run the keyed entry only interrupts must come out the same either way.
             Assert.That(_txPool.GetLatestPendingNonce(sender), Is.EqualTo(expectedPendingNonce));
+        }
+
+        /// <remarks>A keyed frame transaction can make a bucket ready for the full snapshot while providing
+        /// nothing the inclusion-list builder can use.</remarks>
+        [TestCase(false, TestName = "sender holding only a keyed frame transaction")]
+        [TestCase(true, TestName = "sender holding a keyed frame transaction and an ordinary one")]
+        public void Non_frame_snapshot_keeps_only_senders_with_an_ordinary_ready_transaction(bool hasOrdinaryTx)
+        {
+            const ulong accountNonce = 3;
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            _stateProvider.CreateAccount(sender, 100.Ether, accountNonce);
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            if (hasOrdinaryTx)
+            {
+                Transaction plain = Build.A.Transaction
+                    .WithNonce(accountNonce)
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .WithGasLimit(21_000)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Assert.That(_txPool.GetPendingTransactionsBySender(true, UInt256.Zero), Does.ContainKey(new AddressAsKey(sender)));
+
+            IDictionary<AddressAsKey, Transaction[]> nonFrame = _txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256.Zero);
+
+            Assert.That(nonFrame.ContainsKey(sender), Is.EqualTo(hasOrdinaryTx));
+            if (hasOrdinaryTx)
+            {
+                Assert.That(nonFrame[sender], Has.Length.EqualTo(2), "kept buckets include their frame transactions");
+            }
+        }
+
+        /// <remarks>A frame-only bucket should need no account read; a mixed bucket should need one.</remarks>
+        [TestCase(false, 0, TestName = "a frame-only bucket is judged without an account read")]
+        [TestCase(true, 1, TestName = "a bucket with an ordinary transaction pays for one")]
+        public void Non_frame_snapshot_reads_an_account_only_for_a_non_frame_entry(bool hasOrdinaryTx, int expectedReads)
+        {
+            ISpecProvider specProvider = KeyedNonceSpecProvider();
+            CountingReadOnlyStateProvider counting = new(_stateProvider);
+            _txPool = CreatePool(null, specProvider,
+                new ChainHeadInfoProvider(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, counting));
+            Address sender = TestItem.PrivateKeyA.Address;
+            _stateProvider.CreateAccount(sender, 100.Ether);
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            if (hasOrdinaryTx)
+            {
+                Transaction plain = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .WithGasLimit(21_000)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            _txPool.ResetAddress(sender);
+            counting.ResetCounts();
+
+            _txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256.Zero);
+
+            Assert.That(counting.AccountReads(sender), Is.EqualTo(expectedReads));
         }
 
         /// <remarks>Admission sums a sender's keyed and account-domain liabilities against one balance; the
