@@ -31,3 +31,18 @@ dotnet run --project tools/LeanBench -c Release -p:BuildLeanFfi=true -- --fixtur
 ```
 
 Controls use `--name=value`: `seconds`, `queue`, `warmups`, `repetitions`, `rates`, `cases`, `block-counts`, `protocol-cases`, `protocol-rates`, `object-rates`, and `object-sizes`. Empty case lists disable that group. The loopback result is a local CPU/codec/admission baseline, not a prediction of WAN throughput.
+
+## Chunked mixed traffic
+
+[Measured chunk comparison and mobile plots](results/2026-10-03/mixed/README.md).
+
+```sh
+dotnet run --project tools/LeanBench -c Release -p:BuildLeanFfi=true -- --mixed-traffic=true --fixtures=/tmp/lean-bench-vectors --out=/tmp/lean-mixed --object-sizes=1048576,10485760 --chunks=0,32768,65536,131072 --wire-mbps=32 --probe-ms=20 --repetitions=3
+python3 tools/LeanBench/plot.py /tmp/lean-mixed/results.json --output=/tmp/lean-mixed/plots
+```
+
+This mode uses the production `PacketSender`, chunk serializer and Snappy/AES/MAC codecs over real localhost TCP. Whole-wrapper writes and each chunk await completion of the actual socket write. Concurrent probes cycle serialized `eth/GetBlockHeaders`, single-header `eth/BlockHeaders`, and `p2p/Ping` messages. Chunk size zero selects the whole-wrapper baseline. Unlike the original transport rows, this path passes through `PacketSender`.
+
+The terminal socket writer paces encrypted bytes in 4KiB quanta. `wire-mbps` is a simulated application bandwidth cap, with no kernel network shaping, packet loss or WAN RTT. Probe latency measures scheduled request-to-receiver delivery, not a response round trip. Rows report p50/p95/maximum control latency, object goodput, encrypted bytes including controls, whole-process CPU and drops. Raw object/control samples and compiled binary hashes are saved.
+
+SPHINCS wrappers with one/sixteen distinct claims and a single generic STARK wrapper are natively proved and verified before transport timing. `block-stark16` transports a real raw block-proof envelope; it is not a mempool wrapper, whose generic dependency limit is one. Repeated delivery measures transport and scheduling only; it makes no admission or crypto throughput claim. Preparation timings are single observations. Set `--proof-cases=` to run synthetic objects without native fixtures. Sender queue overflow fails the run rather than presenting missing controls as successful delivery.

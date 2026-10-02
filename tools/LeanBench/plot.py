@@ -186,9 +186,56 @@ def main():
             ax.legend(fontsize=8)
         save(fig, "large-object-throughput", "Random incompressible payloads over real TCP and production RLPx codecs.")
 
+    mixed = [row for row in rows if row["kind"] == "mixed-traffic"]
+    if mixed:
+        groups = defaultdict(list)
+        for row in mixed:
+            groups[row["case"]].append(row)
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5.0))
+        fig.suptitle("Whole-wrapper versus application chunks: shared paced TCP connection")
+        for label, group in sorted(groups.items()):
+            group.sort(key=lambda row: row["chunkBytes"])
+            positions = [0 if row["chunkBytes"] == 0 else {32768: 1, 65536: 2, 131072: 3}[row["chunkBytes"]] for row in group]
+            line, = axes[0].plot(positions, [row["controlP95Ms"] for row in group], "o-", label=case_label(label))
+            axes[0].plot(positions, [row["controlMaxMs"] for row in group], "--", color=line.get_color())
+            axes[1].plot(positions, [row["goodputMbps"] for row in group], "o-", label=case_label(label))
+            axes[2].plot(positions, [row["wireBytes"] / row["payloadBytes"] for row in group], "o-", label=case_label(label))
+        axes[0].set(ylabel="Control delivery latency (ms)", title="p95 solid · maximum dashed")
+        axes[0].set_yscale("log")
+        axes[1].set(ylabel="Useful object goodput (Mbit/s)", title="Preproved transport; crypto outside timing")
+        axes[2].set(ylabel="Encrypted RLPx / object bytes", title="Includes chunk metadata and controls")
+        for ax in axes:
+            ax.set_xticks(range(4), labels=["Whole", "32 KiB", "64 KiB", "128 KiB"])
+            ax.legend(fontsize=8)
+        save(fig, "chunked-mixed-traffic", "Real TCP and production PacketSender/codecs, application-paced wire rate. Control delivery is one-way; no WAN RTT or loss simulation.")
+
+        synthetic = {label: group for label, group in groups.items() if label.startswith("object-")}
+        if synthetic:
+            fig, ax = plt.subplots(figsize=(6.5, 5.2))
+            for label, group in sorted(synthetic.items()):
+                x = [0 if row["chunkBytes"] == 0 else {32768: 1, 65536: 2, 131072: 3}[row["chunkBytes"]] for row in group]
+                line, = ax.plot(x, [row["controlP95Ms"] for row in group], "o-", label=case_label(label) + " p95")
+                ax.plot(x, [row["controlMaxMs"] for row in group], "s--", color=line.get_color(), label=case_label(label) + " max")
+            ax.set_yscale("log")
+            ax.set_xticks(range(4), labels=["Whole", "32 KiB", "64 KiB", "128 KiB"])
+            ax.set(ylabel="Control delivery latency (ms)", xlabel="Application chunk size", title=f"Headers and pings with large proof traffic\n{mixed[0]['simulatedWireMbps']:g} Mbit/s application pacing · localhost TCP")
+            ax.legend(fontsize=9)
+            save(fig, "chunk-control-latency", "Control p95/max during incompressible object delivery; simulated application wire cap, no WAN RTT or loss.")
+
+            fig, ax = plt.subplots(figsize=(6.5, 4.8))
+            for label, group in sorted(synthetic.items()):
+                x = [0 if row["chunkBytes"] == 0 else {32768: 1, 65536: 2, 131072: 3}[row["chunkBytes"]] for row in group]
+                ax.plot(x, [row["goodputMbps"] for row in group], "o-", label=case_label(label))
+            ax.axhline(mixed[0]["simulatedWireMbps"], color="#9ba3b1", linestyle="--", label="Encoded-wire cap")
+            ax.set_xticks(range(4), labels=["Whole", "32 KiB", "64 KiB", "128 KiB"])
+            ax.set(ylabel="Useful object goodput (Mbit/s)", xlabel="Application chunk size", title="Throughput tradeoff with concurrent controls", ylim=(0, mixed[0]["simulatedWireMbps"] * 1.1))
+            ax.legend(fontsize=9)
+            save(fig, "chunk-object-goodput", "Production PacketSender/codecs and reassembly over real localhost TCP; no crypto or admission inside timing.")
+
     meta = html.escape(json.dumps(data.get("metadata", {}), indent=2))
     sections = "".join(f'<section><h2>{html.escape(caption)}</h2><img src="{name}.png" alt="{html.escape(caption)}">'
                        f'<p><a href="{name}.svg">SVG</a></p></section>' for name, caption in charts)
+    sample_link = '<a href="../samples.csv">Sample CSV</a>' if (args.results.parent / "samples.csv").exists() else 'Samples are included in the JSON'
     (args.output / "index.html").write_text(
         '<!doctype html><meta charset="utf-8"><title>Lean integration measurements</title>'
         '<style>body{max-width:1400px;margin:40px auto;padding:0 24px;font:16px system-ui;color:#17233b}'
@@ -196,7 +243,7 @@ def main():
         '<h1>Lean integration measurements</h1><p>Localhost results are not WAN or mainnet capacity estimates. '
         'Load durations include drain time; consult raw rejection reasons and samples.</p>'
         '<p><a href="../results.json">Raw JSON and samples</a> · '
-        '<a href="../results.csv">Row CSV</a> · <a href="../samples.csv">Sample CSV</a></p>'
+        '<a href="../results.csv">Row CSV</a> · ' + sample_link + '</p>'
         + sections + '<h2>Measurement metadata</h2><pre>' + meta + '</pre>')
     print(json.dumps({"output": str(args.output), "charts": [name for name, _ in charts]}))
 
