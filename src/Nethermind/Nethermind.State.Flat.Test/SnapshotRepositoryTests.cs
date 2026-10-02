@@ -130,6 +130,18 @@ public class SnapshotRepositoryTests
         Assert.That(leasedAfter, Is.False);
     }
 
+    [TestCase(SnapshotTier.InMemoryBase, 1L)]
+    [TestCase(SnapshotTier.InMemoryCompacted, 0L)]
+    public void RemoveAndReleaseInMemoryKnownState_CountsOnlyBaseRemovals(SnapshotTier tier, long expectedRemovedBaseSnapshots)
+    {
+        AddSnapshotToRepository(0, 1, compacted: tier == SnapshotTier.InMemoryCompacted);
+
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(1), tier);
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(1), tier);
+
+        Assert.That(_repository.RemovedBaseSnapshotCount, Is.EqualTo(expectedRemovedBaseSnapshots));
+    }
+
     [Test]
     public void RemoveSnapshot_WithActiveLeases_DisposesWhenAllReleased()
     {

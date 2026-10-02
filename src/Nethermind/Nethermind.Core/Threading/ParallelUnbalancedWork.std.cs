@@ -18,13 +18,21 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         int threads = GetWorkerCount(fromInclusive, toExclusive, parallelOptions);
         if (threads == 0) return;
 
+        if (threads == 1)
+        {
+            for (int i = fromInclusive; i < toExclusive && !parallelOptions.CancellationToken.IsCancellationRequested; i++)
+                action(i);
+            parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+            return;
+        }
+
         Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
 
         // Workers hold no state of their own, so one instance serves every slot.
         ParallelUnbalancedWork worker = new(data);
         QueueWorkers(data, worker, threads - 1);
 
-        worker.Execute();
+        worker.Run();
 
         // If there are still active threads, wait for them to complete
         if (data.ActiveThreads > 0)
@@ -70,9 +78,17 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
     private ParallelUnbalancedWork(Data data) => _data = data;
 
     /// <summary>
-    /// Executes the parallel work item.
+    /// Executes a queued slot of the parallel work, unless the caller has already withdrawn it.
     /// </summary>
     public void Execute()
+    {
+        if (_data.TryStartQueued()) Run();
+    }
+
+    /// <summary>
+    /// Executes the parallel work item.
+    /// </summary>
+    private void Run()
     {
         try
         {
@@ -130,6 +146,8 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         internal WorkerScope.WorkQueue? Queue;
         public ManualResetEventSlim Event { get; } = new(initialState: false);
         private int _activeThreads = threads;
+        // Workers queued straight to the thread pool that no thread has started yet.
+        private int _unstarted;
         private int _faulted;
         private ExceptionDispatchInfo? _exception;
         public CancellationToken CancellationToken { get; } = token;
@@ -166,6 +184,31 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Rethrows the first captured exception (preserving its original stack trace), if any.
         /// </summary>
         public void ThrowIfFaulted() => Volatile.Read(ref _exception)?.Throw();
+
+        /// <summary>Records how many workers were queued straight to the thread pool.</summary>
+        public void SetUnstarted(int count) => _unstarted = count;
+
+        /// <summary>
+        /// Claims one queued worker's start. Fails once the caller has withdrawn the unstarted workers,
+        /// so a worker dequeued late neither runs nor completes a slot the caller already settled.
+        /// </summary>
+        public bool TryStartQueued()
+        {
+            // Scoped workers are withdrawn through their scope instead.
+            if (Scope is not null) return true;
+            int unstarted = Volatile.Read(ref _unstarted);
+            while (unstarted > 0)
+            {
+                int observed = Interlocked.CompareExchange(ref _unstarted, unstarted - 1, unstarted);
+                if (observed == unstarted) return true;
+                unstarted = observed;
+            }
+            return false;
+        }
+
+        /// <summary>Withdraws every queued worker that has not started.</summary>
+        /// <returns>The number of workers withdrawn.</returns>
+        public int WithdrawUnstarted() => Interlocked.Exchange(ref _unstarted, 0);
 
         /// <summary>
         /// Marks a thread as completed.
@@ -227,6 +270,32 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             int threads = GetWorkerCount(fromInclusive, toExclusive, parallelOptions);
             if (threads == 0) return;
 
+            if (threads == 1)
+            {
+                TLocal value = init is not null ? init() : initValue!;
+                ExceptionDispatchInfo? failure = null;
+                try
+                {
+                    for (int i = fromInclusive; i < toExclusive && !parallelOptions.CancellationToken.IsCancellationRequested; i++)
+                        value = action(i, value);
+                }
+                catch (Exception ex)
+                {
+                    failure = ExceptionDispatchInfo.Capture(ex);
+                }
+                try
+                {
+                    @finally?.Invoke(value);
+                }
+                catch (Exception ex)
+                {
+                    failure ??= ExceptionDispatchInfo.Capture(ex);
+                }
+                failure?.Throw();
+                parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+                return;
+            }
+
             // Create shared data with thread-local initializers and finalizers
             Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
 
@@ -235,7 +304,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             QueueWorkers(data, worker, threads - 1);
 
             // Execute work on the current thread
-            worker.Execute();
+            worker.Run();
 
             // If there are still active threads, wait for them to complete
             if (data.ActiveThreads > 0)
@@ -256,9 +325,17 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         private InitProcessor(Data<TLocal> data) => _data = data;
 
         /// <summary>
-        /// Executes the parallel work item with thread-local data.
+        /// Executes a queued slot of the parallel work, unless the caller has already withdrawn it.
         /// </summary>
         public void Execute()
+        {
+            if (_data.TryStartQueued()) Run();
+        }
+
+        /// <summary>
+        /// Executes the parallel work item with thread-local data.
+        /// </summary>
+        private void Run()
         {
             TLocal? value = default;
             // Track Init success so a throwing Init does not leak into Finally with default(TLocal)
@@ -372,7 +449,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             BackgroundWork? dependency = null)
         {
             _scope = dependency?._scope ?? WorkerScope.Current;
-            _queue = _scope is null ? null : new();
+            _queue = _scope is null ? null : new(this);
             options.CancellationToken.ThrowIfCancellationRequested();
             int limit = options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount;
             if (_scope is not null) limit = Math.Min(limit, _scope.Concurrency);
@@ -402,7 +479,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
 
         private void Run()
         {
-            if (_scope is not null) _scope.Run(this);
+            if (_scope is not null) _scope.Run(this, _queue!);
             else Execute();
         }
 
@@ -476,6 +553,18 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             _joined = true;
         }
 
+        internal void NotifyWorkAvailable()
+        {
+            if (Volatile.Read(ref _joinerWaiting) != 0)
+                lock (_completion) Monitor.PulseAll(_completion);
+        }
+
+#if DEBUG
+        // Tests publish descendant work after the readiness check, at the wait boundary.
+        [ThreadStatic]
+        internal static Action? BeforeJoinWait;
+#endif
+
         private void JoinScoped()
         {
             Volatile.Write(ref _joiner, Environment.CurrentManagedThreadId);
@@ -484,7 +573,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                 // The caller slot is reserved, so claim queued slots only after it stops: taking one first
                 // retires a requested runner and loses a thread for the whole range.
                 Run();
-                while (_scope!.TryExecute(_queue!)) { }
+                while (_scope!.TryExecute(_queue!, includeDescendants: true)) { }
                 // Short tails finish without the kernel wake-up a monitor wait costs.
                 SpinWait spinner = default;
                 while (!Volatile.Read(ref _complete) && !spinner.NextSpinWillYield) spinner.SpinOnce();
@@ -494,9 +583,14 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                     // before rechecking, so an executor either sees the waiter or leaves a state that ends it.
                     Interlocked.Exchange(ref _joinerWaiting, 1);
                     int active = Volatile.Read(ref _active);
-                    if (!_complete && (active == 0 || active >= _workers || (active > 0 &&
+                    if (!_complete && !_scope!.HasReadyWork(_queue!) && (active == 0 || active >= _workers || (active > 0 &&
                         (Volatile.Read(ref _next.Value) >= _to || _abandoned || _token.IsCancellationRequested || _exception is not null))))
+                    {
+#if DEBUG
+                        BeforeJoinWait?.Invoke();
+#endif
                         Monitor.Wait(_completion);
+                    }
                     Volatile.Write(ref _joinerWaiting, 0);
                 }
             }
