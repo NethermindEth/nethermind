@@ -60,7 +60,7 @@ internal sealed class FrameTxWidthFilter(
             return AcceptTxResult.ReplacementNotAllowed;
         }
 
-        UInt256 cost = FrameTxWidthCharge.For(tx, txPoolConfig.FrameTxWidthSafetyFactorPermille);
+        UInt256 cost = FrameTxWidthCharge.For(tx, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);
         if (!senderWidth.TrySpend(sender, cost))
         {
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);

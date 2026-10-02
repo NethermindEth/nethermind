@@ -36,6 +36,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -4894,7 +4895,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1]);
             Transaction second = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]);
-            UInt256 charge = FrameTxWidthCharge.For(second, 1000);
+            UInt256 charge = WidthChargeOf(second);
             _txPool.EarnWidthOnFinalization(Build.A.Block.WithTransactions(first).TestObject, [new TxReceipt { GasUsed = (ulong)(charge * 2) }]);
 
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -4928,7 +4929,7 @@ namespace Nethermind.TxPool.Test
                 SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]),
             ];
             if (reversed) Array.Reverse(txs);
-            _txPool.EarnWidthOnFinalization(Build.A.Block.WithTransactions(txs[0]).TestObject, [new TxReceipt { GasUsed = (ulong)FrameTxWidthCharge.For(txs[1], 1000) }]);
+            _txPool.EarnWidthOnFinalization(Build.A.Block.WithTransactions(txs[0]).TestObject, [new TxReceipt { GasUsed = (ulong)WidthChargeOf(txs[1]) }]);
 
             Assert.That(_txPool.SubmitTx(txs[0], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(txs[1], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -4952,8 +4953,8 @@ namespace Nethermind.TxPool.Test
             Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]);
             Transaction underbid = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2], feePerGas: 1.GWei + 1);
             Transaction bumped = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2], feePerGas: 2.GWei);
-            UInt256 charge = FrameTxWidthCharge.For(additional, 1000);
-            _txPool.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)(charge * 2) }]);
+            UInt256 earned = WidthChargeOf(additional) + WidthChargeOf(bumped);
+            _txPool.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)earned }]);
 
             Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(additional, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -5720,6 +5721,12 @@ namespace Nethermind.TxPool.Test
 
         private static ISpecProvider KeyedNonceSpecProvider() =>
             new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true });
+
+        private static UInt256 WidthChargeOf(Transaction tx)
+        {
+            tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
+            return FrameTxWidthCharge.For(tx, KeyedNonceSpecProvider().GenesisSpec, 1000);
+        }
 
         private Transaction BuildKeyedFrameTx(Address sender, UInt256 nonceKey, ulong seq, UInt256 value, UInt256 maxFee)
         {

@@ -31,7 +31,7 @@ public class FrameTxWidthFilterTests
     private const ulong Baseline = 1;
     private const ulong SafetyFactorPermille = 1000;
 
-    private const ulong Cost = Eip8141Constants.Secp256k1VerificationGasCost;
+    private const ulong Cost = (ulong)Eip8141Constants.IntrinsicGasCost + Eip8141Constants.Secp256k1VerificationGasCost + GasCostOf.ColdSLoad;
 
     [TestCase(0, true, TestName = "the single baseline admission is free")]
     [TestCase((int)Baseline, false, TestName = "first admission beyond the baseline")]
@@ -83,14 +83,14 @@ public class FrameTxWidthFilterTests
     public void Accept_ChargeScalesWithAdmissionGas()
     {
         SenderWidthCache cache = new();
-        cache.Earn(Sender, Cost * 3);
+        cache.Earn(Sender, Cost + 2 * Eip8141Constants.Secp256k1VerificationGasCost);
 
         AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: Baseline, signatures: 3), PendingKeyedTxs((int)Baseline));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero), "three signatures cost three times one signature's admission gas");
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero), "two more signatures add two signature verifications to the admission gas");
         }
     }
 

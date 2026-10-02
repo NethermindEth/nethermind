@@ -1350,7 +1350,7 @@ namespace Nethermind.TxPool
                 if (!tx.SupportsFrames || tx.Frames is null) continue;
 
                 Interlocked.Increment(ref Metrics.FrameTxRevalidations);
-                if (!TryRevalidateFrameTransaction(tx, state))
+                if (!TryRevalidateFrameTransaction(tx, state, spec))
                 {
                     // The record is untouched, so the Removed handler releases exactly what admission took.
                     // The blob pool reconstitutes the full transaction above, so the events must carry the
@@ -1383,14 +1383,14 @@ namespace Nethermind.TxPool
         /// re-index is update-only: block production evicts without the head lock, so it can drop the
         /// transaction while the prefix simulates, and recreating the entry here would leak it.
         /// </remarks>
-        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state)
+        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state, IReleaseSpec spec)
         {
-            bool stillValid = ResolveFrameTxAgainstHead(tx, state, out Address? resolvedPayer);
+            bool stillValid = ResolveFrameTxAgainstHead(tx, state, spec, out Address? resolvedPayer);
             if (stillValid) IndexFrameTxDependencies(tx, resolvedPayer, onlyIfTracked: true);
             return stillValid;
         }
 
-        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, out Address? resolvedPayer)
+        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, IReleaseSpec spec, out Address? resolvedPayer)
         {
             resolvedPayer = null;
 
@@ -1412,7 +1412,7 @@ namespace Nethermind.TxPool
                     UInt256 widthCharge = _txPoolConfig.FrameTxWidthEnabled
                         && KeyedNonceManager.UsesKeyedNonce(tx)
                         && !(_senderBaselines.TryGetValue(tx.SenderAddress!, out ValueHash256 baseline) && baseline == tx.Hash!.ValueHash256)
-                        ? FrameTxWidthCharge.For(tx, _txPoolConfig.FrameTxWidthSafetyFactorPermille)
+                        ? FrameTxWidthCharge.For(tx, spec, _txPoolConfig.FrameTxWidthSafetyFactorPermille)
                         : UInt256.Zero;
                     if (_senderWidth.GetWidth(tx.SenderAddress!) < widthCharge)
                     {

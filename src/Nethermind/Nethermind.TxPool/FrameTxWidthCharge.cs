@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
@@ -14,8 +15,8 @@ namespace Nethermind.TxPool;
 /// <remarks>
 /// EIP-8141 MATCHA <c>charge(tx) = ceil(safety_factor * admission_gas(tx))</c>. The safety factor is carried in
 /// permille so no floating point enters admission; the MATCHA post leaves its calibrated value to clients, so a
-/// deployment sets it and the default leaves the charge at the declared admission gas: the validation prefix's execution
-/// gas limits plus signature verification gas, not the gas the prefix burns. A factor below one is raised to one, so no
+/// deployment sets it and the default leaves the charge at the declared admission gas: the transaction's intrinsic gas,
+/// the validation prefix's execution gas limits and its nonce-key reads, not the gas the prefix burns. A factor below one is raised to one, so no
 /// setting admits beyond the baseline for less than the declared work. The single admission and
 /// revalidation charge live here so both spend the same amount.
 /// </remarks>
@@ -25,9 +26,9 @@ internal static class FrameTxWidthCharge
 
     public const int Eip8141PublicMempoolBaseline = 1;
 
-    public static UInt256 For(Transaction tx, ulong safetyFactorPermille)
+    public static UInt256 For(Transaction tx, IReleaseSpec spec, ulong safetyFactorPermille)
     {
-        UInt256 scaled = (UInt256)FrameTxValidation.AdmissionGas(tx) * Math.Max(safetyFactorPermille, Permille);
+        UInt256 scaled = (UInt256)FrameTxValidation.AdmissionGas(tx, spec) * Math.Max(safetyFactorPermille, Permille);
         return (scaled + (Permille - 1)) / Permille;
     }
 }
