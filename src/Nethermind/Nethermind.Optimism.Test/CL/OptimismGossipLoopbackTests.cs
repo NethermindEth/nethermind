@@ -172,6 +172,21 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
+    /// <summary>A static peer named by a host the hosts file maps is connected, as the operating system resolver finds it.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_static_peer_named_in_the_hosts_file_is_connected(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
+        string port = sequencer.Address.ToString().Split('/')[4];
+
+        Multiaddress named = Multiaddress.Decode($"/dns4/localhost/tcp/{port}/p2p/{sequencerId}");
+        using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
+        await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
+    }
+
     /// <summary>A static peer named by a dnsaddr TXT record is connected at the address the record names.</summary>
     [Test]
     [CancelAfter(60_000)]
