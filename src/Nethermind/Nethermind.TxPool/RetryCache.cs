@@ -688,6 +688,31 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Keeps a delivered resource tracked for retry because this node could not consume it yet.
+    /// </summary>
+    /// <remarks>Granted at most once per request sent in the resource's retry lifecycle, counting the first
+    /// announcer's, so resending the resource cannot buy more deferrals than requests this node made.</remarks>
+    /// <returns><see langword="false"/> when the resource is untracked or its deferrals are spent, in which
+    /// case the caller treats it as received.</returns>
+    internal bool TryDefer(in TResourceId resourceId)
+    {
+        if (!TryEnterOperation())
+        {
+            return false;
+        }
+
+        try
+        {
+            return _retryRequests.TryGetValue(resourceId, out RetryRequestEntry entry)
+                && entry.Handlers.TryDefer(entry.Generation);
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
+
     private void ReceivedCore(in TResourceId resourceId)
     {
         if (_logger.IsTrace) _logger.Trace($"Received {resourceId}");
@@ -1265,6 +1290,7 @@ internal sealed class HandlerBag<TMessage>
     private readonly Lock _lock = new();
     private bool _active;
     private int _pendingCount;
+    private int _deferredCount;
     private long _generation;
 
     /// <summary>
@@ -1276,6 +1302,7 @@ internal sealed class HandlerBag<TMessage>
         {
             _active = true;
             _pendingCount = 0;
+            _deferredCount = 0;
             return ++_generation;
         }
     }
@@ -1339,6 +1366,25 @@ internal sealed class HandlerBag<TMessage>
 
             _pendingCount++;
             return HandlerBagAddResult.Added;
+        }
+    }
+
+    /// <summary>
+    /// Records one deferral while the matching lifecycle has sent more requests than it has deferred.
+    /// </summary>
+    /// <remarks>The first announcer's request is never in the bag, so the requests sent are the handlers
+    /// taken plus one.</remarks>
+    public bool TryDefer(long generation)
+    {
+        lock (_lock)
+        {
+            if (!_active || generation != _generation || _deferredCount > _handlerCount - _pendingCount)
+            {
+                return false;
+            }
+
+            _deferredCount++;
+            return true;
         }
     }
 

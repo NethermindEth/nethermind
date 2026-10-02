@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -46,6 +47,7 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
                         ctx.Resolve<IBlockFinder>(),
                         ctx.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
                         ctx.Resolve<ITraceSerializer<ParityLikeTxTrace>>(),
+                        ctx.Resolve<ITraceStoreConfig>().TraceTypes,
                         ctx.Resolve<IJsonRpcConfig>(),
                         ctx.Resolve<ILogManager>(),
                         ctx.Resolve<ITraceStoreConfig>().DeserializationParallelization))
@@ -66,9 +68,10 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
         [KeyFilter(DbName)] IDb db,
         ITraceStoreConfig traceStoreConfig,
         ITraceSerializer<ParityLikeTxTrace> traceSerializer,
+        ISpecProvider specProvider,
         ILogManager logManager)
         : DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer>(
-            new ParityLikeBlockTracer(traceStoreConfig.TraceTypes),
+            new ParityLikeBlockTracer(traceStoreConfig.TraceTypes, specProvider),
             db,
             traceSerializer,
             logManager);

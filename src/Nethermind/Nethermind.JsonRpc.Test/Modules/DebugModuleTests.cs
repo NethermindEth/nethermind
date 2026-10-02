@@ -120,7 +120,7 @@ public class DebugModuleTests
         _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(block);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan().ToArray(), Is.EqualTo(new HeaderDecoder().Encode(block.Header).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(block.Header).Bytes));
     }
 
     [TestCaseSource(nameof(RawBlockCases))]
@@ -130,7 +130,7 @@ public class DebugModuleTests
         _debugBridge.GetBlock(blockParameter).Returns(block);
 
         using JsonRpcResponse response = await Request("debug_getRawBlock", requestParameter);
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan().ToArray(), Is.EqualTo(new BlockDecoder().Encode(block).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new BlockDecoder().Encode(block).Bytes));
     }
 
     [Test]

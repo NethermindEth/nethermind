@@ -27,7 +27,7 @@ internal sealed class ChangesetCollector
 
     public void Nonce(Address address, in UInt256 after) => ChangeFor(address).Nonce = after;
 
-    public void Code(Address address, byte[] after) => ChangeFor(address).CodeHash = after.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(after);
+    public void Code(Address address, ReadOnlySpan<byte> after) => ChangeFor(address).CodeHash = after.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(after);
 
     public void Deleted(Address address) => ChangeFor(address).IsDeleted = true;
 

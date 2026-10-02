@@ -645,7 +645,7 @@ namespace Nethermind.TxPool.Test
                     : new AccountStruct(0, UInt256.MaxValue);
                 return true;
             });
-            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? [] : throw MissingHeadState());
+            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? Array.Empty<byte>() : throw MissingHeadState());
             ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state);
 
             Assert.DoesNotThrow(() => _txPool = CreatePool(
@@ -2531,7 +2531,7 @@ namespace Nethermind.TxPool.Test
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)(blobIndex == blobCount ? tx2 : tx1).NetworkWrapper!;
                     int index = blobIndex == blobCount ? 0 : blobIndex;
                     Assert.That(blobs[i].AsSpan().SequenceEqual(wrapper.Blobs[index]), Is.True, $"Blob at index {i}");
-                    Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob).ToArray()));
+                    Assert.That(proofs[i], Is.SequenceEqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob)));
                 }
                 Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(2));
             }
@@ -5322,7 +5322,7 @@ namespace Nethermind.TxPool.Test
             [Values(BlobsSupportMode.InMemory, BlobsSupportMode.Storage, BlobsSupportMode.StorageWithReorgs)] BlobsSupportMode blobsSupport)
         {
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
                 .Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
             TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport, FrameTxMaxVerifyGas = 200_000 };
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
@@ -5342,7 +5342,7 @@ namespace Nethermind.TxPool.Test
             if (blobsSupport.IsPersistentStorage()) DropCachedBlobTransactions();
 
             // The prefix stops validating; only the dependency index decides whether that is ever noticed.
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
                 .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
 
             // A complete change list naming the sender, so only the dependency index decides whether the
@@ -5378,7 +5378,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(BlobTransactionMetadataIsCached(tx.Hash!), Is.EqualTo(!reloadedFromStorage),
                 "the sweep reads the sidecar-free copy, so that is the cache the storage arm has to miss");
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>())
                 .Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
 
             Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -5474,7 +5474,7 @@ namespace Nethermind.TxPool.Test
                 await RaiseBlockAddedToMainAndWaitForNewHead(head);
             }
 
-            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
 
             // Readable again, and now the simulator is the one that cannot decide. Only the carry can reach the
             // transaction from here, so every later simulation is one the carry paid for.
@@ -5491,7 +5491,7 @@ namespace Nethermind.TxPool.Test
 
             // One: the carry the declined reads spent is already gone, so the first node-bound simulation
             // exhausts it rather than opening a fresh allowance. A per-path carry would have run three.
-            simulator.Received(1).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            simulator.Received(1).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1),
                 "an exhausted carry leaves the transaction pending and unjudged, it does not evict");
         }
@@ -5516,7 +5516,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the sweep reads against");
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>())
                 .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
 
             Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -5558,7 +5558,7 @@ namespace Nethermind.TxPool.Test
             // Every reload then goes to blob storage, which is the per-transaction cost the fan-out multiplies.
             DropCachedBlobTransactions();
 
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>())
                 .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
 
             // Named by nothing these transactions depend on, so the sequential arm's change list reaches none of
@@ -5699,7 +5699,7 @@ namespace Nethermind.TxPool.Test
         private IFrameTxPrefixSimulator SponsorNamingSimulator()
         {
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>())
                 .Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
             return simulator;
         }

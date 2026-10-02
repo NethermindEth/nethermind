@@ -23,13 +23,13 @@ namespace Nethermind.Blockchain
         public bool IsContract(Address address) => TryGetAccount(address, out AccountStruct account) && account.IsContract;
 
         [SkipLocalsInit]
-        public byte[]? GetCode(Address address)
+        public ReadOnlyMemory<byte> GetCode(Address address)
         {
             TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? [] : _stateReader.GetCode(account.CodeHash);
+            return !account.HasCode ? Array.Empty<byte>() : _stateReader.GetCode(account.CodeHash);
         }
 
-        public byte[]? GetCode(in ValueHash256 codeHash) => _stateReader.GetCode(in codeHash);
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => _stateReader.GetCode(in codeHash);
 
         public bool AccountExists(Address address) => _stateReader.TryGetAccount(BaseBlock, address, out _);
 
