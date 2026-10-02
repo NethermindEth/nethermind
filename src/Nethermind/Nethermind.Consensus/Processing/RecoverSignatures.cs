@@ -254,8 +254,14 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec) : IThreadPoolWorkItem, ISenderRecoveryProgress
         {
+            // Experiment knob (EXPB): the background recovery's worker count, default every processor.
+            private static readonly int Workers =
+                int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_EXP_RECOVERY_WORKERS"), out int workers) && workers > 0
+                    ? Math.Min(workers, Environment.ProcessorCount)
+                    : Environment.ProcessorCount;
+
             private readonly object _gate = new();
-            private readonly int _progressBatch = Math.Max(1, txs.Length / (ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism * ProgressPublicationsPerWorker));
+            private readonly int _progressBatch = Math.Max(1, txs.Length / (Math.Min(Workers, ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism) * ProgressPublicationsPerWorker));
             private int _recovered;
             private volatile bool _completed;
 
@@ -276,7 +282,7 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Workers);
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)

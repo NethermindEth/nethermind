@@ -131,7 +131,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // Overlaps ecrecover with everything that follows, block processing included; the pipeline
         // recovers inline whatever it reaches before the background recovery does.
-        StartSenderRecovery(request);
+        if (!RecoverAfterBuild) StartSenderRecovery(request);
 
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
@@ -140,6 +140,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+        if (RecoverAfterBuild) StartSenderRecovery(request);
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
@@ -644,6 +645,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <summary>Slack above head within which early recovery is worthwhile, mirroring the
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
+
+    // Experiment knob (EXPB): start the background sender recovery after the block is built (#14164) instead of before.
+    private static readonly bool RecoverAfterBuild = Environment.GetEnvironmentVariable("NETHERMIND_EXP_RECOVERY_AFTER_BUILD") == "1";
 
     private void StartSenderRecovery(ExecutionPayload request)
     {
