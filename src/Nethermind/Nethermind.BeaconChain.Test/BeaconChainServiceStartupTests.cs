@@ -159,7 +159,7 @@ public class BeaconChainServiceStartupTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains("genesis_validators_root").And.Message.Contains("another network"));
+            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains("genesis_validators_root").And.Message.Contains("another network").And.Message.Contains("Delete the beaconChain database"));
             Assert.That(errors, Is.Empty, "the background run never started");
             Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
         }

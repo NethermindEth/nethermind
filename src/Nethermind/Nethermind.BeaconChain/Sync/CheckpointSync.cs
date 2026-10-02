@@ -126,7 +126,7 @@ public class CheckpointSync(
         try
         {
             ForkedBeaconState state = DecodeState(buffer.AsSpan(0, length));
-            ThrowIfWrongNetwork(state, spec);
+            ThrowIfWrongNetwork(state, spec, resumed: false);
             ThrowIfInvalidSyncCommitteeKeys(state);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -152,16 +152,18 @@ public class CheckpointSync(
 
             if (state.Slot > latestBlockHeader.Slot)
             {
-                (byte[] postState, int postLength) = await RetryTransientAsync("anchor post-state download", async token =>
-                {
-                    using HttpResponseMessage response = await GetOctetStreamAsync($"/eth/v2/debug/beacon/states/{blockStateRoot}", token);
-                    return await ReadResponseBodyAsync(response, DefaultStateBufferSize, token);
-                }, cancellationToken);
+                (byte[] postState, int postLength) = config.CheckpointStateFile is { } advancedStateFile
+                    ? await ReadPostStateFileAsync(advancedStateFile, state.Slot, latestBlockHeader.Slot, cancellationToken)
+                    : await RetryTransientAsync("anchor post-state download", async token =>
+                    {
+                        using HttpResponseMessage response = await GetOctetStreamAsync($"/eth/v2/debug/beacon/states/{blockStateRoot}", token);
+                        return await ReadResponseBodyAsync(response, DefaultStateBufferSize, token);
+                    }, cancellationToken);
                 BufferPool.Return(buffer);
                 buffer = postState;
                 length = postLength;
                 state = DecodeState(buffer.AsSpan(0, length));
-                ThrowIfWrongNetwork(state, spec);
+                ThrowIfWrongNetwork(state, spec, resumed: false);
                 ThrowIfInvalidSyncCommitteeKeys(state);
                 stateRoot = HashTreeRoot(state);
                 if (state.Slot != block.Slot || ComputeAnchorBlockRoot(LatestBlockHeader(state), stateRoot) != blockRoot)
@@ -206,6 +208,18 @@ public class CheckpointSync(
         await using FileStream content = File.OpenRead(stateFile);
         ThrowIfBodyTooLarge(content.Length);
         return await ReadToPooledBufferAsync(content, (int)content.Length, Timeout.InfiniteTimeSpan, cancellationToken);
+    }
+
+    /// <summary>Reads the post-state of the anchor block from the sibling file of an advanced <paramref name="stateFile"/>, so a file-configured anchor never reaches the network.</summary>
+    private async Task<(byte[] Buffer, int Length)> ReadPostStateFileAsync(string stateFile, ulong stateSlot, ulong blockSlot, CancellationToken cancellationToken)
+    {
+        string postStateFile = Path.ChangeExtension(stateFile, ".post-state.ssz");
+        if (!File.Exists(postStateFile))
+        {
+            throw new InvalidDataException($"Checkpoint state file {stateFile} holds a state at slot {stateSlot}, advanced past its block at slot {blockSlot}; the block's post-state file is missing: {postStateFile}.");
+        }
+
+        return await ReadStateFileAsync(postStateFile, cancellationToken);
     }
 
     internal async Task<(byte[] Buffer, int Length)> ReadResponseBodyAsync(HttpResponseMessage response, int defaultLength, CancellationToken cancellationToken)
@@ -397,8 +411,9 @@ public class CheckpointSync(
     }
 
     /// <summary>Refuses an anchor state that belongs to another network than <paramref name="spec"/>.</summary>
+    /// <param name="resumed">Whether the state is a persisted anchor, which only deleting the database replaces.</param>
     /// <exception cref="InvalidDataException">The state's <c>genesis_validators_root</c> differs from the network's.</exception>
-    internal static void ThrowIfWrongNetwork(ForkedBeaconState state, BeaconChainSpec spec)
+    internal static void ThrowIfWrongNetwork(ForkedBeaconState state, BeaconChainSpec spec, bool resumed)
     {
         Hash256 genesisValidatorsRoot = state switch
         {
@@ -408,7 +423,7 @@ public class CheckpointSync(
         };
         if (genesisValidatorsRoot != spec.GenesisValidatorsRoot)
         {
-            throw new InvalidDataException($"The anchor state at slot {state.Slot} has genesis_validators_root {genesisValidatorsRoot}, but this network's is {spec.GenesisValidatorsRoot}; it belongs to another network. Use a checkpoint source of this network, or delete a beaconChain database written for another one.");
+            throw new InvalidDataException($"The anchor state at slot {state.Slot} has genesis_validators_root {genesisValidatorsRoot}, but this network's is {spec.GenesisValidatorsRoot}; it belongs to another network. {(resumed ? "Delete the beaconChain database to checkpoint-sync this network again." : "Use a checkpoint source of this network.")}");
         }
     }
 

@@ -250,6 +250,7 @@ public class CheckpointSyncTests
         InvalidDataException ex = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
 
         Assert.That(ex.Message, Does.Contain("genesis_validators_root").And.Contain("another network"));
+        Assert.That(ex.Message, Does.Not.Contain("delete").IgnoreCase, "a first sync has no database to delete");
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
