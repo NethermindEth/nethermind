@@ -33,6 +33,20 @@ valid JSON and includes `failed: true`, `error: "execution timeout"`, and
 streaming behavior differs from Geth's top-level error and is still recorded as a
 failed request, not successful execution.
 
+## Buffered opcode byte budgets
+
+For a positive `limit`, buffered opcode traces use a conservative size estimate
+from fixed overhead, string lengths, stack/memory word counts, and a storage-update
+counter. They can stop collecting earlier than Geth or Nethermind's streamed
+traces, which count actual serialized bytes. Repeated storage accesses and small
+stack values can increase the difference. This is a deliberate performance and
+simplicity trade-off, not exact byte-boundary parity.
+
+Zero or null remains unlimited; negative limits suppress opcode logs. Execution
+continues after capture stops, preserving final gas, failure status, and output.
+Named tracers are unaffected. Approximate truncation is not an allowed mismatch
+in the 304-request acceptance runner; boundary coverage is maintained separately.
+
 ## Verification boundaries
 
 Compatibility is established by individual source checks, regression tests and
