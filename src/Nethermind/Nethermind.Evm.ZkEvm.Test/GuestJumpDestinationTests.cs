@@ -110,6 +110,20 @@ public class GuestJumpDestinationTests
         }
     }
 
+    [Test]
+    public void Complete_bitmap_misses_do_not_advance_the_incremental_cursor([Values] bool eip8024)
+    {
+        byte[] code = [PUSH1, 0, JUMPDEST, PUSH1, JUMPDEST, (byte)Instruction.CALLDEST];
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack enabled = new(0, ref stackMemory, code, codeInfo);
+        enabled.UseCallDestinations(eip8024);
+        Assert.That(enabled.IsJumpDestination(4), Is.False, "PUSH data");
+
+        EvmStack disabled = new(0, ref stackMemory, code, codeInfo);
+        Assert.That(disabled.IsJumpDestination(2), Is.True, "the plain bitmap still analyzes its own prefix");
+    }
+
     /// <remarks>
     /// The scan classifies a byte by comparing it <em>signed</em> against <c>[JUMPDEST, PUSH32]</c>, which
     /// is only equivalent across the whole byte range - which this walks. The trailing JUMPDESTs are enough that

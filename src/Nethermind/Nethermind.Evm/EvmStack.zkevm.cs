@@ -35,7 +35,8 @@ public ref partial struct EvmStack
     /// <summary>Analyzes <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, and reports whether it is a jump destination.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool AnalyzeJumpDestination(int destination) =>
-        _codeInfo is not null && _codeInfo.AnalyzeJump(destination, _jumpDestinations!, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength));
+        _codeInfo is not null && ReferenceEquals(_jumpDestinations, _codeInfo.IncrementalJumpBitmap) &&
+        _codeInfo.AnalyzeJump(destination, _jumpDestinations!, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength));
 
     /// <summary>
     /// Marks <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, when a single
@@ -48,7 +49,8 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal readonly bool TryMarkJumpDestination(nint destination)
     {
-        if (_codeInfo is null || !_codeInfo.IsJumpProvenByLookBack(destination, ref Code)) return false;
+        if (_codeInfo is null || !ReferenceEquals(_jumpDestinations, _codeInfo.IncrementalJumpBitmap) ||
+            !_codeInfo.IsJumpProvenByLookBack(destination, ref Code)) return false;
 
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
         segment |= 1L << (int)destination;
