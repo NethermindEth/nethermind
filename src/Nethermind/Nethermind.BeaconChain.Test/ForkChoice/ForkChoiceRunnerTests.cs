@@ -40,6 +40,12 @@ public class ForkChoiceRunnerTests
     /// <summary>With 2048 validators and 32 slots, each slot has one committee of 64.</summary>
     private const ulong CommitteeSize = 64;
 
+    /// <summary>With 512 validators and 32 slots, each slot has one committee of 16, so a vote names more than one validator.</summary>
+    private const int MultiMemberValidatorCount = 512;
+
+    /// <summary>The target states body votes of another shuffling may build at once in one epoch of including blocks.</summary>
+    private const int MaxOtherShufflingBodyBuilds = 2;
+
     /// <summary>The current justified epoch of the doctored post-state in <see cref="FinalizedOnFirstGloasBlock"/>.</summary>
     private const ulong DoctoredJustifiedEpoch = 2;
 
@@ -308,6 +314,259 @@ public class ForkChoiceRunnerTests
             Assert.That(repeated, Is.SameAs(first));
             Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)first).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
             Assert.That(SszRoots.HashTreeRoot(blockState), Is.EqualTo(blockStateRoot), "the block state must not be advanced in place");
+        }
+    }
+
+    /// <summary>
+    /// specs/phase0/beacon-chain.md process_slot records every root a checkpoint advance asks for in the state of each later block of
+    /// the same chain, so once such a block is registered an advance of any length costs no merkleization. A block inside the advance
+    /// makes those roots another history's; they must not be used, and the advance must land on the spec's state either way.
+    /// </summary>
+    [Test]
+    public void Checkpoint_advance_takes_its_slot_roots_from_a_later_block_of_the_same_chain([Values(2, 32)] int distance, [Values] bool blockInsideTheAdvance)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        TickToSlot(runner, Presets.SlotsPerEpoch + 2);
+        ulong checkpointSlot = Presets.SlotsPerEpoch - (ulong)distance;
+        UnsignedChain.ChainBlock? checkpointBlock = checkpointSlot == 0 ? null : ImportLine(chain, runner, chain.AnchorRoot, checkpointSlot)[0];
+        Hash256 checkpointRoot = checkpointBlock?.Root ?? chain.AnchorRoot;
+        ImportLine(chain, runner, checkpointRoot, blockInsideTheAdvance ? [Presets.SlotsPerEpoch - 1, Presets.SlotsPerEpoch + 1] : [Presets.SlotsPerEpoch + 1]);
+        List<CountingHasher> made = [];
+        runner.CheckpointStateHasher = () =>
+        {
+            CountingHasher hasher = new(new CachedBeaconStateHasher());
+            made.Add(hasher);
+            return hasher;
+        };
+        BeaconStateFulu expected = (checkpointBlock?.PostState ?? chain.Anchor.AnchorState).Clone();
+        SlotProcessing.ProcessSlots(expected, Presets.SlotsPerEpoch, new EpochCache());
+
+        ForkedBeaconState state = runner.GetCheckpointState(new CheckpointRef(1, checkpointRoot));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(made.Single().Calls, Is.EqualTo(blockInsideTheAdvance ? distance - 1 : 0), "only an advance the later block went through is answered from its roots");
+            Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)state).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
+        }
+    }
+
+    /// <summary>
+    /// A body vote for an older target (rooted before an empty epoch start, voted an epoch later) used to build that target's checkpoint state
+    /// on the import worker, several seconds at mainnet size. The target epoch's committees are fixed by the decision block the including block
+    /// shares (specs/phase0/beacon-chain.md get_seed, compute_activation_exit_epoch), so the vote must count with no state built or copied, and
+    /// name exactly the validators a full build of the checkpoint state names.
+    /// </summary>
+    [Test]
+    public void Body_votes_for_an_older_target_of_the_blocks_shuffling_count_as_a_full_build_counts_them_without_one()
+    {
+        const ulong targetEpoch = 3;
+        const int votedSlots = 8;
+        UnsignedChain chain = UnsignedChain.Create(ImportableBlobBlock.Create(blobCount: 0, validatorCount: MultiMemberValidatorCount));
+        ulong epochStart = targetEpoch * Presets.SlotsPerEpoch;
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, 40, payloadHashByte: 40);
+        UnsignedChain.ChainBlock target = chain.Extend(first.Root, epochStart - 6, payloadHashByte: 90);
+        BeaconStateFulu checkpointState = target.PostState.Clone();
+        SlotProcessing.ProcessSlots(checkpointState, epochStart, new EpochCache());
+        CommitteeCache fullBuild = new EpochCache().GetCommitteeCache(checkpointState, targetEpoch);
+        Attestation[] votes = [.. Enumerable.Range(0, votedSlots).Select(i => WholeCommitteeVote(chain, epochStart + (ulong)i, target.Root, targetEpoch, fullBuild))];
+        UnsignedChain.ChainBlock including = chain.Extend(target.Root, epochStart + Presets.SlotsPerEpoch + 2, payloadHashByte: 130, attestations: votes);
+        CommitteeCache fromIncludingBlock = new EpochCache().GetCommitteeCache(including.PostState, targetEpoch);
+
+        (ForkChoiceRunner viaBlock, BuildCounter viaBlockBuilds) = Import(new EvictedBeforeCopy(chain), asBodyOfTheBlock: true);
+        (ForkChoiceRunner viaSpec, BuildCounter viaSpecBuilds) = Import(chain, asBodyOfTheBlock: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong slot = epochStart; slot < epochStart + Presets.SlotsPerEpoch; slot++)
+                Assert.That(fromIncludingBlock.GetBeaconCommittee(slot, 0).ToArray(), Is.EqualTo(fullBuild.GetBeaconCommittee(slot, 0).ToArray()), $"committee of slot {slot}");
+            Assert.That(viaSpecBuilds.Count, Is.EqualTo(1), "fixture bug: the spec path must build the target's checkpoint state");
+            Assert.That(viaBlockBuilds.Count, Is.Zero, "a vote of the block's own shuffling builds no checkpoint state");
+            Assert.That(Weights(viaBlock), Is.EqualTo(Weights(viaSpec)), "both paths count the same validators");
+            Assert.That(Weight(viaBlock, target.Root), Is.EqualTo(votedSlots * (MultiMemberValidatorCount / Presets.SlotsPerEpoch) * EffectiveBalance));
+            Assert.That(() => viaBlock.OnAttestation(votes[0], isFromBlock: true, verifySignature: false), Throws.TypeOf<ForkChoiceException>(),
+                "the block state is held as neither the target's checkpoint state nor a vote state, so the spec's path still has to build one");
+        }
+
+        (ForkChoiceRunner Runner, BuildCounter Builds) Import(IForkChoiceStateProvider states, bool asBodyOfTheBlock)
+        {
+            ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, states, chain.Anchor.Pubkeys);
+            BuildCounter builds = new(runner);
+            TickToSlot(runner, including.Block.Message!.Slot + 1);
+            foreach (UnsignedChain.ChainBlock block in new[] { first, target, including })
+                ImportWithBodyReplay(runner, block, asBodyOfTheBlock);
+            return (runner, builds);
+        }
+    }
+
+    /// <summary>
+    /// The post-state <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IReadOnlyList{DataColumnSidecar})"/>
+    /// last received stands in only for that block at that block's slot: once a sibling at the same slot is registered, or the caller advanced the state in
+    /// place as the importer's lineage does, a body vote takes the spec's own build and still counts.
+    /// </summary>
+    [Test]
+    public void Body_vote_reads_the_last_block_state_only_while_it_is_that_blocks_own([Values] bool advancedInPlace)
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        TickToSlot(runner, (targetEpoch + 1) * Presets.SlotsPerEpoch);
+        UnsignedChain.ChainBlock target = ImportLine(chain, runner, chain.AnchorRoot, 40)[0];
+        UnsignedChain.ChainBlock including = ImportLine(chain, runner, target.Root, 70)[0];
+        if (advancedInPlace)
+            SlotProcessing.ProcessSlots(including.PostState, (targetEpoch + 1) * Presets.SlotsPerEpoch + 4, new EpochCache());
+        else
+            ImportWithBodyReplay(runner, chain.Extend(target.Root, 70, payloadHashByte: 0x71));
+
+        runner.OnBodyAttestation(BodyVote(chain, target, targetEpoch), including.Root);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builds.Count, Is.EqualTo(1), "the target's checkpoint state is built");
+            Assert.That(Weight(runner, target.Root), Is.EqualTo(EffectiveBalance), "the vote counts");
+        }
+    }
+
+    /// <summary>
+    /// Through a target of another shuffling than its block's, a body vote's bits name other validators than the transition checked, so it
+    /// is checked against the target's own state, signature included. Each such target costs a whole state and a proposer can name eight,
+    /// so blocks of one epoch spend two builds, a block arriving late from an earlier epoch does not renew them, and a vote past them waits
+    /// for the tick, which builds one state a slot.
+    /// </summary>
+    [Test]
+    public void Body_votes_for_targets_of_another_shuffling_verify_their_signature_and_build_two_states_an_epoch()
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        ulong now = (targetEpoch + 1) * Presets.SlotsPerEpoch + 4;
+        TickToSlot(runner, now);
+        UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
+        // A at the decision slot 31 decides the epoch-2 shuffling of its chain; the others' chain decides on their parent.
+        UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
+        List<UnsignedChain.ChainBlock> others = ImportLine(chain, runner, parent.Root, 32, 40, 50);
+        UnsignedChain.ChainBlock including = ImportLine(chain, runner, a.Root, 65)[0];
+
+        string?[] firstEpoch = [.. others.Select(target => Refusal(target, including))];
+        int buildsInOneEpoch = builds.Count;
+        UnsignedChain.ChainBlock nextEpoch = ImportLine(chain, runner, including.Root, 97)[0];
+        string?[] secondEpoch = [Refusal(others[0], nextEpoch), Refusal(others[1], nextEpoch)];
+        string? lateFromFirstEpoch = Refusal(others[2], ImportLine(chain, runner, a.Root, 66)[0]);
+        int buildsBeforeTicks = builds.Count;
+        List<int> buildsAfterTicks = [];
+        for (int tick = 1; tick <= 3; tick++)
+        {
+            TickToSlot(runner, now + (ulong)tick);
+            buildsAfterTicks.Add(builds.Count);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstEpoch[..2], Has.All.Not.Null, "the first two are checked against their target states and fail their signatures");
+            Assert.That(firstEpoch[2], Is.Null, "the third waits for a build");
+            Assert.That(buildsInOneEpoch, Is.EqualTo(2));
+            Assert.That(secondEpoch, Has.All.Not.Null, "a block of the next epoch has builds again");
+            Assert.That(lateFromFirstEpoch, Is.Null, "a late block of the earlier epoch does not renew the builds");
+            Assert.That(buildsBeforeTicks, Is.EqualTo(4));
+            Assert.That(buildsAfterTicks, Is.EqualTo(new[] { 5, 6, 6 }), "the tick builds one waiting target state a slot until none waits");
+            Assert.That(others.Select(o => Weight(runner, o.Root)), Has.All.Zero, "no unsigned vote counts");
+        }
+
+        string? Refusal(UnsignedChain.ChainBlock target, UnsignedChain.ChainBlock block)
+        {
+            try
+            {
+                runner.OnBodyAttestation(BodyVote(chain, target, targetEpoch), block.Root);
+                return null;
+            }
+            catch (ForkChoiceException e)
+            {
+                return e.Message;
+            }
+        }
+    }
+
+    /// <summary>A block per slot can put eight body votes past the build budget, so the votes waiting for a build are bounded at eight blocks' worth.</summary>
+    [Test]
+    public void Body_votes_waiting_for_a_build_are_bounded()
+    {
+        const ulong targetEpoch = 2;
+        const int waiting = 64;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        ulong now = (targetEpoch + 1) * Presets.SlotsPerEpoch;
+        TickToSlot(runner, now);
+        UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
+        UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
+        UnsignedChain.ChainBlock other = ImportLine(chain, runner, parent.Root, 32)[0];
+        UnsignedChain.ChainBlock including = ImportLine(chain, runner, a.Root, 65)[0];
+        // Unsigned, so no build is cached and every vote costs one.
+        Attestation vote = BodyVote(chain, other, targetEpoch);
+        for (int i = 0; i < MaxOtherShufflingBodyBuilds + waiting + 8; i++)
+        {
+            Assert.That(() => runner.OnBodyAttestation(vote, including.Root),
+                i < MaxOtherShufflingBodyBuilds ? Throws.TypeOf<ForkChoiceException>() : Throws.Nothing, "a budgeted build refuses the vote at once; later ones wait");
+        }
+
+        for (ulong tick = 1; tick <= waiting + 8; tick++)
+            TickToSlot(runner, now + tick);
+
+        Assert.That(builds.Count, Is.EqualTo(MaxOtherShufflingBodyBuilds + waiting));
+    }
+
+    /// <summary>
+    /// Sibling decision blocks of one proposer carry the same RANDAO reveal, so targets on them have the same committees under distinct
+    /// decision roots, and signed votes for all of them count (specs/phase0/fork-choice.md on_attestation). A vote past the build budget
+    /// must wait for the tick and then count, not be lost.
+    /// </summary>
+    [Test]
+    public void Signed_body_vote_past_the_build_budget_counts_after_the_tick()
+    {
+        const ulong targetEpoch = 2;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        BuildCounter builds = new(runner);
+        ulong now = (targetEpoch + 1) * Presets.SlotsPerEpoch;
+        TickToSlot(runner, now);
+        UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
+        UnsignedChain.ChainBlock[] siblings = [.. Enumerable.Range(0, 4).Select(i => ImportWith(parent.Root, 31, (byte)(0xc0 + i)))];
+        UnsignedChain.ChainBlock including = ImportLine(chain, runner, siblings[0].Root, 65)[0];
+
+        for (int i = 1; i < siblings.Length; i++)
+            runner.OnBodyAttestation(SignedBodyVote(siblings[i], skip: i), including.Root);
+        ulong[] weightsBeforeTick = [.. siblings.Skip(1).Select(s => Weight(runner, s.Root))];
+        int buildsBeforeTick = builds.Count;
+        TickToSlot(runner, now + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buildsBeforeTick, Is.EqualTo(2));
+            Assert.That(weightsBeforeTick, Is.EqualTo(new[] { EffectiveBalance, EffectiveBalance, 0UL }), "the third vote waits for a build");
+            Assert.That(builds.Count, Is.EqualTo(3));
+            Assert.That(siblings.Skip(1).Select(s => Weight(runner, s.Root)), Has.All.EqualTo(EffectiveBalance), "every signed vote counts");
+        }
+
+        UnsignedChain.ChainBlock ImportWith(Hash256 parentRoot, ulong slot, byte payloadHashByte)
+        {
+            UnsignedChain.ChainBlock block = chain.Extend(parentRoot, slot, payloadHashByte);
+            ImportWithBodyReplay(runner, block);
+            return block;
+        }
+
+        Attestation SignedBodyVote(UnsignedChain.ChainBlock target, int skip)
+        {
+            (BeaconStateFulu signingState, ulong slot, int member) = FirstCommitteeMember(target, targetEpoch, skip);
+            AttestationData data = VoteData(chain, slot, target.Root, targetEpoch);
+            return new Attestation
+            {
+                AggregationBits = new BitArray(1, true),
+                Data = data,
+                Signature = ImportableBlobBlock.SignAs((ulong)member, SszRoots.HashTreeRoot(data), signingState.GetDomain(DomainType.BeaconAttester, targetEpoch)),
+                CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+            };
         }
     }
 
@@ -1732,6 +1991,13 @@ public class ForkChoiceRunnerTests
     private static void TickToSlot(ForkChoiceRunner runner, ulong slot) =>
         runner.OnTick(runner.GenesisTime + slot * Presets.SecondsPerSlot);
 
+    /// <summary>Every node's weight as a fresh <see cref="ForkChoiceRunner.GetHead"/> computes it, by root.</summary>
+    private static Dictionary<Hash256, ulong> Weights(ForkChoiceRunner runner)
+    {
+        runner.GetHead();
+        return runner.Snapshot().Nodes.ToDictionary(n => n.Root, n => n.Weight);
+    }
+
     /// <summary>The weight of <paramref name="root"/> as a fresh <see cref="ForkChoiceRunner.GetHead"/> computes it.</summary>
     private static ulong Weight(ForkChoiceRunner runner, Hash256 root)
     {
@@ -1757,13 +2023,17 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>The caller-side contract of <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/>: the block, then its body operations with signatures already trusted.</summary>
-    private static void ImportWithBodyReplay(ForkChoiceRunner runner, UnsignedChain.ChainBlock block)
+    /// <param name="asBodyOfTheBlock">Whether votes go through <see cref="ForkChoiceRunner.OnBodyAttestation(Attestation, Hash256)"/>, as the importer feeds them, rather than the spec's own <c>on_attestation</c>.</param>
+    private static void ImportWithBodyReplay(ForkChoiceRunner runner, UnsignedChain.ChainBlock block, bool asBodyOfTheBlock = false)
     {
         runner.OnBlock(block.Block, block.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
         BeaconBlockBody body = block.Block.Message!.Body!;
         foreach (Attestation attestation in body.Attestations!)
         {
-            runner.OnAttestation(attestation, isFromBlock: true, verifySignature: false);
+            if (asBodyOfTheBlock)
+                runner.OnBodyAttestation(attestation, block.Root);
+            else
+                runner.OnAttestation(attestation, isFromBlock: true, verifySignature: false);
         }
 
         foreach (AttesterSlashing slashing in body.AttesterSlashings!)
@@ -1862,6 +2132,15 @@ public class ForkChoiceRunnerTests
             CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
         };
     }
+
+    /// <summary>The unsigned vote of the whole committee of <paramref name="slot"/> in <paramref name="committees"/> for <paramref name="target"/> as head and target.</summary>
+    private static Attestation WholeCommitteeVote(UnsignedChain chain, ulong slot, Hash256 target, ulong epoch, CommitteeCache committees) => new()
+    {
+        AggregationBits = new BitArray(committees.GetBeaconCommittee(slot, 0).Length, true),
+        Data = VoteData(chain, slot, target, epoch),
+        Signature = new BlsSignature(SignatureSets.G2PointAtInfinity),
+        CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+    };
 
     /// <summary>An aggregate by <paramref name="member"/> for <paramref name="head"/> as head and target, signed under <paramref name="signingState"/>, or unsigned without one.</summary>
     private static SignedAggregateAndProof GossipAggregate(UnsignedChain chain, ulong slot, Hash256 head, ulong epoch, int member, BeaconStateFulu? signingState)
