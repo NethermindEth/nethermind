@@ -8,8 +8,10 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.RateLimiting;
 using System.Threading.Tasks;
+using Autofac;
 using CkzgLib;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api;
@@ -20,9 +22,11 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.DataAvailability;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -100,6 +104,86 @@ public class BeaconApiBlobsTests
 
     [OneTimeTearDown]
     public async Task StopHost() => await _host.DisposeAsync();
+
+    [Test]
+    public async Task Accepted_columns_serve_blobs_before_the_store_writer_drains([Values] bool gloas, [Values(0, 32)] int storedColumns)
+    {
+        ContainerBuilder builder = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia)
+            .AddModule(new BeaconApiModule())
+            .AddSingleton<IBeaconApiConfig>(new BeaconApiConfig { Enabled = true, Host = "127.0.0.1", Port = 0 })
+            .AddSingleton<IProcessExitSource>(new NoOpProcessExitSource())
+            .AddSingleton<IEngineDriver>(new NoOpEngineDriver())
+            .AddSingleton(Spec);
+        builder.RegisterType<DataColumnSidecarPool>().WithParameter("clock", null!).SingleInstance();
+        await using IContainer container = builder.Build();
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        DataColumnSidecarPool pool = container.Resolve<DataColumnSidecarPool>();
+        ColumnStoreWriter writer = container.Resolve<ColumnStoreWriter>();
+        BeaconApiHost host = container.Resolve<BeaconApiHost>();
+        await host.StartAsync(CancellationToken.None);
+        using HttpClient client = new() { BaseAddress = new Uri($"http://127.0.0.1:{host.Port}"), Timeout = TimeSpan.FromSeconds(10) };
+        DataColumnKzgFixture.BlobFixture[] blobs = [DataColumnKzgFixture.BuildBlob(FirstSeed)];
+        SszKzgCommitment[] commitments = [.. blobs.Select(DataColumnKzgFixture.CommitmentOf)];
+        Hash256 root = gloas ? GloasRoot : SystematicRoot;
+        ulong slot = gloas ? GloasSlot : FuluSlot;
+        SignedBeaconBlock block = MinimalBlock(slot);
+        block.Message!.Body!.BlobKzgCommitments = commitments;
+        store.PutForkedBlock(root, gloas
+            ? new ForkedSignedBeaconBlock.OfGloas(GloasBlock(slot, commitments))
+            : new ForkedSignedBeaconBlock.OfFulu(block));
+
+        using ManualResetEventSlim release = new();
+        writer.Post(() => release.Wait());
+        try
+        {
+            for (int column = 0; column < Eip7594DasConstants.RequiredColumnsForReconstruction; column++)
+            {
+                if (gloas)
+                {
+                    DataColumnSidecarGloas sidecar = GloasColumn(column);
+                    if (column < storedColumns) store.PutDataColumnSidecar(sidecar);
+                    else Assert.That(pool.AddPendingGloas(sidecar, slot), Is.True);
+                }
+                else if (column < storedColumns)
+                {
+                    store.PutDataColumnSidecar(root, slot, FuluColumn(blobs, commitments, column));
+                }
+            }
+
+            using HttpResponseMessage unaccepted = await client.GetAsync($"/eth/v1/beacon/blobs/{root}");
+            Assert.That(unaccepted.StatusCode, Is.EqualTo(HttpStatusCode.NotFound), "unverified candidates must not make blobs available");
+
+            for (int column = storedColumns; column < Eip7594DasConstants.RequiredColumnsForReconstruction; column++)
+            {
+                if (gloas) pool.AddGloas(GloasColumn(column));
+                else pool.Add(root, slot, FuluColumn(blobs, commitments, column));
+            }
+
+            using HttpResponseMessage accepted = await client.GetAsync($"/eth/v1/beacon/blobs/{root}");
+            Assert.That(accepted.StatusCode, Is.EqualTo(HttpStatusCode.OK), await accepted.Content.ReadAsStringAsync());
+            using JsonDocument body = await ReadJsonAsync(accepted);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetString()),
+                    Is.EqualTo(new[] { DataColumnKzgFixture.MakeBlob(FirstSeed).ToHexString(true) }));
+                Assert.That(store.HasDataColumnRecord(root, (ulong)storedColumns), Is.False, "the response must not wait for persistence");
+            }
+        }
+        finally
+        {
+            release.Set();
+            await writer.WhenWritten().WaitAsync(TimeSpan.FromSeconds(30));
+        }
+
+        DataColumnSidecarGloas GloasColumn(int column) => new()
+        {
+            Index = (ulong)column,
+            Column = [DataColumnKzgFixture.CellAt(blobs[0], column)],
+            KzgProofs = [DataColumnKzgFixture.ProofAt(blobs[0], column)],
+            Slot = slot,
+            BeaconBlockRoot = root,
+        };
+    }
 
     /// <summary>
     /// Columns 0 to 63 are the blobs themselves; any other half recovers them (consensus-specs v1.6.0
