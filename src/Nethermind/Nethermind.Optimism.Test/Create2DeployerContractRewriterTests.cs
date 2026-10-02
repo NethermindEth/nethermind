@@ -33,7 +33,7 @@ internal class Create2DeployerContractRewriterTests
 
         rewriter.RewriteContract(blockTree.FindHeader(1, BlockTreeLookupOptions.None)!, ws);
 
-        byte[] setCode = ws.GetCode(PreInstalls.Create2Deployer)!;
+        byte[] setCode = ws.GetCode(PreInstalls.Create2Deployer).ToArray();
         Assert.That(setCode, Is.Not.Empty);
     }
 }

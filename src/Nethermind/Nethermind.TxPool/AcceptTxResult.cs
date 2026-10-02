@@ -162,6 +162,9 @@ namespace Nethermind.TxPool
         /// <summary>An EIP-8141 frame transaction whose validation prefix can never approve a payer: unincludable rather than malformed, so the relaying peer is not disconnected.</summary>
         public static readonly AcceptTxResult FrameTxNoPayer = new(TxPoolErrorMessages.FrameTxNoPayer);
 
+        /// <summary>An EIP-8141 frame transaction whose prefix is outside the public-mempool grammar. A propagation bound, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxUnrecognizedPrefix = new(TxPoolErrorMessages.FrameTxUnrecognizedPrefix);
+
         /// <summary>An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.</summary>
         public static readonly AcceptTxResult FrameTxMissingSidecar = new(TxPoolErrorMessages.FrameTxMissingSidecar);
 

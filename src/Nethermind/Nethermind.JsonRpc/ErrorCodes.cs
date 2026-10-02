@@ -87,6 +87,12 @@ namespace Nethermind.JsonRpc
         public const int Timeout = -32016;
 
         /// <summary>
+        /// Transaction was added to the pool but not included before the <c>eth_sendRawTransactionSync</c> timeout
+        /// </summary>
+        /// <remarks>See <see href="https://eips.ethereum.org/EIPS/eip-7966">EIP-7966</see>.</remarks>
+        public const int TxSyncTimeout = 4;
+
+        /// <summary>
         /// Request exceeds defined timeout limit
         /// </summary>
         public const int ModuleTimeout = -32017;

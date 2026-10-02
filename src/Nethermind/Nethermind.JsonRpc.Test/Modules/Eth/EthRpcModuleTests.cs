@@ -67,13 +67,7 @@ public partial class EthRpcModuleTests
     private const string ExpectedFilterLogResponse = """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""";
     private const int LogsStreamEnvelopeEndReserveBytes = 128;
 
-    private static string ExpectedFilterLogStreamResponse(string status) =>
-        ExpectedFilterLogResponse.Replace(",\"id\":67}", $",\"_streamStatus\":\"{status}\",\"id\":67}}");
-
     private static readonly Address TestAccount = new(TestAccountAddress);
-
-    private static FilterLog CreateTestFilterLog() =>
-        new(1, 1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, [1, 2, 3], [TestItem.KeccakC, TestItem.KeccakD]);
 
     private static readonly byte[] InfiniteLoopCode = Prepare.EvmCode
         .Op(Instruction.JUMPDEST)
@@ -98,6 +92,15 @@ public partial class EthRpcModuleTests
         .PushData("0x0")
         .Op(Instruction.RETURN)
         .Done;
+
+    // Head block (number 3) access list in the execution-apis wire format.
+    private const string ExpectedHeadBlockAccessList = "[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x000064d678505ad48f8ccb093bc65613800e8282\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bff46984e3725691fa540a8c7589300d8282\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"key\":\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"changes\":[{\"index\":\"0x0\",\"value\":\"0x7cf126ed165da77cf9d11d9cbbd2f1704c6aa3b977f7039e047de1e7d7599978\"}]}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0xa410\"},{\"index\":\"0x2\",\"value\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0x3635c9adc5dea00002\"},{\"index\":\"0x2\",\"value\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0x3635c9adc5de9f5bee\"},{\"index\":\"0x2\",\"value\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"index\":\"0x1\",\"value\":\"0x2\"},{\"index\":\"0x2\",\"value\":\"0x3\"}],\"codeChanges\":[]}]";
+
+    private static string ExpectedFilterLogStreamResponse(string status) =>
+        ExpectedFilterLogResponse.Replace(",\"id\":67}", $",\"_streamStatus\":\"{status}\",\"id\":67}}");
+
+    private static FilterLog CreateTestFilterLog() =>
+        new(1, 1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, [1, 2, 3], [TestItem.KeccakC, TestItem.KeccakD]);
 
     private static void AssertAccountDoesNotExist(Context ctx, Address account) => Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
 
@@ -999,6 +1002,19 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
+    private static async Task<string> CallLogsMethod(Context ctx, string method, string filter)
+    {
+        string parameter = filter;
+
+        if (method == "eth_getFilterLogs")
+        {
+            using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
+            parameter = RpcTest.AssertSuccess<UInt256?>(newFilterResponse)?.ToString() ?? "0x0";
+        }
+
+        return await ctx.Test.TestEthRpc(method, parameter);
+    }
+
     private static IEnumerable<TestCaseData> MaxBlockDepthCases()
     {
         foreach ((string name, int maxBlockDepth, string filter, bool shouldReject) in Cases())
@@ -1035,15 +1051,7 @@ public partial class EthRpcModuleTests
             .WithReceiptConfig(new ReceiptConfig { MaxBlockDepth = maxBlockDepth })
             .Build();
 
-        string parameter = filter;
-
-        if (method == "eth_getFilterLogs")
-        {
-            using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
-            parameter = RpcTest.AssertSuccess<UInt256?>(newFilterResponse)?.ToString() ?? "0x0";
-        }
-
-        string serialized = await ctx.Test.TestEthRpc(method, parameter);
+        string serialized = await CallLogsMethod(ctx, method, filter);
 
         if (shouldReject)
         {
@@ -1054,6 +1062,38 @@ public partial class EthRpcModuleTests
         {
             Assert.That(serialized, Does.Not.Contain("\"error\""));
         }
+    }
+
+    private static IEnumerable<TestCaseData> ReversedRangeEndingAtBlockZeroCases()
+    {
+        foreach ((string name, string filter, ulong expectedFromBlock) in Cases())
+        {
+            yield return new TestCaseData("eth_getLogs", filter, expectedFromBlock, false).SetName($"{{m}}_getLogs_{name}_Buffered");
+            yield return new TestCaseData("eth_getLogs", filter, expectedFromBlock, true).SetName($"{{m}}_getLogs_{name}_Stream");
+            yield return new TestCaseData("eth_getFilterLogs", filter, expectedFromBlock, false).SetName($"{{m}}_getFilterLogs_{name}_Buffered");
+            yield return new TestCaseData("eth_getFilterLogs", filter, expectedFromBlock, true).SetName($"{{m}}_getFilterLogs_{name}_Stream");
+        }
+
+        static IEnumerable<(string Name, string Filter, ulong ExpectedFromBlock)> Cases()
+        {
+            yield return ("latest_to_earliest", """{"fromBlock":"latest","toBlock":"earliest"}""", TestBlockchain.HeadNumber);
+            yield return ("latest_to_block_zero", """{"fromBlock":"latest","toBlock":"0x0"}""", TestBlockchain.HeadNumber);
+            yield return ("explicit_from_to_earliest", """{"fromBlock":"0x2","toBlock":"earliest"}""", 2UL);
+        }
+    }
+
+    [TestCaseSource(nameof(ReversedRangeEndingAtBlockZeroCases))]
+    public async Task Eth_logs_reject_reversed_range_ending_at_block_zero(string method, string filter, ulong expectedFromBlock, bool enableLogsStreamMode)
+    {
+        using Context ctx = await Context.Create();
+
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build();
+
+        string serialized = await CallLogsMethod(ctx, method, filter);
+
+        string message = $"From block {expectedFromBlock} is later than to block 0.";
+        Assert.That(serialized, Is.EqualTo(
+            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}","data":"System.ArgumentException: {{message}}"},"id":67}"""));
     }
 
     [TestCase("eth_getLogs", "{}")]
@@ -1244,6 +1284,31 @@ public partial class EthRpcModuleTests
         await writer.CompleteAsync();
 
         Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo("[]"));
+    }
+
+    [Test]
+    public async Task Eth_get_logs_envelope_preserves_body_limit([Values] bool isBatch, [Values(1, 100)] int allowedLogs)
+    {
+        string logJson = JsonSerializer.Serialize(CreateTestFilterLog(), EthereumJsonSerializer.JsonOptions);
+        int logBytes = Encoding.UTF8.GetByteCount(logJson);
+        long priorBytes = isBatch ? 1000 : 0;
+        long limit = priorBytes + 26 + allowedLogs * (logBytes + 1) + LogsStreamEnvelopeEndReserveBytes;
+        using LogsStreamableResult result = CreateLogsStreamableResult(
+            Enumerable.Repeat(CreateTestFilterLog(), allowedLogs + 1),
+            maxLogsResponseBodySize: isBatch ? long.MaxValue : limit,
+            maxBatchResponseBodySize: isBatch ? limit : null);
+        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(67L), Result = result };
+        using MemoryStream stream = new();
+        CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)), priorBytes);
+
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, isBatch, CancellationToken.None);
+        await writer.CompleteAsync();
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(allowedLogs));
+            Assert.That(document.RootElement.GetProperty("_streamStatus").GetString(), Is.EqualTo("truncated"));
+        }
     }
 
     [TestCaseSource(nameof(LogsStreamStatusCases))]
@@ -2247,8 +2312,10 @@ public partial class EthRpcModuleTests
             .To(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        yield return new TestCaseData(raw, "100", ErrorCodes.Timeout, "not included within 100ms")
+        yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, "not included within 100ms")
             .SetName("Timeout");
+        yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, $"\"data\":\"{tx.Hash}\"")
+            .SetName("TimeoutCarriesTransactionHash");
     }
 
     [Test]
@@ -2495,6 +2562,27 @@ public partial class EthRpcModuleTests
             Does.Contain("0x0000000000000000000000000000000000000000000000000000000000000001"));
     }
 
+    // A CREATE collision halts before any frame runs; the returned list must still be the discovered,
+    // optimized one (sender stripped), not the request's list echoed back.
+    [Test]
+    public async Task Eth_createAccessList_optimizes_supplied_entries_when_create_collides()
+    {
+        using Context ctx = await Context.Create();
+
+        const string supplied = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        Address createTarget = ContractAddress.From(new Address(CreateAccessListSender), 0);
+        string stateOverride = $$$"""{"{{{CreateAccessListSender}}}":{"nonce":"0x0"},"{{{createTarget}}}":{"nonce":"0x1"}}""";
+        string transaction = $$$"""{"type":"0x1","from":"{{{CreateAccessListSender}}}","data":"0x00","accessList":[{"address":"{{{CreateAccessListSender}}}","storageKeys":[]},{"address":"{{{supplied}}}","storageKeys":[]}]}""";
+
+        (JToken result, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"]?.Value<string>(), Is.EqualTo("contract address collision"));
+            Assert.That(result["accessList"]!.Select(static e => e["address"]!.Value<string>()), Is.EquivalentTo(new[] { supplied }));
+        }
+    }
+
     [Test]
     public async Task Eth_createAccessList_unfunded_sender_without_fee_fields_succeeds()
     {
@@ -2564,6 +2652,19 @@ public partial class EthRpcModuleTests
         Assert.That(result["error"], Is.Null);
         Assert.That(gasUsed, Is.EqualTo(21_000));
         Assert.That(result["accessList"]!.ToArray(), Is.Empty);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_input_error_embeds_tx_hash()
+    {
+        using Context ctx = await Context.Create();
+        object tx = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{CreateAccessListSender}}","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","gas":"0x5207"}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", tx, "latest");
+
+        Assert.That(JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
+            Does.Match("^failed to apply transaction: 0x[0-9a-f]{64} err: intrinsic gas too low"));
     }
 
     [Test]
@@ -2834,7 +2935,7 @@ public partial class EthRpcModuleTests
 
         await test.AddBlock(setCodeTx);
 
-        byte[]? code = test.ReadOnlyState.GetCode(TestItem.AddressB);
+        byte[] code = test.ReadOnlyState.GetCode(TestItem.AddressB).ToArray();
 
         Assert.That(code!.Slice(0, 3), Is.EquivalentTo(Eip7702Constants.DelegationHeader.ToArray()));
 
@@ -3019,9 +3120,6 @@ public partial class EthRpcModuleTests
 
         Assert.That(recovered, Is.EqualTo(new Address(keyAddress)));
     }
-
-    // Head block (number 3) access list in the execution-apis wire format.
-    private const string ExpectedHeadBlockAccessList = "[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x000064d678505ad48f8ccb093bc65613800e8282\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bff46984e3725691fa540a8c7589300d8282\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"key\":\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"changes\":[{\"index\":\"0x0\",\"value\":\"0x7cf126ed165da77cf9d11d9cbbd2f1704c6aa3b977f7039e047de1e7d7599978\"}]}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0xa410\"},{\"index\":\"0x2\",\"value\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0x3635c9adc5dea00002\"},{\"index\":\"0x2\",\"value\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0x3635c9adc5de9f5bee\"},{\"index\":\"0x2\",\"value\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"index\":\"0x1\",\"value\":\"0x2\"},{\"index\":\"0x2\",\"value\":\"0x3\"}],\"codeChanges\":[]}]";
 
     [Test]
     public async Task Eth_get_block_access_list_by_hash()

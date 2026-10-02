@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -15,11 +17,155 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccountStateChange>
 {
     private readonly Bytes32Converter _32BytesConverter = new();
+    private readonly UInt256Converter _storageKeyConverter = new();
 
     public override ParityAccountStateChange Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options) => throw new NotImplementedException();
+        JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException($"Cannot deserialize {nameof(ParityAccountStateChange)}.");
+        }
+
+        ParityAccountStateChange value = new();
+
+        reader.Read();
+        while (reader.TokenType != JsonTokenType.EndObject)
+        {
+            if (reader.ValueTextEquals("balance"u8))
+            {
+                reader.Read();
+                value.Balance = ReadChange<UInt256?>(ref reader, options);
+            }
+            else if (reader.ValueTextEquals("code"u8))
+            {
+                reader.Read();
+                value.Code = ReadChange<byte[]>(ref reader, options);
+            }
+            else if (reader.ValueTextEquals("nonce"u8))
+            {
+                reader.Read();
+                value.Nonce = ReadChange<UInt256?>(ref reader, options);
+            }
+            else if (reader.ValueTextEquals("storage"u8))
+            {
+                reader.Read();
+                value.Storage = ReadStorage(ref reader, options);
+            }
+            else
+            {
+                // A member from a newer format; skipping it keeps the block readable after a downgrade.
+                reader.Skip();
+            }
+
+            reader.Read();
+        }
+
+        return value;
+    }
+
+    private Dictionary<UInt256, ParityStateChange<byte[]>> ReadStorage(ref Utf8JsonReader reader, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException($"Cannot deserialize {nameof(ParityAccountStateChange)}.");
+        }
+
+        Dictionary<UInt256, ParityStateChange<byte[]>> storage = [];
+
+        reader.Read();
+        while (reader.TokenType != JsonTokenType.EndObject)
+        {
+            UInt256 index = _storageKeyConverter.ReadAsPropertyName(ref reader, typeof(UInt256), options);
+            reader.Read();
+            storage[index] = ReadChange<byte[]>(ref reader, options);
+            reader.Read();
+        }
+
+        return storage;
+    }
+
+    /// <summary>Reads <c>"="</c>, <c>{"+": after}</c>, <c>{"-": before}</c> or <c>{"*": {"from": before, "to": after}}</c>.</summary>
+    private static ParityStateChange<T>? ReadChange<T>(ref Utf8JsonReader reader, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String && reader.ValueTextEquals("="u8))
+        {
+            return null;
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException($"Cannot deserialize {nameof(ParityStateChange<T>)}.");
+        }
+
+        ParityStateChange<T> change = new(default, default);
+
+        reader.Read();
+        if (reader.ValueTextEquals("+"u8))
+        {
+            reader.Read();
+            change.After = JsonSerializer.Deserialize<T>(ref reader, options);
+        }
+        else if (reader.ValueTextEquals("-"u8))
+        {
+            reader.Read();
+            change.Before = JsonSerializer.Deserialize<T>(ref reader, options);
+        }
+        else if (reader.ValueTextEquals("*"u8))
+        {
+            reader.Read();
+            if (reader.TokenType != JsonTokenType.StartObject)
+            {
+                throw new JsonException($"Cannot deserialize {nameof(ParityStateChange<T>)}.");
+            }
+
+            bool hasFrom = false;
+            bool hasTo = false;
+
+            reader.Read();
+            while (reader.TokenType != JsonTokenType.EndObject)
+            {
+                if (reader.ValueTextEquals("from"u8))
+                {
+                    reader.Read();
+                    change.Before = JsonSerializer.Deserialize<T>(ref reader, options);
+                    hasFrom = true;
+                }
+                else if (reader.ValueTextEquals("to"u8))
+                {
+                    reader.Read();
+                    change.After = JsonSerializer.Deserialize<T>(ref reader, options);
+                    hasTo = true;
+                }
+                else
+                {
+                    reader.Skip();
+                }
+
+                reader.Read();
+            }
+
+            // Without either side, a change would read back as a creation or deletion.
+            if (!hasFrom || !hasTo)
+            {
+                throw new JsonException($"Cannot deserialize {nameof(ParityStateChange<T>)}.");
+            }
+        }
+        else
+        {
+            throw new JsonException($"Cannot deserialize {nameof(ParityStateChange<T>)}.");
+        }
+
+        reader.Read();
+        if (reader.TokenType != JsonTokenType.EndObject)
+        {
+            throw new JsonException($"Cannot deserialize {nameof(ParityStateChange<T>)}.");
+        }
+
+        return change;
+    }
 
     private static void WriteChange(Utf8JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializerOptions options)
     {
@@ -175,18 +321,32 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         writer.WriteStartObject();
         if (value.Storage is not null)
         {
-            foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage.OrderBy(static s => s.Key))
-            {
-                string trimmedKey = pair.Key.ToString("x64");
-                trimmedKey = trimmedKey.Substring(trimmedKey.Length - 64, 64);
-
-                writer.WritePropertyName(string.Concat("0x", trimmedKey));
-                WriteStorageChange(writer, pair.Value, value.Balance?.Before is null && value.Balance?.After is not null, options);
-            }
+            WriteStorage(writer, value.Storage, value.Balance?.Before is null && value.Balance?.After is not null, options);
         }
 
         writer.WriteEndObject();
 
         writer.WriteEndObject();
+    }
+
+    /// <summary>Writes the slots in ascending key order, sorting them in a pooled buffer.</summary>
+    [SkipLocalsInit]
+    private void WriteStorage(Utf8JsonWriter writer, Dictionary<UInt256, ParityStateChange<byte[]>> storage, bool isNew, JsonSerializerOptions options)
+    {
+        Span<byte> keyBytes = stackalloc byte[32];
+        Span<byte> keyName = stackalloc byte[2 + 64];
+        keyName[0] = (byte)'0';
+        keyName[1] = (byte)'x';
+        Span<byte> keyHex = keyName[2..];
+
+        using ArrayPoolListRef<KeyValuePair<UInt256, ParityStateChange<byte[]>>> sorted = new(storage.Count, storage);
+        sorted.Sort(static (x, y) => x.Key.CompareTo(y.Key));
+        foreach ((UInt256 key, ParityStateChange<byte[]> change) in sorted.AsSpan())
+        {
+            key.ToBigEndian(keyBytes);
+            keyBytes.OutputBytesToByteHex(keyHex, false);
+            writer.WritePropertyName(keyName);
+            WriteStorageChange(writer, change, isNew, options);
+        }
     }
 }

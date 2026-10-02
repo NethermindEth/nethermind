@@ -767,12 +767,12 @@ public class FrameTxMempoolDosMeasurement
     {
         if (senderCode.Length == 0) return;
 
-        Assert.That(_poolState.GetCode(Sender), Is.EqualTo(senderCode),
+        Assert.That(_poolState.GetCode(Sender).ToArray(), Is.EqualTo(senderCode),
             "the pool's chain-head view does not carry the sender's code, so the two stores disagree");
 
         using IReadOnlyTxProcessorSource source = envFactory.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(head);
-        Assert.That(scope.WorldState.GetCode(Sender), Is.EqualTo(senderCode),
+        Assert.That(scope.WorldState.GetCode(Sender).ToArray(), Is.EqualTo(senderCode),
             "the simulator's view of the head does not carry the sender's code, so the EVM would run "
             + "default verify code and the measurement would describe the wrong work");
     }
@@ -833,12 +833,13 @@ public class FrameTxMempoolDosMeasurement
             Transaction tx,
             bool signaturesPreValidated = false,
             bool local = false,
-            CancellationToken token = default)
+            CancellationToken token = default,
+            Func<bool>? preempt = null)
         {
             long start = Stopwatch.GetTimestamp();
             try
             {
-                return inner.Simulate(tx, signaturesPreValidated: signaturesPreValidated, local: local, token: token);
+                return inner.Simulate(tx, signaturesPreValidated: signaturesPreValidated, local: local, token: token, preempt: preempt);
             }
             finally
             {

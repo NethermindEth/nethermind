@@ -17,6 +17,7 @@ public partial class ParallelUnbalancedWork
         {
             internal WorkerScope? Scope;
             internal WorkerScope? Runner;
+            internal WorkQueue? Operation;
         }
 
         internal static WorkerScope? Current => _context.Scope;
@@ -25,7 +26,7 @@ public partial class ParallelUnbalancedWork
             Volatile.Read(ref _root._first) is { } first && (!ReferenceEquals(first, own) || Volatile.Read(ref first.Next) is not null);
         private readonly WorkerScope? _previous;
         private readonly WorkerScope _root;
-        private readonly object _gate = new();
+        private readonly object _gate;
         private readonly Action<IThreadPoolWorkItem> _schedule;
         private WorkQueue? _first;
         private WorkQueue? _last;
@@ -40,17 +41,23 @@ public partial class ParallelUnbalancedWork
             ref WorkerContext context = ref _context;
             _previous = context.Scope;
             _root = _previous?._root ?? this;
+            _gate = _previous?._gate ?? new();
             Concurrency = _previous?.Concurrency ?? concurrency;
             _schedule = schedule ?? QueueToThreadPool;
             context.Scope = this;
         }
 
         /// <summary>One operation's unstarted callbacks, all the same work item.</summary>
-        internal sealed class WorkQueue
+        internal sealed class WorkQueue(BackgroundWork? owner = null)
         {
-            // Cleared when the last callback is taken or withdrawn, so a drained queue keeps nothing alive.
+            // Synchronous loops record the operation that started them.
+            // Background operations start a new ancestry: their creator need not join them.
+            internal readonly WorkQueue? Parent = owner is null ? _context.Operation : null;
+            internal readonly BackgroundWork? Owner = owner;
+            // Cleared when the last callback is taken or withdrawn.
             internal IThreadPoolWorkItem? Work;
             internal int Count;
+            internal int ReadyDescendants;
             internal WorkQueue? Previous;
             internal WorkQueue? Next;
         }
@@ -67,6 +74,7 @@ public partial class ParallelUnbalancedWork
                 {
                     queue.Work = work;
                     root.AddReady(queue);
+                    UpdateReadyAncestors(queue, 1);
                 }
                 queue.Count += count;
                 root._pending += count;
@@ -80,19 +88,40 @@ public partial class ParallelUnbalancedWork
                     root._requested += schedule;
                 }
             }
+            for (WorkQueue? parent = queue.Parent; parent is not null; parent = parent.Parent)
+                parent.Owner?.NotifyWorkAvailable();
             for (int i = 0; i < schedule; i++) root._schedule(root);
         }
 
-        internal bool TryExecute(WorkQueue queue)
+        internal bool TryExecute(WorkQueue queue, bool includeDescendants = false)
         {
             IThreadPoolWorkItem work;
             lock (_root._gate)
             {
-                if (queue.Count == 0) return false;
+                if (queue.Count == 0)
+                {
+                    if (!includeDescendants || FindDescendant(queue) is not { } descendant) return false;
+                    queue = descendant;
+                }
                 work = _root.Take(queue);
             }
-            Run(work);
+            Run(work, queue);
             return true;
+        }
+
+        internal bool HasReadyWork(WorkQueue queue)
+        {
+            lock (_root._gate) return queue.Count != 0 || queue.ReadyDescendants != 0;
+        }
+
+        // Ancestry stops at background operations; only nested synchronous loops are eligible.
+        private WorkQueue? FindDescendant(WorkQueue ancestor)
+        {
+            if (ancestor.ReadyDescendants == 0) return null;
+            for (WorkQueue? queue = _root._first; queue is not null; queue = queue.Next)
+                for (WorkQueue? parent = queue.Parent; parent is not null; parent = parent.Parent)
+                    if (ReferenceEquals(parent, ancestor)) return queue;
+            return null;
         }
 
         /// <summary>Removes the queue's unstarted callbacks without running them.</summary>
@@ -105,10 +134,17 @@ public partial class ParallelUnbalancedWork
                 if (count == 0) return 0;
                 queue.Count = 0;
                 queue.Work = null;
+                UpdateReadyAncestors(queue, -1);
                 _root._pending -= count;
                 _root.Unlink(queue);
                 return count;
             }
+        }
+
+        private static void UpdateReadyAncestors(WorkQueue queue, int delta)
+        {
+            for (WorkQueue? parent = queue.Parent; parent is not null; parent = parent.Parent)
+                parent.ReadyDescendants += delta;
         }
 
         private void AddReady(WorkQueue queue)
@@ -123,7 +159,11 @@ public partial class ParallelUnbalancedWork
         private IThreadPoolWorkItem Take(WorkQueue queue)
         {
             IThreadPoolWorkItem work = queue.Work!;
-            if (--queue.Count == 0) queue.Work = null;
+            if (--queue.Count == 0)
+            {
+                queue.Work = null;
+                UpdateReadyAncestors(queue, -1);
+            }
             _pending--;
             Unlink(queue);
             // Rotate ready operations without moving their callbacks. Joining a specific operation uses
@@ -144,14 +184,17 @@ public partial class ParallelUnbalancedWork
         private static void QueueToThreadPool(IThreadPoolWorkItem work)
             => ThreadPool.UnsafeQueueUserWorkItem(work, preferLocal: false);
 
-        internal void Run(IThreadPoolWorkItem work)
+        internal void Run(IThreadPoolWorkItem work, WorkQueue operation)
         {
             ref WorkerContext context = ref _context;
             WorkerScope? previous = context.Scope;
+            WorkQueue? previousOperation = context.Operation;
+            context.Operation = operation;
             if (!ReferenceEquals(previous, _root)) context.Scope = _root;
             try { work.Execute(); }
             finally
             {
+                context.Operation = previousOperation;
                 if (!ReferenceEquals(context.Scope, previous)) context.Scope = previous;
             }
         }
@@ -167,6 +210,7 @@ public partial class ParallelUnbalancedWork
                 while (true)
                 {
                     IThreadPoolWorkItem work;
+                    WorkQueue queue;
                     lock (_gate)
                     {
                         // Enqueue and retirement share the gate: a producer either sees a live
@@ -176,9 +220,10 @@ public partial class ParallelUnbalancedWork
                             _runners--;
                             return;
                         }
-                        work = Take(_first);
+                        queue = _first;
+                        work = Take(queue);
                     }
-                    Run(work);
+                    Run(work, queue);
                 }
             }
             finally { context = previous; }
@@ -203,6 +248,7 @@ public partial class ParallelUnbalancedWork
         }
         else
         {
+            data.SetUnstarted(count);
             for (int i = 0; i < count; i++)
                 ThreadPool.UnsafeQueueUserWorkItem(work, preferLocal: false);
         }
@@ -212,8 +258,11 @@ public partial class ParallelUnbalancedWork
     {
         // The caller has claimed the range, so unstarted workers would only retire; withdraw them in one step
         // rather than running each. Unrelated callbacks stay queued: they may depend on the caller's progress.
-        if (data.Scope?.Withdraw(data.Queue!) is > 0 and var withdrawn)
-            data.MarkThreadCompleted(withdrawn);
+        // Without a scope the callbacks stay in the thread pool, but they are withdrawn all the same: waiting
+        // for a free thread to dequeue them blocks this thread on the pool, and nested loops (a parallel
+        // BulkSet recursing into another) then park every pool thread on workers that cannot start.
+        int withdrawn = data.Scope is { } scope ? scope.Withdraw(data.Queue!) : data.WithdrawUnstarted();
+        if (withdrawn > 0) data.MarkThreadCompleted(withdrawn);
         if (data.ActiveThreads > 0) data.Event.Wait();
     }
 }

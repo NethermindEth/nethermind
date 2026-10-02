@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -39,6 +40,7 @@ using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
@@ -48,7 +50,7 @@ public class StatelessInputGeneratorTests
     [Test]
     [NonParallelizable]
     public async Task Encoded_execution_checks_reconstructed_header_hash(
-        [Values] bool amsterdam, [Values("valid", "hash", "transactions", "withdrawals")] string mutation)
+        [Values] bool amsterdam, [Values("valid", "hash", "transactions", "withdrawals", "requests")] string mutation)
     {
         (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam, currentChainActivation: true);
         using (witness)
@@ -71,15 +73,81 @@ public class StatelessInputGeneratorTests
                     case "withdrawals":
                         payload.Withdrawals = [new SszWithdrawal { Address = TestItem.PrivateKeyA.Address, Amount = 0 }];
                         break;
+                    case "requests":
+                        SszExecutionRequests requests = input.NewPayloadRequest.ExecutionRequests;
+                        requests.Deposits = [];
+                        input.NewPayloadRequest.ExecutionRequests = requests;
+                        payload.BlockHash = input.NewPayloadRequest.ToBlock(requestsEnabled: true)!.Header.CalculateHash();
+                        break;
                 }
                 Block reconstructed = input.NewPayloadRequest.ToBlock(requestsEnabled: true)!;
-                Assert.That(HeaderValidator.ValidateHash(reconstructed.Header), Is.EqualTo(mutation == "valid"));
-                byte[] body = StatelessInput<TPayload>.Encode(input);
-                byte[] modified = new byte[body.Length + sizeof(ushort)];
-                encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
-                body.CopyTo(modified, sizeof(ushort));
-                encoded = modified;
+                Assert.That(HeaderValidator.ValidateHash(reconstructed.Header), Is.EqualTo(mutation is "valid" or "requests"));
+                encoded = Reencode(encoded, input);
             }
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Encoded_execution_rejects_an_empty_transaction_entry()
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
+            // Through the SSZ view: the payload caches the wrapped transaction array, so a write to the
+            // inner byte[][] would not survive the re-encode.
+            input.NewPayloadRequest.ExecutionPayload.Transactions[0] = new SszProgressiveBytes { Bytes = [] };
+            byte[] modified = Reencode(encoded, input);
+
+            // The declared block hash no longer matches either, so only the decode step pins the empty-entry rule.
+            StatelessInput<SszExecutionPayload>.Decode(modified.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> decoded);
+            Assert.That(() => decoded.NewPayloadRequest.ToBlock(requestsEnabled: true), Throws.InvalidOperationException);
+
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(modified), out StatelessValidationResult result);
+            Assert.That(result.IsSuccess, Is.False);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Encoded_execution_reports_the_sentinel_for_an_unsupported_schema([Values(0x1101, 0x1502, 0x0000)] int schemaId)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            BinaryPrimitives.WriteUInt16BigEndian(encoded, (ushort)schemaId);
+
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded), out StatelessValidationResult result);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsSuccess, Is.False);
+                Assert.That(result.SchemaId, Is.Zero);
+                Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(Hash256.Zero));
+            }
+        }
+    }
+
+    /// <summary>
+    /// An ancestor the witness does not carry must fail the block rather than resolve to zero, which is what
+    /// the stateless spec achieves by indexing its block-hash list out of range.
+    /// </summary>
+    [Test]
+    public void Blockhash_of_an_ancestor_missing_from_the_witness_fails_the_block()
+    {
+        BlockHeader grandparent = Build.A.BlockHeader.WithNumber(99).TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(100).WithParent(grandparent).TestObject;
+        BlockHeader current = Build.A.BlockHeader.WithNumber(101).WithParent(parent).TestObject;
+        StatelessBlockTree blockTree = new([grandparent, parent]);
+        BlockhashProvider provider = new(blockTree, Substitute.For<IWorldState>(), NullLogManager.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBlockhash(current, 99, Cancun.Instance), Is.EqualTo(grandparent.Hash));
+            Assert.That(() => provider.GetBlockhash(current, 98, Cancun.Instance), Throws.TypeOf<InvalidDataException>());
         }
     }
 
@@ -136,7 +204,7 @@ public class StatelessInputGeneratorTests
     }
 
     [Test]
-    public async Task Raw_block_input_recovers_requests_and_public_keys([Values] bool amsterdam)
+    public async Task Raw_block_input_recovers_requests([Values] bool amsterdam)
     {
         (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam);
         using (witness)
@@ -146,7 +214,6 @@ public class StatelessInputGeneratorTests
             Assert.That(rawBlock.ExecutionRequests, Is.Null);
 
             Block restored;
-            SszPublicKey[] publicKeys;
             byte[]? encoded = await InputGenerator.EncodeInput(rawBlock, witness, specProvider);
             Assert.That(encoded, Is.Not.Null);
             Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded),
@@ -155,22 +222,18 @@ public class StatelessInputGeneratorTests
             {
                 StatelessInput<SszExecutionPayloadAmsterdam>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayloadAmsterdam> input);
                 restored = input.NewPayloadRequest.ToBlock(requestsEnabled: true)!;
-                publicKeys = input.PublicKeys;
             }
             else
             {
                 StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
                 restored = input.NewPayloadRequest.ToBlock(requestsEnabled: true)!;
-                publicKeys = input.PublicKeys;
             }
 
-            Assert.That(publicKeys, Has.Length.EqualTo(block.Transactions.Length));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(rawBlock.ExecutionRequests, Is.EqualTo(expectedRequests));
                 Assert.That(restored.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
                 Assert.That(restored.Header.CalculateHash(), Is.EqualTo(block.Hash));
-                Assert.That(publicKeys[0].AsSpan().ToArray(), Is.EqualTo(TestItem.PrivateKeyA.PublicKey.PrefixedBytes));
             }
         }
     }
@@ -226,30 +289,6 @@ public class StatelessInputGeneratorTests
 
             Assert.That(async () => await InputGenerator.EncodeInput(rawBlock, witness, specProvider),
                 Throws.TypeOf<InvalidBlockException>());
-        }
-    }
-
-    [Test]
-    public void Default_stateless_replay_preserves_supplied_requests_hash([Values] bool amsterdam)
-    {
-        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam);
-        using (witness)
-        {
-            block.ExecutionRequests = null;
-            block.Header.RequestsHash = TestItem.KeccakB;
-            block.Header.Hash = block.Header.CalculateHash();
-            StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
-            using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
-            using IDisposable scope = env.WorldState.BeginScope(headers[^1]);
-
-            (Block processed, _) = env.BlockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain,
-                NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(processed.Header.RequestsHash, Is.EqualTo(TestItem.KeccakB));
-                Assert.That(processed.ExecutionRequests, Is.Null);
-            }
         }
     }
 
@@ -317,10 +356,7 @@ public class StatelessInputGeneratorTests
                 .WithTimestamp(parent.Timestamp + 12).WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(0)
                 .WithSlotNumber(amsterdam ? 1UL : null)
                 .WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).WithTransactions(tx).TestObject;
-            StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance)
-            {
-                ExecutionRequestsProcessorFactory = ExecutionRequestsProcessorFactory.Instance
-            };
+            StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
             using IDisposable scope = env.WorldState.BeginScope(parent);
             (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
             block.DisposeAccountChanges();
@@ -341,6 +377,16 @@ public class StatelessInputGeneratorTests
             state.CreateAccount(address, 0);
             state.InsertCode(address, Keccak.Compute(code), code, spec);
         }
+    }
+
+    private static byte[] Reencode<TPayload>(byte[] encoded, StatelessInput<TPayload> input)
+        where TPayload : SszExecutionPayload, ISszCodec<TPayload>, new()
+    {
+        byte[] body = StatelessInput<TPayload>.Encode(input);
+        byte[] modified = new byte[body.Length + sizeof(ushort)];
+        encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
+        body.CopyTo(modified, sizeof(ushort));
+        return modified;
     }
 
     private static Witness EmptyWitness(byte[][]? headers = null) => new()
