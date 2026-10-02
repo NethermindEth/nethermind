@@ -166,7 +166,7 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Other signed copies of the blocks in <see cref="_pendingRetry"/>, by block root, oldest first; one takes the queued copy's place once that fails verification.</summary>
     /// <remarks>
-    /// Gossip deduplicates by message id, which covers the signature, so copies under one block root reach this node apart, and a
+    /// Gossip deduplicates by message id, a hash of the whole message data with the signature (p2p-interface.md <c>message-id</c>), so copies under one block root reach this node apart, and a
     /// forged one may be queued before the genuine one. The copies count towards <see cref="MaxPendingRetryBlocks"/>.
     /// </remarks>
     private readonly Dictionary<Hash256, List<PendingRetry>> _pendingRetryCopies = [];
