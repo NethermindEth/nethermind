@@ -1064,7 +1064,7 @@ public class PeerBandTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
-        ILogManager hostLogs = logManager ?? LimboLogs.Instance;
+        ILogManager hostLogs = logManager ?? LoopbackTrace.NewNode() ?? LimboLogs.Instance;
         BeaconP2P p2p = requestTimeout is { } timeout
             ? new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs) { RequestTimeout = timeout }
             : new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs);
