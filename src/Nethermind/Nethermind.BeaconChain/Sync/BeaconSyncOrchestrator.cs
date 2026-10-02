@@ -164,6 +164,14 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/> or <see cref="BlockImportResult.FutureSlot"/>, keyed by block root, awaiting a retry.</summary>
     private readonly Dictionary<Hash256, PendingRetry> _pendingRetry = [];
 
+    /// <summary>Other signed copies of the blocks in <see cref="_pendingRetry"/>, by block root, oldest first; one takes the queued copy's place once that fails verification.</summary>
+    /// <remarks>
+    /// Gossip deduplicates by message id, which covers the signature, so copies under one block root reach this node apart, and a
+    /// forged one may be queued before the genuine one. The copies count towards <see cref="MaxPendingRetryBlocks"/>.
+    /// </remarks>
+    private readonly Dictionary<Hash256, List<PendingRetry>> _pendingRetryCopies = [];
+    private int _pendingRetryCopyCount;
+
     /// <summary>Blocks fetched by root that wait in <see cref="_pendingByParent"/> behind a fetched ancestor, so they import as fetched; bounded like that queue.</summary>
     private readonly LruCache<Hash256, HeldFetchedBlock> _heldFetched = new(MaxPendingGossipBlocks, nameof(_heldFetched));
 
@@ -369,7 +377,7 @@ public sealed class BeaconSyncOrchestrator(
     internal int ColumnFetchRotationCount => _columnFetchRotations.Count;
 
     /// <summary>The blocks awaiting a data or engine retry, bounded by <see cref="MaxPendingRetryBlocks"/>; for tests.</summary>
-    internal int PendingRetryBlockCount => _pendingRetry.Count;
+    internal int PendingRetryBlockCount => _pendingRetry.Count + _pendingRetryCopyCount;
 
     /// <summary>The slot of the newest range-synced block held for a deferred block, or <c>null</c> when none is; for tests.</summary>
     internal ulong? RangeHeldSlot => _rangeHeld?.Tip.Slot;
@@ -1007,7 +1015,6 @@ public sealed class BeaconSyncOrchestrator(
         long startMs = Environment.TickCount64;
         // Provenance follows the exact signed block: a copy from gossip under the same message root may carry another signature.
         bool isQueued = _pendingRetry.TryGetValue(root, out PendingRetry queued) && IsSameSignedBlock(queued.Block, block);
-        bool otherCopyQueued = otherCopyPending || (!isQueued && _pendingRetry.ContainsKey(root));
         HeldFetchedBlock? heldFetched = _heldFetched.TryGet(root, out HeldFetchedBlock? held) && IsSameSignedBlock(held.Block, block) ? held : null;
         if (heldFetched is not null)
         {
@@ -1035,12 +1042,14 @@ public sealed class BeaconSyncOrchestrator(
             gossipRouter.MarkProposalSeen(block.Slot, block.ProposerIndex);
         }
 
+        PendingRetry? promoted = null;
         if (result == BlockImportResult.Imported)
         {
             Interlocked.Increment(ref Metrics.BlocksImportedCount);
             Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
             _importMsSinceProgressLog += Metrics.BeaconChainLastBlockImportMs;
             _pendingRetry.Remove(root);
+            RemoveRetryCopies(root);
             _rangeHeldRoots.Remove(root);
             if (TrackColumnRecovery(root, block) is { } recovery)
             {
@@ -1082,6 +1091,18 @@ public sealed class BeaconSyncOrchestrator(
             // A retried block answers UnknownParent once its parent's state is gone, so it never imports.
             // Only the queued signed block itself leaves the retry set; an invalid copy under its root does not.
             bool wasRetried = isQueued && _pendingRetry.Remove(root);
+            // A copy under another signature may be the genuine block, so it waits in place of an invalid queued copy.
+            promoted = wasRetried && result == BlockImportResult.Invalid ? PromoteRetryCopy(root) : null;
+            if (wasRetried && promoted is null)
+            {
+                RemoveRetryCopies(root);
+            }
+            else if (!isQueued && result == BlockImportResult.Invalid)
+            {
+                RemoveRetryCopy(root, block);
+            }
+
+            bool otherCopyQueued = otherCopyPending || _pendingRetry.ContainsKey(root);
             if (origin == ImportOrigin.ByRoot)
             {
                 BlameInvalidFetchedBlock(result, refusal, servedBy, root);
@@ -1115,6 +1136,12 @@ public sealed class BeaconSyncOrchestrator(
             ReleaseColumnWatch(root);
             // A held block that failed to import no longer holds its backfill, so a later child may fetch another copy.
             ReleaseBackfill(root);
+        }
+
+        // The promoted copy now stands for the root, so a caller walking on to its children acts on its result.
+        if (promoted is { } next)
+        {
+            return await ImportBlockAsync(next.Block, token, retryingOnColumns);
         }
 
         return result;
@@ -1282,10 +1309,15 @@ public sealed class BeaconSyncOrchestrator(
                 _pendingRetry[root] = queued with { Origin = origin, ServedBy = servedBy };
             }
 
+            if (!IsSameSignedBlock(queued.Block, block))
+            {
+                QueueRetryCopy(root, new PendingRetry(block, slotClock.CurrentSlot, origin, servedBy, awaitsRegeneration));
+            }
+
             return true;
         }
 
-        if (_pendingRetry.Count >= MaxPendingRetryBlocks)
+        if (_pendingRetry.Count + _pendingRetryCopyCount >= MaxPendingRetryBlocks)
         {
             return false;
         }
@@ -1298,6 +1330,78 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         return true;
+    }
+
+    /// <summary>Keeps <paramref name="copy"/>, another signed copy of the queued block <paramref name="root"/>, unless the retry set is full; a copy kept already takes its provenance as the queued block would.</summary>
+    private void QueueRetryCopy(Hash256 root, PendingRetry copy)
+    {
+        if (!_pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies))
+        {
+            copies = [];
+        }
+
+        for (int i = 0; i < copies.Count; i++)
+        {
+            PendingRetry kept = copies[i];
+            if (IsSameSignedBlock(kept.Block, copy.Block))
+            {
+                copies[i] = copy.Origin != ImportOrigin.Gossip && kept.Origin == ImportOrigin.Gossip ? kept with { Origin = copy.Origin, ServedBy = copy.ServedBy } : kept;
+                return;
+            }
+        }
+
+        if (_pendingRetry.Count + _pendingRetryCopyCount >= MaxPendingRetryBlocks)
+        {
+            return;
+        }
+
+        copies.Add(copy);
+        _pendingRetryCopies[root] = copies;
+        _pendingRetryCopyCount++;
+    }
+
+    /// <summary>Queues the oldest other copy of <paramref name="root"/> in the retry set in place of the queued copy, which left it.</summary>
+    /// <returns>The promoted copy, or <c>null</c> when none is kept.</returns>
+    private PendingRetry? PromoteRetryCopy(Hash256 root)
+    {
+        if (!_pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies))
+        {
+            return null;
+        }
+
+        PendingRetry next = copies[0];
+        copies.RemoveAt(0);
+        _pendingRetryCopyCount--;
+        if (copies.Count == 0)
+        {
+            _pendingRetryCopies.Remove(root);
+        }
+
+        _pendingRetry[root] = next;
+        return next;
+    }
+
+    /// <summary>Forgets the kept copy of <paramref name="root"/> that is the signed block <paramref name="block"/>.</summary>
+    private void RemoveRetryCopy(Hash256 root, ForkedSignedBeaconBlock block)
+    {
+        if (_pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies)
+            && copies.RemoveAll(copy => IsSameSignedBlock(copy.Block, block)) is > 0 and var removed)
+        {
+            _pendingRetryCopyCount -= removed;
+            if (copies.Count == 0)
+            {
+                _pendingRetryCopies.Remove(root);
+            }
+        }
+    }
+
+    /// <summary>Forgets every kept copy of <paramref name="root"/>, once the block imported or none of its copies can.</summary>
+    private void RemoveRetryCopies(Hash256 root)
+    {
+        if (_pendingRetryCopies.Remove(root, out List<PendingRetry>? copies))
+        {
+            _pendingRetryCopyCount -= copies.Count;
+        }
     }
 
     /// <summary>Has the importer forget the deferral it kept for <paramref name="root"/>, a block the orchestrator dropped, instead of holding it until finality.</summary>
@@ -1430,6 +1534,7 @@ public sealed class BeaconSyncOrchestrator(
             if (retry.Block.Slot <= finalizedSlot || IsRetryExpired(retry.QueuedAtSlot, currentSlot))
             {
                 _pendingRetry.Remove(root);
+                RemoveRetryCopies(root);
                 ReleaseImporterDeferral(root);
                 ReleaseRangeHeld(root);
                 _columnFetchRotations.Remove(root);
