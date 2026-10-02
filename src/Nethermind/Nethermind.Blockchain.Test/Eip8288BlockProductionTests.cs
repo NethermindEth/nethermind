@@ -221,9 +221,15 @@ public class Eip8288BlockProductionTests
         ];
         Transaction transaction = new()
         {
-            Type = TxType.FrameTx, ChainId = chain.SpecProvider.ChainId, SenderAddress = TestItem.PrivateKeyB.Address,
-            NonceKeys = keys, RecentRootReferences = roots, Frames = frames,
-            GasLimit = FrameTxValidation.TotalGasLimit(frames), GasPrice = 1.GWei, DecodedMaxFeePerGas = 100.GWei
+            Type = TxType.FrameTx,
+            ChainId = chain.SpecProvider.ChainId,
+            SenderAddress = TestItem.PrivateKeyB.Address,
+            NonceKeys = keys,
+            RecentRootReferences = roots,
+            Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 100.GWei
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         transaction.Hash = transaction.CalculateHash();
@@ -233,14 +239,17 @@ public class Eip8288BlockProductionTests
     private static byte[] EncodeWrapper(FrameDependency dependency, params Transaction[] transactions) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
     {
         Transactions = Array.ConvertAll(transactions, static transaction => new WrapperTransaction(transaction)),
-        Deps = [dependency], Mode = MempoolWrapper.ModeDirect, Proofs = [[1]]
+        Deps = [dependency],
+        Mode = MempoolWrapper.ModeDirect,
+        Proofs = [[1]]
     }).Bytes;
 
     private static async Task<Block> ProduceAndImport(BasicTestBlockchain chain, ulong slot)
     {
         Block? block = await chain.BlockProducer.BuildBlock(payloadAttributes: new PayloadAttributes
         {
-            Timestamp = chain.BlockTree.Head!.Timestamp + 1, SlotNumber = slot
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
+            SlotNumber = slot
         });
         Assert.That(block, Is.Not.Null);
         Task imported = chain.WaitForNewHeadWhere(added => added.Hash == block!.Hash);

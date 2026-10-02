@@ -58,8 +58,10 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = CreateService([], new LeanProofStore(), verifier, spec);
         byte[] Encode() => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction)], Deps = [dependency],
-            Mode = MempoolWrapper.ModeDirect, Proofs = [[1]]
+            Transactions = [new WrapperTransaction(transaction)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [[1]]
         }).Bytes;
         byte[] wrapper = Encode();
 
@@ -132,12 +134,15 @@ public class ProofWrapperServiceTests
         Result<Hash256[]> accepted = inclusionList
             ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
             {
-                Transactions = [transaction], RecursiveStark = recursive
+                Transactions = [transaction],
+                RecursiveStark = recursive
             }).Bytes)
             : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
             {
-                Transactions = [new WrapperTransaction(transaction)], Deps = [dependency],
-                Mode = MempoolWrapper.ModeRecursive, RecursiveStark = recursive
+                Transactions = [new WrapperTransaction(transaction)],
+                Deps = [dependency],
+                Mode = MempoolWrapper.ModeRecursive,
+                RecursiveStark = recursive
             }).Bytes);
         using (Assert.EnterMultipleScope())
         {
@@ -155,7 +160,10 @@ public class ProofWrapperServiceTests
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
         Transaction transaction = new()
         {
-            Type = TxType.FrameTx, NonceKeys = [UInt256.Zero], ChainId = 1, SenderAddress = Address.Zero,
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
             RecentRootReferences = [new(default, 0, default)],
             Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
@@ -164,12 +172,15 @@ public class ProofWrapperServiceTests
         Result<Hash256[]> accepted = inclusionList
             ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
             {
-                Transactions = [transaction], RecursiveStark = recursive
+                Transactions = [transaction],
+                RecursiveStark = recursive
             }).Bytes)
             : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
             {
-                Transactions = [new WrapperTransaction(transaction)], Deps = [dependency],
-                Mode = MempoolWrapper.ModeRecursive, RecursiveStark = recursive
+                Transactions = [new WrapperTransaction(transaction)],
+                Deps = [dependency],
+                Mode = MempoolWrapper.ModeRecursive,
+                RecursiveStark = recursive
             }).Bytes);
         Assert.That(accepted.Error, Is.EqualTo(FrameTxValidation.RecentRootReferencesNotEnabled));
         Assert.That(verifier.VerificationCalls, Is.Zero);
@@ -181,7 +192,10 @@ public class ProofWrapperServiceTests
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
         Transaction transaction = new()
         {
-            Type = TxType.FrameTx, NonceKeys = [UInt256.Zero], ChainId = 1, SenderAddress = Address.Zero,
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
             Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
@@ -201,7 +215,10 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, new LeanProofStore(), verifier);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction.Hash)], Deps = [dependency], Mode = MempoolWrapper.ModeDirect, Proofs = [[1]]
+            Transactions = [new WrapperTransaction(transaction.Hash)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [[1]]
         }).Bytes;
         ProofWrapperAcceptance first = await service.AcceptDetailedAsync(wrapper);
         Assert.That(first.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
@@ -218,7 +235,10 @@ public class ProofWrapperServiceTests
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
         Transaction transaction = new()
         {
-            Type = TxType.FrameTx, NonceKeys = [UInt256.Zero], ChainId = 1, SenderAddress = Address.Zero,
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
             Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
@@ -232,7 +252,10 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, verifier);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction)], Deps = [dependency], Mode = MempoolWrapper.ModeDirect, Proofs = [[1]]
+            Transactions = [new WrapperTransaction(transaction)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [[1]]
         }).Bytes;
         ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper);
         Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));

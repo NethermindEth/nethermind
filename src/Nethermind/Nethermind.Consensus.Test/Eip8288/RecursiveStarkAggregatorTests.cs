@@ -158,7 +158,8 @@ public class RecursiveStarkAggregatorTests
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependencies[0]]);
         byte[] proof = RecursiveStarkAggregator.Prove(new()
         {
-            RecursiveProofs = children, Discards = dependencies[1..]
+            RecursiveProofs = children,
+            Discards = dependencies[1..]
         }, verifier, hash);
         Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
         Assert.That(verifier.ProofCalls, Is.EqualTo(4));

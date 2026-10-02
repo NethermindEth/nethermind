@@ -47,7 +47,10 @@ public class NativeMixedTransportTests
         initial.Update("mixed transport test"u8);
         EncryptionSecrets Secrets() => new()
         {
-            AesSecret = aes, MacSecret = mac, EgressMac = initial.Copy(), IngressMac = initial.Copy()
+            AesSecret = aes,
+            MacSecret = mac,
+            EgressMac = initial.Copy(),
+            IngressMac = initial.Copy()
         };
         using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, Secrets());
         using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, Secrets());

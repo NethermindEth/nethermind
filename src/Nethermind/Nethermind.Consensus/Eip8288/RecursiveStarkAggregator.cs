@@ -120,8 +120,10 @@ public static class RecursiveStarkAggregator
             List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(retained);
             childInput = new()
             {
-                Deps = childInput.Deps, Witnesses = childInput.Witnesses,
-                RecursiveProofs = childInput.RecursiveProofs, Discards = input.Discards
+                Deps = childInput.Deps,
+                Witnesses = childInput.Witnesses,
+                RecursiveProofs = childInput.RecursiveProofs,
+                Discards = input.Discards
             };
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(canonical);
             byte[] proof = verifier.ProveRecursiveStark(in hash, Eip8288Constants.AggregatedVk, childInput);
