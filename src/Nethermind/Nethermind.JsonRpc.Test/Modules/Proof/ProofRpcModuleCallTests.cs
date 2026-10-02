@@ -434,7 +434,7 @@ public class ProofRpcModuleCallTests
 
         Assert.That(statelessWorld.TryGetAccount(contractAddress, out AccountStruct account), Is.True,
             "the contract account must be reachable through witness-only state");
-        byte[] reconstructedCode = statelessWorld.GetCode(contractAddress)!;
+        byte[] reconstructedCode = statelessWorld.GetCode(contractAddress).ToArray();
         Assert.That(reconstructedCode, Is.EqualTo(runtimeCode),
             "the contract bytecode must be reconstructible from witness.Codes");
 

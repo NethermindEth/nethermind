@@ -38,6 +38,12 @@ public class OptimismReceiptForRpc : ReceiptForRpc
 
             OperatorFeeScalar = l1GasInfo.OperatorFeeScalar;
             OperatorFeeConstant = l1GasInfo.OperatorFeeConstant;
+
+            if (l1GasInfo.DaFootprintGasScalar is not null)
+            {
+                DaFootprintGasScalar = l1GasInfo.DaFootprintGasScalar;
+                BlobGasUsed = l1GasInfo.DaFootprint;
+            }
         }
     }
 
@@ -88,4 +94,8 @@ public class OptimismReceiptForRpc : ReceiptForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? OperatorFeeConstant { get; set; }
+
+    // Jovian fields
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ulong? DaFootprintGasScalar { get; set; }
 }
