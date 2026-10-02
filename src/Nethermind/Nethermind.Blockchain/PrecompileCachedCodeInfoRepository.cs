@@ -120,6 +120,12 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
                 return result;
             }
 
+            if (PrecompileLookahead.Active && PrecompileLookahead.TryPlaceholder(address, inputData.Span, out Result<byte[]> placeholder))
+            {
+                PrecompileLookahead.Schedule(precompile, address, inputData, effectiveInput, releaseSpec, cache);
+                return placeholder;
+            }
+
             result = precompile.Run(inputData, releaseSpec);
 
             // no need to spend memory on caching invalid-length inputs
