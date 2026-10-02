@@ -262,7 +262,7 @@ public class GloasAnchorImportTests
         }
 
         HeadView head = importer.ComputeHead();
-        bool slashingAccepted = importer.OnGossipAttesterSlashing(DoubleVote(justified.PostState, justifiedEpoch + 1));
+        bool? slashingAccepted = importer.OnGossipAttesterSlashing(DoubleVote(justified.PostState, justifiedEpoch + 1));
 
         using (Assert.EnterMultipleScope())
         {

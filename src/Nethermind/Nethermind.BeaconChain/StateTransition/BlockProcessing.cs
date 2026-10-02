@@ -118,7 +118,8 @@ public static class BlockProcessing
         if (block.Slot <= state.LatestBlockHeader!.Slot)
             throw new BeaconStateException($"Block slot {block.Slot} is not newer than latest header slot {state.LatestBlockHeader.Slot}");
         if (block.ProposerIndex != state.GetBeaconProposerIndex())
-            throw new BeaconStateException($"Block proposer {block.ProposerIndex} does not match expected proposer {state.GetBeaconProposerIndex()}");
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The block is proposed by the expected proposer for the slot".
+            throw new BeaconStateException($"Block proposer {block.ProposerIndex} does not match expected proposer {state.GetBeaconProposerIndex()}") { RejectGossip = true };
         if (block.ParentRoot != SszRoots.HashTreeRoot(state.LatestBlockHeader))
             throw new BeaconStateException($"Block parent root {block.ParentRoot} does not match latest header root");
 

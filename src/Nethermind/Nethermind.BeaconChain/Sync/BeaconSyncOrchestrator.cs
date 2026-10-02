@@ -765,11 +765,9 @@ public sealed class BeaconSyncOrchestrator(
             case GossipBlockItem gossip:
                 await ProcessGossipBlockAsync(gossip.Block, token, gossip.Verdict);
                 break;
-            // Each vote and slashing passes its remaining gossip checks, signatures included, only when fork choice accepts it; a refusal is not yet
-            // told apart from a missing dependency, so it is ignored rather than charged to its sender.
             case GossipAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate } aggregateItem:
-                bool aggregateAccepted = !gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) && _importer!.OnGossipAggregate(aggregate);
-                if (aggregateAccepted)
+                bool? aggregateAccepted = gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) ? null : _importer!.OnGossipAggregate(aggregate);
+                if (aggregateAccepted == true)
                 {
                     gossipRouter.MarkAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex);
                 }
@@ -777,8 +775,8 @@ public sealed class BeaconSyncOrchestrator(
                 Settle(aggregateItem.Verdict, aggregateAccepted);
                 break;
             case GossipGloasAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate } gloasAggregateItem:
-                bool gloasAggregateAccepted = !gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) && _importer!.OnGossipAggregate(aggregate);
-                if (gloasAggregateAccepted)
+                bool? gloasAggregateAccepted = gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) ? null : _importer!.OnGossipAggregate(aggregate);
+                if (gloasAggregateAccepted == true)
                 {
                     gossipRouter.MarkAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex);
                 }
@@ -786,8 +784,10 @@ public sealed class BeaconSyncOrchestrator(
                 Settle(gloasAggregateItem.Verdict, gloasAggregateAccepted);
                 break;
             case GossipAttesterSlashingItem { Slashing: AttesterSlashing slashing } slashingItem:
-                bool slashingAccepted = _importer!.OnGossipAttesterSlashing(slashing);
-                if (slashingAccepted)
+                // ethereum/consensus-specs p2p-interface.md: "[IGNORE] At least one index in the intersection has not yet been seen".
+                bool? slashingAccepted = gossipRouter.HasUnseenSlashingIndex(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!, out _)
+                    ? _importer!.OnGossipAttesterSlashing(slashing) : null;
+                if (slashingAccepted == true)
                 {
                     MarkSlashedIndicesSeen(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
                 }
@@ -795,8 +795,10 @@ public sealed class BeaconSyncOrchestrator(
                 Settle(slashingItem.Verdict, slashingAccepted);
                 break;
             case GossipGloasAttesterSlashingItem { Slashing: AttesterSlashingGloas slashing } gloasSlashingItem:
-                bool gloasSlashingAccepted = _importer!.OnGossipAttesterSlashing(slashing);
-                if (gloasSlashingAccepted)
+                // ethereum/consensus-specs p2p-interface.md: "[IGNORE] At least one index in the intersection has not yet been seen".
+                bool? gloasSlashingAccepted = gossipRouter.HasUnseenSlashingIndex(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!, out _)
+                    ? _importer!.OnGossipAttesterSlashing(slashing) : null;
+                if (gloasSlashingAccepted == true)
                 {
                     MarkSlashedIndicesSeen(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
                 }
@@ -804,8 +806,8 @@ public sealed class BeaconSyncOrchestrator(
                 Settle(gloasSlashingItem.Verdict, gloasSlashingAccepted);
                 break;
             case GossipPayloadAttestationItem payloadAttestation:
-                bool voteAccepted = !gossipRouter.IsPayloadAttestationVerified(payloadAttestation.Message) && _importer!.OnGossipPayloadAttestation(payloadAttestation.Message);
-                if (voteAccepted)
+                bool? voteAccepted = gossipRouter.IsPayloadAttestationVerified(payloadAttestation.Message) ? null : _importer!.OnGossipPayloadAttestation(payloadAttestation.Message);
+                if (voteAccepted == true)
                 {
                     gossipRouter.MarkPayloadAttestationVerified(payloadAttestation.Message);
                 }
@@ -891,16 +893,22 @@ public sealed class BeaconSyncOrchestrator(
         _ => item.GetType().Name,
     };
 
-    private static void Settle(GossipVerdict? verdict, bool accepted) => verdict?.Complete(accepted ? MessageValidity.Accepted : MessageValidity.Ignored);
+    private static void Settle(GossipVerdict? verdict, bool? accepted) => verdict?.Complete(accepted switch
+    {
+        true => MessageValidity.Accepted,
+        // ethereum/consensus-specs p2p-interface.md: "[REJECT] The signature is valid"; null preserves IGNORE for unavailable dependencies.
+        false => MessageValidity.Rejected,
+        null => MessageValidity.Ignored,
+    });
 
     /// <summary>Gives the pending verdict of the gossip block <paramref name="block"/>, if any, once its import settled.</summary>
     /// <remarks>
     /// phase0 p2p-interface.md beacon_block: the importer verifies the expected proposer and its signature, after every check gossip orders
     /// before them, ahead of these results, so the block is accepted then. Only a block that waits for its parent's payload after its signature
     /// verified keeps its verdict for the retry (gloas/p2p-interface.md beacon_block: IGNORE until the parent payload is seen, MAY queue);
-    /// any other result, a missing parent or data included, is ignored at once rather than charged to its sender.
+    /// A proven gossip rejection charges the sender; other failures, including missing state or data, are ignored.
     /// </remarks>
-    private void SettleBlockVerdict(ForkedSignedBeaconBlock block, BlockImportResult result)
+    private void SettleBlockVerdict(ForkedSignedBeaconBlock block, BlockImportResult result, bool rejectGossip)
     {
         if (_gossipVerdicts.Count == 0 || result is BlockImportResult.ParentPayloadUnverified || !_gossipVerdicts.Remove(block, out GossipVerdict? verdict))
         {
@@ -909,7 +917,8 @@ public sealed class BeaconSyncOrchestrator(
 
         verdict.Complete(result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable or BlockImportResult.FutureSlot
             ? MessageValidity.Accepted
-            : MessageValidity.Ignored);
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The proposer signature is valid"; full import validity alone cannot reject gossip.
+            : result == BlockImportResult.Invalid && rejectGossip ? MessageValidity.Rejected : MessageValidity.Ignored);
     }
 
     /// <summary>Ignores the pending verdict of <paramref name="block"/>, if any: the block is held or dropped before its signature is checked.</summary>
@@ -1104,12 +1113,12 @@ public sealed class BeaconSyncOrchestrator(
             : ImportOrigin.Gossip;
         IBeaconSyncPeer? rangeSource = rangeItem is not null ? rangeItem.Source : isRangeHeld ? rangeHeld.Source : null;
         servedBy ??= (origin == ImportOrigin.Range ? rangeSource : null) ?? (isQueued ? queued.ServedBy : heldFetched?.ServedBy);
-        (BlockImportResult result, ImportRefusal refusal) = await _importThread.RunAsync(() =>
+        (BlockImportResult result, ImportRefusal refusal, bool rejectGossip) = await _importThread.RunAsync(() =>
         {
             BlockImportResult imported = origin == ImportOrigin.Gossip
                 ? _importer!.Import(block, root, verifySignatures: true)
                 : _importer!.ImportRequested(block, root, fetchedByRoot: origin == ImportOrigin.ByRoot);
-            return (imported, _importer!.LastRefusal);
+            return (imported, _importer!.LastRefusal, _importer.RejectGossip);
         });
         // Only a spent budget waits for the next slot; a missing key or a state that cannot be regenerated stays refused.
         bool regenerationDeferred = origin == ImportOrigin.ByRoot && result == BlockImportResult.UnknownParent && refusal == ImportRefusal.RegenerationBudget;
@@ -1120,7 +1129,7 @@ public sealed class BeaconSyncOrchestrator(
             gossipRouter.MarkProposalSeen(block.Slot, block.ProposerIndex);
         }
 
-        SettleBlockVerdict(block, result);
+        SettleBlockVerdict(block, result, rejectGossip);
 
         PendingRetry? promoted = null;
         if (result == BlockImportResult.Imported)
@@ -2093,6 +2102,20 @@ public sealed class BeaconSyncOrchestrator(
     /// <param name="verdict">The block's pending gossip verdict, given once its import settles, or at once when it is dropped here.</param>
     internal async Task ProcessGossipBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, GossipVerdict? verdict = null)
     {
+        try
+        {
+            await ProcessGossipBlockCoreAsync(block, token, verdict);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            IgnoreBlockVerdict(block);
+            verdict?.Complete(MessageValidity.Ignored);
+            throw;
+        }
+    }
+
+    private async Task ProcessGossipBlockCoreAsync(ForkedSignedBeaconBlock block, CancellationToken token, GossipVerdict? verdict)
+    {
         IBlockImporter importer = _importer!;
         Hash256 root = block.ComputeMessageRoot();
         if (importer.IsKnown(root))
@@ -2110,14 +2133,6 @@ public sealed class BeaconSyncOrchestrator(
         if (gossipRouter.IsProposalSeen(block.Slot, block.ProposerIndex))
         {
             if (_logger.IsDebug) _logger.Debug($"Ignoring repeat gossip proposal for slot {block.Slot} by proposer {block.ProposerIndex}");
-            verdict?.Complete(MessageValidity.Ignored);
-            return;
-        }
-
-        // The head lineage may not be the block's branch, so an unexpected proposer here is not yet proof of the spec's REJECT.
-        if (!importer.IsExpectedProposer(block))
-        {
-            if (_logger.IsWarn) _logger.Warn($"Dropping gossip block at slot {block.Slot} with unexpected proposer {block.ProposerIndex}");
             verdict?.Complete(MessageValidity.Ignored);
             return;
         }
@@ -2277,12 +2292,12 @@ public sealed class BeaconSyncOrchestrator(
             return false;
         }
 
-        (BlockImportResult result, ImportRefusal refusal) = await _importThread.RunAsync(() =>
+        (BlockImportResult result, ImportRefusal refusal, bool rejectGossip) = await _importThread.RunAsync(() =>
         {
             BlockImportResult imported = fetchedByRoot ? _importer!.ImportRequested(block, root, fetchedByRoot: true) : _importer!.Import(block, root, verifySignatures: true);
-            return (imported, _importer!.LastRefusal);
+            return (imported, _importer!.LastRefusal, _importer.RejectGossip);
         });
-        SettleBlockVerdict(block, result);
+        SettleBlockVerdict(block, result, rejectGossip);
         if (result != BlockImportResult.ParentPayloadUnverified)
         {
             if (fetchedByRoot)

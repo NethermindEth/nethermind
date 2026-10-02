@@ -1022,13 +1022,9 @@ public class ForkChoiceRunnerTests
         }
     }
 
-    /// <summary>
-    /// p2p-interface.md beacon_aggregate_and_proof IGNOREs an aggregate whose voted block does not descend from the finalized
-    /// checkpoint. With the first Gloas block finalized, a vote for the anchor before it is refused for that reason, ahead of
-    /// any target state or signature work.
-    /// </summary>
+    /// <summary>ethereum/consensus-specs electra/p2p-interface.md checks aggregator membership before finalized ancestry.</summary>
     [Test]
-    public void Gossip_aggregate_for_a_block_off_the_finalized_chain_is_refused()
+    public void Gossip_aggregate_membership_reject_precedes_finalized_ancestry_ignore()
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         ForkChoiceRunner runner = FinalizedOnFirstGloasBlock(chain);
@@ -1059,10 +1055,12 @@ public class ForkChoiceRunnerTests
             Signature = unsigned,
         };
 
+        ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)), "fixture bug: the first Gloas block must be finalized");
-            Assert.That(() => runner.OnAggregateAndProof(aggregate), Throws.TypeOf<ForkChoiceException>().With.Message.Contains("finalized checkpoint"));
+            Assert.That(refusal.Message, Does.Contain("not a member"));
+            Assert.That(refusal.RejectGossip, Is.True, "a provable membership failure precedes the later ancestry ignore");
         }
     }
 

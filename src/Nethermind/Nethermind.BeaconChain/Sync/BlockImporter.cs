@@ -244,8 +244,8 @@ public sealed class BlockImporter : IBlockImporter
                 || IsInLookahead(parentState.GetCurrentEpoch(), parentState.ProposerLookahead!, block.Slot, block.ProposerIndex);
         }
 
-        // Without a Fulu lineage (a Gloas anchor) the transition, which refuses a Fulu block there, decides.
-        if (_states.LineageState is not { } state)
+        // Only the parent branch can prove the expected proposer; unavailable state defers to import.
+        if (_states.GetHeldBlockState(block.ParentRoot) is not { } state)
         {
             return true;
         }
@@ -294,6 +294,7 @@ public sealed class BlockImporter : IBlockImporter
     public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
     {
         LastRefusal = ImportRefusal.None;
+        RejectGossip = false;
         // Recorded again only if this attempt defers it too.
         if (_deferred.Count > 0)
         {
@@ -316,13 +317,17 @@ public sealed class BlockImporter : IBlockImporter
 
         if (!_runner.ContainsBlock(block.ParentRoot))
         {
-            return verifySignatures && block is ForkedSignedBeaconBlock.OfGloas gloasChild && _deferred.TryGetValue(block.ParentRoot, out DeferredBlock deferredParent)
+            BlockImportResult result = verifySignatures && block is ForkedSignedBeaconBlock.OfGloas gloasChild && _deferred.TryGetValue(block.ParentRoot, out DeferredBlock deferredParent)
                 ? DeferBehindDeferredParent(gloasChild.Block, blockRoot, deferredParent)
                 : BlockImportResult.UnknownParent;
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[IGNORE] The block's parent has been seen (via gossip or non-gossip sources)".
+            RejectGossip = false;
+            return result;
         }
 
-        if (CheckBeforeTransition(block.Slot, block.ParentRoot, out bool failedValidation) is { } refusal)
+        if (CheckBeforeTransition(block.Slot, block.ParentRoot, out bool failedValidation, out bool rejectGossip) is { } refusal)
         {
+            RejectGossip = rejectGossip && verifySignatures && CanRejectBlock(block);
             // specs/phase0/beacon-chain.md process_block_header: a block not after its parent's slot is invalid data, whatever this node's store.
             LastRefusal = block.Slot > _runner.GetBlockSlot(block.ParentRoot) ? ImportRefusal.LocalAdmission : ImportRefusal.None;
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot} before its state transition: {refusal}");
@@ -340,6 +345,12 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.FutureSlot;
         }
 
+        if (block is ForkedSignedBeaconBlock.OfGloas && HasInvalidGossipFields(block))
+        {
+            RejectGossip = verifySignatures && CanRejectBlock(block);
+            return BlockImportResult.Invalid;
+        }
+
         return block switch
         {
             ForkedSignedBeaconBlock.OfFulu fulu => ImportFulu(fulu.Block, blockRoot, verifySignatures, receivedMs),
@@ -354,14 +365,16 @@ public sealed class BlockImporter : IBlockImporter
     /// <c>process_slots</c>, which is linear in the slot distance to the parent.
     /// </summary>
     /// <param name="failedValidation"><c>true</c> when the refusal is a validation failure that no later time can undo; <c>false</c> for a block from a future slot or at or below the finalized slot.</param>
+    /// <param name="rejectGossip">Whether the failed condition can reject gossip after all preceding checks pass.</param>
     /// <returns>Why the block is refused, or <c>null</c>.</returns>
     /// <remarks>
     /// The current slot is the node's clock, allowing <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> as gossip does, never
     /// fork-choice time: a block within that allowance of its slot's start waits for the slot (<see cref="IsBeforeItsSlot"/>).
     /// </remarks>
-    private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot, out bool failedValidation)
+    private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot, out bool failedValidation, out bool rejectGossip)
     {
         failedValidation = false;
+        rejectGossip = false;
         ulong currentSlot = _clock.CurrentSlot;
         ulong latestSlot = _clock.UnixMilliseconds + GossipRouter.MaximumGossipClockDisparityMs >= _clock.SlotStartMilliseconds(currentSlot + 1) ? currentSlot + 1 : currentSlot;
         if (slot > latestSlot)
@@ -396,13 +409,70 @@ public sealed class BlockImporter : IBlockImporter
 
         if (checkpointBlock != finalized.Root)
         {
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The current finalized checkpoint is an ancestor of the block".
+            rejectGossip = true;
             failedValidation = true;
             return $"the block does not descend from the finalized checkpoint {finalized}";
         }
 
         ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
         failedValidation = slot <= parentSlot;
+        // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The block is from a higher slot than its parent".
+        if (failedValidation) rejectGossip = true;
         return slot > parentSlot ? null : $"the block is not after its parent's slot {parentSlot}";
+    }
+
+    private bool CanRejectBlock(ForkedSignedBeaconBlock block)
+    {
+        bool? signatureValid = CheckGossipSignature(block);
+        // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The proposer signature is valid".
+        if (signatureValid != true)
+            return signatureValid == false;
+
+        // ethereum/consensus-specs gloas/p2p-interface.md: "[IGNORE] If the parent block is full, the parent payload is valid".
+        return block is not ForkedSignedBeaconBlock.OfGloas gloas
+            || !_runner.IsParentNodeFull(gloas.Block.Message!) || _runner.IsPayloadVerified(block.ParentRoot);
+    }
+
+    private bool? CheckGossipSignature(ForkedSignedBeaconBlock block)
+    {
+        Hash256 head = _runner.GetHead();
+        int? validatorCount = _states.GetGloasBlockState(head)?.Validators?.Length ?? _states.GetHeldBlockState(head)?.Validators?.Length;
+        Hash256? domain = block is ForkedSignedBeaconBlock.OfGloas ? _gloasProposerDomain : _fuluProposerDomain;
+        if (validatorCount is null || domain is null)
+            return null;
+        ulong proposer = block.ProposerIndex;
+        if (proposer >= (ulong)validatorCount.Value)
+            return false;
+        if (proposer >= (ulong)_pubkeys.Count)
+            return null;
+        BlsSignature signature = block is ForkedSignedBeaconBlock.OfGloas gloas ? gloas.Block.Signature : ((ForkedSignedBeaconBlock.OfFulu)block).Block.Signature;
+        return _pubkeys.TryGetValidPublicKey((int)proposer, out G1Affine key)
+            && BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(block.ComputeMessageRoot(), domain).Bytes);
+    }
+
+    private bool HasInvalidGossipFields(ForkedSignedBeaconBlock block)
+    {
+        ulong blobCount;
+        if (block is ForkedSignedBeaconBlock.OfGloas gloas)
+        {
+            ExecutionPayloadBid bid = gloas.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The bid's parent equals the block's parent".
+            if (bid.ParentBlockRoot != block.ParentRoot)
+                return true;
+            blobCount = (ulong)(bid.BlobKzgCommitments?.Length ?? 0);
+        }
+        else
+        {
+            BeaconBlockBody body = ((ForkedSignedBeaconBlock.OfFulu)block).Block.Message!.Body!;
+            // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The block's execution payload timestamp is correct with respect to the slot".
+            if (body.ExecutionPayload!.Timestamp != (UInt128)_runner.GenesisTime + (UInt128)block.Slot * Presets.SecondsPerSlot)
+                return true;
+            blobCount = (ulong)(body.BlobKzgCommitments?.Length ?? 0);
+        }
+
+        // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The length of KZG commitments is less than or equal to the limit".
+        return blobCount > (_spec.GetBlobParameters(_spec.GetEpoch(block.Slot))?.MaxBlobsPerBlock ?? _spec.MaxBlobsPerBlockElectra);
     }
 
     private sealed class ConfirmedBlockAvailability(Hash256 confirmedRoot) : IDataAvailabilityRule
@@ -498,7 +568,13 @@ public sealed class BlockImporter : IBlockImporter
         }
         catch (BeaconStateException e)
         {
+            // An incomplete key cache cannot convict a validator whose index passed the registry bound.
+            if (verifySignatures && !e.RejectGossip && block.ProposerIndex >= (ulong)_pubkeys.Count)
+                return BlockImportResult.UnknownParent;
             if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {e.Message}");
+            // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The proposer signature is valid"; unrelated transition failures are not gossip rejections.
+            RejectGossip = verifySignatures && (e is ProposerSignatureException || e.RejectGossip || HasInvalidGossipFields(new ForkedSignedBeaconBlock.OfFulu(signedBlock)))
+                && CanRejectBlock(new ForkedSignedBeaconBlock.OfFulu(signedBlock));
             MarkFailed(blockRoot, block.Slot, e);
             // specs/bellatrix/optimistic-sync.md: the optimistic blocks after the payload latestValidHash names are invalid too.
             if (verdict.Status == ExecutionStatus.Invalid)
@@ -632,7 +708,12 @@ public sealed class BlockImporter : IBlockImporter
         }
         catch (BeaconStateException e)
         {
+            // An incomplete key cache cannot convict a validator whose index passed the registry bound.
+            if (verifySignatures && !e.RejectGossip && block.ProposerIndex >= (ulong)_pubkeys.Count)
+                return BlockImportResult.UnknownParent;
             if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {e.Message}");
+            // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The proposer signature is valid"; unrelated transition failures are not gossip rejections.
+            RejectGossip = verifySignatures && (e is ProposerSignatureException || e.RejectGossip) && CanRejectBlock(forked);
             MarkFailed(blockRoot, block.Slot, e);
             return BlockImportResult.Invalid;
         }
@@ -718,6 +799,8 @@ public sealed class BlockImporter : IBlockImporter
 
         if (!BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes))
         {
+            // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The proposer signature is valid".
+            RejectGossip = true;
             if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {slot}: invalid proposer signature");
             return BlockImportResult.Invalid;
         }
@@ -778,7 +861,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <remarks>The tick pulls up unrealized finality (specs/phase0/fork-choice.md on_tick), which the checks before the transition never saw; a refusal for any other reason, such as data availability, stays unrecorded.</remarks>
     private void RecordIfRefusalIsPermanent(Hash256 blockRoot, ulong slot, Hash256 parentRoot)
     {
-        if (_failedBlocks is not null && CheckBeforeTransition(slot, parentRoot, out bool failedValidation) is not null && failedValidation)
+        if (_failedBlocks is not null && CheckBeforeTransition(slot, parentRoot, out bool failedValidation, out _) is not null && failedValidation)
         {
             _failedBlocks.Add(blockRoot, slot);
         }
@@ -846,13 +929,16 @@ public sealed class BlockImporter : IBlockImporter
 
             refusal = CheckProposal(signedBlock, proposerState);
         }
-        catch (BeaconStateException e)
+        catch (BeaconStateException)
         {
-            refusal = e.Message;
+            if (_logger.IsDebug) _logger.Debug("Cannot check the proposer with the retained state");
+            return BlockImportResult.UnknownParent;
         }
 
         if (refusal is not null)
         {
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The proposer signature is valid" precedes the parent payload check.
+            RejectGossip = !parentDeferred && CheckGossipSignature(new ForkedSignedBeaconBlock.OfGloas(signedBlock)) == false;
             if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {refusal}");
             return BlockImportResult.Invalid;
         }
@@ -870,7 +956,7 @@ public sealed class BlockImporter : IBlockImporter
     private BlockImportResult DeferBehindDeferredParent(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot, DeferredBlock parent)
     {
         ulong slot = signedBlock.Message!.Slot;
-        string? refusal = CheckBeforeTransition(slot, parent.AncestorRoot, out _) ?? (slot > parent.Slot ? null : $"the block is not after its parent's slot {parent.Slot}");
+        string? refusal = CheckBeforeTransition(slot, parent.AncestorRoot, out _, out _) ?? (slot > parent.Slot ? null : $"the block is not after its parent's slot {parent.Slot}");
         if (refusal is not null)
         {
             LastRefusal = slot > parent.Slot ? ImportRefusal.LocalAdmission : ImportRefusal.None;
@@ -895,7 +981,7 @@ public sealed class BlockImporter : IBlockImporter
 
             return GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, _pubkeys) ? null : "invalid proposer signature";
         }
-        catch (BeaconStateException e)
+        catch (BeaconStateException e) when (e.RejectGossip)
         {
             return e.Message;
         }
@@ -1000,6 +1086,11 @@ public sealed class BlockImporter : IBlockImporter
     public ImportRefusal LastRefusal { get; private set; }
 
     /// <inheritdoc/>
+    bool IBlockImporter.RejectGossip => RejectGossip;
+
+    private bool RejectGossip { get; set; }
+
+    /// <inheritdoc/>
     public HeadView ComputeHead()
     {
         ForkChoiceNode headNode = _runner.GetHeadNode();
@@ -1098,85 +1189,88 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     /// <inheritdoc/>
-    public bool OnGossipAggregate(SignedAggregateAndProof aggregate)
+    public bool? OnGossipAggregate(SignedAggregateAndProof aggregate)
     {
         try
         {
             _runner.OnAggregateAndProof(aggregate);
             return true;
         }
-        catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+        catch (Exception e)
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAggregateRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected gossip aggregate: {e.Message}");
-            return false;
+            return IsGossipRejection(e) ? false : null;
         }
     }
 
     /// <inheritdoc/>
-    public bool OnGossipAggregate(SignedAggregateAndProofGloas aggregate)
+    public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate)
     {
         try
         {
             _runner.OnAggregateAndProof(aggregate);
             return true;
         }
-        catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+        catch (Exception e)
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAggregateRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected Gloas gossip aggregate: {e.Message}");
-            return false;
+            return IsGossipRejection(e) ? false : null;
         }
     }
 
     /// <inheritdoc/>
-    public bool OnGossipAttesterSlashing(AttesterSlashing slashing)
+    public bool? OnGossipAttesterSlashing(AttesterSlashing slashing)
     {
         try
         {
-            RequireSlashableIntersection(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
-            _runner.OnAttesterSlashing(slashing);
+            ForkedBeaconState head = RequireSlashableIntersection(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
+            _runner.OnAttesterSlashing(slashing, gossipState: head);
             return true;
         }
-        catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+        catch (Exception e)
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAttesterSlashingRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected gossip attester slashing: {e.Message}");
-            return false;
+            return IsGossipRejection(e) ? false : null;
         }
     }
 
     /// <inheritdoc/>
-    public bool OnGossipAttesterSlashing(AttesterSlashingGloas slashing)
+    public bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing)
     {
         try
         {
-            RequireSlashableIntersection(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
-            _runner.OnAttesterSlashing(slashing);
+            ForkedBeaconState head = RequireSlashableIntersection(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
+            _runner.OnAttesterSlashing(slashing, gossipState: head);
             return true;
         }
-        catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+        catch (Exception e)
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAttesterSlashingRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected Gloas gossip attester slashing: {e.Message}");
-            return false;
+            return IsGossipRejection(e) ? false : null;
         }
     }
 
     // p2p-interface.md attester_slashing: an intersecting index must be slashable in the head state before gossip is accepted.
-    private void RequireSlashableIntersection(ulong[] first, ulong[] second)
+    private ForkedBeaconState RequireSlashableIntersection(ulong[] first, ulong[] second)
     {
         Hash256 head = _runner.GetHead();
         Validator[] validators;
+        ForkedBeaconState state;
         ulong epoch;
         if (_states.GetGloasBlockState(head) is { } gloas)
         {
+            state = new ForkedBeaconState.OfGloas(gloas);
             validators = gloas.Validators!;
             epoch = gloas.GetCurrentEpoch();
         }
         // Gossip validation must not replay stored blocks for a peer-sent message; only a held head state counts.
         else if (_states.GetHeldBlockState(head) is { } fulu)
         {
+            state = new ForkedBeaconState.OfFulu(fulu);
             validators = fulu.Validators!;
             epoch = fulu.GetCurrentEpoch();
         }
@@ -1190,15 +1284,16 @@ public sealed class BlockImporter : IBlockImporter
         {
             if (index < (ulong)validators.Length && indices.Contains(index) && validators[(int)index].IsSlashableValidator(epoch))
             {
-                return;
+                return state;
             }
         }
 
-        throw new ForkChoiceException("Attester slashing has no slashable validator");
+        // ethereum/consensus-specs p2p-interface.md: "[REJECT] At least one validator in the intersection is slashable".
+        throw new ForkChoiceException("Attester slashing has no slashable validator") { RejectGossip = true };
     }
 
     /// <inheritdoc/>
-    public bool OnGossipPayloadAttestation(PayloadAttestationMessage message)
+    public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message)
     {
         // on_payload_attestation_message returns before any check for a vote whose slot is not its block's, recording nothing.
         if (message.Data is not { BeaconBlockRoot: { } blockRoot } data || _runner.GetBlockSlot(blockRoot) != data.Slot)
@@ -1211,18 +1306,21 @@ public sealed class BlockImporter : IBlockImporter
             _runner.OnPayloadAttestationMessage(message);
             return true;
         }
-        catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+        catch (Exception e)
         {
-            return Refuse(e.Message);
+            return Refuse(e.Message, IsGossipRejection(e));
         }
 
-        bool Refuse(string reason)
+        bool? Refuse(string reason, bool reject = false)
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipPayloadAttestationRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected gossip payload attestation from validator {message.ValidatorIndex}: {reason}");
-            return false;
+            return reject ? false : null;
         }
     }
+
+    private static bool IsGossipRejection(Exception error) =>
+        error is ForkChoiceException { RejectGossip: true } or BeaconStateException { RejectGossip: true };
 
     /// <summary>
     /// The body replay <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/>
