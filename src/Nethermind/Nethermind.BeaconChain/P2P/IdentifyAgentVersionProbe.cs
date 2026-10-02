@@ -21,11 +21,31 @@ namespace Nethermind.BeaconChain.P2P;
 /// </summary>
 /// <remarks>
 /// Shares the identify protocol id, so it must never answer an inbound identify request differently
-/// from the library: <see cref="ListenAsync"/> hands the stream to the real protocol instance. The
-/// unused <c>ulong</c> request type only satisfies the typed libp2p dial API.
+/// from the library: <see cref="ListenAsync"/> hands the stream to the real protocol instance.
 /// </remarks>
-public sealed class IdentifyAgentVersionProbe(IdentifyProtocol identify, IdentifyProtocolSettings settings, PeerStore peerStore) : ISessionProtocol<ulong, string?>
+public sealed class IdentifyAgentVersionProbe(IdentifyProtocol identify, IdentifyProtocolSettings settings, PeerStore peerStore) : ISessionProtocol<IdentifyAgentVersionProbe.Attempt, string?>
 {
+    /// <summary>One identify dial, which either reaches the probe or is given up, never both.</summary>
+    public sealed class Attempt
+    {
+        private const int Pending = 0;
+        private const int Opened = 1;
+        private const int Abandoned = 2;
+        private int _state;
+
+        /// <exception cref="OperationCanceledException">The dialer gave this attempt up before its channel opened.</exception>
+        internal void Open()
+        {
+            if (Interlocked.CompareExchange(ref _state, Opened, Pending) == Abandoned)
+            {
+                throw new OperationCanceledException("The identify attempt was abandoned before its channel opened");
+            }
+        }
+
+        /// <returns><c>false</c> when the channel had already opened.</returns>
+        internal bool TryAbandon() => Interlocked.CompareExchange(ref _state, Abandoned, Pending) != Opened;
+    }
+
     /// <summary>Also bounds the whole identify dial in <see cref="BeaconP2P"/>: every admission waits on this answer.</summary>
     internal static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(5);
 
@@ -34,8 +54,9 @@ public sealed class IdentifyAgentVersionProbe(IdentifyProtocol identify, Identif
 
     public string Id => identify.Id;
 
-    public async Task<string?> DialAsync(IChannel downChannel, ISessionContext context, ulong request)
+    public async Task<string?> DialAsync(IChannel downChannel, ISessionContext context, Attempt request)
     {
+        request.Open();
         using CancellationTokenSource cts = new(ReadTimeout);
         int length = await downChannel.ReadVarintAsync(cts.Token);
         // A read of length 0 takes everything the peer has pending, so it would lift the bound; an empty answer carries no key anyway.
