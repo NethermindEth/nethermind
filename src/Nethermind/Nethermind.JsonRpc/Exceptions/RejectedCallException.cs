@@ -3,10 +3,10 @@
 
 using Nethermind.Blockchain;
 
-namespace Nethermind.JsonRpc.Modules.Trace;
+namespace Nethermind.JsonRpc.Exceptions;
 
 /// <summary>
-/// An unsigned trace call the processor rejected, answered with the <see cref="TransactionErrorCodes"/> code of its
+/// An unsigned call the processor rejected, answered with the <see cref="TransactionErrorCodes"/> code of its
 /// rejection, as eth_simulateV1 answers it, rather than the generic code of any other rejected transaction.
 /// </summary>
 internal sealed class RejectedCallException(InvalidTransactionException rejection)

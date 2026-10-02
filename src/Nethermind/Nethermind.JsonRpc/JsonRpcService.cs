@@ -19,7 +19,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
