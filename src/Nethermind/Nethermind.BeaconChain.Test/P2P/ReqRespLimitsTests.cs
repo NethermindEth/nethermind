@@ -36,7 +36,7 @@ public class ReqRespLimitsTests
 
     [Test]
     public async Task Metrics_single_response_failures_are_counted_once(
-        [Range(0, 2)] int protocolKind, [Range(0, 4)] int failure)
+        [Range(0, 2)] int protocolKind, [Range(0, 6)] int failure)
     {
         LocalMetadataSource source = new();
         Eth2PingProtocol ping = new(source);
@@ -46,14 +46,16 @@ public class ReqRespLimitsTests
         byte[] request = timing.Track(new byte[sizeof(ulong)]);
         string id = protocolKind switch { 0 => ping.Id, 1 => meta.Id, _ => invalidDecoder.Id };
         // A clean close before any byte is a session ending, not a failed response, so it records nothing.
+        // A failed channel read (5) or half-close (6) is still a failed request, so it is counted.
         ReqRespFailureReason? reason = failure switch
         {
             0 => ReqRespFailureReason.Timeout,
             3 => ReqRespFailureReason.PeerError,
             4 => null,
+            5 or 6 => ReqRespFailureReason.Transport,
             _ => ReqRespFailureReason.InvalidMessage,
         };
-        ReqRespFailureReason[] counted = [ReqRespFailureReason.Timeout, ReqRespFailureReason.PeerError, ReqRespFailureReason.InvalidMessage];
+        ReqRespFailureReason[] counted = [ReqRespFailureReason.Timeout, ReqRespFailureReason.PeerError, ReqRespFailureReason.InvalidMessage, ReqRespFailureReason.Transport];
         long[] before = Array.ConvertAll(counted, r => FailureCount(id, r));
         using MemoryStream input = new();
         if (failure == 1)
@@ -72,7 +74,7 @@ public class ReqRespLimitsTests
         input.Position = 0;
         IChannel channel = Substitute.For<IChannel>();
         channel.WriteAsync(Arg.Any<ReadOnlySequence<byte>>(), Arg.Any<CancellationToken>()).Returns(new ValueTask<IOResult>(IOResult.Ok));
-        channel.WriteEofAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<IOResult>(IOResult.Ok));
+        channel.WriteEofAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<IOResult>(failure == 6 ? IOResult.InternalError : IOResult.Ok));
         channel.ReadAsync(Arg.Any<int>(), Arg.Any<ReadBlockingMode>(), Arg.Any<CancellationToken>())
             .Returns(call => ReadAsync(call.ArgAt<int>(0)));
         Task Dial() => protocolKind switch
@@ -84,6 +86,10 @@ public class ReqRespLimitsTests
         if (failure == 0)
         {
             Assert.CatchAsync<OperationCanceledException>(Dial);
+        }
+        else if (failure is 5 or 6)
+        {
+            Assert.CatchAsync<IOException>(Dial);
         }
         else
         {
@@ -105,6 +111,7 @@ public class ReqRespLimitsTests
         ValueTask<ReadResult> ReadAsync(int length)
         {
             if (failure == 0) throw new OperationCanceledException();
+            if (failure == 5) return new ValueTask<ReadResult>(new ReadResult { Result = IOResult.InternalError });
             byte[] bytes = new byte[length];
             int count = input.Read(bytes);
             return new ValueTask<ReadResult>(new ReadResult { Result = count == 0 ? IOResult.Ended : IOResult.Ok, Data = new ReadOnlySequence<byte>(bytes.AsMemory(0, count)) });
@@ -207,12 +214,47 @@ public class ReqRespLimitsTests
         try
         {
             Eth2ReqRespException rejected = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!,
-                new BeaconBlocksByRangeRequest { StartSlot = 3_000, Count = 2, Step = 1 }).WaitAsync(token))!;
+                new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = 3_000, Count = 2, Step = 1 })).WaitAsync(token))!;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(rejected.Message, Is.EqualTo("Peer responded with more than the requested 2 blocks"));
                 Assert.That(FailureCount(protocol.Id, ReqRespFailureReason.LimitExceeded), Is.EqualTo(limitsBefore + 1));
                 Assert.That(FailureCount(protocol.Id, ReqRespFailureReason.InvalidMessage), Is.EqualTo(invalidBefore));
+            }
+        }
+        finally
+        {
+            try
+            {
+                await channel.ReadAsync(0, ReadBlockingMode.DontWait, token);
+                await reply.WaitAsync(token);
+            }
+            finally
+            {
+                await channel.CloseAsync().AsTask().WaitAsync(token);
+            }
+        }
+    }
+
+    /// <summary>Each block is handed over as it is read, so a reply cut short still leaves its blocks; a block outside the requested range is refused, never handed over.</summary>
+    [TestCase(false, TestName = "A range reply cut short hands over the blocks read before the cut")]
+    [TestCase(true, TestName = "A range reply block outside the requested range is not handed over")]
+    [CancelAfter(60_000)]
+    public async Task Range_request_hands_over_each_block_in_the_range_as_it_is_read(bool outOfRange, CancellationToken token)
+    {
+        Channel channel = new();
+        BeaconBlocksByRangeProtocolV2 protocol = new(Spec, null!);
+        byte[] response = [.. await EncodeRangeResponseAsync(1), ReqRespFraming.ResponseCode.Success];
+        Task reply = ReplyRangeAsync(channel.Reverse, response, token);
+        List<ulong> handed = [];
+        try
+        {
+            Eth2ReqRespException rejected = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!,
+                new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = outOfRange ? 3_001UL : 3_000UL, Count = 2, Step = 1 }, block => handed.Add(block.Slot))).WaitAsync(token))!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected.Message, outOfRange ? Does.StartWith("Block slot 3000 outside the requested range") : Does.StartWith("Truncated"));
+                Assert.That(handed, Is.EqualTo(outOfRange ? Array.Empty<ulong>() : new[] { 3_000UL }));
             }
         }
         finally
@@ -473,7 +515,7 @@ public class ReqRespLimitsTests
         public Task<IReadOnlyList<ForkedSignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, BeaconBlocksByRangeRequest request)
         {
             Channel = downChannel;
-            return _protocol.DialAsync(downChannel, context, request);
+            return _protocol.DialAsync(downChannel, context, new BeaconBlocksByRangeDial(request));
         }
 
         public Task ListenAsync(IChannel downChannel, ISessionContext context) => throw new NotSupportedException();

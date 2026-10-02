@@ -13,6 +13,7 @@ using Autofac;
 using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -337,6 +338,34 @@ public class BeaconP2PLoopbackTests
             Assert.That(call.GetMethodInfo().GetGenericArguments()[0],
                 Is.EqualTo(dial is ColumnDial.FuluByRange or ColumnDial.GloasByRange ? typeof(DataColumnSidecarsByRangeProtocol) : typeof(DataColumnSidecarsByRootProtocol)));
             Assert.That(gloas, Is.EqualTo(dial is ColumnDial.GloasByRange or ColumnDial.GloasByRoot));
+        }
+    }
+
+    /// <summary>A by-range block reply that failed used to throw away every block already read; they reach the caller with the failure, whose text stays the cause's.</summary>
+    [Test]
+    public async Task A_block_reply_that_fails_after_some_blocks_hands_those_blocks_to_the_caller([Values] bool delivered)
+    {
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(5, parentRoot: Hash256.Zero));
+        ISession session = Substitute.For<ISession>();
+        session.DialAsync<BeaconBlocksByRangeProtocolV2, BeaconBlocksByRangeDial, IReadOnlyList<ForkedSignedBeaconBlock>>(default, default).ReturnsForAnyArgs(call =>
+        {
+            if (delivered)
+            {
+                call.Arg<BeaconBlocksByRangeDial>().OnBlock!(block);
+            }
+
+            return Task.FromException<IReadOnlyList<ForkedSignedBeaconBlock>>(new Eth2ReqRespException("Truncated response chunk: Unable to read beyond the end of the stream."));
+        });
+        Node node = CreateNode();
+        await using (node.P2P)
+        {
+            Exception? thrown = Assert.CatchAsync(async () => await node.P2P.RequestBlocksByRangeAsync(session, 5, 2, default));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((thrown as PartialBlocksException)?.Received, delivered ? Is.EqualTo(new[] { block }) : Is.Null);
+                Assert.That(thrown!.Message, Does.StartWith("Truncated response chunk"));
+            }
         }
     }
 

@@ -404,11 +404,20 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
     }
 
+    /// <exception cref="PartialBlocksException">The request failed after some blocks arrived; it carries them.</exception>
     public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ISession session, ulong startSlot, ulong count, CancellationToken token, RequestTiming? timing = null)
     {
+        ConcurrentQueue<ForkedSignedBeaconBlock> received = new();
         using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(count));
-        return await ExchangeAsync<BeaconBlocksByRangeProtocolV2, BeaconBlocksByRangeRequest, IReadOnlyList<ForkedSignedBeaconBlock>>(
-            session, Tracked(timing, new BeaconBlocksByRangeRequest { StartSlot = startSlot, Count = count, Step = 1 }), cts, token, timing);
+        try
+        {
+            return await ExchangeAsync<BeaconBlocksByRangeProtocolV2, BeaconBlocksByRangeDial, IReadOnlyList<ForkedSignedBeaconBlock>>(
+                session, new BeaconBlocksByRangeDial(Tracked(timing, new BeaconBlocksByRangeRequest { StartSlot = startSlot, Count = count, Step = 1 }), received.Enqueue), cts, token, timing);
+        }
+        catch (Exception e) when (!token.IsCancellationRequested && !received.IsEmpty)
+        {
+            throw new PartialBlocksException(e, [.. received]);
+        }
     }
 
     public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(ISession session, Hash256[] roots, CancellationToken token, RequestTiming? timing = null)

@@ -23,34 +23,33 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// the requested range.
 /// </remarks>
 public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconChainStore store) : BlocksProtocolBase(spec),
-    ISessionProtocol<BeaconBlocksByRangeRequest, IReadOnlyList<ForkedSignedBeaconBlock>>
+    ISessionProtocol<BeaconBlocksByRangeDial, IReadOnlyList<ForkedSignedBeaconBlock>>
 {
     private const int RequestLength = 3 * sizeof(ulong);
 
     public string Id => "/eth2/beacon_chain/req/beacon_blocks_by_range/2/ssz_snappy";
 
-    public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, BeaconBlocksByRangeRequest request)
+    public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, BeaconBlocksByRangeDial dial)
     {
+        BeaconBlocksByRangeRequest request = dial.Request;
         using RequestTiming.Exchange exchange = RequestTiming.Open(request);
         RequestTiming? timing = exchange.Timing;
         Stream stream = new ChannelStreamAdapter(downChannel);
         await WriteRequestAndEofAsync(downChannel, stream, BeaconBlocksByRangeRequest.Encode(request), RespTimeout);
 
-        IReadOnlyList<ForkedSignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, (int)Math.Min(request.Count, MaxRequestBlocks), Id, timing: timing);
+        // Checked per chunk, so every block handed to OnBlock is inside the requested range and in slot order.
         ulong? previousSlot = null;
-        foreach (ForkedSignedBeaconBlock block in blocks)
+        return await ReadBlockChunksAsync(stream, (int)Math.Min(request.Count, MaxRequestBlocks), Id, timing: timing, onBlock: block =>
         {
             ulong slot = block.Slot;
             if (slot < request.StartSlot || slot >= request.StartSlot + request.Count || slot <= previousSlot)
             {
-                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
                 throw new Eth2ReqRespException($"Block slot {slot} outside the requested range or out of order");
             }
 
             previousSlot = slot;
-        }
-
-        return blocks;
+            dial.OnBlock?.Invoke(block);
+        });
     }
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
@@ -117,4 +116,17 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
             RecordFailure(Id, ReqRespFailureReason.Timeout);
         }
     }
+}
+
+/// <summary>A <c>beacon_blocks_by_range</c> dial: the wire request and a receiver for each block as it is read.</summary>
+/// <param name="OnBlock">Receives each block inside the requested range and in slot order as it is read, so a reply that later fails still leaves what it delivered.</param>
+public readonly record struct BeaconBlocksByRangeDial(BeaconBlocksByRangeRequest Request, Action<ForkedSignedBeaconBlock>? OnBlock = null);
+
+/// <summary>A by-range block request that failed after delivering some blocks; carries them so the caller keeps what arrived.</summary>
+/// <remarks>The message is the cause's, unwrapped only from an aggregate, so failure classification by text is unchanged.</remarks>
+internal sealed class PartialBlocksException(Exception cause, IReadOnlyList<ForkedSignedBeaconBlock> received)
+    : Exception(((cause as AggregateException)?.Flatten().InnerException ?? cause).Message, cause)
+{
+    /// <summary>The blocks read before the failure: inside the requested range and in slot order, not yet checked for parent linkage.</summary>
+    public IReadOnlyList<ForkedSignedBeaconBlock> Received { get; } = received;
 }
