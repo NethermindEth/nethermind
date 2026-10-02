@@ -75,6 +75,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     private readonly ConcurrentDictionary<ISession, SessionLifetime> _sessionClosed = new();
     private readonly ConcurrentDictionary<SessionWatch, byte> _sessionWatches = new();
     private int _identifyTimeouts;
+    private int _disposed;
 
     private LocalPeer? _localPeer;
     private CancellationTokenSource? _startCts;
@@ -398,8 +399,18 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         try
         {
-            // The library joins a dial to a peer already being dialed, and that dial ends on its first caller's token.
-            return await localPeer.DialAsync(address, token).WaitAsync(token);
+            // Nethermind.Libp2p 1.0.0 keeps a dial cancelled before its first await as the peer id's pending dial for good, so the token
+            // stops only this wait; the dial itself ends within the library's connection timeout.
+            Task<ISession> dial = localPeer.DialAsync(address, CancellationToken.None);
+            _ = dial.ContinueWith(static (completed, state) =>
+            {
+                // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
+                if (completed.IsCompletedSuccessfully && Volatile.Read(ref ((BeaconP2P)state!)._disposed) == 1)
+                {
+                    _ = completed.Result.DisconnectAsync();
+                }
+            }, this, TaskScheduler.Default);
+            return await dial.WaitAsync(token);
         }
         catch (Exception e) when (e is not OperationCanceledException && token.IsCancellationRequested)
         {
@@ -791,6 +802,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Volatile.Write(ref _disposed, 1);
         if (_startCts is not null)
         {
             await _startCts.CancelAsync();
