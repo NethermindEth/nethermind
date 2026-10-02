@@ -31,4 +31,13 @@ public class BlockForRpcTests
             Assert.That(new BlockForRpc(block, false, MainnetSpecProvider.Instance).Size, Is.EqualTo(decoded.EncodedSize));
         }
     }
+
+    [Test]
+    public void Size_uses_the_encoded_size_recorded_at_decode_instead_of_encoding_again()
+    {
+        const int recordedSize = 12_345;
+        Block block = Build.A.Block.WithNumber(1).WithEncodedSize(recordedSize).TestObject;
+
+        Assert.That(new BlockForRpc(block, false, MainnetSpecProvider.Instance).Size, Is.EqualTo(recordedSize));
+    }
 }
