@@ -765,6 +765,9 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_ApplyBal_WritesBack_TheChangesCommittedBeforeIt_UnderTheBalsValues()
     {
+        StorageCell slotC6 = new(TestItem.AddressC, 6);
+        byte[] code = [0x60, 0x00];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
@@ -772,43 +775,66 @@ public class ScopeProviderTests(bool useFlat)
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressC)
                 .WithBalanceChanges(new BalanceChange(1, 900))
-                .WithStorageChanges(SlotC5.Index, new StorageChange(1, 11))
+                .WithStorageChanges(slotC6.Index, new StorageChange(1, 11))
                 .TestObject)
             .TestObject;
 
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
         {
-            // Writes the BAL never recorded, like AuRa's contract rewrites: A keeps them, C's are superseded by the BAL.
+            // Writes the BAL never recorded, like AuRa's contract rewrites: A keeps them, and so does C where the BAL
+            // leaves them alone (its code and slot 5), while its balance and slot 6 are superseded by the BAL.
             ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _);
             ws.Set(in SlotA1, (UInt256)7);
             ws.AddToBalance(TestItem.AddressC, 1, Cancun.Instance, out _);
+            ws.InsertCode(TestItem.AddressC, code, Cancun.Instance);
             ws.Set(in SlotC5, (UInt256)9);
+            ws.Set(in slotC6, (UInt256)12);
             ws.Commit(Cancun.Instance);
             ws.ApplyBal(bal);
             ws.RecalculateStateRoot();
         });
 
+        using Context reference = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 referenceRoot = CommitThroughConsumer(WarmConsumerCaches(reference, CommitBaseState(reference)).Consumer, baseRoot, ws =>
+        {
+            ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _);
+            ws.Set(in SlotA1, (UInt256)7);
+            ws.AddToBalance(TestItem.AddressC, 600, Cancun.Instance, out _);
+            ws.InsertCode(TestItem.AddressC, code, Cancun.Instance);
+            ws.Set(in SlotC5, (UInt256)9);
+            ws.Set(in slotC6, (UInt256)11);
+        });
+
         bool carried = caches.PrepareFor(newRoot);
+        // C's slots may either be cached with their final values or not be served from the cache at all.
+        byte[] servedC5 = ServedFromCache(caches, in SlotC5) ? CachedSlot(caches, in SlotC5) : [9];
+        byte[] servedC6 = ServedFromCache(caches, in slotC6) ? CachedSlot(caches, in slotC6) : [11];
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(newRoot, Is.EqualTo(referenceRoot), "the BAL is applied over the changes committed before it");
             Assert.That(carried, Is.True, "the caches describe the committed state");
             Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)400));
             Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
             Assert.That(CachedAccount(caches, TestItem.AddressC).Balance, Is.EqualTo((UInt256)900));
-            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 11 }));
+            Assert.That(CachedAccount(caches, TestItem.AddressC).CodeHash.ValueHash256, Is.EqualTo(codeHash));
+            Assert.That(servedC5, Is.EqualTo(new byte[] { 9 }), "a slot the BAL left alone keeps its pre-BAL value");
+            Assert.That(servedC6, Is.EqualTo(new byte[] { 11 }));
         }
 
         using (consumer.BeginScope(HeaderAt(newRoot, 2)))
         {
             consumer.Get(in SlotA1, out UInt256 slotA1);
             consumer.Get(in SlotC5, out UInt256 slotC5);
+            consumer.Get(in slotC6, out UInt256 slotC6Value);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(consumer.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)400));
                 Assert.That(slotA1, Is.EqualTo((UInt256)7));
                 Assert.That(consumer.GetBalance(TestItem.AddressC), Is.EqualTo((UInt256)900));
-                Assert.That(slotC5, Is.EqualTo((UInt256)11));
+                Assert.That(consumer.GetCodeHash(TestItem.AddressC), Is.EqualTo(codeHash));
+                Assert.That(slotC5, Is.EqualTo((UInt256)9));
+                Assert.That(slotC6Value, Is.EqualTo((UInt256)11));
             }
         }
     }

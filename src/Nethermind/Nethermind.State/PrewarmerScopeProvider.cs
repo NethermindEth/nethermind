@@ -352,7 +352,8 @@ public class PrewarmerScopeProvider(
                 {
                     if (!accountChanges.HasStateChanges) continue;
 
-                    // The caches still hold the pre-block state the apply reads, so they spare it the backend reads.
+                    // The caches still hold the pre-block state the apply reads, so they spare it the backend reads. An
+                    // account committed before the apply was already hinted with its committed value, which this cannot replace.
                     AddressAsKey key = accountChanges.Address;
                     bool cached = preBlockCache.TryGetValue(in key, out Account? preBlockAccount);
                     if (cached) baseScope.HintGet(accountChanges.Address, preBlockAccount);

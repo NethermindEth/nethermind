@@ -2080,6 +2080,63 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public void ProcessOne_adds_the_world_states_account_changes_to_the_bals()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+        BlockProcessor processor = new(
+            HoodiSpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            transactionsExecutor,
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor),
+            new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>()));
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 10)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(1).TestObject)
+            .TestObject;
+        Block block = Build.A.Block.WithBlockAccessList(bal).TestObject;
+        transactionsExecutor.ProcessTransactions(
+                Arg.Any<Block>(),
+                Arg.Any<ProcessingOptions>(),
+                Arg.Any<BlockReceiptsTracer>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                // As the parallel executor does: the BAL's changes go straight to the scope, the rest through the world state.
+                call.Arg<Block>().AccountChanges = bal.GetStateChangedAddresses();
+                stateProvider.CreateAccount(TestItem.AddressA, 10);
+                stateProvider.CreateAccount(TestItem.AddressC, 1);
+                return Array.Empty<TxReceipt>();
+            });
+
+        using IDisposable scope = stateProvider.BeginScope(null);
+        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = true;
+        Block processedBlock;
+        try
+        {
+            (processedBlock, _) = processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None);
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+        }
+
+        using ArrayPoolList<AddressAsKey>? accountChanges = processedBlock.AccountChanges;
+        Assert.That(accountChanges!.Select(static address => address.Value), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressC }));
+    }
+
+    [Test]
     [MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_cancels_and_drains_prewarmer_before_clearing_caches(
         [Values(2, 3)] int transactionCount, [Values] bool startSession)
