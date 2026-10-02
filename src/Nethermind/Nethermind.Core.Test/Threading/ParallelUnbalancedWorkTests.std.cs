@@ -194,6 +194,88 @@ public partial class ParallelUnbalancedWorkTests
     }
 
     [Test]
+    public void Worker_scheduler_reusing_a_queue_preserves_claimed_batch_identity([Values(1, 8)] int count)
+    {
+        const int batches = 2000;
+        using ParallelUnbalancedWork.WorkerScope scope = new(4, static _ => { });
+        ParallelUnbalancedWork.WorkerScheduler scheduler = scope.Scheduler;
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue queue = new();
+        int[] executed = new int[batches];
+        int[] withdrawn = new int[batches];
+        int stop = 0;
+        using CountdownEvent started = new(3);
+        using ManualResetEventSlim claimed = new();
+        Task[] consumers = new Task[3];
+        for (int i = 0; i < consumers.Length; i++)
+            consumers[i] = Task.Run(() =>
+            {
+                started.Signal();
+                while (Volatile.Read(ref stop) == 0)
+                    if (!scheduler.TryExecute(queue)) Thread.Yield();
+            });
+        try
+        {
+            Assert.That(started.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            for (int i = 0; i < batches; i++)
+            {
+                int batch = i;
+                scheduler.Enqueue(queue, new CallbackWork(() =>
+                {
+                    Interlocked.Increment(ref executed[batch]);
+                    if (batch == 0) claimed.Set();
+                }), count: count);
+                if (batch == 0) Assert.That(claimed.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                else Thread.Yield();
+                withdrawn[batch] = scheduler.Withdraw(queue);
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref stop, 1);
+            Assert.That(Task.WaitAll(consumers, TimeSpan.FromSeconds(10)), Is.True);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < batches; i++)
+                Assert.That(executed[i] + withdrawn[i], Is.EqualTo(count), $"Batch {i} must be claimed or withdrawn exactly once.");
+            Assert.That(queue.Work, Is.Null);
+            Assert.That(scheduler.HasReadyWork(queue), Is.False);
+        }
+    }
+
+    [Test]
+    public void Worker_scheduler_publication_during_retirement_preserves_the_budget([Values(2, 4)] int budget)
+    {
+        const int producers = 3;
+        const int batches = 1000;
+        using ParallelUnbalancedWork.WorkerScope scope = new(budget);
+        ParallelUnbalancedWork.WorkerScheduler scheduler = scope.Scheduler;
+        using CountdownEvent completed = new(producers * batches);
+        int active = 0;
+        int budgetExceeded = 0;
+        CallbackWork work = new(() =>
+        {
+            if (Interlocked.Increment(ref active) >= budget) Interlocked.Increment(ref budgetExceeded);
+            Thread.SpinWait(10);
+            Interlocked.Decrement(ref active);
+            completed.Signal();
+        });
+        Task[] publishers = new Task[producers];
+        for (int i = 0; i < publishers.Length; i++)
+            publishers[i] = Task.Run(() =>
+            {
+                for (int j = 0; j < batches; j++)
+                {
+                    scheduler.Enqueue(new(), work);
+                    Thread.Yield();
+                }
+            });
+        Assert.That(Task.WaitAll(publishers, TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(completed.Wait(TimeSpan.FromSeconds(10)), Is.True, "Published work must survive the last runner retiring.");
+        Assert.That(budgetExceeded, Is.Zero, "Background runners must leave the caller's slot reserved.");
+    }
+
+    [Test]
     public void Worker_scope_assisting_restores_the_callers_scope([Values] bool nested, [Values] bool throws)
     {
         using ParallelUnbalancedWork.WorkerScope root = ParallelUnbalancedWork.BeginWorkerScope(1);

@@ -11,6 +11,8 @@ public partial class ParallelUnbalancedWork
 {
     internal sealed class WorkerScheduler : IThreadPoolWorkItem
     {
+        private const long CounterUnit = 1L << 32;
+
         internal static WorkerScheduler? Current => _context.Scheduler;
         private readonly object _gate = new();
         internal readonly object CallerGate = new();
@@ -22,8 +24,8 @@ public partial class ParallelUnbalancedWork
         private WorkQueue? _first;
         private WorkQueue? _last;
         private int _pending;
-        private int _requested;
-        private int _runners;
+        // Low bits count reserved runners; high bits count those that have not started.
+        private long _runners;
 
         internal WorkerScheduler(int concurrency, Action<IThreadPoolWorkItem>? schedule = null,
             WorkerGroup? group = null, WorkerScheduler? parent = null)
@@ -61,8 +63,11 @@ public partial class ParallelUnbalancedWork
             internal readonly BackgroundWork? Owner = owner;
             // Cleared when the last callback is taken or withdrawn.
             internal IThreadPoolWorkItem? Work;
-            internal int Count;
+            // The stamp changes on reuse so a delayed claimant cannot take a newer batch's work item.
+            internal long State;
+            internal int Count => (int)Volatile.Read(ref State);
             internal int ReadyDescendants;
+            internal bool Linked;
             internal WorkQueue? Previous;
             internal WorkQueue? Next;
         }
@@ -70,89 +75,128 @@ public partial class ParallelUnbalancedWork
         internal void Enqueue(WorkQueue queue, IThreadPoolWorkItem work, bool resuming = false, int count = 1)
         {
             if (count <= 0) return;
-            int schedule;
-            lock (_gate)
+            while (true)
             {
-                Debug.Assert(queue.Count == 0 || ReferenceEquals(queue.Work, work), "A work queue holds a single work item.");
-                if (queue.Count == 0)
+                long state = Volatile.Read(ref queue.State);
+                while ((int)state > 0)
                 {
+                    IThreadPoolWorkItem? queuedWork = Volatile.Read(ref queue.Work);
+                    Interlocked.Add(ref _pending, count);
+                    long observed = Interlocked.CompareExchange(ref queue.State, state + count, state);
+                    if (observed == state)
+                    {
+                        Debug.Assert(ReferenceEquals(queuedWork, work), "A work queue holds a single work item.");
+                        NotifyAndRequestRunners(queue, resuming);
+                        return;
+                    }
+                    Interlocked.Add(ref _pending, -count);
+                    state = observed;
+                }
+                lock (_gate)
+                {
+                    state = Volatile.Read(ref queue.State);
+                    if ((int)state != 0) continue;
                     queue.Work = work;
-                    AddReady(queue);
-                    UpdateReadyAncestors(queue, 1);
+                    if (!queue.Linked)
+                    {
+                        AddReady(queue);
+                        UpdateReadyAncestors(queue, 1);
+                    }
+                    Interlocked.Add(ref _pending, count);
+                    Volatile.Write(ref queue.State, ((state & ~(long)uint.MaxValue) + CounterUnit) | (uint)count);
                 }
-                queue.Count += count;
-                _pending += count;
-                // A yielding runner can drain its own next batch. Already requested runners also
-                // cover pending work, even before the thread pool starts their callbacks.
-                schedule = Math.Min(Concurrency - 1 - _runners,
-                    _pending - _requested - (resuming && ReferenceEquals(_context.Runner, this) ? 1 : 0));
-                if (schedule > 0)
-                {
-                    _runners += schedule;
-                    _requested += schedule;
-                }
+                break;
             }
+            NotifyAndRequestRunners(queue, resuming);
+        }
+
+        private void NotifyAndRequestRunners(WorkQueue queue, bool resuming)
+        {
             for (WorkQueue? parent = queue.Parent; parent is not null; parent = parent.Parent)
                 parent.Owner?.NotifyWorkAvailable();
-            for (int i = 0; i < schedule; i++) _schedule(this);
+            RequestRunners(resuming);
+        }
+
+        private void RequestRunners(bool resuming = false)
+        {
+            int covered = resuming && ReferenceEquals(_context.Runner, this) ? 1 : 0;
+            long runners = Volatile.Read(ref _runners);
+            while (true)
+            {
+                int count = Math.Min(Concurrency - 1 - (int)runners,
+                    Volatile.Read(ref _pending) - (int)(runners >> 32) - covered);
+                if (count <= 0) return;
+                long observed = Interlocked.CompareExchange(ref _runners, runners + (CounterUnit + 1) * count, runners);
+                if (observed == runners)
+                {
+                    for (int i = 0; i < count; i++) _schedule(this);
+                    return;
+                }
+                runners = observed;
+            }
         }
 
         internal bool TryExecute(WorkQueue queue, bool includeDescendants = false)
         {
-            IThreadPoolWorkItem work;
-            lock (_gate)
+            IThreadPoolWorkItem? work = TryTake(queue);
+            if (work is null)
             {
-                if (queue.Count == 0)
-                {
-                    if (!includeDescendants || FindDescendant(queue) is not { } descendant) return false;
-                    queue = descendant;
-                }
-                work = Take(queue);
+                if (!includeDescendants || Volatile.Read(ref queue.ReadyDescendants) == 0) return false;
+                if (FindDescendant(queue) is not { } descendant) return false;
+                queue = descendant;
+                work = TryTake(queue);
+                if (work is null) return false;
             }
             Run(work, queue);
             return true;
         }
 
         internal bool HasReadyWork(WorkQueue queue)
-        {
-            lock (_gate) return queue.Count != 0 || queue.ReadyDescendants != 0;
-        }
+            => queue.Count != 0 || Volatile.Read(ref queue.ReadyDescendants) != 0;
 
         // Ancestry stops at background operations; only nested synchronous loops are eligible.
         private WorkQueue? FindDescendant(WorkQueue ancestor)
         {
-            if (ancestor.ReadyDescendants == 0) return null;
-            for (WorkQueue? queue = _first; queue is not null; queue = queue.Next)
-                for (WorkQueue? parent = queue.Parent; parent is not null; parent = parent.Parent)
-                    if (ReferenceEquals(parent, ancestor)) return queue;
-            return null;
+            lock (_gate)
+            {
+                for (WorkQueue? queue = _first; queue is not null; queue = queue.Next)
+                    if (queue.Count != 0)
+                        for (WorkQueue? parent = queue.Parent; parent is not null; parent = parent.Parent)
+                            if (ReferenceEquals(parent, ancestor)) return queue;
+                return null;
+            }
         }
 
         /// <summary>Removes the queue's unstarted callbacks without running them.</summary>
         /// <returns>The number of callbacks removed.</returns>
         internal int Withdraw(WorkQueue queue)
         {
-            lock (_gate)
+            long state = Volatile.Read(ref queue.State);
+            while ((int)state > 0)
             {
-                int count = queue.Count;
-                if (count == 0) return 0;
-                queue.Count = 0;
-                queue.Work = null;
-                UpdateReadyAncestors(queue, -1);
-                _pending -= count;
-                Unlink(queue);
-                return count;
+                long drained = state & ~(long)uint.MaxValue;
+                long observed = Interlocked.CompareExchange(ref queue.State, drained, state);
+                if (observed == state)
+                {
+                    int count = (int)state;
+                    Interlocked.Add(ref _pending, -count);
+                    RemoveIfDrained(queue, drained);
+                    return count;
+                }
+                state = observed;
             }
+            return 0;
         }
 
         private static void UpdateReadyAncestors(WorkQueue queue, int delta)
         {
             for (WorkQueue? parent = queue.Parent; parent is not null; parent = parent.Parent)
-                parent.ReadyDescendants += delta;
+                Interlocked.Add(ref parent.ReadyDescendants, delta);
         }
 
         private void AddReady(WorkQueue queue)
         {
+            queue.Linked = true;
             queue.Previous = _last;
             queue.Next = null;
             if (_last is null) _first = queue;
@@ -160,24 +204,53 @@ public partial class ParallelUnbalancedWork
             _last = queue;
         }
 
-        private IThreadPoolWorkItem Take(WorkQueue queue)
+        private IThreadPoolWorkItem? TryTake(WorkQueue queue)
         {
-            IThreadPoolWorkItem work = queue.Work!;
-            if (--queue.Count == 0)
+            long state = Volatile.Read(ref queue.State);
+            while ((int)state > 0)
             {
-                queue.Work = null;
-                UpdateReadyAncestors(queue, -1);
+                IThreadPoolWorkItem? work = Volatile.Read(ref queue.Work);
+                long observed = Interlocked.CompareExchange(ref queue.State, state - 1, state);
+                if (observed == state)
+                {
+                    Interlocked.Decrement(ref _pending);
+                    if ((int)state == 1) RemoveIfDrained(queue, state - 1);
+                    return work;
+                }
+                state = observed;
             }
-            _pending--;
-            Unlink(queue);
-            // Rotate ready operations without moving their callbacks. Joining a specific operation uses
-            // this same constant-time removal and never executes unrelated callbacks.
-            if (queue.Count > 0) AddReady(queue);
-            return work;
+            return null;
+        }
+
+        private void RemoveIfDrained(WorkQueue queue, long drained)
+        {
+            if ((int)drained != 0) return;
+            lock (_gate)
+            {
+                if (Volatile.Read(ref queue.State) != drained) return;
+                queue.Work = null;
+                if (!queue.Linked) return;
+                UpdateReadyAncestors(queue, -1);
+                Unlink(queue);
+            }
+        }
+
+        private void RotateReady(WorkQueue queue)
+        {
+            if (!ReferenceEquals(Volatile.Read(ref _first), queue) || Volatile.Read(ref queue.Next) is null) return;
+            lock (_gate)
+            {
+                if (ReferenceEquals(_first, queue) && queue.Next is not null && queue.Count != 0)
+                {
+                    Unlink(queue);
+                    AddReady(queue);
+                }
+            }
         }
 
         private void Unlink(WorkQueue queue)
         {
+            queue.Linked = false;
             if (queue.Previous is null) _first = queue.Next;
             else queue.Previous.Next = queue.Next;
             if (queue.Next is null) _last = queue.Previous;
@@ -212,24 +285,24 @@ public partial class ParallelUnbalancedWork
             };
             try
             {
-                lock (_gate) _requested--;
+                Interlocked.Add(ref _runners, -CounterUnit);
                 while (true)
                 {
-                    IThreadPoolWorkItem work;
-                    WorkQueue queue;
-                    lock (_gate)
+                    WorkQueue? queue = Volatile.Read(ref _first);
+                    if (queue is null)
                     {
-                        // Enqueue and retirement share the gate: a producer either sees a live
-                        // drainer or reserves a replacement, so work cannot lose its wake-up.
-                        if (_first is null)
-                        {
-                            _runners--;
-                            return;
-                        }
-                        queue = _first;
-                        work = Take(queue);
+                        // Release the reservation before rechecking publication, so either this
+                        // runner or the producer requests a replacement for newly ready work.
+                        Interlocked.Decrement(ref _runners);
+                        if (Volatile.Read(ref _first) is not null) RequestRunners();
+                        return;
                     }
-                    Run(work, queue);
+                    if (TryTake(queue) is { } work)
+                    {
+                        if (queue.Count != 0) RotateReady(queue);
+                        Run(work, queue);
+                    }
+                    else RemoveIfDrained(queue, Volatile.Read(ref queue.State));
                 }
             }
             finally { context = previous; }
