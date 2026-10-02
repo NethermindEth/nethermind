@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
@@ -18,6 +19,7 @@ public class CodeOverrideBenchmark
 {
     private IContainer _container = null!;
     private ILifetimeScope _scope = null!;
+    private IDisposable _stateScope = null!;
     private IOverridableCodeInfoRepository _repository = null!;
     private CodeInfo _code = null!;
 
@@ -31,9 +33,14 @@ public class CodeOverrideBenchmark
         IOverridableEnv env = _container.Resolve<IOverridableEnvFactory>().Create();
         _scope = _container.BeginLifetimeScope(builder => builder.AddModule(env));
         _repository = _scope.Resolve<IOverridableCodeInfoRepository>();
+        // Setting an override reads the code hash it is set against, so the state must hold the code.
+        IWorldState worldState = _scope.Resolve<IWorldState>();
+        _stateScope = worldState.BeginScope(IWorldState.PreGenesis);
         byte[] bytes = new byte[CodeLength];
         new System.Random(42).NextBytes(bytes);
         _code = new CodeInfo(bytes);
+        worldState.CreateAccount(TestItem.AddressA, 0);
+        worldState.InsertCode(TestItem.AddressA, bytes, Prague.Instance);
     }
 
     [Benchmark]
@@ -42,6 +49,7 @@ public class CodeOverrideBenchmark
     [GlobalCleanup]
     public void Cleanup()
     {
+        _stateScope.Dispose();
         _scope.Dispose();
         _container.Dispose();
     }
