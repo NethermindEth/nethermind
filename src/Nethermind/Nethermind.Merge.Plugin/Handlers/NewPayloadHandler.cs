@@ -130,12 +130,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        request.PrepareWorkerGroup();
+        using ExecutionPayloadPreparation preparation = new(request);
         Result<Block> decodingResult;
-        using (request.Workers.Enter())
+        using (preparation.Workers.Enter())
         {
             StartSenderRecovery(request);
-            decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         }
         if (decodingResult.IsError)
         {
@@ -143,7 +143,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
-        ParallelUnbalancedWork.WorkerGroup workers = request.TransferWorkerGroup();
+        ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)

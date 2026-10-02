@@ -42,6 +42,19 @@ namespace Nethermind.Merge.Plugin.Test;
 [TestFixture]
 public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 {
+    private sealed class TrackingExecutionPayload : ExecutionPayload
+    {
+        public Action<ParallelUnbalancedWork.WorkerGroup?>? OnDecoding { get; set; }
+
+        public new static TrackingExecutionPayload Create(Block block) => Create<TrackingExecutionPayload>(block);
+
+        public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
+        {
+            OnDecoding?.Invoke(ParallelUnbalancedWork.GetCurrentGroup());
+            return base.TryGetBlock(totalDifficulty);
+        }
+    }
+
     private static readonly FieldInfo? BlockValidationTasksField =
         typeof(NewPayloadHandler).GetField("_blockValidationTasks", BindingFlags.Instance | BindingFlags.NonPublic);
 
@@ -67,7 +80,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Block block = Build.A.Block.WithParentHash(TestItem.KeccakC).WithNumber(1)
             .WithDifficulty(0).WithNonce(0).WithTransactions(tx).TestObject;
         block.Header.IsPostMerge = true;
-        ExecutionPayload payload = ExecutionPayload.Create(block);
+        TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
+        ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
+        payload.OnDecoding = workers => decodingWorkers = workers;
         Transaction[] transactions = payload.TryGetTransactions().Data!;
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
@@ -78,14 +93,16 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         {
             ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
             progress = recovery.GetInFlight(transactions);
-            ParallelUnbalancedWork.WorkerGroup? observed = payload.Workers.Concurrency == 1
+            bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
+            ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor
                 ? null : await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(observed, payload.Workers.Concurrency == 1 ? Is.Null : Is.SameAs(payload.Workers));
-                Assert.That(entered.Task.IsCompleted, Is.EqualTo(payload.Workers.Concurrency > 1));
+                Assert.That(decodingWorkers, Is.Not.Null);
+                Assert.That(observed, singleProcessor ? Is.Null : Is.SameAs(decodingWorkers));
+                Assert.That(entered.Task.IsCompleted, Is.EqualTo(!singleProcessor));
                 Assert.That(result.Data.Status, Is.EqualTo(invalidHash ? PayloadStatus.Invalid : PayloadStatus.Valid));
-                Assert.That(progress, payload.Workers.Concurrency == 1 ? Is.Null : Is.Not.Null);
+                Assert.That(progress, singleProcessor ? Is.Null : Is.Not.Null);
             }
         }
         finally
@@ -268,7 +285,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             processingQueue: processingQueue,
             timeoutMs: 5_000);
 
-        ExecutionPayload payload = ExecutionPayload.Create(block);
+        TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
+        ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
+        payload.OnDecoding = workers => decodingWorkers = workers;
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
         ParallelUnbalancedWork.WorkerGroup? queuedWorkers = await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // The verdict lands; BlockRemoved never does, as if the commit were still running.
@@ -277,7 +296,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(queuedWorkers, Is.SameAs(payload.Workers));
+            Assert.That(queuedWorkers, Is.Not.Null.And.SameAs(decodingWorkers));
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0), "an answered request must not leave its completion behind");
         }

@@ -5,12 +5,9 @@ using System;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
@@ -128,12 +125,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             _unboundFields &= ~PayloadFields.Transactions;
             _encodedTransactions = value;
             _transactions = null;
-            _txRootWork?.Dispose();
-            _txRootCompletion?.TrySetCanceled();
-            _ = _txRootTask?.Exception;
-            _txRootWork = null;
-            _txRootCompletion = null;
-            _txRootTask = null;
+            TransactionsRoot = null;
         }
     }
 
@@ -226,26 +218,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns>The decoded execution block or a decoding error.</returns>
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        PrepareWorkerGroup();
-        using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
         byte[][] encodedTransactions = Transactions;
-        // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
-        // and carries no task machinery for it.
-        Task<Hash256>? txRootTask = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
 
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
         {
-            _txRootWork?.Dispose();
-            _txRootCompletion?.TrySetCanceled();
-            txRootTask?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return transactions.Error;
         }
-
-        _txRootWork?.WaitForCompletion();
-        _txRootWork?.Dispose();
-        _txRootWork = null;
-        _txRootCompletion = null;
 
         BlockHeader header = new(
             ParentHash,
@@ -268,7 +247,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = TransactionsRoot ??= TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
@@ -283,57 +262,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
-    private Task<Hash256>? _txRootTask;
-    private TaskCompletionSource<Hash256>? _txRootCompletion;
-    private ParallelUnbalancedWork.BackgroundWork? _txRootWork;
-    private ParallelUnbalancedWork.WorkerGroup? _workers;
-    private bool _workersTransferred;
-    internal ParallelUnbalancedWork.WorkerGroup Workers => _workers ??= new(RuntimeInformation.ProcessorCount);
-
-    internal void PrepareWorkerGroup()
-    {
-        if (!_workersTransferred) return;
-        _workers = null;
-        _workersTransferred = false;
-    }
-
-    internal ParallelUnbalancedWork.WorkerGroup TransferWorkerGroup()
-    {
-        _workersTransferred = true;
-        return Workers;
-    }
-
-    private const int MinTxsForParallelDecoding = 32;
-
-    /// <summary>
-    /// Starts computing the transactions-trie root in the background, letting callers overlap it
-    /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the started task).
-    /// </summary>
-    /// <remarks>
-    /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
-    /// race the memoized task. Callers must invoke both sequentially per payload instance.
-    /// </remarks>
-    /// <returns>
-    /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
-    /// </returns>
-    internal Task<Hash256>? StartTxRootComputation()
-    {
-        PrepareWorkerGroup();
-        byte[][] encodedTransactions = _encodedTransactions;
-        if (_txRootTask is not null || encodedTransactions.Length < MinTxsForParallelDecoding || RuntimeInformation.IsSingleProcessor)
-            return _txRootTask;
-
-        using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
-        TaskCompletionSource<Hash256> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        _txRootCompletion = completion;
-        _txRootTask = completion.Task;
-        _txRootWork = ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions, _ =>
-        {
-            try { completion.SetResult(TxTrie.CalculateRoot(encodedTransactions)); }
-            catch (Exception exception) { completion.SetException(exception); }
-        });
-        return _txRootTask;
-    }
+    internal Hash256? TransactionsRoot { get; set; }
 
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.

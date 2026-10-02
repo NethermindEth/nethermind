@@ -11,8 +11,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Threading;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
@@ -281,63 +281,60 @@ public class ExecutionPayloadTests
         }
     }
 
-    // The early-started root task must be the one TryGetBlock consumes, with an identical root
     [Test]
-    public void TryGetBlock_uses_early_started_tx_root_computation()
+    public void Preparation_reuses_payload_data_with_an_independent_worker_group([Values(1, 64)] int count)
     {
-        byte[][] rlps = EncodeTxs(count: 64);
-
+        byte[][] rlps = EncodeTxs(count);
         ExecutionPayload payload = new() { Transactions = rlps };
-        Task<Hash256>? rootTask = payload.StartTxRootComputation();
-        ParallelUnbalancedWork.WorkerGroup firstWorkers = payload.Workers;
-        payload.PrepareWorkerGroup();
-        Assert.That(payload.Workers, Is.SameAs(firstWorkers));
-        Result<Block> block = payload.TryGetBlock();
-        Assert.That(payload.TransferWorkerGroup(), Is.SameAs(firstWorkers));
-        payload.StartTxRootComputation();
-        ParallelUnbalancedWork.WorkerGroup nextWorkers = payload.Workers;
-        Result<Block> resent = payload.TryGetBlock();
+        using ExecutionPayloadPreparation first = new(payload);
+        Result<Block> block = first.TryGetBlock();
+        using ExecutionPayloadPreparation second = new(payload);
+        Result<Block> resent = second.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            // A single processor computes the root inline instead of starting the task.
-            Assert.That(rootTask, Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
-            Assert.That(nextWorkers, Is.Not.SameAs(firstWorkers));
-            Assert.That(payload.TransferWorkerGroup(), Is.SameAs(nextWorkers));
-            Assert.That(resent.Data!.Header.TxRoot, Is.EqualTo(block.Data.Header.TxRoot));
+            Assert.That(second.Workers, Is.Not.SameAs(first.Workers));
+            Assert.That(resent.Data!.Header.TxRoot, Is.SameAs(block.Data.Header.TxRoot));
+            Assert.That(payload.TransactionsRoot, Is.SameAs(block.Data.Header.TxRoot));
         }
     }
 
-    // A root task started for one transaction set must never produce the root of a mutated payload
     [Test]
-    public void TryGetBlock_recomputes_tx_root_when_transactions_change_after_early_start()
+    public void Preparation_recomputes_tx_root_when_transactions_change([Values] bool decoded)
     {
         byte[][] originalRlps = EncodeTxs(count: 64);
         byte[][] replacementRlps = EncodeTxs(count: 64, nonceOffset: 1000);
 
         ExecutionPayload payload = new() { Transactions = originalRlps };
-        payload.StartTxRootComputation();
+        using ExecutionPayloadPreparation preparation = new(payload);
+        if (decoded) preparation.TryGetBlock();
         payload.Transactions = replacementRlps;
-        Result<Block> block = payload.TryGetBlock();
+        Assert.That(payload.TransactionsRoot, Is.Null);
+        Result<Block> block = preparation.TryGetBlock();
 
         Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(replacementRlps)));
     }
 
-    // Below the background threshold the root is still computed, just inline
     [Test]
-    public void TryGetBlock_computes_tx_root_inline_below_background_threshold()
+    public void Preparation_does_not_cache_a_root_for_invalid_transactions([Values(1, 64)] int count)
     {
-        byte[][] rlps = EncodeTxs(count: 1);
-
+        byte[][] rlps = EncodeTxs(count);
+        rlps[^1] = [0x01];
         ExecutionPayload payload = new() { Transactions = rlps };
-        Task<Hash256>? rootTask = payload.StartTxRootComputation();
-        Result<Block> block = payload.TryGetBlock();
+        using (ExecutionPayloadPreparation preparation = new(payload))
+        {
+            Assert.That(preparation.TryGetBlock().IsError, Is.True);
+        }
+        Assert.That(payload.TransactionsRoot, Is.Null);
+        payload.Transactions = EncodeTxs(count, nonceOffset: 1000);
+        using ExecutionPayloadPreparation replacement = new(payload);
+        Result<Block> block = replacement.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootTask, Is.Null);
-            Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
+            Assert.That(block.IsError, Is.False);
+            Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(payload.Transactions)));
         }
     }
 
