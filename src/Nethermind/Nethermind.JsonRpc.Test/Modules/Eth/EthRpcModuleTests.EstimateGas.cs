@@ -559,20 +559,23 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo(TxErrorMessages.InvalidTxType(London.Instance.Name)), response);
     }
 
-    [TestCase(50_000ul, true)]
-    [TestCase(100_000ul, false)]
-    public async Task FrameRpc_EstimateGas_RespectsTheCompleteGasCap(ulong gasCap, bool expectFailure)
+    [Test]
+    public async Task FrameRpc_EstimateGas_RespectsTheCompleteGasCap([Values(50_000ul, 100_000ul)] ulong gasCap, [Values] bool fillStateGas)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         ctx.Test.RpcConfig.GasCap = gasCap;
         FrameTransactionForRpc transaction = UnsignedFrameRequest();
         transaction.Frames![0].ExecutionGas = 25_000;
         transaction.Frames[1].ExecutionGas = 15_000;
+        if (!fillStateGas)
+        {
+            foreach (FrameForRpc frame in transaction.Frames) frame.StateGas = 0;
+        }
 
         string response = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
         JToken parsed = JToken.Parse(response);
-        if (expectFailure)
+        if (gasCap == 50_000ul)
         {
             Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo($"{GasEstimator.GasExceedsAllowanceMsgPrefix} ({gasCap})"), response);
         }
