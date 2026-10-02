@@ -40,6 +40,8 @@ public static class NewPayloadTrace
         public long TxRunNs = -1, TxWaitNs = -1;
         // Major and minor faults and voluntary context switches of the processing thread across the transactions.
         public long MajStart, MinStart, VolStart, Majflt = -1, Minflt = -1, Vol = -1;
+        // Read syscalls and bytes fetched from storage (not the page cache) by the processing thread across the transactions.
+        public long SyscrStart, RdStart, Syscr = -1, RdBytes = -1;
         public readonly long[] Reads = new long[ReadKinds], ReadUs = new long[ReadKinds], Slow = new long[ReadKinds], SlowUs = new long[ReadKinds];
     }
 
@@ -64,6 +66,24 @@ public static class NewPayloadTrace
         }
     }
 
+    private static bool ReadIo(out long syscr, out long readBytes)
+    {
+        syscr = readBytes = -1;
+        try
+        {
+            foreach (string line in System.IO.File.ReadLines("/proc/thread-self/io"))
+            {
+                if (line.StartsWith("syscr:", StringComparison.Ordinal)) syscr = long.Parse(line.AsSpan(6).Trim());
+                else if (line.StartsWith("read_bytes:", StringComparison.Ordinal)) readBytes = long.Parse(line.AsSpan(11).Trim());
+            }
+            return syscr >= 0 && readBytes >= 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Reads the schedstat when the block's transactions are done, on the processing thread.</summary>
     public static void SchedTxsDone()
     {
@@ -72,6 +92,7 @@ public static class NewPayloadTrace
         {
             record.TxRunNs = run - record.RunStart; record.TxWaitNs = wait - record.WaitStart;
             if (ReadFaultsAndSwitches(out long maj, out long min, out long vol)) { record.Majflt = maj - record.MajStart; record.Minflt = min - record.MinStart; record.Vol = vol - record.VolStart; }
+            if (record.SyscrStart >= 0 && ReadIo(out long syscr, out long rd)) { record.Syscr = syscr - record.SyscrStart; record.RdBytes = rd - record.RdStart; }
         }
     }
 
@@ -82,6 +103,7 @@ public static class NewPayloadTrace
         {
             record.RunStart = run; record.WaitStart = wait; record.SlicesStart = slices;
             if (ReadFaultsAndSwitches(out long maj, out long min, out long vol)) { record.MajStart = maj; record.MinStart = min; record.VolStart = vol; }
+            if (ReadIo(out long syscr, out long rd)) { record.SyscrStart = syscr; record.RdStart = rd; } else record.SyscrStart = -1;
         }
     }
 
@@ -109,8 +131,9 @@ public static class NewPayloadTrace
     }
 
     // State reads on the processing thread while it executes the block's transactions: count, time, and the slow ones.
-    public const int AccountRead = 0, SlotRead = 1;
-    private const int ReadKinds = 2;
+    public const int AccountRead = 0, SlotRead = 1, PersistedAccountRead = 2, PersistenceAccountRead = 3, PersistedSlotRead = 4, PersistenceSlotRead = 5;
+    private const int ReadKinds = 6;
+    private static readonly string[] ReadNames = ["acct", "slot", "pacct", "dbacct", "pslot", "dbslot"];
     [ThreadStatic] private static bool t_inTxs;
     private static readonly long SlowTicks = Stopwatch.Frequency / 50_000; // 20 µs
     private static readonly long[] s_reads = new long[ReadKinds], s_readTicks = new long[ReadKinds], s_slow = new long[ReadKinds], s_slowTicks = new long[ReadKinds];
@@ -204,10 +227,12 @@ public static class NewPayloadTrace
             .Append(" txwait=").Append(record.TxWaitNs < 0 ? "na" : (record.TxWaitNs / 1000).ToString())
             .Append(" txmajflt=").Append(record.Majflt < 0 ? "na" : record.Majflt.ToString())
             .Append(" txminflt=").Append(record.Minflt < 0 ? "na" : record.Minflt.ToString())
-            .Append(" txvolsw=").Append(record.Vol < 0 ? "na" : record.Vol.ToString());
+            .Append(" txvolsw=").Append(record.Vol < 0 ? "na" : record.Vol.ToString())
+            .Append(" txsyscr=").Append(record.Syscr < 0 ? "na" : record.Syscr.ToString())
+            .Append(" txrdbytes=").Append(record.RdBytes < 0 ? "na" : record.RdBytes.ToString());
         for (int i = 0; i < ReadKinds; i++)
         {
-            string kind = i == AccountRead ? "acct" : "slot";
+            string kind = ReadNames[i];
             line.Append(' ').Append(kind).Append("reads=").Append(record.Reads[i]).Append(' ').Append(kind).Append("us=").Append(record.ReadUs[i])
                 .Append(' ').Append(kind).Append("slow=").Append(record.Slow[i]).Append(' ').Append(kind).Append("slowus=").Append(record.SlowUs[i]);
         }

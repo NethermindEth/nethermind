@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.State.Flat;
 
@@ -66,11 +67,18 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
-            return persistedAccount;
+        if (_persistedSnapshotCount > 0)
+        {
+            long tp = NewPayloadTrace.InTxs ? Stopwatch.GetTimestamp() : 0;
+            bool foundPersisted = persistedSnapshots.TryGetAccount(address, out Account? persistedAccount);
+            if (tp != 0) NewPayloadTrace.AddRead(NewPayloadTrace.PersistedAccountRead, Stopwatch.GetTimestamp() - tp);
+            if (foundPersisted) return persistedAccount;
+        }
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        long td = NewPayloadTrace.InTxs ? Stopwatch.GetTimestamp() : 0;
         Account? account = persistenceReader.GetAccount(address);
+        if (td != 0) NewPayloadTrace.AddRead(NewPayloadTrace.PersistenceAccountRead, Stopwatch.GetTimestamp() - td);
         if (account == null)
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
@@ -120,13 +128,20 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out value))
-            return;
+        if (_persistedSnapshotCount > 0)
+        {
+            long tp = NewPayloadTrace.InTxs ? Stopwatch.GetTimestamp() : 0;
+            bool foundPersisted = persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out value);
+            if (tp != 0) NewPayloadTrace.AddRead(NewPayloadTrace.PersistedSlotRead, Stopwatch.GetTimestamp() - tp);
+            if (foundPersisted) return;
+        }
 
         UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        long td = NewPayloadTrace.InTxs ? Stopwatch.GetTimestamp() : 0;
         value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
+        if (td != 0) NewPayloadTrace.AddRead(NewPayloadTrace.PersistenceSlotRead, Stopwatch.GetTimestamp() - td);
 
         if (recordDetailedMetrics)
         {
