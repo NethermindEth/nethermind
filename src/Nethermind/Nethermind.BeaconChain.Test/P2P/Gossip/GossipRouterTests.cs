@@ -93,6 +93,13 @@ public partial class GossipRouterTests
             Assert.That(verified, Is.Zero);
         }
 
+        // The library announces only subscribed topics to a peer that connects later, so the retired topic is not advertised to it.
+        string kept = GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.BeaconBlock);
+        pubsub.GetTopic(kept);
+        (_, List<Rpc> toLaterPeer, _) = ConnectSubscribedPeer(pubsub, kept);
+        string[] announced = [.. toLaterPeer.SelectMany(static rpc => rpc.Subscriptions).Where(static s => s.Subscribe).Select(static s => s.Topicid)];
+        Assert.That(announced, Does.Contain(kept).And.Not.Contain(topicId), "a peer connecting after retirement is told only of subscribed topics");
+
         if (getTopic)
         {
             topic = subscriptions.GetTopic(topicId);
@@ -183,13 +190,13 @@ public partial class GossipRouterTests
 
     /// <summary>Registers a connected peer subscribed to <paramref name="topicId"/> with <paramref name="pubsub"/>.</summary>
     /// <returns>The peer, the RPCs the router sends it, and a callback that hands the router an RPC from it.</returns>
-    private static (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) ConnectSubscribedPeer(PubsubRouter pubsub, string topicId)
+    private static (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) ConnectSubscribedPeer(PubsubRouter pubsub, string topicId, string protocol = PubsubRouter.GossipsubProtocolVersionV11)
     {
         PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
         List<Rpc> sent = [];
         TaskCompletionSource dial = new(TaskCreationOptions.RunContinuationsAsynchronously);
         typeof(PubsubRouter).GetMethod("OutboundConnection", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pubsub,
-            [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), "/meshsub/1.1.0", dial.Task, (Action<Rpc>)sent.Add]);
+            [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), protocol, dial.Task, (Action<Rpc>)sent.Add]);
         MethodInfo onRpc = typeof(PubsubRouter).GetMethod("OnRpc", BindingFlags.Instance | BindingFlags.NonPublic)!;
         void Receive(Rpc rpc) => onRpc.Invoke(pubsub, [peer, rpc, null, true]);
         Rpc subscribe = new();

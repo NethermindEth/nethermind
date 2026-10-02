@@ -192,10 +192,28 @@ public sealed class BeaconP2P : IAsyncDisposable
                 // DeferredGossipValidation throttles at the configured bounds first; its byte count leaves out the messages of the RPC being read.
                 MaxPendingValidationMessages = config.GossipMaxPendingValidations,
                 MaxPendingValidationBytes = config.GossipMaxPendingValidationBytes + Eth2MessageId.MaxMessageSize,
+                // gossipsub v1.2 IDONTWANT: announce each accepted or published message of at least 1 KiB to the v1.2 mesh peers, and keep a
+                // peer's announcement for three heartbeats.
+                IdontwantMessageThreshold = 1024,
+                IdontwantTtlHeartbeats = 3,
+                MaxIdontwantLength = IdontwantIdsPerControl,
+                MaxIdontwantMessages = MaxIdontwantControlsPerHeartbeat,
             }, ScheduledTopics(spec), spec))
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
     }
+
+    /// <summary>The most message ids in one IDONTWANT control entry.</summary>
+    internal const int IdontwantIdsPerControl = 10;
+
+    /// <summary>The most IDONTWANT control entries sent to, or kept from, one peer per heartbeat.</summary>
+    /// <remarks>
+    /// Room for every large message of two blocks in one heartbeat, a column per subnet plus the block and its envelope, each in its own
+    /// entry: the router announces each message as its verdict is given or as it is published. Past it an announcement is neither sent nor
+    /// kept, which only costs a duplicate send, so a peer can make this node withhold at most
+    /// <c>MaxIdontwantControlsPerHeartbeat * IdontwantIdsPerControl * 3</c> message ids.
+    /// </remarks>
+    internal const int MaxIdontwantControlsPerHeartbeat = 2 * ((int)Eip7594DasConstants.DataColumnSidecarSubnetCount + 2);
 
     /// <summary>The seen and limbo cache capacity, sized for the honest traffic of the subscribed topics over the two-epoch seen_ttl.</summary>
     /// <remarks>Per slot: the target aggregators of every committee, one vote per PTC member, one column per subnet and one block, envelope and slashing.
