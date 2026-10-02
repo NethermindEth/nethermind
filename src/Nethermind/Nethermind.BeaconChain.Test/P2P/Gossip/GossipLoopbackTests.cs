@@ -51,7 +51,7 @@ public class GossipLoopbackTests
         TaskCompletionSource<ForkedSignedBeaconBlock> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
         router.BeaconBlockReceived += (block, _) => received.TrySetResult(block);
 
-        subscriber.Discover([LoopbackAddress(publisher)]);
+        await ConnectAsync(subscriber, publisher, token);
 
         // Republish (with distinct payloads, so dedup cannot hide a delivery) until the mesh has
         // formed and a message makes it across.
@@ -90,7 +90,7 @@ public class GossipLoopbackTests
         columns.Start(reconstructing.GetTopic, digest, [.. Enumerable.Range(0, (int)reconstructed + 1).Select(static subnet => (ulong)subnet)]);
         TaskCompletionSource<byte[]> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
         neighbor.GetTopic(topicId).OnMessage += (_, data) => received.TrySetResult(data);
-        neighbor.Discover([LoopbackAddress(reconstructing)]);
+        await ConnectAsync(neighbor, reconstructing, token);
         while (!IsMeshNeighbor(reconstructing, topicId, neighbor.LocalPeerId!))
         {
             await Task.Delay(100, token);
@@ -141,8 +141,8 @@ public class GossipLoopbackTests
         ITopic senderTopic = sender.GetTopic(blockTopic);
         TaskCompletionSource<byte[]> forwarded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         neighbor.GetTopic(blockTopic).OnMessage += (_, data) => forwarded.TrySetResult(data);
-        sender.Discover([LoopbackAddress(relay)]);
-        neighbor.Discover([LoopbackAddress(relay)]);
+        await ConnectAsync(sender, relay, token);
+        await ConnectAsync(neighbor, relay, token);
         while (!IsMeshNeighbor(relay, blockTopic, sender.LocalPeerId!) || !IsMeshNeighbor(relay, blockTopic, neighbor.LocalPeerId!)
             || !IsMeshNeighbor(sender, blockTopic, relay.LocalPeerId!))
         {
@@ -200,8 +200,8 @@ public class GossipLoopbackTests
         ITopic senderTopic = sender.GetTopic(topicId);
         TaskCompletionSource<byte[]> forwarded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         neighbor.GetTopic(topicId).OnMessage += (_, data) => forwarded.TrySetResult(data);
-        sender.Discover([LoopbackAddress(relay)]);
-        neighbor.Discover([LoopbackAddress(relay)]);
+        await ConnectAsync(sender, relay, token);
+        await ConnectAsync(neighbor, relay, token);
         while (!IsMeshNeighbor(relay, topicId, neighbor.LocalPeerId!) || !IsMeshNeighbor(sender, topicId, relay.LocalPeerId!))
         {
             await Task.Delay(100, token);
@@ -237,7 +237,7 @@ public class GossipLoopbackTests
         await later.StartAsync(token);
         router.Start(node.GetTopic, retiredDigest);
         router.SubscribeDigest(currentDigest);
-        connected.Discover([LoopbackAddress(node)]);
+        await ConnectAsync(connected, node, token);
         while (!Subscribes(connected, retired, node.LocalPeerId!))
         {
             await Task.Delay(100, token);
@@ -249,7 +249,7 @@ public class GossipLoopbackTests
             await Task.Delay(100, token);
         }
 
-        later.Discover([LoopbackAddress(node)]);
+        await ConnectAsync(later, node, token);
         while (!Subscribes(later, current, node.LocalPeerId!))
         {
             await Task.Delay(100, token);
@@ -266,6 +266,48 @@ public class GossipLoopbackTests
         {
             return router.GossipsubPeers.TryGetValue(topicId, out HashSet<PeerId>? peers) && peers.Contains(peer);
         }
+    }
+
+    /// <summary>
+    /// Two nodes whose session the peer manager admits exchange gossip with no pubsub discovery, whichever side dialed: the router opens its
+    /// own channel only when told of a peer, which the identify probe this node runs never does, or in answer to the remote's channel.
+    /// </summary>
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Nodes_admitted_by_the_peer_manager_exchange_gossip_without_discovery([Values] bool admittedInbound, CancellationToken token)
+    {
+        string topicId = GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.BeaconBlock);
+        await using BeaconP2P publisher = CreateHost();
+        await using BeaconP2P subscriber = CreateHost();
+        await publisher.StartAsync(token);
+        await subscriber.StartAsync(token);
+        TaskCompletionSource<byte[]> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        subscriber.GetTopic(topicId).OnMessage += (_, data) => received.TrySetResult(data);
+        ITopic topic = publisher.GetTopic(topicId);
+        if (admittedInbound)
+        {
+            // Only the subscriber runs a peer manager, which admits the session the publisher opens.
+            PeerManager manager = CreatePeerManager(subscriber);
+            await publisher.DialPeerAsync(PeerSessionNodes.LoopbackAddress(subscriber), token);
+            await PeerSessionNodes.WaitUntilAsync(() => manager.PeerCount == 1, "the subscriber never admitted the session", token);
+        }
+        else
+        {
+            await ConnectAsync(publisher, subscriber, token);
+        }
+
+        byte[] message = [1, 2, 3];
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bounded.CancelAfter(TimeSpan.FromSeconds(30));
+        while (!received.Task.IsCompleted && !bounded.IsCancellationRequested)
+        {
+            // The publisher sends only once the subscriber is in its mesh, so it repeats until the message arrives.
+            topic.Publish(message);
+            await Task.WhenAny(received.Task, Task.Delay(500, CancellationToken.None));
+        }
+
+        Assert.That(received.Task.IsCompleted, Is.True, "no gossip crossed the admitted session");
+        Assert.That(await received.Task, Is.EqualTo(message));
     }
 
     /// <summary>A gossip message of any legal size crosses a real session whole, so its sender is not disconnected for a truncated RPC.</summary>
@@ -286,7 +328,7 @@ public class GossipLoopbackTests
         TaskCompletionSource<byte[]> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
         subscriber.GetTopic(topicId).OnMessage += (_, data) => received.TrySetResult(data);
         ITopic topic = publisher.GetTopic(topicId);
-        subscriber.Discover([LoopbackAddress(publisher)]);
+        await ConnectAsync(subscriber, publisher, token);
 
         byte[] message = new byte[size];
         Random.Shared.NextBytes(message);
@@ -301,11 +343,22 @@ public class GossipLoopbackTests
         Assert.That(await received.Task, Is.EqualTo(message));
     }
 
+    /// <summary>Connects <paramref name="from"/> to <paramref name="to"/> through its peer manager's admission, as the node does, with no pubsub discovery.</summary>
+    private static async Task<PeerManager> ConnectAsync(BeaconP2P from, BeaconP2P to, CancellationToken token)
+    {
+        PeerManager manager = CreatePeerManager(from);
+        Assert.That(await manager.TryAddPeerAsync(PeerSessionNodes.LoopbackAddressText(to), token), Is.True, "the peer manager did not admit the peer");
+        return manager;
+    }
+
+    private static PeerManager CreatePeerManager(BeaconP2P node) =>
+        new(node, new BeaconChainConfig { P2PPort = 0 }, new BeaconChainStatusHolder(Spec, Timestamper.Default) { CurrentStatus = PeerSessionNodes.Status }, LimboLogs.Instance);
+
     private static BeaconP2P CreateHost(GossipMessageValidator? validator = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        return new BeaconP2P(config, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance,
+        return new BeaconP2P(config, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default) { CurrentStatus = PeerSessionNodes.Status }, new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance,
             validator);
     }
 
