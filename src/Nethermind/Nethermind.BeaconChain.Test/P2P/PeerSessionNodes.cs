@@ -60,7 +60,7 @@ internal static class PeerSessionNodes
         }
 
         BeaconP2P p2p = new(config, Spec, store, served ?? statusHolder, new LocalMetadataSource(),
-            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance, peerPool: peerPool);
+            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LoopbackTrace.NewNode() ?? LimboLogs.Instance, peerPool: peerPool);
         return new Node(p2p, statusHolder, config);
     }
 

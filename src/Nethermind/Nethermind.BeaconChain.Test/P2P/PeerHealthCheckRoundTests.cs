@@ -284,7 +284,7 @@ public class PeerHealthCheckRoundTests
         }
 
         AdvancingTimestamper clock = new();
-        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, logManager ?? LimboLogs.Instance, timestamper: clock);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, logManager ?? LoopbackTrace.Or(LimboLogs.Instance), timestamper: clock);
         foreach (Node server in servers)
         {
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
