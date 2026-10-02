@@ -104,6 +104,7 @@ public class BranchProcessor(
         {
             // Start prewarming as early as possible
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+            NewPayloadTrace.BeginBlock(suggestedBlock.Transactions.Length);
             prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 

@@ -29,6 +29,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Trie;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -311,6 +312,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             roundCells.ExceptWith(allDiscoveredCells);
+            NewPayloadTrace.DiscoveryRound(roundCells.Count);
             if (cancellationToken.IsCancellationRequested) return;
 
             int productive = nextRoundCandidates.Count - awaiting;
@@ -318,6 +320,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             {
                 allDiscoveredCells.UnionWith(roundCells);
                 if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
+                NewPayloadTrace.DiscoveryWarmed();
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }
             else if (awaiting == 0 && (deferred.Count == 0 || productive == admitted.Count))
@@ -1158,6 +1161,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
             if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            NewPayloadTrace.WarmStart(txIndex);
 
             // Non-null guaranteed: GroupTransactionsBySender and WarmupQueue.TryClaimLate both skip null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -1175,6 +1179,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, tracer);
+            NewPayloadTrace.WarmEnd(txIndex);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }

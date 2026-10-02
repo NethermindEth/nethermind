@@ -45,6 +45,9 @@ public static class NewPayloadTrace
         public readonly long[] Reads = new long[ReadKinds], ReadUs = new long[ReadKinds], Slow = new long[ReadKinds], SlowUs = new long[ReadKinds];
         // Slow account and slot reads by milliseconds since the transactions started, and by eighth of the block's transactions.
         public readonly long[] SlowByTime = new long[TimeBuckets], SlowByTx = new long[TxBuckets];
+        // Per transaction: warmed before the processing thread started it, warmed but not finished by then, never warmed.
+        public long WarmOk, WarmLate, WarmNone, SlowOk, SlowLate, SlowNone;
+        public string TopTxs = "none", Discovery = "none";
     }
 
     private static bool ReadFaultsAndSwitches(out long majflt, out long minflt, out long voluntary)
@@ -141,6 +144,85 @@ public static class NewPayloadTrace
     private static long s_txsStart;
     private static int s_txIndex, s_txCount;
     private static readonly long[] s_slowByTime = new long[TimeBuckets], s_slowByTx = new long[TxBuckets];
+
+    // Per transaction of the block: when the prewarmer started and last finished warming it, when the processing thread
+    // started it, and its slow reads there. Set up at branch start, before the prewarmer runs.
+    private const int MaxTxs = 4096, MaxDiscoveryRounds = 8;
+    private static readonly long[] s_warmStart = new long[MaxTxs], s_warmEnd = new long[MaxTxs], s_mainStart = new long[MaxTxs];
+    private static readonly int[] s_txSlow = new int[MaxTxs];
+    private static int s_blockTxs, s_discRounds;
+    private static readonly long[] s_discAt = new long[MaxDiscoveryRounds], s_discWarmedAt = new long[MaxDiscoveryRounds];
+    private static readonly int[] s_discCells = new int[MaxDiscoveryRounds];
+
+    public static void BeginBlock(int txCount)
+    {
+        if (!Enabled) return;
+        int n = Math.Min(txCount, MaxTxs);
+        Array.Clear(s_warmStart, 0, n); Array.Clear(s_warmEnd, 0, n); Array.Clear(s_mainStart, 0, n); Array.Clear(s_txSlow, 0, n);
+        s_blockTxs = n; s_discRounds = 0;
+    }
+
+    public static void WarmStart(int txIndex)
+    {
+        if (Enabled && (uint)txIndex < (uint)s_blockTxs) Interlocked.CompareExchange(ref s_warmStart[txIndex], Stopwatch.GetTimestamp(), 0);
+    }
+
+    public static void WarmEnd(int txIndex)
+    {
+        if (Enabled && (uint)txIndex < (uint)s_blockTxs && Volatile.Read(ref s_warmStart[txIndex]) != 0) Volatile.Write(ref s_warmEnd[txIndex], Stopwatch.GetTimestamp());
+    }
+
+    /// <summary>A storage discovery round finished executing its candidates and found this many new cells.</summary>
+    public static void DiscoveryRound(int cells)
+    {
+        if (!Enabled || s_discRounds >= MaxDiscoveryRounds) return;
+        int r = s_discRounds;
+        s_discCells[r] = cells; s_discAt[r] = Stopwatch.GetTimestamp(); s_discWarmedAt[r] = 0; s_discRounds = r + 1;
+    }
+
+    /// <summary>The last round's cells are warmed.</summary>
+    public static void DiscoveryWarmed()
+    {
+        if (Enabled && s_discRounds > 0) s_discWarmedAt[s_discRounds - 1] = Stopwatch.GetTimestamp();
+    }
+
+    private static string Ms(long timestamp) =>
+        timestamp == 0 ? "na" : ((timestamp - s_txsStart) * 1000.0 / Stopwatch.Frequency).ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static void SummarizeTxs(Record record)
+    {
+        int a = -1, b = -1, c = -1;
+        for (int i = 0; i < s_blockTxs; i++)
+        {
+            long main = s_mainStart[i], ws = Volatile.Read(ref s_warmStart[i]), we = Volatile.Read(ref s_warmEnd[i]);
+            int slow = s_txSlow[i];
+            if (ws == 0) { record.WarmNone++; record.SlowNone += slow; }
+            else if (we != 0 && main != 0 && we <= main) { record.WarmOk++; record.SlowOk += slow; }
+            else { record.WarmLate++; record.SlowLate += slow; }
+
+            if (slow == 0) continue;
+            if (a < 0 || slow > s_txSlow[a]) { c = b; b = a; a = i; }
+            else if (b < 0 || slow > s_txSlow[b]) { c = b; b = i; }
+            else if (c < 0 || slow > s_txSlow[c]) c = i;
+        }
+
+        StringBuilder top = new();
+        foreach (int i in (ReadOnlySpan<int>)[a, b, c])
+        {
+            if (i < 0) break;
+            if (top.Length > 0) top.Append(',');
+            top.Append(i).Append(':').Append(s_txSlow[i]).Append(':').Append(Ms(s_mainStart[i])).Append(':').Append(Ms(s_warmStart[i])).Append(':').Append(Ms(s_warmEnd[i]));
+        }
+        if (top.Length > 0) record.TopTxs = top.ToString();
+
+        StringBuilder disc = new();
+        for (int r = 0; r < s_discRounds; r++)
+        {
+            if (disc.Length > 0) disc.Append(';');
+            disc.Append(s_discCells[r]).Append('@').Append(Ms(s_discAt[r])).Append('/').Append(Ms(s_discWarmedAt[r]));
+        }
+        if (disc.Length > 0) record.Discovery = disc.ToString();
+    }
     private static readonly long SlowTicks = Stopwatch.Frequency / 50_000; // 20 µs
     private static readonly long[] s_reads = new long[ReadKinds], s_readTicks = new long[ReadKinds], s_slow = new long[ReadKinds], s_slowTicks = new long[ReadKinds];
 
@@ -159,7 +241,9 @@ public static class NewPayloadTrace
     /// <summary>The processing thread starts its next transaction.</summary>
     public static void OnTx()
     {
-        if (t_inTxs) s_txIndex++;
+        if (!t_inTxs) return;
+        s_txIndex++;
+        if ((uint)s_txIndex < (uint)s_blockTxs) s_mainStart[s_txIndex] = Stopwatch.GetTimestamp();
     }
 
     public static void EndTxs()
@@ -175,6 +259,7 @@ public static class NewPayloadTrace
             }
 
             Array.Copy(s_slowByTime, record.SlowByTime, TimeBuckets); Array.Copy(s_slowByTx, record.SlowByTx, TxBuckets);
+            SummarizeTxs(record);
         }
     }
 
@@ -190,6 +275,7 @@ public static class NewPayloadTrace
                 int bucket = ms < 1 ? 0 : ms < 2 ? 1 : ms < 4 ? 2 : ms < 8 ? 3 : ms < 16 ? 4 : 5;
                 s_slowByTime[bucket]++;
                 if (s_txCount > 0) s_slowByTx[Math.Clamp(s_txIndex, 0, s_txCount - 1) * TxBuckets / s_txCount]++;
+                if ((uint)s_txIndex < (uint)s_blockTxs) s_txSlow[s_txIndex]++;
             }
         }
     }
@@ -262,7 +348,10 @@ public static class NewPayloadTrace
             line.Append(' ').Append(kind).Append("reads=").Append(record.Reads[i]).Append(' ').Append(kind).Append("us=").Append(record.ReadUs[i])
                 .Append(' ').Append(kind).Append("slow=").Append(record.Slow[i]).Append(' ').Append(kind).Append("slowus=").Append(record.SlowUs[i]);
         }
-        line.Append(" slowt=").AppendJoin('/', record.SlowByTime).Append(" slowtx=").AppendJoin('/', record.SlowByTx);
+        line.Append(" slowt=").AppendJoin('/', record.SlowByTime).Append(" slowtx=").AppendJoin('/', record.SlowByTx)
+            .Append(" warmok=").Append(record.WarmOk).Append(" warmlate=").Append(record.WarmLate).Append(" warmnone=").Append(record.WarmNone)
+            .Append(" slowok=").Append(record.SlowOk).Append(" slowlate=").Append(record.SlowLate).Append(" slownone=").Append(record.SlowNone)
+            .Append(" slowtop=").Append(record.TopTxs).Append(" disc=").Append(record.Discovery);
         Console.Out.WriteLine(line.ToString());
     }
 }
