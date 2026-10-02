@@ -60,8 +60,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
 
         if (_enablePerMethodMetrics)
         {
-            JsonRpcMetricLabels label = new(report.Method, report.Success);
-            Metrics.JsonRpcCallDurationMicros.Observe(reportHandlingTimeMicroseconds, label);
+            Metrics.JsonRpcCallDurationMicros.Observe(reportHandlingTimeMicroseconds, JsonRpcMetricLabels.Get(report.Method, report.Success));
         }
 
         if (!_logger.IsInfo)
