@@ -279,6 +279,34 @@ public partial class ColumnBackfillTests
         }
     }
 
+    /// <summary>
+    /// Fetched columns reach the store through the pool's writer thread, so the check that a window is complete must wait for the
+    /// queued writes; otherwise nearly every window with blobs would count as incomplete and wait for the retry.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_window_whose_fetched_columns_are_still_queued_for_the_store_completes_without_a_retry(CancellationToken token)
+    {
+        using ColumnStoreWriter writer = new(LimboLogs.Instance);
+        await using Fixture fixture = Fixture.Create(storeWriter: writer);
+        using ManualResetEventSlim release = new();
+        int held = 0;
+        // Held from the first column request, so the fetched columns' writes queue behind it while the fetch returns.
+        fixture.OnColumnsRequested = () =>
+        {
+            if (Interlocked.Exchange(ref held, 1) == 0)
+            {
+                writer.Post(() => release.Wait(token));
+                _ = Task.Delay(300, token).ContinueWith(_ => release.Set(), TaskScheduler.Default);
+            }
+        };
+
+        Task run = fixture.StartBackfill(TimeSpan.FromHours(1), token, fixture.Peer("peer"));
+
+        Assert.That(async () => await fixture.UntilFloorAsync(0, token).WaitAsync(TimeSpan.FromSeconds(10), token), Throws.Nothing, "the window waited for the retry");
+        await run.WaitAsync(token);
+    }
+
     [Test]
     [CancelAfter(60_000)]
     public async Task Completed_backfill_serves_blocks_below_the_anchor_by_range(CancellationToken token)
@@ -361,9 +389,11 @@ public partial class ColumnBackfillTests
 
         public List<Hash256> RequestedRoots { get; } = [];
 
+        public Action? OnColumnsRequested { get; set; }
+
         public IReadOnlyList<StubPeer> Peers => _peers;
 
-        public static Fixture Create(ILogManager? logManager = null)
+        public static Fixture Create(ILogManager? logManager = null, ColumnStoreWriter? storeWriter = null)
         {
             ImportableBlobBlock chain = ImportableBlobBlock.Create();
             BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), chain.Spec);
@@ -376,7 +406,7 @@ public partial class ColumnBackfillTests
             }
 
             store.ApplyCanonicalIndexChanges([(AnchorSlot, fixture.Roots[4]), (HeadSlot, fixture.Roots[5])], HeadSlot);
-            fixture.UseFreshPool();
+            fixture.UseFreshPool(storeWriter);
             return fixture;
         }
 
@@ -391,9 +421,9 @@ public partial class ColumnBackfillTests
         private static ManualTimestamper StoppedAtSlot(BeaconChainSpec spec, ulong slot) =>
             new(DateTimeOffset.FromUnixTimeSeconds((long)(spec.GenesisTime + slot * spec.SecondsPerSlot)).UtcDateTime);
 
-        private void UseFreshPool()
+        private void UseFreshPool(ColumnStoreWriter? storeWriter = null)
         {
-            Pool = new DataColumnSidecarPool(store: Store, clock: Clock);
+            Pool = new DataColumnSidecarPool(store: Store, clock: Clock, storeWriter: storeWriter);
             _floorCheck = Pool.SeedCompletelyServableFloor(Math.Max(AnchorSlot, Store.GetCanonicalIndexTopSlot() ?? 0));
         }
 
@@ -413,6 +443,7 @@ public partial class ColumnBackfillTests
                 (start, count) => [.. Roots.Where(root => _blocksByRoot[root].Slot >= start && _blocksByRoot[root].Slot < start + count).Select(root => _blocksByRoot[root])],
                 rootHandler: identifiers =>
                 {
+                    OnColumnsRequested?.Invoke();
                     lock (RequestedRoots)
                     {
                         RequestedRoots.AddRange(identifiers.Select(static i => i.BlockRoot!));
@@ -425,13 +456,15 @@ public partial class ColumnBackfillTests
             return peer;
         }
 
-        public Task StartBackfill(CancellationToken token, params StubPeer[] peers)
+        public Task StartBackfill(CancellationToken token, params StubPeer[] peers) => StartBackfill(TimeSpan.FromMilliseconds(50), token, peers);
+
+        public Task StartBackfill(TimeSpan retryDelay, CancellationToken token, params StubPeer[] peers)
         {
             StubPool pool = new(peers);
             RangeSync rangeSync = new(pool, LogManager, Pool, _chain.Spec, Clock, _discovery);
             Backfill = new ColumnBackfill(Store, Pool, rangeSync, pool, Clock, _chain.Spec, Status, new DiscoveryNodeCustodySource(_discovery), LogManager)
             {
-                RetryDelay = TimeSpan.FromMilliseconds(50),
+                RetryDelay = retryDelay,
                 WindowPause = TimeSpan.FromMilliseconds(1),
                 HeadPollDelay = TimeSpan.FromMilliseconds(10),
             };
