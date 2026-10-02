@@ -2122,13 +2122,13 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// Under EIP-7928 an EIP-7702 delegation set by one call must be visible to the next call, even when the
-    /// authority's code was overridden: the per-transaction code repositories read code overrides from the state.
+    /// An EIP-7702 delegation set by one call must be visible to the next call, even when the authority's code was
+    /// overridden: an override is a pre-state write, not a layer over the state.
     /// </summary>
     [Test]
-    public async Task eth_simulateV1_delegation_replaces_code_override_on_bal_path()
+    public async Task eth_simulateV1_delegation_replaces_code_override([Values] bool balPath)
     {
-        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
 
         AuthorizationTuple authorization = new EthereumEcdsa(chain.SpecProvider.ChainId)
             .Sign(TestItem.PrivateKeyB, chain.SpecProvider.ChainId, Return42Contract, 0);
