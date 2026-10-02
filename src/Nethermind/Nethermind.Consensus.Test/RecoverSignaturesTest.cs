@@ -168,7 +168,9 @@ public class RecoverSignaturesTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(observedBudgets.Count, Is.InRange(16, 20));
-            int expectedBudget = group?.Concurrency ?? (background ? Math.Max(1, Environment.ProcessorCount / 2) : budget == 0 ? Environment.ProcessorCount : budget);
+            int expectedBudget = group is not null
+                ? background ? Math.Max(1, group.Concurrency / 2) : group.Concurrency
+                : background ? Math.Max(1, Environment.ProcessorCount / 2) : budget == 0 ? Environment.ProcessorCount : budget;
             Assert.That(observedBudgets, Is.All.EqualTo(expectedBudget));
             Assert.That(txs.Select(tx => tx.SenderAddress), Is.All.EqualTo(TestItem.AddressA));
             Assert.That(txs.SelectMany(tx => tx.AuthorizationList!).Select(auth => auth.Authority), Is.All.EqualTo(TestItem.AddressA));

@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.Processing
             if (current is not null && !current.IsCompleted && current.BlockHash == blockHash)
                 return;
 
-            Recovery recovery = new(this, blockHash, txs, releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2));
+            Recovery recovery = new(this, blockHash, txs, releaseSpec, Math.Max(1, (group?.Concurrency ?? Environment.ProcessorCount) / 2));
             Volatile.Write(ref _current, recovery);
             try
             {
@@ -280,7 +280,7 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginLimitedWorkerScope(concurrency);
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)
