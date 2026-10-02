@@ -43,7 +43,7 @@ internal static class JsonRpcRequestDecoder
     /// <returns><c>false</c> if the body is not exactly one JSON object, in which case the caller must parse it another way.</returns>
     /// <remarks>
     /// The envelope pass doubles as the single-document check: it stops at the root object's end, so only the
-    /// remaining bytes need a whitespace scan, rather than a separate full <see cref="Utf8JsonReader.Skip"/> pass.
+    /// remaining bytes need a whitespace scan.
     /// </remarks>
     public static bool TryReadSingleObjectRequest(
         ReadOnlyMemory<byte> memory,
