@@ -79,9 +79,8 @@ public sealed class IdentifyAgentVersionProbe(IdentifyProtocol identify, Identif
     /// <summary>Verifies an identify answer against the session's authenticated remote key and records it in the peer store.</summary>
     /// <returns>The answer's <c>agentVersion</c>, or <c>null</c> when it carries none.</returns>
     /// <exception cref="PeerConnectionException">The answer names another key, or its signed peer record fails the configured policy.</exception>
-    /// <remarks>The answer's protocols always replace the stored ones; its record and sequence number are stored only when the record verifies and
-    /// its sequence number is higher than the stored one, as the library's identify dial does. An absent record reads as empty and fails
-    /// verification, so only <see cref="PeerRecordsVerificationPolicy.RequireCorrect"/> refuses it.</remarks>
+    /// <remarks>As the library's identify dial: protocols always replace the stored ones, a record is stored only when it verifies and is newer, and only
+    /// <see cref="PeerRecordsVerificationPolicy.RequireCorrect"/> refuses an absent or invalid record. Unlike it, nothing reaches discovery, whose pubsub dials bypass the peer band.</remarks>
     internal static string? Apply(IdentifyMessage message, Libp2p.Core.State remote, IdentifyProtocolSettings settings, PeerStore peerStore)
     {
         PublicKey remoteKey = remote.RemotePublicKey ?? throw new PeerConnectionException("Identify before the remote key is authenticated");
@@ -91,7 +90,19 @@ public sealed class IdentifyAgentVersionProbe(IdentifyProtocol identify, Identif
             throw new PeerConnectionException("Malformed peer identity: the remote public key corresponds to a different peer id");
         }
 
-        bool verified = SigningHelper.VerifyPeerRecord(message.SignedPeerRecord, remoteKey, out ulong seq);
+        bool verified;
+        ulong seq;
+        try
+        {
+            verified = SigningHelper.VerifyPeerRecord(message.SignedPeerRecord, remoteKey, out seq);
+        }
+        catch (InvalidProtocolBufferException)
+        {
+            // A record that does not parse is an unverified one, as in the library's identify dial.
+            verified = false;
+            seq = 0;
+        }
+
         if (!verified && settings.PeerRecordsVerificationPolicy == PeerRecordsVerificationPolicy.RequireCorrect)
         {
             throw new PeerConnectionException("Malformed peer identity: peer record signature is not valid");

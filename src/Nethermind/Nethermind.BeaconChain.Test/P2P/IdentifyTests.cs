@@ -40,6 +40,7 @@ public class IdentifyTests
         RecordSignedByAnotherPeer,
         NoRecord,
         NoAgentVersion,
+        MalformedRecord,
     }
 
     [Test]
@@ -160,6 +161,8 @@ public class IdentifyTests
     [TestCase(Answer.NoRecord, PeerRecordsVerificationPolicy.RequireCorrect, false)]
     [TestCase(Answer.NoRecord, PeerRecordsVerificationPolicy.RequireWithWarning, true)]
     [TestCase(Answer.NoAgentVersion, PeerRecordsVerificationPolicy.RequireCorrect, true)]
+    [TestCase(Answer.MalformedRecord, PeerRecordsVerificationPolicy.RequireCorrect, false)]
+    [TestCase(Answer.MalformedRecord, PeerRecordsVerificationPolicy.RequireWithWarning, true)]
     public void An_identify_answer_is_accepted_only_for_the_authenticated_peer(Answer answer, PeerRecordsVerificationPolicy policy, bool accepted)
     {
         Identity remote = new(privateKey: null, KeyType.Secp256K1);
@@ -169,6 +172,12 @@ public class IdentifyTests
         if (answer == Answer.NoAgentVersion)
         {
             message.ClearAgentVersion();
+        }
+
+        if (answer == Answer.MalformedRecord)
+        {
+            // A length-delimited field cut short: the record does not parse.
+            message.SignedPeerRecord = ByteString.CopyFrom([0x0a, 0xff]);
         }
 
         Libp2p.Core.State session = SessionWith(remote);
