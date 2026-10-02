@@ -17,6 +17,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
@@ -270,6 +271,7 @@ public partial class BlockProcessor(
 
     private void CommitStateAndStorageRoots(IReleaseSpec spec)
     {
+        NewPayloadTrace.StampProcessing(NewPayloadTrace.MerkleStart);
         using MetricsTimer<StorageMerkleTimeSink> _ = new();
         _stateProvider.Commit(spec, commitRoots: true);
     }
@@ -280,6 +282,7 @@ public partial class BlockProcessor(
         {
             _stateProvider.RecalculateStateRoot();
         }
+        NewPayloadTrace.StampProcessing(NewPayloadTrace.StateRootDone);
         header.StateRoot = _stateProvider.StateRoot;
     }
 

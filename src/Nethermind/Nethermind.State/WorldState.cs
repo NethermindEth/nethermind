@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -431,10 +432,16 @@ namespace Nethermind.State
 
             if (commitRoots)
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
-                writeBatch.OnAccountUpdated += _onAccountUpdated;
-                _persistentStorageProvider.FlushToTree(writeBatch);
-                _stateProvider.FlushToTree(writeBatch);
+                NewPayloadTrace.StampProcessing(NewPayloadTrace.JournalDone);
+                using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount))
+                {
+                    writeBatch.OnAccountUpdated += _onAccountUpdated;
+                    _persistentStorageProvider.FlushToTree(writeBatch);
+                    NewPayloadTrace.StampProcessing(NewPayloadTrace.StorageRootsDone);
+                    _stateProvider.FlushToTree(writeBatch);
+                    NewPayloadTrace.StampProcessing(NewPayloadTrace.AccountsFlushed);
+                }
+                NewPayloadTrace.StampProcessing(NewPayloadTrace.AccountsInserted);
             }
 
             // Fold this scope's accumulated counters into the global metrics. Runs per-tx commit and
