@@ -18,12 +18,12 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
     {
     }
 
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
-        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
+        RlpBehaviors rlpBehaviors)
     {
         transaction.SourceHash = decoderContext.DecodeKeccak();
         transaction.SenderAddress = decoderContext.DecodeAddress();
-        transaction.To = decoderContext.DecodeAddress();
+        transaction.To = decoderContext.DecodeAddressOrNull();
         transaction.Mint = decoderContext.DecodeUInt256();
         transaction.Value = decoderContext.DecodeUInt256();
         transaction.GasLimit = decoderContext.DecodeULong();

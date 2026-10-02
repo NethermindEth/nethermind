@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -47,7 +46,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     )
-        => await LookupCore(targetHash, k, findNeighbourOp, null, token);
+        => await LookupCore(targetHash, k, findNeighbourOp, null, token, callerToken: token);
 
     public async IAsyncEnumerable<TNode> LookupNodes(
         TKadKey targetHash,
@@ -97,7 +96,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             Exception? error = null;
             try
             {
-                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token);
+                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token, callerToken: token);
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
@@ -135,16 +134,20 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         Func<TNode, bool>? publishNode,
-        CancellationToken token
+        CancellationToken token,
+        CancellationToken callerToken
     )
     {
         if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initiate lookup for hash {targetHash}");
 
+        // `token` drives this lookup and is shadowed below by a linked source cancelled on normal
+        // completion — the drain after a worker finishes, and (via LookupNodes) on reaching maxResults.
+        // `callerToken` is the real caller/shutdown token, used to tell an expected teardown failure from
+        // a genuine one; it is never cancelled by normal completion.
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
 
-        ConcurrentDictionary<TKadKey, TNode> queried = new();
-        ConcurrentDictionary<TKadKey, TNode> seen = new();
+        HashSet<TKadKey> seen = [];
 
         IComparer<TKadKey> comparer = Comparer<TKadKey>.Create((h1, h2) =>
             distance.Compare(h1, h2, targetHash));
@@ -168,7 +171,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash))
         {
             TKadKey nodeHash = nodeHashProvider.GetHash(node);
-            if (!seen.TryAdd(nodeHash, node))
+            if (!seen.Add(nodeHash))
             {
                 continue;
             }
@@ -188,7 +191,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             {
                 while (!Volatile.Read(ref finished))
                 {
-                    token.ThrowIfCancellationRequested();
+                    if (token.IsCancellationRequested) break;
                     if (!TryGetNodeToQuery(out TKadKey toQueryHash, out TNode toQueryNode))
                     {
                         if (queryingTask > 0)
@@ -211,7 +214,6 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                             break;
                         }
 
-                        queried.TryAdd(toQueryHash, toQueryNode);
                         TNode[]? neighbours = await WrappedFindNeighbourOp(toQueryNode);
                         if (neighbours is null) continue;
 
@@ -256,7 +258,15 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             try
             {
                 // targetHash is implied in findNeighbourOp
-                TNode[]? ret = await findNeighbourOp(node, cts.Token);
+                Task<TNode[]?> request = findNeighbourOp(node, cts.Token);
+                await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                if (request.IsCanceled && cts.IsCancellationRequested)
+                {
+                    if (!token.IsCancellationRequested) nodeHealthTracker.OnRequestFailed(node);
+                    return null;
+                }
+
+                TNode[]? ret = await request;
                 if (ret is null) return null;
 
                 nodeHealthTracker.OnIncomingMessageFrom(node);
@@ -268,18 +278,24 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 nodeHealthTracker.OnRequestFailed(node);
                 return null;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
-                throw;
+                return null;
             }
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                // Transport failures (e.g. unreachable host) are expected during discovery, so log them quietly.
-                bool shouldWarn = e is not SocketException && e.InnerException is not SocketException;
-                if (shouldWarn)
+                // Expected-and-quiet: a failure after the caller's token is cancelled (teardown, in whatever
+                // shape DotNetty raises), or a transport failure (unreachable host, torn-down channel —
+                // ClosedChannelException derives from IOException). Anything else is a genuine fault and
+                // warrants a warning. Use the caller's token, not the internal one, which is also cancelled
+                // on the normal drain after the first worker returns and on reaching maxResults.
+                bool isExpectedFailure = callerToken.IsCancellationRequested
+                    || e is SocketException or IOException
+                    || e.InnerException is SocketException or IOException;
+                if (!isExpectedFailure)
                 {
-                    if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogWarning($"Find neighbour op failed: {e}");
+                    if (_logger.IsEnabled(LogLevel.Warning)) _logger.LogWarning($"Find neighbour op failed: {e}");
                 }
                 else if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Find neighbour op failed: {e.Message}");
                 return null;
@@ -319,11 +335,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 {
                     TKadKey neighbourHash = nodeHashProvider.GetHash(neighbour);
 
-                    // Already queried, we ignore
-                    if (queried.ContainsKey(neighbourHash)) continue;
-
-                    // When seen already dont record
-                    if (!seen.TryAdd(neighbourHash, neighbour)) continue;
+                    if (!seen.Add(neighbourHash)) continue;
 
                     bestSeen.Enqueue((neighbourHash, neighbour), neighbourHash);
                     if (!TryPublish(neighbour))

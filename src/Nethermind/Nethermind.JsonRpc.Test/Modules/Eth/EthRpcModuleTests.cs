@@ -29,6 +29,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Json;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
@@ -36,17 +37,21 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
+using Nethermind.State;
+using static Nethermind.JsonRpc.Test.TimeoutTestHelper;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -61,15 +66,8 @@ public partial class EthRpcModuleTests
     private const string ExpectedHeadTxRawAtIndex1 = "0xf85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb";
     private const string ExpectedFilterLogResponse = """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""";
     private const int LogsStreamEnvelopeEndReserveBytes = 128;
-    private const int TimeoutCancellationTokenPoolSize = 64;
-
-    private static string ExpectedFilterLogStreamResponse(string status) =>
-        ExpectedFilterLogResponse.Replace(",\"id\":67}", $",\"_streamStatus\":\"{status}\",\"id\":67}}");
 
     private static readonly Address TestAccount = new(TestAccountAddress);
-
-    private static FilterLog CreateTestFilterLog() =>
-        new(1, 1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, [1, 2, 3], [TestItem.KeccakC, TestItem.KeccakD]);
 
     private static readonly byte[] InfiniteLoopCode = Prepare.EvmCode
         .Op(Instruction.JUMPDEST)
@@ -95,7 +93,30 @@ public partial class EthRpcModuleTests
         .Op(Instruction.RETURN)
         .Done;
 
+    // Head block (number 3) access list in the execution-apis wire format.
+    private const string ExpectedHeadBlockAccessList = "[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x000064d678505ad48f8ccb093bc65613800e8282\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bff46984e3725691fa540a8c7589300d8282\",\"storageChanges\":[],\"storageReads\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"key\":\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"changes\":[{\"index\":\"0x0\",\"value\":\"0x7cf126ed165da77cf9d11d9cbbd2f1704c6aa3b977f7039e047de1e7d7599978\"}]}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0xa410\"},{\"index\":\"0x2\",\"value\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0x3635c9adc5dea00002\"},{\"index\":\"0x2\",\"value\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0x3635c9adc5de9f5bee\"},{\"index\":\"0x2\",\"value\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"index\":\"0x1\",\"value\":\"0x2\"},{\"index\":\"0x2\",\"value\":\"0x3\"}],\"codeChanges\":[]}]";
+
+    private static string ExpectedFilterLogStreamResponse(string status) =>
+        ExpectedFilterLogResponse.Replace(",\"id\":67}", $",\"_streamStatus\":\"{status}\",\"id\":67}}");
+
+    private static FilterLog CreateTestFilterLog() =>
+        new(1, 1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, [1, 2, 3], [TestItem.KeccakC, TestItem.KeccakD]);
+
     private static void AssertAccountDoesNotExist(Context ctx, Address account) => Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
+
+    private sealed class NoRecoveryEthereumEcdsa(IEthereumEcdsa signer) : IEthereumEcdsa
+    {
+        public ulong ChainId => signer.ChainId;
+
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => signer.Sign(privateKey, in message);
+
+        public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message) => signer.RecoverPublicKey(signature, in message);
+
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) =>
+            signer.RecoverCompressedPublicKey(signature, in message);
+
+        public Address? RecoverAddress(Signature signature, in ValueHash256 message) => null;
+    }
 
     [TestCase("earliest", "0x3635c9adc5dea00000")]
     [TestCase("latest", "0x3635c9adc5de9f09e5")]
@@ -174,11 +195,14 @@ public partial class EthRpcModuleTests
         ctx.Test.TxPool.SubmitTx(sent, TxHandlingOptions.None);
 
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", sent.Hash);
-        byte[]? txBytes = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized).Result;
-
-        Assert.That(txBytes, Is.Not.Null);
+        JsonRpcResponse<byte[]> response = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC response.");
+        byte[] txBytes = response.Result
+            ?? throw new InvalidOperationException("Expected raw transaction bytes.");
         RlpReader context = new(txBytes);
-        Transaction tx = TxDecoder.Instance.Decode(ref context, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        Transaction tx = TxDecoder.Instance.DecodeGuardNotNull(
+            ref context,
+            RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         Assert.That(tx.IsInMempoolForm(), Is.True);
     }
 
@@ -247,6 +271,22 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockReceipts", "latest");
         string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"transactionHash\":\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"cumulativeGasUsed\":\"0x5208\",\"gasUsed\":\"0x5208\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"},{\"transactionHash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"cumulativeGasUsed\":\"0xa410\",\"gasUsed\":\"0x5208\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"}],\"id\":67}";
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Eth_config_includes_builder_request_contracts()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_config");
+        JToken result = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SelectToken("result.current.systemContracts.BUILDER_DEPOSIT_CONTRACT_ADDRESS")?.Value<string>(),
+                Is.EqualTo("0x0000bff46984e3725691fa540a8c7589300d8282"));
+            Assert.That(result.SelectToken("result.current.systemContracts.BUILDER_EXIT_CONTRACT_ADDRESS")?.Value<string>(),
+                Is.EqualTo("0x000064d678505ad48f8ccb093bc65613800e8282"));
+        }
     }
 
     [Test]
@@ -524,6 +564,34 @@ public partial class EthRpcModuleTests
         }
     }
 
+    // HasStateForBlock passes but the read finds the node gone: state this node does not hold (a still-syncing flat
+    // node, #13603) is -32002, while a genuinely missing trie node keeps the Geth-parity -32000.
+    [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block")]
+    [TestCase(false, ErrorCodes.ResourceNotFound, "missing trie node")]
+    public async Task Eth_get_storage_at_missing_trie_node_maps_by_cause(bool stateNotRetained, int expectedCode, string expectedMessage)
+    {
+        using Context ctx = await Context.Create(configurer: builder =>
+            builder.AddDecorator<IStateReader>((_, inner) => new MissingStorageStateReader(inner, stateNotRetained)));
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
+
+        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
+        Assert.That(serialized, Does.Contain(expectedMessage));
+    }
+
+    private sealed class MissingStorageStateReader(IStateReader inner, bool stateNotRetained) : IStateReader
+    {
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) => inner.TryGetAccount(baseBlock, address, out account);
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) =>
+            throw new MissingTrieNodeException($"State for block {baseBlock?.Number} is unavailable", null, TreePath.Empty, Keccak.EmptyTreeHash,
+                stateNotRetained ? new StateNotRetainedException($"No state available for block {baseBlock?.Number}") : null);
+        public byte[]? GetCode(Hash256 codeHash) => inner.GetCode(codeHash);
+        public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
+            inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+        public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
+    }
+
     private static IEnumerable<TestCaseData> EthGetStorageValuesCases()
     {
         string addressA = TestItem.AddressA.Bytes.ToHexString(true);
@@ -634,9 +702,8 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
     }
 
-    [TestCase("0xFFFFFFFFF")]
-    [TestCase("0x99999999999999")]
-    public async Task Eth_get_balance_future_block_returns_header_not_found(string blockParameter)
+    [Test]
+    public async Task Eth_get_balance_future_block_returns_header_not_found([Values("0xFFFFFFFFF", "0x99999999999999")] string blockParameter)
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), blockParameter);
@@ -740,53 +807,8 @@ public partial class EthRpcModuleTests
         return serialized;
     }
 
-    private static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
-    {
-        JsonRpcConfig config = new();
-        List<CancellationTokenSource> rentedTimeouts = new(TimeoutCancellationTokenPoolSize);
-        for (int i = 0; i < TimeoutCancellationTokenPoolSize; i++)
-        {
-            rentedTimeouts.Add(config.BuildTimeoutCancellationToken());
-        }
-
-        for (int i = 0; i < rentedTimeouts.Count; i++)
-        {
-            rentedTimeouts[i].Dispose();
-        }
-
-        TrackingCancellationTokenSource timeout = new();
-        JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-        return timeout;
-    }
-
-    private static void DisposeIfNotAlreadyObserved(TrackingCancellationTokenSource timeout)
-    {
-        if (timeout.DisposeCount == 0)
-        {
-            timeout.Dispose();
-        }
-    }
-
-    private sealed class TrackingCancellationTokenSource : CancellationTokenSource
-    {
-        private int _disposeCount;
-
-        public int DisposeCount => Volatile.Read(ref _disposeCount);
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                Interlocked.Increment(ref _disposeCount);
-            }
-
-            base.Dispose(disposing);
-        }
-    }
-
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Eth_get_filter_logs(bool enableLogsStreamMode)
+    [Test]
+    public async Task Eth_get_filter_logs([Values] bool enableLogsStreamMode)
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
@@ -882,9 +904,8 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"Filter with id: {filterId} does not exist.\"}},\"id\":67}}"));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Eth_get_logs_get_filter_logs_same_result(bool enableLogsStreamMode)
+    [Test]
+    public async Task Eth_get_logs_get_filter_logs_same_result([Values] bool enableLogsStreamMode)
     {
         byte[] logCreateCode = Prepare.EvmCode
                 .PushData(32)
@@ -981,26 +1002,56 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
-    [TestCase(2, """{"fromBlock":"0x0","toBlock":"0x3"}""", true, TestName = "range 4 exceeds limit 2 -> rejected")]
-    [TestCase(4, """{"fromBlock":"0x0","toBlock":"0x3"}""", false, TestName = "range 4 within limit 4 -> allowed")]
-    [TestCase(0, """{"fromBlock":"0x0","toBlock":"0x3"}""", false, TestName = "limit disabled -> allowed")]
-    [TestCase(2, """{"toBlock":"0x3"}""", true, TestName = "fromBlock omitted -> Earliest (0x0), range 4 exceeds limit 2 -> rejected")]
-    [TestCase(4, """{"toBlock":"0x3"}""", false, TestName = "fromBlock omitted -> Earliest (0x0), range 4 within limit 4 -> allowed")]
-    [TestCase(2, """{"fromBlock":"0x0"}""", true, TestName = "toBlock omitted -> Latest (0x3), range 4 exceeds limit 2 -> rejected")]
-    [TestCase(4, """{"fromBlock":"0x0"}""", false, TestName = "toBlock omitted -> Latest (0x3), range 4 within limit 4 -> allowed")]
-    public async Task Eth_get_logs_enforces_max_block_depth(int maxBlockDepth, string parameter, bool shouldReject)
+    private static async Task<string> CallLogsMethod(Context ctx, string method, string filter)
+    {
+        string parameter = filter;
+
+        if (method == "eth_getFilterLogs")
+        {
+            using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
+            parameter = RpcTest.AssertSuccess<UInt256?>(newFilterResponse)?.ToString() ?? "0x0";
+        }
+
+        return await ctx.Test.TestEthRpc(method, parameter);
+    }
+
+    private static IEnumerable<TestCaseData> MaxBlockDepthCases()
+    {
+        foreach ((string name, int maxBlockDepth, string filter, bool shouldReject) in Cases())
+        {
+            yield return new TestCaseData("eth_getLogs", maxBlockDepth, filter, shouldReject).SetName($"{{m}}_getLogs_{name}");
+            yield return new TestCaseData("eth_getFilterLogs", maxBlockDepth, filter, shouldReject).SetName($"{{m}}_getFilterLogs_{name}");
+        }
+
+        static IEnumerable<(string Name, int MaxBlockDepth, string Filter, bool ShouldReject)> Cases()
+        {
+            const int range = TestBlockchain.HeadNumber + 1;
+            const int tooLow = range - 1;
+
+            string head = $"0x{TestBlockchain.HeadNumber:x}";
+            string wholeChain = $$"""{"fromBlock":"0x0","toBlock":"{{head}}"}""";
+            string fromOmitted = $$"""{"toBlock":"{{head}}"}""", toOmitted = """{"fromBlock":"0x0"}""";
+
+            yield return ($"range {range} exceeds limit {tooLow} -> rejected", tooLow, wholeChain, true);
+            yield return ($"range {range} within limit {range} -> allowed", range, wholeChain, false);
+            yield return ("limit disabled -> allowed", 0, wholeChain, false);
+            yield return ($"fromBlock omitted -> Earliest, range {range} exceeds limit {tooLow} -> rejected", tooLow, fromOmitted, true);
+            yield return ($"fromBlock omitted -> Earliest, range {range} within limit {range} -> allowed", range, fromOmitted, false);
+            yield return ($"toBlock omitted -> Latest, range {range} exceeds limit {tooLow} -> rejected", tooLow, toOmitted, true);
+            yield return ($"toBlock omitted -> Latest, range {range} within limit {range} -> allowed", range, toOmitted, false);
+        }
+    }
+
+    [TestCaseSource(nameof(MaxBlockDepthCases))]
+    public async Task Eth_logs_enforce_max_block_depth(string method, int maxBlockDepth, string filter, bool shouldReject)
     {
         using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-            .Returns([CreateTestFilterLog()]);
 
         ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: false)
-            .WithBlockchainBridge(bridge)
             .WithReceiptConfig(new ReceiptConfig { MaxBlockDepth = maxBlockDepth })
             .Build();
 
-        string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
+        string serialized = await CallLogsMethod(ctx, method, filter);
 
         if (shouldReject)
         {
@@ -1009,8 +1060,40 @@ public partial class EthRpcModuleTests
         }
         else
         {
-            Assert.That(serialized, Is.EqualTo(ExpectedFilterLogResponse));
+            Assert.That(serialized, Does.Not.Contain("\"error\""));
         }
+    }
+
+    private static IEnumerable<TestCaseData> ReversedRangeEndingAtBlockZeroCases()
+    {
+        foreach ((string name, string filter, ulong expectedFromBlock) in Cases())
+        {
+            yield return new TestCaseData("eth_getLogs", filter, expectedFromBlock, false).SetName($"{{m}}_getLogs_{name}_Buffered");
+            yield return new TestCaseData("eth_getLogs", filter, expectedFromBlock, true).SetName($"{{m}}_getLogs_{name}_Stream");
+            yield return new TestCaseData("eth_getFilterLogs", filter, expectedFromBlock, false).SetName($"{{m}}_getFilterLogs_{name}_Buffered");
+            yield return new TestCaseData("eth_getFilterLogs", filter, expectedFromBlock, true).SetName($"{{m}}_getFilterLogs_{name}_Stream");
+        }
+
+        static IEnumerable<(string Name, string Filter, ulong ExpectedFromBlock)> Cases()
+        {
+            yield return ("latest_to_earliest", """{"fromBlock":"latest","toBlock":"earliest"}""", TestBlockchain.HeadNumber);
+            yield return ("latest_to_block_zero", """{"fromBlock":"latest","toBlock":"0x0"}""", TestBlockchain.HeadNumber);
+            yield return ("explicit_from_to_earliest", """{"fromBlock":"0x2","toBlock":"earliest"}""", 2UL);
+        }
+    }
+
+    [TestCaseSource(nameof(ReversedRangeEndingAtBlockZeroCases))]
+    public async Task Eth_logs_reject_reversed_range_ending_at_block_zero(string method, string filter, ulong expectedFromBlock, bool enableLogsStreamMode)
+    {
+        using Context ctx = await Context.Create();
+
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build();
+
+        string serialized = await CallLogsMethod(ctx, method, filter);
+
+        string message = $"From block {expectedFromBlock} is later than to block 0.";
+        Assert.That(serialized, Is.EqualTo(
+            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}","data":"System.ArgumentException: {{message}}"},"id":67}"""));
     }
 
     [TestCase("eth_getLogs", "{}")]
@@ -1203,6 +1286,31 @@ public partial class EthRpcModuleTests
         Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo("[]"));
     }
 
+    [Test]
+    public async Task Eth_get_logs_envelope_preserves_body_limit([Values] bool isBatch, [Values(1, 100)] int allowedLogs)
+    {
+        string logJson = JsonSerializer.Serialize(CreateTestFilterLog(), EthereumJsonSerializer.JsonOptions);
+        int logBytes = Encoding.UTF8.GetByteCount(logJson);
+        long priorBytes = isBatch ? 1000 : 0;
+        long limit = priorBytes + 26 + allowedLogs * (logBytes + 1) + LogsStreamEnvelopeEndReserveBytes;
+        using LogsStreamableResult result = CreateLogsStreamableResult(
+            Enumerable.Repeat(CreateTestFilterLog(), allowedLogs + 1),
+            maxLogsResponseBodySize: isBatch ? long.MaxValue : limit,
+            maxBatchResponseBodySize: isBatch ? limit : null);
+        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(67L), Result = result };
+        using MemoryStream stream = new();
+        CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)), priorBytes);
+
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, isBatch, CancellationToken.None);
+        await writer.CompleteAsync();
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(allowedLogs));
+            Assert.That(document.RootElement.GetProperty("_streamStatus").GetString(), Is.EqualTo("truncated"));
+        }
+    }
+
     [TestCaseSource(nameof(LogsStreamStatusCases))]
     public async Task Eth_get_logs_stream_mode_writes_status(string statusCase, string expected)
     {
@@ -1325,7 +1433,7 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32016,\"message\":\"eth_getLogs request was canceled due to enabled timeout.\"},\"id\":67}"));
     }
 
-    [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"latest\"}", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"pruned history unavailable\"},\"id\":67}")]
+    [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"latest\"}", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}")]
     public async Task Eth_get_logs_with_resourceNotFound(string parameter, string expected)
     {
         using Context ctx = await Context.Create();
@@ -1355,7 +1463,7 @@ public partial class EthRpcModuleTests
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x1");
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"pruned history unavailable\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
 
         static IEnumerable<FilterLog> ThrowsOnIteration()
         {
@@ -1463,10 +1571,8 @@ public partial class EthRpcModuleTests
         Assert.That(serialized2, Is.EqualTo(expectedResult), serialized2);
     }
 
-    [TestCase("hash")]
-    [TestCase("nonce")]
-    [TestCase("miner")]
-    public async Task Eth_getBlockByNumber_pending_fields_should_be_null(string field)
+    [Test]
+    public async Task Eth_getBlockByNumber_pending_fields_should_be_null([Values("hash", "nonce", "miner")] string field)
     {
         using Context ctx = await Context.Create();
 
@@ -1521,22 +1627,23 @@ public partial class EthRpcModuleTests
     [TestCase("eth_getHeaderByNumber", "0x9999999", TestName = "UnknownNumber")]
     [TestCase("eth_getHeaderByNumber", "finalized", TestName = "FinalizedAbsent")]
     [TestCase("eth_getHeaderByNumber", "safe", TestName = "SafeAbsent")]
-    public async Task EthGetHeaderByX_WhenBlockUnknown_ReturnsNull(string method, string blockParam)
+    [TestCase("eth_getHeaderByNumber", "pending", TestName = "Pending")]
+    public async Task EthGetHeaderByX_WhenBlockUnknownOrPending_ReturnsNull(string method, string blockParam)
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc(method, blockParam);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
-    [TestCase("hash")]
-    [TestCase("nonce")]
-    [TestCase("miner")]
-    public async Task EthGetHeaderByNumber_WhenPending_NilsTransientFields(string field)
+    [Test]
+    public async Task EthGetHeaderByHash_WhenPendingHash_ReturnsHeader()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByNumber", "pending");
-        JToken json = JToken.Parse(serialized);
-        Assert.That(json["result"]![field]!.Type, Is.EqualTo(JTokenType.Null));
+        // PendingHash resolves to the head hash, so a hash lookup of it must still return a full header.
+        Assert.That(ctx.Test.BlockTree.PendingHash, Is.EqualTo(ctx.Test.BlockTree.Head!.Hash));
+        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByHash", ctx.Test.BlockTree.Head!.Hash!.ToString());
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+        Assert.That(result["hash"]!.Value<string>(), Is.EqualTo(ctx.Test.BlockTree.Head!.Hash!.ToString()));
     }
 
     [Test]
@@ -1790,9 +1897,8 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""{"jsonrpc":"2.0","result":{"difficulty":"0xf4240","extraData":"0x010203","gasLimit":"0x3d0900","gasUsed":"0x0","hash":"0xe3026a6708b90d5cb25557ac38ddc3f5ef550af10f31e1cf771524da8553fa1c","logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","miner":"0x0000000000000000000000000000000000000000","mixHash":"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2","nonce":"0x00000000000003e8","number":"0x1","parentHash":"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c","receiptsRoot":"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421","sha3Uncles":"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347","size":"0x221","stateRoot":"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f","timestamp":"0xf4240","transactions":[{"nonce":"0x0","blockHash":"0xe3026a6708b90d5cb25557ac38ddc3f5ef550af10f31e1cf771524da8553fa1c","blockNumber":"0x1","blockTimestamp":"0xf4240","transactionIndex":"0x0","from":"0x2d36e6c27c34ea22620e7b7c45de774599406cf3","to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","v":"0x0","r":"0x0","s":"0x0","hash":null}],"transactionsRoot":"0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5","uncles":[]},"id":67}""")).Using(JToken.EqualityComparer));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Eth_get_transaction_receipt(bool postEip4844)
+    [Test]
+    public async Task Eth_get_transaction_receipt([Values] bool postEip4844)
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
@@ -1830,6 +1936,50 @@ public partial class EthRpcModuleTests
             Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"type\":\"0x0\"},\"id\":67}"));
     }
 
+
+    /// <summary>The block-level gas breakdown is diagnostic and outside execution-apis, so a receipt carrying it
+    /// must still serialize to the standard shape in the eth_ namespace.</summary>
+    [Test]
+    public async Task Eth_receipts_omit_the_block_gas_breakdown()
+    {
+        using Context ctx = await Context.Create();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+
+        Block block = Build.A.Block.WithNumber(1).WithTimestamp(10)
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .TestObject;
+
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.WithLogs([]).TestObject;
+        receipt.BlockGasUsed = 10;
+        receipt.ExecutionGasUsed = 11;
+        receipt.StorageGasUsed = 12;
+
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        receiptFinder.Get(Arg.Any<Block>()).Returns([receipt]);
+        receiptFinder.Get(Arg.Any<Hash256>()).Returns([receipt]);
+        blockchainBridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Returns((receipt, 10UL, new(UInt256.One), 0));
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
+
+        using JsonDocument single = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString()));
+        using JsonDocument batch = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getBlockReceipts", "latest"));
+
+        JsonElement[] receipts = [single.RootElement.GetProperty("result"), batch.RootElement.GetProperty("result")[0]];
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (JsonElement element in receipts)
+            {
+                Assert.That(element.GetProperty("gasUsed").GetString(), Is.EqualTo("0x64"), "the standard field still reports the receipt's own gas");
+                Assert.That(element.TryGetProperty("blockGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("executionGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("storageGasUsed", out _), Is.False);
+            }
+        }
+    }
 
     [Test]
     public async Task Eth_get_transaction_receipt_when_block_has_few_receipts()
@@ -2018,7 +2168,8 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
-        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction));
+        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction))
+            ?? throw new InvalidOperationException("Expected a decoded transaction.");
         await txSender.Received().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"transaction invalid, InvalidTxSignature: Signature is invalid.\"},\"id\":67}"));
     }
@@ -2033,17 +2184,120 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid RLP.\"},\"id\":67}"));
     }
 
+    [Test]
+    public async Task Send_raw_transaction_returns_failed_to_recover_sender_when_sender_recovery_fails()
+    {
+        IEthereumEcdsa signingEcdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<IEthereumEcdsa>(new NoRecoveryEthereumEcdsa(signingEcdsa)));
+        Transaction tx = Build.A.Transaction.Signed(signingEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        string serialized = await test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"failed to recover sender\"},\"id\":67}"));
+    }
+
     [TestCaseSource(nameof(SendRawTransactionSyncFailureCases))]
     public async Task EthSendRawTransactionSync_WhenSubmitFailsOrTimesOut_ReturnsExpectedError(
         string rawTxHex, string? timeoutMs, int expectedCode, string expectedMessageFragment)
     {
         using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.RpcTxSyncMaxConcurrentRequests = 1;
         string serialized = timeoutMs is null
             ? await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex)
             : await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex, timeoutMs);
 
-        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
-        Assert.That(serialized, Does.Contain(expectedMessageFragment));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
+            Assert.That(serialized, Does.Contain(expectedMessageFragment));
+        }
+
+        string retry = await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", "c0");
+        Assert.That(retry, Does.Contain("Invalid RLP"));
+    }
+
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    [TestCase(1, true)]
+    [TestCase(2, true)]
+    public async Task EthSendRawTransactionSync_UsesSeparateLimitFromExclusiveCalls(int limit, bool submissionAccepted)
+    {
+        JsonRpcConfig config = new()
+        {
+            EthModuleConcurrentInstances = 1,
+            // Exclusive rentals fail at once instead of queueing, so eth_newBlockFilter below fails
+            // if a pending sync call holds the only exclusive instance.
+            Timeout = 0,
+            RpcTxSyncMaxConcurrentRequests = limit
+        };
+        TaskCompletionSource<(Hash256 Hash, AcceptTxResult? AddTxResult)> submission = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ITxSender sender = Substitute.For<ITxSender>();
+        sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(_ => new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>(submission.Task));
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Throws(new InvalidOperationException("Receipt lookup failed."));
+        IBlockchainBridgeFactory bridgeFactory = Substitute.For<IBlockchainBridgeFactory>();
+        bridgeFactory.CreateBlockchainBridge().Returns(bridge);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton(sender)
+            .AddSingleton(bridgeFactory)
+            .Build();
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        int pendingCount = limit == 0 ? 3 : limit;
+        List<Task<JsonRpcResponse>> pending = [];
+        try
+        {
+            for (int i = 0; i < pendingCount; i++)
+            {
+                Task<JsonRpcResponse> request = service.SendRequestAsync(
+                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context).AsTask();
+                pending.Add(request);
+                Assert.That(request.IsCompleted, Is.False);
+            }
+
+            using JsonRpcResponse filterResponse = await service.SendRequestAsync(
+                RpcTest.BuildJsonRequest("eth_newBlockFilter"), context);
+            RpcTest.AssertSuccess(filterResponse);
+
+            if (limit > 0)
+            {
+                // A refusal completes synchronously. A call let through would wait forever on the submission,
+                // which only the finally releases, so leave it to the finally instead of awaiting it here.
+                Task<JsonRpcResponse> refusedTask = service.SendRequestAsync(
+                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context).AsTask();
+                if (!refusedTask.IsCompleted) pending.Add(refusedTask);
+                Assert.That(refusedTask.IsCompleted, Is.True);
+
+                using JsonRpcResponse refused = await refusedTask;
+                Error error = RpcTest.AssertError(refused);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(error.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+                    Assert.That(error.SuppressWarning, Is.True, "refusal must be counted in JsonRpcOverloadRejections");
+                }
+            }
+            Assert.That(sender.ReceivedCalls().Count(), Is.EqualTo(pendingCount));
+        }
+        finally
+        {
+            submission.TrySetResult((tx.Hash!, submissionAccepted ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            foreach (JsonRpcResponse response in await Task.WhenAll(pending)) response.Dispose();
+        }
+
+        using JsonRpcResponse retry = await service.SendRequestAsync(
+            RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(retry).Code,
+                Is.EqualTo(submissionAccepted ? ErrorCodes.InternalError : ErrorCodes.TransactionRejected));
+            Assert.That(sender.ReceivedCalls().Count(), Is.EqualTo(pendingCount + 1));
+            bridge.Received(submissionAccepted ? pendingCount + 1 : 0).GetTxReceiptInfo(tx.Hash!);
+        }
     }
 
     private static IEnumerable<TestCaseData> SendRawTransactionSyncFailureCases()
@@ -2058,12 +2312,76 @@ public partial class EthRpcModuleTests
             .To(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        yield return new TestCaseData(raw, "100", ErrorCodes.Timeout, "not included within 100ms")
+        yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, "not included within 100ms")
             .SetName("Timeout");
+        yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, $"\"data\":\"{tx.Hash}\"")
+            .SetName("TimeoutCarriesTransactionHash");
     }
 
     [Test]
     public async Task EthSendRawTransactionSync_WhenAlreadyMined_FastPathReturnsReceipt()
+    {
+        (Hash256 txHash, string raw, TxReceipt receipt, ITxSender txSender) = CreateAcceptedSyncTransaction();
+
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(txHash)
+            .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
+
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { RpcTxSyncMaxConcurrentRequests = 1 })
+            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+
+        for (int i = 0; i < 2; i++)
+        {
+            string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
+                Assert.That(serialized, Does.Not.Contain("\"error\":"));
+            }
+        }
+    }
+
+    [Test]
+    public async Task EthSendRawTransactionSync_WhenWokenBeforeTxIndexIsPublished_ReturnsReceiptOfSameBlock()
+    {
+        TimeSpan timeout = TimeSpan.FromSeconds(5);
+        (Hash256 txHash, string raw, TxReceipt receipt, ITxSender txSender) = CreateAcceptedSyncTransaction();
+
+        bool txIndexPublished = false;
+        using SemaphoreSlim receiptLookups = new(0);
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(txHash).Returns(_ =>
+        {
+            bool published = Volatile.Read(ref txIndexPublished);
+            receiptLookups.Release();
+            if (published) return (receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0);
+            return (null, 0UL, null, 0);
+        });
+
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+
+        Task<string> syncCall = test.TestEthRpc("eth_sendRawTransactionSync", raw, "5000");
+        Assert.That(await receiptLookups.WaitAsync(timeout), Is.True, "initial receipt lookup");
+        Task waiterSignal = test.HeadBlockSignal.NextHeadTask;
+
+        // Stands in for the receipt storage, which publishes the tx index in BlockAddedToMain. Worst-case
+        // scheduling: a waiter the signal has already released finishes its lookup before the index lands.
+        test.BlockTree.BlockAddedToMain += (_, _) =>
+        {
+            if (waiterSignal.IsCompleted) receiptLookups.Wait(timeout);
+            Volatile.Write(ref txIndexPublished, true);
+        };
+
+        await test.AddBlock();
+        string serialized = await syncCall;
+
+        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
+        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+    }
+
+    private static (Hash256 TxHash, string RawTx, TxReceipt Receipt, ITxSender TxSender) CreateAcceptedSyncTransaction()
     {
         Transaction tx = Build.A.Transaction
             .WithNonce(3)
@@ -2083,18 +2401,8 @@ public partial class EthRpcModuleTests
         txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
             .Returns((txHash, AcceptTxResult.Accepted));
 
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetTxReceiptInfo(txHash)
-            .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
-
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
-
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
-
-        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
-        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+        return (txHash, raw, receipt, txSender);
     }
 
     [Test]
@@ -2177,7 +2485,8 @@ public partial class EthRpcModuleTests
 
         (byte[] code, AccessListForRpc _) = GetTestAccessList(loads);
 
-        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}")
+            ?? throw new InvalidOperationException("Expected an access-list transaction.");
 
         if (accessListProvided != AccessListProvided.None)
         {
@@ -2197,7 +2506,8 @@ public partial class EthRpcModuleTests
 
         // Contract creation with infinite loop; gas 200K should be capped to 60K
         TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}")
+            ?? throw new InvalidOperationException("Expected a transaction.");
 
         string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
 
@@ -2252,6 +2562,46 @@ public partial class EthRpcModuleTests
             Does.Contain("0x0000000000000000000000000000000000000000000000000000000000000001"));
     }
 
+    // A CREATE collision halts before any frame runs; the returned list must still be the discovered,
+    // optimized one (sender stripped), not the request's list echoed back.
+    [Test]
+    public async Task Eth_createAccessList_optimizes_supplied_entries_when_create_collides()
+    {
+        using Context ctx = await Context.Create();
+
+        const string supplied = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        Address createTarget = ContractAddress.From(new Address(CreateAccessListSender), 0);
+        string stateOverride = $$$"""{"{{{CreateAccessListSender}}}":{"nonce":"0x0"},"{{{createTarget}}}":{"nonce":"0x1"}}""";
+        string transaction = $$$"""{"type":"0x1","from":"{{{CreateAccessListSender}}}","data":"0x00","accessList":[{"address":"{{{CreateAccessListSender}}}","storageKeys":[]},{"address":"{{{supplied}}}","storageKeys":[]}]}""";
+
+        (JToken result, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"]?.Value<string>(), Is.EqualTo("contract address collision"));
+            Assert.That(result["accessList"]!.Select(static e => e["address"]!.Value<string>()), Is.EquivalentTo(new[] { supplied }));
+        }
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_unfunded_sender_without_fee_fields_succeeds()
+    {
+        // execution-apis #854: when all gas-fee fields are omitted, the request must not fail
+        // solely because the sender cannot afford client-selected default fees.
+        // London-enabled so the head block has a nonzero base fee — the divergent client
+        // behavior is defaulting maxFeePerGas to the base fee and failing affordability.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        // Unfunded sender, codeless recipient, zero value, no gas/fee fields.
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx,
+            """{"from":"0x000000000000000000000000000000000000dead","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
+            stateOverrideJson: null, optimize: true);
+
+        Assert.That(result["error"], Is.Null);
+        Assert.That(result["accessList"]!.ToArray(), Is.Empty, "expected empty access list for a plain transfer to a codeless account");
+        Assert.That(gasUsed, Is.EqualTo(21_000));
+    }
+
     private static async Task<(JToken Result, long GasUsed)> CallCreateAccessList(
         Context ctx, string txJson, string? stateOverrideJson, bool optimize)
     {
@@ -2261,8 +2611,9 @@ public partial class EthRpcModuleTests
             : JsonSerializer.Deserialize<object>(stateOverrideJson);
         string serialized = await ctx.Test.TestEthRpc(
             "eth_createAccessList", tx, "latest", stateOverride, optimize);
-        JToken result = JToken.Parse(serialized)["result"]!;
-        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
+        JToken? result = JToken.Parse(serialized)["result"];
+        Assert.That(result, Is.Not.Null, $"expected a result, got: {serialized}");
+        long gasUsed = Convert.ToInt64(result!["gasUsed"]!.Value<string>(), 16);
         return (result, gasUsed);
     }
 
@@ -2301,6 +2652,19 @@ public partial class EthRpcModuleTests
         Assert.That(result["error"], Is.Null);
         Assert.That(gasUsed, Is.EqualTo(21_000));
         Assert.That(result["accessList"]!.ToArray(), Is.Empty);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_input_error_embeds_tx_hash()
+    {
+        using Context ctx = await Context.Create();
+        object tx = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{CreateAccessListSender}}","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","gas":"0x5207"}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", tx, "latest");
+
+        Assert.That(JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
+            Does.Match("^failed to apply transaction: 0x[0-9a-f]{64} err: intrinsic gas too low"));
     }
 
     [Test]
@@ -2350,9 +2714,105 @@ public partial class EthRpcModuleTests
             Is.True);
     }
 
-    [TestCase(null)]
-    [TestCase(0UL)]
-    public static void ToTransaction_uses_ulong_max_when_gasCap_is_null_or_zero(ulong? gasCap)
+    [Test]
+    public async Task Eth_createAccessList_omits_entries_that_do_not_reduce_gas_under_eip7981()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        const string accessedAccount = "0x00000000000000000000000000000000deadbeef";
+        // PUSH20 accessedAccount; BALANCE; POP; STOP — a single cold account access, no storage.
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}"}""";
+
+        // optimize=false keeps the entry, proving the account is genuinely accessed.
+        (JToken unoptimized, long unoptimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: false);
+        Address[] unoptimizedAddresses = unoptimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
+        Assert.That(unoptimizedAddresses, Does.Contain(new Address(accessedAccount)));
+
+        // Under EIP-7981 the entry's floor-token surcharge outweighs the cold-access saving, so the
+        // gas-minimal list is empty. The reported gas must be the empty-list gas (18005); keeping the
+        // one optimisable entry would report 18005 + 1280 (a 20-byte address at 4 tokens x 16 gas,
+        // EIP-7981 + EIP-7976), so pinning it guards against reporting the discovered-list gas.
+        (JToken optimized, long optimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized["error"], Is.Null);
+            Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
+            Assert.That(optimizedGas, Is.EqualTo(18005));
+            Assert.That(optimizedGas, Is.LessThan(unoptimizedGas));
+        }
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_optimize_drops_caller_supplied_entries_that_do_not_reduce_gas()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        // Caller pre-declares the account it will touch; optimize must still return the gas-minimal
+        // empty list rather than echoing the supplied entry back (AccessList.Empty, not null).
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","accessList":[{"address":"0x00000000000000000000000000000000deadbeef","storageKeys":[]}]}""";
+
+        (JToken optimized, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized["error"], Is.Null);
+            Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_keeps_discovered_list_when_empty_rerun_changes_execution()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        const string accessedAccount = "0x00000000000000000000000000000000deadbeef";
+        const long gas = 200_000;
+
+        // Probe the gasleft the contract observes right after touching the account, with and without
+        // the list pre-warming it. Removing the list shifts the EIP-7981 surcharge out of intrinsic,
+        // so the empty rerun reaches the check with more gasleft. PUSH20 acct; BALANCE; POP; GAS;
+        // PUSH1 0; MSTORE; PUSH1 0x20; PUSH1 0; RETURN.
+        const string probeCode = "0x7300000000000000000000000000000000deadbeef31505a60005260206000f3";
+        long gasleftEmpty = await ProbeGasleft(ctx, contractAddr, probeCode, gas, withList: false);
+        long gasleftWithList = await ProbeGasleft(ctx, contractAddr, probeCode, gas, withList: true);
+        Assert.That(gasleftEmpty, Is.GreaterThan(gasleftWithList), "precondition: the empty rerun must observe more gasleft");
+
+        // Revert iff gasleft > midpoint: the empty rerun (more gasleft) reverts while the
+        // discovered-list run (less gasleft) succeeds. The gas-only winner would be the reverting
+        // empty run, so this exercises the status-parity guard — the discovered list must be kept.
+        // PUSH20 acct; BALANCE; POP; GAS; PUSH3 threshold; LT; PUSH1 0x21; JUMPI; STOP;
+        // JUMPDEST; PUSH1 0; PUSH1 0; REVERT.
+        long threshold = (gasleftEmpty + gasleftWithList) / 2;
+        Assert.That(threshold, Is.LessThanOrEqualTo(0xffffff), "threshold must fit the PUSH3 immediate");
+        string revertingCode = "0x7300000000000000000000000000000000deadbeef31505a62" + threshold.ToString("x6") + "10602157005b60006000fd";
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"{{{revertingCode}}}"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","gas":"0x30d40"}""";
+
+        (JToken result, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        Address[] addresses = result["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null, "discovered list run succeeds, so no error is surfaced");
+            Assert.That(addresses, Does.Contain(new Address(accessedAccount)), "the discovered entry must be kept, not dropped for the cheaper-but-reverting empty run");
+        }
+    }
+
+    private static async Task<long> ProbeGasleft(Context ctx, string contractAddr, string code, long gas, bool withList)
+    {
+        string listFragment = withList
+            ? ",\"accessList\":[{\"address\":\"0x00000000000000000000000000000000deadbeef\",\"storageKeys\":[]}],\"type\":\"0x1\""
+            : "";
+        object tx = JsonSerializer.Deserialize<object>(
+            $"{{\"from\":\"{CreateAccessListSender}\",\"to\":\"{contractAddr}\",\"gas\":\"0x{gas:x}\"{listFragment}}}")!;
+        object stateOverride = JsonSerializer.Deserialize<object>($"{{\"{contractAddr}\":{{\"code\":\"{code}\"}}}}")!;
+        string serialized = await ctx.Test.TestEthRpc("eth_call", tx, "latest", stateOverride);
+        string ret = JToken.Parse(serialized)["result"]!.Value<string>()![2..];
+        return Convert.ToInt64(ret[^16..], 16);
+    }
+
+    [Test]
+    public static void ToTransaction_uses_ulong_max_when_gasCap_is_null_or_zero([Values(null, 0UL)] ulong? gasCap)
     {
         LegacyTransactionForRpc rpcTx = new();
 
@@ -2448,8 +2908,11 @@ public partial class EthRpcModuleTests
 
         string result = await Test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(testTx).Bytes));
 
-        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
-        Assert.That(actual.Error!.Message, Does.Contain(AcceptTxResult.SenderIsContract.ToString()));
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error response.");
+        Error error = actual.Error
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error.");
+        Assert.That(error.Message, Does.Contain(AcceptTxResult.SenderIsContract.ToString()));
     }
 
 
@@ -2472,7 +2935,7 @@ public partial class EthRpcModuleTests
 
         await test.AddBlock(setCodeTx);
 
-        byte[]? code = test.ReadOnlyState.GetCode(TestItem.AddressB);
+        byte[] code = test.ReadOnlyState.GetCode(TestItem.AddressB).ToArray();
 
         Assert.That(code!.Slice(0, 3), Is.EquivalentTo(Eip7702Constants.DelegationHeader.ToArray()));
 
@@ -2486,7 +2949,8 @@ public partial class EthRpcModuleTests
 
         string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(normalTx).Bytes));
 
-        JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result);
+        JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC success response.");
         Assert.That(actual.Result, Is.Not.Null);
     }
 
@@ -2509,8 +2973,11 @@ public partial class EthRpcModuleTests
 
         string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(invalidSetCodeTx).Bytes));
 
-        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
-        Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error response.");
+        Error error = actual.Error
+            ?? throw new InvalidOperationException("Expected a JSON-RPC error.");
+        Assert.That(error.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
     }
 
     [Test]
@@ -2539,7 +3006,10 @@ public partial class EthRpcModuleTests
 
         string jsonFromRpc = await test.TestEthRpc("eth_getTransactionByHash", setCodeTx!.CalculateHash());
 
-        SetCodeTransactionForRpc actual = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<SetCodeTransactionForRpc>>(jsonFromRpc).Result;
+        JsonRpcResponse<SetCodeTransactionForRpc> response = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<SetCodeTransactionForRpc>>(jsonFromRpc)
+            ?? throw new InvalidOperationException("Expected a JSON-RPC response.");
+        SetCodeTransactionForRpc actual = response.Result
+            ?? throw new InvalidOperationException("Expected a set-code transaction.");
 
         AuthorizationListForRpc.RpcAuthTuple result = actual.AuthorizationList!.First();
 
@@ -2656,24 +3126,52 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountChanges\":[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x000014574a74c805590aff9499fc7a690f008282\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000884d2aa32eaa155f59a2f24efa73d9008282\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"key\":\"0x2\",\"changes\":{\"0\":{\"index\":0,\"value\":\"0xd633c9913b3f8e1881b3aaf31be29395b9701a40d973685bbb77d5d8af4e399e\"}}}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":1,\"value\":\"0xa410\"},{\"index\":2,\"value\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":1,\"value\":\"0x3635c9adc5dea00002\"},{\"index\":2,\"value\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":1,\"value\":\"0x3635c9adc5de9f5bee\"},{\"index\":2,\"value\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"index\":1,\"value\":\"0x2\"},{\"index\":2,\"value\":\"0x3\"}],\"codeChanges\":[]}]},\"id\":67}"));
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", blockHash);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":" + ExpectedHeadBlockAccessList + ",\"id\":67}"));
     }
 
     [Test]
-    public async Task Eth_get_block_access_list_by_hash_not_found()
+    public async Task Eth_get_block_access_list_by_number_or_tag([Values("0x3", "latest")] string blockParameter)
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", Hash256.Zero);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Resource not found\"},\"id\":67}"));
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", blockParameter);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":" + ExpectedHeadBlockAccessList + ",\"id\":67}"));
+    }
+
+    [TestCase("0x64")]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000")]
+    [TestCase("pending")]
+    public async Task Eth_get_block_access_list_unknown_block_returns_null(string blockParameter)
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", blockParameter);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
     [Test]
-    public async Task Eth_get_block_access_list_by_hash_unavailable_before_fork()
+    public async Task Eth_get_block_access_list_non_canonical_require_canonical_hash()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        Block parent = ctx.Test.BlockTree.FindBlock(ctx.Test.BlockTree.Head!.Header.ParentHash!)!;
+        Block nonCanonical = Build.A.Block.WithParent(parent).WithExtraData([1]).TestObject;
+        ctx.Test.BlockTree.SuggestBlock(nonCanonical, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", new BlockParameter(nonCanonical.Hash!, true));
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"{nonCanonical.Hash} block is not canonical\"}},\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_ancient_block_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", "0x100");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable for block 256\"},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_get_block_access_list_unavailable_before_fork()
     {
         using Context ctx = await Context.Create(); // Amsterdam disabled
-        Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", "0x3");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Resource not found\"},\"id\":67}"));
     }
 
@@ -2683,32 +3181,8 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         Block head = ctx.Test.BlockTree.Head!;
         ctx.Test.Bridge.DeleteBlockAccessList(head.Number, head.Hash!);
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", head.Hash!);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"pruned history unavailable\"},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_get_block_access_list_by_number()
-    {
-        using Context ctx = await Context.CreateWithAmsterdamEnabled();
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", "0x3");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountChanges\":[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x000014574a74c805590aff9499fc7a690f008282\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000884d2aa32eaa155f59a2f24efa73d9008282\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"key\":\"0x2\",\"changes\":{\"0\":{\"index\":0,\"value\":\"0xd633c9913b3f8e1881b3aaf31be29395b9701a40d973685bbb77d5d8af4e399e\"}}}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":1,\"value\":\"0xa410\"},{\"index\":2,\"value\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":1,\"value\":\"0x3635c9adc5dea00002\"},{\"index\":2,\"value\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":1,\"value\":\"0x3635c9adc5de9f5bee\"},{\"index\":2,\"value\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"index\":1,\"value\":\"0x2\"},{\"index\":2,\"value\":\"0x3\"}],\"codeChanges\":[]}]},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_get_block_access_list_by_number_not_found()
-    {
-        using Context ctx = await Context.CreateWithAmsterdamEnabled();
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", "0x64");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Resource not found\"},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_get_block_access_list_by_number_unavailable_before_fork()
-    {
-        using Context ctx = await Context.Create(); // Amsterdam disabled
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", "0x3");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Resource not found\"},\"id\":67}"));
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", head.Hash!);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
     }
 
     [Test]
@@ -2718,8 +3192,8 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         Hash256 blockHash = ctx.Test.BlockTree.FindLevel(number)!.BlockInfos[0].BlockHash;
         ctx.Test.Bridge.DeleteBlockAccessList(number, blockHash);
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", number);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"pruned history unavailable\"},\"id\":67}"));
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", "0x3");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
     }
 
     public class AllowNullAuthorizationTuple : AuthorizationTuple
@@ -2806,6 +3280,13 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
+        public static async Task<Context> CreateWithOsakaEnabled()
+        {
+            OverridableReleaseSpec releaseSpec = new(Osaka.Instance);
+            TestSpecProvider specProvider = new(releaseSpec);
+            return await Create(specProvider);
+        }
+
         public static async Task<Context> CreateWithAmsterdamEnabled()
         {
             OverridableReleaseSpec releaseSpec = new(Amsterdam.Instance);
@@ -2829,7 +3310,8 @@ public partial class EthRpcModuleTests
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
-            bool? useFlatDb = null)
+            bool? useFlatDb = null,
+            int estimateErrorMargin = 0)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -2837,15 +3319,20 @@ public partial class EthRpcModuleTests
                 configurer?.Invoke(builder);
             };
 
+            TestRpcBlockchain.Builder<TestRpcBlockchain> testBlockchainBuilder = TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithBlockchainBridge(blockchainBridge!)
+                .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
+                .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false });
+
+            // Left unset, the chain follows the suite-wide backend selection.
+            if (useFlatDb is not null)
+            {
+                testBlockchainBuilder.WithFlatDb(useFlatDb.Value);
+            }
+
             return Task.FromResult(new Context
             {
-                TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-                    .WithBlockchainBridge(blockchainBridge!)
-                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0, Timeout = -1 })
-                    .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
-                    .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
-                    .Build(wrappedConfigurer).Result,
-
+                TestFactory = () => testBlockchainBuilder.Build(wrappedConfigurer).Result,
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(wrappedConfigurer).Result
             });
@@ -2858,42 +3345,11 @@ public partial class EthRpcModuleTests
         }
     }
 
-    /// <summary>
-    /// Builds the state-override and transaction for EIP-7610 CREATE2 collision regression tests.
-    /// </summary>
-    internal static (object StateOverride, object Transaction) BuildEip7610Fixture()
+    [Test]
+    public async Task Eth_getBlockByNumber_with_empty_string_block_parameter_returns_invalid_params()
     {
-        byte[] initCode = Bytes.FromHexString("602a6000556001601160003960016000f300");
-
-        Address factoryAddress = new("0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1");
-        byte[] create2Input = new byte[85];
-        create2Input[0] = 0xff;
-        factoryAddress.Bytes.CopyTo(create2Input.AsSpan(1, 20));
-        // bytes 21-52: salt = 0 (already zeroed)
-        Keccak.Compute(initCode).Bytes.CopyTo(create2Input.AsSpan(53, 32));
-        Address contractC = new(Keccak.Compute(create2Input).Bytes[12..]);
-
-        const string factoryBytecode =
-            "0x601260376000397f0000000000000000000000000000000000000000000000000000000000000000" +
-            "601260006000f5600052602060" +
-            "00f3602a6000556001601160003960016000f300";
-
-        object stateOverride = JsonSerializer.Deserialize<object>($$"""
-            {
-                "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1": { "code": "{{factoryBytecode}}", "balance": "0xde0b6b3a7640000" },
-                "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11": { "balance": "0xde0b6b3a7640000" },
-                "{{contractC}}": { "stateDiff": { "0x0000000000000000000000000000000000000000000000000000000000000000": "0x000000000000000000000000000000000000000000000000000000000000002a" } }
-            }
-            """)!;
-
-        object transaction = JsonSerializer.Deserialize<object>("""
-            {
-                "from": "0xca11e1ca11e1ca11e1ca11e1ca11e1ca11e1ca11",
-                "to": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
-                "gas": "0xf4240"
-            }
-            """)!;
-
-        return (stateOverride, transaction);
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "", false);
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"missing value for required argument 0"},"id":67}"""));
     }
 }

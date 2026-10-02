@@ -44,6 +44,11 @@ public class DbConfig : IDbConfig
         "compression=kSnappyCompression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
+        // EXPERIMENTAL RocksDB option (default false upstream): enabled here to reduce foreground WAL rotation latency.
+        // RocksDB sanitizes it off when WAL recycling is enabled.
+        "async_wal_precreate=true;" +
+        // Defer eligible cleanup from latency-sensitive calling threads.
+        "avoid_unnecessary_blocking_io=true;" +
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         "target_file_size_base=64000000;" +
@@ -114,7 +119,9 @@ public class DbConfig : IDbConfig
     public string? ReceiptsTransactionsDbAdditionalRocksDbOptions { get; set; }
 
     public string ReceiptsBlocksDbRocksDbOptions { get; set; } =
-        "compaction_pri=kOldestLargestSeqFirst;";
+        "compaction_pri=kOldestLargestSeqFirst;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=4;";
     public string? ReceiptsBlocksDbAdditionalRocksDbOptions { get; set; }
 
     public string BlocksDbRocksDbOptions { get; set; } =
@@ -159,8 +166,11 @@ public class DbConfig : IDbConfig
         "write_buffer_size=4000000;";
     public string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong? CodeDbRowCacheSize { get; set; } = 16UL.MiB;
+    // Off: code is cached above as CodeInfo, and every row-cache insert copies the value, up to 64 KiB.
+    public ulong? CodeDbRowCacheSize { get; set; }
     public string CodeDbRocksDbOptions { get; set; } =
+        // Snappy decodes byte runs in 64-byte copies; LZ4 reads large repetitive code about twice as fast
+        "compression=kLZ4Compression;" +
         "write_buffer_size=16000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "optimize_filters_for_hits=false;" +
@@ -351,6 +361,10 @@ public class DbConfig : IDbConfig
         // Smaller
         "write_buffer_size=16000000;" +
         "max_write_buffer_number=4;" +
+        // Hashed account keys are 20-byte Keccak prefixes and are near-uniform. Auto selects interpolation when the
+        // key-gap coefficient of variation is below this dimensionless threshold, and otherwise uses binary search.
+        "block_based_table_factory.index_block_search_type=kAuto;" +
+        "block_based_table_factory.uniform_cv_threshold=0.2;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
@@ -410,6 +424,25 @@ public class DbConfig : IDbConfig
         "";
     public string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
-    public string? PreimageDbRocksDbOptions { get; set; } = "";
-    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
+    // History columns (archival queries). As-of-block reads are iterator floor-seeks, which don't consult the point
+    // bloom filter, so optimize_filters_for_hits drops the last-level bloom — its memory cost is linear in key count
+    // and prohibitive on a full archive. A large write buffer cuts flushes during the from-genesis replay.
+    // LZ4 over the Snappy default: benchmarked on history-shaped data at the same on-disk size but ~1.5x the seek
+    // throughput and ~25% less compaction time (matching the flat Account/Storage columns' choice).
+    const string FlatHistoryCommonOptions =
+        "compression=kLZ4Compression;" +
+        "optimize_filters_for_hits=true;" +
+        "write_buffer_size=256000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+
+    public string FlatHistoryDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
+    public string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
+
+    // The replay-sized write buffers matter only for the two bulky value columns.
+    public string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
+    public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
+
+    public string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; } = "";
+    public string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
 }

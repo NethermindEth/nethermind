@@ -62,7 +62,11 @@ namespace Nethermind.Specs
                 "BPO4" => BPO4.Instance,
                 "BPO5" => BPO5.Instance,
                 "Amsterdam" => Amsterdam.Instance,
-                _ => throw new NotSupportedException()
+                "Bogota" => Bogota.Instance,
+                "Eip8141Prototype" => Eip8141Prototype.Instance,
+                _ => throw new NotSupportedException(specName == unambiguousSpecName
+                    ? $"Unknown fork name '{specName}'"
+                    : $"Unknown fork name '{specName}' (resolved to '{unambiguousSpecName}')")
             };
         }
     }

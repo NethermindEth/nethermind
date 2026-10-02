@@ -3,7 +3,6 @@
 
 #nullable enable
 
-using System;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,7 +10,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -25,17 +23,7 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeBlockValidationTests
 {
     [OneTimeSetUp]
-    public void EnsureNativeLibraryLoads()
-    {
-        try
-        {
-            _ = NativeLeanProofVerifier.AbiVersion;
-        }
-        catch (DllNotFoundException e)
-        {
-            Assert.Ignore($"native nethermind_lean library not available: {e.Message}");
-        }
-    }
+    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(2u));
 
     [Test]
     public void BlockValidator_with_native_verifier_accepts_produced_recursive_stark()
@@ -63,8 +51,7 @@ public class NativeBlockValidationTests
         Block block = Build.A.Block.WithParent(parent).TestObject;
 
         ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
-        // Produced exactly as BlockProcessor does on ProducingBlock.
-        byte[] proof = PlaceholderLeanProofVerifier.ProveRecursive(in depsHash, Eip8288Constants.AggregatedVk);
+        byte[] proof = NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput());
         if (tamper) proof[0] ^= 0xFF;
         block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
         return (block, parent);
@@ -72,17 +59,15 @@ public class NativeBlockValidationTests
 
     private static BlockValidator CreateValidator()
     {
-        IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
-        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(true);
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8288Enabled.Returns(true);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         return new BlockValidator(
-            Substitute.For<ITxValidator>(),
-            headerValidator,
-            Substitute.For<IUnclesValidator>(),
+            Always.Valid,
+            Always.Valid,
+            Always.Valid,
             specProvider,
             LimboLogs.Instance,
             NativeLeanProofVerifier.Instance);

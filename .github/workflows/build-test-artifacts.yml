@@ -34,9 +34,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: Redirect build output to the large scratch disk (Linux)
         # Build on the ~70 GB /mnt; the multi-RID output overflows the ~21 GB root disk.
@@ -94,7 +91,7 @@ jobs:
         run: tar -C src/Nethermind -cf test-bin.tar artifacts/bin
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-bin-${{ matrix.variant }}-${{ matrix.rid }}
           path: test-bin.tar

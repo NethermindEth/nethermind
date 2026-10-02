@@ -2,94 +2,177 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto;
 
-/// <summary>
-/// <see cref="ILeanProofVerifier"/> backed by the native <c>nethermind_lean</c> library
-/// (<c>tools/lean-ffi</c>) over a stable C ABI. The native side currently ships a deterministic
-/// placeholder; swapping in the real Lean Ethereum (leanSig / leanVM) verifier is a change to the
-/// Rust crate only — this wrapper and its callers are unaffected.
-/// </summary>
-/// <remarks>
-/// EIP8288-DEVIATION: not real cryptography yet — see the native crate. This type exists to exercise
-/// the full FFI binding path (P/Invoke → native lib) on a live node.
-/// </remarks>
-public sealed unsafe class NativeLeanProofVerifier : ILeanProofVerifier
+/// <summary>Verifies SPHINCS and leanVM proofs with the pinned native Lean Ethereum implementation.</summary>
+// Pinned spans remain valid for each call; Rust bounds all buffers and owns returned proof allocations.
+public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-
+    public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
     public static readonly NativeLeanProofVerifier Instance = new();
 
-    /// <summary>ABI version exported by the native library; probe to confirm it loads and matches.</summary>
+    /// <summary>Native library ABI version.</summary>
     public static uint AbiVersion => nlean_abi_version();
 
-    // fixed pins each buffer for the duration of the call, and the native side reads nothing past the
-    // paired length; an empty span pins to null, which as_slice treats as empty.
-    public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+    /// <summary>The pinned recursive guest's Fiat-Shamir verification key.</summary>
+    public static byte[] AggregatedVerificationKey
     {
-        fixed (byte* d = dataHash.Bytes)
-        fixed (byte* v = verificationKey.Bytes)
-        fixed (byte* w = witness)
+        get
         {
-            return nlean_verify_leansphincs(d, v, w, (nuint)witness.Length) != 0;
-        }
-    }
-
-    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
-    {
-        fixed (byte* d = dataHash.Bytes)
-        fixed (byte* v = verificationKey.Bytes)
-        fixed (byte* w = witness)
-        {
-            return nlean_verify_leanstark(d, v, w, (nuint)witness.Length) != 0;
-        }
-    }
-
-    public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
-    {
-        fixed (byte* h = depsHash.Bytes)
-        fixed (byte* vk = aggregatedVk)
-        fixed (byte* p = proof)
-        {
-            return nlean_verify_recursive(h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length) != 0;
+            byte[] key = new byte[32];
+            fixed (byte* p = key)
+            {
+                if (AbiVersion != 2 || nlean_aggregated_vk(p) != 1) throw new InvalidOperationException("Lean verification key unavailable");
+            }
+            return key;
         }
     }
 
     /// <inheritdoc/>
-    public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk)
+    public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
     {
-        byte[] proof = new byte[32];
-        fixed (byte* h = depsHash.Bytes)
-        fixed (byte* vk = aggregatedVk)
-        fixed (byte* p = proof)
+        if (witness.Length != 4956) return false;
+        try
         {
-            int written = nlean_prove_recursive(h, vk, (nuint)aggregatedVk.Length, p);
-            if (written != proof.Length) ThrowProveFailed(written);
+            fixed (byte* d = dataHash.Bytes)
+            fixed (byte* v = verificationKey.Bytes)
+            fixed (byte* w = witness)
+                return AbiVersion == 2 && nlean_verify_leansphincs(d, v, w, (nuint)witness.Length) == 1;
         }
-
-        return proof;
+        catch (Exception e) when (IsUnavailable(e)) { return false; }
     }
 
-    [DoesNotReturn]
-    private static void ThrowProveFailed(int written) =>
-        throw new InvalidOperationException($"{nameof(nlean_prove_recursive)} wrote {written} bytes, expected 32");
+    /// <inheritdoc/>
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+    {
+        if (witness.IsEmpty || witness.Length > MaxProofBytes) return false;
+        try
+        {
+            fixed (byte* d = dataHash.Bytes)
+            fixed (byte* v = verificationKey.Bytes)
+            fixed (byte* w = witness)
+                return AbiVersion == 2 && nlean_verify_leanstark(d, v, w, (nuint)witness.Length) == 1;
+        }
+        catch (Exception e) when (IsUnavailable(e)) { return false; }
+    }
 
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    private static extern uint nlean_abi_version();
+    /// <inheritdoc/>
+    public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+    {
+        if (aggregatedVk.Length != 32 || proof.IsEmpty || proof.Length > MaxProofBytes) return false;
+        try
+        {
+            fixed (byte* h = depsHash.Bytes)
+            fixed (byte* vk = aggregatedVk)
+            fixed (byte* p = proof)
+                return AbiVersion == 2 && nlean_verify_recursive(h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length) == 1;
+        }
+        catch (Exception e) when (IsUnavailable(e)) { return false; }
+    }
 
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int nlean_verify_leansphincs(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
+    /// <inheritdoc/>
+    public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
+    {
+        try { return Prove(in depsHash, aggregatedVk, input); }
+        catch (Exception exception) when (IsUnavailable(exception))
+        {
+            throw new InvalidOperationException("Native Lean backend unavailable", exception);
+        }
+    }
 
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int nlean_verify_leanstark(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
+    private static byte[] Prove(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        byte[] witness = SerializeInput(input);
+        if (aggregatedVk.Length != 32 || AbiVersion != 2) throw new InvalidOperationException("Incompatible Lean verifier ABI or key");
+        byte* proof = null;
+        nuint length = 0;
+        try
+        {
+            fixed (byte* h = depsHash.Bytes)
+            fixed (byte* vk = aggregatedVk)
+            fixed (byte* w = witness)
+                if (nlean_prove_recursive(h, vk, (nuint)aggregatedVk.Length, w, (nuint)witness.Length, &proof, &length) != 1)
+                    throw new InvalidOperationException("Lean aggregation failed");
+            if (proof == null || length > MaxProofBytes) throw new InvalidOperationException("Invalid native Lean proof buffer");
+            return new ReadOnlySpan<byte>(proof, checked((int)length)).ToArray();
+        }
+        finally
+        {
+            if (proof != null) nlean_free(proof, length);
+        }
+    }
 
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int nlean_verify_recursive(byte* depsHash, byte* aggregatedVk, nuint aggregatedVkLen, byte* proof, nuint proofLen);
+    private static byte[] SerializeInput(AggregationInput input)
+    {
+        if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > 16 || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
+            throw new ArgumentException("Invalid Lean aggregation input", nameof(input));
+        using MemoryStream stream = new();
+        using BinaryWriter writer = new(stream);
+        writer.Write(input.Deps.Count);
+        for (int i = 0; i < input.Deps.Count; i++)
+        {
+            WriteDependency(writer, input.Deps[i]);
+            WriteBlob(writer, input.Witnesses[i]);
+        }
+        writer.Write(input.RecursiveProofs.Count);
+        foreach (RecursiveProofInput child in input.RecursiveProofs)
+        {
+            if (child.InnerDeps.Count > Eip8288Constants.MaxProofDependencies) throw new ArgumentException("Too many child dependencies", nameof(input));
+            writer.Write(child.InnerDeps.Count);
+            foreach (FrameDependency dep in child.InnerDeps) WriteDependency(writer, dep);
+            WriteBlob(writer, child.Proof);
+        }
+        writer.Write(input.Discards.Count);
+        foreach (FrameDependency dep in input.Discards) WriteDependency(writer, dep);
+        if (stream.Length > MaxProofBytes) throw new ArgumentException("Lean aggregation input too large", nameof(input));
+        return stream.ToArray();
+    }
 
-    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int nlean_prove_recursive(byte* depsHash, byte* aggregatedVk, nuint aggregatedVkLen, byte* @out);
+    private static void WriteDependency(BinaryWriter writer, FrameDependency dep)
+    {
+        if (writer.BaseStream.Length + 96 > MaxProofBytes) throw new ArgumentException("Lean aggregation input too large");
+        Span<byte> bytes = stackalloc byte[96];
+        dep.WriteTo(bytes);
+        writer.Write(bytes);
+    }
+
+    private static void WriteBlob(BinaryWriter writer, byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        if (writer.BaseStream.Length + 4 + bytes.Length > MaxProofBytes) throw new ArgumentException("Lean aggregation input too large");
+        writer.Write(bytes.Length);
+        writer.Write(bytes);
+    }
+
+    private static bool IsUnavailable(Exception e) => e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException;
+
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial uint nlean_abi_version();
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int nlean_aggregated_vk(byte* output);
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int nlean_verify_leansphincs(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int nlean_verify_leanstark(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int nlean_verify_recursive(byte* depsHash, byte* vk, nuint vkLen, byte* proof, nuint proofLen);
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int nlean_prove_recursive(byte* depsHash, byte* vk, nuint vkLen, byte* input, nuint inputLen, byte** output, nuint* outputLen);
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial void nlean_free(byte* proof, nuint proofLen);
 }

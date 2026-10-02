@@ -1,47 +1,125 @@
-# nethermind-lean — EIP-8288 Lean verifier FFI shim (placeholder)
+# EIP-8288 native Lean integration
 
-A C-ABI native library standing in for the Lean Ethereum verifiers behind
-[EIP-8288](https://eips.ethereum.org/EIPS/eip-8288), so the entire native-binding path can be
-exercised on a live Nethermind node **before** the real Lean tooling stabilizes.
+This library pins official [leanVM](https://github.com/leanEthereum/leanVM/tree/b977f5fa8f07cb2d40cbd76a66deefd67d975c30)
+commit `b977f5fa8f07cb2d40cbd76a66deefd67d975c30`. It verifies real BLAKE2s SPHINCS
+signatures and binary-field leanVM proofs. No hash-based proof substitute is accepted.
 
-> ⚠️ **Not cryptography.** A "proof" here is `keccak256` of its public inputs — identical to the C#
-> `PlaceholderLeanProofVerifier`, so proofs produced by either side verify on the other. It proves the
-> *plumbing*, not soundness.
+## Build and test
 
-## Layout / swap-out point
-- `src/lib.rs` — `extern "C"` surface (`nlean_verify_leansphincs` / `_leanstark` / `_recursive`,
-  `nlean_prove_recursive`, `nlean_abi_version`). **This signature is what stays put.**
-- `src/lib.rs::verify` — the placeholder relation. **This is the only thing that changes** when the
-  real verifier lands: add `leanSig` / `leanVM` as crate deps and replace the three `*_tag` bodies
-  with real verification, deserializing the wire bytes inside Rust. The C ABI and the C# consumer
-  (`NativeLeanProofVerifier`) are unaffected.
+Rust 1.99+ is required for the pinned upstream APIs.
 
-## Build
-```bash
-cargo build --release --manifest-path tools/lean-ffi/Cargo.toml
-# -> tools/lean-ffi/target/release/libnethermind_lean.{dylib,so,dll}
+```sh
+cargo test --release --locked --manifest-path tools/lean-ffi/Cargo.toml -- --test-threads=1
+dotnet run --project src/Nethermind/Nethermind.Crypto.LeanFfi.Test/Nethermind.Crypto.LeanFfi.Test.csproj -c release -p:BuildLeanFfi=true
+dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c release -p:BuildLeanFfi=true
 ```
 
-## Live FFI test (runs the real P/Invoke)
-```bash
-dotnet test src/Nethermind/Nethermind.Crypto.LeanFfi.Test/Nethermind.Crypto.LeanFfi.Test.csproj -c release
-```
-The test project builds the crate, copies the native lib next to the test assembly, and asserts that
-managed-produced proofs verify natively and tampered ones are rejected. (Standalone — not part of
-`Nethermind.slnx`, so the main build/CI is unaffected.)
+`BuildLeanFfi=true` builds and copies the host native library into consumer build/publish
+outputs. Cross compilation and distribution of native libraries for other RIDs remain release
+packaging work. Ordinary builds do not require Rust. Verification fails closed if the native
+library is absent or has an incompatible ABI; proving requires the library.
 
-## Enable in a running node (devnet)
-1. Build the lib and place it where the runtime resolves natives, e.g.
-   `bin/runtimes/<rid>/native/libnethermind_lean.<ext>` next to the Nethermind binary.
-2. Run with `NETHERMIND_EIP8288_NATIVE_LEAN=1`. `BlockProcessingModule` then registers
-   `NativeLeanProofVerifier` and `BlockValidator` uses it instead of the in-process placeholder.
-   (Unset ⇒ placeholder; the node runs without the native lib present.)
+`cargo run --release --locked --manifest-path tools/lean-ffi/Cargo.toml --example fixtures -- <directory>`
+produces genuine test signatures/proofs and the pinned recursive verification key. The live
+FFI tests build these fixtures with `BuildLeanFfi=true` and fail if the native library cannot load.
+The main solution compiles the test project without requiring Rust. Without the opt-in property,
+the native suite is explicitly skipped. With it, the backend and fixtures are required and
+missing libraries fail the run.
 
-## Productionization (when real bindings exist)
-- **Cross-RID build**: build the cdylib for `linux-x64, linux-arm64, osx-x64, osx-arm64, win-x64`
-  (cargo + `cross`/CI), exactly as `blst`/`c-kzg` native libs are shipped today.
-- **NuGet**: package as `Nethermind.Crypto.Lean.Bindings` with per-RID `runtimes/<rid>/native/`
-  assets, mirroring `Nethermind.Crypto.Bls` / `Ckzg.Bindings`; reference it from `Nethermind.Crypto`
-  and drop the in-repo dylib copy.
-- The real verifier belongs upstream in `leanEthereum` as a shared `extern "C"` surface (used by all
-  non-Rust clients); this crate is the stand-in until then.
+## Prototype wire format
+
+All framing integers are unsigned 32-bit little-endian. Proofs and aggregation inputs are
+bounded to 8 MiB; dependency lists to 4096; recursive children to 16. This format and the
+pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
+
+* **SPHINCS witness:** public key (32 bytes), signature (4924 bytes). The dependency key
+  is Keccak-256 of the public key. Both this hash and the signature over `data_hash` are checked.
+* **leanSTARK witness:** bytecode blob length, canonical bytecode, then fixed-integer bincode
+  serialization of the upstream CPU proof (no trailing bytes). The dependency key is
+  Keccak-256 of that canonical bytecode. `data_hash` is the VM's 32-byte public commitment,
+  packed into two 128-bit field cells; the guest must constrain the relation it represents.
+  At most 16384 instructions are accepted. Each instruction is a 45-byte record: opcode
+  byte, four u32 operands, three u64 immediate limbs, then u32 BLAKE2s metadata operand.
+  Opcodes 0–5 are XOR, MUL, SET, DEREF, JUMP, BLAKE2s. Unused fields are zero.
+* **aggregation input:** direct count then `(96-byte dependency, witness blob)` pairs;
+  child count then `(dependency count/triples, proof blob)` pairs; discard count/triples.
+* **aggregate:** `NLR2`, canonical dependency count/triples, upstream EthereumProof blob
+  (empty when there are no SPHINCS claims), generic-STARK count then `(dependency, witness blob)`
+  pairs. A blob is its length followed by bytes.
+
+The recursive key is the actual upstream guest's Fiat-Shamir seed, pinned in
+`Eip8288Constants.AggregatedVk`. Root verification compares full dependency triples against
+cryptographically verified SPHINCS claims, verifies every generic STARK, and recomputes the
+canonical Keccak dependency commitment. Proving verifies every direct witness and child,
+then applies union, deduplication and discard selection. Caller-supplied dependency metadata
+cannot create a claim absent from the verified witnesses.
+
+## Recursive compression limit
+
+The upstream recursive guest compresses SPHINCS claims recursively. Its bytecode is fixed;
+it cannot recursively verify arbitrary leanSTARK programs. Generic STARK witnesses are
+therefore carried in the aggregate envelope and cryptographically reverified at the root.
+Their size is not compressed. Extending the guest to recursively verify arbitrary bytecode
+is separate work; this implementation does not claim that functionality.
+
+The upstream project remains experimental and unaudited. This integration is a prototype,
+with a pinned backend and explicit wire choices, rather than a finalized network protocol.
+
+
+## Running an EIP-8288 node
+
+Build the native library and copy it beside the Nethermind executable (or put its directory
+on the host's native library search path). The native backend is always selected for
+EIP-8288; missing libraries or invalid proofs fail validation. There is no placeholder switch.
+
+Enable EIP-8141 and EIP-8288 in a development chainspec with `eip8288TransitionTimestamp`,
+or the geth genesis key `eip8288PrototypeTime`. This prototype uses dependency frame mode
+**4**, because current EIP-7906 uses mode 3 for `POST_TX`. Dependencies remain 96-byte triples;
+their commitment is Keccak-256 over the lexicographically sorted, deduplicated set. Gas is
+charged for every declaration, including duplicates.
+
+The `eth` JSON-RPC module provides:
+
+* `eth_sendProofWrapper("0x<RLP>")`: verify a mode 0 or mode 1 wrapper, retain its witnesses,
+  and submit its transactions. It returns transaction hashes. Hash-only entries must already
+  resolve in the local pool.
+* `eth_getProofWrapper()`: return a hexadecimal RLP mode 1 wrapper for proof-backed pending
+  transactions. Selection rotates across the pool when wrapper limits prevent including all
+  candidates; unchanged selections reuse an already verified aggregate.
+* `eth_sendProofInclusionList("0x<RLP>")`: verify a self-contained proof-bearing inclusion
+  list and submit its transactions. Consensus-layer inclusion-list obligations are transported
+  through the Engine payload attributes, rather than being created by this RPC call.
+
+A raw dependency transaction without retained valid witnesses is rejected. Builders snapshot
+selected witnesses, recursively fold batches of at most sixteen children, discard dependencies
+outside the selected transaction set, and verify the produced header proof. Selection reserves
+recursive-proof gas from both execution and state gas budgets. Witness storage is bounded to
+64 MiB; production reserves at most 4 MiB of serialized witnesses per block to stay within the
+native 8 MiB input and proof bounds and the 4096-dependency envelope limit. Transactions beyond the current witness budget remain
+pending for another block.
+
+## Negotiated proof gossip
+
+When the prototype fork is active at the node's head, it advertises `lean/1` alongside
+normal Ethereum capabilities. Only peers that negotiate `lean/1` exchange proof wrappers.
+Message 0 is a 72-byte status: chain ID (u64 big-endian), genesis hash (32 bytes), pinned
+recursive guest key (32 bytes). All three must match before message 1 is accepted.
+Message 1 carries a complete RLP mempool wrapper, including full transactions, bounded
+by the shared wrapper size limit. A peer may have only one pending verification task;
+invalid wrappers disconnect the peer.
+
+One node-wide worker aggregates eligible pending transactions every second, using the
+shared RPC/peer validation and proof store. Bounded wrapper selection rotates through
+the pool; unchanged selections reuse their verified proof. Generic STARK witnesses
+remain carried and verified. Shutdown cancels peer work and joins the aggregation worker.
+
+## Proof-bearing inclusion lists
+
+With both EIP-8288 and EIP-7805 active, FCUv5 payload attributes and newPayloadV6's
+execution payload accept `inclusionListRecursiveStark: {starkProof, blockDepsHash}`.
+It is required when the inclusion list declares dependencies. The proof commits to
+that list's canonical sorted/deduplicated dependencies and is verified before mandatory
+prefix checks; its verified witnesses seed the builder's shared proof store. The consensus
+client can construct it through the same native aggregation or proof-wrapper path.
+`engine_getInclusionListV1` retains its existing non-frame candidate sampling; externally
+formed proof-bearing frame inclusion lists are validated and enforced.

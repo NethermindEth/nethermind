@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Optimism.CL;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -81,20 +84,52 @@ public sealed record OptimismRollupConfig
     public static OptimismRollupConfig Build(
         CLChainSpecEngineParameters clParameters,
         OptimismChainSpecEngineParameters engineParameters,
-        ChainSpec chainSpec) => new()
+        ChainSpec chainSpec)
+    {
+        Block genesis = chainSpec.Genesis ?? throw new ArgumentException("Chain spec genesis is missing.", nameof(chainSpec));
+        OptimismSystemConfig systemConfig = clParameters.GenesisSystemConfig
+            ?? throw new ArgumentException("Optimism genesis system config is missing.", nameof(clParameters));
+        ulong l1ChainId = clParameters.L1ChainId
+            ?? throw new ArgumentException("L1 chain id is missing.", nameof(clParameters));
+        ulong l1GenesisNumber = clParameters.L1GenesisNumber
+            ?? throw new ArgumentException("L1 genesis number is missing.", nameof(clParameters));
+        Hash256 l1GenesisHash = clParameters.L1GenesisHash
+            ?? throw new ArgumentException("L1 genesis hash is missing.", nameof(clParameters));
+        ulong blockTime = clParameters.L2BlockTime
+            ?? throw new ArgumentException("L2 block time is missing.", nameof(clParameters));
+        ulong maxSequencerDrift = clParameters.MaxSequencerDrift
+            ?? throw new ArgumentException("Maximum sequencer drift is missing.", nameof(clParameters));
+        ulong sequenceWindowSize = clParameters.SeqWindowSize
+            ?? throw new ArgumentException("Sequencing window size is missing.", nameof(clParameters));
+        ulong channelTimeout = clParameters.ChannelTimeoutBedrock
+            ?? throw new ArgumentException("Channel timeout is missing.", nameof(clParameters));
+        Address batchInboxAddress = clParameters.BatcherInboxAddress
+            ?? throw new ArgumentException("Batch inbox address is missing.", nameof(clParameters));
+        Address depositContractAddress = clParameters.OptimismPortalProxy
+            ?? throw new ArgumentException("Optimism portal proxy address is missing.", nameof(clParameters));
+        Address systemConfigAddress = clParameters.SystemConfigProxy
+            ?? throw new ArgumentException("System config proxy address is missing.", nameof(clParameters));
+        ulong eip1559Elasticity = chainSpec.Parameters.Eip1559ElasticityMultiplier
+            ?? throw new ArgumentException("EIP-1559 elasticity multiplier is missing.", nameof(chainSpec));
+        UInt256 eip1559Denominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator
+            ?? throw new ArgumentException("EIP-1559 base fee denominator is missing.", nameof(chainSpec));
+        UInt256 canyonDenominator = engineParameters.CanyonBaseFeeChangeDenominator
+            ?? throw new ArgumentException("Canyon base fee denominator is missing.", nameof(engineParameters));
+
+        return new()
         {
             Genesis = new OptimismGenesis
             {
-                L1 = new BlockId { Number = clParameters.L1ChainId!.Value, Hash = clParameters.L1GenesisHash! },
-                L2 = new BlockId { Number = chainSpec.Genesis.Number, Hash = chainSpec.Genesis.GetOrCalculateHash() },
-                L2Time = chainSpec.Genesis.Timestamp,
-                SystemConfig = clParameters.GenesisSystemConfig!
+                L1 = new BlockId { Number = l1GenesisNumber, Hash = l1GenesisHash },
+                L2 = new BlockId { Number = genesis.Number, Hash = genesis.GetOrCalculateHash() },
+                L2Time = genesis.Timestamp,
+                SystemConfig = systemConfig
             },
-            BlockTime = clParameters.L2BlockTime!.Value,
-            MaxSequencerDrift = clParameters.MaxSequencerDrift!.Value,
-            SeqWindowSize = clParameters.SeqWindowSize!.Value,
-            ChannelTimeout = clParameters.ChannelTimeoutBedrock!.Value,
-            L1ChainID = clParameters.L1ChainId!.Value,
+            BlockTime = blockTime,
+            MaxSequencerDrift = maxSequencerDrift,
+            SeqWindowSize = sequenceWindowSize,
+            ChannelTimeout = channelTimeout,
+            L1ChainID = l1ChainId,
             L2ChainID = chainSpec.ChainId,
 
             RegolithTime = engineParameters.RegolithTimestamp,
@@ -107,15 +142,16 @@ public sealed record OptimismRollupConfig
             IsthmusTime = engineParameters.IsthmusTimestamp,
             JovianTime = engineParameters.JovianTimestamp,
 
-            BatchInboxAddress = clParameters.BatchSubmitter!,
-            DepositContractAddress = chainSpec.Parameters.DepositContractAddress,
-            L1SystemConfigAddress = clParameters.SystemConfigProxy!,
+            BatchInboxAddress = batchInboxAddress,
+            DepositContractAddress = depositContractAddress,
+            L1SystemConfigAddress = systemConfigAddress,
 
             ChainOpConfig = new OptimismChainConfig
             {
-                EIP1559Elasticity = (ulong)chainSpec.Parameters.Eip1559ElasticityMultiplier!.Value,
-                EIP1559Denominator = (ulong)chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator!.Value,
-                EIP1559DenominatorCanyon = (ulong)engineParameters.CanyonBaseFeeChangeDenominator!.Value
+                EIP1559Elasticity = eip1559Elasticity,
+                EIP1559Denominator = (ulong)eip1559Denominator,
+                EIP1559DenominatorCanyon = (ulong)canyonDenominator
             }
         };
+    }
 }

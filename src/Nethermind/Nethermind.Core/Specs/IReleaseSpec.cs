@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -10,6 +9,12 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// https://github.com/ethereum/EIPs
     /// </summary>
+    /// <remarks>Fork flags carry no default implementations, because no single default is safe: a
+    /// root spec wants the new EIP off, while a forwarding one that inherited that default would
+    /// report it off on a chain enabling it — a silent consensus divergence. Derive from
+    /// <c>ReleaseSpec</c> (new flags off until set) or <see cref="ReleaseSpecDecorator"/> (new flags
+    /// forwarded) to absorb added flags; implementing this interface directly opts into a compile
+    /// error per added flag, which is the only signal that the choice was made deliberately.</remarks>
     public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
         public string Name { get; }
@@ -273,14 +278,12 @@ namespace Nethermind.Core.Specs
         /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
-        [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
         Address? DepositContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
-        [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
         Address? Eip7002ContractAddress { get; }
 
 
@@ -288,7 +291,6 @@ namespace Nethermind.Core.Specs
         /// EIP-7251: triggered consolidations
         /// </summary>
         bool IsEip7251Enabled { get; }
-        [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
         Address? Eip7251ContractAddress { get; }
 
 
@@ -301,7 +303,6 @@ namespace Nethermind.Core.Specs
         /// Fetch blockHashes from the state for BLOCKHASH opCode
         /// </summary>
         bool IsEip7709Enabled { get; }
-        [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
         Address? Eip2935ContractAddress { get; }
 
         /// <summary>
@@ -325,11 +326,23 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip8141Enabled { get; }
 
-        /// <summary>
-        /// EIP-8288: dependency-verification frames and the block-level recursive STARK aggregating
-        /// post-quantum signatures and STARKs. Extends EIP-8141.
-        /// </summary>
+        /// <summary>EIP-8288: dependency frames and recursive proof aggregation.</summary>
         bool IsEip8288Enabled { get; }
+
+        /// <summary>
+        /// EIP-8250: keyed nonces for frame transactions.
+        /// </summary>
+        bool IsEip8250Enabled { get; }
+
+        /// <summary>
+        /// EIP-8272: recent roots for frame transactions.
+        /// </summary>
+        bool IsEip8272Enabled { get; }
+
+        /// <summary>
+        /// EIP-7906: transaction outcome assertions.
+        /// </summary>
+        bool IsEip7906Enabled { get; }
 
         /// <summary>
         /// EIP-8038: State-access gas cost update
@@ -425,6 +438,14 @@ namespace Nethermind.Core.Specs
         /// </summary>
         FrozenSet<AddressAsKey> Precompiles { get; }
 
+        /// <summary>Whether <paramref name="address"/> names a precompile active at this fork.</summary>
+        /// <param name="address">The call target to test.</param>
+        /// <remarks>On the interface rather than beside it because the answer depends on the fork, so only
+        /// the spec can hold a form of it faster than a set probe — a caller memoising one has to re-check
+        /// which fork it belongs to on every call, which costs more than it saves. The default is the probe
+        /// itself, so an implementation that has nothing better keeps today's behaviour.</remarks>
+        bool IsPrecompile(Address address) => address.CouldBePrecompile() && Precompiles.Contains(address);
+
         /// <summary>
         /// EIP-7939 - CLZ - Count leading zeros instruction
         /// </summary>
@@ -468,6 +489,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
         public bool IsEip2780Enabled { get; }
+
+        /// <summary>
+        /// EIP-7805: Inclusion lists
+        /// </summary>
+        bool IsEip7805Enabled { get; }
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.

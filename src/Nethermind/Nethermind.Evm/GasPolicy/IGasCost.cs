@@ -10,7 +10,7 @@ namespace Nethermind.Evm.GasPolicy;
 /// Compile-time descriptor of a fixed opcode gas charge.
 /// </summary>
 /// <remarks>
-/// Implemented by zero-size <c>struct</c> tags and consumed via <c>IGasPolicy.Consume&lt;TCost&gt;</c>.
+/// Implemented by zero-size <c>struct</c> tags and consumed via <c>IGasPolicy.UpdateGas&lt;TCost&gt;</c>.
 /// Because the EVM is monomorphized over <c>VirtualMachine&lt;TGasPolicy&gt;</c> and the tag is a type
 /// parameter, <see cref="GasCost"/> is a compile-time constant in the specialized method — the charge
 /// folds to the same code as a literal <c>cost</c> argument, without the caller passing a number.
@@ -25,7 +25,7 @@ public interface IGasCost
 /// Compile-time descriptor of a spec-dependent fixed opcode gas charge — the cost is read from the
 /// active <see cref="IReleaseSpec"/> rather than a literal, but it is still resolved inside the policy.
 /// </summary>
-/// <remarks>Consumed via <c>IGasPolicy.Consume&lt;TCost&gt;(ref gas, spec)</c>; the spec the opcode
+/// <remarks>Consumed via <c>IGasPolicy.UpdateGas&lt;TCost&gt;(ref gas, spec)</c>; the spec the opcode
 /// already has in hand is forwarded so the cost is computed from the price book without the caller
 /// passing a precomputed number.</remarks>
 public interface ISpecGasCost
@@ -45,6 +45,7 @@ public readonly struct JumpIGasCost : IGasCost { public static ulong GasCost => 
 public readonly struct JumpDestGasCost : IGasCost { public static ulong GasCost => GasCostOf.JumpDest; }
 public readonly struct TLoadGasCost : IGasCost { public static ulong GasCost => GasCostOf.TLoad; }
 public readonly struct TStoreGasCost : IGasCost { public static ulong GasCost => GasCostOf.TStore; }
+public readonly struct TxTraceGasCost : IGasCost { public static ulong GasCost => GasCostOf.TxTrace; }
 public readonly struct SelfBalanceGasCost : IGasCost { public static ulong GasCost => GasCostOf.SelfBalance; }
 public readonly struct BlockHashGasCost : IGasCost { public static ulong GasCost => GasCostOf.BlockHash; }
 public readonly struct BlobHashGasCost : IGasCost { public static ulong GasCost => GasCostOf.BlobHash; }

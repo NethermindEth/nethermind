@@ -216,7 +216,7 @@ public sealed class OpcodeTraceRecorder(
         if (isSyncing && _logger.IsWarn)
         {
             _logger.Warn(
-                $"RealTime opcode tracing is enabled, but the node is currently syncing (SyncMode={syncMode}). " +
+                $"RealTime opcode tracing is enabled, but the node is currently syncing (SyncMode={syncMode.ToFlagsString()}). " +
                 "RealTime mode only captures opcodes from NEW blocks processed at the chain tip AFTER sync completes. " +
                 "Blocks downloaded during sync do NOT execute the EVM and will NOT be traced. " +
                 "For tracing historical blocks during sync, use Retrospective mode instead: --OpcodeTracing.Mode Retrospective");
@@ -224,7 +224,7 @@ public sealed class OpcodeTraceRecorder(
         }
         else if (!isSyncing && !_syncCompleteLogged && _logger.IsInfo)
         {
-            _logger.Info($"Node sync complete (SyncMode={syncMode}). RealTime opcode tracing is now active for new blocks.");
+            _logger.Info($"Node sync complete (SyncMode={syncMode.ToFlagsString()}). RealTime opcode tracing is now active for new blocks.");
             _syncCompleteLogged = true;
         }
     }
@@ -240,19 +240,19 @@ public sealed class OpcodeTraceRecorder(
             // Use the actual range from the tracer (which may have been recalculated at attach time)
             BlockRange? range = _realTimeTracer?.Range;
             _logger.Info(
-                $"Sync state changed to {args.Current}. " +
+                $"Sync state changed to {args.Current.ToFlagsString()}. " +
                 $"RealTime opcode tracing is now waiting for new blocks in range {range?.StartBlock ?? _traceConfig?.EffectiveStartBlock}-{range?.EndBlock ?? _traceConfig?.EffectiveEndBlock}.");
             _waitingForBlockLogged = true;
         }
 
         if (args.Current.NotSyncing() && !_syncCompleteLogged && _logger.IsInfo)
         {
-            _logger.Info($"Node sync complete (SyncMode={args.Current}). RealTime opcode tracing is now active for new blocks.");
+            _logger.Info($"Node sync complete (SyncMode={args.Current.ToFlagsString()}). RealTime opcode tracing is now active for new blocks.");
             _syncCompleteLogged = true;
         }
         else if (!args.Current.NotSyncing() && !_syncModeWarningLogged && _logger.IsWarn)
         {
-            _logger.Warn($"Node entered sync mode (SyncMode={args.Current}). RealTime opcode tracing paused - only new blocks at chain tip are traced.");
+            _logger.Warn($"Node entered sync mode (SyncMode={args.Current.ToFlagsString()}). RealTime opcode tracing paused - only new blocks at chain tip are traced.");
             _syncModeWarningLogged = true;
         }
     }

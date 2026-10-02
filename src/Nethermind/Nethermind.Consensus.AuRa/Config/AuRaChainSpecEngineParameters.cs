@@ -20,8 +20,8 @@ namespace Nethermind.Consensus.AuRa.Config;
 public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public const ulong TransitionDisabled = ulong.MaxValue;
-    public string? EngineName => "AuthorityRound";
-    public string? SealEngineType => Core.SealEngineType.AuRa;
+    public string EngineName => "AuthorityRound";
+    public string SealEngineType => Core.SealEngineType.AuRa;
 
     [JsonConverter(typeof(StepDurationJsonConverter))]
     public SortedDictionary<ulong, long> StepDuration { get; set; } = [];

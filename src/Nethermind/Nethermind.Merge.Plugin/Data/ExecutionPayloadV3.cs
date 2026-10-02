@@ -2,25 +2,39 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
+using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayloadV3</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<ExecutionPayloadV3>
+public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<ExecutionPayloadV3>, IJsonOnDeserializing
 {
+    /// <summary>
+    /// The fields <c>engine_newPayload</c> must receive, present and non-<c>null</c>, for this payload version.
+    /// </summary>
+    private protected virtual PayloadFields RequiredFields => PayloadFields.V3;
+
+    /// <inheritdoc/>
+    /// <remarks>Arms presence tracking: <c>engine_newPayloadV3</c>+ must reject an omitted or <c>null</c> field.</remarks>
+    void IJsonOnDeserializing.OnDeserializing() => _unboundFields = RequiredFields;
+
     protected new static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayloadV3, new()
     {
         TExecutionPayload executionPayload = ExecutionPayload.Create<TExecutionPayload>(block);
         executionPayload.ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
         executionPayload.BlobGasUsed = block.BlobGasUsed;
         executionPayload.ExcessBlobGas = block.ExcessBlobGas;
+        executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
+        executionPayload.InclusionListRecursiveStark = block.InclusionListRecursiveStark;
         if (block.Header.RecursiveStark is { } recursiveStark)
         {
             executionPayload.RecursiveStarkProof = recursiveStark.StarkProof;
@@ -45,8 +59,20 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
+        block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
+        block.InclusionListRecursiveStark = InclusionListRecursiveStark;
+        if (RecursiveStarkProof is null && RecursiveStarkBlockDepsHash is not null)
+        {
+            return Result<Block>.Fail($"Missing {nameof(RecursiveStarkProof)}");
+        }
+
         if (RecursiveStarkProof is not null)
         {
+            if (RecursiveStarkProof.Length > NativeLeanProofVerifier.MaxProofBytes)
+            {
+                return Result<Block>.Fail($"{nameof(RecursiveStarkProof)} exceeds the proof size limit");
+            }
+
             if (RecursiveStarkBlockDepsHash is not { Length: Hash256.Size })
             {
                 return Result<Block>.Fail($"Invalid {nameof(RecursiveStarkBlockDepsHash)}: expected {Hash256.Size} bytes, got {RecursiveStarkBlockDepsHash?.Length.ToString() ?? "none"}");
@@ -58,22 +84,26 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         return baseResult;
     }
 
-    public override bool ValidateFork(ISpecProvider specProvider)
-         => specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
+    {
+        IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
+        // V3 covers Cancun and V4 covers Prague until Amsterdam; Osaka added no newPayload version.
+        return spec.IsCancunEnabled
+            && !spec.IsAmsterdamEnabled
+            && spec.IsPragueEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V4);
+    }
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    [JsonRequired]
-    public sealed override ulong? BlobGasUsed { get; set; }
+    public sealed override ulong? BlobGasUsed { get; set => field = Bind(value, PayloadFields.BlobGasUsed); }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    [JsonRequired]
-    public sealed override ulong? ExcessBlobGas { get; set; }
+    public sealed override ulong? ExcessBlobGas { get; set => field = Bind(value, PayloadFields.ExcessBlobGas); }
 
     /// <summary>
     /// EIP-8288 <c>recursive_stark</c> proof and its <c>block_deps_hash</c>, present on every block once

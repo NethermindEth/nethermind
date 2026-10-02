@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 //TODO: Redo clique block producer
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
@@ -52,6 +53,23 @@ namespace Nethermind.Consensus.Producers
         /// <remarks>Charged to the header only after execution, so selection must hold it back itself.</remarks>
         public ulong RecursiveStarkGas { get; internal set; }
 
-        public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals);
+        internal List<AggregationInput> LeanProofInputs { get; } = [];
+        internal List<FrameDependency> LeanDependencies { get; } = [];
+        internal long LeanWitnessBytes { get; set; }
+
+        public override Block WithReplacedHeader(BlockHeader newHeader)
+        {
+            BlockToProduce replacement = new(newHeader, Transactions, Uncles, Withdrawals)
+            {
+                InclusionListTransactions = InclusionListTransactions,
+                InclusionListRecursiveStark = InclusionListRecursiveStark,
+                TxByteLength = TxByteLength,
+                RecursiveStarkGas = RecursiveStarkGas,
+                LeanWitnessBytes = LeanWitnessBytes
+            };
+            replacement.LeanProofInputs.AddRange(LeanProofInputs);
+            replacement.LeanDependencies.AddRange(LeanDependencies);
+            return replacement;
+        }
     }
 }

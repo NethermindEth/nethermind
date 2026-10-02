@@ -59,8 +59,27 @@ public class BlockHeader
     public Bloom? Bloom { get; set; }
     public UInt256 Difficulty;
     public ulong Number { get; set; }
-    public ulong GasUsed { get; set; }
+    private ulong _gasUsed;
+
+    /// <summary>Total block gas, which under EIP-8037 is the maximum of <see cref="GasUsedPerDimension"/>.</summary>
+    /// <remarks>Assigning drops the dimensions it summarises, so a header cloned and reset for a call cannot
+    /// carry dimensions that contradict it; record the dimensions after this, never before.</remarks>
+    public ulong GasUsed
+    {
+        get => _gasUsed;
+        set
+        {
+            _gasUsed = value;
+            GasUsedPerDimension = null;
+        }
+    }
+
     public ulong GasLimit { get; set; }
+
+    /// <summary>EIP-8037 per-dimension block gas totals, which <see cref="GasUsed"/> reduces to their maximum.</summary>
+    /// <remarks>Recorded as the block executes, so <c>null</c> for a header decoded or loaded rather than executed —
+    /// the maximum is not invertible, so neither dimension is recoverable afterwards.</remarks>
+    public (ulong Execution, ulong State)? GasUsedPerDimension { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
     public byte[] ExtraData { get; set; } = [];
@@ -160,6 +179,9 @@ public class BlockHeader
     public virtual BlockHeader CreateSimulatedChild(ulong timestamp)
     {
         Hash256? requestsHash = RequestsHash;
+        // EIP-7843: the EL cannot know the CL-assigned slot of a block that does not exist yet, so the
+        // simulated child takes the earliest one it could occupy. Stays unset for a pre-fork parent.
+        ulong? slotNumber = SlotNumber + 1;
         return new BlockHeader(
             Hash!,
             Keccak.OfAnEmptySequenceRlp,
@@ -169,7 +191,8 @@ public class BlockHeader
             GasLimit,
             timestamp,
             [],
-            requestsHash: requestsHash)
+            requestsHash: requestsHash,
+            slotNumber: slotNumber)
         {
             MixHash = Hash256.Zero,
         };

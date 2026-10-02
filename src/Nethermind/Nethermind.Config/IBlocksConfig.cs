@@ -40,14 +40,28 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "State pre-warming level while processing blocks: `None`, `Block` (warm the block's own transactions), or `BlockAndMempool` (also speculatively warm from the mempool between blocks).", DefaultValue = "BlockAndMempool")]
     PreWarmMode PreWarming { get; set; }
 
-    [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
-    bool CachePrecompilesOnBlockProcessing { get; set; }
+    [ConfigItem(
+        Description =
+            "Budget for the per-block tier of the precompile results cache, in kilobytes, split between the cacheable precompiles. Requires PreWarming. " +
+            "Not recommended to set below 1MB when enabled. `0` or negative values disable precompile caching entirely.",
+        DefaultValue = "32768", HiddenFromDocs = true
+    )]
+    int PrecompileCacheMaxKilobytes { get; set; }
 
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
+    [ConfigItem(Description = "On an Intel hybrid CPU, pin block processing to: `All` logical processors, both hyperthreads of every `Performance` core, one hyperthread of every performance core (`PerformancePhysical`), or one performance core to itself, the first without CPU 0, kept clear of prewarm (`Dedicated`). No effect on other CPUs.", DefaultValue = "Performance", HiddenFromDocs = true)]
+    ProcessingCores ProcessingCores { get; set; }
+
+    [ConfigItem(Description = "On an Intel hybrid CPU, keep the pre-warm workers for the transactions block processing reaches next on the performance cores and the rest on the efficiency cores. No effect on other CPUs, nor with `ProcessingCores` set to `All`.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmCoreSplit { get; set; }
+
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
     int MempoolPreWarmConcurrency { get; set; }
+
+    [ConfigItem(Description = "Read the code of the contracts a block access list names on background threads ahead of execution. Requires PreWarming.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PrefetchBlockAccessListCode { get; set; }
 
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }

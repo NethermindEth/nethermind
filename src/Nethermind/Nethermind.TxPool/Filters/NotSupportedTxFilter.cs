@@ -18,30 +18,36 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (_txPoolConfig.BlobsSupport.IsDisabled() && tx.SupportsBlobs)
+        if (_txPoolConfig.BlobsSupport.IsDisabled() && tx.CarriesBlobs)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob transactions are not supported.");
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP8141-GAP (TEMPORARY — devnet only, must change before any public activation): the
-        // public mempool DoS rules for frame transactions (validation prefixes, MAX_VERIFY_GAS,
-        // canonical paymaster reservation, failed-APPROVE replay bound) are NOT implemented yet.
-        // Admitting frame txs here is safe only because the EIP-8141 fork (Bogota) is not scheduled on
-        // any public network, so this branch is exercised on devnets alone; it exists purely to let
-        // rex/tooling submit frame txs for end-to-end devnet testing. Before frame txs may enter a
-        // public mempool this gate must be tightened to also require those DoS filters. Static
-        // well-formedness is already enforced downstream by MalformedTxFilter regardless.
-        // EIP-8288 dependency-verification frames ride this same admission path; their mode and
-        // per-tx dependency limits are validated downstream by MalformedTxFilter when EIP-8288 is
-        // active. Wrapper-based proof distribution is a separate mempool layer, not required while
-        // proofs are stubbed on devnets.
+        // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
+        // Still missing: canonical-paymaster recognition (the EIP pins no runtime code) and re-counting the
+        // cap when a pay target gains code, a deadline-ordered eviction index (only the near-expiry shed pass
+        // exists), and an approve-flagged prefix frame whose target declines, which moves the real payer past
+        // the frame the cap keys on.
+        // Revalidation itself is account-keyed, so it does not see a helper contract an opaque prefix
+        // reaches through CALL*, nor the block context the prefix reads. A record admitted while the
+        // simulator could not answer stays outside the exposure ledger even once a payer resolves,
+        // because recording one on a pooled record would race its removal.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, frame transactions are not supported in the transaction pool.");
             return AcceptTxResult.NotSupportedTxType;
+        }
+
+        // EIP-8141: as for type-3, the mempool form is the sidecar wrapper. The RLP decoder enforces this off the
+        // wire, but a transaction built field-by-field over eth_sendTransaction never passes through it.
+        if (tx.SupportsFrames && tx.CarriesBlobs && !tx.IsInMempoolForm())
+        {
+            Metrics.PendingTransactionsFrameTxMissingSidecar++;
+            if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transaction has no blob sidecar.");
+            return AcceptTxResult.FrameTxMissingSidecar;
         }
 
         return AcceptTxResult.Accepted;

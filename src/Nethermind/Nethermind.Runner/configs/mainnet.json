@@ -10,12 +10,12 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 25512000,
-    "PivotHash": "0x8529377a4fa4113485456ffb4150768656e8594b6741f278456efeb10e01896d",
+    "PivotNumber": 26014000,
+    "PivotHash": "0xb3dc78d68fe9b35441ea8d07e8a43ac077424a4b20a1eadd5e21ba440670dee2",
     "PivotTotalDifficulty": "58750003716598352816469",
     "FastSyncCatchUpHeightDelta": 10000000000,
-    "AncientReceiptsBarrier": 15537394,
-    "AncientBodiesBarrier": 15537394
+    "AncientReceiptsBarrier": 24600000,
+    "AncientBodiesBarrier": 24600000
   },
   "EthStats": {
     "Server": "wss://ethstats.net/api"

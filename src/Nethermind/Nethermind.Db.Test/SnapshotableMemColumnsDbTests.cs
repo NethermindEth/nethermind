@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -157,17 +161,41 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Flush_does_not_cause_trouble()
+        public void Snapshot_never_observes_a_partially_committed_write_batch()
         {
             SnapshotableMemColumnsDb<TestColumns> columnsDb = new();
-            columnsDb.Flush();
-        }
+            const int batchCount = 5000;
+            using ManualResetEventSlim readerStarted = new();
 
-        [Test]
-        public void Dispose_does_not_cause_trouble()
-        {
-            SnapshotableMemColumnsDb<TestColumns> columnsDb = new();
-            columnsDb.Dispose();
+            Task writer = Task.Run(() =>
+            {
+                readerStarted.Wait();
+                for (int i = 1; i <= batchCount; i++)
+                {
+                    byte[] value = BitConverter.GetBytes(i);
+                    using IColumnsWriteBatch<TestColumns> batch = columnsDb.StartWriteBatch();
+                    batch.GetColumnBatch(TestColumns.Column1).Set(TestItem.KeccakA, value);
+                    batch.GetColumnBatch(TestColumns.Column1).Set(TestItem.KeccakB, value);
+                    batch.GetColumnBatch(TestColumns.Column2).Set(TestItem.KeccakA, value);
+                }
+            });
+
+            int snapshotCount = 0;
+            int tornSnapshots = 0;
+            readerStarted.Set();
+            while (!writer.IsCompleted)
+            {
+                snapshotCount++;
+                using IColumnDbSnapshot<TestColumns> snapshot = columnsDb.CreateSnapshot();
+                byte[]? column1A = snapshot.GetColumn(TestColumns.Column1).Get(TestItem.KeccakA);
+                byte[]? column1B = snapshot.GetColumn(TestColumns.Column1).Get(TestItem.KeccakB);
+                byte[]? column2A = snapshot.GetColumn(TestColumns.Column2).Get(TestItem.KeccakA);
+                if (!Bytes.AreEqual(column1A, column1B) || !Bytes.AreEqual(column1A, column2A)) tornSnapshots++;
+            }
+
+            writer.GetAwaiter().GetResult();
+            Assert.That(snapshotCount, Is.GreaterThan(0), "no snapshot overlapped the writer");
+            Assert.That(tornSnapshots, Is.Zero);
         }
 
         [Test]

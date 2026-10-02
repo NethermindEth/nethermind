@@ -1,8 +1,10 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -10,7 +12,12 @@ namespace Nethermind.TxPool;
 
 public class LightTxDecoder : TxDecoder<Transaction>
 {
-    private static int GetLength(Transaction tx) => Rlp.LengthOf(tx.Timestamp)
+    private const byte ConsensusEncodingSizeFormatVersion = 1;
+    // Format 2 holds the already-derived elided network-encoding size. It is still written when the consensus size
+    // is unknown; otherwise records keep the foundational consensus size, from which future encodings can be derived.
+    private const byte ElidedNetworkEncodingSizeFormatVersion = 2;
+
+    private static int GetLength(Transaction tx, Address? paymaster, int networkSize, int persistedEncodingSize, byte sizeFormatVersion) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
@@ -21,12 +28,55 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
-               + Rlp.LengthOf(tx.GetLength())
-               + Rlp.LengthOf(sizeof(byte));
+               + Rlp.LengthOf(networkSize)
+               + Rlp.LengthOf(sizeof(byte))
+               + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
+               + Rlp.LengthOf(persistedEncodingSize)
+               + Rlp.LengthOf(sizeFormatVersion)
+               + Rlp.LengthOf((byte)tx.Type)
+               + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
+               + TrailingLength(tx, paymaster);
+
+    /// <summary>
+    /// Length of the single optional trailing group, or zero when the record needs none.
+    /// </summary>
+    /// <remarks>
+    /// One group rather than two adjacent optional sequences: RLP cannot tell a 20-byte integer from an
+    /// address, so a two-key <c>nonce_keys</c> list is byte-identical to a payer pair.
+    /// </remarks>
+    private static int TrailingLength(Transaction tx, Address? paymaster)
+    {
+        int content = TrailingContentLength(tx, paymaster);
+        return content == 0
+            ? tx.NonceKeys is { } keysOnly ? FrameTxNonceCalldata.KeysLength(keysOnly) : 0
+            : Rlp.LengthOfSequence(content);
+    }
+
+    /// <summary>Content length of the grouped form, or zero for a record that needs none of its slots.</summary>
+    /// <remarks>The paymaster is passed in rather than re-derived, so the length pass and the write pass cannot
+    /// disagree and over- or under-fill the buffer. The exposure is a slot in its own right: a payer-less frame
+    /// transaction reserves nothing but is still summed at the price admission recorded. A zero price is absent
+    /// on the read side, so it cannot open the group alone, or the record would pay for a slot decoding discards.
+    /// </remarks>
+    private static int TrailingContentLength(Transaction tx, Address? paymaster)
+    {
+        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null or { IsZero: true }) return 0;
+
+        // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
+        // nonce_keys list a groupless record still writes, whose first element is a scalar.
+        return (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
+               + Rlp.LengthOf(tx.PayerAddress)
+               + Rlp.LengthOf(tx.PayerExposure ?? default)
+               + (paymaster is null ? 0 : Rlp.LengthOf(paymaster));
+    }
 
     public static byte[] Encode(Transaction tx)
     {
-        byte[] bytes = new byte[GetLength(tx)];
+        // Read once through the pool's own key, so the record and the cap's ledger cannot disagree on the sponsor.
+        Address? paymaster = PendingPaymasterCache.KeyFor(tx);
+        int networkSize = tx.GetLength();
+        (int persistedEncodingSize, byte sizeFormatVersion) = GetPersistedEncodingSize(tx);
+        byte[] bytes = new byte[GetLength(tx, paymaster, networkSize, persistedEncodingSize, sizeFormatVersion)];
         RlpWriter writer = new(bytes);
 
         writer.Encode(tx.Timestamp);
@@ -40,28 +90,174 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.MaxFeePerBlobGas!.Value);
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
-        writer.Encode(tx.GetLength());
-        writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        writer.Encode(networkSize);
+        writer.Encode((byte)(tx.GetProofVersion() ?? default));
+        EncodeAvailableCellMask(tx, ref writer);
+        writer.Encode(persistedEncodingSize);
+        writer.Encode(sizeFormatVersion);
+        // Appended after the blob fields so records written before it still decode, defaulting to TxType.Blob.
+        writer.Encode((byte)tx.Type);
+        // Expiry needs the deadline after a reload, where the frames that carried it are gone.
+        if (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
+        // One optional trailing group, a sequence so the decoder tells it from the expiry deadline that only
+        // sometimes precedes it. Written whole, so the keys list is present even when empty.
+        int trailingContent = TrailingContentLength(tx, paymaster);
+        if (trailingContent == 0)
+        {
+            // Nothing to group: a keys-only record keeps the exact bytes every earlier build writes.
+            if (tx.NonceKeys is { } keysOnly) FrameTxNonceCalldata.EncodeKeys(keysOnly, ref writer);
+        }
+        else
+        {
+            writer.StartSequence(trailingContent);
+            if (tx.NonceKeys is { } nonceKeys) FrameTxNonceCalldata.EncodeKeys(nonceKeys, ref writer);
+            else writer.StartSequence(0);
+
+            // Null when the payer is not what needs the group: a record admitted without simulation names a
+            // sponsor the cap counts, or a price the sender bound sums, with no payer to reserve against.
+            writer.Encode(tx.PayerAddress);
+            // The placeholder for a transaction that never reached the exposure gate, read back as absent.
+            // A genuine zero price collapses onto it and costs the same: the fallback's fee terms are zero too.
+            writer.Encode(tx.PayerExposure ?? default);
+            if (paymaster is not null) writer.Encode(paymaster);
+        }
 
         return bytes;
+    }
+
+    /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c> as the record means it.</summary>
+    private static UInt256[]? DecodeKeysOrNull(ref RlpReader ctx)
+    {
+        UInt256[] keys = FrameTxNonceCalldata.DecodeKeys(ref ctx);
+        return keys.Length == 0 ? null : keys;
     }
 
     public static LightTransaction Decode(byte[] data)
     {
         RlpReader ctx = new(data);
+        UInt256 timestamp = ctx.DecodeUInt256();
+        Address sender = ctx.DecodeAddress();
+        ulong nonce = ctx.DecodeULong();
+        Hash256 hash = ctx.DecodeKeccak();
+        UInt256 value = ctx.DecodeUInt256();
+        ulong gasLimit = ctx.DecodeULong();
+        UInt256 gasPrice = ctx.DecodeUInt256();
+        UInt256 maxFeePerGas = ctx.DecodeUInt256();
+        UInt256 maxFeePerBlobGas = ctx.DecodeUInt256();
+        byte[][] blobVersionHashes = ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
+        ulong poolIndex = ctx.DecodeULong();
+        int size = ctx.DecodePositiveInt();
+
+        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 8);
+        if (optionalFieldCount > 7)
+        {
+            throw new RlpException($"Too many optional fields in {nameof(LightTransaction)}.");
+        }
+
+        ProofVersion proofVersion = optionalFieldCount >= 1 ? (ProofVersion)ctx.DecodeByte() : default;
+        // Entries persisted before the mask field was added always hold full blobs.
+        BlobCellMask blobCellMask = optionalFieldCount >= 2
+            ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan())
+            : BlobCellMask.Full;
+        int persistedEncodingSize = optionalFieldCount >= 3 ? ctx.DecodePositiveInt() : 0;
+        byte sizeFormatVersion = optionalFieldCount >= 4 ? (byte)ctx.DecodeByte() : (byte)0;
+        int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion ? persistedEncodingSize : 0;
+        int elidedNetworkEncodingSize = sizeFormatVersion == ElidedNetworkEncodingSizeFormatVersion ? persistedEncodingSize : 0;
+        TxType type = optionalFieldCount >= 5 ? (TxType)ctx.DecodeByte() : TxType.Blob;
+        // The deadline is the only optional scalar left, so a sequence here means the keys follow instead.
+        ulong? expiryDeadline = optionalFieldCount >= 6 && !ctx.IsSequenceNext() ? ctx.DecodeULong() : null;
+        UInt256[]? nonceKeys = null;
+        Address? payerAddress = null;
+        UInt256? payerExposure = null;
+        Address? paymaster = null;
+        if (ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1)
+        {
+            // Legacy records end in a flat nonce_keys list, whose first element is a scalar; the grouped form
+            // always opens with the keys list. That is total, since a key can never encode as a sequence.
+            int groupStart = ctx.Position;
+            int trailingLength = ctx.ReadSequenceLength();
+            int end = ctx.Position + trailingLength;
+            // Length-checked first: an empty group is a legacy empty list, and IsSequenceNext is an
+            // unguarded index that would read past the buffer for it.
+            if (trailingLength > 0 && ctx.IsSequenceNext())
+            {
+                nonceKeys = DecodeKeysOrNull(ref ctx);
+                // Nullable: a group written for the paymaster alone leaves this slot empty.
+                if (ctx.Position < end) payerAddress = ctx.DecodeAddressOrNull();
+                if (ctx.Position < end)
+                {
+                    // The placeholder must not read back as a price: a record an earlier build wrote for its
+                    // paymaster alone carries one, and the sender's bound now charges the record at it.
+                    UInt256 priced = ctx.DecodeUInt256();
+                    if (!priced.IsZero) payerExposure = priced;
+                }
+
+                // Nullable for the same reason as the payer: once a later slot exists, an absent paymaster
+                // is written as the placeholder rather than omitted.
+                if (ctx.Position < end) paymaster = ctx.DecodeAddressOrNull();
+                // Anything a later build appended is skipped, so a new slot costs this one that field
+                // rather than making every grouped record unreadable.
+                ctx.Position = end;
+            }
+            else
+            {
+                // Rewound so the same decoder reads the flat list, whose header this group's was.
+                ctx.Position = groupStart;
+                nonceKeys = DecodeKeysOrNull(ref ctx);
+            }
+        }
+
+        ctx.Check(data.Length);
+
         return new LightTransaction(
-            timestamp: ctx.DecodeUInt256(),
-            sender: ctx.DecodeAddress()!,
-            nonce: ctx.DecodeULong(),
-            hash: ctx.DecodeKeccak()!,
-            value: ctx.DecodeUInt256(),
-            gasLimit: ctx.DecodeULong(),
-            gasPrice: ctx.DecodeUInt256(),
-            maxFeePerGas: ctx.DecodeUInt256(),
-            maxFeePerBlobGas: ctx.DecodeUInt256(),
-            blobVersionHashes: ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size),
-            poolIndex: ctx.DecodeULong(),
-            size: ctx.DecodePositiveInt(),
-            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
+            timestamp,
+            sender,
+            nonce,
+            hash,
+            value,
+            gasLimit,
+            gasPrice,
+            maxFeePerGas,
+            maxFeePerBlobGas,
+            blobVersionHashes,
+            poolIndex,
+            size,
+            proofVersion,
+            blobCellMask,
+            consensusEncodingSize,
+            elidedNetworkEncodingSize,
+            type,
+            expiryDeadline,
+            nonceKeys,
+            payerAddress,
+            payerExposure,
+            paymaster);
+    }
+
+    private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)
+    {
+        Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
+        GetAvailableCellMask(tx).WriteTo(bytes);
+        writer.Encode(bytes);
+    }
+
+    private static BlobCellMask GetAvailableCellMask(Transaction tx) =>
+        tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            ? wrapper.GetAvailableCellMask()
+            : tx is LightTransaction lightTx
+                ? lightTx.BlobCellMask
+                : BlobCellMask.Empty;
+
+    private static (int Size, byte FormatVersion) GetPersistedEncodingSize(Transaction tx)
+    {
+        if (tx is not LightTransaction lightTx)
+        {
+            return (tx.GetLength(shouldCountBlobs: false), ConsensusEncodingSizeFormatVersion);
+        }
+
+        int consensusEncodingSize = lightTx.GetConsensusEncodingSize();
+        return consensusEncodingSize > 0
+            ? (consensusEncodingSize, ConsensusEncodingSizeFormatVersion)
+            : (lightTx.GetElidedNetworkEncodingSize(), ElidedNetworkEncodingSizeFormatVersion);
     }
 }

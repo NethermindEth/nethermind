@@ -26,6 +26,23 @@ public class ResourcePoolTests
         _resourcePool = new ResourcePool(_config);
     }
 
+    /// <summary>The pool metrics are keyed by label value, so labels built apart must still meet in one entry.</summary>
+    [Test]
+    public void PooledResourceLabel_EqualValues_ShareAMetricEntry()
+    {
+        ResourcePool.PooledResourceLabel label = new("MainBlockProcessing", "CachedResource");
+        Dictionary<ResourcePool.PooledResourceLabel, long> counts = new() { [label] = 1 };
+
+        counts[new ResourcePool.PooledResourceLabel("MainBlockProcessing", "CachedResource")] += 1;
+        counts[new ResourcePool.PooledResourceLabel("MainBlockProcessing", "SnapshotContent")] = 1;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counts[label], Is.EqualTo(2));
+            Assert.That(counts, Has.Count.EqualTo(2));
+        }
+    }
+
     [Test]
     public void Test_GetSnapshotContent_ReturnsNewInstance_WhenPoolEmpty()
     {
@@ -101,17 +118,34 @@ public class ResourcePoolTests
         Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void ShouldPrewarm_AddressOverloadsUseSameHash(bool includeSlot)
+    [Test]
+    public void ShouldPrewarm_SecondRequestForTheSameKey_IsDeduplicated([Values] bool includeSlot)
     {
         using TransientResource resource = new(new TransientResource.Size(1024, 1));
         Address address = new("0x1234567890123456789012345678901234567890");
-        ValueAddress valueAddress = new(address.Bytes);
         UInt256? slot = includeSlot ? (UInt256)1 : null;
 
         Assert.That(resource.ShouldPrewarm(address, slot), Is.True);
-        Assert.That(resource.ShouldPrewarm(in valueAddress, slot), Is.False);
+        Assert.That(resource.ShouldPrewarm(address, slot), Is.False);
+    }
+
+    [Test]
+    public void Test_ReleaseLease_FinalRelease_ReturnsResourceToCheckoutPool()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        TransientResource resource = _resourcePool.GetCachedResource(usage);
+
+        resource.ReleaseLease();
+
+        Assert.That(_resourcePool.GetCachedResource(usage), Is.SameAs(resource));
+    }
+
+    [Test]
+    public void Test_ReleaseLease_WithoutPoolCheckout_Throws()
+    {
+        using TransientResource resource = new(new TransientResource.Size(1024, 1));
+
+        Assert.That(resource.ReleaseLease, Throws.InvalidOperationException);
     }
 
     [Test]
@@ -187,10 +221,8 @@ public class ResourcePoolTests
     public void Test_CompactUsage_MapsCompactSizeToUsage(ulong compactSize, ResourcePool.Usage expected) =>
         Assert.That(ResourcePool.CompactUsage(compactSize), Is.EqualTo(expected));
 
-    [TestCase(3UL)]
-    [TestCase(5UL)]
-    [TestCase(2047UL)]
-    public void Test_CompactUsage_ThrowsOnInvalidSize(ulong compactSize) =>
+    [Test]
+    public void Test_CompactUsage_ThrowsOnInvalidSize([Values(3UL, 5UL, 2047UL)] ulong compactSize) =>
         Assert.That(() => ResourcePool.CompactUsage(compactSize), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]

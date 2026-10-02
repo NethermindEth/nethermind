@@ -40,54 +40,184 @@ public static partial class EvmInstructions
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpMath">A struct implementing <see cref="IOpMath2Param"/> that defines the specific operation.</typeparam>
-    /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the specific math operation.
-        TGasPolicy.Consume<TOpMath>(ref gas);
+        if (!TGasPolicy.UpdateGas<TOpMath>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return Math2ParamCore<TOpMath, TTracingInst>(ref stack);
+        return Math2ParamCore<TOpMath, TTracingInst, OnFlag>(ref stack);
     }
 
-    /// <summary>Gas-free body of <see cref="InstructionMath2Param{TGasPolicy, TOpMath, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    /// <summary>Gas-free body of <see cref="InstructionMath2Param{TGasPolicy, TOpMath, TTracingInst}"/>.</summary>
+    /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must have verified at least 2 stack items.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType Math2ParamCore<TOpMath, TTracingInst>(ref EvmStack stack)
+    internal static EvmExceptionType Math2ParamCore<TOpMath, TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
+        // SUB takes the scalar limb path below even with Vector256: UInt256.Subtract reaches the
+        // out-of-line SubtractImpl, and that call makes the JIT save and restore the callee-saved
+        // registers on every SUB. UInt256.Add inlines fully, so ADD keeps the vector path.
+        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpAdd))
+        {
+            if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte arithmeticTopRef = ref stack.Pop1Peek32BytesUnchecked();
+            ref UInt256 arithmeticB = ref As<byte, UInt256>(ref arithmeticTopRef);
+            ref UInt256 arithmeticA = ref Add(ref arithmeticB, 1);
+            TOpMath.Operation(in arithmeticA, in arithmeticB, out arithmeticB);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref arithmeticTopRef);
+            return EvmExceptionType.None;
+        }
+
+        if (typeof(TOpMath) == typeof(OpAdd))
+        {
+            if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte addTopRef = ref stack.Pop1Peek32BytesUnchecked();
+
+            ref ulong top = ref As<byte, ulong>(ref addTopRef);
+            ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
+            // Limb layout: limb 0 is the least significant, so the carry runs upward. It is tracked
+            // in a ulong rather than through UInt128, whose shift down by 64 reaches a software
+            // helper on the guest.
+            ulong augend = top;
+            ulong limb = augend + popped;
+            ulong carry = limb < augend ? 1UL : 0UL;
+            top = limb;
+            // Spelled out rather than looped, so the guest gets straight-line code. The two carries
+            // are mutually exclusive: a wrap on augend + addend leaves a result below both, which
+            // cannot then be ulong.MaxValue and wrap again on the incoming carry.
+            augend = Add(ref top, 1);
+            limb = augend + Add(ref popped, 1);
+            ulong wrapped = limb < augend ? 1UL : 0UL;
+            limb += carry;
+            carry = wrapped + (limb < carry ? 1UL : 0UL);
+            Add(ref top, 1) = limb;
+            augend = Add(ref top, 2);
+            limb = augend + Add(ref popped, 2);
+            wrapped = limb < augend ? 1UL : 0UL;
+            limb += carry;
+            carry = wrapped + (limb < carry ? 1UL : 0UL);
+            Add(ref top, 2) = limb;
+            Add(ref top, 3) = Add(ref top, 3) + Add(ref popped, 3) + carry;
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
+            return EvmExceptionType.None;
+        }
+
+        if (typeof(TOpMath) == typeof(OpSub))
+        {
+            if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte subtractTopRef = ref stack.Pop1Peek32BytesUnchecked();
+
+            ref ulong subtrahend = ref As<byte, ulong>(ref subtractTopRef);
+            ref ulong minuend = ref Add(ref subtrahend, EvmStack.WordSize / sizeof(ulong));
+            // Limb layout: limb 0 is the least significant, so the borrow runs upward.
+            ulong minuendPart = minuend;
+            ulong difference = minuendPart - subtrahend;
+            ulong borrow = difference > minuendPart ? 1UL : 0UL;
+            subtrahend = difference;
+            minuendPart = Add(ref minuend, 1);
+            difference = minuendPart - Add(ref subtrahend, 1);
+            ulong withoutBorrow = difference;
+            difference -= borrow;
+            borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
+            Add(ref subtrahend, 1) = difference;
+            minuendPart = Add(ref minuend, 2);
+            difference = minuendPart - Add(ref subtrahend, 2);
+            withoutBorrow = difference;
+            difference -= borrow;
+            borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
+            Add(ref subtrahend, 2) = difference;
+            Add(ref subtrahend, 3) = Add(ref minuend, 3) - Add(ref subtrahend, 3) - borrow;
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref subtractTopRef);
+            return EvmExceptionType.None;
+        }
+
+        if (typeof(TOpMath) == typeof(OpLt) ||
+            typeof(TOpMath) == typeof(OpGt) ||
+            typeof(TOpMath) == typeof(OpSLt) ||
+            typeof(TOpMath) == typeof(OpSGt))
+        {
+            if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte rawTopRef = ref stack.Pop1Peek32BytesUnchecked();
+
+            ref ulong resultParts = ref As<byte, ulong>(ref rawTopRef);
+            bool comparison = CompareScalar<TOpMath>(
+                ref Add(ref resultParts, EvmStack.WordSize / sizeof(ulong)), ref resultParts);
+            WriteSmallWordToSlot(ref rawTopRef, comparison ? 1UL : 0UL);
+
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref rawTopRef);
+            return EvmExceptionType.None;
+        }
+
         // Pop a and peek the new top slot for in-place write; skips the push's overflow check
         // since the net stack delta (-1) cannot overflow a previously non-overflowing stack.
-        ref byte topRef = ref stack.Pop1Peek32Bytes(out UInt256 a, out bool ok);
-        if (!ok) goto StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
-        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        TOpMath.Operation(in a, in b, out UInt256 result);
+        // Operands are read in place: slots hold the UInt256 limb layout and the popped slot stays intact
+        // until the next push. The result goes to a local because the Int256 routines behind MUL/DIV/MOD
+        // are not guaranteed alias-safe.
+        ref UInt256 b = ref As<byte, UInt256>(ref topRef);
+        TOpMath.Operation(in Add(ref b, 1), in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
 
-        if (TTracingInst.IsActive) stack.ReportPushUInt256(ref topRef);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
 
+    /// <remarks>
+    /// Limbs lie in host order, most significant last; the comparison starts from that end and
+    /// stops at the first pair that differs.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
+        where TOpMath : struct, IOpMath2Param
+    {
+        bool signed = typeof(TOpMath) == typeof(OpSLt) || typeof(TOpMath) == typeof(OpSGt);
+        bool lessThan = typeof(TOpMath) == typeof(OpLt) || typeof(TOpMath) == typeof(OpSLt);
+
+        // Limb layout: limb 3 is the most significant and the only one that carries the sign; the
+        // rest always compare unsigned.
+        ulong aHigh = Add(ref a, 3);
+        ulong bHigh = Add(ref b, 3);
+        if (aHigh != bHigh)
+        {
+            bool less = signed ? (long)aHigh < (long)bHigh : aHigh < bHigh;
+            return lessThan ? less : !less;
+        }
+        if (Add(ref a, 2) != Add(ref b, 2))
+            return CompareLimb(Add(ref a, 2), Add(ref b, 2), lessThan);
+        if (Add(ref a, 1) != Add(ref b, 1))
+            return CompareLimb(Add(ref a, 1), Add(ref b, 1), lessThan);
+        return CompareLimb(a, b, lessThan);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool CompareLimb(ulong a, ulong b, bool lessThan)
+        => lessThan ? a < b : a > b;
+
     /// <summary>
     /// Implements addition of two 256-bit unsigned integers.
     /// </summary>
     public struct OpAdd : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Add(in a, in b, out result);
     }
@@ -97,6 +227,8 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSub : IOpMath2Param
     {
+        /// <remarks>Not called: Math2ParamCore takes its scalar limb path for SUB on every target. Kept for the interface.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Subtract(in a, in b, out result);
     }
@@ -119,6 +251,7 @@ public static partial class EvmInstructions
     public struct OpDiv : IOpMath2Param
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -128,7 +261,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                UInt256.Divide(in a, in b, out result);
+                Divide256(in a, in b, out result);
             }
         }
     }
@@ -174,6 +307,7 @@ public static partial class EvmInstructions
     public struct OpMod : IOpMath2Param
     {
         static ulong IGasCost.GasCost => GasCostOf.Low;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -183,7 +317,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                UInt256.Mod(in a, in b, out result);
+                Mod256(in a, in b, out result);
             }
         }
     }
@@ -222,6 +356,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpLt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = a < b ? UInt256.One : default;
     }
 
@@ -231,6 +366,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpGt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = a > b ? UInt256.One : default;
     }
 
@@ -240,6 +376,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSLt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = As<UInt256, Int256>(ref AsRef(in a))
                 .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) < 0 ?
                 UInt256.One :
@@ -252,6 +389,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSGt : IOpMath2Param
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = As<UInt256, Int256>(ref AsRef(in a))
                 .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) > 0 ?
                 UInt256.One :
@@ -265,50 +403,61 @@ public static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack where the program counter is pushed.</param>
     /// <param name="gas">Reference to the gas state; updated by the gas cost.</param>
-    /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst, Eip160>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        where Eip160 : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        TGasPolicy.Consume<ExpGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        // Pop the base value and exponent from the stack.
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 exponent))
-        {
-            goto StackUnderflow;
-        }
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
+        ref UInt256 exponent = ref As<byte, UInt256>(ref topRef);
+        ref UInt256 a = ref Add(ref exponent, 1);
 
         // Determine the effective byte-length of the exponent.
         int leadingZeros = exponent.CountLeadingZeros() >> 3;
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            return stack.PushOne<TTracingInst>();
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
         }
 
         ulong expSize = (ulong)(32 - leadingZeros);
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-        TGasPolicy.ConsumeExpBytes(ref gas, vm.Spec, expSize);
+        if (!TGasPolicy.TryConsumeExpBytes<Eip160>(ref gas, vm.Spec, expSize)) return EvmExceptionType.OutOfGas;
 
         if (a.IsZero)
         {
-            return stack.PushZero<TTracingInst>();
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 0UL, vm);
         }
         if (a.IsOne)
         {
-            return stack.PushOne<TTracingInst>();
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
         }
 
-        // Perform exponentiation and push the 256-bit result onto the stack.
+        // The result goes to a local first: the exponent it overwrites is still an input.
         UInt256.Exp(in a, in exponent, out UInt256 expResult);
-        return stack.PushUInt256<TTracingInst>(in expResult);
+        EvmStack.WriteUInt256ToSlot(ref topRef, in expResult);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType WriteSmallExpResult<TGasPolicy, TTracingInst>(ref byte slot, ulong value, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        WriteSmallWordToSlot(ref slot, value);
+        if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(value == 0 ? Bytes.ZeroByteSpan : Bytes.OneByteSpan);
+        return EvmExceptionType.None;
     }
 }

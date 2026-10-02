@@ -9,6 +9,7 @@ using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -75,7 +76,7 @@ public class MempoolWrapperTests
             Proofs = [[1], [2]],
         };
 
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.True, error);
+        Assert.That(ValidateResolved(wrapper, Accepting, out string? error), Is.True, error);
     }
 
     [Test]
@@ -90,7 +91,7 @@ public class MempoolWrapperTests
             RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
         };
 
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.True, error);
+        Assert.That(ValidateResolved(wrapper, Accepting, out string? error), Is.True, error);
     }
 
     [Test]
@@ -104,7 +105,7 @@ public class MempoolWrapperTests
             Proofs = [[1]],
         };
 
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.False);
+        Assert.That(ValidateResolved(wrapper, Accepting, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.ProofCountMismatch));
     }
 
@@ -119,7 +120,7 @@ public class MempoolWrapperTests
             RecursiveStark = new RecursiveStark([1], Keccak.Compute("wrong")),
         };
 
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.False);
+        Assert.That(ValidateResolved(wrapper, Accepting, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsHashMismatch));
     }
 
@@ -135,8 +136,8 @@ public class MempoolWrapperTests
             RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
         };
 
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TooManySigDeps));
+        Assert.That(ValidateResolved(wrapper, Accepting, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo("transaction exceeds EIP-8288 dependency limits"));
     }
 
     [Test]
@@ -151,63 +152,8 @@ public class MempoolWrapperTests
             RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
         };
 
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TooManyStarkDeps));
-    }
-
-    [Test]
-    public void Recursive_wrapper_accepts_valid_placeholder_proof_and_rejects_tampering()
-    {
-        List<FrameDependency> deps = [Sphincs("a")];
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
-        byte[] proof = PlaceholderLeanProofVerifier.ProveRecursive(in depsHash, Eip8288Constants.AggregatedVk);
-
-        MempoolWrapper valid = new()
-        {
-            Transactions = [new WrapperTransaction(Keccak.Compute("tx1"))],
-            Mode = MempoolWrapper.ModeRecursive,
-            Deps = deps,
-            RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash)),
-        };
-        Assert.That(MempoolWrapperValidator.Validate(valid, PlaceholderLeanProofVerifier.Instance, out string? error), Is.True, error);
-
-        MempoolWrapper tampered = new()
-        {
-            Transactions = valid.Transactions,
-            Mode = MempoolWrapper.ModeRecursive,
-            Deps = deps,
-            RecursiveStark = new RecursiveStark([9], new Hash256(depsHash)),
-        };
-        Assert.That(MempoolWrapperValidator.Validate(tampered, PlaceholderLeanProofVerifier.Instance, out error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.InvalidProof));
-    }
-
-    [Test]
-    public void Direct_wrapper_accepts_valid_placeholder_proofs_and_rejects_tampering()
-    {
-        FrameDependency a = Sphincs("a");
-        FrameDependency b = Stark("b");
-        byte[] proofA = PlaceholderLeanProofVerifier.ProveLeanSphincs(a.DataHash, a.VerificationKey);
-        byte[] proofB = PlaceholderLeanProofVerifier.ProveLeanStark(b.DataHash, b.VerificationKey);
-
-        MempoolWrapper valid = new()
-        {
-            Transactions = [new WrapperTransaction(Keccak.Compute("tx1"))],
-            Mode = MempoolWrapper.ModeDirect,
-            Deps = [a, b],
-            Proofs = [proofA, proofB],
-        };
-        Assert.That(MempoolWrapperValidator.Validate(valid, PlaceholderLeanProofVerifier.Instance, out string? error), Is.True, error);
-
-        MempoolWrapper tampered = new()
-        {
-            Transactions = valid.Transactions,
-            Mode = MempoolWrapper.ModeDirect,
-            Deps = [a, b],
-            Proofs = [proofA, [9]],
-        };
-        Assert.That(MempoolWrapperValidator.Validate(tampered, PlaceholderLeanProofVerifier.Instance, out error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.InvalidProof));
+        Assert.That(ValidateResolved(wrapper, Accepting, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo("transaction exceeds EIP-8288 dependency limits"));
     }
 
     // A deps blob of 96k + r decoded to the same wrapper as the 96k one, so two wire encodings mapped
@@ -231,10 +177,67 @@ public class MempoolWrapperTests
         }, Throws.InstanceOf<RlpException>());
     }
 
+    [Test]
+    public void Unknown_transaction_hash_is_rejected()
+    {
+        MempoolWrapper wrapper = new() { Transactions = [new WrapperTransaction(Keccak.Compute("missing"))], Mode = MempoolWrapper.ModeDirect, Deps = [], Proofs = [] };
+        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.UnknownTransaction));
+    }
+
+    [Test]
+    public void Duplicate_dependencies_are_rejected()
+    {
+        FrameDependency dependency = Sphincs("a");
+        MempoolWrapper wrapper = new() { Transactions = [new WrapperTransaction(Keccak.Compute("tx"))], Mode = MempoolWrapper.ModeDirect, Deps = [dependency, dependency], Proofs = [[1], [1]] };
+        Assert.That(ValidateResolved(wrapper, Accepting, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
+    }
+
+    [Test]
+    public void Recursive_wrapper_rejects_extra_inner_values()
+    {
+        Rlp encoded = Rlp.Encode(
+            Rlp.Encode(new[] { Rlp.Encode(Keccak.Compute("tx").BytesToArray()) }),
+            Rlp.Encode((ulong)MempoolWrapper.ModeRecursive),
+            Rlp.Encode(new[]
+            {
+                Rlp.Encode(System.Array.Empty<byte>()),
+                Rlp.Encode(new[] { Rlp.Encode(new byte[] { 1 }), Rlp.Encode(Keccak.Compute("deps")), Rlp.Encode(new byte[] { 2 }) })
+            }));
+        Assert.That(() =>
+        {
+            RlpReader reader = new(encoded.Bytes);
+            MempoolWrapperDecoder.Instance.Decode(ref reader);
+        }, Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    public void Wrapper_rejects_noncanonical_scheme_word([Values] bool unknownScheme)
+    {
+        byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
+        dependency[31] = unknownScheme ? (byte)0xff : Eip8288Constants.LeanSphincsScheme;
+        if (!unknownScheme) dependency[0] = 1;
+        Rlp encoded = Rlp.Encode(Rlp.Encode(System.Array.Empty<Rlp>()), Rlp.Encode(0UL),
+            Rlp.Encode(new[] { Rlp.Encode(dependency), Rlp.Encode(new[] { Rlp.Encode(new byte[] { 1 }) }) }));
+        Assert.That(() =>
+        {
+            RlpReader reader = new(encoded.Bytes);
+            MempoolWrapperDecoder.Instance.Decode(ref reader);
+        }, Throws.InstanceOf<RlpException>());
+    }
+
+    private static bool ValidateResolved(MempoolWrapper wrapper, ILeanProofVerifier verifier, out string? error) =>
+        MempoolWrapperValidator.Validate(wrapper, verifier, out error, _ => new Transaction
+        {
+            Type = TxType.FrameTx,
+            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(wrapper.Deps))]
+        });
+
     private static MempoolWrapper RoundTrip(MempoolWrapper wrapper)
     {
         Rlp rlp = MempoolWrapperDecoder.Instance.Encode(wrapper);
         RlpReader reader = new(rlp.Bytes);
-        return MempoolWrapperDecoder.Instance.Decode(ref reader);
+        return MempoolWrapperDecoder.Instance.Decode(ref reader)!;
     }
 }

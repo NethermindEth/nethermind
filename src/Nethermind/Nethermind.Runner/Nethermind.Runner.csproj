@@ -46,6 +46,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.PortfolioViewer.Plugin\Nethermind.PortfolioViewer.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.BalRecorder\Nethermind.BalRecorder.csproj" />
     <ProjectReference Include="..\Nethermind.BlockProfiler\Nethermind.BlockProfiler.csproj" />
     <ProjectReference Include="..\Nethermind.CensorshipDetector.Plugin\Nethermind.CensorshipDetector.Plugin.csproj" />
@@ -59,7 +60,6 @@
     <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
     <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
     <ProjectReference Include="..\Nethermind.ExternalSigner.Plugin\Nethermind.ExternalSigner.Plugin.csproj" />
-    <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
     <ProjectReference Include="..\Nethermind.Hive\Nethermind.Hive.csproj" />
     <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />

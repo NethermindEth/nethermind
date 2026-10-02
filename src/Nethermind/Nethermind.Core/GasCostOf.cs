@@ -66,6 +66,7 @@ namespace Nethermind.Core
         public const ulong AccessStorageListEntry = 1900; // eip-2930
         public const ulong TLoad = WarmStateRead; // eip-1153
         public const ulong TStore = WarmStateRead; // eip-1153
+        public const ulong TxTrace = WarmStateRead; // eip-7906 placeholder; TXTRACE_GAS_COST is TBD in the spec
         public const ulong PerAuthBaseCost = Eip7702Constants.PerAuthBaseCost;
         public const ulong TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const ulong TotalCostFloorPerTokenEip7976 = 16; // eip-7976
@@ -74,14 +75,14 @@ namespace Nethermind.Core
         public const long StateBytesPerStorageSet = 64; // eip-8037
         public const long StateBytesPerNewAccount = 120; // eip-8037
         public const long StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
-        public const ulong SSetRegular = 2_900;
+        public const ulong SSetExecution = 2_900;
         public const long SSetState = StateBytesPerStorageSet * CostPerStateByte;
-        public const ulong CreateRegular = 9_000;
+        public const ulong CreateExecution = 9_000;
         public const long CreateState = StateBytesPerNewAccount * CostPerStateByte;
         public const long NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
-        public const ulong CodeDepositRegularPerWord = 6;
+        public const ulong CodeDepositExecutionPerWord = 6;
         public const long CodeDepositState = CostPerStateByte;
-        public const ulong PerAuthBaseRegular = Eip8037Constants.PerAuthBaseRegularCost;
+        public const ulong PerAuthBaseExecution = Eip8037Constants.PerAuthBaseExecutionCost;
         public const long PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
         public const ulong PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const ulong BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
@@ -94,7 +95,6 @@ namespace Nethermind.Core
 
         // eip-2780: reduce intrinsic transaction gas and reprice state-touching primitives.
         public const ulong TransactionEip2780 = 12000; // TX_BASE_COST: ECDSA recovery + sender account access + sender account write
-        public const ulong TxValueCostEip2780 = 4244; // recipient balance write for a value-bearing transfer (non-create)
-        public const ulong TransferLogEip2780 = 1756; // eip-7708 LOG3 transfer event cost
+        public const ulong TxValueCostEip2780 = 6000; // TX_VALUE_COST: recipient balance write + folded eip-7708 transfer log for a value-bearing transfer (non-create)
     }
 }

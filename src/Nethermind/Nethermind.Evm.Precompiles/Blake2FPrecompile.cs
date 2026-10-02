@@ -25,7 +25,7 @@ public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(9);
 
-    public static string Name => "BLAKE2F";
+    public string Name => "BLAKE2F";
 
     public ulong BaseGasCost(IReleaseSpec _) => 0UL;
 

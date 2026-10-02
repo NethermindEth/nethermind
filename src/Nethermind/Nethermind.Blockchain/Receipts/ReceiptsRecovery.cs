@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -25,13 +26,10 @@ namespace Nethermind.Blockchain.Receipts
                 if (needRecover)
                 {
                     using IReceiptsRecovery.IRecoveryContext ctx = CreateRecoveryContext(block, forceRecoverSender);
-                    for (int receiptIndex = 0; receiptIndex < block.TransactionCount; receiptIndex++)
+                    for (int receiptIndex = 0; receiptIndex < receipts.Length; receiptIndex++)
                     {
-                        if (receipts.Length > receiptIndex)
-                        {
-                            TxReceipt receipt = receipts[receiptIndex];
-                            ctx.RecoverReceiptData(receipt);
-                        }
+                        TxReceipt receipt = receipts[receiptIndex];
+                        ctx.RecoverReceiptData(receipt);
                     }
 
                     if (_reinsertReceiptOnRecover)
@@ -54,13 +52,28 @@ namespace Nethermind.Blockchain.Receipts
             return new RecoveryContext(releaseSpec, block, forceRecoverSender, _ecdsa);
         }
 
+        public IReceiptsRecovery.IRecoveryContext CreateLogRecoveryContext(ReceiptRecoveryBlock block) => new LogRecoveryContext(block);
+
         public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false)
         {
-            if (receipts is null || receipts.Length == 0) return false;
+            if (receipts is null || receipts.Length == 0 || (recoverSenderOnly && !forceRecoverSender)) return false;
 
-            if (recoverSenderOnly) return (forceRecoverSender && receipts[0].Sender is null);
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                TxReceipt receipt = receipts[i];
+                if (recoverSenderOnly)
+                {
+                    if (receipt.Sender is null) return true;
+                }
+                else if (receipt.BlockHash is null ||
+                         receipt.TxHash is null ||
+                         (forceRecoverSender && receipt.Sender is null))
+                {
+                    return true;
+                }
+            }
 
-            return (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
+            return false;
         }
 
         private class RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa) : IReceiptsRecovery.IRecoveryContext
@@ -84,7 +97,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 if (transaction.SenderAddress is null && _forceRecoverSender)
                 {
-                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId);
+                    transaction.SenderAddress = receipt.Sender ?? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId);
                 }
 
                 receipt.TxType = transaction.Type;
@@ -96,9 +109,11 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
 
                 // how would it be in CREATE2?
-                receipt.ContractAddress = transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null;
+                receipt.ContractAddress = transaction.CreatesTopLevelContract && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null;
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
-                if (receipt.StatusCode != StatusCode.Success)
+                // The log-count heuristic below assumes a failed transaction has no logs; a frame transaction
+                // can fail while carrying the logs of the frames that succeeded (EIP-8141).
+                if (receipt.StatusCode != StatusCode.Success && !receipt.TxType.SupportsFrames())
                 {
                     receipt.StatusCode = (receipt.Logs?.Length ?? 0) == 0 ? StatusCode.Failure : StatusCode.Success;
                 }
@@ -127,9 +142,10 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.Recipient = (transaction.IsContractCreation ? Address.Zero : transaction.To)!.ToStructRef();
 
                 // how would it be in CREATE2?
-                receipt.ContractAddress = (transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce) : Address.Zero)!.ToStructRef();
+                receipt.ContractAddress = (transaction.CreatesTopLevelContract && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce) : Address.Zero)!.ToStructRef();
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
-                if (receipt.StatusCode != StatusCode.Success)
+                // See the note on the same heuristic in the overload above.
+                if (receipt.StatusCode != StatusCode.Success && !receipt.TxType.SupportsFrames())
                 {
                     receipt.StatusCode = (receipt.Logs?.Length ?? 0) == 0 ? StatusCode.Failure : StatusCode.Success;
                 }
@@ -141,6 +157,41 @@ namespace Nethermind.Blockchain.Receipts
             {
                 _transactionIndex++;
                 _gasUsedBefore = gasUsedTotal;
+            }
+
+            public void Dispose() => _block.Dispose();
+        }
+
+        /// <summary>Takes each transaction hash from its encoding instead of decoding the transaction.</summary>
+        private sealed class LogRecoveryContext(ReceiptRecoveryBlock block) : IReceiptsRecovery.IRecoveryContext
+        {
+            private ReceiptRecoveryBlock _block = block;
+            private int _transactionIndex;
+
+            public void RecoverReceiptData(TxReceipt receipt)
+            {
+                receipt.TxHash = NextTransactionHash();
+                receipt.BlockHash = _block.Hash;
+                receipt.BlockNumber = _block.Number;
+                receipt.Index = _transactionIndex++;
+            }
+
+            public void RecoverReceiptData(ref TxReceiptStructRef receipt)
+            {
+                receipt.TxHash = NextTransactionHash().ToStructRef();
+                receipt.BlockHash = _block.Hash!.ToStructRef();
+                receipt.BlockNumber = _block.Number;
+                receipt.Index = _transactionIndex++;
+            }
+
+            private Hash256 NextTransactionHash()
+            {
+                if (_transactionIndex >= _block.TransactionCount)
+                {
+                    throw new InvalidOperationException("Trying to recover more receipt that transaction");
+                }
+
+                return _block.GetNextTransactionHash();
             }
 
             public void Dispose() => _block.Dispose();

@@ -15,7 +15,7 @@ public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvide
 {
     public BlockForRpc Block { get; } = blockForRpcFactory.Create(block, includeFullTransactionData, specProvider);
     public Hash256 Hash { get; } = block.Header.Hash;
-    public byte[] Rlp { get; } = blockDecoder.Encode(block).Bytes;
+    public byte[] Rlp { get; } = blockDecoder.EncodeAsBytes(block);
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public GeneratedBlockAccessList? GeneratedBlockAccessList { get; } = block.GeneratedBlockAccessList;

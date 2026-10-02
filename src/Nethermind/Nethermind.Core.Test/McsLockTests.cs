@@ -20,17 +20,6 @@ public class McsLockTests
     public void Setup() => mcsLock = new McsLock();
 
     [Test]
-    public void SingleThreadAcquireRelease()
-    {
-        using (McsLock.Disposable handle = mcsLock.EnterScope())
-        {
-            Thread.Sleep(10);
-        }
-
-        Assert.Pass(); // Test passes if no deadlock or exception occurs.
-    }
-
-    [Test]
     public void MultipleThreads()
     {
         int counter = 0;
@@ -112,12 +101,17 @@ public class McsLockTests
     [Test]
     public void ReacquireAfterReleaseSucceeds()
     {
-        for (int i = 0; i < 3; i++)
+        // Run on a worker thread. A broken release then causes a fast, explicit
+        // failure instead of a deadlocked test host.
+        Task reacquisitions = Task.Run(() =>
         {
-            using McsLock.Disposable handle = mcsLock.Acquire();
-        }
+            for (int i = 0; i < 3; i++)
+            {
+                using McsLock.Disposable handle = mcsLock.Acquire();
+            }
+        });
 
-        Assert.Pass();
+        Assert.That(reacquisitions.Wait(TimeSpan.FromSeconds(10)), Is.True, "a released lock could not be re-acquired");
     }
 
     [Test]

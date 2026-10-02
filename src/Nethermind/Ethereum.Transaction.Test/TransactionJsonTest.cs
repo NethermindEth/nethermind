@@ -1,15 +1,23 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -19,6 +27,19 @@ namespace Ethereum.Transaction.Test;
 [Parallelizable(ParallelScope.Self)]
 public class TransactionJsonTest : GeneralStateTestBase
 {
+    private static readonly Address Recipient = new("0x67eb8fcbef83a0662b030f8bc89a10070c167a66");
+    private static readonly Address Coinbase = new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba");
+    private static readonly UInt256 SenderBalance = 1_000_000;
+    private static readonly UInt256 RecipientBalance = 1;
+    private static readonly UInt256 CoinbaseBalance = 1;
+    private static readonly UInt256 TransferredValue = 1_000;
+
+    /// <summary>
+    /// In range for every signature validator - r and s are non-zero and below the curve order, and
+    /// v is 27 - yet no public key recovers from it.
+    /// </summary>
+    private static readonly Signature UnrecoverableSignature = new(5, 1, 27);
+
     [Test]
     public void Can_load_access_lists()
     {
@@ -94,7 +115,7 @@ public class TransactionJsonTest : GeneralStateTestBase
                     Balance = UInt256.Parse("0xffffffffff"),
                 }
             },
-            PostHash = new Hash256("0x2806dd1651e0d1df9ef17fa3c80b302d8e7f34de76eb207ca43e86b22ad231ca"),
+            PostHash = new Hash256("0xbb8e5ab8df3709e0abf2d53bb3bdbbea8159d35ea16d2c7fb5921fbc3de31ef6"),
             Transaction = transaction,
         };
 
@@ -170,4 +191,93 @@ public class TransactionJsonTest : GeneralStateTestBase
         Assert.That(result.Pass, Is.True);
     }
 
+    /// <summary>
+    /// A state-test fixture names its sender, but the account that executes has to be the one the
+    /// fixture's own signature recovers to. An in-range yet unrecoverable signature recovers to
+    /// nobody, so the transaction must be rejected rather than run as the funded account the fixture
+    /// names: no value moves and the sender's nonce stays put.
+    /// </summary>
+    /// <remarks>
+    /// The recoverable case is the control - the same fixture shape does transfer and does advance the
+    /// nonce, so the rejection is attributable to the signature alone. Mirrors upstream
+    /// <c>frontier/validation/test_transaction.py::test_unrecoverable_signature</c>.
+    /// </remarks>
+    [Test]
+    public void Fixture_transaction_executes_only_as_the_sender_its_signature_recovers([Values] bool signatureRecovers)
+    {
+        using PrivateKey senderKey = new("0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8");
+
+        Nethermind.Core.Transaction pinned = new()
+        {
+            Nonce = 0,
+            GasPrice = UInt256.Zero,
+            GasLimit = GasCostOf.Transaction,
+            To = Recipient,
+            Value = TransferredValue,
+        };
+
+        if (signatureRecovers)
+        {
+            new EthereumEcdsa(BlockchainIds.Mainnet).Sign(senderKey, pinned, isEip155Enabled: false);
+        }
+        else
+        {
+            pinned.Signature = UnrecoverableSignature;
+        }
+
+        PostStateJson postStateJson = new()
+        {
+            ExpectException = "TransactionException.INVALID_SIGNATURE_VRS",
+            Txbytes = Rlp.Encode(pinned, RlpBehaviors.SkipTypedWrapping).Bytes,
+        };
+        TransactionJson transactionJson = new() { Sender = senderKey.Address };
+
+        Dictionary<Address, AccountState> pre = Accounts(senderKey.Address, SenderBalance, senderNonce: 0, RecipientBalance);
+        Dictionary<Address, AccountState> expectedPost = signatureRecovers
+            ? Accounts(senderKey.Address, SenderBalance - TransferredValue, senderNonce: 1, RecipientBalance + TransferredValue)
+            : pre;
+
+        GeneralStateTest test = new()
+        {
+            Name = nameof(Fixture_transaction_executes_only_as_the_sender_its_signature_recovers),
+            Category = "state",
+            Fork = Frontier.Instance,
+            ForkName = Frontier.Instance.Name,
+            CurrentCoinbase = Coinbase,
+            CurrentDifficulty = new UInt256(0x020000),
+            CurrentGasLimit = 1_000_000,
+            CurrentNumber = 1,
+            CurrentTimestamp = 1000,
+            PreviousHash = Keccak.Zero,
+            Pre = pre,
+            PostHash = StateRootOf(expectedPost),
+            Transaction = JsonToEthereumTest.Convert(postStateJson, transactionJson, BlockchainIds.Mainnet),
+        };
+
+        EthereumTestResult result = RunTest(test);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(test.PostHash),
+                "the signature, not the fixture's named sender, decides whether value moves and the nonce advances");
+            Assert.That(result.Error,
+                Is.EqualTo(signatureRecovers ? null : TransactionResult.SenderNotSpecified.ErrorDescription),
+                "an unrecoverable signature leaves the transaction with no sender to execute as");
+        }
+    }
+
+    private static Dictionary<Address, AccountState> Accounts(Address sender, UInt256 senderBalance, ulong senderNonce, UInt256 recipientBalance) => new()
+    {
+        [sender] = new() { Balance = senderBalance, Nonce = senderNonce },
+        [Recipient] = new() { Balance = recipientBalance },
+        [Coinbase] = new() { Balance = CoinbaseBalance },
+    };
+
+    private static Hash256 StateRootOf(Dictionary<Address, AccountState> accounts)
+    {
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(null);
+        InitializeTestState(accounts, worldState, MainnetSpecProvider.Instance);
+        return worldState.StateRoot;
+    }
 }

@@ -131,6 +131,9 @@ public static class BlockErrorMessages
     public const string InvalidRequestsOrder =
         "InvalidRequestsOrder: Requests are not in the correct order in block.";
 
+    public const string RecursiveStarkNotEnabled =
+        "RecursiveStarkNotEnabled: Block header cannot have a recursive STARK before EIP-8288.";
+
     public const string MissingRecursiveStark =
         "MissingRecursiveStark: EIP-8288 recursive STARK header entry is missing.";
 

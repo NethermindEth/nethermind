@@ -4,20 +4,25 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Eip8288;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -25,19 +30,19 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
-
-using ValidationCompletion = TaskCompletionSource<(NewPayloadHandler.ValidationResult? validationResult, string? validationMessage)>;
 
 /// <summary>
 /// Provides an execution payload handler as defined in Engine API
 /// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
 /// Shanghai</a> specification.
 /// </summary>
-public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, IDisposable
+public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, IInclusionListComplianceEvaluator, IDisposable
 {
     private readonly IPayloadPreparationService _payloadPreparationService;
     private readonly IBlockValidator _blockValidator;
@@ -51,9 +56,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
+    private readonly ITxValidator _txValidator;
+    private readonly ILeanProofVerifier _proofVerifier;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
-    private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
+    private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -77,9 +84,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
-        IEthereumEcdsa ecdsa,
+        RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
-        ILogManager logManager)
+        ITxValidator txValidator,
+        ILogManager logManager, ILeanProofVerifier? proofVerifier = null)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -93,13 +101,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
         _specProvider = specProvider;
-        _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
+        _txValidator = txValidator;
+        _proofVerifier = proofVerifier ?? NativeLeanProofVerifier.Instance;
+        _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
         if (mergeConfig.NewPayloadCacheSize > 0)
             _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+        _processingQueue.BlockExecuted += GetProcessingQueueOnBlockExecuted;
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
@@ -118,9 +129,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        // Overlap ecrecover with root computation, hash validation and block tree insertion;
-        // the processing queue's RecoverSignatures then short-circuits on recovered senders.
-        Task senderRecoveryTask = StartSenderRecovery(request);
+        // Every wait this request takes comes out of one budget, taken here.
+        long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
@@ -130,6 +140,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         Block block = decodingResult.Data;
 
+        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
+        // recovers inline whatever it reaches before the background recovery does. Started only once the block is
+        // built: TryGetBlock has already finished hashing the transactions-trie root before recovery competes for
+        // pool workers.
+        StartSenderRecovery(request);
+
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
         {
@@ -138,6 +154,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             _lastBlockGasLimit = block.Header.GasLimit;
         }
 
+        // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
+        // below come from TryGetBlock, which derives them from the payload's own body, so a matching header hash
+        // binds the body to the header and the validator need not recompute any of them. See the caveat on
+        // IBlockValidator.ValidateSuggestedBlock for payload types that take those roots off the wire instead.
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
@@ -172,6 +192,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
+            // Keep full orphan validation because ValidateOrphanedBlock is also used without this handler's hash gate.
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));
@@ -199,14 +220,68 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
-        if (_blockTree.IsOnMainChainBehindOrEqualHead(block.Header))
+        // An IL is a per-call parameter not bound to block.Hash, so never short-circuit when one is supplied.
+        // Only a block this node executed is answered from the canonical marker: the IL arm reads state by root,
+        // which cannot tell this block's committed state from another block's with the same root.
+        bool isCanonicalBehindHead = _blockTree.IsOnMainChainBehindOrEqualHead(block.Header);
+        bool hasInclusionList = HasInclusionList(block);
+        if (isCanonicalBehindHead && WasExecuted(block))
         {
-            if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
-            return NewPayloadV1Result.Valid(block.Hash);
+            if (!hasInclusionList)
+            {
+                // A re-executed block is already marked processed, so it can become head before its restored state
+                // commits; wait for that commit before reading the state again.
+                if (IsVerdictServiceable(block)
+                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && IsVerdictServiceable(block)))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                    return NewPayloadV1Result.Valid(block.Hash);
+                }
+
+                // Fall through: the ancestry check below decides whether re-execution is safe.
+            }
+            else
+            {
+                // bogota.md newPayloadV6 (2.1): a VALID response must carry a compliance answer, so reuse a
+                // cached one only while the verdict is serviceable.
+                if (IsVerdictServiceable(block) && TryGetCachedResult(block, out ResultWrapper<PayloadStatusV1>? cachedResult))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                    return cachedResult;
+                }
+
+                // The re-execution restoring this state may still be committing, so wait for it before judging.
+                if (_stateReader.HasStateForBlock(block.Header)
+                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
+                {
+                    if (EvaluateInclusionListFromState(block) is { } fromState)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                        return fromState;
+                    }
+
+                    // Fall through: only execution recovers the EIP-8037 dimensions this answer needs, and where
+                    // re-executing is unsafe the ancestry check below answers SYNCING — bogota.md newPayloadV6
+                    // (2.2) leaves `inclusionListSatisfied` null there, which (2.1) would not allow for VALID.
+                }
+            }
         }
+
+        // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
+        // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
+        // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
+        if (!await WaitForParentCommitAsync(parentHeader, deadline)) return NewPayloadV1Result.Syncing;
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
+            // Inserting a canonical block as a beacon block would arm the beacon pivot behind the head, and
+            // validating it first could record a failure that marks every descendant, the head included, INVALID.
+            if (isCanonicalBehindHead)
+            {
+                if (_logger.IsInfo) _logger.Info($"Syncing... Block already known in blockTree {block}.");
+                return NewPayloadV1Result.Syncing;
+            }
+
             if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out string? error, validateHashes: false))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
@@ -235,6 +310,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Syncing;
         }
 
+        // A failed re-execution of a head ancestor would mark the chain invalid and delete blocks up to the head,
+        // so only a stale marker proven outside that ancestry is processed.
+        if (isCanonicalBehindHead && IsAncestorOfHead(block.Header) is not false)
+        {
+            if (_logger.IsInfo) _logger.Info($"Syncing... A new payload found in main chain that cannot safely be re-executed. Block {block.ToString(Block.Format.Short)}.");
+            return NewPayloadV1Result.Syncing;
+        }
+
         if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty())
         {
             const string errorMessage = "Misconfigured terminal total difficulty.";
@@ -254,25 +337,258 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
-        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-        // Try to execute block
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, senderRecoveryTask);
+        // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
+        // thread only waits for the verdict - and a boost held across that await would resume on another thread and
+        // never be restored.
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline);
 
-        if (result == ValidationResult.Invalid)
+        switch (result)
         {
-            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"{message}"));
-            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
-            return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
+            case ValidationResult.Syncing:
+                {
+                    if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
+                    return NewPayloadV1Result.Syncing;
+                }
+            case ValidationResult.Invalid:
+                {
+                    if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"{message}"));
+                    _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+                    return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
+                }
+            case ValidationResult.InclusionListUnsatisfied:
+                {
+                    if (_logger.IsInfo) _logger.Info($"Inclusion list unsatisfied. Result of {requestStr}.");
+                    return NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
+                }
+            case ValidationResult.Valid:
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
+                    return NewPayloadV1Result.Valid(block.Hash);
+                }
+            default:
+                return ThrowUnknownValidationResult(result);
+        }
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private ResultWrapper<PayloadStatusV1> ThrowUnknownValidationResult(ValidationResult result) =>
+        throw new InvalidOperationException($"Unknown validation result {result}.");
+
+    private static bool HasInclusionList(Block block) => block.InclusionListTransactions is { Length: > 0 };
+
+    /// <summary>Whether this node executed <paramref name="block"/>, rather than sync placing it on the main chain unrun.</summary>
+    private bool WasExecuted(Block block) =>
+        _blockTree.GetInfo(block.Number, block.Hash!).Info is { WasProcessed: true };
+
+    /// <summary>Whether the head descends from <paramref name="header"/>, or null if a bounded walk cannot tell.</summary>
+    /// <remarks>Sync can move the canonical marker without moving the head, so the marker alone cannot answer this.</remarks>
+    private bool? IsAncestorOfHead(BlockHeader header)
+    {
+        BlockHeader? current = _blockTree.Head?.Header;
+        if (current is null || current.Number < header.Number) return null;
+
+        // An archive node can have parent state arbitrarily far behind head.
+        const ulong maxAncestorLookupDepth = 128;
+        if (current.Number - header.Number > maxAncestorLookupDepth) return null;
+
+        while (current is not null && current.Number > header.Number)
+        {
+            current = _blockTree.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
-        if (result == ValidationResult.Syncing)
+        return current is null ? null : current.Hash == header.Hash;
+    }
+
+    /// <summary>Whether a VALID verdict for <paramref name="block"/> is still actionable: its state is readable or it is below finalized.</summary>
+    /// <remarks>
+    /// Below finalized, forkchoiceUpdated may skip the block (<see href="https://github.com/ethereum/execution-apis/pull/786">execution-apis#786</see>),
+    /// so it never becomes a payload base. A commit can land mid-request, so callers re-read rather than cache this.
+    /// </remarks>
+    private bool IsVerdictServiceable(Block block) =>
+        _stateReader.HasStateForBlock(block.Header) || _blockTree.IsOnMainChainBehindFinalized(block.Header);
+
+    // An absent IL digests to default, matching non-IL cache entries.
+    private static ValueHash256 ComputeInclusionListDigest(Block block)
+    {
+        if (block.InclusionListTransactions is not { Length: > 0 } && block.InclusionListRecursiveStark is null) return default;
+        KeccakHash hash = KeccakHash.Create();
+        foreach (Transaction tx in block.InclusionListTransactions ?? []) hash.Update((tx.Hash ?? Keccak.Zero).Bytes);
+        if (block.InclusionListRecursiveStark is { } proof)
         {
-            if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}.");
-            return NewPayloadV1Result.Syncing;
+            hash.Update((proof.BlockDepsHash ?? Keccak.Zero).Bytes);
+            hash.Update(ValueKeccak.Compute(proof.StarkProof ?? []).Bytes);
+        }
+        return hash.GenerateValueHash();
+    }
+
+    /// <summary>Answers an already-committed block's inclusion-list compliance without re-executing it.</summary>
+    /// <remarks>
+    /// EIP-7805 appendability is judged against the state the block committed, which for a canonical block
+    /// is readable at its own state root, so the only work left is recovering the list's senders.
+    /// Null when EIP-8037 leaves the answer undecidable from state alone: only execution records the gas
+    /// dimensions appendability is judged on, so the caller must fall through to it rather than guess.
+    /// After cache loss or restart, even resending the current head can therefore answer SYNCING.
+    /// </remarks>
+    private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)
+    {
+        Hash256 hash = block.GetOrCalculateHash();
+        // A decoded payload has no EIP-8037 dimensions, and neither the state root nor the header's
+        // max(execution, state) carries them back, so without what execution recorded this would answer on a
+        // coarser gas rule than the processing path and could report real censorship as absent.
+        block.Header.GasUsedPerDimension = RecordedGasDimensions(hash);
+        bool? satisfied = IsInclusionListSatisfied(block, block.InclusionListTransactions!);
+        if (satisfied is null) return null;
+
+        ValidationResult result = satisfied.Value ? ValidationResult.Valid : ValidationResult.InclusionListUnsatisfied;
+
+        _latestBlocks?.Set(hash, new CachedPayloadResult(result, null, ComputeInclusionListDigest(block), block.Header.GasUsedPerDimension));
+        return result == ValidationResult.Valid
+            ? NewPayloadV1Result.Valid(block.Hash)
+            : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Without EIP-8037 gas dimensions, answers only when every possible assignment gives the same verdict.</remarks>
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
+        => TryEvaluate(blockHash, inclusionListTransactions, null);
+
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof)
+    {
+        Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        if (block is null || !_stateReader.HasStateForBlock(block.Header)) return null;
+        // Gas bounds must not mutate the tree's shared header while another request reads it.
+        block = block.WithReplacedBodyCloned(block.Body);
+        block.Header.GasUsedPerDimension = RecordedGasDimensions(blockHash);
+        block.InclusionListRecursiveStark = proof;
+
+        // Undecodable entries are dropped rather than failing the answer: a censoring proposer must not be
+        // able to escape the check by having one bad entry gossiped into the aggregate.
+        return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
+    }
+
+    private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
+    {
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
+        if (spec.IsEip8288Enabled)
+        {
+            // A read-only state cannot execute the validation prefix needed to excuse an omitted frame tx.
+            HashSet<Hash256> included = [];
+            foreach (Transaction tx in block.Transactions) if (tx.Hash is { } hash) included.Add(hash);
+            foreach (Transaction tx in inclusionList)
+                if (tx.SupportsFrames && (tx.Hash is null || !included.Contains(tx.Hash)))
+                    return FocilInclusionListValidator.Validate(inclusionList, block.InclusionListRecursiveStark,
+                        _proofVerifier, out _, out _) ? null : false;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
-        return NewPayloadV1Result.Valid(block.Hash);
+        SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
+        return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
+            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
+            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, _proofVerifier);
+    }
+
+    /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
+    /// <remarks>Account reads are shared across the gas bounds.</remarks>
+    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
+    {
+        state = new CachedAccountStateProvider(state);
+        ulong proofGas = spec.IsEip8288Enabled
+            ? (ulong)Eip8288Dependencies.DependencyDeclarationCount(block) * Eip8288Constants.LeanStarkVerificationGas : 0;
+        if (proofGas > block.GasUsed) return null;
+        ulong transactionGas = block.GasUsed - proofGas;
+        // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
+        try
+        {
+            block.Header.GasUsedPerDimension = (transactionGas, transactionGas);
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, _proofVerifier)) return false;
+
+            block.Header.GasUsedPerDimension = (transactionGas, 0);
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, _proofVerifier)) return null;
+
+            block.Header.GasUsedPerDimension = (0, transactionGas);
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, _proofVerifier) ? true : null;
+        }
+        finally
+        {
+            // Bounds must never escape as recorded execution totals, including through the payload cache.
+            block.Header.GasUsedPerDimension = null;
+        }
+    }
+
+    /// <summary>Shares account reads across one request's inclusion-list checks.</summary>
+    private sealed class CachedAccountStateProvider(IReadOnlyStateProvider state) : IReadOnlyStateProvider
+    {
+        private Dictionary<AddressAsKey, (bool Exists, AccountStruct Account)>? _accounts;
+
+        /// <inheritdoc/>
+        public Hash256 StateRoot => state.StateRoot;
+
+        /// <inheritdoc/>
+        public bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            _accounts ??= [];
+            if (!_accounts.TryGetValue(address, out (bool Exists, AccountStruct Account) cached))
+            {
+                bool exists = state.TryGetAccount(address, out account);
+                cached = (exists, account);
+                _accounts.Add(address, cached);
+            }
+            account = cached.Account;
+            return cached.Exists;
+        }
+
+        /// <inheritdoc/>
+        public ReadOnlyMemory<byte> GetCode(Address address)
+        {
+            TryGetAccount(address, out AccountStruct account);
+            return !account.HasCode ? Array.Empty<byte>() : state.GetCode(account.CodeHash);
+        }
+
+        /// <inheritdoc/>
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => state.GetCode(in codeHash);
+
+        /// <inheritdoc/>
+        public bool IsContract(Address address) => state.IsContract(address);
+
+        /// <inheritdoc/>
+        public bool AccountExists(Address address) => state.AccountExists(address);
+
+        /// <inheritdoc/>
+        public bool IsDeadAccount(Address address) => state.IsDeadAccount(address);
+
+        /// <inheritdoc/>
+        public void Get(in StorageCell storageCell, out UInt256 value) => state.Get(in storageCell, out value);
+    }
+
+    /// <summary>The EIP-8037 gas dimensions execution recorded for the block <paramref name="hash"/> names.</summary>
+    /// <remarks>Two in-memory copies outlive the payload the dimensions were recorded from — the cached answer,
+    /// which a resend under a different inclusion list misses only once evicted, and the tree's own block, which
+    /// <c>BranchProcessor</c> stamps. Null once neither is left: nothing persists them, and <see cref="BlockHeader.GasUsed"/>
+    /// reduces them to a maximum that cannot be inverted.</remarks>
+    private (ulong Execution, ulong State)? RecordedGasDimensions(Hash256 hash) =>
+        (_latestBlocks is not null && _latestBlocks.TryGet(hash, out CachedPayloadResult cached)
+            ? cached.GasUsedPerDimension
+            : null)
+        ?? _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.GasUsedPerDimension;
+
+    // Only a "valid block" outcome short-circuits: never resurrect a stale Invalid/Syncing for a block
+    // the tree treats as canonical.
+    private bool TryGetCachedResult(Block block, [NotNullWhen(true)] out ResultWrapper<PayloadStatusV1>? result)
+    {
+        result = null;
+        if (_latestBlocks is null
+            || !_latestBlocks.TryGet(block.GetOrCalculateHash(), out CachedPayloadResult cached)
+            || cached.InclusionListDigest != ComputeInclusionListDigest(block))
+            return false;
+
+        result = cached.Result switch
+        {
+            ValidationResult.Valid => NewPayloadV1Result.Valid(block.Hash),
+            ValidationResult.InclusionListUnsatisfied => NewPayloadV1Result.InclusionListUnsatisfied(block.Hash),
+            _ => null
+        };
+        return result is not null;
     }
 
     /// <summary>Records a block rejected before <c>BranchProcessor</c> ever runs.</summary>
@@ -353,58 +669,89 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private Task StartSenderRecovery(ExecutionPayload request)
+    private void StartSenderRecovery(ExecutionPayload request)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
-        // the senders; they recover in the processing queue as before. On rejected payloads the
-        // task is deliberately fire-and-forget — see the catch below.
+        // the senders; they recover in the processing queue as before.
         if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
-            return Task.CompletedTask;
+            return;
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
-            // TryGetBlock reports the decoding error; nothing to recover otherwise.
-            return Task.CompletedTask;
+            // TryGetBlock has already decoded these, so only an empty block has nothing to recover.
+            return;
 
-        Transaction[] txs = transactions.Data;
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
-        return Task.Run(() =>
+        try
         {
-            try
-            {
-                _senderRecovery.RecoverData(txs, spec);
-            }
-            catch (Exception e)
-            {
-                // Best-effort: the processing-queue preprocessor recovers anything still missing.
-                if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
-            }
-        });
+            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+        }
+        catch (Exception e)
+        {
+            // Best-effort: the processing-queue preprocessor recovers anything still missing, so failing
+            // to queue the early recovery must not fail an otherwise valid payload.
+            if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed to start for block {request.BlockNumber}: {e}");
+        }
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
+    /// <summary>
+    /// Waits, within the request's budget, for a parent that is still in the processing queue; <c>false</c> when it
+    /// did not leave in time, which is answered SYNCING as an unprocessed parent always was.
+    /// </summary>
+    private async Task<bool> WaitForParentCommitAsync(BlockHeader parent, long deadline)
     {
+        Hash256 parentHash = parent.GetOrCalculateHash();
+        if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
+
+        bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline));
+        if (!inTime && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
+        return inTime;
+    }
+
+    /// <summary>What is left of one request's <see cref="IMergeConfig.NewPayloadBlockProcessingTimeout"/>.</summary>
+    /// <remarks>
+    /// Every wait a request takes comes out of this one budget, so a payload holds the engine API's lock for that
+    /// long whatever it waited on, rather than for the sum of a wait for its parent and a wait for itself.
+    /// </remarks>
+    private TimeSpan RemainingBudget(long deadline)
+    {
+        TimeSpan left = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline);
+        return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+    }
+
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline)
+    {
+        ValueHash256 ilDigest = ComputeInclusionListDigest(block);
+
+        ValidationCompletion? completion = null;
+
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
         {
-            // notice that it is not correct to add information to the cache
-            // if we return SYNCING for example, and don't know yet whether
-            // the block is valid or invalid because we haven't processed it yet
-            if (result == ValidationResult.Valid || result == ValidationResult.Invalid)
-                _latestBlocks?.Set(block.GetOrCalculateHash(), (result == ValidationResult.Valid, errorMessage));
+            // Cache terminal outcomes only; SYNCING isn't terminal (we haven't processed the block yet).
+            if (result is ValidationResult.Invalid or ValidationResult.Valid or ValidationResult.InclusionListUnsatisfied)
+            {
+                _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest, block.Header.GasUsedPerDimension));
+                // The verdict is given before the commit, so the block can be gone without committing by the time
+                // this runs. Whichever of the two marks the completion first, the other takes the entry back out.
+                if (completion?.MarkAnswerCached() == false) _latestBlocks?.Delete(block.GetOrCalculateHash());
+            }
             return result;
         }
 
         (ValidationResult? result, string? validationMessage) = (null, null);
+        ValidationResult terminalResult = ValidationResult.Syncing;
 
-        // If duplicate, reuse results
-        if (_latestBlocks is not null && _latestBlocks.TryGet(block.Hash!, out (bool valid, string? message) cachedResult))
+        // If duplicate, reuse results. Invalidity is permanent; any other verdict only while it stays serviceable.
+        if (_latestBlocks is not null
+            && _latestBlocks.TryGet(block.Hash!, out CachedPayloadResult cachedResult)
+            && cachedResult.InclusionListDigest == ilDigest
+            && (cachedResult.Result == ValidationResult.Invalid || IsVerdictServiceable(block)))
         {
-            (bool isValid, string? message) = cachedResult;
-            if (!isValid)
+            if (cachedResult.Result == ValidationResult.Invalid)
             {
                 if (_logger.IsWarn) _logger.Warn("Invalid block found in latestBlock cache.");
             }
-            return (isValid ? ValidationResult.Valid : ValidationResult.Invalid, message);
+            return (cachedResult.Result, cachedResult.Message);
         }
 
         // Validate
@@ -413,19 +760,37 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        ValidationCompletion blockProcessed =
-            _blockValidationTasks.GetOrAdd(
-                block.Hash!,
-                static (k) => new(TaskCreationOptions.RunContinuationsAsynchronously));
+        ValidationCompletion blockProcessed = _blockValidationTasks.GetOrAdd(block.Hash!, static _ => new());
+        completion = blockProcessed;
 
         try
         {
             using CancellationTokenSource cts = new();
-            Task timeoutTask = Task.Delay(_timeout, cts.Token);
+            Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
 
-            AddBlockResult addResult = await _blockTree
-                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
-                .AsTask().TimeoutOn(timeoutTask);
+            AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask().TimeoutOn(timeoutTask);
+
+            // A payload sent again while its first copy is between verdict and removal is known, and marked processed
+            // only part way through that window. Queued again before the copy is gone it would be skipped as not
+            // better than head and answered INVALID, or answered by the copy's removal without its own inclusion
+            // list ever judged, so let the first copy finish first. Only a copy that has its verdict is worth waiting
+            // for; one that is merely queued is left to answer this request through the shared completion, as before,
+            // and a copy already gone costs nothing here.
+            if (addResult == AddBlockResult.AlreadyKnown)
+            {
+                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: true).AsTask();
+                if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
+                // The first copy's own verdict and removal land on whatever completion is registered for the hash,
+                // so if they consumed this one it must not stand in for the answer to this request. A fault is that
+                // copy's failure, and stands: the CL's next retry re-processes.
+                if (blockProcessed.Task.IsFaulted) await blockProcessed.Task;
+                if (blockProcessed.Task.IsCompleted)
+                {
+                    blockProcessed = new();
+                    completion = blockProcessed;
+                    _blockValidationTasks[block.Hash!] = blockProcessed;
+                }
+            }
 
             result = addResult switch
             {
@@ -435,7 +800,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // the block was processed and returned invalid but this wasn't saved anywhere or the block was
                 // processed and marked as valid.
                 // if marked as processed by the block tree then return VALID, otherwise null so that it's processed a few lines below
-                AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) ? ValidationResult.Valid : null,
+                // an IL-bearing payload bypasses this shortcut so that the current call's IL is re-validated
+                // Re-read serviceability: the commit this block awaits can land after the cache check above.
+                AddBlockResult.AlreadyKnown => !HasInclusionList(block) && WasExecuted(block) && IsVerdictServiceable(block)
+                    ? ValidationResult.Valid
+                    : null,
                 _ => null
             };
 
@@ -454,10 +823,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                // Invariant: recovery completes before the queue sees the block — the prewarmer
-                // groups txs by sender at ProcessBranch start, so it needs every sender up front.
-                await senderRecoveryTask;
-                await _processingQueue.Enqueue(block, processingOptions);
+                // Off this thread: the processing queue's channel allows synchronous continuations
+                // (BlockchainProcessor._blockQueue), so with the queue empty the processor runs the block inside
+                // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
+                // verdict this request only needs to see. The processing loop raises its own thread's priority, so
+                // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
+                _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -473,21 +844,87 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         finally
         {
-            // Blocks that exit before the processing queue publishes BlockRemoved would otherwise
-            // leave their completion source pinned in _blockValidationTasks forever.
+            // Cached before the completion is dropped, so a block that fails to commit meanwhile still has
+            // something to hand the entry back through. Afterwards the removal deletes the entry directly.
+            // Dropping it also keeps blocks that exit before the queue publishes BlockRemoved - a timeout, a
+            // throw - from pinning their completion in _blockValidationTasks forever.
+            terminalResult = TryCacheResult(result ?? ValidationResult.Syncing, validationMessage);
             _blockValidationTasks.TryRemove(block.Hash!, out _);
         }
 
-        return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
+        return (terminalResult, validationMessage);
+    }
+
+    /// <summary>
+    /// The verdict, delivered as soon as the block is executed and validated: the commit and the chain update it
+    /// still has ahead of it do not change the answer, and the CL's next call waits for them where it has to
+    /// (<see cref="IBlockProcessingQueue.WaitUntilExecutedCopyRemovedAsync"/>). Any other outcome still comes through
+    /// <see cref="GetProcessingQueueOnBlockRemoved"/>, and a verdict already given makes that a no-op.
+    /// </summary>
+    private void GetProcessingQueueOnBlockExecuted(object? o, BlockVerdictEventArgs e)
+    {
+        // Left in place rather than taken: the request has its answer but not its cache entry yet, and a commit
+        // that fails next needs the completion to stop that entry from standing.
+        if (!_blockValidationTasks.TryGetValue(e.BlockHash, out ValidationCompletion? blockProcessed)) return;
+
+        ValidationResult result = e.ProcessingResult == ProcessingResult.InclusionListUnsatisfied
+            ? ValidationResult.InclusionListUnsatisfied
+            : ValidationResult.Valid;
+        blockProcessed.MarkVerdictGiven();
+        if (blockProcessed.TrySetResult((result, null))) e.Answered = true;
+    }
+
+    /// <summary>Whether the tree has the block as processed, so a removal that failed was some other copy's.</summary>
+    /// <remarks>
+    /// Read only when there is an entry to delete, which is a handful of recently answered blocks, so the header
+    /// lookup is not on the path of every skipped block.
+    /// </remarks>
+    private bool HasCommitted(Hash256 blockHash) =>
+        _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { Number: ulong number }
+        && _blockTree.WasProcessed(number, blockHash);
+
+    private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed)
+    {
+        try
+        {
+            await _processingQueue.Enqueue(block, processingOptions);
+        }
+        catch (Exception e)
+        {
+            // A failure once the block is counted in reaches the request as BlockRemoved(QueueException), which has
+            // completed it already. One before that raises no removal, and the request would otherwise wait out its
+            // budget holding the engine API's lock; it fails now instead, as it did when Enqueue ran on its thread. Its
+            // own completion, not the hash's: by now a re-sent payload may have registered a fresh one.
+            if (_logger.IsDebug) _logger.Debug($"Enqueueing {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
+            blockProcessed.TrySetException(e);
+        }
     }
 
     private void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
     {
-        if (!_blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed))
+        // Anything but a block that reached the chain. Which failure it is does not matter once execution has
+        // answered: the commit, the prewarm join and the BlockProcessed subscribers all arrive here as an exception,
+        // including the one kind that would otherwise have been reported as the block being invalid. Any of them
+        // leaves a VALID that was already given standing for a block that is not there.
+        bool failed = e.ProcessingResult is not (ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied);
+        bool found = _blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed);
+
+        // The completion that received the verdict arbitrates with its own request over the cache entry, below.
+        // Every other shape has to be judged against the cache directly: the request may be done and gone, or a
+        // re-submission may have swapped in a completion of its own, which never saw the first copy's verdict and
+        // so would let its answer stand. The exception is a second copy skipped as no better than a head the first
+        // copy became - that block did commit, and its answer is worth keeping.
+        if (failed && (!found || !blockProcessed!.VerdictGiven)
+            && _latestBlocks is not null && _latestBlocks.TryGet(e.BlockHash, out _) && !HasCommitted(e.BlockHash))
         {
-            // If we don't have a task for this block, it means it was already processed or removed.
-            return;
+            _latestBlocks.Delete(e.BlockHash);
         }
+
+        if (!found || blockProcessed is null) return;
+
+        // Still in flight, so this request is between its verdict and its cache write. Whichever of the two marks
+        // the completion first, the other takes the entry out.
+        if (failed && blockProcessed.VerdictGiven && blockProcessed.MarkBlockUncommitted()) _latestBlocks?.Delete(e.BlockHash);
 
         if (e.ProcessingResult == ProcessingResult.Exception)
         {
@@ -500,6 +937,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             ProcessingResult.Success => ValidationResult.Valid,
             ProcessingResult.ProcessingError => ValidationResult.Invalid,
+            ProcessingResult.InclusionListUnsatisfied => ValidationResult.InclusionListUnsatisfied,
             _ => null
         };
 
@@ -577,12 +1015,56 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return true;
     }
 
-    public void Dispose() => _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+    public void Dispose()
+    {
+        _processingQueue.BlockExecuted -= GetProcessingQueueOnBlockExecuted;
+        _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+    }
 
     internal enum ValidationResult
     {
         Invalid,
         Valid,
-        Syncing
+        Syncing,
+        InclusionListUnsatisfied
     }
+
+    /// <summary>One request's completion, and the arbiter of whether its answer may stay cached.</summary>
+    /// <remarks>
+    /// The verdict reaches the request before the block is committed, so a commit that then fails races the
+    /// request's own cache write. Both mark here, and whichever arrives second finds the other's mark and deletes
+    /// the entry, so an uncommitted block never leaves a terminal answer for the next request to be answered from.
+    /// </remarks>
+    private sealed class ValidationCompletion()
+        : TaskCompletionSource<(ValidationResult? validationResult, string? validationMessage)>(TaskCreationOptions.RunContinuationsAsynchronously)
+    {
+        private const int Cached = 1;
+        private const int Uncommitted = 2;
+        private int _state;
+        private volatile bool _verdictGiven;
+
+        /// <summary>Whether execution already answered this request, so anything else the removal says is a failure
+        /// that came after it.</summary>
+        public bool VerdictGiven => _verdictGiven;
+
+        /// <summary>Records that execution has answered this request.</summary>
+        public void MarkVerdictGiven() => _verdictGiven = true;
+
+        /// <summary>Marks the answer as cached.</summary>
+        /// <returns><c>false</c> when the block has already failed to commit, so the entry must be deleted.</returns>
+        public bool MarkAnswerCached() => Interlocked.Exchange(ref _state, Cached) != Uncommitted;
+
+        /// <summary>Marks the block as gone without committing.</summary>
+        /// <returns><c>true</c> when the answer is already cached, so the entry must be deleted.</returns>
+        public bool MarkBlockUncommitted() => Interlocked.Exchange(ref _state, Uncommitted) == Cached;
+    }
+
+    // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
+    /// <param name="GasUsedPerDimension">What execution recorded for this block, so a re-validation under a
+    /// different inclusion list judges appendability on the same EIP-8037 gas the processing path did.</param>
+    private readonly record struct CachedPayloadResult(
+        ValidationResult Result,
+        string? Message,
+        ValueHash256 InclusionListDigest,
+        (ulong Execution, ulong State)? GasUsedPerDimension);
 }

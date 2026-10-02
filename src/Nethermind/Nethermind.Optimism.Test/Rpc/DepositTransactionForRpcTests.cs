@@ -82,7 +82,7 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(MalformedJsonTransactions))]
     public void Rejects_malformed_transaction_missing_field((string missingField, string json) testCase)
     {
-        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json)!;
         Assert.That(rpcTx, Is.Not.Null);
 
         Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction();
@@ -97,7 +97,7 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(ValidJsonTransactions))]
     public void Accepts_valid_transaction_missing_field((string missingField, string json) testCase)
     {
-        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json)!;
         Assert.That(rpcTx, Is.Not.Null);
 
         Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction();

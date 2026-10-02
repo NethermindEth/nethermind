@@ -1,7 +1,8 @@
+# syntax=docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.302-resolute@sha256:45401dde65ffc706a65841120ffdf827805eefe16852d6de1086a876c421de2e AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.401-resolute@sha256:e37606d2092c70f211d9e4f477dd7373b4b7d2b049399e4c6ff3a261243011c6 AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -11,22 +12,39 @@ ARG TARGETARCH
 
 WORKDIR /nethermind
 
+COPY global.json nuget.config Directory.Build.props Directory.Build.targets Directory.Packages.props ./
+COPY --parents src/Nethermind/**/*.csproj src/Nethermind/Directory.Build.props src/Nethermind/Directory.Build.targets src/Nethermind/Nethermind.Runner/packages.lock.json ./
+RUN cd src/Nethermind/Nethermind.Runner && dotnet restore --locked-mode
+
 COPY src/Nethermind src/Nethermind
-COPY Directory.*.props .
-COPY Directory.Build.targets .
-COPY global.json .
-COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
-  dotnet restore --locked-mode && \
   dotnet publish -c $BUILD_CONFIG -a $arch -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.10-resolute@sha256:dae546296490fa23d67a7d26d901864866c235e7ea59966cdb8f0e680ed25ad9
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-resolute@sha256:5b7bc1308a48fc0d1f8add112d220279081d1d5eb07783ad86729a7241b4fae2
+
+ARG COMMIT_HASH=unknown
+ARG VERSION=unknown
+ARG BUILD_TIMESTAMP=1970-01-01T00:00:00Z
+
+# An ARG is out of scope after a FROM, so the three above must be redeclared in this stage.
+# Without that, the values below silently resolve to an empty string. The defaults keep a plain
+# `docker build` with no build args self-describing rather than blank.
+LABEL org.opencontainers.image.title="Nethermind" \
+  org.opencontainers.image.description="A robust execution client for Ethereum node operators." \
+  org.opencontainers.image.vendor="Demerzel Solutions Limited" \
+  org.opencontainers.image.licenses="LGPL-3.0-only" \
+  org.opencontainers.image.url="https://nethermind.io/nethermind-client" \
+  org.opencontainers.image.documentation="https://docs.nethermind.io" \
+  org.opencontainers.image.source="https://github.com/NethermindEth/nethermind" \
+  org.opencontainers.image.version="$VERSION" \
+  org.opencontainers.image.revision="$COMMIT_HASH" \
+  org.opencontainers.image.created="$BUILD_TIMESTAMP"
 
 WORKDIR /nethermind
 

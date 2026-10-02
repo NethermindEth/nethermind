@@ -20,7 +20,7 @@ public class FrameDependencyTests
         data[64] = 0xBB;
         data[96 + 31] = Eip8288Constants.LeanStarkScheme;
 
-        TxFrame frame = new(TxFrame.ModeDepVerify, 0, null, 0, UInt256.Zero, data);
+        TxFrame frame = new(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, data);
         List<FrameDependency> deps = [.. Eip8288Dependencies.ParseFrame(frame)];
 
         Assert.That(deps.Count, Is.EqualTo(2));
@@ -89,8 +89,8 @@ public class FrameDependencyTests
             Type = TxType.FrameTx,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, 0, null, 1, UInt256.Zero, default),
-                new TxFrame(TxFrame.ModeDepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, depData),
+                new TxFrame(FrameMode.Verify, 0, null, 1, UInt256.Zero, default),
+                new TxFrame(FrameMode.DepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, depData),
             ],
         };
 
@@ -111,6 +111,44 @@ public class FrameDependencyTests
         Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
     }
 
+    [Test]
+    public void DependencyCommitment_is_sorted_and_deduplicated()
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        FrameDependency second = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
+        List<FrameDependency> canonical = [first, second];
+        List<FrameDependency> repeated = [second, first, second, first];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.Canonicalize(repeated), Is.EqualTo(canonical));
+            Assert.That(Eip8288Dependencies.ComputeDepsHash(repeated), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(canonical)));
+        }
+    }
+
+    [Test]
+    public void Repeated_declarations_share_one_dependency_but_each_pays_gas([Values(1, 2, 17)] int declarations)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        List<FrameDependency> repeated = [];
+        for (int i = 0; i < declarations; i++) repeated.Add(dependency);
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null,
+                (ulong)declarations * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize(repeated))]
+        };
+        Block block = Build.A.Block.WithTransactions(tx, tx).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.ForTransaction(tx), Has.Count.EqualTo(1));
+            Assert.That(Eip8288Dependencies.ForBlock(block), Has.Count.EqualTo(1));
+            Assert.That(Eip8288Dependencies.DependencyDeclarationCount(block), Is.EqualTo((ulong)declarations * 2));
+            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
+        }
+    }
+
     private static Transaction DepTx(byte scheme)
     {
         byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
@@ -118,7 +156,7 @@ public class FrameDependencyTests
         return new Transaction
         {
             Type = TxType.FrameTx,
-            Frames = [new TxFrame(TxFrame.ModeDepVerify, 0, null, 0, UInt256.Zero, data)],
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, data)],
         };
     }
 }

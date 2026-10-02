@@ -82,9 +82,8 @@ namespace Nethermind.TxPool.Test.Collections
             Assert.That(pool.Count, Is.EqualTo(expectedCount));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Same_transactions_are_all_replaced_with_highest_gas_price(bool gasPriceAscending)
+        [Test]
+        public void Same_transactions_are_all_replaced_with_highest_gas_price([Values] bool gasPriceAscending)
         {
             TxDistinctSortedPool pool = new(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 

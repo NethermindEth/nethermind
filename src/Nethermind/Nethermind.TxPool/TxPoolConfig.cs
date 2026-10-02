@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -12,12 +13,19 @@ public class TxPoolConfig : ITxPoolConfig
     public int MinBaseFeeThreshold { get; set; } = 70;
     public int Size { get; set; } = 2048;
     public BlobsSupportMode BlobsSupport { get; set; } = BlobsSupportMode.StorageWithReorgs;
+    public int SparseBlobProviderProbabilityPercent { get; set; } = 15;
     public int PersistentBlobStorageSize { get; set; } = 16 * 1024; // theoretical max - 13GB (128KB * 6 * 16384); for one-blob txs - 2GB (128KB * 1 * 16384);
                                                                     // practical max - something between, but closer to 2GB than 12GB. Geth is limiting it to 10GB.
                                                                     // every day about 21600 blobs will be included (7200 blocks per day * 3 blob target)
     public int BlobCacheSize { get; set; } = 256;
     public int InMemoryBlobPoolSize { get; set; } = 512; // it is used when persistent pool is disabled
     public int MaxPendingTxsPerSender { get; set; } = 0;
+    public ulong FrameTxMaxVerifyGas { get; set; } = Eip8141Constants.MaxVerifyGas;
+    public ulong FrameTxMaxVerifyStateGas { get; set; } = 500_000;
+    public int FrameTxSimulationTimeoutMs { get; set; } = 250;
+    public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
+    public int FrameTxEvictionRetryBudget { get; set; } = 1;
+    public int FrameTxRevalidationDeferralBudget { get; set; } = 2;
     public int MaxPendingBlobTxsPerSender { get; set; } = 16;
     public int HashCacheSize { get; set; } = 512 * 1024;
     public ulong? GasLimit { get; set; } = null;

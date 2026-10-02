@@ -10,7 +10,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// A single EIP-8288 dependency triple <c>(scheme, data_hash, verification_key)</c> declared by a
 /// dependency-verification frame. <c>data_hash</c>/<c>verification_key</c> are the message hash and
-/// public key (leanSPHINCS) or the public-inputs hash and STARK verification key (leanSTARK).
+/// public-key hash (leanSPHINCS) or the public commitment and bytecode hash (leanSTARK).
 /// </summary>
 public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, ValueHash256 verificationKey)
     : IEquatable<FrameDependency>
@@ -48,7 +48,7 @@ public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, Value
 /// </summary>
 public static class Eip8288Dependencies
 {
-    public static bool IsDependencyFrame(TxFrame frame) => frame.Mode == Eip8288Constants.DepVerifyFrameMode;
+    public static bool IsDependencyFrame(TxFrame frame) => frame.Mode == FrameMode.DepVerify;
 
     /// <summary>The <c>data_triples</c> of a dependency frame, parsed from its 96·k-byte <c>data</c>.</summary>
     public static IEnumerable<FrameDependency> ParseFrame(TxFrame frame)
@@ -62,8 +62,10 @@ public static class Eip8288Dependencies
         }
     }
 
-    /// <summary>Spec <c>dependencies(tx)</c>: all triples from all dependency-verification frames.</summary>
-    public static IEnumerable<FrameDependency> ForTransaction(Transaction tx)
+    /// <summary>Spec <c>dependencies(tx)</c>: sorted, deduplicated dependency triples.</summary>
+    public static List<FrameDependency> ForTransaction(Transaction tx) => Canonicalize(Declarations(tx));
+
+    private static IEnumerable<FrameDependency> Declarations(Transaction tx)
     {
         TxFrame[]? frames = tx.Frames;
         if (frames is null) yield break;
@@ -75,7 +77,7 @@ public static class Eip8288Dependencies
         }
     }
 
-    /// <summary>Spec <c>dependencies(block)</c>: all transaction dependencies in inclusion order.</summary>
+    /// <summary>Spec <c>dependencies(block)</c>: sorted, deduplicated transaction dependencies.</summary>
     /// <remarks>Walks the frames directly rather than through the iterators, which runs on every block.</remarks>
     public static List<FrameDependency> ForBlock(Block block)
     {
@@ -99,7 +101,21 @@ public static class Eip8288Dependencies
             }
         }
 
-        return dependencies;
+        return Canonicalize(dependencies);
+    }
+
+    /// <summary>Counts every declared dependency, including duplicates, for block gas accounting.</summary>
+    public static ulong DependencyDeclarationCount(Block block)
+    {
+        ulong count = 0;
+        foreach (Transaction tx in block.Transactions)
+        {
+            foreach (TxFrame frame in tx.Frames ?? [])
+            {
+                if (IsDependencyFrame(frame)) count += (ulong)(frame.Data.Length / Eip8288Constants.DependencyTripleLength);
+            }
+        }
+        return count;
     }
 
     /// <summary>
@@ -148,11 +164,30 @@ public static class Eip8288Dependencies
 
     /// <summary>
     /// Spec <c>block_deps_hash</c>: <c>hash(concat(bytes32_be(scheme) || data_hash || verification_key))</c>.
-    /// EIP8288-ISSUE: the hash function is unspecified (candidates Poseidon / BLAKE3); Keccak-256 is
-    /// used as the placeholder.
+    /// The prototype uses Keccak-256 for the dependency commitment.
     /// </summary>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies) =>
-        dependencies.Count == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(Serialize(dependencies));
+        dependencies.Count == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(Serialize(Canonicalize(dependencies)));
+
+    /// <summary>Sorts and deduplicates dependencies for the EIP-8288 commitment.</summary>
+    public static List<FrameDependency> Canonicalize(IEnumerable<FrameDependency> dependencies)
+    {
+        List<FrameDependency> result = [.. dependencies];
+        result.Sort(static (left, right) =>
+        {
+            int comparison = left.Scheme.CompareTo(right.Scheme);
+            if (comparison != 0) return comparison;
+            comparison = left.DataHash.Bytes.SequenceCompareTo(right.DataHash.Bytes);
+            return comparison != 0 ? comparison : left.VerificationKey.Bytes.SequenceCompareTo(right.VerificationKey.Bytes);
+        });
+        int unique = 0;
+        for (int i = 0; i < result.Count; i++)
+        {
+            if (unique == 0 || !result[i].Equals(result[unique - 1])) result[unique++] = result[i];
+        }
+        result.RemoveRange(unique, result.Count - unique);
+        return result;
+    }
 
     /// <summary>Counts dependencies per scheme (leanSPHINCS, leanSTARK) for the mempool/tx limits.</summary>
     public static (int Sphincs, int Stark) CountByScheme(IReadOnlyList<FrameDependency> dependencies)

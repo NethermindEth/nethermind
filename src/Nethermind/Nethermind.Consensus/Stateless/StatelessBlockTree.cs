@@ -105,6 +105,9 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         WriteFlags bodiesWriteFlags = WriteFlags.None)
         => throw new NotSupportedException();
 
+    /// <inheritdoc/>
+    public bool TryRewindHead(Hash256 blockHash) => throw new NotSupportedException();
+
     public void UpdateHeadBlock(Hash256 blockHash)
         => throw new NotSupportedException();
 
@@ -141,7 +144,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public ChainLevelInfo? FindLevel(ulong number)
         => throw new NotSupportedException();
 
-    public BlockInfo FindCanonicalBlockInfo(ulong blockNumber)
+    public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber)
         => throw new NotSupportedException();
 
     public Hash256? FindHash(ulong blockNumber)
@@ -209,6 +212,8 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     }
 
     public void NewOldestBlock(ulong oldestBlock) => throw new NotImplementedException();
+
+    public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => throw new NotImplementedException();
 
     public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => throw new NotImplementedException();
 

@@ -5,13 +5,7 @@ using System;
 
 namespace Nethermind.Core.Crypto;
 
-/// <summary>
-/// Verifier seam for the EIP-8288 Lean Ethereum primitives (leanSPHINCS signatures, leanSTARK proofs,
-/// and the recursive STARK that aggregates them), shared by block, mempool-wrapper, and FOCIL validation.
-/// EIP8288-DEVIATION: no C# Lean Ethereum backend exists and <c>AGGREGATED_VK</c> / proof formats are
-/// TBD, so the prototype ships a deterministic placeholder; a real verifier belongs in a dedicated FFI
-/// module behind this seam.
-/// </summary>
+/// <summary>Verifies Lean Ethereum signatures and proofs for dependency validation and aggregation.</summary>
 public interface ILeanProofVerifier
 {
     /// <summary>Verifies a leanSPHINCS signature over <paramref name="dataHash"/> under <paramref name="verificationKey"/>.</summary>
@@ -25,5 +19,5 @@ public interface ILeanProofVerifier
 
     /// <summary>Produces the recursive STARK a builder attaches to its block.</summary>
     /// <remarks>On the same seam as verification so a node cannot prove and verify with different backends.</remarks>
-    byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk);
+    byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input);
 }

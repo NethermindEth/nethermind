@@ -143,12 +143,12 @@ public class OptimismTransactionProcessor(
         tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, int statusCode)
+        in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobGasFee, int statusCode)
     {
         if (!tx.IsDeposit())
         {
             // Skip coinbase payments for deposit tx in Regolith
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobGasFee, statusCode);
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobGasFee, statusCode);
 
             if (opSpecHelper.IsBedrock(header))
             {
@@ -173,7 +173,7 @@ public class OptimismTransactionProcessor(
         }
     }
 
-    protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+    protected override RefundResult Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds, in EthereumGasPolicy floorGas, in EthereumGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir, bool createdTargetAlive = false)
     {
         // if deposit: skip refunds, skip tipping coinbase

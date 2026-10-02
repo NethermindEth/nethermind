@@ -75,7 +75,14 @@ internal class VotesManager : IVotesManager, IDisposable
         _blockTree.NewSuggestedBlock += OnNewBlock;
     }
 
-    private void OnNewBlock(object? sender, BlockEventArgs e) => _ = OnNewBlock((XdcBlockHeader)e.Block.Header);
+    private void OnNewBlock(object? sender, BlockEventArgs e)
+    {
+        // BlockTree can raise this with null block from BlockTree.SuggestHeader.
+        if (e.Block is null)
+            return;
+
+        _ = OnNewBlock((XdcBlockHeader)e.Block.Header);
+    }
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
@@ -115,7 +122,10 @@ internal class VotesManager : IVotesManager, IDisposable
     public Task HandleVote(Vote vote)
     {
         if (vote.ProposedBlockInfo.Round < _ctx.CurrentRound)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Discarded stale vote for round {vote.ProposedBlockInfo.Round}, current round is {_ctx.CurrentRound}.");
             return Task.CompletedTask;
+        }
 
         // Collect votes
         _votePool.Add(vote);
@@ -130,6 +140,7 @@ internal class VotesManager : IVotesManager, IDisposable
         if (_blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) is not XdcBlockHeader proposedHeader)
         {
             //This is a vote for a block we have not seen yet, just return for now
+            if (_logger.IsDebug) _logger.Debug($"Buffered vote for round {vote.ProposedBlockInfo.Round}, block {vote.ProposedBlockInfo.Hash} (#{vote.ProposedBlockInfo.BlockNumber}) — block not yet known locally. Pool size={roundVotes.Count}.");
             return Task.CompletedTask;
         }
 
@@ -175,7 +186,10 @@ internal class VotesManager : IVotesManager, IDisposable
         double certThreshold = _specProvider.GetXdcSpec(proposedHeader, proposedHeader.ExtraConsensusData!.BlockRound).CertificateThreshold;
         double requiredVotes = masternodeCount * certThreshold;
         if (roundVotes.Count < requiredVotes)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Round {proposedHeader.ExtraConsensusData.BlockRound}: {roundVotes.Count}/{requiredVotes} votes collected for block #{proposedHeader.ToString(BlockHeader.Format.Short)}.");
             return Task.CompletedTask;
+        }
 
         Vote sampleVote = roundVotes.First();
         if (!sampleVote.ProposedBlockInfo.ValidateBlockInfo(proposedHeader))
@@ -266,6 +280,7 @@ internal class VotesManager : IVotesManager, IDisposable
             Math.Abs((long)vote.ProposedBlockInfo.Round - (long)_ctx.CurrentRound) > _maxRoundDistance)
         {
             // Discarded propagated vote, too far away
+            if (_logger.IsDebug) _logger.Debug($"Discarded vote for round {vote.ProposedBlockInfo.Round} (current={_ctx.CurrentRound}), block #{voteBlockNumber} (head=#{currentBlockNumber}) — too far away.");
             return Task.CompletedTask;
         }
 
@@ -279,19 +294,28 @@ internal class VotesManager : IVotesManager, IDisposable
     private bool VerifyVote(Vote vote)
     {
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(vote.GapNumber);
-        if (snapshot is null) return false;
-        if (vote.Signature is null || !vote.Signature.HasLowS())
+        if (snapshot is null)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected vote for round {vote.ProposedBlockInfo.Round}: no snapshot for gap {vote.GapNumber}.");
             return false;
+        }
+        if (vote.Signature is null || !vote.Signature.HasLowS())
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected vote for round {vote.ProposedBlockInfo.Round}: missing or malleable signature.");
+            return false;
+        }
 
         vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
-        return snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
+        bool isKnownSigner = snapshot.NextEpochCandidates.Any(x => x == vote.Signer);
+        if (!isKnownSigner && _logger.IsDebug) _logger.Debug($"Rejected vote for round {vote.ProposedBlockInfo.Round}: signer {vote.Signer} not in candidate set.");
+        return isKnownSigner;
     }
 
     private void BroadcastVote(Vote vote)
     {
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-            if (peer.SyncPeer is XdcProtocolHandler xdcProtocol)
+            if (peer.SyncPeer is IXdcConsensusPeer xdcProtocol)
                 xdcProtocol.SendVote(vote);
         }
     }

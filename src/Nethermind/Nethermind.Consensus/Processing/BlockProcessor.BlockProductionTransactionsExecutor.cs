@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm;
@@ -26,7 +27,8 @@ namespace Nethermind.Consensus.Processing
             IWorldState stateProvider,
             IBlockProductionTransactionPicker txPicker,
             ILogManager logManager,
-            IBlockAccessListManager balManager)
+            IBlockAccessListManager balManager,
+            ITxPool txPool)
             : IBlockProductionTransactionsExecutor
         {
             private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
@@ -45,7 +47,7 @@ namespace Nethermind.Consensus.Processing
                 balManager.SetBlockExecutionContext(blockExecutionContext);
             }
 
-            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
+            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
             {
                 balManager.NextTransaction();
@@ -99,7 +101,13 @@ namespace Nethermind.Consensus.Processing
                 ProcessingOptions processingOptions,
                 HashSet<Transaction> transactionsInBlock)
             {
-                AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);
+                AddingTxEventArgs args = txPicker.CanAddTransaction(
+                    block,
+                    currentTx,
+                    transactionsInBlock,
+                    stateProvider,
+                    receiptsTracer.CumulativeExecutionGasUsed,
+                    receiptsTracer.BlockStateGasUsed);
 
                 if (args.Action != TxAction.Add)
                 {
@@ -115,11 +123,19 @@ namespace Nethermind.Consensus.Processing
                         _transactionProcessed?.Invoke(this,
                             new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
                         balManager.NextTransaction();
+                        if (block is BlockToProduce producing && args.LeanProofInput is { } proofInput)
+                        {
+                            producing.LeanProofInputs.Clear();
+                            producing.LeanProofInputs.Add(proofInput);
+                            producing.LeanDependencies.AddRange(Eip8288Dependencies.ForTransaction(currentTx));
+                            producing.LeanWitnessBytes = args.LeanWitnessBytes;
+                        }
                     }
                     else
                     {
                         balManager.Rollback();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
+                        EvictUnpaidFrameTx(currentTx, result);
                     }
                 }
 
@@ -128,6 +144,20 @@ namespace Nethermind.Consensus.Processing
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
                     => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+            }
+
+            /// <summary>Evicts a frame transaction whose frames approved no payment; nothing else evicts it, so every
+            /// later block would re-burn its validation prefix for nothing.</summary>
+            /// <remarks>Only <see cref="TransactionResult.ErrorType.MalformedTransaction"/> qualifies. Some of those
+            /// reasons turn on head state (an out-of-range recent-root reference, a SENDER frame reached before an
+            /// approval) and could become valid on a later head, so eviction here is a drop, not a permanent verdict:
+            /// the sender must resubmit if the transaction becomes valid again.</remarks>
+            private void EvictUnpaidFrameTx(Transaction tx, in TransactionResult result)
+            {
+                if (!tx.SupportsFrames || result.Error != TransactionResult.ErrorType.MalformedTransaction) return;
+
+                if (txPool.EvictTransaction(tx) && _logger.IsDebug)
+                    _logger.Debug($"Evicted frame transaction {tx.ToShortString()} from the pool: {result.ErrorDescription}.");
             }
         }
     }

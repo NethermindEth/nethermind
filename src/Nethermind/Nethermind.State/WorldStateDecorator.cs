@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -20,17 +21,23 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 {
     protected readonly IWorldState State = state;
 
-    public virtual Hash256 StateRoot => State.StateRoot;
-    public virtual bool IsInScope => State.IsInScope;
-    public virtual IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
+    public Hash256 StateRoot => State.StateRoot;
+    public bool IsInScope => State.IsInScope;
+    public IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 
-    public virtual IDisposable BeginScope(BlockHeader? baseBlock)
-        => State.BeginScope(baseBlock);
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        => State.TryBeginScope(baseBlock, out scopeCloser);
 
-    public virtual Task HintBal(ReadOnlyBlockAccessList bal)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        => State.TryBeginScopeAtTarget(targetBlock, out scopeCloser);
+
+    public bool HasStateForTargetBlock(BlockHeader targetBlock)
+        => State.HasStateForTargetBlock(targetBlock);
+
+    public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
 
-    public virtual bool HasStateForBlock(BlockHeader? baseBlock)
+    public bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);
 
     public virtual bool TryGetAccount(Address address, out AccountStruct account)
@@ -39,19 +46,16 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual ulong GetNonce(Address address)
         => State.GetNonce(address);
 
-    public virtual bool IsStorageEmpty(Address address)
-        => State.IsStorageEmpty(address);
-
     public virtual ref readonly UInt256 GetBalance(Address address)
         => ref State.GetBalance(address);
 
     public virtual ref readonly ValueHash256 GetCodeHash(Address address)
         => ref State.GetCodeHash(address);
 
-    public virtual byte[]? GetCode(Address address)
+    public virtual ReadOnlyMemory<byte> GetCode(Address address)
         => State.GetCode(address);
 
-    public virtual byte[]? GetCode(in ValueHash256 codeHash)
+    public virtual ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         => State.GetCode(in codeHash);
 
     public virtual bool IsContract(Address address)
@@ -63,19 +67,24 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual bool IsDeadAccount(Address address)
         => State.IsDeadAccount(address);
 
-    public virtual ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
-        => State.GetOriginal(in storageCell);
+    public virtual void GetOriginal(in StorageCell storageCell, out UInt256 value)
+        => State.GetOriginal(in storageCell, out value);
 
-    public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell)
-        => State.Get(in storageCell);
+    public virtual void Get(in StorageCell storageCell, out UInt256 value)
+        => State.Get(in storageCell, out value);
 
-    public virtual void Set(in StorageCell storageCell, byte[] newValue)
+    public virtual void Set(in StorageCell storageCell, in UInt256 newValue)
         => State.Set(in storageCell, newValue);
 
-    public virtual ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
-        => State.GetTransientState(in storageCell);
+    /// <inheritdoc/>
+    /// <remarks>Preserves interception by decorators that only override the ordinary write.</remarks>
+    public virtual void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => Set(in storageCell, in newValue);
 
-    public virtual void SetTransientState(in StorageCell storageCell, byte[] newValue)
+    public virtual void GetTransientState(in StorageCell storageCell, out UInt256 value)
+        => State.GetTransientState(in storageCell, out value);
+
+    public virtual void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         => State.SetTransientState(in storageCell, newValue);
 
     public virtual void Reset(bool resetBlockChanges = true)
@@ -87,10 +96,12 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Restore(Snapshot snapshot)
         => State.Restore(snapshot);
 
-    public virtual void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
+    public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         => State.WarmUp(accessList, cancellationToken);
 
-    public virtual void WarmUp(Address address)
+    public virtual bool TryApplyAccountOverlay(IStateReadOverlay overlay) => State.TryApplyAccountOverlay(overlay);
+
+    public void WarmUp(Address address)
         => State.WarmUp(address);
 
     public virtual void ClearStorage(Address address)
@@ -135,7 +146,7 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => State.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
-    public virtual void CommitTree(ulong blockNumber)
+    public void CommitTree(ulong blockNumber)
         => State.CommitTree(blockNumber);
 
     public virtual ArrayPoolList<AddressAsKey>? GetAccountChanges()

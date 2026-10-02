@@ -39,6 +39,25 @@ public enum ExecutionOptions
     BuildUp = 16,
 
     /// <summary>
+    /// EIP-8141 mempool admission: run only the validation prefix, halting once the payer is set.
+    /// </summary>
+    FrameValidationPrefixOnly = 32,
+
+    /// <summary>
+    /// Asserts the caller has already verified this transaction's frame signatures against the same spec.
+    /// Read only under <see cref="FrameValidationPrefixOnly"/>. Execution with <see cref="SkipValidation"/> independently allows empty signature placeholders.
+    /// Some paths compare these options by exact equality, so do not OR it into another mode.
+    /// </summary>
+    FrameSignaturesPreValidated = 64,
+
+    /// <summary>Frame-gas search: retain fee introspection but defer gas escrow until the final probe.
+    /// Only effective together with <see cref="Restore"/>.</summary>
+    FrameGasEstimation = 128,
+
+    /// <summary>Judge a validation prefix at the supplied execution block rather than its next slot.</summary>
+    FramePrefixAtExecutionBlock = 256,
+
+    /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
     SkipValidationAndCommit = Commit | SkipValidation,

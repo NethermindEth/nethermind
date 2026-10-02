@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
+using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 
@@ -47,6 +48,9 @@ public class Bpo1ToBpo2AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTe
 public class Bpo2ToAmsterdamAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo2ToAmsterdamAtTime15kEngineBlockchainTests>;
 public class Bpo2ToBpo3AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo2ToBpo3AtTime15kEngineBlockchainTests>;
 public class Bpo3ToBpo4AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo3ToBpo4AtTime15kEngineBlockchainTests>;
+
+// Loads `for_bogota` from the EIP-7805 fixture release.
+public class BogotaEngineBlockchainTests : PyspecBogotaEngineBlockchainTestFixture;
 
 // Sync blockchain tests - exercise sync-mode payload validation alongside the standard engine flow.
 public class AmsterdamSyncBlockchainTests : PyspecSyncBlockchainTestFixture<AmsterdamSyncBlockchainTests>;

@@ -18,6 +18,15 @@ internal static class DiscoveryKademliaConfigFactory
             LookupFindNeighbourHardTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout + discoveryConfig.BondWaitTime + (2L * discoveryConfig.SendNodeTimeout)),
             RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout),
             RefreshInterval = TimeSpan.FromMilliseconds(discoveryConfig.DiscoveryInterval),
-            BootNodes = bootNodes
+            BootNodes = bootNodes,
+            MergeOnRefresh = static (incoming, existing) =>
+            {
+                if (!ReferenceEquals(incoming, existing))
+                {
+                    incoming.MergeEnrStateFrom(existing);
+                }
+
+                return incoming;
+            }
         };
 }

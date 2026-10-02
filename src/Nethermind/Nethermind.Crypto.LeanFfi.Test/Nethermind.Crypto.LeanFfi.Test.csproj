@@ -1,11 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Standalone live-FFI test for the EIP-8288 native Lean verifier. Intentionally NOT part of
-       Nethermind.slnx: it needs the Rust toolchain and a host-built dylib, so it is run on demand
-       (dotnet test on this csproj) rather than in the main solution build / CI. -->
+  <!-- Native generation is opt-in; the solution still compiles these tests without Rust. -->
   <Import Project="../tests.props" />
 
   <PropertyGroup>
+    <DefineConstants Condition="'$(BuildLeanFfi)' == 'true'">$(DefineConstants);NATIVE_LEAN_TESTS</DefineConstants>
     <LeanFfiManifest>$(MSBuildThisFileDirectory)../../../tools/lean-ffi/Cargo.toml</LeanFfiManifest>
     <LeanFfiOutDir>$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/release</LeanFfiOutDir>
     <LeanFfiLibName Condition="$([MSBuild]::IsOSPlatform('Windows'))">nethermind_lean.dll</LeanFfiLibName>
@@ -20,15 +19,13 @@
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
   </ItemGroup>
 
-  <!-- Best-effort build of the Rust shim when cargo is available (host dev machine). -->
-  <Target Name="BuildLeanFfi" BeforeTargets="BeforeBuild" Condition="Exists('$(LeanFfiManifest)')">
-    <Exec Command="cargo build --release --manifest-path &quot;$(LeanFfiManifest)&quot;" ContinueOnError="true" />
-  </Target>
-
-  <!-- A top-level ItemGroup is evaluated before BuildLeanFfi runs, so a fresh clone would build the
-       library and copy nothing; copy from a target that runs after it instead. -->
-  <Target Name="CopyLeanFfi" AfterTargets="BuildLeanFfi" Condition="Exists('$(LeanFfiLib)')">
+  <Target Name="BuildLeanFfi" BeforeTargets="BeforeBuild" Condition="'$(BuildLeanFfi)' == 'true'">
+    <Exec Command="cargo build --release --locked --manifest-path &quot;$(LeanFfiManifest)&quot;" />
+    <Exec Command="cargo run --release --locked --manifest-path &quot;$(LeanFfiManifest)&quot; --example fixtures -- &quot;$(LeanFfiOutDir)/../test-vectors&quot;" />
+    <ItemGroup>
+      <LeanVectors Include="$(LeanFfiOutDir)/../test-vectors/*.bin" />
+    </ItemGroup>
     <Copy SourceFiles="$(LeanFfiLib)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(LeanVectors)" DestinationFolder="$(OutDir)lean-vectors" SkipUnchangedFiles="true" />
   </Target>
-
 </Project>

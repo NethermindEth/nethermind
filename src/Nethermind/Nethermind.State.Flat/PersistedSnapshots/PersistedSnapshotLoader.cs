@@ -61,7 +61,9 @@ public sealed class PersistedSnapshotLoader(
         // Can be millions of entries on a long-running node — materialised once and shared by the
         // arena init and the parallel load below.
         List<CatalogEntry> entries = [.. _catalog.Load()];
-        arena.Initialize(entries);
+        IReadOnlySet<int> missingArenas = arena.Initialize(entries);
+        if (missingArenas.Count != 0)
+            entries.RemoveAll(e => missingArenas.Contains(e.Location.ArenaId));
 
         LoadSnapshotsParallel(entries);
 

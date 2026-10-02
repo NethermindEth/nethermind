@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <Import Project="../tests.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+  </ItemGroup>
+
+  <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">
+    <Error Text="Build this project with EnableZkEvm=true." />
+  </Target>
+
+</Project>

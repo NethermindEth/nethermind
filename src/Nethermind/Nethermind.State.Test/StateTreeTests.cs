@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -15,6 +17,65 @@ namespace Nethermind.Store.Test;
 
 public class StateTreeTests
 {
+    [Test]
+    public void Key_hash_batch_flush_supports_all_pending_counts(
+        [Range(1, 8)] int count, [Values(20, 32)] int length)
+    {
+        KeyHashBatch batch = new();
+        batch.Initialize(length);
+        PatriciaTree.BulkSetEntry[] entries = new PatriciaTree.BulkSetEntry[count];
+        ValueHash256[] expected = new ValueHash256[count];
+        Random random = new(7152);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] input = new byte[length];
+            random.NextBytes(input);
+            expected[i] = ValueKeccak.Compute(input);
+            entries[i] = new(default, [(byte)i]);
+            batch.AddMissing(input, i);
+        }
+        batch.Flush(entries);
+        for (int i = 0; i < count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries[i].Path, Is.EqualTo(expected[i]));
+                Assert.That(entries[i].Value, Is.EqualTo(new byte[] { (byte)i }));
+            }
+        }
+    }
+
+    [Test]
+    public void Batched_account_updates_match_individual_updates(
+        [Values(0, 1, 3, 4, 5, 7, 8, 9, 16, 33, 128)] int count, [Values] bool warm)
+    {
+        Dictionary<AddressAsKey, Account> accounts = [];
+        StateTree actual = new();
+        StateTree expected = new();
+        Random random = new(7321 + count + (warm ? 100 : 0));
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            random.NextBytes(bytes);
+            Address address = new(bytes);
+            Account account = i % 3 == 0 ? null : i % 3 == 1 ? Account.TotallyEmpty : _account1;
+            accounts.Add(address, account);
+            if (warm) KeccakCache.ComputeTo(bytes, out _);
+        }
+        actual.SetAccounts(accounts);
+        foreach (KeyValuePair<AddressAsKey, Account> entry in accounts) expected.Set(ValueKeccak.Compute(entry.Key.Value.Bytes), entry.Value);
+        actual.UpdateRootHash();
+        expected.UpdateRootHash();
+        Assert.That(actual.RootHash, Is.EqualTo(expected.RootHash));
+
+        foreach (AddressAsKey address in new List<AddressAsKey>(accounts.Keys)) accounts[address] = _account2;
+        actual.SetAccounts(accounts);
+        foreach (KeyValuePair<AddressAsKey, Account> entry in accounts) expected.Set(ValueKeccak.Compute(entry.Key.Value.Bytes), entry.Value);
+        actual.UpdateRootHash();
+        expected.UpdateRootHash();
+        Assert.That(actual.RootHash, Is.EqualTo(expected.RootHash));
+    }
+
     private readonly Account _account0 = Build.An.Account.WithBalance(0).TestObject;
     private readonly Account _account1 = Build.An.Account.WithBalance(1).TestObject;
     private readonly Account _account2 = Build.An.Account.WithBalance(2).TestObject;

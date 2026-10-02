@@ -223,9 +223,8 @@ public class QuorumCertificateManagerTest
         Assert.That(() => quorumCertificateManager.CommitCertificate(qc), Throws.TypeOf<BlockchainException>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void CommitCertificate_ParentQcHasHigherRound_LockQCIsSetToParent(bool lockQcIsNull)
+    [Test]
+    public void CommitCertificate_ParentQcHasHigherRound_LockQCIsSetToParent([Values] bool lockQcIsNull)
     {
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();

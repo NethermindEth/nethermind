@@ -5,23 +5,34 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Nodes;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Config.Test;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.EthStats;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Stats.Model;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
@@ -49,6 +60,23 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("archive")]
     public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
+
+    [Test]
+    public void Fast_sync_without_snap_stays_on_patricia()
+    {
+        int fastWithoutSnapConfigs = 0;
+        foreach (string configFile in AllConfigFiles())
+        {
+            ISyncConfig sync = GetConfigFromFile<ISyncConfig>(configFile);
+            if (!sync.FastSync || sync.SnapSync)
+                continue;
+
+            fastWithoutSnapConfigs++;
+            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).Enabled, Is.False, configFile);
+        }
+
+        Assert.That(fastWithoutSnapConfigs, Is.GreaterThan(0));
+    }
 
     [TestCase("archive", true)]
     [TestCase("fast", true)]
@@ -122,6 +150,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<INetworkConfig, int>(configWildcard, static c => c.DiscoveryPort, 30303);
         Test<INetworkConfig, int>(configWildcard, static c => c.P2PPort, 30303);
         Test<INetworkConfig, string>(configWildcard, static c => c.ExternalIp, (string)null);
+        Test<INetworkConfig, string>(configWildcard, static c => c.ExternalIpV4, (string)null);
+        Test<INetworkConfig, string>(configWildcard, static c => c.ExternalIpV6, (string)null);
         Test<INetworkConfig, string>(configWildcard, static c => c.LocalIp, (string)null);
         Test<INetworkConfig, int>(configWildcard, static c => c.MaxActivePeers, activePeers);
     }
@@ -167,6 +197,19 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Discovery_versions_are_correct(string configWildcard, DiscoveryVersion discoveryVersion) =>
         Test<IDiscoveryConfig, DiscoveryVersion>(configWildcard, static c => c.DiscoveryVersion, discoveryVersion);
 
+    [Test]
+    public void Chiado_discovery_bootnodes_are_correct()
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile("chiado.json");
+        Assert.That(chainSpec.Bootnodes, Is.Not.Empty);
+
+        foreach (NetworkNode bootnode in chainSpec.Bootnodes)
+        {
+            Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
+            Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
+        }
+    }
+
     [TestCase("*")]
     public void Tracer_timeout_default_is_correct(string configWildcard) => Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);
 
@@ -183,6 +226,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("archive", false)]
     [TestCase("mainnet.json", true)]
+    [TestCase("mainnet_aztec.json", true)]
     [TestCase("sepolia.json", true)]
     [TestCase("gnosis.json", true)]
     [TestCase("chiado.json", true)]
@@ -207,7 +251,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Migrations_are_not_enabled_by_default(string configWildcard) => Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
 
     [TestCase("^mainnet ^gnosis ^sepolia", 0UL)]
-    [TestCase("mainnet ^archive", 15537394UL)]
+    [TestCase("mainnet ^archive", 24600000UL)]
     [TestCase("gnosis ^archive", 25349537UL)]
     [TestCase("sepolia ^archive", 1450409UL)]
     [TestCase("archive", 0UL)]
@@ -215,6 +259,48 @@ public class ConfigFilesTests : ConfigFileTestsBase
     {
         Test<ISyncConfig, ulong>(configWildcard, static c => c.AncientBodiesBarrier, barrier);
         Test<ISyncConfig, ulong>(configWildcard, static c => c.AncientReceiptsBarrier, barrier);
+    }
+
+    /// <summary>
+    /// An Aztec node traces about 3,600 recent blocks (debug_traceTransaction), so its flat history keeps a rolling
+    /// window with headroom over that, indexed per transaction so a trace does not replay the block ahead of it, and
+    /// its own db path means it always syncs fresh onto the flat backend. Its archiver reads L1 through eth_getLogs,
+    /// which the log index serves.
+    /// </summary>
+    [Test]
+    public void Aztec_config_keeps_a_trace_window()
+    {
+        Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.Enabled, true);
+        Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.HistoryEnabled, true);
+        Test<IFlatDbConfig, HistoryRetentionMode>("mainnet_aztec.json", static c => c.HistoryRetention, HistoryRetentionMode.Rolling);
+        Test<IFlatDbConfig, ulong>("mainnet_aztec.json", static c => c.HistoryRetentionBlocks, 4096UL);
+        Test<IFlatDbConfig, bool>("mainnet_aztec.json", static c => c.HistoryTransactionIndexEnabled, true);
+        Test<ILogIndexConfig, bool>("mainnet_aztec.json", static c => c.Enabled, true);
+        Test<IInitConfig, string>("mainnet_aztec.json", static c => c.BaseDbPath, "nethermind_db/mainnet_aztec");
+    }
+
+    /// <summary>
+    /// mainnet_aztec.json is mainnet.json plus the Aztec node's own settings. Only the pivot is kept in step by the
+    /// sync script, so anything else changed in mainnet.json and not carried over fails here.
+    /// </summary>
+    [Test]
+    public void Aztec_config_is_mainnet_plus_its_own_settings()
+    {
+        JsonObject mainnet = ReadConfig("mainnet.json");
+        JsonObject aztec = ReadConfig("mainnet_aztec.json");
+        foreach ((string section, string key) in (ReadOnlySpan<(string, string)>)[("Init", "BaseDbPath"), ("Init", "LogFileName"), ("Metrics", "NodeName")])
+        {
+            ((JsonObject)mainnet[section]!).Remove(key);
+            ((JsonObject)aztec[section]!).Remove(key);
+        }
+
+        aztec.Remove("FlatDb");
+        aztec.Remove("LogIndex");
+
+        Assert.That(JsonNode.DeepEquals(aztec, mainnet), Is.True, "mainnet_aztec.json has drifted from mainnet.json");
+
+        static JsonObject ReadConfig(string file) =>
+            JsonNode.Parse(File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", file)))!.AsObject();
     }
 
     [TestCase("^spaceneth", "nethermind_db")]
@@ -230,6 +316,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("mainnet_archive.json", true)]
     [TestCase("mainnet.json", true)]
+    [TestCase("mainnet_aztec.json", true)]
     [TestCase("poacore", true)]
     [TestCase("gnosis", true)]
     [TestCase("volta", false)]
@@ -317,6 +404,69 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Assert.That(archiveConfig.GenesisHash, Is.EqualTo(regularConfig.GenesisHash));
     }
 
+    // XDPoS v1 blocks are not supported, so the archive node cannot sync from genesis.
+    [Test]
+    public void Xdc_archive_syncs_from_the_XDPoS_v2_switch_block()
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile("xdc.json");
+        ulong switchBlock = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>().SwitchBlock;
+
+        ISyncConfig syncConfig = GetConfigFromFile<ISyncConfig>("xdc_archive.json");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(syncConfig.FastSync, Is.True);
+            Assert.That(syncConfig.PivotNumber, Is.EqualTo(switchBlock + 1));
+        });
+    }
+
+    // XDPoSChain peers state-sync via GetNodeData, which SyncServer can only answer from
+    // WorldStateManager.HashServer — non-null solely on the patricia backend with hash-keyed nodes.
+    [Test]
+    public void Xdc_configs_can_serve_node_data([Values("xdc.json", "xdc-testnet.json", "xdc_archive.json")] string configWildcard)
+    {
+        Test<IFlatDbConfig, bool>(configWildcard, static c => c.Enabled, false);
+        Test<IInitConfig, INodeStorage.KeyScheme>(configWildcard, static c => c.StateDbKeyScheme, INodeStorage.KeyScheme.Hash);
+    }
+
+    // NeedToWaitForHeader would hold state sync back until the reverse header sync reaches genesis. XdcStateSyncPivot
+    // already keeps the pivot pending until the pivot header and the gap blocks below it are in the block tree, so XDC
+    // needs only that bounded window rather than the whole chain.
+    [Test]
+    public void Xdc_configs_do_not_gate_state_sync_on_the_full_header_sync([Values("xdc.json", "xdc-testnet.json", "xdc_archive.json")] string configWildcard) =>
+        Test<ISyncConfig, bool>(configWildcard, static c => c.NeedToWaitForHeader, false);
+
+    // XDC's base fee is a constant equal to the gas price floor its reference client demands, so a transaction paying
+    // exactly that floor has no priority fee left. MinGasPriceTxFilter compares the priority fee, so any non-zero
+    // Blocks.MinGasPrice makes the block producer skip transactions the reference client both accepts and mines.
+    [TestCase("xdc.json")]
+    [TestCase("xdc-testnet.json")]
+    public void Xdc_produces_blocks_with_transactions_priced_at_the_base_fee(string configFile)
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(configFile);
+        XdcChainSpecEngineParameters parameters = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>();
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, parameters, LimboLogs.Instance);
+
+        IReleaseSpec spec = specProvider.GetXdcSpec(chainSpec.Parameters.Eip1559Transition!.Value);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.Legacy)
+            .WithGasPrice(baseFee)
+            .WithTo(TestItem.AddressC)
+            .TestObject;
+
+        AcceptTxResult result = new MinGasPriceTxFilter(GetConfigFromFile<IBlocksConfig>(configFile))
+            .IsAllowed(tx, parent, spec);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(baseFee, Is.GreaterThan(UInt256.Zero), "EIP-1559 must be active for this to be meaningful");
+            Assert.That((bool)result, Is.True, result.ToString());
+        });
+    }
+
     [TestCase("*")]
     public void BufferResponses_rpc_is_off(string configWildcard) => Test<IJsonRpcConfig, bool>(configWildcard, static c => c.BufferResponses, false);
 
@@ -393,6 +543,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         "hoodi_archive.json",
         "mainnet_archive.json",
         "mainnet.json",
+        "mainnet_aztec.json",
         "poacore.json",
         "poacore_archive.json",
         "gnosis.json",

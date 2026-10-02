@@ -38,6 +38,8 @@ namespace Nethermind.Abi
         public int Length { get; }
         public int Precision { get; }
 
+        internal override int GetHeadSize(bool packed) => Int256.GetHeadSize(packed);
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             (BigInteger nominator, int newPosition) = Int256.DecodeInt(data, position, packed);

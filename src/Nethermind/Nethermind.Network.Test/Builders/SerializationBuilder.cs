@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -14,6 +14,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs;
 
@@ -83,6 +84,11 @@ namespace Nethermind.Network.Test.Builders
         public SerializationBuilder WithEth71(ISpecProvider specProvider) => WithEth70(specProvider)
                 .With(new GetBlockAccessListsMessageSerializer())
                 .With(new BlockAccessListsMessageSerializer());
+
+        public SerializationBuilder WithEth72(ISpecProvider specProvider) => WithEth71(specProvider)
+                .With(new NewPooledTransactionHashesMessageSerializer72())
+                .With(new GetCellsMessageSerializer72())
+                .With(new CellsMessageSerializer72());
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {

@@ -9,9 +9,12 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.State.Flat.History.Changesets;
+using Nethermind.Core.Container;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -83,6 +86,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Sync components
             .AddSingleton<FlatSnapTrieFactory>()
+            .AddSingleton<TrieReassembler>()
+            .AddSingleton<FlatBalHealing>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
@@ -90,7 +95,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatFullStateFinder>()
 
             // Persistences
-            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat, static settings => settings.PersistRepairMarkerUntilAcknowledged = true)
             .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx => ctx
                 .Resolve<IDbFactory>()
                 .CreateDb(new DbSettings(
@@ -100,10 +105,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
+            .Add<CarryForwardCachingPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
-
-            .AddSingleton<PreimageRocksdbPersistence>()
-            .AddDatabase(DbNames.Preimage)
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {
@@ -111,18 +114,15 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 {
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
-                    FlatLayout.PreimageFlat => ctx.Resolve<PreimageRocksdbPersistence>(),
+                    FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
+                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
-                if (flatDbConfig.EnablePreimageRecording)
-                {
-                    IDb preimageDb = ctx.ResolveKeyed<IDb>(DbNames.Preimage);
-                    persistence = new PreimageRecordingPersistence(persistence, preimageDb);
-                }
-
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
-                return new CarryForwardCachingPersistence(cachedReader);
+                return flatDbConfig.EnableCarryForwardCache
+                    ? ctx.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(cachedReader))
+                    : cachedReader;
             })
             ;
 
@@ -134,11 +134,82 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
         }
 
+        // Registered unconditionally so `nethermind import-flat-db` can always find it. Carrying
+        // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
+        builder
+            .AddSingleton<Importer>()
+            .AddStep(typeof(ImportFlatDb));
+
         if (flatDbConfig.ImportFromPruningTrieState)
+            builder.SelectStepTarget(typeof(ImportFlatDb));
+
+        // Only pulls the state DB open during init; PruningTrieStoreModule still decides.
+        if (flatDbConfig.DropPruningTrieState)
         {
-            builder
-                .AddSingleton<Importer>()
-                .AddStep(typeof(ImportFlatDb));
+            builder.AddStep(typeof(DropPruningTrieState));
+        }
+
+        builder.RegisterInstance(NullHistoricalTrieVisitor.Instance)
+            .As<IHistoricalTrieVisitor>()
+            .ExternallyOwned()
+            .PreserveExistingDefaults();
+
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks == 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention is Rolling but FlatDb.HistoryRetentionBlocks is 0, so the window has no " +
+                "size. Set the window size, or set FlatDb.HistoryRetention=None to retain history unbounded.", -1);
+        }
+
+        // The number alone used to select the windowed shape. Refusing here rather than inferring the mode keeps a
+        // configuration written against that behaviour from silently becoming an unbounded archive.
+        if (flatDbConfig.HistoryRetention != HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetentionBlocks is set to {flatDbConfig.HistoryRetentionBlocks} but " +
+                $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}; the block count is the size of a " +
+                "rolling window only. Set FlatDb.HistoryRetention=Rolling to keep the window, or unset the block count.", -1);
+        }
+
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.SinceBlock && flatDbConfig.HistoryRetentionSinceBlock == 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention is SinceBlock but FlatDb.HistoryRetentionSinceBlock is 0, which is genesis and " +
+                "so the same as None. Set the first block to keep, or set FlatDb.HistoryRetention=None.", -1);
+        }
+
+        if (flatDbConfig.HistoryRetention != HistoryRetentionMode.SinceBlock && flatDbConfig.HistoryRetentionSinceBlock != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetentionSinceBlock is set to {flatDbConfig.HistoryRetentionSinceBlock} but " +
+                $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}. Set FlatDb.HistoryRetention=SinceBlock " +
+                "to start history there, or unset the block.", -1);
+        }
+
+        if (flatDbConfig.HistoryEnabled)
+        {
+            builder.AddModule(new FlatHistoryModule());
+            if (flatDbConfig.HistoryTransactionIndexEnabled)
+            {
+                builder
+                    .AddSingleton<IInlineCapturePolicy, InlineCapturePolicy>()
+                    .AddSingleton<InlineChangesetCapture>()
+                    .AddSingleton<IMainProcessingModule, InlineChangesetCaptureModule>();
+            }
+        }
+        else if (flatDbConfig.IsHistoryWindowed()
+            || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
+            || flatDbConfig.HistoryVerifyEveryBlock
+            || flatDbConfig.ArchiveProofBuildEnabled
+            || flatDbConfig.ArchiveProofServeEnabled
+            || flatDbConfig.HistoryTransactionIndexEnabled
+            || flatDbConfig.HistoryTransactionIndexRetrofitFromBlock != 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses, FlatDb.HistoryVerifyEveryBlock, " +
+                "FlatDb.ArchiveProofBuildEnabled, FlatDb.ArchiveProofServeEnabled, FlatDb.HistoryTransactionIndexEnabled and " +
+                "FlatDb.HistoryTransactionIndexRetrofitFromBlock all require FlatDb.HistoryEnabled: " +
+                "with it off no history is captured, so these settings would be silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
     }
 

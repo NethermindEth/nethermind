@@ -35,7 +35,8 @@ public class BlockValidatorTests
     public void Setup()
     {
         IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
-        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(true);
+        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>(), out Arg.Any<string?>(), Arg.Any<bool>())
+            .Returns(true);
         _blockValidator = new(
             Substitute.For<ITxValidator>(),
             headerValidator,
@@ -44,6 +45,55 @@ public class BlockValidatorTests
             LimboLogs.Instance);
     }
 
+
+    /// <summary>
+    /// The header hash is the one check <c>validateHashes</c> turns off, so an inverted branch on the way to the
+    /// header validator would silently disable it on every path, sync included.
+    /// </summary>
+    [TestCase(true, false, TestName = "ValidateSuggestedBlock_ValidatingHashes_RejectsAMismatchedHeaderHash")]
+    [TestCase(false, true, TestName = "ValidateSuggestedBlock_SkippingHashes_AcceptsAMismatchedHeaderHash")]
+    public void ValidateSuggestedBlock_CarriesValidateHashesToTheHeaderValidator(bool validateHashes, bool expectedValid)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Byzantium.Instance);
+        IBlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
+        BlockValidator sut = new(
+            Always.Valid,
+            new HeaderValidator(blockTree, Always.Valid, specProvider, LimboLogs.Instance),
+            Always.Valid,
+            specProvider,
+            LimboLogs.Instance);
+
+        Block parent = Build.A.Block.WithDifficulty(1).TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithDifficulty(2).TestObject;
+        blockTree.SuggestBlock(parent);
+        block.Header.Hash = Keccak.Zero;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent.Header, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid), error);
+        if (!expectedValid)
+        {
+            Assert.That(error, Does.StartWith("InvalidHeaderHash"), "the hash check must be what rejects the block");
+        }
+    }
+
+    /// <summary>
+    /// The EIP-4895 presence rules are not a hash recomputation, so a caller that verified the header hash has not
+    /// verified them: the header only pins the withdrawals root field, not whether a body carries withdrawals.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_WithdrawalsMissingAfterShanghai_IsRejected([Values] bool validateHashes)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Shanghai.Instance);
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.False);
+        Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+    }
 
     [Test]
     public void Accepts_valid_block()
@@ -108,7 +158,7 @@ public class BlockValidatorTests
         {
             Type = TxType.FrameTx,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeDepVerify, 0, null, Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, depData)],
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, depData)],
             FrameSignatures = [],
         };
         depTx.Hash = depTx.CalculateHash();
@@ -130,28 +180,35 @@ public class BlockValidatorTests
     }
 
     [Test]
-    public void Eip8288_accepts_block_with_valid_placeholder_proof_via_default_verifier()
+    public void Eip8288_rejects_invalid_proof_size([Values(0, NativeLeanProofVerifier.MaxProofBytes + 1)] int length)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
-        byte[] proof = PlaceholderLeanProofVerifier.ProveRecursive(in depsHash, Eip8288Constants.AggregatedVk);
-        block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
+        block.Header.RecursiveStark = new RecursiveStark(new byte[length], new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block)));
 
-        bool result = CreateEip8288Validator(PlaceholderLeanProofVerifier.Instance).ValidateSuggestedBlock(block, parent, out string? error);
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true))
+            .ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(result, Is.True, error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidRecursiveStark));
+        }
     }
 
     [Test]
-    public void Eip8288_rejects_block_with_tampered_placeholder_proof_via_default_verifier()
+    public void Eip8288_rejects_recursive_stark_before_activation()
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
-        block.Header.RecursiveStark = new RecursiveStark([1], new Hash256(depsHash)); // correct hash, wrong proof
+        block.Header.RecursiveStark = new RecursiveStark([1], Keccak.OfAnEmptyString);
 
-        CreateEip8288Validator(PlaceholderLeanProofVerifier.Instance).ValidateSuggestedBlock(block, parent, out string? error);
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true), enabled: false)
+            .ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidRecursiveStark));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.RecursiveStarkNotEnabled));
+        }
     }
 
     private static (Block Block, BlockHeader Parent) Eip8288Block()
@@ -161,15 +218,13 @@ public class BlockValidatorTests
         return (block, parent);
     }
 
-    private static BlockValidator CreateEip8288Validator(ILeanProofVerifier verifier)
+    private static BlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true)
     {
-        IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
-        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(true);
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip8288Enabled.Returns(true);
+        spec.IsEip8288Enabled.Returns(enabled);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
-        return new BlockValidator(Substitute.For<ITxValidator>(), headerValidator, Substitute.For<IUnclesValidator>(), specProvider, LimboLogs.Instance, verifier);
+        return new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, verifier);
     }
 
     private sealed class FixedLeanProofVerifier(bool result) : ILeanProofVerifier
@@ -177,7 +232,7 @@ public class BlockValidatorTests
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => result;
-        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk) => [];
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

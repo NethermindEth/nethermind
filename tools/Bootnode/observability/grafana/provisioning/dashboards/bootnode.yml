@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: Nethermind Bootnode
+    orgId: 1
+    folder: Nethermind
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards

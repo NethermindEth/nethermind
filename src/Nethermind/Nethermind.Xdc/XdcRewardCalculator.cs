@@ -14,6 +14,7 @@ using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Xdc;
 
@@ -55,8 +56,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         ArgumentNullException.ThrowIfNull(block);
         if (block.Header is not XdcBlockHeader xdcHeader)
             throw new InvalidOperationException("Only supports XDC headers");
-        if (xdcHeader.ProcessedRewards is not null)
-            return xdcHeader.ProcessedRewards.BlockRewards;
 
         if (xdcHeader.Number == 0)
             return (xdcHeader.ProcessedRewards = XdcProcessedRewards.Empty).BlockRewards;
@@ -196,9 +195,8 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             {
                 Hash256 blockHash = ExtractBlockHashFromSigningTxData(tx.Data);
                 tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
-                if (!hashToSigningAddress.ContainsKey(blockHash))
-                    hashToSigningAddress[blockHash] = [];
-                hashToSigningAddress[blockHash].Add(tx.SenderAddress);
+                ref HashSet<Address>? signingAddresses = ref CollectionsMarshal.GetValueRefOrAddDefault(hashToSigningAddress, blockHash, out _);
+                (signingAddresses ??= []).Add(tx.SenderAddress);
             }
 
             if (blockIdx == 0) break;
@@ -264,10 +262,11 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
     private static void IncrementSignerCount(Dictionary<Address, XdcRewardLog> signers, Address addr)
     {
-        if (signers.TryGetValue(addr, out XdcRewardLog? rewardLog))
+        ref XdcRewardLog? rewardLog = ref CollectionsMarshal.GetValueRefOrAddDefault(signers, addr, out _);
+        if (rewardLog is not null)
             rewardLog.Sign++;
         else
-            signers[addr] = new XdcRewardLog { Sign = 1 };
+            rewardLog = new XdcRewardLog { Sign = 1 };
     }
 
     private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)

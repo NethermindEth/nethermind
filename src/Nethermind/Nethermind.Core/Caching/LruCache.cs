@@ -293,7 +293,7 @@ namespace Nethermind.Core.Caching
 
             [DoesNotReturn]
             static void ThrowInvalidOperationException() => throw new InvalidOperationException(
-                    $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
+                    $"{nameof(LruCache<,>)} called {nameof(Replace)} when empty.");
         }
 
         private void NotifyEvictedValues(TValue[]? evictedValues)

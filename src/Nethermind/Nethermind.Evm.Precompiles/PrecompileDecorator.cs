@@ -16,6 +16,8 @@ public abstract class PrecompileDecorator(IPrecompile inner) : IPrecompile
 {
     protected IPrecompile Inner { get; } = inner;
 
+    public virtual string Name => Inner.Name;
+
     public virtual bool SupportsCaching => Inner.SupportsCaching;
 
     public virtual ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) => Inner.NormalizeInput(inputData);

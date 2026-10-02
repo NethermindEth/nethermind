@@ -33,7 +33,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             {
                 int accessListItemLength = decoderContext.ReadSequenceLength();
                 int accessListItemCheck = decoderContext.Position + accessListItemLength;
-                Address address = decoderContext.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
+                Address address = decoderContext.DecodeAddress();
                 accessListBuilder.AddAddress(address);
 
                 if (decoderContext.Position >= accessListItemCheck)

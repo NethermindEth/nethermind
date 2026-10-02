@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -41,16 +42,15 @@ public class BlockhashProviderTests
         return (worldState, worldState.StateRoot);
     }
 
-    private static IWorldState CreateWorldStateWithHistoryContract(IReleaseSpec spec)
+    private static (IWorldState, Hash256) CreateWorldStateWithHistoryContract(IReleaseSpec spec)
     {
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
-        byte[] code = [1, 2, 3];
-        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, spec);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, spec);
         worldState.Commit(spec);
         worldState.CommitTree(0);
-        return worldState;
+        return (worldState, worldState.StateRoot);
     }
 
 
@@ -262,11 +262,8 @@ public class BlockhashProviderTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1ul)]
-    [TestCase(512ul)]
-    [TestCase(8192ul)]
-    [TestCase(8193ul)]
-    public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash(ulong chainLength)
+    [Test]
+    public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash([Values(1ul, 512ul, 8192ul, 8193ul)] ulong chainLength)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
@@ -312,6 +309,348 @@ public class BlockhashProviderTests
                 : Is.EqualTo(genesisHash));
     }
 
+    /// <summary>Chain, state, store and provider wiring shared by the blockhash span-lookup tests.</summary>
+    /// <remarks>The storage-backed path is gated on EIP-7709, which no named fork enables yet, so the spec is
+    /// built explicitly rather than taken from a fork.</remarks>
+    private sealed class BlockhashFixture : IDisposable
+    {
+        private const ulong ChainLength = 42ul;
+        private readonly IDisposable _scope;
+
+        public BlockhashFixture(bool blockHashInState = true)
+        {
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTreeBuilder builder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(ChainLength);
+            BlockTree tree = builder.TestObject;
+            Tree = tree;
+            Head = tree.FindHeader(ChainLength - 1ul, BlockTreeLookupOptions.None)!;
+
+            (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
+            WorldState = worldState;
+            StateRoot = stateRoot;
+            Current = Build.A.Block.WithParent(Head).WithStateRoot(stateRoot).TestObject;
+            tree.SuggestHeader(Current.Header);
+
+            Spec = new ReleaseSpec
+            {
+                IsEip2935Enabled = true,
+                IsEip7709Enabled = blockHashInState,
+                Eip2935RingBufferSize = Eip2935Constants.RingBufferSize
+            };
+
+            Store = new BlockhashStore(worldState);
+            Provider = new BlockhashProvider(new BlockhashCache(builder.HeaderStore, LimboLogs.Instance), worldState, LimboLogs.Instance);
+
+            _scope = worldState.BeginScope(Current.Header);
+            byte[] code = [1, 2, 3];
+            worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, Prague.Instance);
+        }
+
+        public BlockTree Tree { get; }
+
+        public BlockHeader Head { get; }
+        public Block Current { get; }
+        public Hash256 StateRoot { get; }
+        public IWorldState WorldState { get; }
+        public ReleaseSpec Spec { get; }
+        public BlockhashStore Store { get; }
+        public BlockhashProvider Provider { get; }
+
+        /// <summary>Writes <paramref name="parentHash"/> into the ring slot that <paramref name="header"/> owns.</summary>
+        public void StoreParentHash(BlockHeader header, Hash256 parentHash)
+        {
+            header.ParentHash = parentHash;
+            Store.ApplyBlockhashStateChanges(header, Spec);
+        }
+
+        /// <summary>Another header at the same height, which therefore shares the ring slot.</summary>
+        public BlockHeader BuildSibling() => Build.A.Block.WithParent(Head).WithStateRoot(StateRoot).TestObject.Header;
+
+        /// <summary>Plants <paramref name="hash"/> in the ring slot that <paramref name="number"/> reads from.</summary>
+        public void WriteRingSlot(ulong number, Hash256 hash)
+            => WorldState.Set(
+                new StorageCell(Eip2935Constants.BlockHashHistoryAddress, new UInt256(number % Spec.Eip2935RingBufferSize)),
+                hash.ToUInt256());
+
+        public void Dispose() => _scope.Dispose();
+    }
+
+    /// <summary>The memo must not answer with what the slot held before this block overwrote it.</summary>
+    /// <remarks>
+    /// EIP-4788's beacon-root call is EVM, runs on this header, and runs <em>before</em> the ring-buffer
+    /// write. A memo armed by Prefetch alone would capture the slot's previous occupant — the block a ring
+    /// size earlier, which is still servable — and every transaction in the block would then read that
+    /// instead of the parent.
+    /// </remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_memo_does_not_capture_the_slot_before_the_block_writes_it()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader header = fixture.Current.Header;
+        ulong number = (ulong)header.Number - 1;
+
+        Hash256 previousOccupant = new("0x3333333333333333333333333333333333333333333333333333333333333333");
+        fixture.WriteRingSlot(number, previousOccupant);
+
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
+
+        // Stands in for the beacon-root call: a BLOCKHASH on this header before the ring buffer is written.
+        Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> before), Is.True);
+        Assert.That(before, Is.SequenceEqualTo(previousOccupant.Bytes), "precondition: the old occupant is still there");
+
+        fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
+
+        Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> after), Is.True);
+        Assert.That(after, Is.SequenceEqualTo(header.ParentHash!.Bytes),
+            "the memo served what the slot held before the block wrote it");
+    }
+
+    /// <summary>Both ends of the EIP-2935 window, for both lookup overloads.</summary>
+    /// <remarks>The equivalence sweep cannot pin these: the overloads share one range helper, so a one-off
+    /// there shifts them together and they keep agreeing with each other.</remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_window_edges_are_served_exactly()
+    {
+        using BlockhashFixture fixture = new();
+        ulong ringSize = fixture.Spec.Eip2935RingBufferSize;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(ringSize + 10).TestObject;
+
+        ulong current = (ulong)header.Number;
+        ulong oldest = current - ringSize;
+        ulong tooOld = oldest - 1;
+        ulong newest = current - 1;
+
+        // tooOld and oldest land on adjacent slots, so a window off-by-one returns real bytes rather than
+        // nothing and the assertions below can tell the two cases apart.
+        fixture.WriteRingSlot(tooOld, TestItem.KeccakA);
+        fixture.WriteRingSlot(oldest, TestItem.KeccakB);
+        fixture.WriteRingSlot(newest, TestItem.KeccakC);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertServed(oldest, TestItem.KeccakB, "exactly the ring size back is the oldest servable block");
+            AssertServed(newest, TestItem.KeccakC, "the parent is the newest servable block");
+            AssertNotServed(tooOld, "one past the ring size is out of the window");
+            AssertNotServed(current, "the current block has no hash yet");
+            AssertNotServed(current + 1, "a future block has no hash");
+        }
+
+        void AssertServed(ulong number, Hash256 expected, string because)
+        {
+            Assert.That(fixture.Store.GetBlockHashFromState(header, number, fixture.Spec), Is.EqualTo(expected), because);
+            Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> span), Is.True, because);
+            Assert.That(span, Is.SequenceEqualTo(expected.Bytes), because);
+        }
+
+        void AssertNotServed(ulong number, string because)
+        {
+            Assert.That(fixture.Store.GetBlockHashFromState(header, number, fixture.Spec), Is.Null, because);
+            Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _), Is.False, because);
+        }
+    }
+
+    /// <summary>A cached entry must never outlive the block it was resolved for.</summary>
+    /// <remarks>Two headers at the same height writing different parent hashes land on the same ring slot,
+    /// which is the case a per-block memo gets wrong if it keys on the block number alone.</remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_cache_does_not_serve_another_block()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader header = fixture.Current.Header;
+        ulong number = header.Number - 1;
+
+        Hash256 firstParent = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+        fixture.StoreParentHash(header, firstParent);
+        // Arm the memo so the sibling is rejected by the per-entry reference check rather than by the
+        // unarmed fallback: the sibling is byte-identical to this header, so it shares the armed hash.
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
+
+        Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> first), Is.True);
+        Assert.That(first, Is.SequenceEqualTo(firstParent.Bytes), "first block");
+
+        // A second header at the same height overwrites the same ring slot.
+        Hash256 secondParent = new("0x2222222222222222222222222222222222222222222222222222222222222222");
+        BlockHeader secondHeader = fixture.BuildSibling();
+        fixture.StoreParentHash(secondHeader, secondParent);
+
+        Assert.That(fixture.Provider.TryGetBlockhash(secondHeader, number, fixture.Spec, out ReadOnlySpan<byte> second), Is.True);
+        Assert.That(second, Is.SequenceEqualTo(secondParent.Bytes), "a second block must not be served the first entry");
+    }
+
+    /// <summary>Repeated lookups must keep agreeing with a direct read from state.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_cached_lookup_matches_uncached()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader header = fixture.Current.Header;
+        fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
+
+        for (int round = 0; round < 3; round++)
+        {
+            for (ulong number = 0; number < header.Number; number++)
+            {
+                Hash256? expected = fixture.Store.GetBlockHashFromState(header, number, fixture.Spec);
+                bool found = fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> actual);
+
+                Assert.That(found, Is.EqualTo(expected is not null), $"round {round}, number {number}");
+                if (expected is not null)
+                {
+                    Assert.That(actual, Is.SequenceEqualTo(expected.Bytes), $"round {round}, number {number}");
+                }
+            }
+        }
+    }
+
+    /// <summary>A sweep over distinct numbers allocates at most one memo entry per number per block:
+    /// the second pass over the same distinct set must be allocation-free.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_span_lookup_over_distinct_numbers_allocates_once_per_number()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader header = fixture.Current.Header;
+        fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
+        for (ulong k = 1; k < 42; k++)
+        {
+            fixture.Store.ApplyBlockhashStateChanges(fixture.Tree.FindHeader(k, BlockTreeLookupOptions.None)!, fixture.Spec);
+        }
+
+        for (ulong n = 1; n < 42; n++)
+        {
+            Assert.That(fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _), Is.True, $"number {n} should resolve");
+        }
+
+        AssertNoPerLookupAllocation(100, 41, () =>
+        {
+            for (ulong n = 1; n < 42; n++)
+            {
+                fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _);
+            }
+        });
+    }
+
+    /// <summary>The memo must hit for the header the block actually executes with, which is a
+    /// CloneForProcessing of the suggested header — a different instance, same number and hash.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_memo_hits_the_processing_clone_not_only_the_armed_instance()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader suggested = fixture.Current.Header;
+        fixture.Store.ApplyBlockhashStateChanges(suggested, fixture.Spec);
+        fixture.Provider.Prefetch(suggested, CancellationToken.None).GetAwaiter().GetResult();
+        ulong number = suggested.Number - 1;
+
+        // Block processing executes with the clone, never the armed instance.
+        BlockHeader processing = suggested.CloneForProcessing();
+        Assert.That(ReferenceEquals(processing, suggested), Is.False, "precondition: distinct instance");
+
+        Assert.That(fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _), Is.True, "warm the memo via the clone");
+
+        AssertNoPerLookupAllocation(1000, 1, () => fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _),
+            "the clone must hit the armed memo");
+    }
+
+    /// <summary>An unarmed provider (one that never prefetched) must never serve the memo — it re-reads
+    /// state every call, which is what protects the pooled RPC envs that execute under state overrides.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_unarmed_provider_reflects_a_state_rewrite()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader header = fixture.Current.Header;
+        ulong number = header.Number - 1;
+
+        Hash256 firstParent = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+        fixture.StoreParentHash(header, firstParent);
+        // No Prefetch: this provider is unarmed, exactly like a pooled eth_call env.
+        Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> before), Is.True);
+        Assert.That(before, Is.SequenceEqualTo(firstParent.Bytes));
+
+        // Rewrite the history slot through the same world state (the shape a stateOverride produces).
+        Hash256 secondParent = new("0x2222222222222222222222222222222222222222222222222222222222222222");
+        fixture.StoreParentHash(header, secondParent);
+
+        Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> after), Is.True);
+        Assert.That(after, Is.SequenceEqualTo(secondParent.Bytes), "an unarmed read must reflect the rewrite, not a memoized value");
+    }
+
+    /// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
+    /// <remarks>Goes through the production <see cref="BlockhashProvider"/> on both the block-tree path and the
+    /// storage-backed one, so the block-tree case doubles as a control against regressing it. The allocating
+    /// overload is measured in the same run, so the comparison fails loudly rather than passing vacuously.</remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_span_lookup_does_not_allocate([Values] bool blockHashInState)
+    {
+        const int Iterations = 1000;
+
+        using BlockhashFixture fixture = new(blockHashInState);
+        BlockHeader header = fixture.Current.Header;
+        fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
+        ulong number = header.Number - 1;
+
+        for (int i = 0; i < Iterations; i++)
+        {
+            fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _);
+            fixture.Provider.GetBlockhash(header, number, fixture.Spec);
+        }
+
+        long spanAllocated = AllocatedBy(Iterations, () => fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _));
+        long hashAllocated = AllocatedBy(Iterations, () => fixture.Provider.GetBlockhash(header, number, fixture.Spec));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spanAllocated, Is.LessThan(Iterations * MaxBytesPerLookup), $"span={spanAllocated} hash={hashAllocated}");
+            Assert.That(hashAllocated, blockHashInState ? Is.GreaterThan(Iterations * 8) : Is.LessThan(Iterations * MaxBytesPerLookup),
+                "only the storage-backed path materialises a Hash256 per lookup");
+        }
+    }
+
+    /// <summary>Allocation budget per lookup, below the 24-byte minimum object size on 64-bit.</summary>
+    /// <remarks>Any per-lookup allocation exceeds it on every call, while a rare one-off allocation by the runtime on
+    /// the test thread (2,112 bytes over 1,000 lookups has been seen in CI) stays inside it.</remarks>
+    private const int MaxBytesPerLookup = 8;
+
+    /// <summary>Asserts that <paramref name="lookups"/> allocates less than <see cref="MaxBytesPerLookup"/> per lookup.</summary>
+    private static void AssertNoPerLookupAllocation(int repeats, int lookupsPerRepeat, Action lookups, string? message = null) =>
+        Assert.That(AllocatedBy(repeats, lookups), Is.LessThan(repeats * lookupsPerRepeat * MaxBytesPerLookup), message);
+
+    private static long AllocatedBy(int repeats, Action action)
+    {
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < repeats; i++)
+        {
+            action();
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - start;
+    }
+
+    /// <summary>The span overload must left-pad exactly as the <see cref="Hash256"/> overload does.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_trimmed_hashes_pad_identically(
+        [Values("0x0011111111111111111111111111111111111111111111111111111111111111",
+                "0x0000000000000000000000000000000000000000000000000000000000000011",
+                "0xff11111111111111111111111111111111111111111111111111111111111111",
+                "0x0000000000000000000000000000000000000000000000000000000000000000")] string parentHash)
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader header = fixture.Current.Header;
+        fixture.StoreParentHash(header, new Hash256(parentHash));
+        ulong number = header.Number - 1;
+
+        Hash256? expected = fixture.Store.GetBlockHashFromState(header, number, fixture.Spec);
+
+        Span<byte> actual = stackalloc byte[Hash256.Size];
+        bool found = fixture.Store.TryGetBlockHashFromState(header, number, fixture.Spec, actual);
+
+        Assert.That(found, Is.EqualTo(expected is not null));
+        if (expected is not null)
+        {
+            Assert.That(actual, Is.SequenceEqualTo(expected.Bytes));
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Eip2935_poc_trimmed_hashes()
     {
@@ -349,27 +688,26 @@ public class BlockhashProviderTests
     public void BlockAccessListManager_blockhash_state_changes_match_BlockhashStore()
     {
         IReleaseSpec spec = Amsterdam.Instance;
-        IWorldState legacyWorldState = CreateWorldStateWithHistoryContract(spec);
-        IWorldState balWorldState = CreateWorldStateWithHistoryContract(spec);
-        Block parent = Build.A.Block.WithNumber(41).TestObject;
+        // The direct write equals running the contract only for the canonical bytecode.
+        (IWorldState legacyWorldState, Hash256 stateRoot) = CreateWorldStateWithHistoryContract(spec);
+        (IWorldState balWorldState, _) = CreateWorldStateWithHistoryContract(spec);
+        Block parent = Build.A.Block.WithNumber(41).WithStateRoot(stateRoot).TestObject;
         Block current = Build.A.Block.WithParent(parent).TestObject;
         UInt256 parentBlockIndex = new((current.Number - 1) % spec.Eip2935RingBufferSize);
         StorageCell storageCell = new(Eip2935Constants.BlockHashHistoryAddress, parentBlockIndex);
 
-        using IDisposable legacyScope = legacyWorldState.BeginScope(current.Header);
+        using IDisposable legacyScope = legacyWorldState.BeginScope(parent.Header);
         new BlockhashStore(legacyWorldState).ApplyBlockhashStateChanges(current.Header, spec);
-        byte[] expectedStoredHash = legacyWorldState.Get(storageCell).ToArray();
+        legacyWorldState.Get(in storageCell, out UInt256 expectedStoredHash);
 
-        using IDisposable balScope = balWorldState.BeginScope(current.Header);
+        using IDisposable balScope = balWorldState.BeginScope(parent.Header);
         TestSingleReleaseSpecProvider specProvider = new(spec);
         BlockAccessListManager balManager = new(
             balWorldState,
-            specProvider,
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance));
         balManager.PrepareForProcessing(current, spec, ProcessingOptions.None);
         balManager.SetBlockExecutionContext(new BlockExecutionContext(current.Header, spec));
         balManager.Setup(current);
@@ -377,7 +715,12 @@ public class BlockhashProviderTests
         balManager.ApplyBlockhashStateChanges(current.Header, spec);
         balManager.NextTransaction();
 
-        Assert.That(balWorldState.Get(storageCell).ToArray(), Is.EqualTo(expectedStoredHash));
+        balWorldState.Get(in storageCell, out UInt256 actualStoredHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedStoredHash, Is.EqualTo(parent.Hash!.ToUInt256()), "the direct write must store the parent hash");
+            Assert.That(actualStoredHash, Is.EqualTo(expectedStoredHash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

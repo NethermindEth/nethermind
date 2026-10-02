@@ -71,6 +71,7 @@ public class ForkScheduleSpecProviderTests
                 MainnetSpecProvider.BPO1Activation,
                 MainnetSpecProvider.BPO2Activation,
                 MainnetSpecProvider.AmsterdamActivation,
+                MainnetSpecProvider.BogotaActivation,
             ])
             { TestName = "Mainnet" };
 
@@ -103,6 +104,7 @@ public class ForkScheduleSpecProviderTests
                 (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.OsakaTimestamp),
                 (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.BPO1Timestamp),
                 (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.BPO2Timestamp),
+                (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.AmsterdamTimestamp),
             ])
             { TestName = "Sepolia" };
 

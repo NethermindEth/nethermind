@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using Nethermind.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -25,28 +27,46 @@ public static class FocilInclusionListValidator
     public const string InvalidProof = "FOCIL recursive STARK failed verification";
 
     public static bool Validate(FocilInclusionList focil, ILeanProofVerifier verifier, out string? error)
+        => Validate(focil.Transactions, focil.RecursiveStark, verifier, out _, out error);
+
+    public static bool Validate(IReadOnlyList<Transaction> transactions, RecursiveStark? proof,
+        ILeanProofVerifier verifier, out List<FrameDependency> deps, out string? error)
     {
         error = null;
-
-        List<FrameDependency> deps = [];
-        foreach (Transaction tx in focil.Transactions)
+        deps = [];
+        try
         {
-            deps.AddRange(Eip8288Dependencies.ForTransaction(tx));
+            foreach (Transaction tx in transactions)
+            {
+                if (tx is null) { error = InvalidProof; return false; }
+                deps.AddRange(Eip8288Dependencies.ForTransaction(tx));
+            }
+            deps = Eip8288Dependencies.Canonicalize(deps);
         }
-
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
-        if (focil.RecursiveStark.BlockDepsHash.ValueHash256 != depsHash)
-        {
-            error = DepsHashMismatch;
-            return false;
-        }
-
-        if (!verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, focil.RecursiveStark.StarkProof))
+        catch (ArgumentException)
         {
             error = InvalidProof;
             return false;
         }
 
+        // Ordinary lists keep the EIP-7805 wire shape when no dependencies need proving.
+        if (proof is null && deps.Count == 0) return true;
+        if (proof?.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes })
+        {
+            error = InvalidProof;
+            return false;
+        }
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+        if (proof.BlockDepsHash.ValueHash256 != depsHash)
+        {
+            error = DepsHashMismatch;
+            return false;
+        }
+        if (!verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof.StarkProof))
+        {
+            error = InvalidProof;
+            return false;
+        }
         return true;
     }
 }

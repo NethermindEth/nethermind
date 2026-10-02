@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -12,6 +14,17 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class LayoutMetadataTests
 {
+    private static IEnumerable<FlatLayout> Layouts() => Enum.GetValues<FlatLayout>();
+
+    /// <summary>Every ordered pair of distinct layouts, so a newly added layout is covered without further edits.</summary>
+    private static IEnumerable<object[]> LayoutMismatches()
+    {
+        foreach (FlatLayout stored in Layouts())
+            foreach (FlatLayout configured in Layouts())
+                if (stored != configured)
+                    yield return [stored, configured];
+    }
+
     [Test]
     public void ReadLayout_ReturnsNull_OnEmptyStore()
     {
@@ -19,9 +32,7 @@ public class LayoutMetadataTests
         Assert.That(BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
     }
 
-    [TestCase(FlatLayout.Flat)]
-    [TestCase(FlatLayout.FlatInTrie)]
-    [TestCase(FlatLayout.PreimageFlat)]
+    [TestCaseSource(nameof(Layouts))]
     public void SetLayout_Then_ReadLayout_RoundTrips(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
@@ -44,18 +55,14 @@ public class LayoutMetadataTests
             Is.EqualTo(new[] { BasePersistence.SlotEncodingRlp }));
     }
 
-    [TestCase(FlatLayout.Flat)]
-    [TestCase(FlatLayout.FlatInTrie)]
-    [TestCase(FlatLayout.PreimageFlat)]
+    [TestCaseSource(nameof(Layouts))]
     public void ValidateLayout_DoesNotThrow_OnFreshDb(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
         Assert.DoesNotThrow(() => BasePersistence.ValidateLayout(db, layout));
     }
 
-    [TestCase(FlatLayout.Flat)]
-    [TestCase(FlatLayout.FlatInTrie)]
-    [TestCase(FlatLayout.PreimageFlat)]
+    [TestCaseSource(nameof(Layouts))]
     public void ValidateLayout_DoesNotThrow_WhenStoredMatches(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
@@ -63,21 +70,14 @@ public class LayoutMetadataTests
         Assert.DoesNotThrow(() => BasePersistence.ValidateLayout(db, layout));
     }
 
-    [TestCase(FlatLayout.Flat)]
-    [TestCase(FlatLayout.FlatInTrie)]
-    [TestCase(FlatLayout.PreimageFlat)]
+    [TestCaseSource(nameof(Layouts))]
     public void ValidateLayoutReturnFlag_ReturnsZero(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
         Assert.That(BasePersistence.ValidateLayoutReturnFlag(db, layout), Is.EqualTo(0));
     }
 
-    [TestCase(FlatLayout.Flat, FlatLayout.FlatInTrie)]
-    [TestCase(FlatLayout.FlatInTrie, FlatLayout.Flat)]
-    [TestCase(FlatLayout.Flat, FlatLayout.PreimageFlat)]
-    [TestCase(FlatLayout.FlatInTrie, FlatLayout.PreimageFlat)]
-    [TestCase(FlatLayout.PreimageFlat, FlatLayout.Flat)]
-    [TestCase(FlatLayout.PreimageFlat, FlatLayout.FlatInTrie)]
+    [TestCaseSource(nameof(LayoutMismatches))]
     public void ValidateLayout_Throws_WhenStoredDiffers(FlatLayout stored, FlatLayout configured)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
@@ -90,9 +90,7 @@ public class LayoutMetadataTests
         Assert.That(ex.Message, Does.Contain(configured.ToString()));
     }
 
-    [TestCase(FlatLayout.Flat)]
-    [TestCase(FlatLayout.FlatInTrie)]
-    [TestCase(FlatLayout.PreimageFlat)]
+    [TestCaseSource(nameof(Layouts))]
     public void RecordLayoutOnFirstBatch_WritesAndFlipsFlag_WhenZero(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();

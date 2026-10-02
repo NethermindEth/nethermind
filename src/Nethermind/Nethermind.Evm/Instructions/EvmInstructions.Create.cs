@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -61,21 +62,19 @@ public static partial class EvmInstructions
     /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCreate">The type of create operation (either <see cref="OpCreate"/> or <see cref="OpCreate2"/>).</typeparam>
     /// <typeparam name="TTracingInst">Tracing instructions type used for instrumentation if active.</typeparam>
+    /// <typeparam name="TSpec">The fork rules the opcode table specialized this handler on.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the EVM stack.</param>
     /// <param name="gas">Reference to the gas state.</param>
-    /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref int programCounter)
+    internal static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037, TSpec>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
         where TEip8037 : struct, IFlag
+        where TSpec : struct, ICreateSpec
     {
         vm.MetricsCounters.IncrementCreates();
 
@@ -86,8 +85,7 @@ public static partial class EvmInstructions
             goto StaticCallViolation;
         }
 
-        // Reset the return data buffer as contract creation does not use previous return data.
-        vm.ReturnData = null;
+        Debug.Assert(vm.ReturnData is null, "Dispatch clears staged output before entering an opcode chain.");
         ExecutionEnvironment env = vm.VmState.Env;
         IWorldState state = vm.WorldState;
 
@@ -105,12 +103,11 @@ public static partial class EvmInstructions
         }
 
         // EIP-3860: Limit the maximum size of the initialization code.
-        bool isEip3860 = spec.IsEip3860Enabled;
+        bool isEip3860 = TSpec.IsEip3860Enabled;
         if (isEip3860)
         {
             if (initCodeLength > spec.MaxInitCodeSize)
             {
-                TGasPolicy.SetOutOfGas(ref gas);
                 goto OutOfGas;
             }
         }
@@ -119,7 +116,7 @@ public static partial class EvmInstructions
         if (outOfGas)
             goto OutOfGas;
 
-        if (!TGasPolicy.ConsumeCreateGas<TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
+        if (!TSpec.TryConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
             goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
@@ -130,45 +127,35 @@ public static partial class EvmInstructions
         // This guard ensures we do not create nested contract calls beyond EVM limits.
         if (env.CallDepth >= MaxCallDepth)
         {
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            if (!TEip8037.IsActive && vm.IsTracingActions)
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, EvmExceptionType.CallDepthExceeded);
+
+            vm.ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
-            goto OutOfGas;
-
-        if (TEip8037.IsActive && !TGasPolicy.ConsumeCreateStateGas(ref gas))
+        if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
-            RefundCreateStateGas(ref gas);
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            if (!TEip8037.IsActive && vm.IsTracingActions)
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, EvmExceptionType.NotEnoughBalance);
+
+            vm.ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
         ulong accountNonce = state.GetNonce(env.ExecutingAccount);
         if (accountNonce >= ulong.MaxValue)
         {
-            RefundCreateStateGas(ref gas);
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            vm.ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
-
-        // Get remaining gas for the create operation.
-        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-
-        // End tracing if enabled, prior to switching to the new call frame.
-        if (TTracingInst.IsActive)
-            vm.EndInstructionTrace(gasAvailable);
-
-        // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
-        if (!TGasPolicy.TryReserveChildGas(ref gas, spec, out ulong callGas))
-            goto OutOfGas;
 
         // Compute the contract address:
         // - For CREATE: based on the executing account and its current nonce.
@@ -178,35 +165,55 @@ public static partial class EvmInstructions
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
-        if (spec.UseHotAndColdStorage)
+        if (TSpec.UseHotAndColdStorage)
         {
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
+        bool isNonZeroAccount = state.IsNonZeroAccount(contractAddress, out bool accountExists);
+        bool isAliveAccount = !state.IsDeadAccount(contractAddress);
+        bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount;
+
+        if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
+            goto OutOfGas;
+
+        if (TTracingInst.IsActive)
+            vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+
+        // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
+        if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, spec, out ulong callGas))
+            goto OutOfGas;
+
         // Increment the nonce of the executing account to reflect the contract creation.
         state.IncrementNonce(env.ExecutingAccount);
-
-        // Analyze and compile the initialization code.
-        CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
 
-        // EIP-7610: If the account already exists and is non-zero, then the creation fails.
-        // Collision behaves as an immediate exceptional halt — burned callGas counts as block_regular.
-        if (state.IsNonZeroAccount(contractAddress, out bool accountExists))
+        // EIP-684: if the account already exists with code or a non-zero nonce, the creation fails.
+        // Collision behaves as an immediate exceptional halt - burned callGas counts as block_execution.
+        if (isNonZeroAccount)
         {
-            RefundCreateStateGas(ref gas);
-            vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            if (chargeCreateStateGas)
+            {
+                vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetCreateStateCost());
+            }
+
+            if (vm.IsTracingActions)
+                vm.TxTracer.ReportRejectedAction(callGas, 0, value, env.ExecutingAccount, contractAddress, initCode, TOpCreate.ExecutionType, EvmExceptionType.TransactionCollision);
+
+            vm.ReturnDataBuffer = default;
+            EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
+
+            // The instruction trace ended before the creation's gas was reserved and the 0 was pushed, and the
+            // collision consumed that gas.
+            if (TTracingInst.IsActive)
+                vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(in gas));
+
+            return pushResult;
         }
 
-        // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
-        {
-            // Note: Seems to be needed on block 21827914 for some reason
-            state.ClearStorage(contractAddress);
-        }
+        state.ClearStorage(contractAddress);
 
         // Deduct the transfer value from the executing account's balance.
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
@@ -214,7 +221,8 @@ public static partial class EvmInstructions
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
-            codeInfo: codeInfo,
+            vm.EnvironmentCache,
+            codeInfo: new CodeInfo(initCode),
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
             codeSource: null,
@@ -224,6 +232,7 @@ public static partial class EvmInstructions
 
         // Rent a new frame to run the initialization code in the new execution environment.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+            vm.FrameCache,
             gas: TGasPolicy.CreateChildFrameGas(ref gas, callGas),
             outputDestination: 0,
             outputLength: 0,
@@ -232,9 +241,11 @@ public static partial class EvmInstructions
             isCreateOnPreExistingAccount: accountExists,
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
-            snapshot: in snapshot);
+            snapshot: in snapshot,
+            isCreateStateGasCharged: chargeCreateStateGas,
+            frameJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.FrameJournalCheckpoint ?? 0);
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.Suspend;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -243,13 +254,33 @@ public static partial class EvmInstructions
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void RefundCreateStateGas(ref TGasPolicy gasState)
-        {
-            if (TEip8037.IsActive)
-            {
-                vm.CreditStateGasRefund(ref gasState, TGasPolicy.GetCreateStateCost());
-            }
-        }
+    }
+
+    /// <summary>
+    /// Reports a creation that failed its depth or balance precheck as an action that entered no frame, with the
+    /// gas it would have forwarded, which returns at once. Only used before EIP-8037, which moves the precheck into
+    /// the creating operation, so the creation has no frame of its own.
+    /// </summary>
+    /// <remarks>
+    /// See the <c>CREATE</c>/<c>CREATE2</c> paragraph of
+    /// <see href="https://eips.ethereum.org/EIPS/eip-8037#gas-accounting-for-new-accounts">EIP-8037, gas accounting for new accounts</see>.
+    /// </remarks>
+    /// <param name="gas">A copy of the caller's gas, before any is reserved for the creation.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(
+        VirtualMachine<TGasPolicy> vm,
+        TGasPolicy gas,
+        in UInt256 value,
+        in UInt256 initCodePosition,
+        in UInt256 initCodeLength,
+        EvmExceptionType error)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+        where TSpec : struct, ICreateSpec
+    {
+        TSpec.TryReserveChildGas<TGasPolicy>(ref gas, vm.Spec, out ulong callGas);
+        // The creation already paid to expand memory over its init code.
+        vm.VmState.Memory.TryLoad(in initCodePosition, in initCodeLength, out ReadOnlyMemory<byte> initCode);
+        vm.TxTracer.ReportRejectedAction(callGas, callGas, value, vm.VmState.Env.ExecutingAccount, null, initCode, TOpCreate.ExecutionType, error);
     }
 }

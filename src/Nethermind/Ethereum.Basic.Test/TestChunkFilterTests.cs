@@ -54,10 +54,8 @@ public class TestChunkFilterTests
         Assert.That(TestChunkFilter.FilterByChunk(Enumerable.Range(0, 9), chunk), Is.EqualTo(expected));
     }
 
-    [TestCase("8of3")]
-    [TestCase("0of3")]
-    [TestCase("garbage")]
-    public void FilterByChunk_WithInvalidExplicitChunk_Throws(string chunk) =>
+    [Test]
+    public void FilterByChunk_WithInvalidExplicitChunk_Throws([Values("8of3", "0of3", "garbage")] string chunk) =>
         Assert.Throws<ArgumentException>(() => TestChunkFilter.FilterByChunk(Enumerable.Range(0, 9), chunk));
 
     [Test]
@@ -109,15 +107,8 @@ public class TestChunkFilterTests
         }
     }
 
-    [TestCase("0of4")]
-    [TestCase("5of4")]
-    [TestCase("-1of4")]
-    [TestCase("1of0")]
-    [TestCase("1of-1")]
-    [TestCase("badformat")]
-    [TestCase("1of")]
-    [TestCase("of4")]
-    public void TryGetChunkConfig_RejectsInvalidFormat(string invalid)
+    [Test]
+    public void TryGetChunkConfig_RejectsInvalidFormat([Values("0of4", "5of4", "-1of4", "1of0", "1of-1", "badformat", "1of", "of4")] string invalid)
     {
         Environment.SetEnvironmentVariable("TEST_CHUNK", invalid);
 

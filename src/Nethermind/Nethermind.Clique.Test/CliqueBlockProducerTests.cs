@@ -134,7 +134,7 @@ public class CliqueBlockProducerTests
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
             IMainProcessingContext mainProcessingContext = container.Resolve<IMainProcessingContext>();
-            mainProcessingContext.BlockchainProcessor.Start();
+            mainProcessingContext.BlockProcessingQueue.Start();
 
             IBlockProducerEnvFactory envFactory = container.Resolve<IBlockProducerEnvFactory>();
             IBlockProducerEnv producerEnv = envFactory.CreatePersistent();
@@ -211,6 +211,7 @@ public class CliqueBlockProducerTests
             genesis.Header.TxRoot = Keccak.EmptyTreeHash;
             genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesis.Header.Bloom = Bloom.Empty;
+            genesis.Header.MixHash = Keccak.Zero;
 
             return genesis;
         }

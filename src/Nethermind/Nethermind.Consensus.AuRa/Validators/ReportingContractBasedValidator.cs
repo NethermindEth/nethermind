@@ -188,13 +188,12 @@ namespace Nethermind.Consensus.AuRa.Validators
                     {
                         if (skippedValidator != ValidatorContract.NodeAddress)
                         {
-                            if (reported.Contains(skippedValidator))
+                            if (!reported.Add(skippedValidator))
                             {
                                 break;
                             }
 
                             ReportBenign(skippedValidator, header.Number, IReportingValidator.BenignCause.SkippedStep);
-                            reported.Add(skippedValidator);
                             if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by author {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}.");
                         }
                         else

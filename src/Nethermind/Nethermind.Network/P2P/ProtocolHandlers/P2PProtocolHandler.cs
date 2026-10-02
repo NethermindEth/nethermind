@@ -43,6 +43,7 @@ public class P2PProtocolHandler(
     private TaskCompletionSource<Packet> _pongCompletionSource;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
     private bool _sentHello;
+    private bool _receivedHello;
     private readonly List<Capability> _agreedCapabilities = [];
     private List<Capability> _availableCapabilities = [];
 
@@ -105,6 +106,13 @@ public class P2PProtocolHandler(
         {
             case P2PMessageCode.Hello:
                 {
+                    if (_receivedHello)
+                    {
+                        DisconnectBreachOfProtocol("Repeated Hello message");
+                        break;
+                    }
+
+                    _receivedHello = true;
                     using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
                     HandleHello(helloMessage);
                     ReportIn(helloMessage, size);
@@ -224,9 +232,11 @@ public class P2PProtocolHandler(
             => Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void DisconnectUnhandledPacket(int packetType)
+        void DisconnectUnhandledPacket(int packetType) => DisconnectBreachOfProtocol($"Unknown P2P message type {packetType}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void DisconnectBreachOfProtocol(string details)
         {
-            string details = $"Unknown P2P message type {packetType}";
             if (Logger.IsDebug) Logger.Debug($"{Session.RemoteNodeId} {details}");
             Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
         }
@@ -266,10 +276,20 @@ public class P2PProtocolHandler(
 
         if (Logger.IsTrace) TraceReceivedHello();
 
+        if (hello.NodeId == _localNodeId || Session.RemoteNodeId == _localNodeId)
+        {
+            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Session}: remote identity is this node's own identity");
+            Session.InitiateDisconnect(DisconnectReason.IdentitySameAsSelf, "connection to self");
+            return;
+        }
+
+        // Nothing from the Hello may be applied until the identity it claims agrees with the authenticated one.
         if (!hello.NodeId.Equals(Session.RemoteNodeId))
         {
             if (Logger.IsDebug) DebugInconsistentNodeId(hello, isInbound);
-            // it does not really matter if there is mismatch - we do not use it anywhere
+            Session.InitiateDisconnect(DisconnectReason.UnexpectedIdentity,
+                $"expected {Session.RemoteNodeId}, received hello with {hello.NodeId}");
+            return;
         }
 
         RemoteClientId = hello.ClientId;
@@ -457,23 +477,10 @@ public class P2PProtocolHandler(
     private void Close(EthDisconnectReason ethDisconnectReason)
     {
         Dispose();
-        if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
-            ethDisconnectReason != EthDisconnectReason.Other &&
-            ethDisconnectReason != EthDisconnectReason.DisconnectRequested)
-        {
-            if (Logger.IsDebug) DebugReceivedDisconnect(ethDisconnectReason);
-        }
-        else
-        {
-            if (Logger.IsTrace) TraceReceivedDisconnect(ethDisconnectReason);
-        }
+        if (Logger.IsTrace) TraceReceivedDisconnect(ethDisconnectReason);
 
         // Received disconnect message, triggering direct TCP disconnection
         Session.MarkDisconnected(ethDisconnectReason.ToDisconnectReason(), DisconnectType.Remote, "message");
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void DebugReceivedDisconnect(EthDisconnectReason reason)
-            => Logger.Debug($"{Session} received disconnect [{reason}]");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceReceivedDisconnect(EthDisconnectReason reason)
@@ -486,6 +493,10 @@ public class P2PProtocolHandler(
     {
         if (Logger.IsTrace) TraceHandlingPong();
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingIn);
+        // A pong that arrives after Timeouts.P2PPing no longer completes the source, but it still proves the peer
+        // is answering. The session monitor measures its disconnect window from this stamp, so crediting it here
+        // is what keeps a peer whose latency exceeds the per-ping timeout from being reaped as unresponsive.
+        Session.LastPongUtc = DateTime.UtcNow;
         _pongCompletionSource?.TrySetResult(msg);
 
         [MethodImpl(MethodImplOptions.NoInlining)]

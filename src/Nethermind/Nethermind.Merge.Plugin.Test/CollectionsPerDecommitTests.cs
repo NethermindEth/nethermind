@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Config;
-using Nethermind.Merge.Plugin.GC;
+using Nethermind.Core.Memory;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -11,6 +11,17 @@ namespace Nethermind.Merge.Plugin.Test;
 [Parallelizable(ParallelScope.All)]
 public class CollectionsPerDecommitTests
 {
+    [Test]
+    public void Defaults_compact_only_on_every_twenty_fifth_payload()
+    {
+        IMergeConfig config = new ConfigProvider().GetConfig<IMergeConfig>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.CollectionsPerDecommit, Is.EqualTo(25));
+            Assert.That(config.CompactMemory, Is.EqualTo(GcCompaction.No));
+        }
+    }
+
     [Test]
     public void Negative_sentinel_binds_without_overflow()
     {

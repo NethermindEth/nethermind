@@ -55,6 +55,7 @@ public partial class BlockDownloaderTests
             new SyncConfig()
             {
                 FastSync = enableFastSync,
+                SnapSync = enableFastSync,
                 StateMinDistanceFromHead = fastSyncLag
             },
             new MergeConfig()
@@ -179,6 +180,7 @@ public partial class BlockDownloaderTests
         await using IContainer container = CreateMergeNode(blockTrees, new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = blocksToIgnore
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
@@ -263,6 +265,7 @@ public partial class BlockDownloaderTests
         }, new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
@@ -299,12 +302,8 @@ public partial class BlockDownloaderTests
         await ctx.FullSyncUntilNoRequest(peerInfo);
     }
 
-    [TestCase(2UL)]
-    [TestCase(6UL)]
-    [TestCase(34UL)]
-    [TestCase(129UL)]
-    [TestCase(1024UL)]
-    public void BlockDownloader_does_not_stop_processing_when_main_chain_is_unknown(ulong pivot)
+    [Test]
+    public void BlockDownloader_does_not_stop_processing_when_main_chain_is_unknown([Values(2UL, 6UL, 34UL, 129UL, 1024UL)] ulong pivot)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
              .GoesLikeThis()

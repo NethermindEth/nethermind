@@ -3,12 +3,13 @@
 
 using System;
 using System.Linq;
-using System.Threading;
+using System.Numerics;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
@@ -29,31 +30,83 @@ public interface IExecutionPayloadFactory<out TExecutionPayload> where TExecutio
 /// </summary>
 public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
 {
-    public UInt256 BaseFeePerGas { get; set; }
+    public UInt256 BaseFeePerGas { get; set => field = Bind(value, PayloadFields.BaseFeePerGas); }
 
-    public Hash256 BlockHash { get; set; } = Keccak.Zero;
+    public Hash256 BlockHash { get; set => field = Bind(value, PayloadFields.BlockHash); } = Keccak.Zero;
 
-    public ulong BlockNumber { get; set; }
+    public ulong BlockNumber { get; set => field = Bind(value, PayloadFields.BlockNumber); }
 
-    public byte[] ExtraData { get; set; } = [];
+    public byte[] ExtraData { get; set => field = Bind(value, PayloadFields.ExtraData); } = [];
 
-    public Address FeeRecipient { get; set; } = Address.Zero;
+    public Address FeeRecipient { get; set => field = Bind(value, PayloadFields.FeeRecipient); } = Address.Zero;
 
-    public ulong GasLimit { get; set; }
+    public ulong GasLimit { get; set => field = Bind(value, PayloadFields.GasLimit); }
 
-    public ulong GasUsed { get; set; }
+    public ulong GasUsed { get; set => field = Bind(value, PayloadFields.GasUsed); }
 
-    public Bloom LogsBloom { get; set; } = Bloom.Empty;
+    public Bloom LogsBloom { get; set => field = Bind(value, PayloadFields.LogsBloom); } = Bloom.Empty;
 
-    public Hash256 ParentHash { get; set; } = Keccak.Zero;
+    public Hash256 ParentHash { get; set => field = Bind(value, PayloadFields.ParentHash); } = Keccak.Zero;
 
-    public Hash256 PrevRandao { get; set; } = Keccak.Zero;
+    public Hash256 PrevRandao { get; set => field = Bind(value, PayloadFields.PrevRandao); } = Keccak.Zero;
 
-    public Hash256 ReceiptsRoot { get; set; } = Keccak.Zero;
+    public Hash256 ReceiptsRoot { get; set => field = Bind(value, PayloadFields.ReceiptsRoot); } = Keccak.Zero;
 
-    public Hash256 StateRoot { get; set; } = Keccak.Zero;
+    public Hash256 StateRoot { get; set => field = Bind(value, PayloadFields.StateRoot); } = Keccak.Zero;
 
-    public ulong Timestamp { get; set; }
+    public ulong Timestamp { get; set => field = Bind(value, PayloadFields.Timestamp); }
+
+    /// <summary>
+    /// Payload fields tracked for presence, with the set each <c>ExecutionPayloadV*</c> structure requires.
+    /// </summary>
+    [Flags]
+    private protected enum PayloadFields : uint
+    {
+        None = 0,
+        BaseFeePerGas = 1 << 0,
+        BlockHash = 1 << 1,
+        BlockNumber = 1 << 2,
+        ExtraData = 1 << 3,
+        FeeRecipient = 1 << 4,
+        GasLimit = 1 << 5,
+        GasUsed = 1 << 6,
+        LogsBloom = 1 << 7,
+        ParentHash = 1 << 8,
+        PrevRandao = 1 << 9,
+        ReceiptsRoot = 1 << 10,
+        StateRoot = 1 << 11,
+        Timestamp = 1 << 12,
+        Transactions = 1 << 13,
+        Withdrawals = 1 << 14,
+        BlobGasUsed = 1 << 15,
+        ExcessBlobGas = 1 << 16,
+        BlockAccessList = 1 << 17,
+        SlotNumber = 1 << 18,
+        V1 = (1 << 14) - 1,
+        V2 = V1 | Withdrawals,
+        V3 = V2 | BlobGasUsed | ExcessBlobGas,
+        V4 = V3 | BlockAccessList | SlotNumber
+    }
+
+    // Defaults hide an omitted JSON key once binding is done, so setters record presence while it runs.
+    private protected PayloadFields _unboundFields;
+
+    private protected T Bind<T>(T value, PayloadFields payloadField)
+    {
+        _unboundFields = value is null ? _unboundFields | payloadField : _unboundFields & ~payloadField;
+        return value;
+    }
+
+    /// <summary>Whether the request omitted a required field or sent it as <c>null</c>.</summary>
+    /// <remarks>Only payload types that arm presence tracking on deserialization report a field.</remarks>
+    internal bool HasUnboundField => _unboundFields != PayloadFields.None;
+
+    /// <summary>The JSON key of the first unbound field; call only when <see cref="HasUnboundField"/> is <c>true</c>.</summary>
+    internal string UnboundFieldName =>
+        JsonNamingPolicy.CamelCase.ConvertName(((PayloadFields)(1u << BitOperations.TrailingZeroCount((uint)_unboundFields))).ToString());
+
+    /// <summary>The invalid-params message for the first unbound field; call only when <see cref="HasUnboundField"/> is <c>true</c>.</summary>
+    internal string UnboundFieldError => $"{UnboundFieldName} must be set";
 
     protected byte[][] _encodedTransactions = [];
 
@@ -62,6 +115,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// representing <c>TransactionType || TransactionPayload</c> or <c>LegacyTransaction</c> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-2718">EIP-2718</see>.
     /// </summary>
+    /// <remarks>Decoded transactions borrow these buffers. Replace the property to change transactions;
+    /// do not mutate buffers after decoding or starting root computation.</remarks>
     [JsonConverter(typeof(TransactionsByteArrayArrayConverter))]
     public byte[][] Transactions
     {
@@ -69,8 +124,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            _unboundFields &= ~PayloadFields.Transactions;
             _encodedTransactions = value;
             _transactions = null;
+            _txRootTask = null;
         }
     }
 
@@ -78,7 +135,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// Gets or sets a collection of <see cref="Withdrawal"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>.
     /// </summary>
-    public Withdrawal[]? Withdrawals { get; set; }
+    public Withdrawal[]? Withdrawals { get; set => field = Bind(value, PayloadFields.Withdrawals); }
 
 
     /// <summary>
@@ -124,6 +181,16 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    [JsonIgnore]
+    public virtual byte[][]? InclusionListTransactions { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RecursiveStark? InclusionListRecursiveStark { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
@@ -157,9 +224,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
-        Task<Hash256>? txRootTask = encodedTransactions.Length >= MinTxsForParallelDecoding && Environment.ProcessorCount > 1
-            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
-            : null;
+        // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
+        // and carries no task machinery for it.
+        Task<Hash256>? txRootTask = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
 
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
@@ -200,11 +267,32 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return block;
     }
 
-    protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
+    protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : WithdrawalTrie.CalculateRoot(Withdrawals);
 
     protected Transaction[]? _transactions = null;
 
+    private Task<Hash256>? _txRootTask;
+
     private const int MinTxsForParallelDecoding = 32;
+
+    /// <summary>
+    /// Starts computing the transactions-trie root in the background, letting callers overlap it
+    /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the started task).
+    /// </summary>
+    /// <remarks>
+    /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
+    /// race the memoized task. Callers must invoke both sequentially per payload instance.
+    /// </remarks>
+    /// <returns>
+    /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
+    /// </returns>
+    internal Task<Hash256>? StartTxRootComputation()
+    {
+        byte[][] encodedTransactions = _encodedTransactions;
+        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && !RuntimeInformation.IsSingleProcessor
+            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
+            : null;
+    }
 
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
@@ -214,73 +302,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return _transactions;
 
-        IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
-        if (rlpDecoder is null) return $"{nameof(Transaction)} decoder is not registered";
-
-        byte[][] txData = Transactions;
-        if (txData.Length >= MinTxsForParallelDecoding && TryDecodeTransactionsParallel(rlpDecoder, txData, out Transaction[] decoded))
-        {
-            return _transactions = decoded;
-        }
-
-        // Serial path doubles as the failure fallback: it reproduces the exact single-threaded
-        // behavior, pinpointing the first invalid transaction.
-        int i = 0;
-        try
-        {
-            Transaction[] transactions = new Transaction[txData.Length];
-
-            for (i = 0; i < transactions.Length; i++)
-            {
-                transactions[i] = DecodeTransaction(rlpDecoder, txData[i]);
-            }
-
-            return _transactions = transactions;
-        }
-        catch (RlpException e)
-        {
-            return $"Transaction {i} is not valid: {e.Message}";
-        }
-        catch (ArgumentException)
-        {
-            return $"Transaction {i} is not valid";
-        }
-    }
-
-    private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp)
-    {
-        RlpReader ctx = new(rlp);
-        return rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-    }
-
-    private static bool TryDecodeTransactionsParallel(IRlpDecoder<Transaction> rlpDecoder, byte[][] txData, out Transaction[] transactions)
-    {
-        Transaction[] decoded = new Transaction[txData.Length];
-        bool[] failed = new bool[1];
-
-        ParallelUnbalancedWork.For(
-            0,
-            txData.Length,
-            ParallelUnbalancedWork.DefaultOptions,
-            (rlpDecoder, txData, decoded, failed),
-            static (i, state) =>
-            {
-                try
-                {
-                    state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i]);
-                }
-                catch
-                {
-                    // Any failure defers to the serial fallback, which reproduces the exact
-                    // single-threaded error behavior (first invalid index, exception surface).
-                    Volatile.Write(ref state.failed[0], true);
-                }
-
-                return state;
-            });
-
-        transactions = decoded;
-        return !Volatile.Read(ref failed[0]);
+        TransactionDecodingResult res = TxsDecoder.DecodeTxsBorrowingBuffers(Transactions, skipErrors: false);
+        if (res.Error is not null) return res.Error;
+        return _transactions = res.Transactions;
     }
 
     /// <summary>
@@ -327,6 +351,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         _ => 1
     };
 
-    public virtual bool ValidateFork(ISpecProvider specProvider) =>
-        !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+    /// <inheritdoc/>
+    /// <remarks>Answers for the getPayloadV1 shape only. Not virtual: subclasses gate newPayload through
+    /// <see cref="ValidateForkOnNewPayload"/> instead.</remarks>
+    public bool ValidateFork(ISpecProvider specProvider) =>
+        !specProvider.GetSpec(BlockNumber, Timestamp).IsCancunEnabled;
+
+    /// <summary>Whether this payload may arrive on the given <c>engine_newPayload</c> version.</summary>
+    public virtual bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion) =>
+        !specProvider.GetSpec(BlockNumber, Timestamp).IsCancunEnabled;
 }

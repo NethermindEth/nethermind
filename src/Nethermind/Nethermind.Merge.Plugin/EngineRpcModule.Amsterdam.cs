@@ -4,8 +4,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -37,15 +37,9 @@ public partial class EngineRpcModule : IEngineRpcModule
             new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
-    {
-        // Per execution-apis #793: custody-column updates are best-effort, errors swallowed.
-        // No EL-side custody consumer wired yet — log at trace level so the CL request is auditable.
-        // TODO(custody): once a consumer is wired, validate custodyColumns.Length == 128 here
-        // (the SSZ wire enforces this on REST, but the JSON-RPC signature does not).
-        if (custodyColumns is not null && _logger.IsTrace)
-            _logger.Trace($"engine_forkchoiceUpdatedV4 received custody columns ({custodyColumns.Count} bits) — not yet applied");
-        return ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
-    }
+        => ValidateAndApplyCustodyColumns(custodyColumns) is { } error
+            ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams))
+            : ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
 
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(
         IReadOnlyList<Hash256> blockHashes)
@@ -54,6 +48,6 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(ulong start, ulong count)
         => _executionGetPayloadBodiesByRangeV2Handler.Handle(start, count);
 
-    public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, System.Collections.BitArray indicesBitarray)
+    public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, BitArray indicesBitarray)
         => _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, indicesBitarray));
 }

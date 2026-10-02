@@ -24,9 +24,9 @@ public class XdcP2PCapabilityResolverTests
 
         Assert.That(capabilities, Is.EquivalentTo(new[]
         {
-            new Capability(Protocol.Eth, 62),
-            new Capability(Protocol.Eth, 63),
             new Capability(Protocol.Eth, 100),
+            new Capability(Protocol.Eth, 164),
+            new Capability(Protocol.Eth, 165),
         }));
     }
 
@@ -49,9 +49,9 @@ public class XdcP2PCapabilityResolverTests
         // eth/68 (the default's contribution) is gone; only XDC's versions remain.
         Assert.That(capabilities, Is.EquivalentTo(new[]
         {
-            new Capability(Protocol.Eth, 62),
-            new Capability(Protocol.Eth, 63),
             new Capability(Protocol.Eth, 100),
+            new Capability(Protocol.Eth, 164),
+            new Capability(Protocol.Eth, 165),
         }));
     }
 }

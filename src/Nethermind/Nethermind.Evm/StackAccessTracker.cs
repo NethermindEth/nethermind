@@ -28,15 +28,15 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private int _destroyListSnapshots;
     private int _logsSnapshots;
 
-    public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
+    public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
 
-    public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
+    public readonly bool IsCold(in StorageCell storageCell) => _trackingState.IsCold(in storageCell);
 
     public readonly bool WarmUp(Address address)
         => _trackingState.AccessedAddresses.Add(address);
 
-    public readonly bool WarmUp(in StorageCell storageCell)
-        => _trackingState.AccessedStorageCells.Add(storageCell);
+    /// <returns><see langword="true"/> when the cell was cold.</returns>
+    public readonly bool WarmUp(in StorageCell storageCell) => _trackingState.WarmUp(in storageCell);
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -73,6 +73,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         {
             _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
             _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+            _trackingState.ForgetWarm();
         }
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
@@ -81,23 +82,19 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public void Dispose()
     {
         TrackingState state = _trackingState;
-        _trackingState = null;
+        _trackingState = null!;
         TrackingState.ResetAndReturn(state);
     }
 
     private sealed class TrackingState
     {
-        private static readonly
-#if ZK_EVM
-            ZkEvmQueue<TrackingState>
-#else
-            System.Collections.Concurrent.ConcurrentQueue<TrackingState>
-#endif
-            _trackerPool = new();
+        // Rented once per top-level execution, not per frame, so one slot per thread is the whole win;
+        // the collections a returned state keeps sized would otherwise be retained a slot at a time.
+        private static readonly EvmObjectPool<TrackingState> _trackerPool = new(localCapacity: 1);
 
         public static TrackingState RentState()
         {
-            if (_trackerPool.TryDequeue(out TrackingState tracker)) return tracker;
+            if (_trackerPool.TryDequeue(out TrackingState? tracker)) return tracker;
             return new TrackingState();
         }
 
@@ -113,8 +110,50 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
 
+        private StorageCell _lastWarmCell;
+        private bool _hasLastWarmCell;
+
+        /// <remarks>
+        /// A loop reading one slot asks this of the same cell every iteration, and the set probe costs about as
+        /// much as the storage read that follows it. Remembering the last cell found warm answers the repeat
+        /// from an inlined compare. Only <see cref="StackAccessTracker.Restore"/> and the pooled reset can take a cell back out of
+        /// the set, and both forget it; adding never invalidates, so a remembered cell cannot go stale warm.
+        /// </remarks>
+        public bool IsCold(in StorageCell storageCell)
+        {
+            if (IsKnownWarm(in storageCell)) return false;
+
+            if (AccessedStorageCells.Contains(storageCell))
+            {
+                RememberWarm(in storageCell);
+                return false;
+            }
+
+            return true;
+        }
+
+        public bool WarmUp(in StorageCell storageCell)
+        {
+            if (IsKnownWarm(in storageCell)) return false;
+
+            bool wasCold = AccessedStorageCells.Add(storageCell);
+            RememberWarm(in storageCell);
+            return wasCold;
+        }
+
+        private bool IsKnownWarm(in StorageCell storageCell) => _hasLastWarmCell && _lastWarmCell.Equals(in storageCell);
+
+        private void RememberWarm(in StorageCell storageCell)
+        {
+            _lastWarmCell = storageCell;
+            _hasLastWarmCell = true;
+        }
+
+        public void ForgetWarm() => _hasLastWarmCell = false;
+
         private void Clear()
         {
+            ForgetWarm();
             AccessedAddresses.Clear();
             AccessedStorageCells.Clear();
             Logs.Clear();

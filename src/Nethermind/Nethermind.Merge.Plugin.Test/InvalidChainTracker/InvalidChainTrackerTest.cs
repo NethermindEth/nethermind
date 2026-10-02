@@ -57,9 +57,8 @@ public class InvalidChainTrackerTest
         return hashList;
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void given_aChainOfLength5_when_originBlockIsInvalid_then_otherBlockIsInvalid(bool connectInReverse)
+    [Test]
+    public void given_aChainOfLength5_when_originBlockIsInvalid_then_otherBlockIsInvalid([Values] bool connectInReverse)
     {
         List<Hash256> hashes = MakeChain(5, connectInReverse);
         AssertValid(hashes[1]);
@@ -74,9 +73,8 @@ public class InvalidChainTrackerTest
         AssertInvalid(hashes[4], hashes[1]);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void given_aChainOfLength5_when_aLastValidHashIsInvalidated_then_lastValidHashShouldBeForwarded(bool connectInReverse)
+    [Test]
+    public void given_aChainOfLength5_when_aLastValidHashIsInvalidated_then_lastValidHashShouldBeForwarded([Values] bool connectInReverse)
     {
         List<Hash256> hashes = MakeChain(5, connectInReverse);
 
@@ -90,9 +88,8 @@ public class InvalidChainTrackerTest
         AssertInvalid(hashes[3], hashes[1]);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void given_aTreeWith3Branch_trackerShouldDetectCorrectValidChain(bool connectInReverse)
+    [Test]
+    public void given_aTreeWith3Branch_trackerShouldDetectCorrectValidChain([Values] bool connectInReverse)
     {
         List<Hash256> mainChain = MakeChain(20, connectInReverse);
         List<Hash256> branchAt5 = MakeChain(10, connectInReverse);
@@ -133,9 +130,8 @@ public class InvalidChainTrackerTest
         AssertValid(branchAt5_butConnectLater[9]);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void whenCreatingACycle_itShouldNotThrow_whenSettingInvalidation(bool connectInReverse)
+    [Test]
+    public void whenCreatingACycle_itShouldNotThrow_whenSettingInvalidation([Values] bool connectInReverse)
     {
         List<Hash256> chain1 = MakeChain(50, connectInReverse);
         List<Hash256> chain2 = MakeChain(50, connectInReverse);
@@ -149,9 +145,8 @@ public class InvalidChainTrackerTest
         AssertInvalid(chain1[3]);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void givenAnInvalidBlock_whenAttachingLater_trackingShouldStillBeCorrect(bool connectInReverse)
+    [Test]
+    public void givenAnInvalidBlock_whenAttachingLater_trackingShouldStillBeCorrect([Values] bool connectInReverse)
     {
         List<Hash256> mainChain = MakeChain(50, connectInReverse);
         List<Hash256> secondChain = MakeChain(50, connectInReverse);

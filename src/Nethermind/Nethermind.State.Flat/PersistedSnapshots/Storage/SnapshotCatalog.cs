@@ -65,11 +65,11 @@ public sealed class SnapshotCatalog([KeyFilter(DbNames.PersistedSnapshotCatalog)
     /// </summary>
     public IEnumerable<CatalogEntry> Load()
     {
-        foreach (KeyValuePair<byte[], byte[]?> kv in _db.GetAll(ordered: false))
+        foreach (KeyValuePair<byte[], byte[]> kv in _db.GetAll(ordered: false))
         {
             // Entry keys are exactly KeySize; skip any other key (e.g. a legacy version word).
             if (kv.Key.Length != KeySize) continue;
-            if (kv.Value is null || kv.Value.Length != EntrySize) continue;
+            if (kv.Value.Length != EntrySize) continue;
             yield return ReadEntry(kv.Value);
         }
     }

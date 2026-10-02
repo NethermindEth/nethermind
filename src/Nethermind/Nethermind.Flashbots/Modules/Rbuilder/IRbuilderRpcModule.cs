@@ -30,6 +30,7 @@ public interface IRbuilderRpcModule
         IDictionary<Address, AccountChange> accountDiff);
 
     [JsonRpcMethod(IsImplemented = true,
+        ResultCanBeNull = true,
         Description = "Get account data",
         IsSharable = true)]
     ResultWrapper<AccountState?> rbuilder_getAccount(Address address, BlockParameter block);

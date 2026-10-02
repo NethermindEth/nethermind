@@ -23,6 +23,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -40,9 +41,12 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
+
+[assembly: InternalsVisibleTo("Ethereum.Basic.Test")]
 
 namespace Ethereum.Test.Base;
 
@@ -51,6 +55,7 @@ public abstract class BlockchainTestBase
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
+    private static readonly TimeSpan EngineProcessingTimeout = TimeSpan.FromMinutes(10);
 
     /// <summary>
     /// Override to force parallel or sequential BAL execution in tests.
@@ -71,24 +76,22 @@ public abstract class BlockchainTestBase
     protected virtual ILogManager? ComponentLogManagerOverride => null;
 
     /// <summary>
-    /// Whether to run under the flat state layout instead of patricia (the production default).
-    /// Driven by the <c>TEST_USE_FLAT=1</c> environment variable, mirroring TestBlockchain.UseFlatDb.
+    /// Whether to run under the flat state layout, from the suite-wide selection.
+    /// See <see cref="TestStateBackend.UseFlatDb"/>.
     /// </summary>
-    protected static bool UseFlatDb => Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+    protected static bool UseFlatDb => TestStateBackend.UseFlatDb;
 
     protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
-    protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
+    /// <summary>
+    /// Creates the specification provider used to execute a blockchain test and trace its blocks.
+    /// </summary>
+    /// <param name="test">Blockchain test whose fork transitions define the provider.</param>
+    /// <returns>A provider configured with the test's genesis and transition forks.</returns>
+    protected static ISpecProvider CreateSpecProvider(BlockchainTest test)
     {
-        _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-        if (test.NetworkAfterTransition is not null)
-            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
-        Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
-
         test.Network = ChainUtils.ResolveSpec(test.Network, test.ChainId);
         test.NetworkAfterTransition = ChainUtils.ResolveSpec(test.NetworkAfterTransition, test.ChainId);
-
-        bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
         // EIP-7928 introduces BlockAccessListHash in the block header, which must be computed
         // during genesis processing. Without target fork rules at genesis, the hash field is missing
@@ -100,12 +103,26 @@ public abstract class BlockchainTestBase
             : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
-        {
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
-        }
 
-        ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+        return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+    }
 
+    protected async Task<EthereumTestResult> RunTest(
+        BlockchainTest test,
+        Stopwatch? stopwatch = null,
+        bool failOnInvalidRlp = true,
+        ITestBlockTracer? tracer = null,
+        ISpecProvider? specProvider = null)
+    {
+        _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+        if (test.NetworkAfterTransition is not null)
+            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
+        Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+
+        specProvider ??= CreateSpecProvider(test);
+
+        bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
         if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled is true)
         {
@@ -124,9 +141,12 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
-        // Patricia by default (the production default); opt into the flat state layout with
-        // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatDbConfig.Enabled = UseFlatDb;
+        // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,
+        // and a fire-and-forget background convert from one test can race another test's files. Long finality is
+        // irrelevant at EF-test chain lengths, so keep the on-disk tier off.
+        flatDbConfig.EnableLongFinality = false;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
         blocksConfig.PreWarming = PreWarmMode.None;
@@ -142,7 +162,7 @@ public abstract class BlockchainTestBase
 
         if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
         {
-            mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(10).TotalMilliseconds;
+            mergeConfig.NewPayloadBlockProcessingTimeout = (int)EngineProcessingTimeout.TotalMilliseconds;
         }
 
         ILogManager componentLogManager = ComponentLogManagerOverride ?? _logManager;
@@ -179,9 +199,10 @@ public abstract class BlockchainTestBase
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
+        IBlockProcessingQueue blockchainProcessingQueue = mainBlockProcessingContext.BlockProcessingQueue;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
-        blockchainProcessor.Start();
+        blockchainProcessingQueue.Start();
 
         try
         {
@@ -214,7 +235,7 @@ public abstract class BlockchainTestBase
                 {
                     if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
                     {
-                        Assert.Fail($"Failed to process genesis block: {args.Exception}");
+                        Assert.Fail($"Failed to process genesis block: {args.Message ?? args.Exception?.ToString()}");
                         genesisProcessed.Set();
                     }
                 };
@@ -257,7 +278,7 @@ public abstract class BlockchainTestBase
                 IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
                 JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
                 JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
-                Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!, engineWitnessDifferences);
+                Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, blockchainProcessingQueue, parentHeader.Hash!, engineWitnessDifferences);
                 lastPayloadStatus = payloadResult.Data ?? "";
                 lastValidationError = payloadResult.Error;
             }
@@ -268,13 +289,14 @@ public abstract class BlockchainTestBase
 
             // NOTE: Tracer removal must happen AFTER StopAsync to ensure all blocks are traced
             // Blocks are queued asynchronously, so we need to wait for processing to complete
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             lastValidationError ??= asyncBlockError;
             stopwatch?.Stop();
 
             IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
 
-            // Caches are cleared async, which is a problem as read for the MainWorldState with prewarmer is not correct if its not cleared.
+            // Joins any prewarming still in flight; the MainWorldState scope opened below then clears the carried
+            // account and storage caches unless they describe the head.
             preWarmer?.ClearCaches();
 
             Block? headBlock = blockTree.RetrieveHeadBlock();
@@ -322,7 +344,7 @@ public abstract class BlockchainTestBase
         }
         catch (Exception)
         {
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             throw;
         }
     }
@@ -414,7 +436,7 @@ public abstract class BlockchainTestBase
     /// carried a validation error, that error in <see cref="Result{TData}.Error"/> (an expected
     /// rejection does not fail the test, so the status is still populated).
     /// </returns>
-    private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash, List<string> witnessDifferences)
+    private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, IBlockProcessingQueue processingQueue, Hash256 initialHeadHash, List<string> witnessDifferences)
     {
         if (newPayloads is null || newPayloads.Length == 0) return Result<string>.Success("");
 
@@ -431,6 +453,7 @@ public abstract class BlockchainTestBase
             if (!int.TryParse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString(), out int fcuVersion))
                 throw new FormatException($"Invalid ForkChoiceUpdatedVersion: '{enginePayload.ForkChoiceUpdatedVersion}'");
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
+            int? expectedErrorCode = JsonToEthereumTest.ParseErrorCode(enginePayload);
 
             // Only an unmutated, expected-VALID reference witness exercises engine_newPayloadWithWitnessV*; EIP-8025
             // mutated payloads go through the plain endpoint (their witness is a corrupted reference useful for stateless exec).
@@ -439,52 +462,66 @@ public abstract class BlockchainTestBase
                 && validationError is null;
 
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
-            string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
+            IEnumerable<string> paramsRaw = enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText());
+            string paramsJson = "[" + string.Join(",", paramsRaw) + "]";
 
             string npMethod = expectWitness ? "engine_newPayloadWithWitnessV" + newPayloadVersion : "engine_newPayloadV" + newPayloadVersion;
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, npMethod, paramsJson);
 
-            // RPC-level errors (e.g. wrong payload version) are valid for negative tests
             if (TryGetRpcError(npResponse, out int errorCode, out string? errorMessage))
             {
-                AssertExpectedRpcError(errorCode, errorMessage, validationError, newPayloadVersion);
-            }
-            else if (expectWitness)
-            {
-                using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
-                PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
-                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
-                lastStatus = payloadStatus.Status;
-                if (payloadStatus.ValidationError is not null)
-                    lastValidationError = payloadStatus.ValidationError;
-
-                if (payloadStatus.Status == PayloadStatus.Valid)
-                {
-                    Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
-                    if (witnessResult.ExecutionWitness is null)
-                    {
-                        witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitnessV{newPayloadVersion} returned VALID but no witness");
-                    }
-                    else
-                    {
-                        CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
-                    }
-
-                    AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
-                }
+                AssertExpectedRpcError(errorCode, errorMessage, expectedErrorCode, newPayloadVersion);
             }
             else
             {
-                PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
-                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
-                lastStatus = payloadStatus.Status;
-                if (payloadStatus.ValidationError is not null)
-                    lastValidationError = payloadStatus.ValidationError;
+                // Covers both non-error branches, so a fixture that demands an error cannot be answered with a status.
+                AssertPayloadWasNotExpectedToError(expectedErrorCode, validationError, newPayloadVersion);
 
-                if (payloadStatus.Status == PayloadStatus.Valid)
+                if (expectWitness)
                 {
-                    string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
-                    AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                    // The witness result has no PayloadStatusV2, and engine_newPayloadWithWitnessV6 retains no
+                    // compliance for the fork-choice update either, so the expectation cannot be checked here
+                    // and must not be silently dropped.
+                    Assert.That(enginePayload.InclusionListSatisfied, Is.Null,
+                        $"engine_newPayloadWithWitnessV{newPayloadVersion} cannot report inclusionListSatisfied, which this fixture states");
+
+                    using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
+                    PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
+                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
+                    lastStatus = payloadStatus.Status;
+                    if (payloadStatus.ValidationError is not null)
+                        lastValidationError = payloadStatus.ValidationError;
+
+                    if (payloadStatus.Status == PayloadStatus.Valid)
+                    {
+                        Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
+                        if (witnessResult.ExecutionWitness is null)
+                        {
+                            witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitnessV{newPayloadVersion} returned VALID but no witness");
+                        }
+                        else
+                        {
+                            CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
+                        }
+
+                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
+                    }
+                }
+                else
+                {
+                    PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
+                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.InclusionListSatisfied);
+                    lastStatus = payloadStatus.Status;
+                    if (payloadStatus.ValidationError is not null)
+                        lastValidationError = payloadStatus.ValidationError;
+
+                    // The block is committed even when unsatisfied, so the head must still advance.
+                    if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
+                    {
+                        Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
+                        JsonRpcResponse fcuResponse = await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
+                        AssertFcuInclusionListSatisfied(fcuResponse, enginePayload, fcuVersion);
+                    }
                 }
             }
         }
@@ -523,22 +560,92 @@ public abstract class BlockchainTestBase
     private static PayloadStatusV1 GetPayloadStatus(JsonRpcResponse response, int payloadVersion) =>
         response switch
         {
+            // newPayloadV6 returns PayloadStatusV2 (derives from V1), preserving inclusionListSatisfied.
+            ResultWrapper<PayloadStatusV2> { Result.ResultType: ResultType.Success } v2Wrapper => v2Wrapper.Data,
             ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
             JsonRpcSuccessResponse { Result: PayloadStatusV1 payloadStatus } => payloadStatus,
             _ => throw new AssertionException($"engine_newPayloadV{payloadVersion} returned unexpected response type {response.GetType().FullName}")
         };
 
-    private static void AssertExpectedRpcError(int errorCode, string? errorMessage, string? validationError, int payloadVersion) =>
-        Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorCode} {errorMessage}");
+    /// <summary>
+    /// Describes why a JSON-RPC error answered by <c>engine_newPayloadV*</c> is not the one the fixture
+    /// expects, or null when it is exactly what the fixture asked for.
+    /// </summary>
+    /// <remarks>
+    /// A protocol-level error — unsupported fork (-38005), invalid params (-32602), timeout, ... — means the
+    /// payload was refused by the engine API before any consensus rule ran, so it can never stand in for the
+    /// rejection an invalid-block fixture asserts. Only fixtures carrying an <c>errorCode</c> expect an error
+    /// response at all; every other payload must come back as a payload status.
+    /// </remarks>
+    internal static string? DescribeUnexpectedRpcError(int errorCode, string? errorMessage, int? expectedErrorCode, int payloadVersion) => expectedErrorCode switch
+    {
+        null => $"engine_newPayloadV{payloadVersion} failed at the protocol level with {errorCode} {errorMessage}; the payload was never validated, so it cannot demonstrate the rejection this fixture expects.",
+        int expected when expected == errorCode => null,
+        int expected => $"engine_newPayloadV{payloadVersion} returned JSON-RPC error {errorCode} {errorMessage}, expected {expected}."
+    };
 
-    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion)
+    /// <summary>
+    /// Describes why the payload having been answered with a status contradicts the fixture, or null
+    /// when a payload status is an acceptable answer.
+    /// </summary>
+    /// <remarks>
+    /// Fixtures pair an <c>errorCode</c> with the block exception the payload violates, and a client may
+    /// signal such a rejection either way, so the RPC error is only required when no <c>validationError</c>
+    /// is offered to match against instead.
+    /// </remarks>
+    internal static string? DescribeMissingRpcError(int? expectedErrorCode, string? validationError, int payloadVersion) =>
+        expectedErrorCode is int expected && validationError is null
+            ? $"engine_newPayloadV{payloadVersion} was expected to fail with JSON-RPC error {expected}, but the payload was accepted for validation."
+            : null;
+
+    private static void AssertExpectedRpcError(int errorCode, string? errorMessage, int? expectedErrorCode, int payloadVersion) =>
+        Assert.That(DescribeUnexpectedRpcError(errorCode, errorMessage, expectedErrorCode, payloadVersion), Is.Null);
+
+    private static void AssertPayloadWasNotExpectedToError(int? expectedErrorCode, string? validationError, int payloadVersion) =>
+        Assert.That(DescribeMissingRpcError(expectedErrorCode, validationError, payloadVersion), Is.Null);
+
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, bool? expectedInclusionListSatisfied = null)
     {
         string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
         Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
 
+        // EIP-7805: IL compliance is only reported for a VALID payload (execution-apis#609).
+        if (expectedInclusionListSatisfied is { } expectedIlSatisfied && payloadStatus.Status == PayloadStatus.Valid)
+            Assert.That((payloadStatus as PayloadStatusV2)?.InclusionListSatisfied, Is.EqualTo(expectedIlSatisfied),
+                $"engine_newPayloadV{payloadVersion} reported inclusionListSatisfied={(payloadStatus as PayloadStatusV2)?.InclusionListSatisfied}, expected {expectedIlSatisfied}");
+
         if (expectedValidationError is not null)
             AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
     }
+
+    /// <summary>
+    /// Describes why the inclusion-list compliance reported by the fork-choice update that follows a payload
+    /// contradicts the fixture (EIP-7805), or null when it matches or the fixture states no expectation.
+    /// </summary>
+    /// <remarks>
+    /// execution-apis <c>bogota.md</c> pins the fork-choice answer for a head just deemed VALID by
+    /// <c>engine_newPayloadV6</c>: it repeats the compliance answer determined there, so the expectation is
+    /// the fixture's <c>inclusionListSatisfied</c>. A fork-choice version that cannot carry the field is a
+    /// mismatch in its own right rather than an absent field. The reported payload status is named too: an
+    /// FCU answering SYNCING also reports no compliance, and that is a different failure from the head being
+    /// VALID and disagreeing.
+    /// </remarks>
+    internal static string? DescribeFcuInclusionListMismatch(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion)
+    {
+        if (enginePayload.InclusionListSatisfied is not bool expected) return null;
+
+        if ((response as IResultWrapper)?.Data is not ForkchoiceUpdatedV2Result result)
+            return $"engine_forkchoiceUpdatedV{fcuVersion} answered with {((response as IResultWrapper)?.Data ?? response).GetType().Name}, which cannot report inclusionListSatisfied, expected {expected}";
+
+        bool? actual = result.PayloadStatus.InclusionListSatisfied;
+
+        return actual == expected
+            ? null
+            : $"engine_forkchoiceUpdatedV{fcuVersion} returned {result.PayloadStatus.Status} and reported inclusionListSatisfied={actual?.ToString() ?? "null"}, expected {expected}";
+    }
+
+    private static void AssertFcuInclusionListSatisfied(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion) =>
+        Assert.That(DescribeFcuInclusionListMismatch(response, enginePayload, fcuVersion), Is.Null);
 
     private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
     {
@@ -573,7 +680,9 @@ public abstract class BlockchainTestBase
         ("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS", "max fee per gas less than block base fee"),
         ("TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS", "InvalidMaxPriorityFeePerGas: Cannot be higher than maxFeePerGas"),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "Block gas limit exceeded"),
+        ("TransactionException.NONCE_TOO_BIG", "NonceTooHigh"),
         ("TransactionException.NONCE_IS_MAX", "NonceTooHigh"),
+        ("TransactionException.NONCE_OVERFLOW", "NonceTooWide"),
         ("TransactionException.INITCODE_SIZE_EXCEEDED", "max initcode size exceeded"),
         ("TransactionException.NONCE_MISMATCH_TOO_LOW", "nonce too low"),
         ("TransactionException.NONCE_MISMATCH_TOO_HIGH", "nonce too high"),
@@ -596,6 +705,7 @@ public abstract class BlockchainTestBase
         ("BlockException.INCORRECT_BLOB_GAS_USED", "HeaderBlobGasMismatch:"),
         ("BlockException.BLOB_GAS_USED_ABOVE_LIMIT", "HeaderBlobGasMismatch:"),
         ("BlockException.INVALID_REQUESTS", "InvalidRequestsHash: Requests hash mismatch in block"),
+        ("BlockException.INVALID_GAS_USED", "HeaderGasUsedMismatch:"),
         ("BlockException.INVALID_GAS_USED_ABOVE_LIMIT", "ExceededGasLimit:"),
         ("BlockException.GAS_USED_OVERFLOW", "ExceededGasLimit:"),
         ("BlockException.RLP_BLOCK_LIMIT_EXCEEDED", "ExceededBlockSizeLimit: Exceeded block size limit"),
@@ -611,32 +721,53 @@ public abstract class BlockchainTestBase
         ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"), // alternate error string
         ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
+        // EIP-7825's per-transaction gas cap, which a frame transaction reports against its own budget.
+        ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", "exceeds the transaction gas cap of"),
+        // Reached only when gasLimit * price (+ value) overflows, never on a plain balance shortfall.
+        ("TransactionException.GASLIMIT_PRICE_PRODUCT_OVERFLOW", "required balance exceeds 256 bits"),
+        .. Eip8141Mappings(),
     ];
+
+    // EIP-8141 splits a rejected frame transaction three ways, and the fixtures name each separately.
+    private static IEnumerable<(string, string)> Eip8141Mappings()
+    {
+        foreach (string fragment in FrameExceptionFragments.Format)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.Signature)
+            yield return ("TransactionException.TYPE_6_INVALID_SIGNATURE", fragment);
+        foreach (string fragment in FrameExceptionFragments.Execution)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_EXECUTION", fragment);
+        foreach (string fragment in FrameExceptionFragments.Decode)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.FeeOverflow)
+        {
+            yield return ("TransactionException.GASPRICE_OVERFLOW", fragment);
+            yield return ("TransactionException.PRIORITY_OVERFLOW", fragment);
+        }
+    }
 
     private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
 
     private static readonly (string ExpectedError, Regex Pattern)[] ValidationErrorRegexMappings =
     [
+        // An in-range r that is not an x-coordinate on the curve leaves the transaction without a recovered sender.
+        ("TransactionException.INVALID_SIGNATURE_VRS", ValidationErrorRegex(@"failed with error sender not specified")),
         ("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ValidationErrorRegex(@"insufficient funds for gas \* price \+ value|insufficient funds for transfer|insufficient funds for gas|insufficient sender balance|insufficient MaxFeePerGas for sender balance")),
         ("TransactionException.TYPE_3_TX_WITH_FULL_BLOBS", ValidationErrorRegex(@"Transaction \d+ is not valid")),
         ("TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"BlockBlobGasExceeded: A block cannot have more than \d+ blob gas, blobs count \d+, blobs gas used: \d+")),
         ("TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED", ValidationErrorRegex(@"BlobTxGasLimitExceeded: Transaction's totalDataGas=\d+ exceeded MaxBlobGas per transaction=\d+")),
         ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
-        ("TransactionException.INTRINSIC_GAS_TOO_LOW", ValidationErrorRegex(@"TxGasLimitCapExceeded: Intrinsic gas")),
         ("BlockException.INCORRECT_EXCESS_BLOB_GAS", ValidationErrorRegex(@"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated|Overflow in excess blob gas")),
         ("BlockException.INVALID_BLOCK_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
         ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
-        ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations)Empty: Contract is not deployed\.")),
-        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations)Failed: Contract execution failed\.")),
+        ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations|BuilderDeposits|BuilderExits)Empty: Contract is not deployed\.")),
+        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations|BuilderDeposits|BuilderExits)Failed: Contract execution failed\.")),
         ("BlockException.INVALID_BAL_HASH", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:")),
         ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|Error decoding block access list:")),
         ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Error decoding block access list:")),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
         ("BlockException.INVALID_BAL_EXTRA_ACCOUNT", ValidationErrorRegex(@"Error decoding block access list:.*Account changes were in incorrect order")),
         ("BlockException.INVALID_BAL_MISSING_ACCOUNT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
-        ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
-        // Nethermind currently reports these BAL system-contract failures with the same block access list validation message.
-        ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
     ];
 
     private static string[] MapValidationErrorsToEestExceptions(string validationError) =>
@@ -661,6 +792,29 @@ public abstract class BlockchainTestBase
 
     private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
         SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
+
+    /// <summary>
+    /// VALID arrives before the block is committed, and forkchoice gives a committing head only a short wait before
+    /// answering SYNCING; a slow commit on a loaded runner must not leave the head on the parent, so the head moves
+    /// once the block has left the queue and anything but VALID fails here rather than as a post-state diff.
+    /// </summary>
+    private static async Task<JsonRpcResponse> MoveHeadToCommitted(IJsonRpcService rpcService, JsonRpcContext context, IBlockProcessingQueue processingQueue, int fcuVersion, Hash256 blockHash)
+    {
+        await processingQueue.WaitUntilRemovedAsync(blockHash).AsTask().WaitAsync(EngineProcessingTimeout);
+        JsonRpcResponse response = await SendFcu(rpcService, context, fcuVersion, blockHash.ToString());
+        AssertRpcSuccess(response);
+        string? status = response switch
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper => resultWrapper.Data?.PayloadStatus.Status,
+            // engine_forkchoiceUpdatedV5 returns ForkchoiceUpdatedV2Result, which does not derive from V1.
+            ResultWrapper<ForkchoiceUpdatedV2Result> v2Wrapper => v2Wrapper.Data?.PayloadStatus.Status,
+            JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV1Result result } => result.PayloadStatus.Status,
+            JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV2Result v2Result } => v2Result.PayloadStatus.Status,
+            _ => null
+        };
+        Assert.That(status, Is.EqualTo(PayloadStatus.Valid), $"engine_forkchoiceUpdatedV{fcuVersion} to {blockHash} answered {response.GetType().Name}");
+        return response;
+    }
 
     private static void AssertRpcSuccess(JsonRpcResponse response)
     {
@@ -730,14 +884,15 @@ public abstract class BlockchainTestBase
         {
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
             {
-                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), new UInt256(storageItem.Value, isBigEndian: true));
             }
 
             stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
         }
 
-        stateProvider.Commit(specProvider.GenesisSpec);
+        // As in GenesisBuilder: EIP-158 must not prune a pre-alloc account that is empty but holds storage.
+        stateProvider.Commit(specProvider.GenesisSpec, isGenesis: true);
         stateProvider.CommitTree(0);
         stateProvider.Reset();
     }
@@ -786,10 +941,10 @@ public abstract class BlockchainTestBase
                 differences.Add($"{accountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
             }
 
-            byte[] code = accountExists ? stateProvider.GetCode(accountAddress) : [];
+            ReadOnlySpan<byte> code = accountExists ? stateProvider.GetCodeSpan(accountAddress) : [];
             if (!Bytes.AreEqual(accountState.Code, code))
             {
-                differences.Add($"{accountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
+                differences.Add($"{accountAddress} code exp: {accountState.Code?.Length}, actual: {code.Length}");
             }
 
             if (differences.Count != differencesBefore)
@@ -807,19 +962,21 @@ public abstract class BlockchainTestBase
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key));
-                if (!value.IsZero())
+                UInt256 value = UInt256.Zero;
+                if (stateProvider.AccountExists(accountAddress)) stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key), out value);
+                if (!value.IsZero)
                 {
-                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToMinimalBigEndian().ToHexString(true)}");
                 }
             }
 
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key));
-                if (!Bytes.AreEqual(storageItem.Value, value))
+                UInt256 value = UInt256.Zero;
+                if (stateProvider.AccountExists(accountAddress)) stateProvider.Get(new StorageCell(accountAddress, storageItem.Key), out value);
+                if (new UInt256(storageItem.Value, isBigEndian: true) != value)
                 {
-                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToMinimalBigEndian().ToHexString(true)}");
                 }
             }
 

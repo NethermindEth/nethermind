@@ -84,7 +84,7 @@ public class XdcBlockHeader(
         internal set
         {
             _extraFieldsV2 = value;
-            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(value).Bytes];
+            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.EncodeAsBytes(value)];
         }
     }
 
@@ -116,6 +116,7 @@ public class XdcBlockHeader(
         {
             MixHash = Hash256.Zero,
             RequestsHash = requestsHash,
+            SlotNumber = SlotNumber + 1,
         };
     }
 
@@ -154,6 +155,7 @@ public class XdcBlockHeader(
         header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         header.ExcessBlobGas = ExcessBlobGas;
         header.BlobGasUsed = BlobGasUsed;
+        header.SlotNumber = SlotNumber;
         header.Validator = Validator;
         header.Validators = Validators;
         header.Penalties = Penalties;
@@ -186,6 +188,7 @@ public class XdcBlockHeader(
             ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
             ExcessBlobGas = src.ExcessBlobGas,
             BlobGasUsed = src.BlobGasUsed,
+            SlotNumber = src.SlotNumber,
         };
 
         return x;

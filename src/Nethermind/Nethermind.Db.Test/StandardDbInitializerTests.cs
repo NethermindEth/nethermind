@@ -30,9 +30,8 @@ public class StandardDbInitializerTests
     [OneTimeSetUp]
     public void Initialize() => _folderWithDbs = Guid.NewGuid().ToString();
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task InitializerTests_MemDbProvider(bool useReceipts)
+    [Test]
+    public async Task InitializerTests_MemDbProvider([Values] bool useReceipts)
     {
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, true, "mem");
         Type receiptsType = GetReceiptsType(useReceipts, typeof(SnapshotableMemColumnsDb<ReceiptsColumns>));
@@ -40,9 +39,8 @@ public class StandardDbInitializerTests
         Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task InitializerTests_RocksDbProvider(bool useReceipts)
+    [Test]
+    public async Task InitializerTests_RocksDbProvider([Values] bool useReceipts)
     {
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, false, $"rocks_{useReceipts}");
         Type receiptsType = GetReceiptsType(useReceipts);
@@ -50,9 +48,8 @@ public class StandardDbInitializerTests
         Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task InitializerTests_ReadonlyDbProvider(bool useReceipts)
+    [Test]
+    public async Task InitializerTests_ReadonlyDbProvider([Values] bool useReceipts)
     {
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, false, $"readonly_{useReceipts}");
         using ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true);

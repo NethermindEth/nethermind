@@ -49,6 +49,7 @@ namespace Nethermind.Core.Crypto
         }
 
         [DebuggerStepThrough]
+        [SkipLocalsInit]
         public static ValueHash256 Compute(ReadOnlySpan<byte> input)
         {
             if (input.Length == 0)
@@ -56,11 +57,10 @@ namespace Nethermind.Core.Crypto
                 return OfAnEmptyString;
             }
 
-            Unsafe.SkipInit(out ValueHash256 keccak);
-            KeccakHash.ComputeHashBytesToSpan(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
-            return keccak;
+            return KeccakHash.ComputeHash256(input);
         }
 
+        [SkipLocalsInit]
         internal static ValueHash256 InternalCompute(byte[] input)
         {
             Unsafe.SkipInit(out ValueHash256 keccak);

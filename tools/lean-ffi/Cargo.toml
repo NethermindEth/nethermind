@@ -1,22 +1,22 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
-#
-# Placeholder Lean Ethereum FFI shim for EIP-8288. Exposes a C ABI matching
-# Nethermind's ILeanProofVerifier so the whole native-binding pipeline can be
-# exercised on a live node. The verification logic is a deterministic
-# placeholder (NOT cryptography); swap the `verify` module for real leanVM /
-# leanSig calls without changing the C ABI or the C# consumer.
 [package]
 name = "nethermind-lean"
-version = "0.0.0"
-edition = "2021"
+version = "0.1.0"
+edition = "2024"
 publish = false
 
 [lib]
 name = "nethermind_lean"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+sphincs = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
+rec_aggregation = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
+leanvm_core = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
+lean_compiler = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
+primitives = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
+bincode = "1.3"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
 
 [profile.release]

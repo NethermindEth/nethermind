@@ -83,6 +83,9 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip8282Enabled => spec.IsEip8282Enabled;
     public virtual bool IsEip8141Enabled => spec.IsEip8141Enabled;
     public virtual bool IsEip8288Enabled => spec.IsEip8288Enabled;
+    public virtual bool IsEip8250Enabled => spec.IsEip8250Enabled;
+    public virtual bool IsEip8272Enabled => spec.IsEip8272Enabled;
+    public virtual bool IsEip7906Enabled => spec.IsEip7906Enabled;
     public virtual bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsEip7823Enabled => spec.IsEip7823Enabled;
     public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
@@ -92,6 +95,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
     public virtual bool IsEip7951Enabled => spec.IsEip7951Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
+    public virtual bool IsEip7805Enabled => spec.IsEip7805Enabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
     public virtual bool IsEip7976Enabled => spec.IsEip7976Enabled;
     public virtual bool IsEip7981Enabled => spec.IsEip7981Enabled;
@@ -110,6 +114,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual ulong ElasticityMultiplier => spec.ElasticityMultiplier;
     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
+    bool IReleaseSpec.IsPrecompile(Address address) => spec.IsPrecompile(address);
     public virtual bool IsEip7939Enabled => spec.IsEip7939Enabled;
     public virtual bool IsEip7928Enabled => spec.IsEip7928Enabled;
     public virtual bool IsEip8037Enabled => spec.IsEip8037Enabled;

@@ -3,14 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -35,10 +39,11 @@ public class ExecutionPayloadV4Tests
 
         Assert.That(result.Data, Is.Null);
         Assert.That(result.Error, Does.StartWith("Error decoding block access list:"));
+        Assert.That(result.Error, Does.Not.Contain(Environment.NewLine));
     }
 
     [Test]
-    public void TryGetBlock_reuses_cached_wire_hash_for_block_access_list_hash()
+    public void TryGetBlock_reuses_cached_block_access_list_for_wire_hash()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
@@ -58,12 +63,73 @@ public class ExecutionPayloadV4Tests
         };
 
         Result<Block> result = payload.TryGetBlock();
+        Result<Block> cachedResult = payload.TryGetBlock();
 
         Assert.That(result.Data, Is.Not.Null);
+        Assert.That(cachedResult.Data, Is.Not.Null);
         Block block = result.Data!;
+        Assert.That(cachedResult.Data!.BlockAccessList, Is.SameAs(block.BlockAccessList));
         Hash256 expected = new(ValueKeccak.Compute(encoded).Bytes);
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(expected));
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(block.BlockAccessList!.WireHash));
+    }
+
+    // Two devnet fixture lines both call their Amsterdam successor Bogota while meaning different
+    // things by it, so the label a genesis carries has to decide which newPayload version the node
+    // accepts: inclusion lists move it to V6, frame transactions leave it on Amsterdam's V5.
+    [TestCase("bogotaTime", EngineApiVersions.NewPayload.V6)]
+    [TestCase("eip8141PrototypeTime", EngineApiVersions.NewPayload.V5)]
+    public void ValidateForkOnNewPayload_accepts_the_version_the_genesis_fork_label_selects(string label, int accepted)
+    {
+        string genesis = $$"""
+            {
+              "config": { "chainId": 1, "homesteadBlock": 0, "amsterdamTime": 15, "{{label}}": 15 },
+              "difficulty": "0x1",
+              "gasLimit": "0x8000000",
+              "alloc": {}
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(genesis));
+        ChainSpec chainSpec = new GethGenesisLoader(new EthereumJsonSerializer()).Load(stream);
+        ChainSpecBasedSpecProvider specProvider = new(chainSpec);
+
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = [],
+            SlotNumber = 0,
+            BlockNumber = 1,
+            Timestamp = 15,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V5),
+                Is.EqualTo(accepted == EngineApiVersions.NewPayload.V5));
+            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V6),
+                Is.EqualTo(accepted == EngineApiVersions.NewPayload.V6));
+        }
+    }
+
+    [TestCase(typeof(ExecutionPayloadV4), null, null)]
+    [TestCase(typeof(ExecutionPayloadV4), "withdrawals", "withdrawals")]
+    [TestCase(typeof(ExecutionPayloadV4), "blobGasUsed", "blobGasUsed")]
+    [TestCase(typeof(ExecutionPayloadV4), "blockAccessList", "blockAccessList")]
+    [TestCase(typeof(ExecutionPayloadV4), "slotNumber", "slotNumber")]
+    [TestCase(typeof(ExecutionPayloadV3), "excessBlobGas", "excessBlobGas")]
+    [TestCase(typeof(ExecutionPayloadV3), "blockAccessList", null)]
+    [TestCase(typeof(ExecutionPayloadV3), "slotNumber", null)]
+    public void Deserialization_tracks_the_required_fields_of_the_payload_version(Type payloadType, string? omittedField, string? expectedUnboundField)
+    {
+        ExecutionPayloadV4 complete = new() { Withdrawals = [], BlobGasUsed = 0, ExcessBlobGas = 0, BlockAccessList = [0xc0], SlotNumber = 1 };
+        JsonObject json = JsonSerializer.SerializeToNode(complete, EthereumJsonSerializer.JsonOptions)!.AsObject();
+        if (omittedField is not null) json.Remove(omittedField);
+
+        ExecutionPayload payload = (ExecutionPayload)json.Deserialize(payloadType, EthereumJsonSerializer.JsonOptions)!;
+
+        Assert.That(payload.HasUnboundField ? payload.UnboundFieldName : null, Is.EqualTo(expectedUnboundField));
     }
 
     [Test]
@@ -119,6 +185,49 @@ public class ExecutionPayloadV4Tests
 
         Assert.That(result.IsError, Is.True);
         Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.RecursiveStarkBlockDepsHash)));
+    }
+
+    [Test]
+    public void Recursive_stark_oversized_proof_fails_the_result()
+    {
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            RecursiveStarkProof = new byte[NativeLeanProofVerifier.MaxProofBytes + 1],
+            RecursiveStarkBlockDepsHash = new byte[Hash256.Size],
+        };
+
+        Result<Block> result = payload.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.RecursiveStarkProof)));
+        }
+    }
+
+    [Test]
+    public void Recursive_stark_hash_without_proof_fails_the_result()
+    {
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            RecursiveStarkBlockDepsHash = new byte[Hash256.Size],
+        };
+
+        Result<Block> result = payload.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.RecursiveStarkProof)));
+        }
     }
 
     [Test]

@@ -121,8 +121,6 @@ namespace Nethermind.Runner.Ethereum
             string urlsString = string.Join(" ; ", urls);
             // TODO: replace http with ws where relevant
 
-            ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
-
             _webApp = new WebHost(webApp.Services, webApp.Configuration, startup, _logManager);
 
             if (!cancellationToken.IsCancellationRequested)
@@ -130,7 +128,10 @@ namespace Nethermind.Runner.Ethereum
                 await NetworkHelper.HandlePortTakenError(
                     () => _webApp.StartAsync(cancellationToken), urls
                 );
-                if (_logger.IsDebug) _logger.Debug($"JSON RPC     : {urlsString}");
+                // #13203: the first point at which the ports actually accept a request. The engine URL is in the
+                // same set, so this is also when the consensus client can connect. At Debug there was nothing to
+                // distinguish a node still gated behind startup work from one already serving.
+                if (_logger.IsInfo) _logger.Info($"JSON-RPC is listening on {urlsString}");
             }
         }
 

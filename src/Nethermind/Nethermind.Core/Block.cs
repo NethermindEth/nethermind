@@ -30,11 +30,13 @@ public class Block
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null,
-        ReadOnlyBlockAccessList? blockAccessList = null)
+        ReadOnlyBlockAccessList? blockAccessList = null,
+        IEnumerable<Transaction>? inclusionListTransactions = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
         BlockAccessList = blockAccessList;
+        InclusionListTransactions = inclusionListTransactions?.ToArray();
     }
 
     public Block(BlockHeader header) : this(
@@ -46,11 +48,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark };
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList);
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark };
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList);
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark };
 
     public BlockHeader Header { get; }
 
@@ -135,6 +137,17 @@ public class Block
     public byte[][]? ExecutionRequests { get; set; }
 
     [JsonIgnore]
+    public Transaction[]? InclusionListTransactions { get; set; }
+
+    [JsonIgnore]
+    public RecursiveStark? InclusionListRecursiveStark { get; set; }
+
+    // Set after the post-execution check: false means the block is valid and executable but did not
+    // honour its inclusion list (EIP-7805).
+    [JsonIgnore]
+    public bool IsInclusionListSatisfied { get; set; } = true;
+
+    [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
 
     [JsonIgnore]
@@ -161,7 +174,8 @@ public class Block
             ? $"{Number} null, tx count: {Body.Transactions.Length}"
             : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
         Format.HashNumberDiffAndTx => $"{ToShortHashAndNumber()}  diff {Difficulty} | txs {Body.Transactions.Length,7:N0}",
-        Format.HashNumberMGasAndTx => $"{ToShortHashAndNumber()}  {GasUsed / 1_000_000.0,9:N2} MGas | {Body.Transactions.Length,7:N0} txs",
+        // decimal, not double: software integer math, keeping the zkEVM guest off the FPU.
+        Format.HashNumberMGasAndTx => $"{ToShortHashAndNumber()}  {GasUsed / 1_000_000m,9:N2} MGas | {Body.Transactions.Length,7:N0} txs",
         _ => ToShortHashAndNumber()
     };
 

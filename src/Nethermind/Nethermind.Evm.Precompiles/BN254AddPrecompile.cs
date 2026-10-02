@@ -21,7 +21,7 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
     public static Address Address { get; } = Address.FromNumber(6);
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-7910" />
-    public static string Name => "BN254_ADD";
+    public string Name => "BN254_ADD";
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-1108" />
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 150UL : 500UL;

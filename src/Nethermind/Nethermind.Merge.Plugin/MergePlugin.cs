@@ -17,11 +17,13 @@ using Nethermind.Core.Container;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Memory;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -36,7 +38,6 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
-using Nethermind.Trie.Pruning;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -99,9 +100,9 @@ public class MergePluginModule : Module
             .AddDecorator<ISealer, MergeSealer>()
 
             .AddSingleton<ManualTimestamper>()
-            .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager>(
-                (specProvider, sealEngine, timestamper, blocksConfig, logManager) =>
-                    new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
+            .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager, IInclusionListTxSource>(
+                (specProvider, sealEngine, timestamper, blocksConfig, logManager, inclusionListTxSource) =>
+                    new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager, inclusionListTxSource: inclusionListTxSource))
             .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
@@ -135,7 +136,7 @@ public class BaseMergePluginModule : Module
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .OnActivate<IMainProcessingContext>(((context, ctx) =>
             {
-                ctx.Resolve<InvalidChainTracker.InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
+                ctx.Resolve<InvalidChainTracker.InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockProcessingQueue);
             }))
 
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
@@ -164,9 +165,7 @@ public class BaseMergePluginModule : Module
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
 
-            .AddDecorator<IFinalizedStateProvider, MergeFinalizedStateProvider>()
-
-            .AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
+            .AddDecorator<IStateHeaderProvider, MergeFinalizedStateProvider>()
 
             // Engine rpc related
             .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()
@@ -180,7 +179,9 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV4Result?>, GetPayloadV4Handler>()
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV5Result?>, GetPayloadV5Handler>()
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV6Result?>, GetPayloadV6Handler>()
-                .AddSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
+                .AddSingleton<NewPayloadHandler>()
+                .Bind<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
+                .Bind<IInclusionListComplianceEvaluator, NewPayloadHandler>()
                 .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()
@@ -195,17 +196,17 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<NewPayloadWithWitnessHandler>()
                 .Bind<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
                 .Bind<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
+                .Bind<IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
+
+                .AddSingleton<InclusionListTxSource>()
+                .Bind<IInclusionListTxSource, InclusionListTxSource>()
+                .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
+                .AddSingleton<IHandler<Hash256?, InclusionListBytes>, GetInclusionListTransactionsHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
-                .AddSingleton<GCKeeper>((ctx) =>
-                {
-                    IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-                    return new GCKeeper(
-                        initConfig.DisableGcOnNewPayload
-                            ? ctx.Resolve<NoSyncGcRegionStrategy>()
-                            : NoGCStrategy.Instance,
-                        ctx.Resolve<ILogManager>());
-                })
+                .AddSingleton<IGCStrategy>(ctx => ctx.Resolve<IInitConfig>().DisableGcOnNewPayload
+                    ? ctx.Resolve<NoSyncGcRegionStrategy>()
+                    : NoGCStrategy.Instance)
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
                 .AddSingleton<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
                 .AddSingleton<IJsonRpcServiceConfigurer, SszMiddlewareConfigurer>()

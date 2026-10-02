@@ -16,9 +16,9 @@ namespace Nethermind.Core.Test;
 /// </summary>
 public static class BlockHeaderMembers
 {
-    public static readonly PropertyInfo[] SettableProperties = Array.FindAll(
+    public static readonly PropertyInfo[] SettableProperties = InDeclarationOrder(Array.FindAll(
         typeof(BlockHeader).GetProperties(BindingFlags.Public | BindingFlags.Instance),
-        static p => p.SetMethod?.IsPublic is true);
+        static p => p.SetMethod?.IsPublic is true));
 
     public static readonly FieldInfo[] PublicFields =
         typeof(BlockHeader).GetFields(BindingFlags.Public | BindingFlags.Instance);
@@ -68,6 +68,16 @@ public static class BlockHeaderMembers
         if (type == typeof(ulong)) return (ulong)seed;
         if (type == typeof(UInt256)) return (UInt256)seed;
         if (type == typeof(bool)) return true;
+        if (type == typeof((ulong, ulong))) return ((ulong)seed, (ulong)seed + 1);
         throw new NotSupportedException($"Add a sample value for new BlockHeader member type {type.Name}.");
+    }
+
+    /// <summary>Orders members as declared, so a setter that clears a member summarising it runs first.</summary>
+    /// <remarks><see cref="BlockHeader.GasUsed"/> clears <see cref="BlockHeader.GasUsedPerDimension"/>; filled in
+    /// reflection order the pair could end up null and leave the guards comparing two nulls.</remarks>
+    private static PropertyInfo[] InDeclarationOrder(PropertyInfo[] properties)
+    {
+        Array.Sort(properties, static (a, b) => a.MetadataToken.CompareTo(b.MetadataToken));
+        return properties;
     }
 }

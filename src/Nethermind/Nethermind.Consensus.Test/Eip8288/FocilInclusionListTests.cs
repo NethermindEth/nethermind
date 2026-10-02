@@ -24,7 +24,7 @@ public class FocilInclusionListTests
         return new Transaction
         {
             Type = TxType.FrameTx,
-            Frames = [new TxFrame(TxFrame.ModeDepVerify, 0, null, 0, UInt256.Zero, data)],
+            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, data)],
         };
     }
 
@@ -39,7 +39,7 @@ public class FocilInclusionListTests
 
         Rlp rlp = FocilInclusionListDecoder.Instance.Encode(focil);
         RlpReader reader = new(rlp.Bytes);
-        FocilInclusionList decoded = FocilInclusionListDecoder.Instance.Decode(ref reader);
+        FocilInclusionList decoded = FocilInclusionListDecoder.Instance.Decode(ref reader)!;
 
         Assert.That(decoded.Transactions.Count, Is.EqualTo(0));
         Assert.That(decoded.RecursiveStark.StarkProof, Is.EqualTo(new byte[] { 1, 2, 3 }));
@@ -74,4 +74,41 @@ public class FocilInclusionListTests
         Assert.That(FocilInclusionListValidator.Validate(focil, Accepting, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(FocilInclusionListValidator.DepsHashMismatch));
     }
+    [Test]
+    public void Rejects_null_transaction_entry()
+    {
+        Rlp encoded = Rlp.Encode(Rlp.Encode(new[] { Rlp.Encode(new byte[] { 0xc0 }) }),
+            Rlp.Encode(new[] { Rlp.Encode(new byte[] { 1 }), Rlp.Encode(Keccak.Zero) }));
+        Assert.Throws<RlpException>(() =>
+        {
+            RlpReader reader = new(encoded.Bytes);
+            FocilInclusionListDecoder.Instance.Decode(ref reader);
+        });
+    }
+
+    [TestCase(Eip8288Constants.MaxProofBytes, true)]
+    [TestCase(Eip8288Constants.MaxProofBytes + 1, false)]
+    public void Proof_decoder_matches_native_size_bound(int proofBytes, bool accepted)
+    {
+        FocilInclusionList list = new()
+        {
+            Transactions = [],
+            RecursiveStark = new RecursiveStark(new byte[proofBytes], Keccak.Zero)
+        };
+        Rlp encoded = FocilInclusionListDecoder.Instance.Encode(list);
+        if (accepted)
+        {
+            RlpReader reader = new(encoded.Bytes);
+            Assert.That(FocilInclusionListDecoder.Instance.Decode(ref reader)!.RecursiveStark.StarkProof, Has.Length.EqualTo(proofBytes));
+        }
+        else
+        {
+            Assert.Throws<RlpException>(() =>
+            {
+                RlpReader reader = new(encoded.Bytes);
+                FocilInclusionListDecoder.Instance.Decode(ref reader);
+            });
+        }
+    }
+
 }

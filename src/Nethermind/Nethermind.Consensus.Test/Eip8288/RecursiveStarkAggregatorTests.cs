@@ -32,7 +32,7 @@ public class RecursiveStarkAggregatorTests
         bool ok = RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 depsHash);
 
         Assert.That(ok, Is.True);
-        Assert.That(filtered, Is.EqualTo(new[] { a, b }));
+        Assert.That(filtered, Is.EqualTo(Eip8288Dependencies.Canonicalize([a, b])));
         Assert.That(depsHash, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(new[] { a, b })));
     }
 
@@ -67,7 +67,7 @@ public class RecursiveStarkAggregatorTests
 
         RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out _);
 
-        Assert.That(filtered, Is.EqualTo(new[] { a, b }));
+        Assert.That(filtered, Is.EqualTo(Eip8288Dependencies.Canonicalize([a, b])));
     }
 
     [Test]
@@ -87,15 +87,84 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
-    public void Aggregate_with_placeholder_verifier_accepts_valid_witness_and_rejects_wrong_one()
+    public void Proof_store_prunes_recursive_dependencies_and_copies_witnesses([Values] bool recursive)
     {
         FrameDependency a = Sphincs("a");
-        byte[] witness = PlaceholderLeanProofVerifier.ProveLeanSphincs(a.DataHash, a.VerificationKey);
+        FrameDependency b = Sphincs("b");
+        byte[] first = [1];
+        LeanProofStore store = new();
+        store.AddVerified([a, b], recursive ? null : [first, [2]], recursive ? first : null);
+        first[0] = 9;
 
-        AggregationInput valid = new() { Deps = [a], Witnesses = [witness] };
-        Assert.That(RecursiveStarkAggregator.TryAggregate(valid, PlaceholderLeanProofVerifier.Instance, out _, out _), Is.True);
-
-        AggregationInput wrong = new() { Deps = [a], Witnesses = [[9]] };
-        Assert.That(RecursiveStarkAggregator.TryAggregate(wrong, PlaceholderLeanProofVerifier.Instance, out _, out _), Is.False);
+        Assert.That(store.TryGetInput([b], out AggregationInput input), Is.True);
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+        Assert.That(deps, Is.EqualTo(new[] { b }));
+        if (recursive)
+        {
+            Assert.That(input.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(input.RecursiveProofs[0].Proof[0], Is.EqualTo(1));
+        }
+        else
+        {
+            Assert.That(input.Deps, Is.EqualTo(new[] { b }));
+            Assert.That(input.Witnesses[0], Is.EqualTo(new byte[] { 2 }));
+        }
     }
+
+    [Test]
+    public void Proof_store_rejects_missing_dependencies()
+    {
+        LeanProofStore store = new();
+        Assert.That(store.TryGetInput([Sphincs("missing")], out _), Is.False);
+        Assert.That(store.TryGetInput([], out AggregationInput input), Is.True);
+        Assert.That(input.Deps, Is.Empty);
+    }
+    [Test]
+    public void Prover_hierarchically_folds_more_than_sixteen_recursive_children()
+    {
+        List<RecursiveProofInput> recursive = [];
+        List<FrameDependency> deps = [];
+        for (int i = 0; i < 33; i++)
+        {
+            FrameDependency dependency = Sphincs(i.ToString());
+            recursive.Add(new([dependency], [1]));
+            deps.Add(dependency);
+        }
+        FakeLeanProofVerifier verifier = new(true);
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
+        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = recursive }, verifier, in hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof, Is.EqualTo(new byte[] { 1 }));
+            Assert.That(verifier.LargestRecursiveInput, Is.EqualTo(16));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(4));
+        }
+    }
+
+    [Test]
+    public void Proof_store_evicts_oldest_coverage_without_removing_newer_witnesses([Values] bool sameDependency)
+    {
+        LeanProofStore store = new();
+        FrameDependency first = Sphincs("0");
+        for (int i = 0; i < 1025; i++) store.AddVerified([sameDependency ? first : Sphincs(i.ToString())], [[1]], null);
+        Assert.That(store.TryGetInput([first], out _), Is.EqualTo(sameDependency));
+    }
+
+    [Test]
+    public void Combining_shared_dependencies_retains_one_witness_and_one_identical_parent()
+    {
+        FrameDependency a = Sphincs("a");
+        FrameDependency b = Sphincs("b");
+        AggregationInput input = new() { Deps = [a], Witnesses = [[1]], RecursiveProofs = [new([b], [2])] };
+        AggregationInput combined = RecursiveStarkAggregator.Combine([input, input, input], [a, b]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combined.Deps, Has.Count.EqualTo(1));
+            Assert.That(combined.Witnesses, Has.Count.EqualTo(1));
+            Assert.That(combined.RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(combined.Discards, Is.Empty);
+            Assert.That(RecursiveStarkAggregator.InputSize(combined), Is.EqualTo(RecursiveStarkAggregator.InputSize(input)));
+        }
+    }
+
 }

@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
+using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,17 +31,27 @@ namespace Nethermind.JsonRpc.Data
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
-            Logs = (receipt.Logs ?? []).Select((l, idx) => new LogEntryForRpc(receipt, l, blockTimestamp, idx + logIndexStart)).ToArray();
+            ReceiptLogsForRpc logs = new(receipt, blockTimestamp, logIndexStart);
+            Logs = logs;
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;
             Type = receipt.TxType;
 
-            // EIP-8141: surface the gas payer and per-frame results for frame transactions.
             if (receipt.TxType == TxType.FrameTx)
             {
                 Payer = receipt.Payer;
-                FrameReceipts = (receipt.FrameReceipts ?? []).Select(static f => new FrameReceiptForRpc(f)).ToArray();
+                TxFrameReceipt[] frameReceipts = receipt.FrameReceipts ?? [];
+                FrameReceiptForRpc[] frameReceiptsForRpc = new FrameReceiptForRpc[frameReceipts.Length];
+                int frameLogStart = 0;
+                for (int i = 0; i < frameReceipts.Length; i++)
+                {
+                    int frameLogCount = frameReceipts[i].Logs.Length;
+                    frameReceiptsForRpc[i] = new FrameReceiptForRpc(frameReceipts[i], logs.Slice(frameLogStart, frameLogCount));
+                    frameLogStart += frameLogCount;
+                }
+
+                FrameReceipts = frameReceiptsForRpc;
             }
         }
 
@@ -50,6 +61,24 @@ namespace Nethermind.JsonRpc.Data
         public ulong BlockNumber { get; set; }
         public ulong CumulativeGasUsed { get; set; }
         public ulong GasUsed { get; set; }
+
+        /// <summary>EIP-7778 pre-refund gas counted by block-level execution accounting.</summary>
+        /// <remarks>Outside the execution-apis receipt shape, so the constructor leaves it unset and the eth_ and
+        /// parity_ namespaces never emit it; it carries the value back on <see cref="Nethermind.JsonRpc.Converters.TxReceiptConverter"/>'s debug round trip.</remarks>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public ulong BlockGasUsed { get; set; }
+
+        /// <summary>Post-refund execution gas (OperationGas) without the EIP-7976 floor adjustment. Not the
+        /// EIP-8037 execution-dimension block figure — see <see cref="BlockGasUsed"/>.</summary>
+        /// <remarks>Carried like <see cref="BlockGasUsed"/>; the converter writes this and <see cref="StorageGasUsed"/>
+        /// as a pair whenever either is non-zero, so a zero of the pair is emitted rather than omitted.</remarks>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public ulong ExecutionGasUsed { get; set; }
+
+        /// <summary>EIP-8037 state-dimension gas used by block accounting.</summary>
+        /// <remarks>Carried like <see cref="BlockGasUsed"/>; emitted paired with <see cref="ExecutionGasUsed"/>.</remarks>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public ulong StorageGasUsed { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ulong? BlobGasUsed { get; set; }
@@ -65,7 +94,14 @@ namespace Nethermind.JsonRpc.Data
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address? ContractAddress { get; set; }
-        public LogEntryForRpc[] Logs { get; set; }
+
+        /// <summary>The transaction's log entries.</summary>
+        /// <remarks>
+        /// Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.
+        /// Built from a <see cref="TxReceipt"/>, every access returns a new entry, so a change to an entry is not kept.
+        /// </remarks>
+        [JsonConverter(typeof(LogsForRpcConverter))]
+        public IReadOnlyList<LogEntryForRpc>? Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
         public long? Status { get; set; }
@@ -84,20 +120,126 @@ namespace Nethermind.JsonRpc.Data
             {
                 Bloom = LogsBloom,
                 Index = (int)TransactionIndex,
-                Logs = Logs.Select(static l => l.ToLogEntry()).ToArray(),
+                Logs = ToLogEntries(),
                 Recipient = To,
                 Sender = From,
                 BlockHash = BlockHash,
                 BlockNumber = BlockNumber,
                 ContractAddress = ContractAddress,
                 GasUsed = GasUsed,
+                BlockGasUsed = BlockGasUsed,
+                ExecutionGasUsed = ExecutionGasUsed,
+                StorageGasUsed = StorageGasUsed,
                 StatusCode = Status is not null ? (byte)Status : byte.MinValue,
                 TxHash = TransactionHash,
                 GasUsedTotal = CumulativeGasUsed,
                 PostTransactionState = Root,
                 TxType = Type
             };
+
+            // EIP-8141: mirror the constructor so a frame receipt survives the round trip.
+            if (Type == TxType.FrameTx)
+            {
+                receipt.Payer = Payer;
+                TxFrameReceipt[] frameReceipts = ToFrameReceipts();
+                receipt.FrameReceipts = frameReceipts;
+
+                // Frames are authoritative, as on the wire path: derive the dependent fields so a payload
+                // cannot leave Logs and the bloom contradicting the frame receipts on the same receipt.
+                if (frameReceipts.Length > 0)
+                {
+                    receipt.Logs = TxFrameReceipt.ConcatLogs(frameReceipts);
+                    receipt.StatusCode = TxFrameReceipt.AggregateStatus(frameReceipts);
+                    // Bloom is absent from the EIP-8141 wire receipt, so DecodeFrameTxReceipt leaves it
+                    // for TxReceipt to derive from Logs. Clearing it keeps the pair from contradicting.
+                    receipt.Bloom = null;
+                }
+            }
+
             return receipt;
+        }
+
+        /// <summary>Binds the caller-supplied <see cref="Logs"/> to their core representation.</summary>
+        /// <exception cref="JsonException">An entry is null.</exception>
+        private LogEntry[] ToLogEntries()
+        {
+            if (Logs is not { Count: > 0 } logs)
+            {
+                return [];
+            }
+
+            LogEntry[] logEntries = new LogEntry[logs.Count];
+            for (int i = 0; i < logEntries.Length; i++)
+            {
+                logEntries[i] = logs[i] is { } log
+                    ? log.ToLogEntry()
+                    : throw new JsonException($"Log entry {i} is null.");
+            }
+
+            return logEntries;
+        }
+
+        /// <summary>
+        /// The ceiling on the logs a frame-transaction receipt may carry across all of its frames. It reuses
+        /// the wire receipt decoder's 270k logs limit but applies it to the frame log union rather than per
+        /// frame, so this debug ingress is deliberately at least as strict as the P2P one: a 100M-gas
+        /// transaction emits on the order of 266k logs in total, so a receipt whose frames sum above this
+        /// cannot come from a valid block.
+        /// </summary>
+        private const int MaxLogs = 270_000;
+
+        /// <summary>Binds the caller-supplied <see cref="FrameReceipts"/> to their core representation.</summary>
+        /// <remarks>
+        /// Reached with an unvalidated payload through <c>debug_insertReceipts</c>, so a shape EIP-8141
+        /// cannot produce has to be rejected here rather than reaching the receipt store.
+        /// </remarks>
+        /// <exception cref="JsonException">An entry is null, carries an undefined status or a null log, there are more than EIP-8141's MAX_FRAMES of them, or their logs exceed <see cref="MaxLogs"/> in aggregate.</exception>
+        private TxFrameReceipt[] ToFrameReceipts()
+        {
+            if (FrameReceipts is not { Length: > 0 } frames)
+            {
+                return [];
+            }
+
+            if (frames.Length > Eip8141Constants.MaxFrames)
+            {
+                throw new JsonException($"A frame transaction receipt carries at most {Eip8141Constants.MaxFrames} frame receipts, got {frames.Length}.");
+            }
+
+            TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
+            long logCount = 0;
+            for (int i = 0; i < frames.Length; i++)
+            {
+                // The element annotation does not bind the deserializer: "frameReceipts": [null] reaches here.
+                TxFrameReceipt frameReceipt = frames[i] is { } frame
+                    ? frame.ToFrameReceipt()
+                    : throw new JsonException($"Frame receipt {i} is null.");
+
+                if (frameReceipt.Status is not (TxFrameReceipt.StatusFailure or TxFrameReceipt.StatusSuccess or TxFrameReceipt.StatusSkipped))
+                {
+                    throw new JsonException($"Frame receipt {i} has status {frameReceipt.Status}, not one of failure, success or skipped.");
+                }
+
+                // As on the top-level logs: a null entry encodes but no read path takes it back, and
+                // ConcatLogs would carry it into the receipt's own log set.
+                for (int j = 0; j < frameReceipt.Logs.Length; j++)
+                {
+                    if (frameReceipt.Logs[j] is null)
+                    {
+                        throw new JsonException($"Log entry {j} of frame receipt {i} is null.");
+                    }
+                }
+
+                logCount += frameReceipt.Logs.Length;
+                if (logCount > MaxLogs)
+                {
+                    throw new JsonException($"A frame transaction receipt carries at most {MaxLogs} logs across all frames.");
+                }
+
+                frameReceipts[i] = frameReceipt;
+            }
+
+            return frameReceipts;
         }
     }
 }

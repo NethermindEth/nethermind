@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 
@@ -36,6 +37,7 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
     public bool IsInitialized { get; set; }
     public bool IsPriority { get; set; }
     public virtual byte ProtocolVersion { get; }
+    public virtual byte SnapProtocolVersion => SnapVersions.Snap1;
     public string ProtocolCode { get; } = null!;
     public virtual void Disconnect(DisconnectReason reason, string details)
     {

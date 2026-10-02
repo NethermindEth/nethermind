@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Eip8288;
@@ -33,20 +35,27 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             byte[] entry = decoderContext.DecodeByteArray();
             transactions.Add(entry.Length == Hash256.Size
                 ? new WrapperTransaction(new Hash256(entry))
-                : new WrapperTransaction(Rlp.Decode<Transaction>(entry)));
+                : new WrapperTransaction(TxDecoder.Instance.DecodeCompleteNotNull(entry, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
         }
 
+        decoderContext.Check(txCheck);
         byte mode = decoderContext.DecodeByte();
 
-        decoderContext.ReadSequenceLength();
+        int contentCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         // A trailing partial triple would decode to the same wrapper as the truncated blob, making the
         // encoding malleable; the transaction side enforces the same constraint.
-        byte[] depsBlob = decoderContext.DecodeByteArray();
+        byte[] depsBlob = decoderContext.DecodeByteArray(RlpLimit.For<MempoolWrapper>((Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper) * Eip8288Constants.DependencyTripleLength, nameof(MempoolWrapper.Deps)));
         if (depsBlob.Length % Eip8288Constants.DependencyTripleLength != 0)
         {
             throw new RlpException($"{nameof(MempoolWrapper)} deps length {depsBlob.Length} is not a multiple of {Eip8288Constants.DependencyTripleLength}");
         }
 
+        for (int offset = 0; offset < depsBlob.Length; offset += Eip8288Constants.DependencyTripleLength)
+        {
+            ReadOnlySpan<byte> triple = depsBlob.AsSpan(offset, Eip8288Constants.DependencyTripleLength);
+            if (!triple[..31].IsZero() || triple[31] is not (Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme))
+                throw new RlpException("Invalid dependency scheme encoding.");
+        }
         List<FrameDependency> deps = Eip8288Dependencies.Parse(depsBlob);
 
         List<byte[]>? proofs = null;
@@ -57,16 +66,24 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             proofs = [];
             while (decoderContext.Position < proofsCheck)
             {
-                proofs.Add(decoderContext.DecodeByteArray());
+                proofs.Add(decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(MempoolWrapper.Proofs))));
             }
+            decoderContext.Check(proofsCheck);
         }
-        else
+        else if (mode == MempoolWrapper.ModeRecursive)
         {
-            decoderContext.ReadSequenceLength();
-            byte[] starkProof = decoderContext.DecodeByteArray();
+            int recursiveCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(RecursiveStark.StarkProof)));
             Hash256 depsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
+            decoderContext.Check(recursiveCheck);
             recursiveStark = new RecursiveStark(starkProof, depsHash);
         }
+
+        else
+        {
+            throw new RlpException(MempoolWrapperValidator.UnknownMode);
+        }
+        decoderContext.Check(contentCheck);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -130,7 +147,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         for (int i = 0; i < entries.Length; i++)
         {
             WrapperTransaction tx = item.Transactions[i];
-            entries[i] = tx.IsHashOnly ? tx.Hash!.Bytes.ToArray() : Rlp.Encode(tx.Full!).Bytes;
+            entries[i] = tx.IsHashOnly ? tx.Hash!.Bytes.ToArray() : Rlp.Encode(tx.Full!, RlpBehaviors.InMempoolForm).Bytes;
             contentLength += Rlp.LengthOf(entries[i]);
         }
 

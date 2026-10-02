@@ -12,8 +12,8 @@ namespace Nethermind.Optimism;
 
 public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => SealEngineType;
-    public string? SealEngineType => Core.SealEngineType.Optimism;
+    public string EngineName => SealEngineType;
+    public string SealEngineType => Core.SealEngineType.Optimism;
 
     public ulong? RegolithTimestamp { get; set; }
 

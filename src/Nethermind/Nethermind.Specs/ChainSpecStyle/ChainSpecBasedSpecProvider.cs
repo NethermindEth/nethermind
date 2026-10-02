@@ -129,7 +129,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
             _forkAware = ForkAwareForChain(_chainSpec.ChainId);
 
-            if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
+            if (_chainSpec.Parameters.TerminalTotalDifficulty?.IsZero == true)
+            {
+                MergeBlockNumber = (ForkActivation)0;
+            }
+            else if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
                 MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPoWBlockNumber.Value + 1);
             }
@@ -338,7 +342,10 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip8038Enabled = (chainSpec.Parameters.Eip8038TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8282Enabled = (chainSpec.Parameters.Eip8282TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8141Enabled = (chainSpec.Parameters.Eip8141TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.IsEip8288Enabled = (chainSpec.Parameters.Eip8288TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip8288Enabled = releaseSpec.IsEip8141Enabled && (chainSpec.Parameters.Eip8288TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip8250Enabled = (chainSpec.Parameters.Eip8250TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip8272Enabled = (chainSpec.Parameters.Eip8272TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip7906Enabled = (chainSpec.Parameters.Eip7906TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && BlockOf(chainSpec.Parameters.Eip1559FeeCollectorTransition) <= block;
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -359,6 +366,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7708Enabled = (chainSpec.Parameters.Eip7708TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip7954Enabled = (chainSpec.Parameters.Eip7954TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
+            releaseSpec.IsEip7805Enabled = (chainSpec.Parameters.Eip7805TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             if (releaseSpec.IsEip7954Enabled)
             {

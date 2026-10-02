@@ -133,6 +133,22 @@ public class BlockAccessListStore : IBlockAccessListStore
         }
     }
 
+    /// <summary>Drops every access list in <c>[fromInclusive, toExclusive)</c> in one operation, draining the
+    /// deferred overlay for the range under its own lock so a queued write cannot resurrect one.</summary>
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive)
+    {
+        if (_pending is not null)
+        {
+            _pending.RemoveRange(fromInclusive, toExclusive, () => _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list"));
+        }
+        else
+        {
+            _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list");
+        }
+
+        _balDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+    }
+
     [SkipLocalsInit]
     private void Remove(ulong blockNumber, Hash256 blockHash)
     {

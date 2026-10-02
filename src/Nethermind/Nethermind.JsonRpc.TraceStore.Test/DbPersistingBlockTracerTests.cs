@@ -108,10 +108,8 @@ public class DbPersistingBlockTracerTests
         Assert.That(JToken.Parse(serializer.Serialize(traces)), Is.EqualTo(JToken.Parse(serializer.Serialize(expected))).Using(JToken.EqualityComparer));
     }
 
-    [TestCase(510)]
-    [TestCase(1020)]
-    [TestCase(1500)]
-    public void check_depth(int depth)
+    [Test]
+    public void check_depth([Values(510, 1020, 1500)] int depth)
     {
         // ParityTraceActionConverter.Read() recurses per nesting level during STJ deserialization.
         // Windows default 1MB stack overflows at ~600 depth, so run on a thread with 4MB stack.

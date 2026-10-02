@@ -23,14 +23,24 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
 
         int txCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         List<Transaction> transactions = [];
+        int transactionBytes = 0;
         while (decoderContext.Position < txCheck)
         {
-            transactions.Add(Rlp.Decode<Transaction>(decoderContext.DecodeByteArray()));
+            if (transactions.Count >= Eip7805Constants.MaxAggregateInclusionListTransactions)
+                throw new RlpException("Too many inclusion-list transactions");
+            byte[] encoded = decoderContext.DecodeByteArray(RlpLimit.For<FocilInclusionList>(
+                Eip7805Constants.MaxAggregateInclusionListBytes, nameof(FocilInclusionList.Transactions)));
+            transactionBytes += encoded.Length;
+            if (transactionBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
+                throw new RlpException("Inclusion-list transactions exceed the aggregate byte limit");
+            transactions.Add(TxDecoder.Instance.DecodeCompleteNotNull(encoded));
         }
 
-        decoderContext.ReadSequenceLength();
-        byte[] starkProof = decoderContext.DecodeByteArray();
+        decoderContext.Check(txCheck);
+        int proofCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+        byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(RecursiveStark.StarkProof)));
         Hash256 depsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
+        decoderContext.Check(proofCheck);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {

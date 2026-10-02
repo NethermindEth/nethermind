@@ -90,6 +90,43 @@ public class SyncStatusListTests
     }
 
     [Test]
+    public void Transiently_unresolvable_block_is_retried_instead_of_orphaned_in_sent()
+    {
+        const ulong unsettled = 95;
+        bool settled = false;
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>())
+            .Returns(ci =>
+            {
+                ulong blockNumber = ci.ArgAt<ulong>(0);
+                return blockNumber == unsettled && !settled
+                    ? null
+                    : new BlockInfo(TestItem.KeccakA, 0) { BlockNumber = blockNumber };
+            });
+
+        SyncStatusList syncStatusList = new(blockTree, 100, null, 90);
+
+        List<ulong> GetAndInsert()
+        {
+            syncStatusList.TryGetInfosForBatch(50, new AlwaysDownloadStrategy(), out BlockInfo?[] infos);
+            List<ulong> numbers = [.. infos.Where(static bi => bi is not null).Select(static bi => bi!.BlockNumber)];
+            foreach (ulong number in numbers)
+            {
+                syncStatusList.MarkInserted(number);
+            }
+            return numbers;
+        }
+
+        Assert.That(GetAndInsert(), Does.Not.Contain(unsettled));
+        settled = true;
+        Assert.That(GetAndInsert(), Does.Contain(unsettled));
+
+        syncStatusList.TryGetInfosForBatch(50, new AlwaysDownloadStrategy(), out _);
+        Assert.That(syncStatusList.LowestInsertWithoutGaps, Is.LessThan(unsettled));
+    }
+
+    [Test]
     public void Can_read_back_all_parallel_set_values()
     {
         const long length = 4096;

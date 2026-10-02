@@ -22,7 +22,7 @@ public class TxSealerTests
         {
             Type = TxType.FrameTx,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
             FrameSignatures = [],
         };
 

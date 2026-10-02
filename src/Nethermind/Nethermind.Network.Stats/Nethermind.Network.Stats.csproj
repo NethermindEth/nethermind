@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <Nullable>enable</Nullable>
     <RootNamespace>Nethermind.Stats</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Network.Discovery" />
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />

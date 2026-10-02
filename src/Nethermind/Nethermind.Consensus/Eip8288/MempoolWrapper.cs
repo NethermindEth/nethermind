@@ -32,7 +32,7 @@ public sealed class MempoolWrapper
     public required IReadOnlyList<WrapperTransaction> Transactions { get; init; }
     public required byte Mode { get; init; }
 
-    /// <summary>Concatenated dependencies of all wrapped transactions (both modes).</summary>
+    /// <summary>Sorted, deduplicated union of wrapped transaction dependencies.</summary>
     public required IReadOnlyList<FrameDependency> Deps { get; init; }
 
     /// <summary>Mode 0: one proof per dependency in <see cref="Deps"/>.</summary>

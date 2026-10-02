@@ -13,12 +13,19 @@ namespace Nethermind.Core;
 public static class Eip8288Constants
 {
     /// <summary>Frame mode of a dependency-verification frame (in addition to the EIP-8141 modes).</summary>
-    public const byte DepVerifyFrameMode = 3;
+    // EIP-8288 drafts use 3, already allocated to EIP-7906 POST_TX in this prototype.
+    public const byte DepVerifyFrameMode = 4;
 
     /// <summary>A dependency triple is <c>scheme (32B, big-endian) || data_hash (32B) || verification_key (32B)</c>.</summary>
     public const int DependencyTripleLength = 96;
 
     public const int MaxDependenciesPerFrame = 256;
+
+    /// <summary>Maximum distinct dependencies covered by the prototype native proof envelope.</summary>
+    public const int MaxProofDependencies = 4096;
+
+    /// <summary>Maximum encoded native witness or recursive proof size.</summary>
+    public const int MaxProofBytes = 8 * 1024 * 1024;
 
     public const byte LeanSphincsScheme = 0x10;
     public const byte LeanStarkScheme = 0x11;
@@ -35,11 +42,8 @@ public static class Eip8288Constants
     public const int MaxLeanSigDepsPerWrapper = 16;
     public const int MaxLeanStarkDepsPerWrapper = 1;
 
-    /// <summary>
-    /// Protocol-level verification key for the block-level recursive STARK. The spec marks it
-    /// <c>TBD</c> (derived from the finalized Lean Ethereum STARK circuit); a placeholder until then.
-    /// </summary>
+    /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = new byte[32];
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("e7460b4eab9119fe4a008be144aa1a5d465c8919ec9dcc52f5146a75049be45e");
 }

@@ -56,14 +56,14 @@ public sealed class WitnessHeaderRecorder
         ArrayPoolList<byte[]> headers = new(capacity: count, count);
         try
         {
-            headers[index--] = _decoder.Encode(parentHeader).Bytes;
+            headers[index--] = _decoder.EncodeAsBytes(parentHeader);
 
             for (ulong i = parentHeader.Number - 1; index >= 0; i--)
             {
                 currentHash = parentHeader.ParentHash!;
                 parentHeader = finder.Get(currentHash, i)
                     ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
-                headers[index--] = _decoder.Encode(parentHeader).Bytes;
+                headers[index--] = _decoder.EncodeAsBytes(parentHeader);
                 if (i == 0) break;
             }
 

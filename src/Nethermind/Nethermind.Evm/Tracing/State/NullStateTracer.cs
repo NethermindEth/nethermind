@@ -20,16 +20,13 @@ public class NullStateTracer : IWorldStateTracer
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         => throw new InvalidOperationException(ErrorMessage);
 
-    public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
         => throw new InvalidOperationException(ErrorMessage);
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         => throw new InvalidOperationException(ErrorMessage);
 
     public void ReportAccountRead(Address address)
-        => throw new InvalidOperationException(ErrorMessage);
-
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         => throw new InvalidOperationException(ErrorMessage);
 
     public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)

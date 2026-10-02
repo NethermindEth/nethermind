@@ -25,6 +25,16 @@ public class EthereumEcdsa(ulong chainId) : Ecdsa, IEthereumEcdsa
         return success ? PublicKey.ComputeAddress(publicKey[1..]) : null;
     }
 
+    /// <summary>Recovers the signer's SEC1 uncompressed public key, <c>0x04</c> prefix included.</summary>
+    /// <remarks>Named apart from <see cref="RecoverAddressRaw"/> because the zkVM build recovers into a 64-byte
+    /// buffer and has to add the prefix itself; callers that want one shape across both builds use this.</remarks>
+    public static bool RecoverPublicKeyRaw(
+        ReadOnlySpan<byte> signature64,
+        byte recoveryId,
+        ReadOnlySpan<byte> message,
+        Span<byte> publicKey65) =>
+        RecoverAddressRaw(signature64, recoveryId, message, publicKey65);
+
     public static bool RecoverAddressRaw(
         ReadOnlySpan<byte> signature64,
         byte recoveryId,

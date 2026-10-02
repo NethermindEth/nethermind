@@ -3,12 +3,11 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -191,6 +190,30 @@ public class BlockAccessListValidationIndexTests
         });
     }
 
+    [Test]
+    public void Disabling_read_tracking_preserves_write_validation([Values] bool trackStorageReads, [Values] bool incorrectWrite)
+    {
+        ReadOnlyBlockAccessList suggested = Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+            .WithStorageReads(1)
+            .WithStorageChanges(3, new StorageChange(1, 7u))
+            .WithStorageChanges(2, new StorageChange(1, 5u)).TestObject);
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, 1, _addressIndex);
+        using BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex,
+            suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads);
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        slice.AddStorageChange(TestItem.AddressA, 3, before: 0, after: incorrectWrite ? 8u : 7u);
+        slice.AddStorageChange(TestItem.AddressA, 2, before: 0, after: 5);
+        generatedIndex.Add(slice);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.EqualTo(!incorrectWrite));
+            Assert.That(generatedIndex.FindStructuralMismatch(suggested, out _, out _), Is.EqualTo(trackStorageReads
+                ? BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
+                : BlockAccessListValidationIndex.StructuralMismatchKind.None));
+        }
+    }
+
     private BlockAccessListValidationIndex BuildPair(
         ReadOnlyBlockAccessList suggested,
         ReadOnlyBlockAccessList generated,
@@ -210,12 +233,12 @@ public class BlockAccessListValidationIndexTests
             foreach (NonceChange nc in acc.NonceChanges)
                 GetSlice(slicesByIndex, nc.Index).AddNonceChange(acc.Address, nc.Value);
             foreach (CodeChange cc in acc.CodeChanges)
-                GetSlice(slicesByIndex, cc.Index).AddCodeChange(acc.Address, before: [], after: cc.Code);
+                GetSlice(slicesByIndex, cc.Index).AddCodeChange(acc.Address, before: Array.Empty<byte>(), after: cc.Code);
             foreach (ReadOnlySlotChanges slot in acc.StorageChanges)
             {
                 foreach (StorageChange ch in slot.Changes)
                 {
-                    UInt256 value = ToUInt256(ch.Value);
+                    UInt256 value = ch.Value;
                     GetSlice(slicesByIndex, ch.Index).AddStorageChange(acc.Address, slot.Key, before: value + UInt256.One, after: value);
                 }
             }
@@ -231,12 +254,6 @@ public class BlockAccessListValidationIndexTests
                 slices[index] = slice;
             }
             return slice;
-        }
-
-        static UInt256 ToUInt256(EvmWord beValue)
-        {
-            EvmWord leBytes = beValue.ByteSwap();
-            return Unsafe.As<EvmWord, UInt256>(ref leBytes);
         }
     }
 
