@@ -66,7 +66,7 @@ public class OptimismCLP2P : IDisposable
         _logger = logManager.GetClassLogger<OptimismCLP2P>();
         _config = config;
         _executionEngineManager = executionEngineManager;
-        _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
+        _staticPeerList = [.. staticPeerList.Select(ParseStaticPeer)];
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
         _ipResolver = ipResolver;
 
@@ -305,6 +305,26 @@ public class OptimismCLP2P : IDisposable
             return false;
         }
         return true;
+    }
+
+    /// <summary>Decodes a static peer the static peer check can dial.</summary>
+    /// <exception cref="InvalidConfigurationException"><paramref name="node"/> does not decode or is not an IP or DNS host, TCP port and peer id.</exception>
+    internal static Multiaddress ParseStaticPeer(string node)
+    {
+        Multiaddress? address = null;
+        try
+        {
+            address = Multiaddress.Decode(node);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+        }
+
+        return address is not null && StaticPeerKeeper.CanDial(address)
+            ? address
+            : throw new InvalidConfigurationException(
+                $"Optimism CL static peer '{node}' must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>; /dnsaddr is not supported.",
+                ExitCodes.ForbiddenOptionValue);
     }
 
     public async Task Run(CancellationToken token)
