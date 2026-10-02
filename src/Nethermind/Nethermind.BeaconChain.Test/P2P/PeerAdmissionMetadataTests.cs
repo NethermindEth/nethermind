@@ -67,7 +67,7 @@ public class PeerAdmissionMetadataTests
         Node other = CreateNode();
         SetMatchingStatus(client, other);
         client.Config.MaxConcurrentOutboundDials = 1;
-        // Answers identify and status like a beacon node but does not list the metadata protocol, which the pinned multistream leaves unanswered.
+        // Answers identify and status like a beacon node but not metadata: its na leaves our metadata request waiting for its bound.
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
             new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
 
