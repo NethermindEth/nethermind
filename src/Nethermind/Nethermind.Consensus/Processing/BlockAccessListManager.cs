@@ -279,6 +279,10 @@ public partial class BlockAccessListManager(
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
+        if (_sequentialTxProcessorWithWorldStateManager.IsValueCreated)
+        {
+            _sequentialTxProcessorWithWorldStateManager.Value.Dispose();
+        }
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
     }

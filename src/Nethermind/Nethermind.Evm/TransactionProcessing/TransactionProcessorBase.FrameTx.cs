@@ -223,7 +223,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.MaxFeePerBlobGas.GetValueOrDefault(),
             WorldState.GetNonce(sender),
             tx.RecentRootReferences,
-            tx.NonceKeys);
+            tx.NonceKeys)
+        {
+            SkipFeeReservation = opts.HasFlag(ExecutionOptions.FrameGasEstimation) && opts.HasFlag(ExecutionOptions.Restore)
+        };
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         ulong totalFrameGasUsed = 0;
@@ -518,7 +521,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong stateGasCorrectionApplied = (ulong)Math.Max(0, stateGasCorrection);
         ulong grossGas = grossGasBeforeCorrection > stateGasCorrectionApplied ? grossGasBeforeCorrection - stateGasCorrectionApplied : 0;
         Debug.Assert(refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
-        ulong gasAfterRefund = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)Math.Max(0, refundCounter), spec);
+        ulong gasRefund = RefundHelper.CalculateClaimableRefund(grossGas, (ulong)Math.Max(0, refundCounter), spec);
+        ulong gasAfterRefund = grossGas - gasRefund;
         ulong blockStateGas = (ulong)Math.Max(0, totalFrameStateGasUsed - stateGasCorrection);
         // EIP-7778: the payer pays the post-refund execution dimension, but the block counts it before the refund.
         ulong payerRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(gasAfterRefund, blockStateGas, floorGas);
@@ -536,7 +540,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // and blob legs. Both legs are bounded by max_cost, so the subtraction cannot underflow.
         UInt256 spentCost = (UInt256)spentGas * effectiveGasPrice;
         UInt256 chargedCost = spentCost + blobFee;
-        if (maxCost > chargedCost)
+        if (!frameContext.SkipFeeReservation && maxCost > chargedCost)
         {
             WorldState.AddToBalance(payer, maxCost - chargedCost, spec);
         }
@@ -593,7 +597,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             frameReceiptTracer?.ReportFrameTxReceipt(payer, frameReceipts);
 
-            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
+            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, blockRegularGas + blockStateGas, gasRefund);
             if (postTxReverted)
             {
                 // The failed receipt rebuilds the log set from the frame receipts reported above.
@@ -874,12 +878,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
             }
 
-            // Read only once the access is paid for. EIP-7702: a precompile must not execute via delegation,
-            // asked of the repository because that is what dispatches: a state override can move a precompile.
+            // Read only once the access is paid for.
             WorldState.AddAccountRead(delegation);
-            codeInfo = _codeInfoRepository.GetPrecompile(delegation, spec) is not null
-                ? CodeInfo.Empty
-                : _codeInfoRepository.GetCachedCodeInfoNoDelegation(delegation, spec);
+            codeInfo = _codeInfoRepository.GetDelegatedCodeInfo(delegation, spec);
         }
 
         ReadOnlyMemory<byte> inputData = frame.Data;

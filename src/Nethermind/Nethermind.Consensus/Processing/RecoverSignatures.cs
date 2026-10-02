@@ -160,6 +160,7 @@ namespace Nethermind.Consensus.Processing
             if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
                 return;
 
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
             if (txs.Length > 3)
             {
                 ParallelUnbalancedWork.For(
@@ -253,8 +254,14 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec) : IThreadPoolWorkItem, ISenderRecoveryProgress
         {
+            /// <summary>
+            /// Half the processors. The recovery runs on into block processing, whose prewarmer and parallel root work
+            /// want the other half; a recovery that takes every worker finishes sooner but slows the block by more.
+            /// </summary>
+            private static readonly int Workers = Math.Max(1, Environment.ProcessorCount / 2);
+
             private readonly object _gate = new();
-            private readonly int _progressBatch = Math.Max(1, txs.Length / (ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism * ProgressPublicationsPerWorker));
+            private readonly int _progressBatch = Math.Max(1, txs.Length / (Workers * ProgressPublicationsPerWorker));
             private int _recovered;
             private volatile bool _completed;
 
@@ -275,6 +282,7 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Workers);
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)

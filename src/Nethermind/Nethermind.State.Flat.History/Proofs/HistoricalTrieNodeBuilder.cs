@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -81,18 +82,15 @@ internal sealed class HistoricalTrieNodeBuilder
 
     public static void Prefetch(IReadOnlyList<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work, ParallelOptions options)
     {
-        try
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(
+            options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount);
+        ParallelUnbalancedWork.For(0, work.Count, options, work, static (i, items) =>
         {
-            Parallel.ForEach(work, options, static item =>
-            {
-                byte[]? rlp = item.Builder.ResolveRlp(item.Path, parallelChildren: item.Path.Length == 0 && item.Builder._fanOut > 1, allowRebuild: false);
-                if (rlp is not null) item.Builder._prefetched![item.Path] = rlp;
-            });
-        }
-        catch (AggregateException e)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.Flatten().InnerExceptions[0]).Throw();
-        }
+            (HistoricalTrieNodeBuilder Builder, TreePath Path) item = items[i];
+            byte[]? rlp = item.Builder.ResolveRlp(item.Path, parallelChildren: item.Path.Length == 0 && item.Builder._fanOut > 1, allowRebuild: false);
+            if (rlp is not null) item.Builder._prefetched![item.Path] = rlp;
+            return items;
+        });
     }
 
     private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, bool allowRebuild = true) => ResolveRlp(path, parallelChildren, out _, allowRebuild);
@@ -213,14 +211,8 @@ internal sealed class HistoricalTrieNodeBuilder
 
     private void RunFanOut(Action<int> child)
     {
-        try
-        {
-            Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
-        }
-        catch (AggregateException e)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.Flatten().InnerExceptions[0]).Throw();
-        }
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Math.Max(1, _fanOut));
+        ParallelUnbalancedWork.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
     }
 
     private byte[]? Compose(in TreePath path, bool parallelChildren, bool allowRebuild)

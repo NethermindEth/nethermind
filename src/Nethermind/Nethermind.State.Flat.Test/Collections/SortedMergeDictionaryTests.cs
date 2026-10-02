@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using Nethermind.Core.Test;
 using Nethermind.State.Flat.Collections;
 using NUnit.Framework;
 
@@ -140,7 +141,7 @@ public class SortedMergeDictionaryTests
         {
             using SortedMergeDictionary<int, int> typed = new();
             typed.BuildFromMerge(sources.Select(static source => source.AsRun()).ToArray(), Cmp, default(RandomizedKeep));
-            Assert.That(typed.ToArray(), Is.EqualTo(merged.ToArray()));
+            Assert.That(typed, Is.SequenceEqualTo(merged));
         }
 
         Assert.That(merged.Count, Is.EqualTo(reference.Count));
@@ -188,7 +189,7 @@ public class SortedMergeDictionaryTests
             new(4, 30),
             new(5, 30),
         ];
-        Assert.That(actual.ToArray(), Is.EqualTo(expectedEntries));
+        Assert.That(actual, Is.SequenceEqualTo(expectedEntries));
     }
 
     [Test]

@@ -874,6 +874,12 @@ public class Eth72ProtocolHandler(
 
             while (currentIdx < transactionsSpan.Length)
             {
+                // A disconnect requested by an earlier transaction (e.g. an invalid one) ends the message here.
+                if (Session.IsClosing)
+                {
+                    return ValueTask.CompletedTask;
+                }
+
                 if (cancellationToken.IsCancellationRequested)
                 {
                     if (currentIdx == request.StartIndex)

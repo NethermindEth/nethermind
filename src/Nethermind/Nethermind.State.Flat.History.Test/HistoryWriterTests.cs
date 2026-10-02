@@ -10,6 +10,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -101,7 +102,7 @@ public class HistoryWriterTests
                     Assert.That(written, Is.EqualTo(0));
                     break;
                 default:
-                    Assert.That(buffer[..written].ToArray(), Is.EqualTo(EncodedAccount(new Account(readBlock, balance))));
+                    Assert.That(buffer[..written], Is.SequenceEqualTo(EncodedAccount(new Account(readBlock, balance))));
                     break;
             }
         }
@@ -255,7 +256,7 @@ public class HistoryWriterTests
             else
             {
                 Assert.That(written, Is.GreaterThan(0));
-                Assert.That(buffer[..written].ToArray(), Is.EqualTo(EncodedSlot(Convert.FromHexString(expectedHex))));
+                Assert.That(buffer[..written], Is.SequenceEqualTo(EncodedSlot(Convert.FromHexString(expectedHex))));
             }
         }
     }
@@ -497,9 +498,9 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(restarted.LastCapturedBlock, Is.EqualTo(3));
-            Assert.That(buffer[.._accountHistory.TryGetAt(1, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock1)));
-            Assert.That(buffer[.._accountHistory.TryGetAt(2, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock2)));
-            Assert.That(buffer[.._accountHistory.TryGetAt(3, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock3)));
+            Assert.That(buffer[.._accountHistory.TryGetAt(1, flatKey, buffer)], Is.SequenceEqualTo(EncodedAccount(atBlock1)));
+            Assert.That(buffer[.._accountHistory.TryGetAt(2, flatKey, buffer)], Is.SequenceEqualTo(EncodedAccount(atBlock2)));
+            Assert.That(buffer[.._accountHistory.TryGetAt(3, flatKey, buffer)], Is.SequenceEqualTo(EncodedAccount(atBlock3)));
         }
     }
 

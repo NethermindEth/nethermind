@@ -81,7 +81,7 @@ public class ColumnsDbTests
         {
             using ISortedView view = store.GetViewBetween([1], [3], ReadFlags.HintReadAhead);
             Assert.That(view.MoveNext(), Is.True);
-            Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(new byte[] { 2 }));
+            Assert.That(view.CurrentValue, Is.SequenceEqualTo(new byte[] { 2 }));
         }
     }
 

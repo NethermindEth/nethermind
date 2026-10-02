@@ -187,7 +187,7 @@ public class HistoryRowScannerTests
             Assert.That(reader.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo(commit ? new UInt256(123) : (UInt256?)null));
             Assert.That(slot, Is.EqualTo(commit ? new UInt256(99) : UInt256.Zero));
             Assert.That(code.GetAllKeys(), Is.Empty, "scratch code must not leak into the live code database");
-            if (commit) Assert.That(reopened.GetCode(codeHash).ToArray(), Is.EqualTo(bytecode));
+            if (commit) Assert.That(reopened.GetCode(codeHash), Is.SequenceEqualTo(bytecode));
             else Assert.Throws<InvalidDataException>(() => reopened.GetCode(codeHash));
         }
     }
@@ -670,11 +670,11 @@ public class HistoryRowScannerTests
         else
             Assert.Throws<IOException>(() => scanner.ReadPage(cursor, 1, fail, cancellation.Token));
 
-        Assert.That(cursor.Key.ToArray(), Is.EqualTo(original), "failure must not mutate the caller's durable checkpoint");
+        Assert.That(cursor.Key, Is.SequenceEqualTo(original), "failure must not mutate the caller's durable checkpoint");
         int replayed = 0;
         HistoricalStateScan.Page retry = scanner.ReadPage(cursor, 2, (_, _, value) =>
         {
-            Assert.That(value.ToArray(), Is.EqualTo(new byte[] { 2 }), "retry must not skip the staged but uncommitted row");
+            Assert.That(value, Is.SequenceEqualTo(new byte[] { 2 }), "retry must not skip the staged but uncommitted row");
             replayed++;
         }, CancellationToken.None);
         using (Assert.EnterMultipleScope())
