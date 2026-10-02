@@ -81,6 +81,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     private CancellationTokenSource? _startCts;
     private PubsubRouter? _router;
     private GossipTopicSubscriptions? _gossipSubscriptions;
+    private DeferredGossipValidation? _deferredValidation;
 
     /// <summary>The per-session facts <see cref="PeerManager"/> cannot read off an <see cref="ISession"/>.
     /// <paramref name="AgentVersion"/> is <c>null</c> only when the peer's identify answer carries none
@@ -105,6 +106,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         SlotClock? clock = null,
         Lazy<IBeaconSyncPeerPool>? peerPool = null)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidations, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidations));
+        ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidationBytes, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidationBytes));
         _config = config;
         _peerPool = peerPool;
         _messageValidator = messageValidator;
@@ -165,7 +168,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 AgentVersion = ClientAgentVersion,
             })
             // The eth2 gossipsub parameters (consensus-specs p2p-interface "The gossip domain: gossipsub").
-            .AddSingleton(UnscoredGossip.Configure(new PubsubSettings
+            .AddSingleton(GossipScoring.Configure(new PubsubSettings
             {
                 DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
                 GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
@@ -186,7 +189,10 @@ public sealed class BeaconP2P : IAsyncDisposable
                 ReconnectionPeriod = System.Threading.Timeout.Infinite,
                 // fulu/das-core.md "Reconstruction and cross-seeding": this node publishes only reconstructed columns, which go to the topic mesh neighbors.
                 FloodPublish = false,
-            }, ScheduledTopics(spec)))
+                // DeferredGossipValidation throttles at the configured bounds first; its byte count leaves out the messages of the RPC being read.
+                MaxPendingValidationMessages = config.GossipMaxPendingValidations,
+                MaxPendingValidationBytes = config.GossipMaxPendingValidationBytes + Eth2MessageId.MaxMessageSize,
+            }, ScheduledTopics(spec), spec))
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
     }
@@ -200,8 +206,8 @@ public sealed class BeaconP2P : IAsyncDisposable
             + (ulong)(GossipTopics.SubscribedTopicNames.Length + GossipTopics.GloasTopicNames.Length)) * spec.SlotsPerEpoch * 2));
 
     /// <summary>Every topic this node can subscribe, of every scheduled fork digest.</summary>
-    /// <remarks>This node returns <see cref="MessageValidity.Ignored"/> for gossip it consumes, so a delivery score would count each honest mesh peer
-    /// as under-delivering; <see cref="UnscoredGossip"/> gives these topics zero weight before the router starts.</remarks>
+    /// <remarks>A topic missing from the score table gets the library's default delivery score, which prunes honest peers of a sparse topic;
+    /// <see cref="GossipScoring"/> gives these topics their parameters before the router starts.</remarks>
     internal static IEnumerable<string> ScheduledTopics(BeaconChainSpec spec)
     {
         string[] names =
@@ -275,8 +281,12 @@ public sealed class BeaconP2P : IAsyncDisposable
             _router = _serviceProvider.GetRequiredService<PubsubRouter>();
             if (_messageValidator is not null)
             {
-                _gossipSubscriptions = new GossipTopicSubscriptions(_router, _messageValidator.Verify);
+                PubsubSettings settings = _serviceProvider.GetRequiredService<PubsubSettings>();
+                _deferredValidation = new DeferredGossipValidation(_router, _messageValidator, _config.GossipMaxPendingValidations, _config.GossipMaxPendingValidationBytes,
+                    settings.PendingValidationTimeout, _logger, _startCts.Token);
+                _gossipSubscriptions = new GossipTopicSubscriptions(_router, _deferredValidation.Verify);
                 _router.VerifyMessage = _gossipSubscriptions.Verify;
+                _router.OnDeferredMessage = _deferredValidation.ValidateAsync;
             }
 
             await _router.StartAsync(_localPeer, _startCts.Token);
@@ -382,6 +392,9 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Internal so a test can see which peers the started router holds a gossip connection to.</summary>
     internal IRoutingStateContainer? RoutingStateForTest => _router;
+
+    /// <summary>Internal so a test can see the deferred validation installed on the started router.</summary>
+    internal DeferredGossipValidation? DeferredValidationForTest => _deferredValidation;
 
     /// <summary>Internal so a test can see the validator installed on the started router; without it the node forwards every message unchecked.</summary>
     internal Func<PeerId, Libp2p.Protocols.Pubsub.Dto.Message, MessageValidity>? VerifyMessageForTest => _router?.VerifyMessage;

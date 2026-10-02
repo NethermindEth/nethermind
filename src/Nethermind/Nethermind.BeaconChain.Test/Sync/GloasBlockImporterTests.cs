@@ -362,7 +362,7 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block second = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
         Import(importer, first, second);
         GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance);
-        router.PayloadAttestationMessageReceived += vote => importer.OnGossipPayloadAttestation(vote);
+        router.PayloadAttestationMessageReceived += (vote, _) => importer.OnGossipPayloadAttestation(vote);
         ulong member = second.PostState.GetPtc(ForkSlot + 1, chain.Spec).Indices![0];
         PayloadAttestationMessage genuine = PtcVote(second, member, payloadPresent: true);
         const int forgeries = 40;
@@ -396,7 +396,7 @@ public class GloasBlockImporterTests
         Import(importer, first, second);
         GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance);
         int accepted = 0;
-        router.PayloadAttestationMessageReceived += vote =>
+        router.PayloadAttestationMessageReceived += (vote, _) =>
         {
             if (importer.OnGossipPayloadAttestation(vote))
             {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -60,6 +61,14 @@ public class BeaconChainPluginTests
         Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = "/eth2/beacon_block" }), Is.EqualTo(MessageValidity.Rejected));
         Message unknown = new() { Topic = "/eth2/00000000/beacon_blocks/ssz_snappy" };
         Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, unknown), Is.EqualTo(MessageValidity.Rejected));
+        // A message on a handled topic is checked off the router's monitor, and forwarded only once its verdict is given.
+        string blockTopic = GossipTopics.Topic(ForkDigest.Compute(BeaconChainSpec.Mainnet, container.Resolve<SlotClock>().CurrentEpoch), GossipTopics.BeaconBlock);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = blockTopic }), Is.EqualTo(MessageValidity.Deferred));
+            Assert.That(((PubsubRouter)p2p.RoutingStateForTest!).OnDeferredMessage, Is.Not.Null, "a deferred message the router cannot dispatch is dropped");
+        }
+
         ITopic topic = p2p.GetTopic(unknown.Topic);
         topic.Unsubscribe();
         Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = unknown.Topic }), Is.EqualTo(MessageValidity.Throttled));
@@ -86,10 +95,10 @@ public class BeaconChainPluginTests
         Assert.That(p2p.PubsubSettingsForTest.MessageCacheTtl, Is.EqualTo(768_000));
     }
 
-    /// <summary>Every topic of every scheduled fork digest, each column subnet included, carries zero score weight before the router starts.</summary>
-    /// <remarks>A topic missing from the table gets the library's default delivery score, which prunes honest peers of a topic this node only consumes.</remarks>
+    /// <summary>Every topic of every scheduled fork digest, each column subnet included, scores only invalid deliveries before the router starts.</summary>
+    /// <remarks>A topic missing from the table gets the library's default delivery score, which prunes honest peers of a sparse topic.</remarks>
     [Test]
-    public async Task Gossipsub_scores_no_topic_of_any_scheduled_fork_digest()
+    public async Task Gossipsub_scores_only_invalid_deliveries_on_every_topic_of_any_scheduled_fork_digest()
     {
         using IContainer container = BeaconChainTestContainer.Builder().Build();
         await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
@@ -105,14 +114,36 @@ public class BeaconChainPluginTests
                 names = [.. names, GossipTopics.DataColumnSidecarTopicName(subnet)];
             }
 
-            missing.AddRange(names.Select(name => GossipTopics.Topic(digest, name)).Where(topic => scores.GetValueOrDefault(topic)?.TopicWeight != 0));
+            missing.AddRange(names.Select(name => GossipTopics.Topic(digest, name)).Where(topic => scores.GetValueOrDefault(topic) is not
+            {
+                TopicWeight: 1, TimeInMeshWeight: 0, FirstMessageDeliveriesWeight: 0, MeshMessageDeliveriesWeight: 0, MeshFailurePenaltyWeight: 0,
+                InvalidMessageDeliveriesWeight: GossipScoring.InvalidMessageDeliveriesWeight,
+            }));
         }
 
+        PubsubSettings settings = p2p.PubsubSettingsForTest;
+        double decay = scores[GossipTopics.Topic(ForkDigest.Compute(spec, 0), GossipTopics.BeaconBlock)].InvalidMessageDeliveriesDecay;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(missing, Is.Empty);
-            Assert.That(p2p.PubsubSettingsForTest.BehaviorPenaltyWeight, Is.Zero);
+            Assert.That((settings.BehaviorPenaltyWeight, settings.IPColocationFactorWeight, settings.AppSpecificWeight), Is.EqualTo((0d, 0d, 0d)));
+            // One invalid delivery prunes the peer and stops gossip and publication to it, a second graylists it.
+            Assert.That(settings.PublishThreshold, Is.GreaterThan(GossipScoring.InvalidMessageDeliveriesWeight));
+            Assert.That(settings.GraylistThreshold, Is.LessThanOrEqualTo(GossipScoring.InvalidMessageDeliveriesWeight).And.GreaterThan(4 * GossipScoring.InvalidMessageDeliveriesWeight));
+            // The count decays to a hundredth over two epochs: 768 decays of one second on mainnet.
+            Assert.That(Math.Pow(decay, 768), Is.EqualTo(0.01).Within(1e-9));
         }
+    }
+
+    /// <summary>The pending validation bounds come from the config; the router's byte bound leaves room for the RPC being read, which the node's own count excludes.</summary>
+    [Test]
+    public async Task Gossipsub_pending_validation_bounds_follow_the_config()
+    {
+        using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { GossipMaxPendingValidations = 7, GossipMaxPendingValidationBytes = 1000 }).Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+        PubsubSettings settings = p2p.PubsubSettingsForTest;
+
+        Assert.That((settings.MaxPendingValidationMessages, settings.MaxPendingValidationBytes), Is.EqualTo((7, 1000 + 12_234_442)));
     }
 
     /// <summary>fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column goes to the topic mesh neighbors, not to every peer subscribed to the topic.</summary>

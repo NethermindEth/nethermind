@@ -56,7 +56,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(SepoliaSlotStart(FirstGloasSlot + 1).AddSeconds(6))), LimboLogs.Instance);
         int received = 0;
-        router.GloasAggregateAndProofReceived += _ => received++;
+        router.GloasAggregateAndProofReceived += (_, _) => received++;
         SignedAggregateAndProofGloas aggregate = GossipMessageValidatorTests.GloasAggregate(FirstGloasSlot + 1);
         aggregate.Message!.Aggregate!.AggregationBits = new BitArray(8 * 4096) { [0] = true };
         byte[] ssz = SignedAggregateAndProofGloas.Encode(aggregate);
@@ -81,7 +81,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
         ulong slot = earlyNextSlot ? CurrentSlot + 1 : CurrentSlot;
         SignedBeaconBlock block = TestChain.CreateBlock(slot, Hash256.Zero);
         block.Message!.Body!.ExecutionPayload!.Timestamp = (ulong)((long)(Spec.GenesisTime + slot * Spec.SecondsPerSlot) + timestampOffset);
@@ -103,7 +103,7 @@ public partial class GossipRouterTests
         if (parentHeld) store.PutForkedBlock(parentRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(wallSlot - 1)));
         GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(SepoliaSlotStart(wallSlot).AddSeconds(6))), LimboLogs.Instance, store);
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
         SignedBeaconBlockGloas block = CreateMinimalGloasBlock(earlyNextSlot ? wallSlot + 1 : wallSlot, parentRoot, bidParentRoot: Keccak.Compute("other parent"));
 
         MessageValidity validity = router.Handle(GossipTopics.BeaconBlock, gloasTopic: true, Snappy.CompressToArray(SignedBeaconBlockGloas.Encode(block)));
@@ -121,7 +121,7 @@ public partial class GossipRouterTests
         ulong slot = earlyNextSlot ? CurrentSlot + 1 : CurrentSlot;
         (GossipRouter router, BeaconChainStore store) = CreateRouterWithStore();
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
         Hash256 parentRoot = Keccak.Compute("parent");
         store.PutBlock(parentRoot, TestChain.CreateBlock((ulong)((long)slot - slotsAboveParent), Hash256.Zero));
 
@@ -136,7 +136,7 @@ public partial class GossipRouterTests
     {
         (GossipRouter router, BeaconChainStore store) = CreateRouterWithStore();
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
         Hash256[] parents = new Hash256[GossipRouter.ParentSlotReadsPerSlot + 1];
         for (int i = 0; i < parents.Length; i++)
         {
@@ -227,7 +227,7 @@ public partial class GossipRouterTests
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot).AddSeconds(6);
         GossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, store);
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
 
         MessageValidity validity = router.HandleBeaconBlock(Snappy.CompressToArray(SignedBeaconBlock.Encode(TestChain.CreateBlock(CurrentSlot, parentRoot))));
 
@@ -257,7 +257,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
         ulong slot = earlyNextSlot ? CurrentSlot + 1 : CurrentSlot;
         SignedBeaconBlock block = TestChain.CreateBlock(slot, Hash256.Zero);
         int maxBlobs = (int)Spec.GetBlobParameters(Spec.GetEpoch(slot))!.Value.MaxBlobsPerBlock;
@@ -281,7 +281,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         int received = 0;
-        router.AggregateAndProofReceived += _ => received++;
+        router.AggregateAndProofReceived += (_, _) => received++;
         SignedAggregateAndProof aggregate = CreateAggregate(earlyNextSlot ? CurrentSlot + 1 : CurrentSlot);
         if (wrongTarget) aggregate.Message!.Aggregate!.Data!.Target!.Epoch++;
         if (noParticipants) aggregate.Message!.Aggregate!.AggregationBits = new BitArray(8);
@@ -301,7 +301,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         int received = 0;
-        router.AttesterSlashingReceived += _ => received++;
+        router.AttesterSlashingReceived += (_, _) => received++;
         router.MarkSlashedIndicesSeen(seen);
         IndexedAttestation first = CreateIndexedAttestation(1, 4);
         IndexedAttestation second = slashable ? CreateIndexedAttestation(2, 3) : CreateIndexedAttestation(5, 6);

@@ -58,7 +58,7 @@ public class GossipMessageValidatorColumnTests
         StringLabel supplied = new(name);
         long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(canonical);
         long suppliedBefore = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(supplied);
-        validator.Verify(Message(GossipTopics.Topic(MainnetDigest, name), []));
+        validator.Validate(Message(GossipTopics.Topic(MainnetDigest, name), []), GossipVerdict.None);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(canonical), Is.EqualTo(before + 1));
@@ -79,7 +79,7 @@ public class GossipMessageValidatorColumnTests
         ulong droppedBefore = Metrics.BeaconChainGossipDropped;
         StringLabel reasonKey = new(reason?.ToString() ?? "unused");
         long reasonBefore = Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(reasonKey);
-        MessageValidity validity = validator.Verify(Message(GossipTopics.Topic(MainnetDigest, GossipTopics.DataColumnSidecarTopicName(Subnet)), Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar))));
+        MessageValidity validity = validator.Validate(Message(GossipTopics.Topic(MainnetDigest, GossipTopics.DataColumnSidecarTopicName(Subnet)), Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar))), GossipVerdict.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -103,7 +103,7 @@ public class GossipMessageValidatorColumnTests
     {
         (GossipMessageValidator validator, GossipRouter gossip, _, _) = CreateMainnet();
 
-        MessageValidity validity = validator.Verify(Message(GossipTopics.Topic(MainnetDigest, name), Snappy.CompressToArray(DataColumnSidecar.Encode(Sidecar()))));
+        MessageValidity validity = validator.Validate(Message(GossipTopics.Topic(MainnetDigest, name), Snappy.CompressToArray(DataColumnSidecar.Encode(Sidecar()))), GossipVerdict.None);
 
         Assert.That((validity, gossip.GetDropCount(GossipDropReason.UnknownTopic)), Is.EqualTo((MessageValidity.Rejected, 1L)));
     }
@@ -115,7 +115,7 @@ public class GossipMessageValidatorColumnTests
         int raised = 0;
         columns.DataColumnSidecarReceived += _ => raised++;
 
-        MessageValidity validity = validator.Verify(Message(GossipTopics.Topic(ForkDigest.Compute(Mainnet, 0), GossipTopics.DataColumnSidecarTopicName(Subnet)), Snappy.CompressToArray(DataColumnSidecar.Encode(Sidecar()))));
+        MessageValidity validity = validator.Validate(Message(GossipTopics.Topic(ForkDigest.Compute(Mainnet, 0), GossipTopics.DataColumnSidecarTopicName(Subnet)), Snappy.CompressToArray(DataColumnSidecar.Encode(Sidecar()))), GossipVerdict.None);
 
         Assert.That((validity, gossip.GetDropCount(GossipDropReason.UnknownTopic), raised), Is.EqualTo((MessageValidity.Ignored, 1L, 0)));
     }
@@ -141,7 +141,7 @@ public class GossipMessageValidatorColumnTests
         GossipMessageValidator validator = new(new GossipRouter(Sepolia, clock, LimboLogs.Instance), columns, Sepolia, clock);
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(Subnet, FirstGloasSlot + 1, root);
 
-        MessageValidity validity = validator.Verify(Message(GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(Subnet)), Snappy.CompressToArray(DataColumnSidecarGloas.Encode(sidecar))));
+        MessageValidity validity = validator.Validate(Message(GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(Subnet)), Snappy.CompressToArray(DataColumnSidecarGloas.Encode(sidecar))), GossipVerdict.None);
 
         using (Assert.EnterMultipleScope())
         {
