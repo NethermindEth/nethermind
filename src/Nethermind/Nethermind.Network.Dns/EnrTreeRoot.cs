@@ -28,7 +28,7 @@ public class EnrTreeRoot : EnrTreeNode
     /// <summary>
     /// Updated each time the tree gets updated.
     /// </summary>
-    public int Sequence { get; set; }
+    public ulong Sequence { get; set; }
 
     /// <summary>
     /// The base64url signature of the tree signer over the root content.
