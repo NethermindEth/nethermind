@@ -95,6 +95,7 @@ public class BranchProcessor(
         {
             NewPayloadTrace.Stamp(NewPayloadTrace.TxsDone);
             NewPayloadTrace.SchedTxsDone();
+            NewPayloadTrace.EndTxs();
             backgroundCancellation?.Cancel();
         }
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
@@ -149,6 +150,7 @@ public class BranchProcessor(
                 {
                     NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneStart);
                     NewPayloadTrace.SchedStart();
+                    NewPayloadTrace.BeginTxs();
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
                     NewPayloadTrace.SchedEnd();
                     NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneEnd);

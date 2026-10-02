@@ -40,6 +40,7 @@ public static class NewPayloadTrace
         public long TxRunNs = -1, TxWaitNs = -1;
         // Major and minor faults and voluntary context switches of the processing thread across the transactions.
         public long MajStart, MinStart, VolStart, Majflt = -1, Minflt = -1, Vol = -1;
+        public readonly long[] Reads = new long[ReadKinds], ReadUs = new long[ReadKinds], Slow = new long[ReadKinds], SlowUs = new long[ReadKinds];
     }
 
     private static bool ReadFaultsAndSwitches(out long majflt, out long minflt, out long voluntary)
@@ -107,6 +108,43 @@ public static class NewPayloadTrace
         }
     }
 
+    // State reads on the processing thread while it executes the block's transactions: count, time, and the slow ones.
+    public const int AccountRead = 0, SlotRead = 1;
+    private const int ReadKinds = 2;
+    [ThreadStatic] private static bool t_inTxs;
+    private static readonly long SlowTicks = Stopwatch.Frequency / 50_000; // 20 µs
+    private static readonly long[] s_reads = new long[ReadKinds], s_readTicks = new long[ReadKinds], s_slow = new long[ReadKinds], s_slowTicks = new long[ReadKinds];
+
+    /// <summary>Whether this thread is the processing thread inside the block's transactions; cheap enough per read.</summary>
+    public static bool InTxs => t_inTxs;
+
+    public static void BeginTxs()
+    {
+        if (!Enabled) return;
+        Array.Clear(s_reads); Array.Clear(s_readTicks); Array.Clear(s_slow); Array.Clear(s_slowTicks);
+        t_inTxs = true;
+    }
+
+    public static void EndTxs()
+    {
+        if (!t_inTxs) return;
+        t_inTxs = false;
+        if (Volatile.Read(ref s_active) is { } record)
+        {
+            for (int i = 0; i < ReadKinds; i++)
+            {
+                record.Reads[i] = s_reads[i]; record.ReadUs[i] = s_readTicks[i] * 1_000_000 / Stopwatch.Frequency;
+                record.Slow[i] = s_slow[i]; record.SlowUs[i] = s_slowTicks[i] * 1_000_000 / Stopwatch.Frequency;
+            }
+        }
+    }
+
+    public static void AddRead(int kind, long ticks)
+    {
+        s_reads[kind]++; s_readTicks[kind] += ticks;
+        if (ticks >= SlowTicks) { s_slow[kind]++; s_slowTicks[kind] += ticks; }
+    }
+
     private static readonly AsyncLocal<Record?> s_request = new();
     private static Record? s_active;
 
@@ -167,6 +205,12 @@ public static class NewPayloadTrace
             .Append(" txmajflt=").Append(record.Majflt < 0 ? "na" : record.Majflt.ToString())
             .Append(" txminflt=").Append(record.Minflt < 0 ? "na" : record.Minflt.ToString())
             .Append(" txvolsw=").Append(record.Vol < 0 ? "na" : record.Vol.ToString());
+        for (int i = 0; i < ReadKinds; i++)
+        {
+            string kind = i == AccountRead ? "acct" : "slot";
+            line.Append(' ').Append(kind).Append("reads=").Append(record.Reads[i]).Append(' ').Append(kind).Append("us=").Append(record.ReadUs[i])
+                .Append(' ').Append(kind).Append("slow=").Append(record.Slow[i]).Append(' ').Append(kind).Append("slowus=").Append(record.SlowUs[i]);
+        }
         Console.Out.WriteLine(line.ToString());
     }
 }

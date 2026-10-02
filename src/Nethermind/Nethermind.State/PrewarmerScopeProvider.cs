@@ -16,6 +16,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using ICodeCache = Nethermind.Evm.ICodeCache;
+using Nethermind.Core.Diagnostics;
 
 namespace Nethermind.State;
 
@@ -253,6 +254,15 @@ public class PrewarmerScopeProvider(
 
         public Account? Get(Address address)
         {
+            if (!NewPayloadTrace.InTxs) return GetCore(address);
+            long start = Stopwatch.GetTimestamp();
+            Account? result = GetCore(address);
+            NewPayloadTrace.AddRead(NewPayloadTrace.AccountRead, Stopwatch.GetTimestamp() - start);
+            return result;
+        }
+
+        private Account? GetCore(Address address)
+        {
             AddressAsKey addressAsKey = address;
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
@@ -388,6 +398,19 @@ public class PrewarmerScopeProvider(
         public Hash256 RootHash => baseStorageTree.RootHash;
 
         public void Get(in UInt256 index, out UInt256 value)
+        {
+            if (!NewPayloadTrace.InTxs)
+            {
+                GetCore(in index, out value);
+                return;
+            }
+
+            long start = Stopwatch.GetTimestamp();
+            GetCore(in index, out value);
+            NewPayloadTrace.AddRead(NewPayloadTrace.SlotRead, Stopwatch.GetTimestamp() - start);
+        }
+
+        private void GetCore(in UInt256 index, out UInt256 value)
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             if (bypassCache)
