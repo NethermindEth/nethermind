@@ -11,11 +11,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
+using Nethermind.Core;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Libp2p;
+using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.P2P;
 using NSubstitute;
 using NUnit.Framework;
@@ -248,22 +251,56 @@ public class OptimismGossipLoopbackTests
 
     /// <summary>A dial still running when its peer is disposed leaves no session open: the library dial outlives its caller's token.</summary>
     [Test]
-    [CancelAfter(60_000)]
+    [CancelAfter(90_000)]
     public async Task A_peer_disposed_during_a_dial_leaves_no_session_open(CancellationToken token)
     {
         await using Host sequencer = await Host.StartAsync(token);
         await using Host node = await Host.StartAsync(token);
-        LocalPeer sequencerPeer = (LocalPeer)sequencer.Peer;
+        await AssertNoSessionAfterShutdownAsync(node.Peer, sequencer, () => node.ShutDownAsync(), token);
+    }
+
+    /// <summary>A dial still running when the CL P2P host shuts down leaves no session open.</summary>
+    [Test]
+    [CancelAfter(90_000)]
+    public async Task A_host_shut_down_during_a_dial_leaves_no_session_open(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token);
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        OptimismCLP2P p2p = new(Substitute.For<IExecutionEngineManager>(), 10, [], new OptimismConfig { ClP2PHost = "127.0.0.1", ClP2PPort = 0 }, Address.Zero,
+            Substitute.For<ITimestamper>(), Substitute.For<IIPResolver>(), LimboLogs.Instance);
+        Task run = p2p.Run(stop.Token);
+        ILocalPeer? peer = null;
+        while ((peer = p2p.LocalPeerForTest) is null || peer.ListenAddresses.Count == 0)
+        {
+            await Task.Delay(50, token);
+        }
+
+        try
+        {
+            // As OptimismCL shuts down: the run token stops the listener, then the host is disposed.
+            await AssertNoSessionAfterShutdownAsync(peer, sequencer, async () => { await stop.CancelAsync(); p2p.Dispose(); }, token);
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await run;
+        }
+    }
+
+    // Starts a dial from dialer, stops waiting for it, shuts down, and checks the session the dial opens at remote is closed.
+    private static async Task AssertNoSessionAfterShutdownAsync(ILocalPeer dialer, Host remote, Func<ValueTask> shutdown, CancellationToken token)
+    {
+        LocalPeer remotePeer = (LocalPeer)remote.Peer;
         TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        sequencerPeer.Sessions.CollectionChanged += (_, change) =>
+        remotePeer.Sessions.CollectionChanged += (_, change) =>
         {
             if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
         };
         using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task<ISession> dial = node.Peer.DialAsync(sequencer.Address, abandoned.Token);
+        Task<ISession> dial = dialer.DialAsync(remote.Address, abandoned.Token);
 
         await abandoned.CancelAsync();
-        await node.Peer.DisposeAsync();
+        await shutdown();
         try
         {
             await dial;
@@ -275,15 +312,16 @@ public class OptimismGossipLoopbackTests
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
         Assert.That(dial.IsCanceled, Is.True, "fixture: the caller stopped waiting before the dial finished");
 
-        // A closed session leaves within milliseconds; a session left open survives well past this bound.
+        // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
+        // a session left open was still open after 40 s.
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
-        bounded.CancelAfter(TimeSpan.FromSeconds(3));
-        while (sequencerPeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
+        bounded.CancelAfter(TimeSpan.FromSeconds(45));
+        while (remotePeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
         {
             await Task.Delay(50, CancellationToken.None);
         }
 
-        Assert.That(sequencerPeer.Sessions, Is.Empty, "the dial finished after disposal and its session stayed open");
+        Assert.That(remotePeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
     }
 
     /// <summary>A connected peer whose stored addresses were replaced by a set of two peer ids is still dialed by its existing session.</summary>
@@ -335,7 +373,7 @@ public class OptimismGossipLoopbackTests
             : Task.FromResult<IEnumerable<T>>(records);
     }
 
-    private sealed class Host(ServiceProvider services, ILocalPeer peer) : IAsyncDisposable
+    private sealed class Host(ServiceProvider services, ILocalPeer peer, CancellationTokenSource listening) : IAsyncDisposable
     {
         public ServiceProvider Services => services;
 
@@ -360,15 +398,24 @@ public class OptimismGossipLoopbackTests
 
             ServiceProvider services = collection.BuildServiceProvider();
             ILocalPeer peer = services.GetRequiredService<IPeerFactory>().Create();
-            await peer.StartListenAsync([Multiaddress.Decode("/ip4/127.0.0.1/tcp/0")], token);
+            CancellationTokenSource listening = CancellationTokenSource.CreateLinkedTokenSource(token);
+            await peer.StartListenAsync([Multiaddress.Decode("/ip4/127.0.0.1/tcp/0")], listening.Token);
             await services.GetRequiredService<PubsubRouter>().StartAsync(peer, token);
-            return new Host(services, peer);
+            return new Host(services, peer, listening);
+        }
+
+        /// <summary>Shuts the peer down as a host does: the listener stops with the run token, then the peer is disposed.</summary>
+        public async ValueTask ShutDownAsync()
+        {
+            await listening.CancelAsync();
+            await peer.DisposeAsync();
         }
 
         public async ValueTask DisposeAsync()
         {
-            await peer.DisposeAsync();
+            await ShutDownAsync();
             await services.DisposeAsync();
+            listening.Dispose();
         }
     }
 }

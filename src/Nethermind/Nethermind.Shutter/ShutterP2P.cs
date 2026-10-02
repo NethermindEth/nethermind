@@ -177,6 +177,8 @@ public class ShutterP2P : IShutterP2P
     public async ValueTask DisposeAsync()
     {
         _router?.UnsubscribeAll();
+        // Disposing through ILocalPeer marks the peer closed before it disconnects, so a dial that completes later is closed too.
+        await _peer.DisposeAsync();
         await (_serviceProvider?.DisposeAsync() ?? default);
     }
 
