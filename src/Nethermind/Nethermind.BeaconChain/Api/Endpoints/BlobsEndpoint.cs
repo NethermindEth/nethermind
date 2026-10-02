@@ -172,7 +172,7 @@ internal static class BlobsEndpoint
         return rows;
     }
 
-    /// <summary>Reads stored columns of the block in index order until half of them are held, so columns 0 to 63 are preferred.</summary>
+    /// <summary>Reads accepted columns of the block in index order until half of them are held, so columns 0 to 63 are preferred.</summary>
     /// <exception cref="InvalidDataException">A stored column is unreadable, or its cell count is not <paramref name="blobCount"/>.</exception>
     private static SszBlobCell[]?[] ReadColumns(BeaconApiContext ctx, Hash256 root, bool gloas, int blobCount, out int held)
     {
@@ -180,7 +180,9 @@ internal static class BlobsEndpoint
         held = 0;
         for (ulong column = 0; column < Eip7594DasConstants.NumberOfColumns && held < Eip7594DasConstants.RequiredColumnsForReconstruction; column++)
         {
-            SszBlobCell[]? cells = gloas
+            // Read queued columns first: the writer removes them only after persistence completes.
+            SszBlobCell[]? cells = ctx.ColumnPool?.GetUnwrittenCells(root, column, gloas);
+            cells ??= gloas
                 ? ctx.Store.TryGetDataColumnSidecarGloas(root, column, out DataColumnSidecarGloas? gloasSidecar) ? gloasSidecar.Column ?? [] : null
                 : ctx.Store.TryGetDataColumnSidecar(root, column, out DataColumnSidecar? sidecar) ? sidecar.Column ?? [] : null;
             if (cells is null)
