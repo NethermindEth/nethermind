@@ -242,8 +242,8 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The newest range-synced block that waits in <see cref="_pendingRetry"/> or is held under it, so a round starts past it; written by the worker, read by the feed.</summary>
     private volatile HeldRange? _rangeHeld;
 
-    /// <summary>The roots and suppliers of the range-synced blocks held on the chain of <see cref="_rangeHeld"/>; touched by the worker only.</summary>
-    private readonly Dictionary<Hash256, IBeaconSyncPeer?> _rangeHeldRoots = [];
+    /// <summary>The range-synced blocks held on the chain of <see cref="_rangeHeld"/>, by root, with their suppliers; touched by the worker only.</summary>
+    private readonly Dictionary<Hash256, RangeHeldBlock> _rangeHeldRoots = [];
 
     /// <summary>The held range blocks whose by-root column fetch runs ahead of their turn to import, at most <see cref="MaxConcurrentHeldColumnFetches"/>.</summary>
     private readonly HashSet<Hash256> _heldColumnFetches = [];
@@ -329,12 +329,15 @@ public sealed class BeaconSyncOrchestrator(
     internal sealed record FetchedEnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source) : EnvelopeItem(Envelope, Source);
 
     /// <param name="Origin">How the block reached this node, so every retry imports it the same way.</param>
-    /// <param name="ServedBy">The peer that served a block fetched by root, blamed if a retry finds it invalid.</param>
+    /// <param name="ServedBy">The peer that served a block fetched by root or by range, blamed if a retry finds it invalid.</param>
     /// <param name="AwaitsRegeneration">Whether the block waits for the next slot's regeneration budget rather than for data or a payload.</param>
     private readonly record struct PendingRetry(ForkedSignedBeaconBlock Block, ulong QueuedAtSlot, ImportOrigin Origin, IBeaconSyncPeer? ServedBy, bool AwaitsRegeneration);
 
     /// <summary>A block fetched by root and held behind a fetched ancestor, with the peer that served it.</summary>
     private sealed record HeldFetchedBlock(ForkedSignedBeaconBlock Block, IBeaconSyncPeer? ServedBy);
+
+    /// <summary>A range-synced block held on the chain of <see cref="_rangeHeld"/>, with the peer that served it.</summary>
+    private readonly record struct RangeHeldBlock(ForkedSignedBeaconBlock Block, IBeaconSyncPeer? Source);
 
     /// <summary>How a block reached this node, which decides the regeneration budget its import is charged to.</summary>
     private enum ImportOrigin
@@ -944,7 +947,7 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         // A block waiting on another chain's deferred block must not take this chain over.
-        if (_rangeHeld?.DeferredRoot == deferredRoot && _rangeHeldRoots.TryAdd(root, item.Source) && result == BlockImportResult.UnknownParent)
+        if (_rangeHeld?.DeferredRoot == deferredRoot && _rangeHeldRoots.TryAdd(root, new RangeHeldBlock(block, item.Source)) && result == BlockImportResult.UnknownParent)
         {
             QueueHeldColumnFetch(block, root, token);
         }
@@ -1021,11 +1024,13 @@ public sealed class BeaconSyncOrchestrator(
             _heldFetched.Delete(root);
         }
 
+        bool isRangeHeld = _rangeHeldRoots.TryGetValue(root, out RangeHeldBlock rangeHeld) && IsSameSignedBlock(rangeHeld.Block, block);
         ImportOrigin origin = fetchedByRoot || heldFetched is not null ? ImportOrigin.ByRoot
-            : rangeItem is not null || _rangeHeldRoots.ContainsKey(root) ? ImportOrigin.Range
+            : rangeItem is not null || isRangeHeld ? ImportOrigin.Range
             : isQueued ? queued.Origin
             : ImportOrigin.Gossip;
-        servedBy ??= isQueued ? queued.ServedBy : heldFetched?.ServedBy;
+        IBeaconSyncPeer? rangeSource = rangeItem is not null ? rangeItem.Source : isRangeHeld ? rangeHeld.Source : null;
+        servedBy ??= (origin == ImportOrigin.Range ? rangeSource : null) ?? (isQueued ? queued.ServedBy : heldFetched?.ServedBy);
         (BlockImportResult result, ImportRefusal refusal) = await _importThread.RunAsync(() =>
         {
             BlockImportResult imported = origin == ImportOrigin.Gossip
@@ -1108,16 +1113,17 @@ public sealed class BeaconSyncOrchestrator(
                 BlameInvalidFetchedBlock(result, refusal, servedBy, root);
             }
 
-            if (result == BlockImportResult.Invalid && (rangeItem is not null || _rangeHeld?.DeferredRoot == root || _rangeHeldRoots.ContainsKey(root)))
+            // Another signed copy under a range block's root says nothing of the range peer that served the range copy.
+            if (result == BlockImportResult.Invalid && origin == ImportOrigin.Range && (rangeItem is not null || _rangeHeld?.DeferredRoot == root || isRangeHeld))
             {
                 // fork-choice.md on_block: rejected range blocks end the round and only their supplier is blamed.
-                IBeaconSyncPeer? source = _rangeHeldRoots.GetValueOrDefault(root) ?? rangeItem?.Source;
-                source?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
+                servedBy?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
                 _rangeHeld = null;
                 ClearRangeHeldRoots();
                 EndRangeSyncRound();
             }
-            else if (wasRetried)
+            // A promoted copy still waits under the root, so the held chain waits with it.
+            else if (wasRetried && promoted is null)
             {
                 ReleaseRangeHeld(root);
             }
