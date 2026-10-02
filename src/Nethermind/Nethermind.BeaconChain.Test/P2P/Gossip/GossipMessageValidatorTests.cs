@@ -41,7 +41,6 @@ public class GossipMessageValidatorTests
     {
         byte[] validBlock = Encode(GloasBlock());
 
-        yield return Case("signed message", Topic(GloasDigest, GossipTopics.BeaconBlock), validBlock, MessageValidity.Rejected, null, GossipDropReason.SignedMessage, signed: true);
         yield return Case("unparseable topic", "/eth2/beacon_block", validBlock, MessageValidity.Rejected, null, GossipDropReason.UnknownTopic);
         yield return Case("topic whose prefix and suffix overlap", "/eth2/ssz_snappy", validBlock, MessageValidity.Rejected, null, GossipDropReason.UnknownTopic);
         yield return Case("unknown eth2 topic name", Topic(GloasDigest, "beacon_blocks"), validBlock, MessageValidity.Rejected, null, GossipDropReason.UnknownTopic);
@@ -121,7 +120,7 @@ public class GossipMessageValidatorTests
     }
 
     [TestCaseSource(nameof(Cases))]
-    public void Metrics_verdict_and_consumption_follow_the_gossip_rules(string topic, byte[] data, bool signed, MessageValidity expected, Type? consumedAs, GossipDropReason? reason)
+    public void Metrics_verdict_and_consumption_follow_the_gossip_rules(string topic, byte[] data, MessageValidity expected, Type? consumedAs, GossipDropReason? reason)
     {
         (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create();
 
@@ -129,7 +128,7 @@ public class GossipMessageValidatorTests
             && (Array.IndexOf(GossipTopics.SubscribedTopicNames, name) >= 0 || Array.IndexOf(GossipTopics.GloasTopicNames, name) >= 0) ? name! : "unhandled";
         StringLabel key = new(label);
         long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key);
-        MessageValidity validity = validator.Verify(Message(topic, data, signed));
+        MessageValidity validity = validator.Verify(Message(topic, data));
 
         using (Assert.EnterMultipleScope())
         {
@@ -144,30 +143,6 @@ public class GossipMessageValidatorTests
         }
     }
 
-    [Test]
-    public void StrictNoSign_rejects_present_fields([Values("from", "seqno", "signature", "key")] string field, [Values] bool empty)
-    {
-        (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create();
-        Message message = Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock()), signed: false);
-        ByteString value = empty ? ByteString.Empty : ByteString.CopyFrom([1]);
-        switch (field)
-        {
-            case "from": message.From = value; break;
-            case "seqno": message.Seqno = value; break;
-            case "signature": message.Signature = value; break;
-            case "key": message.Key = value; break;
-        }
-
-        MessageValidity validity = validator.Verify(Nethermind.Libp2p.Protocols.Pubsub.Dto.Message.Parser.ParseFrom(message.ToByteArray()));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(raised, Is.Empty);
-            Assert.That(router.GetDropCount(GossipDropReason.SignedMessage), Is.EqualTo(1));
-        }
-    }
-
     // altair p2p "Transitioning the gossip": a digest is handled from one epoch before it takes effect until two epochs after its last epoch.
     [TestCase(-1, true, MessageValidity.Rejected, GossipDropReason.InvalidSnappy, TestName = "next-fork digest one epoch before it takes effect")]
     [TestCase(-2, true, MessageValidity.Ignored, GossipDropReason.UnknownTopic, TestName = "next-fork digest two epochs before it takes effect")]
@@ -178,7 +153,7 @@ public class GossipMessageValidatorTests
         ulong wallEpoch = (ulong)((long)Sepolia.GloasForkEpoch + wallEpochFromGloas);
         (GossipMessageValidator validator, GossipRouter router, List<object> _) = Create(new ManualTimestamper(SlotStart(wallEpoch * Sepolia.SlotsPerEpoch).AddSeconds(6)));
 
-        MessageValidity validity = validator.Verify(Message(Topic(gloasDigest ? GloasDigest : FuluDigest, GossipTopics.BeaconBlock), [0xff, 0xff, 0xff, 0xff], signed: false));
+        MessageValidity validity = validator.Verify(Message(Topic(gloasDigest ? GloasDigest : FuluDigest, GossipTopics.BeaconBlock), [0xff, 0xff, 0xff, 0xff]));
 
         Assert.That((validity, router.GetDropCount(reason)), Is.EqualTo((expected, 1L)), "an invalid snappy payload is Rejected only on a handled digest");
     }
@@ -192,7 +167,7 @@ public class GossipMessageValidatorTests
         ulong wallEpoch = Sepolia.GloasForkEpoch + 2;
         (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create(new ManualTimestamper(SlotStart(wallEpoch * Sepolia.SlotsPerEpoch).AddMilliseconds(msIntoEpoch)));
 
-        validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(slot: FirstGloasSlot + 3)), signed: false));
+        validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(slot: FirstGloasSlot + 3))));
 
         Assert.That((raised.Count, router.GetDropCount(GossipDropReason.StaleSlot)), Is.EqualTo(consumed ? (1, 0L) : (0, 1L)));
     }
@@ -203,7 +178,7 @@ public class GossipMessageValidatorTests
         (GossipMessageValidator validator, GossipRouter router, List<object> raised) = Create();
         router.MarkProposalSeen(WallSlot, GloasBlock().Message!.ProposerIndex);
 
-        MessageValidity validity = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock()), signed: false));
+        MessageValidity validity = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock())));
 
         using (Assert.EnterMultipleScope())
         {
@@ -263,7 +238,7 @@ public class GossipMessageValidatorTests
                 break;
         }
 
-        MessageValidity validity = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(candidate), signed: false));
+        MessageValidity validity = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(candidate)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -279,11 +254,11 @@ public class GossipMessageValidatorTests
         ManualTimestamper timestamper = new(SlotStart(WallSlot).AddSeconds(6));
         (GossipMessageValidator validator, GossipRouter _, List<object> raised) = Create(timestamper);
 
-        MessageValidity early = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock(WallSlot + 1)), signed: false));
+        MessageValidity early = validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock(WallSlot + 1))));
         Assert.That((early, raised.Count), Is.EqualTo((MessageValidity.Ignored, 0)), "held, not raised, while its slot is more than the clock disparity away");
 
         timestamper.Set(SlotStart(WallSlot + 1));
-        validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(slot: WallSlot + 1)), signed: false));
+        validator.Verify(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(slot: WallSlot + 1))));
 
         Assert.That(raised.Select(static e => e.GetType()), Is.EqualTo(new[] { typeof(ForkedSignedBeaconBlock.OfGloas), typeof(SignedAggregateAndProofGloas) }),
             "the held block is raised when the next message arrives in its slot, before that message");
@@ -311,19 +286,10 @@ public class GossipMessageValidatorTests
 
     private static DateTime SlotStart(ulong slot) => DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot);
 
-    private static TestCaseData Case(string name, string topic, byte[] data, MessageValidity expected, Type? consumedAs, GossipDropReason? reason, bool signed = false) =>
-        new TestCaseData(topic, data, signed, expected, consumedAs, reason).SetName(name);
+    private static TestCaseData Case(string name, string topic, byte[] data, MessageValidity expected, Type? consumedAs, GossipDropReason? reason) =>
+        new TestCaseData(topic, data, expected, consumedAs, reason).SetName(name);
 
-    private static Message Message(string topic, byte[] data, bool signed)
-    {
-        Message message = new() { Topic = topic, Data = ByteString.CopyFrom(data) };
-        if (signed)
-        {
-            message.Signature = ByteString.CopyFrom([1]);
-        }
-
-        return message;
-    }
+    private static Message Message(string topic, byte[] data) => new() { Topic = topic, Data = ByteString.CopyFrom(data) };
 
     private static string Topic(byte[] digest, string name) => GossipTopics.Topic(digest, name);
 

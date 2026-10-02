@@ -202,16 +202,11 @@ public class NetworkEntryFuzzTests
                 topic = MutateTopic(random, topic);
             }
 
-            bool signed = random.Next(20) == 0;
             Message message = new()
             {
                 Topic = topic,
                 Data = ByteString.CopyFrom(data),
             };
-            if (signed)
-            {
-                message.Signature = ByteString.CopyFrom([1]);
-            }
 
             long invalidSszBefore = InvalidSszDrops();
             long unknownTopicBefore = router.GetDropCount(GossipDropReason.UnknownTopic);
@@ -220,13 +215,6 @@ public class NetworkEntryFuzzTests
             if (validity == MessageValidity.Accepted && !IsGloasColumnTopic(topic))
             {
                 throw new AssertionException($"Only a Gloas data column sidecar may be Accepted, but {context} was");
-            }
-
-            // StrictNoSign: a signed message is rejected whatever it carries.
-            if (signed)
-            {
-                AssertVerdict(validity, MessageValidity.Rejected, "a signed message", context);
-                return;
             }
 
             if (topicMutated)

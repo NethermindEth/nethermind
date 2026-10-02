@@ -697,10 +697,8 @@ public sealed class BeaconP2P : IAsyncDisposable
             return IdentityFromStoredKey(privateKey);
         }
 
-        // Loaded back from the stored bytes, like after a restart: the freshly generated object can disagree with them.
-        byte[] generated = new Identity(privateKey: null, KeyType.Secp256K1).PrivateKey!.Data.ToByteArray();
-        _store.PutMetadata(IdentityMetadataKey, generated);
-        Identity identity = IdentityFromStoredKey(generated);
+        Identity identity = new(privateKey: null, KeyType.Secp256K1);
+        _store.PutMetadata(IdentityMetadataKey, identity.PrivateKey!.Data.ToByteArray());
         if (_logger.IsInfo) _logger.Info($"Generated new beacon chain P2P identity {identity.PeerId}");
         return identity;
     }
