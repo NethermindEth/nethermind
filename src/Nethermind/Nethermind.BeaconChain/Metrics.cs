@@ -25,6 +25,10 @@ public class Metrics
     internal static ulong GossipDroppedCount;
     internal static ulong BlocksImportedCount;
     internal static ulong DialAttemptsCount;
+    internal static ulong HeldBlocksDroppedCount;
+    internal static ulong NewPayloadCallsCount;
+    internal static ulong NewPayloadMillisecondsCount;
+    internal static ulong ForkchoiceUpdatedCallsCount;
     private static long _headSlotDelay;
     private static int _peerCount;
     private static long _lastBlockImportMs;
@@ -83,7 +87,7 @@ public class Metrics
 
     [CounterMetric]
     [Description("Blocks held for a parent or a deferred block that were dropped because it could not import.")]
-    public static ulong BeaconChainHeldBlocksDropped { get; set; }
+    public static ulong BeaconChainHeldBlocksDropped { get => Volatile.Read(ref HeldBlocksDroppedCount); set => Volatile.Write(ref HeldBlocksDroppedCount, value); }
 
     [CounterMetric]
     [Description("Gossip messages accepted across the beacon chain topics.")]
@@ -115,13 +119,13 @@ public class Metrics
 
     [CounterMetric]
     [Description("In-process engine_newPayload calls issued by the embedded driver.")]
-    public static ulong BeaconChainNewPayloadCalls { get; set; }
+    public static ulong BeaconChainNewPayloadCalls { get => Volatile.Read(ref NewPayloadCallsCount); set => Volatile.Write(ref NewPayloadCallsCount, value); }
 
     [CounterMetric]
     [Description("Milliseconds the embedded driver spent waiting on in-process engine_newPayload calls.")]
-    public static ulong BeaconChainNewPayloadMilliseconds { get; set; }
+    public static ulong BeaconChainNewPayloadMilliseconds { get => Volatile.Read(ref NewPayloadMillisecondsCount); set => Volatile.Write(ref NewPayloadMillisecondsCount, value); }
 
     [CounterMetric]
     [Description("In-process engine_forkchoiceUpdated calls issued by the embedded driver.")]
-    public static ulong BeaconChainForkchoiceUpdatedCalls { get; set; }
+    public static ulong BeaconChainForkchoiceUpdatedCalls { get => Volatile.Read(ref ForkchoiceUpdatedCallsCount); set => Volatile.Write(ref ForkchoiceUpdatedCallsCount, value); }
 }
