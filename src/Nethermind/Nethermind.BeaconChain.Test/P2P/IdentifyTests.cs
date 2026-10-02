@@ -44,10 +44,7 @@ public class IdentifyTests
 
     [Test]
     [CancelAfter(60_000)]
-    public Task Identify_advertises_its_own_protocol_id_once_and_the_client_agent_string(CancellationToken token) =>
-        Identify_advertises_its_own_protocol_id_once_and_the_client_agent_stringAsync(token);
-
-    private static async Task<bool> Identify_advertises_its_own_protocol_id_once_and_the_client_agent_stringAsync(CancellationToken token)
+    public async Task Identify_advertises_its_own_protocol_id_once_and_the_client_agent_string(CancellationToken token)
     {
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         await using BeaconP2P client = PeerSessionNodes.Create().P2P;
@@ -64,16 +61,11 @@ public class IdentifyTests
             Assert.That(advertised, Does.Contain("/eth2/beacon_chain/req/status/2/ssz_snappy"), "the rest of the stack is still advertised");
             Assert.That(info.AgentVersion, Is.EqualTo(BeaconP2P.ClientAgentVersion), "the agent string a peer reads is the one the API reports");
         }
-
-        return true;
     }
 
     [Test]
     [CancelAfter(60_000)]
-    public Task Identify_push_advertises_the_identify_protocol_id_once(CancellationToken token) =>
-        Identify_push_advertises_the_identify_protocol_id_onceAsync(token);
-
-    private static async Task<bool> Identify_push_advertises_the_identify_protocol_id_onceAsync(CancellationToken token)
+    public async Task Identify_push_advertises_the_identify_protocol_id_once(CancellationToken token)
     {
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         await using BeaconP2P client = PeerSessionNodes.Create().P2P;
@@ -83,7 +75,7 @@ public class IdentifyTests
         ISession session = await PeerSessionNodes.DialAsync(client, server, token);
         await client.GetSessionInfoAsync(session, token);
         PeerStore.PeerInfo serverInfo = client.PeerInfoForTest(server.LocalPeerId!);
-        // The pinned identify applies an answer only over an older record, so the record is forgotten to let the push land.
+        // Forgotten, so the wait below ends only once the push has landed.
         serverInfo.SupportedProtocols = null;
         serverInfo.Seq = null;
 
@@ -93,15 +85,11 @@ public class IdentifyTests
         await PeerSessionNodes.WaitUntilAsync(() => serverInfo.SupportedProtocols is not null, "the client never applied the server's identify push", token);
 
         Assert.That((serverInfo.SupportedProtocols ?? []).Count(static id => id == IdentifyProtocolId), Is.EqualTo(1));
-        return true;
     }
 
     [Test]
     [CancelAfter(60_000)]
-    public Task A_session_reads_the_agent_version_from_one_identify_exchange([Values] bool nodeDials, CancellationToken token) =>
-        A_session_reads_the_agent_version_from_one_identify_exchangeAsync(nodeDials, token);
-
-    private static async Task<bool> A_session_reads_the_agent_version_from_one_identify_exchangeAsync(bool nodeDials, CancellationToken token)
+    public async Task A_session_reads_the_agent_version_from_one_identify_exchange([Values] bool nodeDials, CancellationToken token)
     {
         CountingStackSettings? answers = null;
         int holdAnswer = 0;
@@ -114,12 +102,12 @@ public class IdentifyTests
                 answerStarted.TrySetResult();
                 await releaseAnswer.Task.WaitAsync(token);
             }
-        }), token, pingOnDial: true, identity: SigningIdentity());
+        }), token, pingOnDial: true, identity: new Identity(privateKey: null, KeyType.Secp256K1));
         Multiaddress address = server.Address;
 
         // The library's own peer identifies exactly once, which fixes what one answer costs the counter.
         await using ServiceProvider plainServices = new ServiceCollection().AddLibp2p(static builder => builder).BuildServiceProvider();
-        await using (ILocalPeer plain = plainServices.GetRequiredService<IPeerFactory>().Create(SigningIdentity()))
+        await using (ILocalPeer plain = plainServices.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1)))
         {
             await plain.DialAsync(address, token);
         }
@@ -162,8 +150,6 @@ public class IdentifyTests
             Assert.That(answers.Reads - oneAnswer, Is.EqualTo(oneAnswer), "the session asked for identify once");
             Assert.That(client.PeerInfoForTest(server.Peer.Identity.PeerId).SupportedProtocols, Does.Contain(IdentifyProtocolId), "the answer is recorded in the peer store");
         }
-
-        return true;
     }
 
     [TestCase(Answer.Valid, PeerRecordsVerificationPolicy.RequireCorrect, true)]
@@ -176,8 +162,8 @@ public class IdentifyTests
     [TestCase(Answer.NoAgentVersion, PeerRecordsVerificationPolicy.RequireCorrect, true)]
     public void An_identify_answer_is_accepted_only_for_the_authenticated_peer(Answer answer, PeerRecordsVerificationPolicy policy, bool accepted)
     {
-        Identity remote = SigningIdentity();
-        Identity other = SigningIdentity();
+        Identity remote = new(privateKey: null, KeyType.Secp256K1);
+        Identity other = new(privateKey: null, KeyType.Secp256K1);
         IdentifyMessage message = AnswerOf(answer == Answer.KeyOfAnotherPeer ? other : remote,
             answer switch { Answer.NoRecord => null, Answer.RecordSignedByAnotherPeer => other, _ => remote }, 7, IdentifyProtocolId);
         if (answer == Answer.NoAgentVersion)
@@ -211,7 +197,7 @@ public class IdentifyTests
     [TestCase(6UL, true)]
     public void A_later_identify_answer_replaces_the_stored_record_only_when_its_sequence_is_newer(ulong seq, bool replaces)
     {
-        Identity remote = SigningIdentity();
+        Identity remote = new(privateKey: null, KeyType.Secp256K1);
         Libp2p.Core.State session = SessionWith(remote);
         PeerStore peerStore = new();
         IdentifyProtocolSettings settings = new() { PeerRecordsVerificationPolicy = PeerRecordsVerificationPolicy.RequireCorrect };
@@ -278,10 +264,7 @@ public class IdentifyTests
     /// <summary>An answer that fails verification must cost the peer its session, in either direction, not just the agent string.</summary>
     [Test]
     [CancelAfter(60_000)]
-    public Task A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_established([Values] bool nodeDials, CancellationToken token) =>
-        A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_establishedAsync(nodeDials, token);
-
-    private static async Task<bool> A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_establishedAsync(bool nodeDials, CancellationToken token)
+    public async Task A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_established([Values] bool nodeDials, CancellationToken token)
     {
         TimeSpan within = IdentifyAgentVersionProbe.ReadTimeout + TimeSpan.FromSeconds(3);
         await using BeaconP2P node = PeerSessionNodes.Create().P2P;
@@ -306,7 +289,6 @@ public class IdentifyTests
 
         await PeerSessionNodes.WaitUntilAsync(() => node.SessionCountForTest == 0, "the misidentified session was left open", token, within);
         Assert.That(Volatile.Read(ref established), Is.Zero, "a misidentified session is never reported as established");
-        return true;
     }
 
     /// <summary>
@@ -332,22 +314,6 @@ public class IdentifyTests
         }
 
         return BeaconP2P.IsNotDropped(sessionInfo, session);
-    }
-
-    /// <summary>A fresh secp256k1 identity whose key signs for its own public key.</summary>
-    /// <remarks>About one key in 256 from the pinned secp256k1 generation does not sign for its own public key, and so fails
-    /// its own peer-record check; every such key seen ends in a zero byte.</remarks>
-    private static Identity SigningIdentity()
-    {
-        byte[] probe = [1];
-        while (true)
-        {
-            Identity identity = new(privateKey: null, KeyType.Secp256K1);
-            if (identity.VerifySignature(probe, identity.Sign(probe)))
-            {
-                return identity;
-            }
-        }
     }
 
     private static Multiaddress AddressOf(Identity peer) => Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer.PeerId}");
@@ -388,7 +354,7 @@ public class IdentifyTests
     private sealed class ForeignKeyIdentifyProtocol(IProtocolStackSettings settings) : IdentifyProtocol(settings), ISessionListenerProtocol
     {
         public new async Task ListenAsync(IChannel downChannel, ISessionContext context) =>
-            await downChannel.WriteSizeAndProtobufAsync(AnswerOf(SigningIdentity(), null, 0, IdentifyProtocolId));
+            await downChannel.WriteSizeAndProtobufAsync(AnswerOf(new Identity(privateKey: null, KeyType.Secp256K1), null, 0, IdentifyProtocolId));
     }
 
     private sealed class CountingIdentifyProtocol(IProtocolStackSettings settings, Func<Task> beforeAnswer)

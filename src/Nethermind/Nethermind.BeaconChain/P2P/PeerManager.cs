@@ -865,9 +865,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return false;
     }
 
-    /// <summary>Already in the pool as this exact session or as the same established peer id under any address.</summary>
-    private bool IsRecorded(ISession session, string establishedId) => HoldsSession(session) || TryFindConnected(establishedId, out _);
-
     private bool HoldsSession(ISession session)
     {
         foreach (KeyValuePair<string, ManagedPeer> connected in _peers)
@@ -1404,13 +1401,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     private async Task<bool> ExchangeStatusAndRecordAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token, DialRecord? dial)
     {
-        // A peer's inbound and dialed addresses differ, so the record is matched by the session's authenticated peer id.
-        string establishedId = BeaconP2P.RemotePeerIdOf(session)?.ToString() ?? peerId;
-        if (IsRecorded(session, establishedId))
-        {
-            return true;
-        }
-
         ManagedPeer peer = new(this, _p2p, address, peerId, session, info.Direction, info.AgentVersion, enr) { Dial = dial };
         if (!await UpdateStatusAsync(peer, token))
         {
@@ -1504,7 +1494,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// would keep a connection this manager neither counts against the band nor health-checks.</summary>
     private async Task DisconnectUnadmittedAsync(ISession session)
     {
-        // Another admission path may have recorded this very session meanwhile, or still be admitting it (see AdmitSessionAsync).
+        // A failed inbound admission frees its reservation before this runs, so a later admission may hold the session (see AdmitSessionAsync).
         lock (_admissionLock)
         {
             if (HoldsSession(session) || _admittingSessions.ContainsKey(session))
