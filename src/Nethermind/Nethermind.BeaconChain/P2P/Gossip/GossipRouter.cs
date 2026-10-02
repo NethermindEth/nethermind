@@ -47,9 +47,6 @@ public enum GossipDropReason
     /// <summary>A slot at or below the finalized checkpoint's start slot.</summary>
     BeforeFinalized,
 
-    /// <summary>A message carrying a signature, which the eth2 <c>StrictNoSign</c> policy forbids.</summary>
-    SignedMessage,
-
     /// <summary>A message whose stored block is not cached and would exceed the per-slot budget of store decodes.</summary>
     StoreDecodeBudgetSpent,
 
