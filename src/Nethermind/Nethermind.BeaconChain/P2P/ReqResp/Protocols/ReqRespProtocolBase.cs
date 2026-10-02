@@ -53,10 +53,14 @@ public readonly record struct ReqRespFailureKey(string ProtocolId, ReqRespFailur
 public abstract class ReqRespProtocolBase
 {
     /// <summary>The spec <c>TTFB_TIMEOUT</c>: maximum time to wait for the first response byte.</summary>
-    protected static readonly TimeSpan TtfbTimeout = TimeSpan.FromSeconds(5);
+    internal static readonly TimeSpan DefaultTtfbTimeout = TimeSpan.FromSeconds(5);
+
+    internal TimeSpan TtfbTimeout { get; init; } = DefaultTtfbTimeout;
 
     /// <summary>The spec <c>RESP_TIMEOUT</c>: maximum time for each subsequent response chunk.</summary>
-    protected static readonly TimeSpan RespTimeout = TimeSpan.FromSeconds(10);
+    internal static readonly TimeSpan DefaultRespTimeout = TimeSpan.FromSeconds(10);
+
+    internal TimeSpan RespTimeout { get; init; } = DefaultRespTimeout;
 
     /// <summary>The spec <c>MAX_CONCURRENT_REQUESTS</c>: max concurrent inbound streams per peer for one protocol id.</summary>
     /// <remarks>Consensus-specs v1.7.0-beta.2 req/resp requesting side: it MUST NOT make more concurrent requests than this with the same protocol ID.</remarks>
@@ -84,7 +88,7 @@ public abstract class ReqRespProtocolBase
     protected static CancellationTokenSource StartTimeout(TimeSpan timeout) => new(timeout);
 
     /// <summary>A per-chunk timeout (re-armed like <see cref="StartTimeout"/>'s result) additionally bounded by an overall ceiling that is never re-armed.</summary>
-    protected readonly struct BoundedTimeout(CancellationTokenSource cts, CancellationTokenSource overall, TimeSpan initial, TimeSpan ceiling) : IDisposable
+    protected readonly struct BoundedTimeout(CancellationTokenSource cts, CancellationTokenSource overall, TimeSpan initial, TimeSpan ceiling, TimeSpan responseTimeout) : IDisposable
     {
         public CancellationTokenSource Cts { get; } = cts;
 
@@ -94,7 +98,7 @@ public abstract class ReqRespProtocolBase
         public TimeoutException Expired(int chunksRead, Exception cause) => new ReqRespTimeoutException(
             overall.IsCancellationRequested ? $"timed out after {Seconds(ceiling)}, the bound for the whole response, with {chunksRead} chunks read"
             : chunksRead == 0 ? $"timed out after {Seconds(initial)} waiting for the first chunk"
-            : $"timed out after {Seconds(RespTimeout)} reading chunk {chunksRead + 1}",
+            : $"timed out after {Seconds(responseTimeout)} reading chunk {chunksRead + 1}",
             cause);
 
         public void Dispose()
@@ -113,12 +117,12 @@ public abstract class ReqRespProtocolBase
     /// consensus-specs PR #3767) — so <paramref name="overallCeiling"/> is this implementation's own
     /// bound, not a spec constant.
     /// </summary>
-    protected static BoundedTimeout StartBoundedTimeout(TimeSpan initial, TimeSpan overallCeiling)
+    protected BoundedTimeout StartBoundedTimeout(TimeSpan initial, TimeSpan overallCeiling)
     {
         CancellationTokenSource overall = new(overallCeiling);
         CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(overall.Token);
         cts.CancelAfter(initial);
-        return new BoundedTimeout(cts, overall, initial, overallCeiling);
+        return new BoundedTimeout(cts, overall, initial, overallCeiling, RespTimeout);
     }
 
     internal static string Seconds(TimeSpan duration) => $"{duration.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture)} s";
@@ -246,7 +250,7 @@ public abstract class ReqRespProtocolBase
     internal Action<PeerId, string>? RequestViolationSink { get; init; }
 
     /// <summary>How long a served stream is held for the requester to end it, so a requester that never does cannot pin a listener for good.</summary>
-    internal TimeSpan WatchLingerAfterServed { get; init; } = RespTimeout;
+    internal TimeSpan WatchLingerAfterServed { get; init; } = DefaultRespTimeout;
 
     private void ReportViolation(ISessionContext context, string protocolId, string detail)
     {
