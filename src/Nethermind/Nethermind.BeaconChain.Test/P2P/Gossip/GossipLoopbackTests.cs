@@ -348,6 +348,32 @@ public class GossipLoopbackTests
         }
     }
 
+    /// <summary>
+    /// A session the remote opens while the pool still holds the record of its dropped session is admitted and gets a gossip channel: the
+    /// libp2p layer holds one session per peer id, so that record is one whose close callback has not run yet, not a live duplicate.
+    /// </summary>
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task A_session_that_replaces_a_dropped_one_still_in_the_pool_is_admitted_with_gossip(CancellationToken token)
+    {
+        await using BeaconP2P node = CreateHost();
+        await using BeaconP2P remote = CreateHost();
+        await node.StartAsync(token);
+        await remote.StartAsync(token);
+        ISession dropped = await node.DialPeerAsync(PeerSessionNodes.LoopbackAddress(remote), token);
+        await dropped.DisconnectAsync();
+        await PeerSessionNodes.WaitUntilAsync(() => node.SessionCountForTest == 0 && remote.SessionCountForTest == 0, "the dropped session never closed", token);
+        PeerManager manager = CreatePeerManager(node);
+        manager.AddPeerForTest(dropped, PeerSessionNodes.LoopbackAddressText(remote), removeWhenSessionCloses: false);
+        TaskCompletionSource admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        manager.PeerAdmitted += _ => admitted.TrySetResult();
+
+        await remote.DialPeerAsync(PeerSessionNodes.LoopbackAddress(node), token);
+
+        await PeerSessionNodes.WaitUntilAsync(() => admitted.Task.IsCompleted, "the new session was taken for a duplicate of the dropped one", token, TimeSpan.FromSeconds(30));
+        await PeerSessionNodes.WaitUntilAsync(() => node.HasGossipChannel(remote.LocalPeerId!) && remote.HasGossipChannel(node.LocalPeerId!), "the new session got no gossip channel", token);
+    }
+
     /// <summary>Each gossip channel that does not last doubles the wait before the next is opened, up to a minute, so a peer that keeps closing it costs few dials.</summary>
     [TestCase(1, 2)]
     [TestCase(40, 60)]

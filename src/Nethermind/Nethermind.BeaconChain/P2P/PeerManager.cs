@@ -1525,6 +1525,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         // session nobody here asked for (the remote connected to us) is admitted from the event.
         string address = session.RemoteAddress.ToString();
         string peerId = BeaconP2P.RemotePeerIdOf(session)?.ToString() ?? ExtractPeerId(address);
+        // The libp2p layer holds one session per peer id, so a record of another session is one it dropped before the close callback ran.
+        if (TryFindConnected(peerId, out ManagedPeer? recorded) && recorded!.IsSessionClosed)
+        {
+            RemoveClosedSession(recorded);
+        }
+
         if (IsKnown(peerId))
         {
             return;
@@ -2067,7 +2073,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     internal static long MessagesSentForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).MessagesSent;
 
     /// <summary>Internal so a test can hold a peer's requests open on a session it controls, without a status exchange.</summary>
-    internal IBeaconSyncPeer AddPeerForTest(ISession session, string address, StatusMessageV2? status = null)
+    /// <param name="removeWhenSessionCloses"><c>false</c> keeps the record of a closed session, as the pool holds it until its close callback runs.</param>
+    internal IBeaconSyncPeer AddPeerForTest(ISession session, string address, StatusMessageV2? status = null, bool removeWhenSessionCloses = true)
     {
         ManagedPeer peer = new(this, _p2p, address, ExtractPeerId(address), session, PeerDirection.Outbound, null, null);
         if (status is not null)
@@ -2075,7 +2082,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             peer.SetStatus(status, _timestamper.UtcNowOffset.UtcTicks);
         }
         _peers[address] = peer;
-        RemoveWhenSessionCloses(peer);
+        if (removeWhenSessionCloses)
+        {
+            RemoveWhenSessionCloses(peer);
+        }
+
         return peer;
     }
 
