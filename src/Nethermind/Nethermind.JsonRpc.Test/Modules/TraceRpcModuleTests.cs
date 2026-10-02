@@ -2676,6 +2676,28 @@ public class TraceRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Trace_call_rejects_an_unfunded_priced_call_with_the_insufficient_funds_code(
+        [Values("trace_call", "trace_callMany")] string method, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object call = new { from = new Address("0x00000000000000000000000000000000000f0001"), to = TestItem.AddressB, gas = "0x5208", gasPrice = "0x2540be400" };
+
+        string response = method == "trace_call"
+            ? await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, call, new[] { "trace" }, "latest")
+            : await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, new[] { new object[] { call, new[] { "trace" } } }, "latest");
+
+        JToken? error = JToken.Parse(response)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InsufficientFunds), response);
+            Assert.That(error?["message"]?.Value<string>(), Does.StartWith("insufficient funds"), response);
+        }
+    }
+
     // As in block inclusion, a signed transaction's fee cap must cover the base fee; one priced at zero doesn't run with a
     // zero base fee as a call does.
     [Test]
