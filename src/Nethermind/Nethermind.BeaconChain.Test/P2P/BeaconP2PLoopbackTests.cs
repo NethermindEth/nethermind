@@ -40,7 +40,7 @@ public class BeaconP2PLoopbackTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
     /// <summary>A dial its caller cancelled before it began does not keep the peer from being dialed afterwards.</summary>
-    /// <remarks>Nethermind.Libp2p 1.0.0 keeps a dial cancelled before its first await as the pending dial of the peer id for good.</remarks>
+    /// <remarks>Nethermind.Libp2p 1.0.0 kept such a dial as the pending dial of the peer id for good.</remarks>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_cancelled_dial_does_not_lose_the_peer(CancellationToken token)
@@ -57,7 +57,7 @@ public class BeaconP2PLoopbackTests
         Assert.That(await client.DialPeerAsync(address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
     }
 
-    /// <summary>A dial still running when its host is disposed leaves no session open: the library dial outlives its caller's token.</summary>
+    /// <summary>A dial still running when its host is disposed leaves no session open: disposal does not end a dial in flight.</summary>
     [Test]
     [CancelAfter(90_000)]
     public async Task A_host_disposed_during_a_dial_leaves_no_session_open(CancellationToken token)
@@ -72,21 +72,20 @@ public class BeaconP2PLoopbackTests
         {
             if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
         };
-        using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task<ISession> dial = client.DialPeerAsync(PeerSessionNodes.LoopbackAddress(server), abandoned.Token);
+        Task<ISession> dial = client.DialPeerAsync(PeerSessionNodes.LoopbackAddress(server), token);
 
-        await abandoned.CancelAsync();
+        bool inFlight = !dial.IsCompleted;
         await client.DisposeAsync();
+        Assert.That(inFlight, Is.True, "fixture: disposal began before the dial finished");
         try
         {
             await dial;
         }
-        catch (OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
         }
 
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
-        Assert.That(dial.IsCanceled, Is.True, "fixture: the caller stopped waiting before the dial finished");
 
         // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
         // a session left open was still open after 40 s.

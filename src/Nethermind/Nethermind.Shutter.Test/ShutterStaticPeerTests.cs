@@ -76,21 +76,20 @@ public class ShutterStaticPeerTests
         {
             if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
         };
-        using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task<ISession> dial = node.PeerForTest.DialAsync(keyperAddress, abandoned.Token);
+        Task<ISession> dial = node.PeerForTest.DialAsync(keyperAddress, token);
 
-        await abandoned.CancelAsync();
+        bool inFlight = !dial.IsCompleted;
         await node.DisposeAsync();
+        Assert.That(inFlight, Is.True, "fixture: shutdown began before the dial finished");
         try
         {
             await dial;
         }
-        catch (OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
         }
 
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
-        Assert.That(dial.IsCanceled, Is.True, "fixture: the caller stopped waiting before the dial finished");
         // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
         // a session left open was still open after 40 s.
         using (CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token))
